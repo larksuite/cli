@@ -1570,6 +1570,13 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected reorder error")
 			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error type = %T, want *errs.ValidationError: %v", err, err)
+			}
+			if validationErr.Param == "" && len(validationErr.Params) == 0 {
+				t.Fatalf("validation error missing parameter contract: %#v", validationErr)
+			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
 			}
