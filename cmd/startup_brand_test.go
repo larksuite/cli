@@ -112,6 +112,51 @@ func TestStartupBrandReachesRegistry_RealStartupOrder(t *testing.T) {
 	}
 }
 
+// TestStartupBrandWorkspaceSelectedBeforeConfigRead pins the startup ordering
+// contract: workspace selection must run before brand resolution (and before
+// isSingleAppMode), otherwise a hermes/openclaw invocation reads the local
+// base config and locks the wrong brand. Runs in a subprocess because both
+// the workspace and the registry are process-global.
+func TestStartupBrandWorkspaceSelectedBeforeConfigRead(t *testing.T) {
+	if isStartupBrandHelper() {
+		// Helper: replicate executeWithOptions' startup order exactly —
+		// workspace selection first, then brand resolution.
+		core.SetCurrentWorkspace(core.DetectWorkspaceFromEnv(os.Getenv))
+		fmt.Printf("CONFIGURED_BRAND=%s\n", ResolveStartupBrand(""))
+		os.Exit(0)
+	}
+
+	tmp := t.TempDir()
+	base := `{"apps":[{"appId":"cli_f","appSecret":"test-secret","brand":"feishu","users":[]}]}`
+	if err := os.WriteFile(filepath.Join(tmp, "config.json"), []byte(base), 0600); err != nil {
+		t.Fatal(err)
+	}
+	hermesDir := filepath.Join(tmp, "hermes")
+	if err := os.MkdirAll(hermesDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	ws := `{"apps":[{"appId":"cli_l","appSecret":"test-secret","brand":"lark","users":[]}]}`
+	if err := os.WriteFile(filepath.Join(hermesDir, "config.json"), []byte(ws), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	nonce := uuid.NewString()
+	t.Setenv(startupBrandHelperEnv, nonce)
+	cmd := exec.Command(os.Args[0], "-test.run", "TestStartupBrandWorkspaceSelectedBeforeConfigRead")
+	cmd.Args = append(cmd.Args, "-startup-brand-helper="+nonce)
+	cmd.Env = append(os.Environ(),
+		"LARKSUITE_CLI_CONFIG_DIR="+tmp,
+		"HERMES_HOME="+t.TempDir(), // workspace signal: routes config reads to <tmp>/hermes
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("subprocess failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "CONFIGURED_BRAND=lark") {
+		t.Errorf("workspace-scoped startup brand = %s, want lark (hermes config)", out)
+	}
+}
+
 func TestStartupBrandHelperRequiresMatchingCommandNonce(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
