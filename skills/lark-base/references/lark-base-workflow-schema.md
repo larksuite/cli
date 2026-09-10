@@ -163,7 +163,7 @@
 | `table_name` | 是 | 监控的数据表名 |
 | `watched_field_name` | 是 | 监控的字段名 |
 | `trigger_control_list` | 否 | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` / `openAPIBatchUpdate` |
-| `condition_list` | 否 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
+| `condition_list` | 否 | 数组中的每个元素表示一个条件组，条件组之间为 OR，组内 conditions 之间必须为 AND |
 
 ### ChangeRecordTrigger
 
@@ -186,11 +186,11 @@
 }
 ```
 
-| 字段 | 必填 | 说明                                                                               |
-|------|------|----------------------------------------------------------------------------------|
-| `table_name` | 是 | 监控的数据表名                                                                          |
+| 字段 | 必填 | 说明                                                                              |
+|------|------|---------------------------------------------------------------------------------|
+| `table_name` | 是 | 监控的数据表名                                                                         |
 | `trigger_control_list` | 否 | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
-| `condition_list` | 是 | 非空过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系                      |
+| `condition_list` | 是 | 不能为空；数组中的每个元素表示一个条件组，条件组之间为 OR，组内 conditions 之间必须为 AND                          |
 
 ### SetRecordTrigger
 
@@ -214,7 +214,7 @@
 | `record_watch_info` | 否  | 记录级过滤条件（修改前值匹配），为空则监听全部 |
 | `field_watch_info` | 是  | 字段级监控条件列表，至少一个，多项之间为 OR |
 | `trigger_control_list` | 否  | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
-| `condition_list` | 否  | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
+| `condition_list` | 否  | 数组中的每个元素表示一个条件组，条件组之间为 OR，组内 conditions 之间必须为 AND |
 
 `FieldWatchItem`：
 
@@ -267,7 +267,7 @@
 | `offset` | 是 | 提前/延后的偏移量（触发时间 = 日期字段时间 + `offset` × `unit`，因此负数=提前、正数=延后；范围由 `unit` 决定）：`MINUTE` ∈ {0, 5, 15, 30, -5, -15, -30}；`HOUR` ∈ [-6, -1] ∪ [1, 6]；`DAY` ∈ [-7, 7]；`WEEK` ∈ [-7, -1] ∪ [1, 7]；`MONTH` ∈ [-7, -1] ∪ [1, 7] |
 | `hour` | 是 | 触发小时 (0-23)，默认 9 |
 | `minute` | 是 | 触发分钟 (0-59)，默认 0 |
-| `condition_list` | 否 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系  | 
+| `condition_list` | 否 | 数组中的每个元素表示一个条件组，条件组之间为 OR，组内 conditions 之间必须为 AND  | 
 
 
 ### ButtonTrigger
