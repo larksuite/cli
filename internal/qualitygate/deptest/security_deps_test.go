@@ -25,6 +25,37 @@ func TestCLIExcludesUnusedIDNAAndNormalization(t *testing.T) {
 	}
 }
 
+// x/image is the reason this change exists: four advisories against its TIFF,
+// BMP and WebP readers. internal/imageconfig replaced it, so the module must
+// stay out of both the shipped binary and the test graph.
+func TestCLIExcludesImageCodecModule(t *testing.T) {
+	root := repoRoot(t)
+	// The test scope lists this module's source trees rather than "./...",
+	// which would also pick up scratch directories in a developer's working
+	// tree and fail on their unrelated build errors.
+	// lint/ is a separate module and is intentionally absent.
+	testScope := []string{".", "./cmd/...", "./errs/...", "./events/...", "./extension/...",
+		"./internal/...", "./shortcuts/...", "./sidecar/...", "./tests/..."}
+	for _, scope := range []struct {
+		name        string
+		includeTest bool
+		pkgs        []string
+	}{
+		{"binary", false, []string{"."}},
+		{"tests", true, testScope},
+	} {
+		t.Run(scope.name, func(t *testing.T) {
+			for _, pkg := range scope.pkgs {
+				for _, dep := range goListDeps(t, root, scope.includeTest, pkg) {
+					if dep == "golang.org/x/image" || strings.HasPrefix(dep, "golang.org/x/image/") {
+						t.Errorf("golang.org/x/image is back in the %s graph via %s (from %s)", scope.name, dep, pkg)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestHTMLTokenizerPreservesUnquotedSlashAttribute(t *testing.T) {
 	// CVE-2025-22872: a slash belonging to an unquoted attribute value must
 	// not be interpreted as a self-closing tag marker.
