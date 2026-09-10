@@ -7,6 +7,7 @@ package auth
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/registry"
 )
 
@@ -126,8 +128,15 @@ func TestNewCmdAuthExportScopes_InvalidBrand(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid brand, got nil")
 	}
-	if !strings.Contains(err.Error(), "must be feishu or lark") {
-		t.Errorf("error message: got %q", err.Error())
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("want *errs.ValidationError, got %T: %v", err, err)
+	}
+	if verr.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %v, want SubtypeInvalidArgument", verr.Subtype)
+	}
+	if verr.Param != "--brand" {
+		t.Errorf("param = %q, want --brand", verr.Param)
 	}
 }
 
@@ -214,8 +223,22 @@ func TestNewCmdAuthExportScopes_RunE(t *testing.T) {
 		// /etc/passwd sits outside the allowlist (cwd/tmp/~) that
 		// validate.SafeOutputPath enforces, so it must be rejected.
 		cmd.SetArgs([]string{"--brand", "feishu", "--output", "/etc/passwd"})
-		if err := cmd.Execute(); err == nil {
+		err := cmd.Execute()
+		if err == nil {
 			t.Fatal("expected error for --output outside the allowed roots, got nil")
+		}
+		var verr *errs.ValidationError
+		if !errors.As(err, &verr) {
+			t.Fatalf("want *errs.ValidationError, got %T: %v", err, err)
+		}
+		if verr.Subtype != errs.SubtypeInvalidArgument {
+			t.Errorf("subtype = %v, want SubtypeInvalidArgument", verr.Subtype)
+		}
+		if verr.Param != "--output" {
+			t.Errorf("param = %q, want --output", verr.Param)
+		}
+		if verr.Unwrap() == nil {
+			t.Error("SafeOutputPath cause not preserved (Unwrap returned nil)")
 		}
 	})
 
@@ -225,8 +248,44 @@ func TestNewCmdAuthExportScopes_RunE(t *testing.T) {
 		cmd.SetOut(&outBuf)
 		cmd.SetErr(&errBuf)
 		cmd.SetArgs([]string{"--brand", "xyz"})
-		if err := cmd.Execute(); err == nil {
+		err := cmd.Execute()
+		if err == nil {
 			t.Fatal("expected error for invalid --brand, got nil")
+		}
+		var verr *errs.ValidationError
+		if !errors.As(err, &verr) {
+			t.Fatalf("want *errs.ValidationError, got %T: %v", err, err)
+		}
+		if verr.Subtype != errs.SubtypeInvalidArgument {
+			t.Errorf("subtype = %v, want SubtypeInvalidArgument", verr.Subtype)
+		}
+		if verr.Param != "--brand" {
+			t.Errorf("param = %q, want --brand", verr.Param)
+		}
+	})
+
+	t.Run("missing_brand_errors", func(t *testing.T) {
+		// With MarkFlagRequired removed, a missing --brand must still fail — and
+		// through the typed parseBrandExact path, not Cobra's plain required-flag
+		// error.
+		cmd := newCmdAuthExportScopes(nil)
+		var outBuf, errBuf bytes.Buffer
+		cmd.SetOut(&outBuf)
+		cmd.SetErr(&errBuf)
+		cmd.SetArgs([]string{})
+		err := cmd.Execute()
+		if err == nil {
+			t.Fatal("expected error for missing --brand, got nil")
+		}
+		var verr *errs.ValidationError
+		if !errors.As(err, &verr) {
+			t.Fatalf("want typed *errs.ValidationError for missing --brand, got %T: %v", err, err)
+		}
+		if verr.Subtype != errs.SubtypeInvalidArgument {
+			t.Errorf("subtype = %v, want SubtypeInvalidArgument", verr.Subtype)
+		}
+		if verr.Param != "--brand" {
+			t.Errorf("param = %q, want --brand", verr.Param)
 		}
 	})
 }

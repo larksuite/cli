@@ -77,7 +77,11 @@ func newCmdAuthExportScopes(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&brand, "brand", "", "target brand: feishu | lark (required)")
 	cmd.Flags().StringVar(&version, "version", "", "version string written to output (default: build.Version)")
 	cmd.Flags().StringVar(&outputPath, "output", "", "write JSON to this file (default: stdout)")
-	_ = cmd.MarkFlagRequired("brand")
+	// --brand is validated by parseBrandExact (inside buildBrandScopesDoc), which
+	// returns a typed invalid-argument error carrying the --brand parameter for a
+	// missing or unknown brand. Cobra's MarkFlagRequired would instead reject a
+	// missing --brand with a plain error before RunE runs, bypassing that typed
+	// path, so it is intentionally not used here.
 	return cmd
 }
 
