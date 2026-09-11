@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 
@@ -415,6 +416,9 @@ var DriveDownload = common.Shortcut{
 			}
 			written := result.Size()
 			if stream.ContentLength > 0 && written != stream.ContentLength {
+				// Save already published outputPath. Remove the truncated artifact
+				// so a retry without --overwrite is not blocked by a corrupt file.
+				driveDownloadRemovePublishedOutput(runtime, outputPath)
 				return errs.NewNetworkError(errs.SubtypeNetworkProtocol,
 					"download size mismatch: got %d of %d bytes", written, stream.ContentLength)
 			}
@@ -499,6 +503,22 @@ func driveDownloadPaths(runtime *common.RuntimeContext, outputPath string) (reso
 	// backend may not use local absolute paths, while the suffix relationship
 	// to the user-supplied output name remains meaningful to that backend.
 	return resolved, outputPath + ".partial", outputPath + ".partial.meta", nil
+}
+
+// driveDownloadRemovePublishedOutput best-effort deletes a final output path
+// that was published before a later integrity check failed.
+func driveDownloadRemovePublishedOutput(runtime *common.RuntimeContext, outputPath string) {
+	if workspace, ok := runtime.FileIO().(fileio.WorkspaceFileIO); ok {
+		if err := workspace.RemoveWorkspaceEntry(outputPath); err != nil {
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: download size mismatch left an incomplete output that could not be removed: %v\n", err)
+		}
+		return
+	}
+	if resolved, err := runtime.FileIO().ResolvePath(outputPath); err == nil {
+		if removeErr := os.Remove(resolved); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) { //nolint:forbidigo // FileIO has no generic delete; shortcuts cannot import internal/vfs.
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: download size mismatch left an incomplete output that could not be removed: %v\n", removeErr)
+		}
+	}
 }
 
 // driveDownloadEnsureOutputAbsent fails when the final output already exists

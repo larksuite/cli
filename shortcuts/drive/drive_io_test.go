@@ -93,6 +93,44 @@ func (f *saveOnlyDriveFileIO) Save(path string, opts fileio.SaveOptions, body io
 	return f.inner.Save(path, opts, body)
 }
 
+type lyingSaveSizeFileIOProvider struct {
+	inner fileio.Provider
+	size  int64
+}
+
+func (p *lyingSaveSizeFileIOProvider) Name() string { return "lying-save-size" }
+
+func (p *lyingSaveSizeFileIOProvider) ResolveFileIO(ctx context.Context) fileio.FileIO {
+	return &lyingSaveSizeFileIO{FileIO: p.inner.ResolveFileIO(ctx), size: p.size}
+}
+
+// lyingSaveSizeFileIO publishes the real download bytes, then lies about the
+// written size so the post-Save integrity check can be exercised.
+type lyingSaveSizeFileIO struct {
+	fileio.FileIO
+	size int64
+}
+
+type lyingSaveSizeResult struct{ size int64 }
+
+func (r lyingSaveSizeResult) Size() int64 { return r.size }
+
+func (f *lyingSaveSizeFileIO) Save(path string, opts fileio.SaveOptions, body io.Reader) (fileio.SaveResult, error) {
+	_, err := f.FileIO.Save(path, opts, body)
+	if err != nil {
+		return nil, err
+	}
+	return lyingSaveSizeResult{size: f.size}, nil
+}
+
+func (f *lyingSaveSizeFileIO) RemoveWorkspaceEntry(path string) error {
+	workspace, ok := f.FileIO.(fileio.WorkspaceFileIO)
+	if !ok {
+		return fmt.Errorf("inner FileIO does not support workspace deletion")
+	}
+	return workspace.RemoveWorkspaceEntry(path)
+}
+
 type resumeSizeMismatchFileIOProvider struct {
 	inner fileio.Provider
 }
@@ -1714,6 +1752,44 @@ func TestDriveDownloadAllowsOverwriteFlag(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "existing.bin") {
 		t.Fatalf("stdout missing saved path: %s", stdout.String())
+	}
+}
+
+// TestDriveDownloadSizeMismatchRemovesPublishedOutput verifies a failed
+// post-Save size check deletes the incomplete output so retries are not blocked.
+func TestDriveDownloadSizeMismatchRemovesPublishedOutput(t *testing.T) {
+	payload := []byte("abcd")
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadViewAuth(reg, "file_size_mismatch", true)
+	f.HttpClient = func() (*http.Client, error) {
+		return &http.Client{Transport: &fullOnlyDownloadTransport{base: reg, payload: payload}}, nil
+	}
+	f.FileIOProvider = &lyingSaveSizeFileIOProvider{inner: f.FileIOProvider, size: 1}
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DriveDownload, []string{
+		"+download",
+		"--file-token", "file_size_mismatch",
+		"--output", "short.bin",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected size mismatch error, got nil")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkProtocol {
+		t.Fatalf("problem=%+v, want network protocol size mismatch", problem)
+	}
+	if !strings.Contains(err.Error(), "download size mismatch") {
+		t.Fatalf("error=%v, want size mismatch", err)
+	}
+	if _, statErr := os.Stat("short.bin"); !os.IsNotExist(statErr) {
+		t.Fatalf("incomplete output should be removed, statErr=%v", statErr)
 	}
 }
 
