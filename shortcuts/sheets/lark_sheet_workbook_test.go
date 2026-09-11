@@ -518,7 +518,7 @@ func TestWorkbookCreate_DataValidation(t *testing.T) {
 		want string
 	}{
 		{"values not 2D", []string{"--title", "X", "--values", `["a","b"]`}, "must be an array"},
-		{"styles not object", []string{"--title", "X", "--styles", `"bold"`}, `shaped as {"styles":[...]}`},
+		{"styles not object", []string{"--title", "X", "--styles", `"bold"`}, `or the bare [...] item list`},
 		{"styles missing array", []string{"--title", "X", "--styles", `{"value":"x"}`}, "--styles.styles is required"},
 		{"styles item missing groups", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1"}]}`}, "must include at least one of cell_styles/row_sizes/col_sizes/cell_merges"},
 		{"styles item unknown key gets did-you-mean", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","freezee":{"rows":1}}]}`}, `unknown key "freezee" — did you mean "freeze"`},

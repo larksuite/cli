@@ -414,20 +414,33 @@ func validateViaInput(
 		sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 		sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 		_, err = build(runtime, token, sheetID, sheetName)
-		if err != nil && sheetID == "" && sheetName == "" && isMissingSheetSelector(err) && !runtime.Bool("dry-run") {
-			// Pre-flight runs offline, and a missing selector is the one
-			// complaint the execute path can settle by asking the workbook
-			// (resolveSheetSelectorExec). Raising it here would fail the call
-			// before anything could look the sheet up; if the lookup cannot
-			// settle it either, the same error arrives from there.
-			//
-			// --dry-run keeps the rejection: it sends nothing, so it cannot
-			// resolve the sheet either, and previewing a request with the
-			// selector missing would show one the CLI would never send.
-			return nil
-		}
-		return err
+		return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 	}
+}
+
+// selectorMustBeExplicit names the commands where resolving "the only sheet"
+// would act on something the caller never named. Deleting a sub-sheet takes
+// the whole thing with it and has no narrower target to state, so it is the
+// one place where an omitted selector stays an error even when the answer is
+// unambiguous.
+var selectorMustBeExplicit = map[string]bool{"+sheet-delete": true}
+
+// deferMissingSheetSelector drops the one pre-flight complaint the execute
+// path can settle by asking the workbook (resolveSheetSelectorExec), and
+// returns every other error untouched. Two paths keep the rejection: --dry-run
+// sends nothing, so it cannot resolve the sheet either, and the commands above.
+func deferMissingSheetSelector(runtime *common.RuntimeContext, sheetID, sheetName string, err error) error {
+	if err != nil && sheetID == "" && sheetName == "" && isMissingSheetSelector(err) &&
+		!runtime.Bool("dry-run") && !selectorMustBeExplicit[runtime.Command()] {
+		// Pre-flight runs offline, and a missing selector is the one
+		// complaint the execute path can settle by asking the workbook
+		// (resolveSheetSelectorExec). Raising it here would fail the call
+		// before anything could look the sheet up; if the lookup cannot
+		// settle it either, the same error arrives from there.
+		//
+		return nil
+	}
+	return err
 }
 
 // validateSheetSelectorPreflight is what a hand-written Validate calls in
@@ -576,17 +589,20 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 		// got its quotes — are the same data in another spelling, so they are
 		// rewritten rather than reported (see json_repair.go, which refuses
 		// every shape that would need a guess).
+		// A flag whose contract is a list of plain strings takes the bare
+		// string as the one-element list it can only be — the form the same
+		// value has on every sibling flag (--range "A1:B2"). Tried BEFORE the
+		// loose-JSON repair: a bare token with no punctuation ("Sheet1!A1")
+		// repairs into a valid JSON string, which would then satisfy the
+		// parse and reach the array check as a scalar.
+		if wrapped, ok := wrapBareListValue(runtime.Command(), name, raw); ok {
+			return finishParsedJSONFlag(runtime, name, wrapped)
+		}
 		if repaired, ok := repairLooseJSON(raw); ok {
 			var fixed interface{}
 			if json.Unmarshal([]byte(repaired), &fixed) == nil {
 				return finishParsedJSONFlag(runtime, name, fixed)
 			}
-		}
-		// A flag whose contract is a list of plain strings takes the bare
-		// string as the one-element list it can only be — the form the same
-		// value has on every sibling flag (--range "A1:B2").
-		if wrapped, ok := wrapBareListValue(runtime.Command(), name, raw); ok {
-			return finishParsedJSONFlag(runtime, name, wrapped)
 		}
 		// Composite payloads that embed formulas / quotes / commas are the
 		// classic source of this error: inlined into the shell, the JSON gets
@@ -1022,10 +1038,17 @@ func resolveSheetSelectorExec(ctx context.Context, runtime *common.RuntimeContex
 	if err != nil || sheetID != "" || sheetName != "" || strings.TrimSpace(token) == "" {
 		return sheetID, sheetName, err
 	}
+	if selectorMustBeExplicit[runtime.Command()] {
+		return "", "", requireSheetSelector("", "")
+	}
 	names, listErr := workbookSheetNames(ctx, runtime, token)
-	if listErr != nil || len(names) == 0 {
-		// The workbook could not be read; the selector error is still the
-		// caller's next step, and the read failure is not theirs to act on.
+	if listErr != nil {
+		// Authentication, permission, transport and not-found failures all
+		// land here, and none of them is fixed by naming a sheet. Report what
+		// actually failed, with its own category and retryability intact.
+		return "", "", listErr
+	}
+	if len(names) == 0 {
 		return "", "", requireSheetSelector("", "")
 	}
 	if len(names) == 1 {
@@ -1054,8 +1077,8 @@ func workbookSheetGrids(ctx context.Context, runtime *common.RuntimeContext, tok
 	}
 	grids := map[string]sheetGrid{}
 	for _, entry := range sheetEntriesFromStructure(out) {
-		name, _ := entry["sheet_name"].(string)
-		if strings.TrimSpace(name) == "" {
+		name := structureSheetName(entry)
+		if name == "" {
 			continue
 		}
 		grids[name] = sheetGrid{rows: jsonInt(entry["row_count"]), cols: jsonInt(entry["column_count"])}
@@ -1091,11 +1114,24 @@ func workbookSheetNames(ctx context.Context, runtime *common.RuntimeContext, tok
 	}
 	var names []string
 	for _, entry := range sheetEntriesFromStructure(out) {
-		if name, _ := entry["sheet_name"].(string); strings.TrimSpace(name) != "" {
+		if name := structureSheetName(entry); name != "" {
 			names = append(names, name)
 		}
 	}
 	return names, nil
+}
+
+// structureSheetName reads a sub-sheet's name out of a structure entry. The
+// tool spells it sheet_name and the drive-side shape spells it title;
+// lookupSheetIndex and tableGetSheetMeta already read both, and an adapter
+// that knew only one would return no names at all against the other.
+func structureSheetName(entry map[string]interface{}) string {
+	for _, key := range []string{"sheet_name", "title"} {
+		if name, _ := entry[key].(string); strings.TrimSpace(name) != "" {
+			return strings.TrimSpace(name)
+		}
+	}
+	return ""
 }
 
 // sheetEntriesFromStructure digs the sub-sheet list out of the structure

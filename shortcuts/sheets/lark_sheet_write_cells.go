@@ -1050,11 +1050,16 @@ func liftFlatCellsRow(cells []interface{}, rangeStr string) []interface{} {
 	if target, err := parseCellRange(rangeStr); err == nil && target.cols == 1 && target.rows > 1 {
 		column := make([]interface{}, 0, len(lifted))
 		for _, cell := range lifted {
-			column = append(column, []interface{}{cell})
+			// Bound to an interface value before appending: a []interface{}
+			// handed straight to append's ...interface{} is the shape
+			// asasalint flags, since it usually means a spread was intended.
+			var row interface{} = []interface{}{cell}
+			column = append(column, row)
 		}
 		return column
 	}
-	return []interface{}{lifted}
+	var single interface{} = lifted
+	return []interface{}{single}
 }
 
 // checkCellsPayloadShape rejects, before any network call, a --cells payload

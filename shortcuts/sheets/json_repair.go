@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // ─── loose-JSON repair ────────────────────────────────────────────────
@@ -39,8 +40,10 @@ import (
 // still does not parse — in every one of those cases the caller keeps the
 // error json.Unmarshal gave for the input as written.
 func repairLooseJSON(raw string) (string, bool) {
-	var b strings.Builder
-	b.Grow(len(raw) + 16)
+	// A byte slice rather than a strings.Builder: the trailing-comma trim
+	// below truncates what has been written, and a Builder can only do that
+	// by copying its whole contents back out.
+	out := make([]byte, 0, len(raw)+16)
 	repaired := false
 	runes := []rune(raw)
 
@@ -52,26 +55,31 @@ func repairLooseJSON(raw string) (string, bool) {
 			if !ok {
 				return "", false // an unterminated string is a truncation
 			}
-			b.WriteString(string(runes[i : end+1]))
+			out = append(out, string(runes[i:end+1])...)
 			i = end + 1
 		case r == '\'':
 			end, ok := scanSingleQuoted(runes, i)
 			if !ok {
 				return "", false
 			}
-			b.WriteString(strconv.Quote(unescapeSingleQuoted(runes[i+1 : end])))
+			decoded, ok := unescapeSingleQuoted(runes[i+1 : end])
+			if !ok {
+				return "", false
+			}
+			out = append(out, strconv.Quote(decoded)...)
 			i = end + 1
 			repaired = true
 		case r == ']' || r == '}':
 			// A trailing comma is the only thing that can sit between the
 			// last element and the bracket closing it.
-			if trimTrailingComma(&b) {
+			if trimmed, cut := trimTrailingComma(out); cut {
+				out = trimmed
 				repaired = true
 			}
-			b.WriteRune(r)
+			out = utf8.AppendRune(out, r)
 			i++
 		case r == '{' || r == '[' || r == ',' || r == ':' || unicode.IsSpace(r):
-			b.WriteRune(r)
+			out = utf8.AppendRune(out, r)
 			i++
 		default:
 			token, end := scanBareToken(runes, i)
@@ -81,12 +89,12 @@ func repairLooseJSON(raw string) (string, bool) {
 			literal, isLiteral := bareJSONLiteral(token)
 			switch {
 			case isLiteral:
-				b.WriteString(literal)
+				out = append(out, literal...)
 				if literal != token {
 					repaired = true
 				}
 			case bareTokenIsQuotableString(token):
-				b.WriteString(strconv.Quote(token))
+				out = append(out, strconv.Quote(token)...)
 				repaired = true
 			default:
 				return "", false
@@ -97,12 +105,11 @@ func repairLooseJSON(raw string) (string, bool) {
 	if !repaired {
 		return "", false
 	}
-	out := b.String()
 	var probe interface{}
-	if err := json.Unmarshal([]byte(out), &probe); err != nil {
+	if err := json.Unmarshal(out, &probe); err != nil {
 		return "", false
 	}
-	return out, true
+	return string(out), true
 }
 
 // scanDoubleQuoted returns the index of the closing quote of the JSON string
@@ -133,19 +140,43 @@ func scanSingleQuoted(runes []rune, open int) (int, bool) {
 }
 
 // unescapeSingleQuoted turns the body of a single-quoted string into the text
-// it denotes, so strconv.Quote can re-escape it for JSON. Only \' differs from
-// the JSON reading; every other escape is left for Quote to render verbatim.
-func unescapeSingleQuoted(body []rune) string {
+// it denotes, so strconv.Quote can re-escape it for JSON.
+//
+// ok is false for an escape whose meaning would not survive the round trip.
+// Passing one through verbatim is what a naive copy does, and it silently
+// rewrites the caller's data: '\n' would reach the sheet as a backslash and an
+// n rather than a newline. The set decoded here is the one Python, JavaScript
+// and JSON all agree on; anything else keeps the whole payload unrepaired, so
+// the parser reports it as written.
+func unescapeSingleQuoted(body []rune) (string, bool) {
 	var b strings.Builder
 	for i := 0; i < len(body); i++ {
-		if body[i] == '\\' && i+1 < len(body) && body[i+1] == '\'' {
-			b.WriteRune('\'')
-			i++
+		if body[i] != '\\' {
+			b.WriteRune(body[i])
 			continue
 		}
-		b.WriteRune(body[i])
+		if i+1 >= len(body) {
+			return "", false
+		}
+		i++
+		switch body[i] {
+		case '\'', '"', '\\', '/':
+			b.WriteRune(body[i])
+		case 'n':
+			b.WriteRune('\n')
+		case 't':
+			b.WriteRune('\t')
+		case 'r':
+			b.WriteRune('\r')
+		case 'b':
+			b.WriteRune('\b')
+		case 'f':
+			b.WriteRune('\f')
+		default:
+			return "", false
+		}
 	}
-	return b.String()
+	return b.String(), true
 }
 
 // scanBareToken reads the run of text up to the next structural character,
@@ -216,17 +247,24 @@ func bareTokenIsQuotableString(token string) bool {
 	return !strings.ContainsAny(token, `"'\`)
 }
 
-// trimTrailingComma removes a comma already written to b when only whitespace
-// separates it from the bracket about to be written, reporting whether it did.
-func trimTrailingComma(b *strings.Builder) bool {
-	trimmed := strings.TrimRight(b.String(), " \t\r\n")
-	if !strings.HasSuffix(trimmed, ",") {
-		return false
+// trimTrailingComma drops a comma already written when only whitespace
+// separates it from the bracket about to be written, returning the truncated
+// buffer. Truncation only, so a payload with a trailing comma at every level
+// of its nesting does not re-copy the whole prefix once per level.
+func trimTrailingComma(out []byte) ([]byte, bool) {
+	end := len(out)
+	for end > 0 {
+		switch out[end-1] {
+		case ' ', '\t', '\r', '\n':
+			end--
+			continue
+		}
+		break
 	}
-	rebuilt := strings.TrimSuffix(trimmed, ",")
-	b.Reset()
-	b.WriteString(rebuilt)
-	return true
+	if end == 0 || out[end-1] != ',' {
+		return out, false
+	}
+	return out[:end-1], true
 }
 
 // jsonSyntaxContext quotes the payload around the byte a syntax error names,
@@ -248,8 +286,11 @@ func jsonSyntaxContext(raw string, err error) string {
 		return ""
 	}
 	const window = 40
-	start := max(0, offset-window)
-	end := min(len(raw), offset+window)
+	// Byte offsets, so both edges are walked back to a rune boundary: this
+	// hint exists for CJK payloads, where a byte cut prints replacement
+	// characters at each end.
+	start := alignRuneStart(raw, max(0, offset-window))
+	end := alignRuneStart(raw, min(len(raw), offset+window))
 	lead, trail := "", ""
 	if start > 0 {
 		lead = "…"
@@ -259,4 +300,12 @@ func jsonSyntaxContext(raw string, err error) string {
 	}
 	return fmt.Sprintf("the payload breaks at byte %d of %d: %s%s%s",
 		offset, len(raw), lead, strings.ReplaceAll(raw[start:end], "\n", " "), trail)
+}
+
+// alignRuneStart walks an index back to the start of the rune it lands in.
+func alignRuneStart(raw string, index int) int {
+	for index > 0 && index < len(raw) && !utf8.RuneStart(raw[index]) {
+		index--
+	}
+	return index
 }

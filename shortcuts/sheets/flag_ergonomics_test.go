@@ -903,9 +903,14 @@ func TestShortcuts_RequiredFlagErrorCarriesTheFix(t *testing.T) {
 			t.Errorf("hint should carry the command's example, got %q", ve.Hint)
 		}
 		// The description is cut to its opening clause, and an abbreviation's
-		// period is not a sentence end.
-		if strings.Contains(ve.Hint, "e.g\";") || strings.HasSuffix(ve.Hint, "e.g") {
+		// period is not a sentence end. Asserted on the clause alone: the
+		// example tip that follows it would otherwise hide the boundary.
+		clause, _, _ := strings.Cut(ve.Hint, "; Example:")
+		if strings.HasSuffix(strings.TrimSpace(clause), "e.g") {
 			t.Errorf("hint should not stop inside an abbreviation, got %q", ve.Hint)
+		}
+		if !strings.Contains(clause, "`A1:B2`") {
+			t.Errorf("the clause should carry its own example through the abbreviation, got %q", clause)
 		}
 		if ve.Param != "--range" {
 			t.Errorf("Param = %q, want --range", ve.Param)

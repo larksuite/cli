@@ -366,10 +366,21 @@ func (c columnLabels) resolve(field string, idx int, sheet string, columns []str
 	}
 	out := make(map[string]string, len(c.positional))
 	for i, name := range columns {
-		if strings.TrimSpace(c.positional[i]) == "" {
+		label := strings.TrimSpace(c.positional[i])
+		if label == "" {
 			continue // unlabeled column: same as omitting it from the map
 		}
-		out[name] = c.positional[i]
+		// Positional entries are keyed by name from here on, and a repeated
+		// heading collapses two of them into one. Identical labels say the
+		// same thing either way; differing ones cannot both survive, and
+		// picking one would type a column the caller spelled out differently.
+		if prior, taken := out[name]; taken && prior != label {
+			return nil, common.ValidationErrorf(
+				"--sheets[%d] %q: %s gives column %q both %q and %q; the heading repeats, so a positional array cannot tell them apart",
+				idx, sheet, field, name, prior, label).
+				WithHint("rename one of the repeated columns, or key %s by name when the labels agree", field)
+		}
+		out[name] = label
 	}
 	return out, nil
 }
@@ -716,6 +727,13 @@ func foldColumnLabelKeys(labels map[string]string, columns []string) map[string]
 			out[k] = v // the caller also spelled it exactly; keep both, report the stray
 			continue
 		}
+		if _, claimed := out[target]; claimed {
+			// A second stray folding onto the same column: which one wins
+			// would come from map iteration order, so neither does. The
+			// unfolded key then reports as an unknown column.
+			out[k] = v
+			continue
+		}
 		out[target] = v
 	}
 	return out
@@ -771,11 +789,16 @@ func fitColumnsToRows(s *tableSheetSpec) {
 		for i := range s.Columns {
 			s.Columns[i] = tableColumnSpec{Name: fmt.Sprintf("col%d", i+1)}
 		}
+		padShortRows(s)
 		return
 	}
 	for len(s.Columns) < widest {
 		s.Columns = append(s.Columns, tableColumnSpec{})
 	}
+	// Widening the column list leaves every SHORTER row short of it, and the
+	// writer indexes a row by column position. padShortRows ran in normalize,
+	// before this; it has to run again against the count this settled on.
+	padShortRows(s)
 }
 
 // trimTrailingEmptyCells drops the empty cells a row carries past the declared

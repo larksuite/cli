@@ -34,7 +34,10 @@ func TestRepairLooseJSON(t *testing.T) {
 				if !ok {
 					t.Fatalf("repairLooseJSON(%q) refused; want %q", tc.in, tc.want)
 				}
-				if strings.ReplaceAll(got, " ", "") != strings.ReplaceAll(tc.want, " ", "") {
+				// Compared byte for byte: stripping spaces before comparing
+				// would let the "keeps its inner spaces" case pass even if
+				// the repair dropped them.
+				if got != tc.want {
 					t.Errorf("repairLooseJSON(%q) = %q, want %q", tc.in, got, tc.want)
 				}
 			})

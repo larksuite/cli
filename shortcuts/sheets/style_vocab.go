@@ -819,6 +819,15 @@ func padRaggedCellRows(rows []interface{}) {
 	if width == 0 {
 		return
 	}
+	// Squaring off is what materializes the matrix, so the cap is checked
+	// against the rectangle BEFORE it exists: one very wide row over many
+	// short ones describes a payload whose padded form is orders of magnitude
+	// larger than the JSON that arrived, and allocating it first would take
+	// the process down before any validator could refuse it. Left ragged, it
+	// reaches checkCellsPayloadShape and reports as the payload it is.
+	if int64(len(rows))*int64(width) > maxStampMatrixCells {
+		return
+	}
 	for i, rowRaw := range rows {
 		row, _ := rowRaw.([]interface{})
 		for len(row) < width {
@@ -1249,11 +1258,23 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 	// who wrote border_type:"FULL_BORDER" alongside border_style:"dashed"
 	// means a dashed box, not a conflict.
 	if v, has := in["border_type"]; has {
-		if err := foldBorderTypeValue(v, path, setSideAttr, setSideLoose, func(side, attr string, val interface{}) {
+		soft := func(side, attr string, val interface{}) {
 			bs, ok := in["border_styles"].(map[string]interface{})
 			if !ok {
 				bs = map[string]interface{}{}
 				in["border_styles"] = bs
+			}
+			// A side selector picks WHICH edges, and the line attributes the
+			// caller spelled out apply to those edges. Those attributes have
+			// already been folded onto "all" by the loops above, so they move
+			// with the selection: border_type:"LEFT_BORDER" next to
+			// border_style:"dashed" is one dashed left border, not a dashed
+			// box with a solid left edge.
+			if side != "all" {
+				if allSide, spread := bs["all"].(map[string]interface{}); spread {
+					bs[side] = allSide
+					delete(bs, "all")
+				}
 			}
 			sideObj, ok := bs[side].(map[string]interface{})
 			if !ok {
@@ -1266,7 +1287,8 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 			if _, exists := sideObj[attr]; !exists {
 				sideObj[attr] = val
 			}
-		}); err != nil {
+		}
+		if err := foldBorderTypeValue(v, path, setSideAttr, setSideLoose, soft); err != nil {
 			return err
 		}
 		delete(in, "border_type")

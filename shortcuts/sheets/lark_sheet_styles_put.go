@@ -155,7 +155,9 @@ func stylesPutOperations(runtime flagView, token string, bound sheetRangeBounder
 	// A whole-column or whole-row range needs the grid it spans, which only
 	// the execute path can ask for; Validate and DryRun pass no bounder and
 	// keep the parse-time rejection.
-	boundStyleItemRanges(items, bound)
+	if err := boundStyleItemRanges(items, bound); err != nil {
+		return nil, err
+	}
 	if len(items) == 0 {
 		return nil, sheetsValidationForFlag("styles", "--styles.styles must be a non-empty array (one item per target sheet)")
 	}
@@ -388,16 +390,16 @@ func stripSheetPrefix(rangeStr string) string {
 // sheetRangeBounder turns a range that names whole columns ("A:C") or whole
 // rows ("3:5") into the rectangle it covers on a given sheet, or reports that
 // it could not. Nil on the paths that run offline.
-type sheetRangeBounder func(sheetName, rangeStr string) (string, bool)
+type sheetRangeBounder func(sheetName, rangeStr string) (string, bool, error)
 
 // boundStyleItemRanges rewrites the cell_styles ranges of every item, in
 // place, before the item parser rejects the unbounded forms. Only cell_styles
 // is touched: row_sizes and col_sizes take a dimension range BY DESIGN ("2:10",
 // "A:C"), and bounding those would turn their own vocabulary into an error.
 // 09-04..07: 1208 rejections read "unsupported range form" under --styles.
-func boundStyleItemRanges(items []map[string]interface{}, bound sheetRangeBounder) {
+func boundStyleItemRanges(items []map[string]interface{}, bound sheetRangeBounder) error {
 	if bound == nil {
-		return
+		return nil
 	}
 	for _, item := range items {
 		name, _ := item["name"].(string)
@@ -414,11 +416,32 @@ func boundStyleItemRanges(items []map[string]interface{}, bound sheetRangeBounde
 			if !isStr {
 				continue
 			}
-			if fitted, ok := bound(strings.TrimSpace(name), rng); ok {
-				entry["range"] = fitted
+			// The sheet prefix is stripped later, by the item parser, so it
+			// is split here too: "Summary!A:C" is as unbounded as "A:C" and
+			// would otherwise sail past the match and be rejected as an
+			// unsupported range form.
+			prefix, bare := splitRangeSheetPrefixForBounding(rng)
+			fitted, ok, err := bound(strings.TrimSpace(name), bare)
+			if err != nil {
+				return err
+			}
+			if ok {
+				entry["range"] = prefix + fitted
 			}
 		}
 	}
+	return nil
+}
+
+// splitRangeSheetPrefixForBounding separates a sheet qualifier from the range
+// it precedes, keeping the qualifier verbatim so it can be put back exactly as
+// written.
+func splitRangeSheetPrefixForBounding(rangeStr string) (prefix, bare string) {
+	trimmed := strings.TrimSpace(rangeStr)
+	if _, end, ok := scanSheetQualifier(trimmed); ok {
+		return trimmed[:end], trimmed[end:]
+	}
+	return "", trimmed
 }
 
 // preflightRangeBounder keeps an unbounded range from failing a check that
@@ -431,15 +454,15 @@ func preflightRangeBounder(runtime flagView) sheetRangeBounder {
 	if runtime.Bool("dry-run") {
 		return nil
 	}
-	return func(_, rangeStr string) (string, bool) {
+	return func(_, rangeStr string) (string, bool, error) {
 		trimmed := strings.TrimSpace(rangeStr)
 		if m := wholeColumnRange.FindStringSubmatch(trimmed); m != nil {
-			return fmt.Sprintf("%s1:%s1", strings.ToUpper(m[1]), strings.ToUpper(m[2])), true
+			return fmt.Sprintf("%s1:%s1", strings.ToUpper(m[1]), strings.ToUpper(m[2])), true, nil
 		}
 		if m := wholeRowRange.FindStringSubmatch(trimmed); m != nil {
-			return fmt.Sprintf("A%s:A%s", m[1], m[2]), true
+			return fmt.Sprintf("A%s:A%s", m[1], m[2]), true, nil
 		}
-		return "", false
+		return "", false, nil
 	}
 }
 
@@ -449,19 +472,27 @@ func preflightRangeBounder(runtime flagView) sheetRangeBounder {
 func newSheetGridBounder(ctx context.Context, runtime *common.RuntimeContext, token string) sheetRangeBounder {
 	var grids map[string]sheetGrid
 	var loaded bool
-	return func(sheetName, rangeStr string) (string, bool) {
+	return func(sheetName, rangeStr string) (string, bool, error) {
 		if !isUnboundedRange(rangeStr) {
-			return "", false
+			return "", false, nil
 		}
 		if !loaded {
 			loaded = true
-			grids, _ = workbookSheetGrids(ctx, runtime, token)
+			var err error
+			if grids, err = workbookSheetGrids(ctx, runtime, token); err != nil {
+				// Authentication, permission and transport failures all land
+				// here. Reported as-is: swallowing one leaves the range
+				// unbounded and the caller reading "unsupported range form"
+				// about a payload that was fine.
+				return "", false, err
+			}
 		}
 		grid, ok := grids[sheetName]
 		if !ok {
-			return "", false
+			return "", false, nil
 		}
-		return boundRangeToGrid(rangeStr, grid)
+		fitted, ok := boundRangeToGrid(rangeStr, grid)
+		return fitted, ok, nil
 	}
 }
 

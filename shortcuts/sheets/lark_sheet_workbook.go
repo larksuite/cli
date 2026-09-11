@@ -889,6 +889,23 @@ func buildValuesPayload(runtime flagView, sheetStyles *workbookCreateSheetStyles
 	return payload, nil
 }
 
+// decodeValuesPayload decodes one JSON value with UseNumber, so large order
+// IDs keep full precision, and rejects trailing non-whitespace after it —
+// json.Decoder accepts that silently where json.Unmarshal does not (see
+// decoderExpectEOF).
+func decodeValuesPayload(raw string) (interface{}, error) {
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.UseNumber()
+	var v interface{}
+	if err := dec.Decode(&v); err != nil {
+		return nil, err
+	}
+	if err := decoderExpectEOF(dec); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
 // parseValuesRows decodes --values (JSON 2D array, with @file/stdin already
 // resolved by the flag layer) using UseNumber so numeric cells keep full
 // precision (large order IDs survive). Empty --values yields no rows.
@@ -898,27 +915,24 @@ func parseValuesRows(runtime flagView) ([][]interface{}, error) {
 		return nil, nil
 	}
 	// --values decodes here rather than through parseJSONFlag, so it takes the
-	// same loose-JSON repair; strict input never reaches it.
-	if !json.Valid([]byte(raw)) {
-		if repaired, ok := repairLooseJSON(raw); ok {
-			raw = repaired
+	// same loose-JSON repair — but only after a strict decode has refused the
+	// input. Probing validity up front would scan and copy the whole payload a
+	// second time on the path that needs no repair at all.
+	v, err := decodeValuesPayload(raw)
+	if err != nil {
+		repaired, ok := repairLooseJSON(raw)
+		if !ok {
+			verr := common.ValidationErrorf("--values: invalid JSON: %v", err).WithCause(err)
+			if where := jsonSyntaxContext(raw, err); where != "" {
+				verr = verr.WithHint("%s", where)
+			}
+			return nil, verr
+		}
+		if v, err = decodeValuesPayload(repaired); err != nil {
+			return nil, common.ValidationErrorf("--values: invalid JSON: %v", err).WithCause(err)
 		}
 	}
-	dec := json.NewDecoder(strings.NewReader(raw))
-	dec.UseNumber()
-	var v interface{}
-	if err := dec.Decode(&v); err != nil {
-		verr := common.ValidationErrorf("--values: invalid JSON: %v", err).WithCause(err)
-		if where := jsonSyntaxContext(raw, err); where != "" {
-			verr = verr.WithHint("%s", where)
-		}
-		return nil, verr
-	}
-	// Reject trailing non-whitespace after the first JSON value: see
-	// decoderExpectEOF in lark_sheet_table_io.go for the rationale.
-	if err := decoderExpectEOF(dec); err != nil {
-		return nil, common.ValidationErrorf("--values: %v", err).WithCause(err)
-	}
+
 	arr, ok := v.([]interface{})
 	if !ok {
 		return nil, common.ValidationErrorf("--values must be a JSON 2D array")
@@ -1082,7 +1096,7 @@ func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, er
 			return nil, common.ValidationErrorf("--styles.styles is required")
 		}
 	default:
-		return nil, common.ValidationErrorf("--styles must be a JSON object shaped as {\"styles\":[...]}")
+		return nil, common.ValidationErrorf("--styles must be the object {\"styles\":[...]} or the bare [...] item list")
 	}
 	arr, ok := rawItems.([]interface{})
 	if !ok {

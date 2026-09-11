@@ -125,7 +125,7 @@ var ChartCreateBasic = common.Shortcut{
 			return err
 		}
 		_, err = chartCreateBasicInput(runtime, token, sheetID, sheetName)
-		return err
+		return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
@@ -181,7 +181,7 @@ var ChartConfigUpdate = common.Shortcut{
 			return err
 		}
 		_, err = chartConfigUpdateInput(runtime, token, sheetID, sheetName)
-		return err
+		return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
@@ -246,7 +246,7 @@ var ChartDataUpdate = common.Shortcut{
 			return err
 		}
 		_, err = chartDataUpdateInput(runtime, token, sheetID, sheetName)
-		return err
+		return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)

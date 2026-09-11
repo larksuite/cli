@@ -142,7 +142,7 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str(spec.sheetIDFlagOnCreate()))
 			sheetName := strings.TrimSpace(runtime.Str(spec.sheetNameFlagOnCreate()))
 			_, err = objectCreateInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -238,7 +238,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 			sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 			_, err = objectUpdateInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -361,7 +361,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 			sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 			_, err = objectDeleteInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -1368,6 +1368,10 @@ func normalizeCondFormatStyle(style map[string]interface{}) {
 			delete(style, field)
 		}
 	}
+	// Before the flat-word loop: that loop reads style["font"] as a string,
+	// so an object or list value there reads as empty and the flat word
+	// replaces it outright, dropping whatever the composite asked for.
+	normalizeCondFormatFontValue(style)
 	for _, field := range sortedKeys(style) {
 		word, isFontWord := condFormatFontWords[field]
 		if !isFontWord {
@@ -1413,7 +1417,6 @@ func normalizeCondFormatStyle(style map[string]interface{}) {
 		}
 		delete(style, field)
 	}
-	normalizeCondFormatFontValue(style)
 	if line, ok := style["font_line"].(string); ok {
 		if _, taken := style["text_decoration"]; !taken {
 			switch strings.ToLower(strings.TrimSpace(line)) {
@@ -1445,10 +1448,21 @@ func normalizeCondFormatFontValue(style map[string]interface{}) {
 	case map[string]interface{}:
 		for key, val := range v {
 			on, readable := val.(bool)
-			if !readable || !on {
+			if !readable {
+				return // a member this fold cannot read at all
+			}
+			effect := condFormatFontWords[strings.ToLower(key)]
+			if effect == "" {
+				// An effect this enum has no room for (underline, size). Fold
+				// nothing: replacing the object would drop it in silence,
+				// while leaving it lets the schema report the type with the
+				// member still visible in the payload.
+				return
+			}
+			if !on {
 				continue
 			}
-			switch condFormatFontWords[strings.ToLower(key)] {
+			switch effect {
 			case "bold":
 				bold = true
 			case "italic":
@@ -1456,7 +1470,7 @@ func normalizeCondFormatFontValue(style map[string]interface{}) {
 			}
 		}
 		if !bold && !italic {
-			return // nothing recognized; the schema names the type mismatch
+			return // nothing asked for; the schema names the type mismatch
 		}
 	case []interface{}:
 		for _, item := range v {

@@ -4,8 +4,10 @@
 package sheets
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // TestCondFormat_PropertySpellings pins the --properties folds that answer the
@@ -347,8 +349,9 @@ func TestStyles_UnboundedRangeBounded(t *testing.T) {
 			t.Fatal("a real run must get a stand-in bounder")
 		}
 		for _, tc := range []struct{ in, want string }{{"A:C", "A1:C1"}, {"3:5", "A3:A5"}} {
-			if got, ok := bound("S", tc.in); !ok || got != tc.want {
-				t.Errorf("preflight(%q) = %q,%v, want %q", tc.in, got, ok, tc.want)
+			got, ok, err := bound("S", tc.in)
+			if err != nil || !ok || got != tc.want {
+				t.Errorf("preflight(%q) = %q,%v,%v, want %q", tc.in, got, ok, err, tc.want)
 			}
 		}
 	})
@@ -461,6 +464,147 @@ func TestValueCarryingFlagAliases(t *testing.T) {
 		}
 		if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), `"cells":[[{"value":"hello"}]]`) {
 			t.Errorf("the scalar should become one cell, got %q", stdout)
+		}
+	})
+}
+
+// TestReviewRegressions covers the defects the PR review found, so each one
+// fails here if the fix is reverted.
+func TestReviewRegressions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a ragged table payload is rejected, not a panic", func(t *testing.T) {
+		t.Parallel()
+		// fitColumnsToRows widens the column list after padShortRows has run,
+		// and the writer indexes a row by column position.
+		for _, sheet := range []string{
+			`{"name":"S","data":[[1,2],[3]]}`,
+			`{"name":"S","columns":["a"],"data":[[1,2],[3]]}`,
+		} {
+			t.Run(sheet[:26], func(t *testing.T) {
+				t.Parallel()
+				if _, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+workbook-create"), []string{
+					"--title", "T", "--dry-run", "--sheets", `{"sheets":[` + sheet + `]}`,
+				}); err != nil {
+					t.Fatalf("a short row should be padded to the settled width, got: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("a bare single-cell range reaches its list flag", func(t *testing.T) {
+		t.Parallel()
+		// The loose-JSON repair turns a token with no punctuation into a JSON
+		// string, which would satisfy the parse and reach the array check as
+		// a scalar — so the list wrap has to be tried first.
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-batch-clear"), []string{
+			"--url", testURL, "--ranges", "Sheet1!A1", "--scope", "content", "--yes", "--dry-run",
+		})
+		if err != nil && strings.Contains(err.Error(), "must be a JSON array") {
+			t.Errorf("a bare range should become the one-element list, got: %v", err)
+		}
+	})
+
+	t.Run("a composite font keeps every effect it names", func(t *testing.T) {
+		t.Parallel()
+		style := map[string]interface{}{"font": map[string]interface{}{"bold": true}, "italic": true}
+		normalizeCondFormatStyle(style)
+		if style["font"] != condFormatFontBoth {
+			t.Errorf("font = %v, want %q", style["font"], condFormatFontBoth)
+		}
+	})
+
+	t.Run("a font member this enum cannot carry is not dropped", func(t *testing.T) {
+		t.Parallel()
+		style := map[string]interface{}{"font": map[string]interface{}{"bold": true, "underline": true}}
+		normalizeCondFormatStyle(style)
+		if _, folded := style["font"].(string); folded {
+			t.Errorf("font = %v, want the object left for the schema to report", style["font"])
+		}
+	})
+
+	t.Run("a side selector carries the line the caller spelled", func(t *testing.T) {
+		t.Parallel()
+		cell := map[string]interface{}{"border_type": "LEFT_BORDER", "border_style": "dashed"}
+		if err := foldBorderFamilyAliases(cell, "--styles"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		sides, _ := cell["border_styles"].(map[string]interface{})
+		left, _ := sides["left"].(map[string]interface{})
+		if len(sides) != 1 || left["style"] != "dashed" {
+			t.Errorf("border_styles = %v, want only a dashed left side", sides)
+		}
+	})
+
+	t.Run("squaring off a payload stays inside the matrix cap", func(t *testing.T) {
+		t.Parallel()
+		// One very wide row over many short ones: padding first would
+		// allocate the rectangle before any validator could refuse it.
+		rows := make([]interface{}, 0, 2001)
+		wide := make([]interface{}, 0, 8000)
+		for i := 0; i < 8000; i++ {
+			wide = append(wide, map[string]interface{}{"value": i})
+		}
+		var first interface{} = wide
+		rows = append(rows, first)
+		for i := 0; i < 2000; i++ {
+			var empty interface{} = []interface{}{}
+			rows = append(rows, empty)
+		}
+		padRaggedCellRows(rows)
+		if got := len(rows[1].([]interface{})); got != 0 {
+			t.Errorf("the short rows should be left ragged, got width %d", got)
+		}
+	})
+
+	t.Run("positional metadata over a repeated heading is refused", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+workbook-create"), []string{
+			"--title", "T", "--dry-run",
+			"--sheets", `{"sheets":[{"name":"S","columns":["a","a"],"dtypes":["object","float64"],"data":[["001",2]]}]}`,
+		})
+		requireValidation(t, err, "the heading repeats")
+	})
+
+	t.Run("deleting a sub-sheet still names it", func(t *testing.T) {
+		t.Parallel()
+		// Resolving "the only sheet" would take the whole thing with it.
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+sheet-delete"), []string{
+			"--url", testURL, "--yes",
+		})
+		requireValidation(t, err, missingSheetSelectorMessage)
+	})
+
+	t.Run("every missing required flag survives in the envelope", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+chart-create-basic"), []string{
+			"--url", testURL, "--sheet-name", "s",
+		})
+		ve := requireValidation(t, err, "required flag(s)")
+		if len(ve.Params) != 2 {
+			t.Errorf("Params = %v, want both missing flags", ve.Params)
+		}
+	})
+
+	t.Run("an escape a single-quoted string cannot round-trip is not repaired", func(t *testing.T) {
+		t.Parallel()
+		if got, ok := repairLooseJSON(`[['a\x41']]`); ok {
+			t.Errorf("repairLooseJSON = %q, want refusal", got)
+		}
+		got, ok := repairLooseJSON(`[['a\nb']]`)
+		if !ok || got != `[["a\nb"]]` {
+			t.Errorf("repairLooseJSON = %q,%v, want the decoded newline", got, ok)
+		}
+	})
+
+	t.Run("the syntax window lands on rune boundaries", func(t *testing.T) {
+		t.Parallel()
+		raw := `[["` + strings.Repeat("中", 60) + `","乙"]}`
+		var probe interface{}
+		err := json.Unmarshal([]byte(raw), &probe)
+		where := jsonSyntaxContext(raw, err)
+		if where == "" || !utf8.ValidString(where) {
+			t.Errorf("context = %q, want valid UTF-8", where)
 		}
 	})
 }

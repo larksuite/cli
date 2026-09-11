@@ -455,10 +455,15 @@ func chainFlagAliases(cmd *cobra.Command) {
 		}
 		squashed[key] = f.Name
 	})
-	for alias, target := range usable {
+	// An alias's squashed key is indexed apart from a real flag's: resolving
+	// through it has to stage provenance exactly as the alias table does, or
+	// --csvFile reaches --csv without the record that says the value is a path
+	// (resolveCSVPathFromFileAlias would then write it into the sheet as text).
+	squashedAlias := map[string]string{}
+	for alias := range usable {
 		key := squashFlagName(alias)
 		if _, taken := squashed[key]; !taken {
-			squashed[key] = target
+			squashedAlias[key] = alias
 		}
 	}
 	flagalias.InstallNormalizer(cmd, func(name string) string {
@@ -477,9 +482,15 @@ func chainFlagAliases(cmd *cobra.Command) {
 			// carries applies, so a flag that does not exist still reaches
 			// the unknown-flag error with its did-you-mean rather than being
 			// renamed into something the caller never asked for.
-			if folded := squashed[squashFlagName(name)]; folded != "" && folded != name {
+			key := squashFlagName(name)
+			if folded := squashed[key]; folded != "" && folded != name {
 				return folded
 			}
+			if alias, isAlias := squashedAlias[key]; isAlias {
+				name, target, ok = alias, usable[alias], true
+			}
+		}
+		if !ok {
 			return name
 		}
 		// Stage only while the parser is walking argv. pflag normalizes on
@@ -1215,14 +1226,20 @@ func chainRequiredFlagCheck(cmd *cobra.Command) {
 			return nil
 		}
 		names := make([]string, 0, len(missing))
+		params := make([]errs.InvalidParam, 0, len(missing))
 		for _, f := range missing {
 			names = append(names, strconv.Quote(f.Name))
+			params = append(params, sheetsInvalidParam(f.Name, "required; not set"))
 		}
 		msg := fmt.Sprintf("required flag(s) %s not set", strings.Join(names, ", "))
-		verr := common.ValidationErrorf("%s", msg)
-		for _, f := range missing {
-			verr = verr.WithParam("--" + f.Name)
-		}
+		// WithParams, not WithParam per flag: the scalar Param field holds one
+		// name, so a loop would leave only the last of them in the envelope
+		// while the message named them all.
+		// Params carries every one of them; Param keeps the first, so a reader
+		// of the scalar field still sees a flag rather than an empty string.
+		verr := common.ValidationErrorf("%s", msg).
+			WithParam("--" + missing[0].Name).
+			WithParams(params...)
 		if hint := requiredFlagHint(c, missing); hint != "" {
 			verr = verr.WithHint("%s", hint)
 		}
@@ -1308,8 +1325,11 @@ func firstUsageClause(usage string) string {
 		}
 	}
 	usage = strings.TrimRight(strings.TrimSpace(usage), ".,;")
-	if len(usage) > 140 {
-		usage = strings.TrimSpace(usage[:140]) + "…"
+	if runes := []rune(usage); len(runes) > 140 {
+		// Counted in runes: a byte cut lands inside a multi-byte character
+		// and emits an invalid hint, which this domain's descriptions carry
+		// plenty of.
+		usage = strings.TrimSpace(string(runes[:140])) + "…"
 	}
 	return usage
 }
