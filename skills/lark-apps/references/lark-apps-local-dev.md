@@ -158,10 +158,10 @@ lark-cli apps +release-create --app-id app_xxx
 
 > `+release-create` 部署的是远端 `sprint/default` 上**已 push** 的代码，不是你本地工作区——未 commit / 未 push 的改动不会进入这次发布。所以发布前务必先把本次改动提交并推送。
 
-1. `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
+1. 先按项目 `package.json` 里的脚本跑一遍 type:check / lint / build（脚本名以项目为准；html 应用没有构建步骤则跳过），失败先修：`+release-create` 在远端对同一份代码构建，本地过不了的代码推上去大概率也会 `failed`。然后 `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
 2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push；遇 Git 认证失败 / 401 / 403 / credential helper 缺失 / token 过期：先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令；刷新凭证也失败时，停止并向用户报告错误，不要换路）。
 3. `lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default` 发起部署上线，记下返回的 `release_id`。
-4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 成功时，若返回 `online_url`，可直接使用；未返回时不要编造链接。交付线上访问链接给他人前，注意 `online_url` 默认仅创建者可见，需先告知当前仅本人可见、按需用 `+access-scope-set` 放开可见范围。无需再调 `+list`；`failed` 时若返回非空 `error_logs`，据此给出失败原因；否则只报告 `release_id` 和当前 status，不要编造原因（`+list` 仅作独立查询入口）。
+4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 后先核对返回的 `commit_id` 与 `git rev-parse origin/sprint/default` 一致；不一致说明这次发布的不是你刚推的版本（常见于云端会话或其他协作者又推了提交），要如实报告，不能把 `online_url` 说成本次改动已上线。`finished` 成功时，若返回 `online_url`，可直接使用；未返回时不要编造链接。交付线上访问链接给他人前，注意 `online_url` 默认仅创建者可见，需先告知当前仅本人可见、按需用 `+access-scope-set` 放开可见范围；放开后用 `+access-scope-get` 回读确认，交付前让目标用户实际打开一次——发布成功和目标用户能打开是两个独立的验收项。无需再调 `+list`；`failed` 时若返回非空 `error_logs`，据此给出失败原因；否则只报告 `release_id` 和当前 status，不要编造原因（`+list` 仅作独立查询入口）。
 
 用户只要求启用已有 trigger 时，转到 [automation SOP 的「仅启用已有 disabled trigger」路径](lark-apps-automation.md#仅启用已有-disabled-trigger)；不得因 enable 反向修改 handler、commit/push 或 release。
 
@@ -175,11 +175,13 @@ lark-cli apps +release-create --app-id app_xxx
 - 已拉到本地后，pull/push/diff/log 都用原生 git；云端 `sprint/default` 比本地新时，先 `git pull --rebase origin sprint/default`，解决冲突后再 push 和 publish。
 - `git clone` / `git pull` / `git push` 如果报认证失败、401/403、credential helper 缺失或 token 过期，优先重新执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 更新本地 Git 凭证，然后重试原 git 命令；刷新凭证也失败时，停止并向用户报告错误，不要换路；不要手动复制 token、不要把 token 拼进 remote URL。
 - 环境变量由脚手架在本地启动时处理；需要手动刷新时用 `+env-pull`。
+- 本地只用仓库的 `npm run dev` 启动。它会先拉本地环境变量并把当前用户身份注入到进程环境，再拉起前后端；自己单独起子进程或直连后端端口会丢掉用户上下文，表现为未登录、接口 401 或首页 404。原因和细节见项目 `.agents/skills/` 下的 coding-guide。
 - 资源型文件（图片、字体、音视频等）不要直接引用本地路径，也不要提交到 git 仓库或以 base64 内联到代码中。先通过 `lark-cli apps +file-upload --app-id <app_id> --file <local_path>` 上传到应用文件存储，拿到返回的远端 URL 后在代码中引用该 URL。详情读 [`lark-apps-file.md`](lark-apps-file.md)。上传返回的链接按 app 隔离，不同应用必须各自重新上传，不能跨应用复用同一链接。
-- DB 调试用 `+db-table-list` / `+db-table-get` / `+db-execute`；不要裸连数据库或自行拼连接串。
+- DB 调试用 `+db-table-list` / `+db-table-get` / `+db-execute`；不要裸连数据库或自行拼连接串。改了表结构或写了数据之后，用 `+db-table-get` 或只读 SELECT 独立回读一次；页面提示成功、接口返回 200 都不能代替回读。
 - DB 分 `dev` / `online`；使用 `--environment dev|online`，不要使用旧的 `--env`。只有确认应用已开启多环境时才引导 `--environment dev`；单环境应用省略 `--environment`（服务端选 online）或显式传 `--environment online`。在 dev 写入不能证明线上 handler 已验证。dev 的库结构变更要上线时，仍按应用发布链路走 `+release-create`，不要另造“数据库发布”步骤。
 - 存量单库应用需要 dev/online 多环境时，用 `+db-env-create --environment dev`。这是不可逆 high-risk 操作。
 - 只从 `+list` 看到 `is_published=true`，不能证明本地刚推送的代码已经部署；必须有本轮 `+release-get finished`。
+- 发布 `finished` 但线上行为回退或报错时，先用 `+release-list` 记下上一次 `finished` 的 `release_id` 与 `commit_id`，连同当前现象报告用户。回退也是一次 `+release-create`，属高影响动作，未经用户确认不要自动发起。
 
 ## 存量应用入口
 
@@ -190,6 +192,39 @@ lark-cli apps +list --keyword "应用名"
 ```
 
 拿到 `app_id` 后再 `+init` 或 `+git-credential-init`。
+
+### 接管已有仓库前先核对事实
+
+进入一个已存在的本地项目目录（用户自己 clone 的、或上次会话留下的）改代码之前，先把下面几项看一遍，再决定怎么动：
+
+1. `git status --porcelain`：有用户未提交或未跟踪的文件时，先摘要给用户并问怎么处理；不要为了"干净"自动 `git stash`、`git checkout -- .` 或覆盖这些改动。
+2. `git fetch origin` 后比较 `git rev-parse HEAD`、`origin/sprint/default`、`origin/main`：`origin/sprint/default` 领先本地，说明云端会话或其他协作者推过代码，先 `git log HEAD..origin/sprint/default --oneline` 看清是谁改了什么，再 `git pull --rebase origin sprint/default`；本地领先，说明有未推送的提交，发布前必须先 push；`origin/main` 是最近一次发布成功的快照，它与 `origin/sprint/default` 的差就是"已开发、未上线"的部分。
+3. `lark-cli apps +release-list --app-id <app_id> --page-size 1 --as user` 取最近一次 release 的 `status` 与 `commit_id`，和 `origin/main` 对照，确认线上到底跑的是哪个 commit。
+4. `.spark/meta.json` 的 `app_id` 与用户指认的应用一致；不一致说明目录属于另一个 app，停下确认，不要在里面继续。
+
+核对出分歧（用户有改动、远端领先、release 与分支对不上）时先报告再动手。沿用原应用的 app_id、数据、访问范围和发布历史；只有用户明确要求独立 Demo、重建或对照实验时才新建应用。
+
+## 与云端会话并存
+
+同一个 app 可以同时被本地开发和云端会话（[`lark-apps-cloud-dev.md`](lark-apps-cloud-dev.md)）修改，两边最终都落到同一个远端 `sprint/default`，lark-cli 不提供任何互斥或冲突提示。同一时段只让一方写代码：
+
+- 本地开发期间不要对同一个 app 发起 `+chat`；用户要切到云端生成时，先把本地改动 commit 并 push，再开始云端轮次。
+- 云端有轮次在跑（`+session-get` 的 `is_streaming=true` 或 `latest_turn.status=running`）时不要 push；等它 `completed` 后 `git fetch origin`，用 `git log HEAD..origin/sprint/default --oneline` 看清云端改了什么，再 `git pull --rebase origin sprint/default`。
+- 不确定云端有没有在改：`+session-list --app-id <app_id>` 找活跃会话，再用 `+session-get` 看状态；`git fetch` 后远端出现你没见过的提交，也一律按云端改动处理，不要覆盖。
+- 云端 turn `completed` 只说明那一轮生成结束；它的改动是否已经到 `origin/sprint/default`，以 `git fetch` 后看到的远端提交为准，不要假设。发布仍按「改完代码后部署上线」走。
+
+## 交付口径
+
+回复用户时按实际拿到的证据说状态，不要把前一档说成后一档：
+
+| 状态 | 证据 |
+|---|---|
+| 本地完成 | 目标行为在本地 `npm run dev` 下验证过，项目 type:check / build 通过 |
+| 已推开发分支 | `git rev-parse HEAD` 与 `origin/sprint/default` 一致 |
+| 已发布 | 本轮 `release_id` 的 `+release-get` 返回 `finished`，且 `commit_id` 等于刚推的提交 |
+| 可交付使用 | `online_url` 已实际打开验证；`+access-scope-get` 回读的可见范围覆盖目标用户 |
+
+最终回复至少给出：app_id、本次 commit、`release_id` 与状态、`online_url`、当前可见范围、还没验证的项和已知风险。commit、push、云端 turn `completed`、页面 toast 都不能替代"已发布"或"可交付"的证据。
 
 ## 何时不用
 
