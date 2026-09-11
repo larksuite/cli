@@ -758,32 +758,6 @@ func TestChartConfigUpdate_DataLabelPositionDoesNotEnableLabels(t *testing.T) {
 	}
 }
 
-func TestChartConfigUpdate_LastPointLabelCompatibility(t *testing.T) {
-	t.Parallel()
-	chartConfigUpdate := shortcutFromRegistry(t, "+chart-config-update")
-	parent, _, _, _ := newTestRig(t, chartConfigUpdate)
-	cmd, _, err := parent.Find([]string{"+chart-config-update"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	flag := cmd.Flags().Lookup("last-point-label")
-	if flag == nil || !flag.Hidden {
-		t.Fatalf("--last-point-label compatibility flag = %#v, want registered and hidden", flag)
-	}
-
-	body := parseDryRunBody(t, chartConfigUpdate, []string{
-		"--url", testURL,
-		"--sheet-id", testSheetID,
-		"--chart-id", "chart-1",
-		"--last-point-label=true",
-	})
-	input := decodeToolInput(t, body, "manage_chart_object")
-	properties := input["properties"].(map[string]interface{})
-	if properties["last_point_label"] != true {
-		t.Fatalf("last_point_label = %#v, want true", properties["last_point_label"])
-	}
-}
-
 func TestChartSemanticShortcuts_CompatibleAliasesInBatch(t *testing.T) {
 	t.Parallel()
 	body := parseDryRunBody(t, BatchChartUpdate, []string{

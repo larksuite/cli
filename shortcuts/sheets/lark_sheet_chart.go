@@ -212,15 +212,6 @@ var ChartConfigUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if runtime.Changed("last-point-label") {
-			updatedSnapshot, readErr := fetchChartSnapshot(
-				ctx, runtime, token, sheetID, sheetName, runtime.Str("chart-id"),
-			)
-			if readErr != nil {
-				return readErr
-			}
-			viewModel = chartViewModel(updatedSnapshot)
-		}
 		runtime.Out(withChartShortcutResult(out, "viewModel", viewModel), nil)
 		return nil
 	},
@@ -539,7 +530,7 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 		return nil, err
 	}
 	addChartSemanticConfig(rt, updates)
-	if len(updates) == 0 && !rt.Changed("last-point-label") {
+	if len(updates) == 0 {
 		return nil, common.ValidationErrorf("at least one chart configuration flag is required")
 	}
 	patch, _ := applyChartConfigPatch(map[string]interface{}{}, updates)
@@ -555,7 +546,6 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 	if err := validateInputAgainstSchema(rt, input); err != nil {
 		return nil, err
 	}
-	addChartCompatibilityFields(rt, input)
 	return input, nil
 }
 
@@ -682,7 +672,6 @@ func chartConfigUpdateInputFromSnapshot(
 	if err := validateInputAgainstSchema(rt, input); err != nil {
 		return nil, nil, err
 	}
-	addChartCompatibilityFields(rt, input)
 	return input, viewModel, nil
 }
 
@@ -1623,10 +1612,6 @@ func configureChartSemanticCommand(cmd *cobra.Command) {
 		cmd.Flags().Bool("stacked", false, "compatibility alias for --stack normal")
 		_ = cmd.Flags().MarkHidden("stacked")
 	}
-	if cmd.Name() == "+chart-config-update" && cmd.Flags().Lookup("last-point-label") == nil {
-		cmd.Flags().Bool("last-point-label", false, "deprecated compatibility flag")
-		_ = cmd.Flags().MarkHidden("last-point-label")
-	}
 	originalArgs := cmd.Args
 	cmd.Args = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 && cmd.Flags().Changed("smooth") && (args[0] == "true" || args[0] == "false") {
@@ -1641,14 +1626,6 @@ func configureChartSemanticCommand(cmd *cobra.Command) {
 		}
 		return err
 	})
-}
-
-func addChartCompatibilityFields(rt flagView, input map[string]interface{}) {
-	if !rt.Changed("last-point-label") {
-		return
-	}
-	properties, _ := input["properties"].(map[string]interface{})
-	properties["last_point_label"] = rt.Bool("last-point-label")
 }
 
 func addChartSemanticConfig(rt flagView, out map[string]interface{}) {
