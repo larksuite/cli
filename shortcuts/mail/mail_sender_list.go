@@ -46,7 +46,7 @@ var MailSenderList = common.Shortcut{
 var MailSenderSearch = common.Shortcut{
 	Service:     "mail",
 	Command:     "+sender-search",
-	Description: "Search allowed or blocked senders returned by one Mail OpenAPI page. Use --kind allow or block.",
+	Description: "Search allowed or blocked senders through the Mail OpenAPI keyword query. Use --kind allow or block.",
 	Risk:        "read",
 	Scopes:      []string{senderListReadScope},
 	AuthTypes:   []string{"user"},
@@ -68,26 +68,17 @@ var MailSenderSearch = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().Desc("List one sender page then filter it locally by --query.").
-			GET(senderListPath(resolveMailboxID(rt), rt.Str("kind"))).Params(senderListDryRunParams(rt)).
-			Set("query", rt.Str("query"))
+		return common.NewDryRunAPI().Desc("Search a sender list with the server-side keyword query.").
+			GET(senderListPath(resolveMailboxID(rt), rt.Str("kind"))).Params(senderSearchDryRunParams(rt))
 	},
 	Execute: func(ctx context.Context, rt *common.RuntimeContext) error {
-		data, err := fetchSenderList(rt)
+		data, err := fetchSenderList(rt, strings.TrimSpace(rt.Str("query")))
 		if err != nil {
 			return err
 		}
-		query := strings.ToLower(strings.TrimSpace(rt.Str("query")))
 		items := senderItems(data["items"])
-		matched := make([]map[string]any, 0, len(items))
-		for _, item := range items {
-			if strings.Contains(strings.ToLower(senderAddress(item)), query) {
-				matched = append(matched, item)
-			}
-		}
-		data["items"] = matched
-		data["total"] = len(matched)
-		rt.OutFormat(data, &output.Meta{Count: len(matched)}, nil)
+		data["total"] = len(items)
+		rt.OutFormat(data, &output.Meta{Count: len(items)}, nil)
 		return nil
 	},
 }
@@ -118,14 +109,14 @@ var MailSenderDelete = common.Shortcut{
 	Service:     "mail",
 	Command:     "+sender-delete",
 	Description: "Remove sender addresses from an allowed or blocked sender list. Use --kind allow or block.",
-	Risk:        "delete",
+	Risk:        "high-risk-write",
 	Scopes:      []string{senderListWriteScope},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags:       MailSenderSet.Flags,
 	Validate:    validateSenderMutation,
 	DryRun: func(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().POST(senderMutationPath(resolveMailboxID(rt), rt.Str("kind"), "batch_remove")).Body(senderBody(rt))
+		return common.NewDryRunAPI().POST(senderMutationPath(resolveMailboxID(rt), rt.Str("kind"), "batch_remove")).Body(senderDeleteBody(rt))
 	},
 	Execute: func(ctx context.Context, rt *common.RuntimeContext) error {
 		return executeSenderMutation(rt, "batch_remove", "removed")
@@ -171,10 +162,17 @@ func senderMutationPath(mailbox, kind, action string) string {
 }
 
 func senderListQuery(rt *common.RuntimeContext) larkcore.QueryParams {
+	return senderListQueryWithKeyword(rt, "")
+}
+
+func senderListQueryWithKeyword(rt *common.RuntimeContext, keyword string) larkcore.QueryParams {
 	query := larkcore.QueryParams{}
 	query.Set("page_size", fmt.Sprintf("%d", rt.Int("page-size")))
 	if token := strings.TrimSpace(rt.Str("page-token")); token != "" {
 		query.Set("page_token", token)
+	}
+	if keyword != "" {
+		query.Set("keyword", keyword)
 	}
 	return query
 }
@@ -187,8 +185,32 @@ func senderListDryRunParams(rt *common.RuntimeContext) map[string]interface{} {
 	return params
 }
 
+func senderSearchDryRunParams(rt *common.RuntimeContext) map[string]interface{} {
+	params := senderListDryRunParams(rt)
+	params["keyword"] = strings.TrimSpace(rt.Str("query"))
+	return params
+}
+
 func senderBody(rt *common.RuntimeContext) map[string]any {
+	items := make([]map[string]any, 0)
+	for _, sender := range normalizeSenders(rt.StrSlice("senders")) {
+		items = append(items, map[string]any{
+			"sender":      sender,
+			"sender_type": senderType(sender),
+		})
+	}
+	return map[string]any{"items": items}
+}
+
+func senderDeleteBody(rt *common.RuntimeContext) map[string]any {
 	return map[string]any{"senders": normalizeSenders(rt.StrSlice("senders"))}
+}
+
+func senderType(sender string) int {
+	if strings.Contains(sender, "@") {
+		return 1
+	}
+	return 2
 }
 
 func normalizeSenders(values []string) []string {
@@ -206,8 +228,8 @@ func normalizeSenders(values []string) []string {
 	return result
 }
 
-func fetchSenderList(rt *common.RuntimeContext) (map[string]any, error) {
-	data, err := rt.DoAPIJSONTyped("GET", senderListPath(resolveMailboxID(rt), rt.Str("kind")), senderListQuery(rt), nil)
+func fetchSenderList(rt *common.RuntimeContext, keyword string) (map[string]any, error) {
+	data, err := rt.DoAPIJSONTyped("GET", senderListPath(resolveMailboxID(rt), rt.Str("kind")), senderListQueryWithKeyword(rt, keyword), nil)
 	if err != nil {
 		return nil, mailDecorateProblemMessage(err, "list %s senders failed", rt.Str("kind"))
 	}
@@ -216,7 +238,7 @@ func fetchSenderList(rt *common.RuntimeContext) (map[string]any, error) {
 }
 
 func executeSenderList(ctx context.Context, rt *common.RuntimeContext) error {
-	data, err := fetchSenderList(rt)
+	data, err := fetchSenderList(rt, "")
 	if err != nil {
 		return err
 	}
@@ -226,14 +248,18 @@ func executeSenderList(ctx context.Context, rt *common.RuntimeContext) error {
 
 func executeSenderMutation(rt *common.RuntimeContext, action, result string) error {
 	body := senderBody(rt)
+	if action == "batch_remove" {
+		body = senderDeleteBody(rt)
+	}
 	data, err := rt.DoAPIJSONTyped("POST", senderMutationPath(resolveMailboxID(rt), rt.Str("kind"), action), nil, body)
 	if err != nil {
 		return mailDecorateProblemMessage(err, "%s %s senders failed", result, rt.Str("kind"))
 	}
 	data["kind"] = rt.Str("kind")
-	data["senders"] = body["senders"]
+	senders := normalizeSenders(rt.StrSlice("senders"))
+	data["senders"] = senders
 	data["result"] = result
-	rt.OutFormat(data, &output.Meta{Count: len(body["senders"].([]string))}, nil)
+	rt.OutFormat(data, &output.Meta{Count: len(senders)}, nil)
 	return nil
 }
 
@@ -246,13 +272,4 @@ func senderItems(value any) []map[string]any {
 		}
 	}
 	return result
-}
-
-func senderAddress(item map[string]any) string {
-	for _, key := range []string{"sender", "email", "email_address", "address"} {
-		if value, ok := item[key].(string); ok {
-			return value
-		}
-	}
-	return ""
 }
