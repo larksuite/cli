@@ -47,6 +47,7 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		chainMultiAreaRange(cmd)
 		chainPositionalArgsCause(cmd)
 		chainRequiredFlagHelp(cmd)
+		chainDefensiveConfirmFlag(cmd)
 		relaxPayloadBorneRequired(cmd)
 		chainRequiredFlagCheck(cmd)
 	}
@@ -127,14 +128,14 @@ var commandFlagAliases = map[string]map[string]string{
 	// --csv's own value semantics (inline text, @file or -), so they are pure
 	// renames. csv-file joins file on the path-valued side. 08-29..31 reflow:
 	// 8 of +csv-put's 29 rejections were one of these four names.
-	"+csv-put":      {"file": "csv", "csv-file": "csv", "data": "csv", "content": "csv"},
+	"+csv-put":      {"file": "csv", "csv-file": "csv", "data": "csv", "content": "csv", "csv-data": "csv", "text": "csv"},
 	"+sheet-create": {"name": "title", "sheet-name": "title"},
 	// The new name is the only name-valued input a rename takes, so the
 	// habitual spellings are unambiguous (unlike +sheet-copy, where a name
 	// could mean the copy's title or the source selector and gets a
 	// prescription instead). 07-28 root-cause report #25: 10/10 wrote
 	// --new-name, 24 occurrences.
-	"+sheet-rename": {"name": "title", "new-name": "title", "new-title": "title"},
+	"+sheet-rename": {"name": "title", "new-name": "title", "new-title": "title", "new-sheet-name": "title"},
 	// size → width/height: the styles protocol (--styles row_sizes/col_sizes)
 	// spells the pixel dimension "size", and pre-2026-07 batches accepted it
 	// here too — the rename is the single largest sub-op error cluster in
@@ -239,6 +240,14 @@ var domainFlagAliases = map[string]string{
 	"file-type":             "file-extension",
 	"sort-conditions":       "sort-keys",
 	"sort-rules":            "sort-keys",
+	"sort-spec":             "sort-keys",
+	"back-color":            "background-color",
+	"bg-color":              "background-color",
+	"fill-color":            "background-color",
+	"text-color":            "font-color",
+	"query":                 "find",
+	"search":                "find",
+	"items":                 "options",
 }
 
 // domainAliasExceptions keeps a domain rename off a command whose own
@@ -279,7 +288,6 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"italic":    "use --font-style italic",
 		"underline": "use --font-line underline",
 		"font-bold": "use --font-weight bold",
-		"bg-color":  "use --background-color",
 		// Google Sheets API vocabulary (wrapStrategy), plus the openpyxl / CSS
 		// wrap spellings (08-29..31 reflow: 4 of the 22 unknown-flag
 		// rejections). Not silent renames — the values differ too
@@ -295,7 +303,6 @@ var intuitiveFlagHints = map[string]map[string]string{
 		// JSON); color and per-side variants ride inside it.
 		"border-style":  `borders take one composite flag: --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}' (sides: top/bottom/left/right, or "all" for all four)`,
 		"border-color":  `border color rides inside --border-styles JSON, e.g. --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}'`,
-		"border-all":    `use --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}' — the "all" key applies one spec to all four sides`,
 		"border-top":    `per-side borders ride inside --border-styles JSON, e.g. --border-styles '{"top":{"style":"solid","weight":"thin","color":"#000000"}}'`,
 		"border-bottom": `per-side borders ride inside --border-styles JSON, e.g. --border-styles '{"bottom":{"style":"solid","weight":"thin","color":"#000000"}}'`,
 		"border-left":   `per-side borders ride inside --border-styles JSON, e.g. --border-styles '{"left":{"style":"solid","weight":"thin","color":"#000000"}}'`,
@@ -328,6 +335,10 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"start-index": `+dim-hide names what to hide with --range: "3:5" is rows, "C:E" is columns`,
 		"end-index":   `+dim-hide names what to hide with --range: "3:5" is rows, "C:E" is columns`,
 	},
+	"+dim-show": {
+		"start-index": `+dim-show names what to show with --range: "3:5" is rows, "C:E" is columns`,
+		"end-index":   `+dim-show names what to show with --range: "3:5" is rows, "C:E" is columns`,
+	},
 	"+cells-set-image": {
 		"image-url": "+cells-set-image uploads a LOCAL file: --file ./chart.png; download a remote image first",
 		"url":       "+cells-set-image uploads a LOCAL file: --file ./chart.png; --url names the spreadsheet, not the image",
@@ -355,9 +366,11 @@ var intuitiveFlagHints = map[string]map[string]string{
 		// 18 rejections, the largest single long-tail entry. +dim-insert does
 		// take --position, so the habit carries over to its sibling, where
 		// rows and columns are named by an A1 span instead.
-		"position":  `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
-		"index":     `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
-		"dimension": `+dim-delete infers rows vs columns from --range: "3:5" is rows, "C:E" is columns`,
+		"position":    `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"index":       `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"start-index": `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"end-index":   `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"dimension":   `+dim-delete infers rows vs columns from --range: "3:5" is rows, "C:E" is columns`,
 	},
 	"+cells-unmerge": {
 		"ranges": `+cells-unmerge takes one span per call: --range "A1:B2"; unmerge several regions with several calls (or one +batch-update carrying them all)`,
@@ -382,6 +395,7 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"text":     `the matched text goes inside --properties: {"attrs":[{"compare_type":"containsText","text":"done"}], "style":{…}}`,
 		"value":    `the compared value goes inside --properties: {"attrs":[{"compare_type":"greaterThan","value":"100"}], "style":{…}}`,
 		"style":    `the applied style goes inside --properties: {"attrs":[…], "style":{"fore_color":"#FF0000","font":"bold"}}`,
+		"formula":  `a formula rule is rule_type "expression" with the formula in --properties: {"rule_type":"expression","attrs":[{"formula":"=A1>100"}], "style":{…}}`,
 	},
 	"+workbook-import": {
 		"output-path": "+workbook-import uploads a local file and returns the new spreadsheet's token and url; it writes nothing locally. Capture the JSON result instead, or use +workbook-export --output-path to pull a sheet back down",
@@ -1141,6 +1155,21 @@ func chainEnumNormalization(cmd *cobra.Command) {
 var payloadBorneRequiredFlags = map[string]map[string]string{
 	"+cond-format-create": {"ranges": "properties", "rule-type": "properties"},
 	"+cond-format-update": {"ranges": "properties", "rule-type": "properties"},
+}
+
+// chainDefensiveConfirmFlag accepts --yes on the commands that do not need it.
+// The framework registers it only on high-risk writes and reads it only there;
+// a caller who passes it everywhere is saying "do not stop to ask", which a
+// command that never asks has already honoured. Rejecting it fails a call that
+// is otherwise complete — 437 rows over 09-01..08, on 14 commands.
+//
+// Hidden, so --help still teaches the flag only where it means something.
+func chainDefensiveConfirmFlag(cmd *cobra.Command) {
+	if cmd.Flags().Lookup("yes") != nil {
+		return
+	}
+	cmd.Flags().Bool("yes", false, "accepted and ignored: this command asks for no confirmation")
+	_ = cmd.Flags().MarkHidden("yes")
 }
 
 // relaxPayloadBorneRequired drops cobra's flag-level requirement for the

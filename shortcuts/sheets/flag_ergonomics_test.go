@@ -628,12 +628,6 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 		},
 		{
 			command:  "+cells-set-style",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--bg-color", "#FFF"},
-			wrong:    "--bg-color",
-			wantHint: []string{"--background-color"},
-		},
-		{
-			command:  "+cells-set-style",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--wrap-strategy", "overflow"},
 			wrong:    "--wrap-strategy",
 			wantHint: []string{"--word-wrap"},
