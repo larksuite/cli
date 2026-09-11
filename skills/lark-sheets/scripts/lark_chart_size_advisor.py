@@ -10,7 +10,7 @@ import json
 import re
 from typing import Any
 
-from lark_chart_size_rules import SUPPORTED_CHART_TYPES, recommend_chart_size
+from lark_chart_size_rules import DATA_LABEL_MODES, SUPPORTED_CHART_TYPES, recommend_chart_size
 from lark_sheet_read_cli import (
     LarkCliError,
     emit_error,
@@ -314,6 +314,16 @@ def _series_y_axes_argument(value: str) -> list[str]:
     return values
 
 
+def _series_data_labels_argument(value: str) -> list[str]:
+    values = _comma_separated_values(value)
+    invalid = [item for item in values if item not in DATA_LABEL_MODES]
+    if invalid:
+        raise argparse.ArgumentTypeError(
+            f"unsupported series data labels {invalid[0]!r}"
+        )
+    return values
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Recommend chart width and height before +chart-create-basic")
     parser.add_argument("target", help="Spreadsheet URL or spreadsheet token")
@@ -328,7 +338,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dim2-indexes")
     parser.add_argument("--series-types", type=_comma_separated_values)
     parser.add_argument("--series-y-axes", type=_series_y_axes_argument)
-    parser.add_argument("--data-labels", default="none")
+    parser.add_argument("--series-data-labels", type=_series_data_labels_argument)
+    parser.add_argument("--data-labels")
     parser.add_argument("--aggregate-categories", type=_boolean_argument, default=True)
     parser.add_argument("--legend-position", default="bottom")
     parser.add_argument("--title", default="")
@@ -340,6 +351,10 @@ def main() -> None:
     args = parse_args()
     locator = _locator(args.target)
     try:
+        if args.series_data_labels is not None and args.dim2_indexes is None:
+            raise ValueError("--series-data-labels requires explicit --dim2-indexes")
+        if args.series_data_labels is not None and args.data_labels is not None:
+            raise ValueError("--series-data-labels and --data-labels are mutually exclusive")
         sheets: list[dict[str, Any]] = []
         if _needs_workbook_metadata(
             [args.data_range, args.header_range],
@@ -386,13 +401,14 @@ def main() -> None:
             chart_type=args.chart_type,
             categories=profile["categories"],
             series_names=profile["series_names"],
-            data_labels=args.data_labels,
+            data_labels=args.data_labels or "none",
             legend_position=args.legend_position,
             title=args.title,
             values=profile["values"],
             aggregate_categories=args.aggregate_categories,
             series_types=args.series_types,
             series_y_axes=args.series_y_axes,
+            series_data_labels=args.series_data_labels,
         )
         result["data_profile"] = {
             "dim2_indexes": profile["dim2_indexes"],

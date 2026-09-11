@@ -102,6 +102,18 @@ var chartSemanticConfigFlags = []string{
 	"color-palette",
 }
 
+var chartDataLabelModes = []string{
+	"none",
+	"value",
+	"category",
+	"percentage",
+	"value_category",
+	"value_percentage",
+	"category_percentage",
+	"value_category_percentage",
+	"series",
+}
+
 // ChartCreateBasic creates a complete server-side chart snapshot from a chart
 // type and a rectangular source range. The CLI only forwards semantic input;
 // it deliberately does not own or duplicate the full chart snapshot template.
@@ -371,6 +383,9 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 	if chartType != "combo" && (rt.Changed("series-types") || rt.Changed("series-y-axes")) {
 		return nil, sheetsValidationForFlag("series-types", "--series-types and --series-y-axes are only valid for combo charts")
 	}
+	if chartType != "combo" && rt.Changed("series-data-labels") {
+		return nil, sheetsValidationForFlag("series-data-labels", "--series-data-labels is only valid for combo charts")
+	}
 	var seriesTypes []string
 	if rt.Changed("series-types") {
 		seriesTypes, err = parseChartEnumList(rt.Str("series-types"), "series-types", []string{"column", "line", "area", "scatter"})
@@ -389,6 +404,25 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 		}
 		if len(seriesYAxes) != len(dim2Indexes) {
 			return nil, sheetsValidationForFlag("series-y-axes", "--series-y-axes must contain one value per selected value series")
+		}
+	}
+	var seriesDataLabels []string
+	if rt.Changed("series-data-labels") {
+		if !rt.Changed("dim2-indexes") {
+			return nil, sheetsValidationForFlag("series-data-labels", "--series-data-labels requires explicit --dim2-indexes")
+		}
+		if rt.Changed("data-labels") {
+			return nil, common.ValidationErrorf("--series-data-labels and --data-labels are mutually exclusive").WithParams(
+				sheetsInvalidParam("series-data-labels", "cannot be used with --data-labels"),
+				sheetsInvalidParam("data-labels", "cannot be used with --series-data-labels"),
+			)
+		}
+		seriesDataLabels, err = parseChartEnumList(rt.Str("series-data-labels"), "series-data-labels", chartDataLabelModes)
+		if err != nil {
+			return nil, err
+		}
+		if len(seriesDataLabels) != len(dim2Indexes) {
+			return nil, sheetsValidationForFlag("series-data-labels", "--series-data-labels must contain one value per selected value series")
 		}
 	}
 	if chartType == "bubble" && (len(dim2Indexes) < 2 || len(dim2Indexes) > 4) {
@@ -464,6 +498,9 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 	}
 	if rt.Changed("series-y-axes") {
 		basic["series_y_axes"] = seriesYAxes
+	}
+	if rt.Changed("series-data-labels") {
+		basic["series_data_labels"] = seriesDataLabels
 	}
 	if err := validateChartColorFlags(rt); err != nil {
 		return nil, err

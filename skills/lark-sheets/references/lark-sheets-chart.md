@@ -80,7 +80,7 @@ python scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" \
   --data-labels value --legend-position bottom --title "销售额对比"
 ```
 
-运行建议器时，参数必须与后续创建保持一致：创建命令显式设置 `--aggregate-categories` 时传入同一值，组合图同步传入 `--series-types`；创建命令不传 `--data-labels` 时，建议器也按 `none` 估算，需要标签时两边都显式传入同一值。将返回的 `data.create_flags.width` / `height` 原样用于创建命令（包括 `--dry-run`），不要凭经验改小；`data.minimum_size` 仅表示兜底下限。若 `data.size_alone_is_insufficient=true`，先按 `data.layout_advice` 调整图表结构或标签策略，再用新配置重新计算尺寸。建议器只负责创建前预估，图表创建后仍须运行质量检查器。
+运行建议器时，参数必须与后续创建保持一致：创建命令显式设置 `--aggregate-categories` 时传入同一值，组合图同步传入 `--series-types`、`--series-y-axes` 和 `--series-data-labels`；创建命令不传全局或逐系列标签时，建议器按无标签估算。将返回的 `data.create_flags.width` / `height` 原样用于创建命令（包括 `--dry-run`），不要凭经验改小；`data.minimum_size` 仅表示兜底下限。若 `data.size_alone_is_insufficient=true`，先按 `data.layout_advice` 调整图表结构或标签策略，再用新配置重新计算尺寸。建议器只负责创建前预估，图表创建后仍须运行质量检查器。
 
 **坐标轴语义与范围**：所有带坐标轴的图表都要在清单中记录每条轴对应的字段语义、类别轴 / 连续轴类型、单位以及主副轴归属，不能只核对轴标题。Y 轴显示范围默认交给图表引擎；用户未明确要求固定范围时，不传 `--y-axis-min` / `--y-axis-max`，需要固定范围时必须同时传上下界，重点只处理确有必要收紧的连续数值 X 轴。堆积图的峰值来自同一类别内系列累加，组合图还要按左右轴分别计算；不得直接把数据源单列的最小值 / 最大值当成 Y 轴边界。瀑布图的显示范围取决于逐项累计后的全部中间值、小计和总计，不得主动传 `--y-axis-min` / `--y-axis-max`；只有用户明确指定固定范围时才能例外，且必须覆盖所有累计节点。其它图表只有在用户明确要求或视觉验收证明自动范围不可读时，才按图表类型的实际绘制值计算并设置 Y 轴范围。多图对比时，先判断“范围 / 尺度一致”指绝对边界相同，还是跨度和刻度可比；对比同一指标时保持值轴口径一致，不同单位或量级的指标不强行共用边界。
 
@@ -107,10 +107,10 @@ python scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" \
 
 **常见配置错误（必须注意）**：
 - **图表类型选择错误**：用户说"堆积柱形图 / 百分比堆积"时，用 `+chart-create-basic --stack normal|percent` 或 `+chart-config-update --stack normal|percent`；用户说"占比 / 比例"时，优先考虑饼图或百分比堆积图。注意 `column` 是纵向柱形图、`bar` 是横向条形图，"对比 / 各 XX" 类纵向柱默认用 `column`；面积图原生支持 `snapshot.plotArea.plot.type="area"`，别因速查表没列就判"不支持"。
-- **数据标签开关**：普通基础图先按拟开启 `--data-labels value` 运行尺寸建议器，再用建议宽高创建；不要仅凭数据点或系列数预先传 `none`。若使用建议尺寸后仍过密，依次改为关键点 / 末值 / 异常值的稀疏标签、Top-N 或拆图；用户明确要求隐藏全部标签时才传 `none`。已有图用 `+chart-config-update --data-labels`，不要为常用标签配置构造原始 `labels` 对象。高级配置中 `plotArea.plot.labels` 对象的存在性即开关：创建时关闭标签应省略该字段，更新时删除已有全局标签传 `labels: null`，不能用全部字段置为 `false` 代替。多个系列的数据标签展示要求不同时，禁止传全局 `--data-labels`，应在创建后读取完整 `plotArea.plot.series`，仅给需要标签的系列设置 `labels`，再用 `+chart-update --properties` 整段回写该数组。
-- **辅助线与单点标签**：用户要求基准线、目标线、阈值线、平均线或上下限时，先在源数据旁新增一列重复目标值作为辅助线；如果只需要在线尾或某个关键位置显示一个标签，再新增一列稀疏标点数据，仅在目标行写入同一数值，其余单元格保持真正空白。数据准备完成后创建组合图：辅助值列用 `line`，稀疏标点列用 `scatter`，省略全局 `--data-labels`，并传 `--aggregate-categories=false` 关闭“汇总相同类别”；已有图用 `+chart-config-update --aggregate-categories=false`。随后读取完整系列数组，只给稀疏标点系列设置数值标签，辅助线系列必须省略 `labels`；原数据系列是否设置标签按用户要求决定。不得用重复值辅助线的全系列标签模拟单点标签，也不得用 0 代替空白标点，否则聚合会把空标点物化为每个类别的数据点，导致标签重复出现。
+- **数据标签开关**：普通基础图先按拟开启 `--data-labels value` 运行尺寸建议器，再用建议宽高创建；不要仅凭数据点或系列数预先传 `none`。若使用建议尺寸后仍过密，依次改为关键点 / 末值 / 异常值的稀疏标签、Top-N 或拆图；用户明确要求隐藏全部标签时才传 `none`。已有图用 `+chart-config-update --data-labels`，不要为常用标签配置构造原始 `labels` 对象。高级配置中 `plotArea.plot.labels` 对象的存在性即开关：创建时关闭标签应省略该字段，更新时删除已有全局标签传 `labels: null`，不能用全部字段置为 `false` 代替。组合图各系列的标签要求不同时，禁止传全局 `--data-labels`，改用 `--series-data-labels` 按显式 `--dim2-indexes` 顺序逐项设置；已有图的高级调整仍须读取并完整回写系列数组。
+- **辅助线与单点标签**：用户要求基准线、目标线、阈值线、平均线或上下限时，先在源数据旁新增一列重复目标值作为辅助线；如果只需要在线尾或某个关键位置显示一个标签，再新增一列稀疏标点数据，仅在目标行写入同一数值，其余单元格保持真正空白。数据准备完成后创建组合图：辅助值列用 `line`，稀疏标点列用 `scatter`，省略全局 `--data-labels`，用 `--series-data-labels` 为每个数值系列逐项设置标签并将辅助线设为 `none`，同时传 `--aggregate-categories=false` 关闭“汇总相同类别”；已有图用 `+chart-config-update --aggregate-categories=false`。不得用重复值辅助线的全系列标签模拟单点标签，也不得用 0 代替空白标点，否则聚合会把空标点物化为每个类别的数据点，导致标签重复出现。
 - **常量系列标签**：目标线、阈值线和上下限等重复常量系列默认不显示逐点标签；名称和值放在系列名、图例、标题或单个稀疏标记中。创建后若质量检查器提示“常量系列重复标签”，移除该系列标签或改成只有一个非空点的稀疏标记。
-- **数据标签位置**：只有用户明确要求且已有标签时才传 `--data-label-position`；它只调整已有标签的位置，不会单独开启标签。需要同时显示标签时一并传 `--data-labels`；未明确位置时省略，让图表按类型自动选择。标签位置只控制摆放方式，不能实现仅显示末点或关键点。普通非堆叠柱形图显示数据标签位置一般传 `outside`。
+- **数据标签位置**：只有用户明确要求且已有标签时才传 `--data-label-position`；它只调整已有标签的位置，不会单独开启标签。需要同时显示标签时一并传 `--data-labels` 或 `--series-data-labels`，逐系列模式下统一作用于非 `none` 的系列；未明确位置时省略，让图表按类型自动选择。标签位置只控制摆放方式，不能实现仅显示末点或关键点。普通非堆叠柱形图显示数据标签位置一般传 `outside`。
 - **数据源范围与系列名来源要对齐**：
   - 默认让 `--data-range` 包含真正的表头行 / 列；表头上方的合并大标题必须跳过。
   - 数据和语义表头分离时，`--data-range` 只传纯数据，`--header-range` 传对应的一行（column）或一列（row）表头。范围可以是不连续多范围，也支持来自多个子表；不要因为跨子表就退回原始 snapshot。
@@ -231,6 +231,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--dim2-indexes` | string | optional | 值/Y 轴系列的 1-based 索引列表，逗号分隔；不能包含 dim1，最多 50 个。气泡图旧调用按 `x,y[,group][,size]` 顺序传 2–4 个，新调用优先使用角色索引；饼图和排列图只传 1 个 |
 | `--series-types` | string | optional | 仅组合图；按 --dim2-indexes 顺序指定系列类型，逗号分隔，可选 column、line、area、scatter，数量必须与数值系列一致 |
 | `--series-y-axes` | string | optional | 仅组合图；先比较系列单位和量级，将会被压扁的系列放到 right 轴；按 --dim2-indexes 顺序传 left 或 right，数量必须与数值系列一致 |
+| `--series-data-labels` | string | optional | 仅组合图；按显式 --dim2-indexes 顺序指定每个系列的数据标签，逗号分隔，数量必须一致；none 关闭该系列标签；与 --data-labels 互斥，--data-label-position 统一作用于其余系列 |
 | `--key-index` | int | optional | 仅气泡图：标识/名称维度的 1-based 索引；与 dim1/dim2 索引互斥，默认 1 |
 | `--x-index` | int | optional | 仅气泡图：X 值维度的 1-based 索引；须与 --y-index 一起提供 |
 | `--y-index` | int | optional | 仅气泡图：Y 值维度的 1-based 索引；须与 --x-index 一起提供 |
@@ -351,7 +352,7 @@ _创建/更新的图表属性_
 
 ### `+chart-create-basic`
 
-默认使用第 1 个维度作为类别/X 轴，其余维度作为数值系列；普通图表可用 1-based 的 `--dim1-index` 和逗号分隔的 `--dim2-indexes` 精确选择。组合图默认首个数值系列为左轴柱、其余为右轴折线；创建前仍要比较各系列单位和量级，避免折线或小量级系列因共用左轴而贴近 X 轴。需要其它组合时，用 `--series-types` 和 `--series-y-axes` 按 `--dim2-indexes` 的顺序逐项指定系列类型与左右轴；系列类型可选 `column`、`line`、`area`、`scatter`，两组参数的数量都必须与最终数值系列数一致。横轴数字默认按等间距文本类别处理；只有数字之间的真实间距需要影响图形位置时，才传 `--x-axis-numbers-as values` 使用连续数轴。气泡图改用 `--key-index`、`--x-index`、`--y-index` 和可选的 `--group-index` / `--size-index`，其中 x/y 必须同时提供，key 默认 1；角色索引不能与 dim1/dim2 索引混用。旧气泡图的 dim1/dim2 位置调用仍兼容。饼图和排列图只允许一个数值系列；组合图至少需要两个数值系列；所有图表最多选择 50 个数值系列。饼图默认将图例放在底部，并根据类别标签长度适量增加 `--width`（同时传 `--height`）。默认让 `--data-range` 包含真实表头；只有“维度/系列名称”与纯数据分离时，才让 `--data-range` 只传纯数据，并用 `--header-range` 传对应的一行（column）或一列（row）表头。类别维度与数值维度不连续时，范围参数可传逗号分隔的多范围，也支持来自多个子表；沿数据点轴对齐的跨子表范围会保留独立引用，同一子表内错行、错列或重叠时合并为最小包围矩形，跨子表范围无法对齐时会报错。单独调用成功后返回完整 `snapshot`，可直接检查创建结果并继续修改。参数名使用 `--anchor-cell` 和 `--data-labels`。兼容调用中，`--type` / `--range` 会分别按 `--chart-type` / `--data-range` 处理，`--x-axis` / `--y-axis` 会按轴标题处理；新调用仍优先使用规范参数名。
+默认使用第 1 个维度作为类别/X 轴，其余维度作为数值系列；普通图表可用 1-based 的 `--dim1-index` 和逗号分隔的 `--dim2-indexes` 精确选择。组合图默认首个数值系列为左轴柱、其余为右轴折线；创建前仍要比较各系列单位和量级，避免折线或小量级系列因共用左轴而贴近 X 轴。需要其它组合时，用 `--series-types`、`--series-y-axes` 和 `--series-data-labels` 按 `--dim2-indexes` 的顺序逐项指定系列类型、左右轴与标签；这些参数的数量必须与最终数值系列数一致，逐系列标签与全局 `--data-labels` 互斥。横轴数字默认按等间距文本类别处理；只有数字之间的真实间距需要影响图形位置时，才传 `--x-axis-numbers-as values` 使用连续数轴。气泡图改用 `--key-index`、`--x-index`、`--y-index` 和可选的 `--group-index` / `--size-index`，其中 x/y 必须同时提供，key 默认 1；角色索引不能与 dim1/dim2 索引混用。旧气泡图的 dim1/dim2 位置调用仍兼容。饼图和排列图只允许一个数值系列；组合图至少需要两个数值系列；所有图表最多选择 50 个数值系列。饼图默认将图例放在底部，并根据类别标签长度适量增加 `--width`（同时传 `--height`）。默认让 `--data-range` 包含真实表头；只有“维度/系列名称”与纯数据分离时，才让 `--data-range` 只传纯数据，并用 `--header-range` 传对应的一行（column）或一列（row）表头。类别维度与数值维度不连续时，范围参数可传逗号分隔的多范围，也支持来自多个子表；沿数据点轴对齐的跨子表范围会保留独立引用，同一子表内错行、错列或重叠时合并为最小包围矩形，跨子表范围无法对齐时会报错。单独调用成功后返回完整 `snapshot`，可直接检查创建结果并继续修改。参数名使用 `--anchor-cell` 和 `--data-labels`。兼容调用中，`--type` / `--range` 会分别按 `--chart-type` / `--data-range` 处理，`--x-axis` / `--y-axis` 会按轴标题处理；新调用仍优先使用规范参数名。
 
 **连续数值 X 轴的可读性**：散点图使用 `--x-axis-numbers-as values`，气泡图的 x 角色天然是连续数轴；未指定范围时都可能自动包含 0。数据集中在远离 0 的窄区间时，先根据业务语义判断 0 基准是否必须保留；不必保留时，散点图创建时可用 `--x-axis-min` / `--x-axis-max`，气泡图创建后用 `+chart-config-update` 收紧范围，不要改成 `text` 掩盖问题。两个边界可单独设置；同时设置时 min 必须小于 max。
 
@@ -375,12 +376,9 @@ lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \
   --chart-type combo --data-range "'Sheet1'!A1:D7" \
   --dim1-index 1 --dim2-indexes 2,3,4 \
   --series-types line,line,scatter --series-y-axes left,left,left \
+  --series-data-labels value,none,value \
   --aggregate-categories=false \
   --title "趋势与目标线" --anchor-cell F2 --width 720 --height 420
-
-# 先从创建结果或 +chart-list 取得完整 series 数组，再整段回写；辅助线系列不设置 labels
-lark-cli sheets +chart-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \
-  --properties '{"snapshot":{"plotArea":{"plot":{"series":[{"index":2,"comboType":"line","labels":{"value":true}},{"index":3,"comboType":"line"},{"index":4,"comboType":"scatter","labels":{"value":true}}]}}}}'
 
 # 气泡图：x、y 必填，group、size 可选
 lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \

@@ -115,6 +115,30 @@
                 }
               ]
             },
+            "series_data_labels": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "value",
+                      "category",
+                      "percentage",
+                      "value_category",
+                      "value_percentage",
+                      "category_percentage",
+                      "value_category_percentage",
+                      "series"
+                    ]
+                  }
+                }
+              ]
+            },
             "key_index": {
               "type": "integer",
               "minimum": 1,

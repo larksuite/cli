@@ -956,6 +956,7 @@ func TestChartCreateBasic_ConfiguresComboSeriesSemantically(t *testing.T) {
 		"--dim2-indexes", "2,3,4",
 		"--series-types", "column,line,scatter",
 		"--series-y-axes", "left,left,right",
+		"--series-data-labels", "value,value,none",
 	})
 	basic := decodeToolInput(t, body, "manage_chart_object")["basic_chart"].(map[string]interface{})
 	if got := basic["series_types"]; !reflect.DeepEqual(got, []interface{}{"column", "line", "scatter"}) {
@@ -964,13 +965,16 @@ func TestChartCreateBasic_ConfiguresComboSeriesSemantically(t *testing.T) {
 	if got := basic["series_y_axes"]; !reflect.DeepEqual(got, []interface{}{"left", "left", "right"}) {
 		t.Fatalf("basic_chart.series_y_axes = %#v", got)
 	}
+	if got := basic["series_data_labels"]; !reflect.DeepEqual(got, []interface{}{"value", "value", "none"}) {
+		t.Fatalf("basic_chart.series_data_labels = %#v", got)
+	}
 }
 
 func TestChartCreateBasic_ConfiguresComboSeriesSemanticallyInBatch(t *testing.T) {
 	t.Parallel()
 	body := parseDryRunBody(t, BatchChartCreate, []string{
 		"--url", testURL,
-		"--operations", `[{"sheet_id":"sh1","chart_type":"combo","data_range":"A1:D7","dim2_indexes":[2,3,4],"series_types":["column","line","scatter"],"series_y_axes":["left","left","right"]}]`,
+		"--operations", `[{"sheet_id":"sh1","chart_type":"combo","data_range":"A1:D7","dim2_indexes":[2,3,4],"series_types":["column","line","scatter"],"series_y_axes":["left","left","right"],"series_data_labels":["value","value","none"]}]`,
 	})
 	input := decodeToolInput(t, body, "batch_update")
 	ops := input["operations"].([]interface{})
@@ -980,6 +984,9 @@ func TestChartCreateBasic_ConfiguresComboSeriesSemanticallyInBatch(t *testing.T)
 	}
 	if got := basic["series_y_axes"]; !reflect.DeepEqual(got, []interface{}{"left", "left", "right"}) {
 		t.Fatalf("batch basic_chart.series_y_axes = %#v", got)
+	}
+	if got := basic["series_data_labels"]; !reflect.DeepEqual(got, []interface{}{"value", "value", "none"}) {
+		t.Fatalf("batch basic_chart.series_data_labels = %#v", got)
 	}
 }
 
@@ -1004,6 +1011,31 @@ func TestChartCreateBasic_ValidatesComboSeriesSemantics(t *testing.T) {
 			name: "invalid axis",
 			args: []string{"--chart-type", "combo", "--data-range", "A1:C7", "--series-y-axes", "left,secondary"},
 			want: "expected one of left, right",
+		},
+		{
+			name: "series labels on non combo",
+			args: []string{"--chart-type", "line", "--data-range", "A1:C7", "--dim2-indexes", "2,3", "--series-data-labels", "value,none"},
+			want: "only valid for combo charts",
+		},
+		{
+			name: "series labels require explicit indexes",
+			args: []string{"--chart-type", "combo", "--data-range", "A1:C7", "--series-data-labels", "value,none"},
+			want: "requires explicit --dim2-indexes",
+		},
+		{
+			name: "series label count",
+			args: []string{"--chart-type", "combo", "--data-range", "A1:D7", "--dim2-indexes", "2,3,4", "--series-data-labels", "value,none"},
+			want: "one value per selected value series",
+		},
+		{
+			name: "invalid series label",
+			args: []string{"--chart-type", "combo", "--data-range", "A1:C7", "--dim2-indexes", "2,3", "--series-data-labels", "value,invalid"},
+			want: "expected one of none, value",
+		},
+		{
+			name: "global and series labels are exclusive",
+			args: []string{"--chart-type", "combo", "--data-range", "A1:C7", "--dim2-indexes", "2,3", "--data-labels", "value", "--series-data-labels", "value,none"},
+			want: "mutually exclusive",
 		},
 	}
 	for _, tc := range cases {

@@ -132,6 +132,7 @@ _要批量执行的 CLI shortcut 操作列表，按声明顺序串行执行；�
 - `dim2_indexes` (oneOf?)
 - `series_types` (oneOf?)
 - `series_y_axes` (oneOf?)
+- `series_data_labels` (oneOf?)
 - `key_index` (integer?) — 气泡图标识/名称维度的 1-based 索引；默认 1
 - `x_index` (integer?) — 气泡图 X 值维度的 1-based 索引；与 y_index 同时提供
 - `y_index` (integer?) — 气泡图 Y 值维度的 1-based 索引；与 x_index 同时提供
