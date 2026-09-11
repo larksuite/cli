@@ -93,7 +93,56 @@ lark-cli apps +release-create --app-id app_xxx
 
 `+init` 是推荐便捷入口；想逐步手动控制时，先 `+git-credential-init` 拿 `repository_url`，再用原生 `git clone` / `git checkout sprint/default`。
 
-**`+init` 完成后必须执行**：`cat <project-path>/.agents/skills/plugin-guide/SKILL.md`，读取仓库插件指引。该文件包含插件目录、实例配置规则和调用代码生成方式——不读就无法正确集成插件能力。文件不存在则跳过。
+**`+init` 完成后必须执行**（前提是已按下方「`+init` 耗时、超时与成功门禁」确认成功）：先 `ls <project-path>/.agents/skills/` 看有哪些项目 guide；`coding-guide/SKILL.md` 是项目编码规范，写任何代码前先读；`cat <project-path>/.agents/skills/plugin-guide/SKILL.md` 读取仓库插件指引，该文件包含插件目录、实例配置规则和调用代码生成方式——不读就无法正确集成插件能力。其余 guide 按任务读取。目录或文件不存在则跳过（html 与部分 frontend 脚手架不带这套 guide）。
+
+## `+init` 耗时、超时与成功门禁
+
+`+init` 是长耗时命令，内部依次做：签发 Git 凭证 → `git clone` → 切到 `sprint/default` → 生成项目代码（含拉取模板与安装依赖）→ 提交并推送 → 拉取本地环境变量。"生成项目代码"占绝大部分时间且完全依赖网络；命令没有内部超时，耗时上限由网络决定。
+
+实测参考（macOS、公司内网、npm 缓存已预热）：full_stack 新建约 40-50 秒，frontend 约 20 秒，html 约 10 秒，已有 full_stack 应用全新 clone 约 50 秒；冷 npm 缓存（需下载约 160 MB 模板与依赖）实测约 100 秒，外网或弱网环境会再明显拉长。上面的 10 分钟是按冷缓存耗时留出数倍余量的保守值。
+
+### 执行方式
+
+- `+init` 单独一次调用，不与其他命令串在同一条 shell 里；给它的工具超时至少 **10 分钟**（html 至少 5 分钟）。
+- 工具超时上限达不到 10 分钟时，改为后台执行并把 stdout/stderr 重定向到文件，每 15-30 秒检查进程是否退出。进程仍在运行就继续等；"生成项目代码"阶段不会打印细粒度进度，stderr 长时间没有新行不等于卡死。
+- 同一目录、同一 app 同时只允许一次 `+init`。上一次被中断后不要立刻重跑，先按下方「失败与中断的处置」第一行确认没有残留进程。
+- stderr 的 `→` 进度行是正常输出，结果只看 stdout 的 JSON envelope。
+
+### 成功判定
+
+只有同时满足以下三点才算成功：退出码为 0；stdout 是 `ok: true` 的 JSON envelope；`data.scaffold` 为 `init`（新建空仓库）、`upgrade`（仓库已有代码）或 `already_initialized`。新建应用时 `committed` 与 `pushed` 应同为 `true`。
+
+没有拿到完整 envelope（超时被 kill、只看到进度行、进程被中断）一律按**未完成**处理，不是"可能成功了"。
+
+### 成功前禁止
+
+门禁未通过时，不要：写业务代码或手工创建脚手架文件；执行 `npm install` / `npm run dev`；`git add` / `git commit` / `git push`；`+release-create`；改用 `+git-credential-init` + `git clone` 的手动路径替代——新建应用的仓库只有一个 seed README，手动 clone 拿不到脚手架和 `.spark/meta.json`，后续开发与发布都会失去平台契约。
+
+### 通过后、写代码前核对
+
+脚手架内部的依赖安装是软失败：装不上也会正常退出，`+init` 仍报成功且不会转述安装错误。所以门禁通过后仍要核对：
+
+1. `<dir>/.spark/meta.json` 存在，且 `app_id` 与目标应用一致。
+2. `git log --oneline -3` 能看到初始化提交；`git status --porcelain` 为空；`git rev-parse HEAD` 与 `git rev-parse origin/sprint/default` 一致。
+3. full_stack / frontend：`node_modules/` 存在且非空，缺失则先 `npm install` 再继续；html 无此步。
+4. full_stack / frontend：`.env.local` 存在。缺失或 envelope 里 `env_pulled=false` 时先执行 `lark-cli apps +env-pull --app-id <app_id> --project-path <dir>`；html 应用 `env_pull_skipped=true` 是正常的。
+5. 按上文「`+init` 完成后必须执行」读取项目 guide。
+
+### 失败与中断的处置
+
+| 现象 | 判定 | 动作 |
+|---|---|---|
+| 工具超时 / 进程被 kill / 没有 envelope | 未完成 | **先查进程，再看目录。**① `pgrep -fl <app_id>` 非空说明这次初始化还在后台跑（被 kill 的可能只是外层 shell 或启动 shim，真正的 CLI 与依赖安装子进程会继续运行几分钟并最终提交推送）：等到 `pgrep -f <app_id>` 为空，再按「通过后、写代码前核对」逐项判定，全过即视为成功，不必重跑。② 需要重跑时必须先清干净残留进程：对 `pgrep -f <app_id>` 的每个 pid 先 `pkill -P <pid>` 再 `kill <pid>`，确认为空后才删目录；否则残留进程会继续往同一路径写文件、抢着提交推送，把新一次初始化污染成半成品。③ 目录判定：没有 `.spark/meta.json`（最常见：脚手架未写完）→ 删除**本次 `+init` 新建的**目录后重跑；有 meta 但 `git status` 有未提交文件或 `git log` 没有初始化提交 → 同样删目录重跑。只删本次新建的目录，不动用户原有目录。 |
+| 重跑报 `--dir` 已存在且非空 | 上次残留 | 同上，删残留目录或换新目录；不要把代码写进这个目录。 |
+| 本轮刚建的目录却返回 `scaffold=already_initialized` | 疑似半成品被短路 | 按「通过后、写代码前核对」逐项核对，有一项不过就删目录重跑。 |
+| 退出非 0，错误含 `git push failed` | 脚手架已提交、未推送 | 不要重跑 `+init`（会被短路）。先 `lark-cli apps +git-credential-init --app-id <app_id> --as user`，再 `git push origin sprint/default`，然后按核对清单继续。 |
+| 退出 0 但 `env_pulled=false` 且有 `env_pull_error` | 初始化成功、环境变量未拉到 | 不阻塞开发；启动前执行 `+env-pull`。 |
+| `failed_precondition`：git 或 Node.js（含 npm）不在 PATH | 环境缺失 | 安装后重跑原命令，不改走其他路径。 |
+| 未登录、缺 scope、凭证签发失败、exit 10 | 认证问题 | 按 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 处理后重跑原命令。 |
+| `--dir` 校验错误：软链、非目录、已属于另一个 app | 目录选择错误 | 换目录；绝不删用户目录来腾位置。 |
+| 生成项目代码阶段报错（网络、镜像源、模板或依赖拉取失败） | 外部工具失败 | 检查网络后删目录重跑一次；不要自己拼脚手架。 |
+
+重试上限 2 次。仍失败就停止，向用户报告 app_id、`--dir`、退出码、`error.hint` 和目录残留状态，等用户决定；不要在未初始化的目录里继续写代码。
 
 ## Trigger guide 的项目边界
 
@@ -120,7 +169,7 @@ lark-cli apps +release-create --app-id app_xxx
 
 - 代码读写走原生 `git`；CLI 负责凭证、初始化、发布和数据库调试。不存在 `apps +pull` / `apps +push` / `apps code +read` 这类代码读写 shortcut，不要臆造。
 - 工作环境没有 `git` 时，先引导安装 Git（macOS 可用 `xcode-select --install` 或 `brew install git`；Linux 按发行版包管理器安装），安装后重试原 `+init` / git 命令；不要因此改走其他发布链路。
-- `+init` 会编排 `+git-credential-init`、`git clone`、切到 `sprint/default`、运行脚手架，并在有变更时提交/推送。
+- `+init` 会编排 `+git-credential-init`、`git clone`、切到 `sprint/default`、运行脚手架，并在有变更时提交/推送。 它是长耗时、无内部超时的命令，成功与否只看 stdout envelope，退出 0 也不代表依赖已装好；执行方式、超时和核对见「`+init` 耗时、超时与成功门禁」。
 - `+init --dir` 选目录：用户已预授权或表达"不要询问"（见 SKILL.md「预授权判定」）→ 按应用名派生 `./<app-name>` 直接传 `--dir`、不停问；否则先问用户用哪个目录再传。目标已存在/非空时回问换目录。
 - `sprint/default` 是工作分支；`main` 是发布态快照，由 `+release-create` 成功后服务端 fast-forward 推进；服务端护栏禁直推 `main`、拒 force-push、要求 `sprint/default` fast-forward。
 - 已拉到本地后，pull/push/diff/log 都用原生 git；云端 `sprint/default` 比本地新时，先 `git pull --rebase origin sprint/default`，解决冲突后再 push 和 publish。
