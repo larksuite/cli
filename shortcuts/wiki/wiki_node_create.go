@@ -64,7 +64,7 @@ var WikiNodeCreate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "space-id", Desc: "target wiki space ID; use my_library for the personal document library"},
-		{Name: "parent-node-token", Desc: "parent wiki node token; if set, the new node is created under that parent"},
+		{Name: "parent-node-token", Desc: "parent Wiki node_token or document obj_token; the new node is created under the resolved Wiki node"},
 		{Name: "title", Desc: "node title"},
 		{Name: "node-type", Default: wikiNodeTypeOrigin, Desc: "node type", Enum: []string{wikiNodeTypeOrigin, wikiNodeTypeShortcut}},
 		{Name: "obj-type", Default: "docx", Desc: "target object type; file is supported only when --node-type=shortcut", Enum: wikiObjectTypes},
@@ -176,16 +176,7 @@ type wikiNodeCreateAPI struct {
 }
 
 func (api wikiNodeCreateAPI) GetNode(ctx context.Context, token string) (*wikiNodeRecord, error) {
-	data, err := api.runtime.CallAPITyped(
-		"GET",
-		"/open-apis/wiki/v2/spaces/get_node",
-		map[string]interface{}{"token": token},
-		nil,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return parseWikiNodeRecord(common.GetMap(data, "node"))
+	return lookupWikiNode(api.runtime, token)
 }
 
 func (api wikiNodeCreateAPI) GetSpace(ctx context.Context, spaceID string) (*wikiSpaceRecord, error) {
@@ -292,15 +283,19 @@ func buildWikiNodeCreateDryRun(spec wikiNodeCreateSpec) *common.DryRunAPI {
 	}
 
 	if spec.ParentNodeToken != "" {
-		dry.GET("/open-apis/wiki/v2/spaces/get_node").
+		dry.GET("/open-apis/wiki/v2/spaces/node_by_token").
 			Desc(fmt.Sprintf("[%d] Resolve parent node space", step)).
 			Params(map[string]interface{}{"token": spec.ParentNodeToken})
 		step++
 	}
 
+	body := spec.RequestBody()
+	if spec.ParentNodeToken != "" {
+		body["parent_node_token"] = "<resolved_parent_node_token>"
+	}
 	dry.POST(fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes", dryRunWikiNodeCreateSpaceID(spec))).
 		Desc(fmt.Sprintf("[%d] Create wiki node", step)).
-		Body(spec.RequestBody())
+		Body(body)
 
 	return dry
 }
@@ -323,6 +318,13 @@ func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identit
 	resolvedSpace, err := resolveWikiNodeCreateSpace(ctx, client, identity, spec)
 	if err != nil {
 		return nil, err
+	}
+
+	if spec.ParentNodeToken != "" {
+		if resolvedSpace.ParentNode == nil || resolvedSpace.ParentNode.NodeToken == "" {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki parent lookup returned no node_token")
+		}
+		spec.ParentNodeToken = resolvedSpace.ParentNode.NodeToken
 	}
 
 	var (

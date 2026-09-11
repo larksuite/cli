@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -98,7 +99,7 @@ func completeSchemaPath(
 ) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		mode := f.ResolveStrictMode(cmd.Context())
-		catalog := projectSchemaCatalog(registry.SchemaCatalog(), visibility)
+		catalog := projectSchemaCatalog(f.APICatalog, visibility)
 		completions, noSpace := catalog.Complete(args, toComplete, registry.FilterForStrictMode(mode))
 		directive := cobra.ShellCompDirectiveNoFileComp
 		if noSpace {
@@ -111,56 +112,53 @@ func completeSchemaPath(
 func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) error {
 	out := opts.Factory.IOStreams.Out
 	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
-	return runSchemaWithVisibility(out, apicatalog.ParsePath(opts.Args), mode, visibility)
+	return runSchemaCatalog(out, apicatalog.ParsePath(opts.Args), mode, opts.Factory.APICatalog, opts.Factory.Affordance, visibility)
 }
 
-// runSchemaWithVisibility resolves the path through the schema catalog and renders the
-// matching envelope(s). The catalog owns navigation (Resolve + MethodRefs) and
-// schema owns rendering (Envelope/Envelopes); this adapter only chooses the
-// output shape — a single resolved method renders as one envelope object,
-// anything broader as an array — and maps resolve failures to hints.
-func runSchemaWithVisibility(
-	out io.Writer,
-	parts []string,
-	mode core.StrictMode,
-	visibility CommandVisibility,
-) error {
-	return runSchemaCatalog(out, parts, mode, registry.SchemaCatalog(), visibility)
-}
-
+// runSchemaCatalog resolves the path through the build-selected schema catalog
+// and renders the matching envelope(s). The catalog owns navigation (Resolve +
+// MethodRefs), while this adapter applies presentation visibility and chooses
+// the output shape.
 func runSchemaCatalog(
 	out io.Writer,
 	parts []string,
 	mode core.StrictMode,
 	catalog apicatalog.Catalog,
+	guidance *affordance.Resolver,
 	visibility CommandVisibility,
 ) error {
 	// Test the source catalog before presentation projection. A distribution
 	// that intentionally conceals every generated method still has metadata;
 	// bare `schema` should render an empty list rather than claim metadata is
 	// unavailable.
-	if len(catalog.Services()) == 0 {
-		// No embedded metadata and the runtime fallback is empty too: offline
-		// with a cold cache, remote meta off, or an unwritable cache dir.
+	if len(catalog.Names()) == 0 {
 		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "No API metadata available").
-			WithHint("this binary has no embedded API metadata; run any command with network access to the open platform once so metadata can be fetched and cached")
+			WithHint("the current command build did not select any API metadata")
 	}
 	catalog = projectSchemaCatalog(catalog, visibility)
 	target, err := catalog.Resolve(parts)
 	if err != nil {
+		if loadErr := catalog.Err(); loadErr != nil {
+			return loadErr
+		}
 		return resolveError(err)
 	}
 	refs := catalog.MethodRefs(target, registry.FilterForStrictMode(mode))
+	// Navigation parses shards lazily; a corrupt shard must fail typed rather
+	// than silently shrink the listing.
+	if loadErr := catalog.Err(); loadErr != nil {
+		return loadErr
+	}
 	if target.Kind == apicatalog.TargetMethod {
 		if len(refs) == 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"Method %s not available in current identity mode", target.Method.SchemaPath()).
 				WithHint("strict mode hides methods the active account identity cannot call; it is shown for an identity (user or bot) that has the required access token")
 		}
-		output.PrintJson(out, schema.EnvelopeOf(refs[0]))
+		output.PrintJson(out, schema.EnvelopeOf(guidance, refs[0]))
 		return nil
 	}
-	output.PrintJson(out, schema.Envelopes(refs))
+	output.PrintJson(out, schema.Envelopes(guidance, refs))
 	return nil
 }
 
@@ -174,39 +172,31 @@ func runSchemaCatalog(
 // projection removed its last reachable method, so a fully concealed service
 // cannot survive as an empty schema namespace. Originally-empty, unaffected
 // metadata remains unchanged for backward compatibility.
+//
+// The projection is applied per service on first navigation, so a precise
+// `schema drive.file.list` still parses only the drive shard.
 func projectSchemaCatalog(catalog apicatalog.Catalog, visibility CommandVisibility) apicatalog.Catalog {
 	if visibility == nil {
 		return catalog
 	}
-
-	services := make([]meta.Service, 0, len(catalog.Services()))
-	changed := false
-	for _, service := range catalog.Services() {
+	return apicatalog.Filter(catalog, func(service meta.Service) (meta.Service, bool) {
 		servicePath := []string{service.Name}
 		if !visibility(servicePath) {
-			changed = true
-			continue
+			return meta.Service{}, false
 		}
-
 		resources, resourceChanged, hasVisibleMethod := projectSchemaResources(
 			service.Resources,
 			servicePath,
 			visibility,
 		)
 		if resourceChanged && !hasVisibleMethod {
-			changed = true
-			continue
+			return meta.Service{}, false
 		}
 		if resourceChanged {
 			service.Resources = resources
-			changed = true
 		}
-		services = append(services, service)
-	}
-	if !changed {
-		return catalog
-	}
-	return apicatalog.New(catalog.Source(), services)
+		return service, true
+	})
 }
 
 func projectSchemaResources(

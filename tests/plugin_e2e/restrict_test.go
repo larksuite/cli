@@ -143,19 +143,13 @@ func TestConcealedForkProjectsFrameworkOwnedRootHelp(t *testing.T) {
 
 func TestConcealedForkProjectsSchemaFromGeneratedMethodHelp(t *testing.T) {
 	bin := buildConcealedFork(t, "concealed-readonly", readonlyPlugin)
-	catalog := strings.ReplaceAll(seededCatalogJSON, "plugine2e", "im")
-	assertUnavailableEnvelope(t, runWithSeededCatalog(t, bin, catalog, "schema"))
-	rootHelp := runWithSeededCatalog(t, bin, catalog, "--help")
+	assertUnavailableEnvelope(t, run(t, bin, "schema"))
+	rootHelp := run(t, bin, "--help")
 	if rootHelp.exit != 0 || strings.Contains(rootHelp.stdout, "lark-cli schema ") {
-		t.Fatalf("seeded root help did not project schema: exit=%d stdout=%s stderr=%s",
+		t.Fatalf("root help did not project schema: exit=%d stdout=%s stderr=%s",
 			rootHelp.exit, rootHelp.stdout, rootHelp.stderr)
 	}
-	res := runWithSeededCatalog(
-		t,
-		bin,
-		catalog,
-		"im", "widgets", "get", "--help",
-	)
+	res := run(t, bin, "im", "chats", "get", "--help")
 	if res.exit != 0 {
 		t.Fatalf("generated method --help exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
 	}
@@ -163,7 +157,7 @@ func TestConcealedForkProjectsSchemaFromGeneratedMethodHelp(t *testing.T) {
 		strings.Contains(res.stdout, "Full parameter schema:") {
 		t.Fatalf("concealed schema left a generated-method dead pointer:\n%s", res.stdout)
 	}
-	for _, want := range []string{"synthetic read method", "--id"} {
+	for _, want := range []string{"Obtain group information", "--chat-id"} {
 		if !strings.Contains(res.stdout, want) {
 			t.Errorf("schema projection removed generated-method help %q:\n%s", want, res.stdout)
 		}
@@ -179,40 +173,30 @@ func TestConcealedForkProjectsSchemaFromGeneratedMethodHelp(t *testing.T) {
 func TestConcealedForkProjectsRetainedSchemaCatalog(t *testing.T) {
 	bin := buildConcealedFork(t, "concealed-schema-mail", schemaMailConcealPlugin)
 
-	hidden := runWithSeededCatalog(
-		t,
-		bin,
-		schemaProjectionCatalogJSON,
-		"schema", "mail.user_mailbox.messages.get",
-	)
+	hidden := run(t, bin, "schema", "mail.user_mailbox.messages.get")
 	if hidden.exit != 2 || !gjson.Valid(hidden.stderr) {
 		t.Fatalf("concealed schema lookup exit=%d stdout=%s stderr=%s", hidden.exit, hidden.stdout, hidden.stderr)
 	}
 	if got := gjson.Get(hidden.stderr, "error.subtype").String(); got != "invalid_argument" {
 		t.Errorf("concealed schema subtype=%q want invalid_argument; stderr=%s", got, hidden.stderr)
 	}
-	if strings.Contains(hidden.stdout+hidden.stderr, "hidden mail schema method") {
+	if strings.Contains(hidden.stdout+hidden.stderr, "Get Email Details") {
 		t.Errorf("concealed exact lookup exposed method metadata: stdout=%s stderr=%s", hidden.stdout, hidden.stderr)
 	}
 
-	broad := runWithSeededCatalog(t, bin, schemaProjectionCatalogJSON, "schema")
+	broad := run(t, bin, "schema")
 	if broad.exit != 0 || !gjson.Valid(broad.stdout) {
 		t.Fatalf("broad schema exit=%d stdout=%s stderr=%s", broad.exit, broad.stdout, broad.stderr)
 	}
-	if strings.Contains(broad.stdout, "mail user_mailbox.messages get") || strings.Contains(broad.stdout, "hidden mail schema method") {
+	if strings.Contains(broad.stdout, "mail user_mailbox.messages get") || strings.Contains(broad.stdout, "Get Email Details") {
 		t.Errorf("broad schema exposed concealed mail method: %s", broad.stdout)
 	}
-	if !strings.Contains(broad.stdout, "im widgets get") {
+	if !strings.Contains(broad.stdout, "im chats get") {
 		t.Errorf("broad schema lost visible im method: %s", broad.stdout)
 	}
 
-	visible := runWithSeededCatalog(
-		t,
-		bin,
-		schemaProjectionCatalogJSON,
-		"schema", "im.widgets.get",
-	)
-	if visible.exit != 0 || !strings.Contains(visible.stdout, "im widgets get") {
+	visible := run(t, bin, "schema", "im.chats.get")
+	if visible.exit != 0 || !strings.Contains(visible.stdout, "im chats get") {
 		t.Fatalf("visible schema lookup exit=%d stdout=%s stderr=%s", visible.exit, visible.stdout, visible.stderr)
 	}
 
@@ -241,17 +225,17 @@ func TestConcealedForkProjectsRetainedSchemaCatalog(t *testing.T) {
 		{
 			name:    "visible dotted descendant",
 			args:    []string{"__complete", "schema", "im."},
-			visible: "im.widgets.",
+			visible: "im.chats.",
 		},
 		{
 			name:    "visible space descendant",
 			args:    []string{"__complete", "schema", "im", ""},
-			visible: "widgets",
+			visible: "chats",
 		},
 	}
 	for _, tc := range completionCases {
 		t.Run(tc.name, func(t *testing.T) {
-			res := runWithSeededCatalog(t, bin, schemaProjectionCatalogJSON, tc.args...)
+			res := run(t, bin, tc.args...)
 			if res.exit != 0 {
 				t.Fatalf("completion exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
 			}
@@ -279,7 +263,6 @@ func TestConcealedForkUsesTargetFreeAuthorizationFallback(t *testing.T) {
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
-		"LARKSUITE_CLI_REMOTE_META=off",
 	)
 	res := runWithEnv(t, bin, env, "drive", "+search", "--as", "user")
 	if res.exit != 3 || !gjson.Valid(res.stderr) {
@@ -304,7 +287,6 @@ func TestConcealedForkProjectsAuthorizationCommandOutOfValidationMessage(t *test
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
-		"LARKSUITE_CLI_REMOTE_META=off",
 	)
 	res := runWithEnv(t, bin, env, "drive", "+search", "--mine")
 	if res.exit != 2 || !gjson.Valid(res.stderr) {
@@ -326,7 +308,6 @@ func TestConcealedForkProjectsRetainedFrameworkRecovery(t *testing.T) {
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
-		"LARKSUITE_CLI_REMOTE_META=off",
 	)
 
 	assertUnavailableEnvelope(t, runWithEnv(t, bin, env, "profile", "add", "--help"))
@@ -473,60 +454,6 @@ func init() {
 			MustBuild())
 }
 `
-
-const schemaProjectionCatalogJSON = `{
-  "version": "9.9.9",
-  "services": [
-    {
-      "name": "mail",
-      "version": "v1",
-      "title": "mail projection fixture",
-      "description": "mail service concealed from schema",
-      "servicePath": "/open-apis/mail/v1",
-      "resources": {
-        "user_mailbox.messages": {
-          "methods": {
-            "get": {
-              "id": "mail.user_mailbox.messages.get",
-              "path": "/open-apis/mail/v1/user_mailboxes/:user_mailbox_id/messages/:message_id",
-              "httpMethod": "GET",
-              "description": "hidden mail schema method",
-              "risk": "read",
-              "accessTokens": ["tenant"],
-              "parameters": {
-                "id": {"type": "string", "location": "path", "required": true}
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "name": "im",
-      "version": "v1",
-      "title": "im projection fixture",
-      "description": "visible control service",
-      "servicePath": "/open-apis/im/v1",
-      "resources": {
-        "widgets": {
-          "methods": {
-            "get": {
-              "id": "im.widgets.get",
-              "path": "/open-apis/im/v1/widgets/:id",
-              "httpMethod": "GET",
-              "description": "visible im schema method",
-              "risk": "read",
-              "accessTokens": ["tenant"],
-              "parameters": {
-                "id": {"type": "string", "location": "path", "required": true}
-              }
-            }
-          }
-        }
-      }
-    }
-  ]
-}`
 
 // multiRulePlugin registers two scope-exclusive Restrict rules (im-only,
 // docs-only). A command outside both domains (e.g. the top-level "schema"

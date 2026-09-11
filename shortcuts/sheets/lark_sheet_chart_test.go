@@ -524,7 +524,13 @@ func TestChartConfigUpdate_XAxisBoundsRequireContinuousExistingAxis(t *testing.T
 	linear := map[string]interface{}{
 		"plotArea": map[string]interface{}{
 			"axes": []interface{}{
-				map[string]interface{}{"type": "x", "position": "bottom", "valueType": "linear"},
+				map[string]interface{}{
+					"type":      "x",
+					"valueType": "linear",
+					"axisLine":  true,
+					"label":     map[string]interface{}{"angle": 15},
+				},
+				map[string]interface{}{"type": "y", "position": "left", "valueType": "linear"},
 			},
 		},
 	}
@@ -532,9 +538,14 @@ func TestChartConfigUpdate_XAxisBoundsRequireContinuousExistingAxis(t *testing.T
 	if err != nil {
 		t.Fatalf("linear X axis rejected: %v", err)
 	}
-	xAxis := chartDryRunSnapshot(t, input)["plotArea"].(map[string]interface{})["axes"].([]interface{})[0].(map[string]interface{})
-	if xAxis["min"] != float64(237) {
-		t.Fatalf("x axis = %#v, want min=237", xAxis)
+	axes := chartDryRunSnapshot(t, input)["plotArea"].(map[string]interface{})["axes"].([]interface{})
+	if len(axes) != 2 {
+		t.Fatalf("axes = %#v, want existing axes without a duplicate X axis", axes)
+	}
+	xAxis := axes[0].(map[string]interface{})
+	label := xAxis["label"].(map[string]interface{})
+	if xAxis["min"] != float64(237) || xAxis["axisLine"] != true || label["angle"] != float64(15) {
+		t.Fatalf("x axis = %#v, want min=237 with existing axis properties preserved", xAxis)
 	}
 }
 
@@ -645,6 +656,23 @@ func TestChartSemanticShortcuts_DataLabelCombinations(t *testing.T) {
 	}
 }
 
+func TestChartConfigUpdate_DataLabelsNoneSendsExplicitDeletion(t *testing.T) {
+	t.Parallel()
+	chartConfigUpdate := shortcutFromRegistry(t, "+chart-config-update")
+	body := parseDryRunBody(t, chartConfigUpdate, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--data-labels", "none",
+	})
+	snapshot := chartDryRunSnapshot(t, decodeToolInput(t, body, "manage_chart_object"))
+	plot := snapshot["plotArea"].(map[string]interface{})["plot"].(map[string]interface{})
+	labels, exists := plot["labels"]
+	if !exists || labels != nil {
+		t.Fatalf("labels = %#v (exists=%t), want explicit null deletion marker", labels, exists)
+	}
+}
+
 func TestChartConfigUpdate_DataLabelPositionDoesNotEnableLabels(t *testing.T) {
 	t.Parallel()
 	current := map[string]interface{}{
@@ -684,30 +712,29 @@ func TestChartConfigUpdate_DataLabelPositionDoesNotEnableLabels(t *testing.T) {
 	}
 }
 
-func TestChartSemanticShortcuts_LastPointLabel(t *testing.T) {
+func TestChartConfigUpdate_LastPointLabelCompatibility(t *testing.T) {
 	t.Parallel()
 	chartConfigUpdate := shortcutFromRegistry(t, "+chart-config-update")
-	for _, tc := range []struct {
-		arg  string
-		want bool
-	}{
-		{arg: "true", want: true},
-		{arg: "false", want: false},
-	} {
-		body := parseDryRunBody(t, chartConfigUpdate, []string{
-			"--url", testURL,
-			"--sheet-id", testSheetID,
-			"--chart-id", "chart-1",
-			"--last-point-label=" + tc.arg,
-		})
-		input := decodeToolInput(t, body, "manage_chart_object")
-		if _, ok := input["last_point_label"]; ok {
-			t.Fatalf("--last-point-label=%s must not be written at the tool input root: %#v", tc.arg, input)
-		}
-		properties := input["properties"].(map[string]interface{})
-		if properties["last_point_label"] != tc.want {
-			t.Fatalf("--last-point-label=%s input = %#v, want %t", tc.arg, input, tc.want)
-		}
+	parent, _, _, _ := newTestRig(t, chartConfigUpdate)
+	cmd, _, err := parent.Find([]string{"+chart-config-update"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flag := cmd.Flags().Lookup("last-point-label")
+	if flag == nil || !flag.Hidden {
+		t.Fatalf("--last-point-label compatibility flag = %#v, want registered and hidden", flag)
+	}
+
+	body := parseDryRunBody(t, chartConfigUpdate, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--last-point-label=true",
+	})
+	input := decodeToolInput(t, body, "manage_chart_object")
+	properties := input["properties"].(map[string]interface{})
+	if properties["last_point_label"] != true {
+		t.Fatalf("last_point_label = %#v, want true", properties["last_point_label"])
 	}
 }
 
@@ -815,6 +842,90 @@ func TestChartCreateBasic_SelectsDimensionsAtCreation(t *testing.T) {
 	}
 }
 
+func TestChartAggregateCategoriesFlags(t *testing.T) {
+	t.Parallel()
+
+	createBody := parseDryRunBody(t, ChartCreateBasic, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-type", "line",
+		"--data-range", "A1:C7",
+		"--aggregate-categories=false",
+	})
+	basic := decodeToolInput(t, createBody, "manage_chart_object")["basic_chart"].(map[string]interface{})
+	if basic["aggregate_categories"] != false {
+		t.Fatalf("basic_chart.aggregate_categories = %#v, want false", basic["aggregate_categories"])
+	}
+
+	batchCreateBody := parseDryRunBody(t, BatchChartCreate, []string{
+		"--url", testURL,
+		"--operations", `[{"sheet_id":"sh1","chart_type":"line","data_range":"A1:C7","aggregate_categories":false}]`,
+	})
+	batchCreateInput := decodeToolInput(t, batchCreateBody, "batch_update")
+	batchCreateOperation := batchCreateInput["operations"].([]interface{})[0].(map[string]interface{})
+	batchCreateBasic := batchCreateOperation["input"].(map[string]interface{})["basic_chart"].(map[string]interface{})
+	if batchCreateBasic["aggregate_categories"] != false {
+		t.Fatalf("batch basic_chart.aggregate_categories = %#v, want false", batchCreateBasic["aggregate_categories"])
+	}
+
+	updateBody := parseDryRunBody(t, ChartConfigUpdate, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--aggregate-categories=false",
+	})
+	data := chartDryRunSnapshot(t, decodeToolInput(t, updateBody, "manage_chart_object"))["data"].(map[string]interface{})
+	serie := data["dim1"].(map[string]interface{})["serie"].(map[string]interface{})
+	if serie["aggregate"] != false {
+		t.Fatalf("snapshot.data.dim1.serie.aggregate = %#v, want false", serie["aggregate"])
+	}
+
+	batchBody := parseDryRunBody(t, BatchChartUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{"shortcut":"+chart-config-update","input":{"sheet_id":"sh1","chart_id":"chart-1","aggregate_categories":false}}]`,
+	})
+	batchInput := decodeToolInput(t, batchBody, "batch_update")
+	operation := batchInput["operations"].([]interface{})[0].(map[string]interface{})
+	data = chartDryRunSnapshot(t, operation["input"].(map[string]interface{}))["data"].(map[string]interface{})
+	serie = data["dim1"].(map[string]interface{})["serie"].(map[string]interface{})
+	if serie["aggregate"] != false {
+		t.Fatalf("batch snapshot.data.dim1.serie.aggregate = %#v, want false", serie["aggregate"])
+	}
+}
+
+func TestChartConfigUpdate_RejectsAggregateCategoriesForStaticData(t *testing.T) {
+	t.Parallel()
+	fv := newMapFlagViewForCommand("+chart-config-update", map[string]interface{}{
+		"sheet-id":             testSheetID,
+		"chart-id":             "chart-1",
+		"aggregate-categories": false,
+	})
+	snapshot := map[string]interface{}{
+		"plotArea": map[string]interface{}{"plot": map[string]interface{}{"type": "line"}},
+		"data": map[string]interface{}{
+			"isStaticData": true,
+			"dim1": map[string]interface{}{
+				"field": map[string]interface{}{"text": "A,B"},
+			},
+			"dim2": map[string]interface{}{
+				"fields": []interface{}{map[string]interface{}{"text": "1,2"}},
+			},
+		},
+	}
+
+	_, _, err := chartConfigUpdateInputFromSnapshot(
+		fv,
+		"token",
+		testSheetID,
+		"",
+		snapshot,
+	)
+	validation := requireValidation(t, err, "does not apply to static-data charts")
+	if validation.Param != "--aggregate-categories" {
+		t.Fatalf("param = %q, want --aggregate-categories", validation.Param)
+	}
+}
+
 func TestChartCreateBasic_ConfiguresComboSeriesSemantically(t *testing.T) {
 	t.Parallel()
 	body := parseDryRunBody(t, ChartCreateBasic, []string{
@@ -823,11 +934,11 @@ func TestChartCreateBasic_ConfiguresComboSeriesSemantically(t *testing.T) {
 		"--chart-type", "combo",
 		"--data-range", "A1:D7",
 		"--dim2-indexes", "2,3,4",
-		"--series-types", "column,column,line",
+		"--series-types", "column,line,scatter",
 		"--series-y-axes", "left,left,right",
 	})
 	basic := decodeToolInput(t, body, "manage_chart_object")["basic_chart"].(map[string]interface{})
-	if got := basic["series_types"]; !reflect.DeepEqual(got, []interface{}{"column", "column", "line"}) {
+	if got := basic["series_types"]; !reflect.DeepEqual(got, []interface{}{"column", "line", "scatter"}) {
 		t.Fatalf("basic_chart.series_types = %#v", got)
 	}
 	if got := basic["series_y_axes"]; !reflect.DeepEqual(got, []interface{}{"left", "left", "right"}) {
@@ -839,12 +950,12 @@ func TestChartCreateBasic_ConfiguresComboSeriesSemanticallyInBatch(t *testing.T)
 	t.Parallel()
 	body := parseDryRunBody(t, BatchChartCreate, []string{
 		"--url", testURL,
-		"--operations", `[{"sheet_id":"sh1","chart_type":"combo","data_range":"A1:D7","dim2_indexes":[2,3,4],"series_types":["column","column","line"],"series_y_axes":["left","left","right"]}]`,
+		"--operations", `[{"sheet_id":"sh1","chart_type":"combo","data_range":"A1:D7","dim2_indexes":[2,3,4],"series_types":["column","line","scatter"],"series_y_axes":["left","left","right"]}]`,
 	})
 	input := decodeToolInput(t, body, "batch_update")
 	ops := input["operations"].([]interface{})
 	basic := ops[0].(map[string]interface{})["input"].(map[string]interface{})["basic_chart"].(map[string]interface{})
-	if got := basic["series_types"]; !reflect.DeepEqual(got, []interface{}{"column", "column", "line"}) {
+	if got := basic["series_types"]; !reflect.DeepEqual(got, []interface{}{"column", "line", "scatter"}) {
 		t.Fatalf("batch basic_chart.series_types = %#v", got)
 	}
 	if got := basic["series_y_axes"]; !reflect.DeepEqual(got, []interface{}{"left", "left", "right"}) {

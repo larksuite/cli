@@ -14,7 +14,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// maxReplaceParts matches the server-side cap declared in meta_data.json
+// maxReplaceParts matches the server-side cap declared in the API catalog.
 // ("最少1条，最多200条"). Enforced client-side so a too-large batch fails fast
 // with a clear message instead of a 400 from the backend.
 const maxReplaceParts = 200
@@ -113,7 +113,7 @@ var SlidesReplaceSlide = common.Shortcut{
 		if ref.Kind == "wiki" {
 			presentationID = "<resolved_slides_token>"
 			dry.Desc("2-step orchestration: resolve wiki → replace slide parts").
-				GET("/open-apis/wiki/v2/spaces/get_node").
+				GET(slidesWikiNodeByTokenPath).
 				Desc("[1] Resolve wiki node to slides presentation").
 				Params(map[string]interface{}{"token": ref.Token})
 		} else {

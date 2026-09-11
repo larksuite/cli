@@ -398,22 +398,22 @@ func readWhiteboardPath(runtime *common.RuntimeContext, pathValue string, typ st
 	if !strings.HasPrefix(pathRaw, "@") {
 		return "", common.ValidationErrorf("whiteboard %s path %q must start with @, for example @diagram.%s", typ, pathValue, exampleWhiteboardExt(typ)).WithParam("path")
 	}
-	relPath := strings.TrimSpace(strings.TrimPrefix(pathRaw, "@"))
-	if relPath == "" {
+	filePath := strings.TrimSpace(strings.TrimPrefix(pathRaw, "@"))
+	if filePath == "" {
 		return "", common.ValidationErrorf("whiteboard %s path cannot be empty after @", typ).WithParam("path")
 	}
-	clean := filepath.Clean(relPath)
-	if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", common.ValidationErrorf("whiteboard %s path %q must be a relative path within the current working directory", typ, pathValue).WithParam("path")
-	}
-	if !whiteboardExtAllowed(typ, strings.ToLower(filepath.Ext(clean))) {
+	if !whiteboardExtAllowed(typ, strings.ToLower(filepath.Ext(filePath))) {
 		return "", common.ValidationErrorf("whiteboard %s path %q must point to a %s file", typ, pathValue, whiteboardExtList(typ)).WithParam("path")
 	}
-	data, err := cmdutil.ReadInputFile(runtime.FileIO(), clean)
+	resolvedPath, _, err := statDocResource(runtime, filePath)
+	var data []byte
+	if err == nil {
+		data, err = cmdutil.ReadInputFile(runtime.FileIO(), resolvedPath)
+	}
 	if err != nil {
-		return "", common.ValidationErrorf("whiteboard %s path %q cannot be read from the current working directory; check that the file exists relative to where lark-cli is running: %v", typ, clean, err).
+		return "", common.ValidationErrorf("whiteboard %s path %q cannot be read (resolved path %q): %v", typ, filePath, resolvedPath, err).
 			WithParam("path").
-			WithParams(errs.InvalidParam{Name: clean, Reason: fmt.Sprintf("whiteboard %s path cannot be read", typ)}).
+			WithParams(errs.InvalidParam{Name: filePath, Reason: fmt.Sprintf("whiteboard %s path cannot be read", typ)}).
 			WithCause(err)
 	}
 	return string(data), nil
@@ -664,20 +664,20 @@ func readHTML5BlockPath(runtime *common.RuntimeContext, pathValue string, label 
 	if !strings.HasPrefix(pathRaw, "@") {
 		return "", common.ValidationErrorf("%s %q must start with @, for example @widget.html", label, pathValue).WithParam("path")
 	}
-	relPath := strings.TrimSpace(strings.TrimPrefix(pathRaw, "@"))
-	if relPath == "" {
+	filePath := strings.TrimSpace(strings.TrimPrefix(pathRaw, "@"))
+	if filePath == "" {
 		return "", common.ValidationErrorf("%s cannot be empty after @", label).WithParam("path")
 	}
-	clean := filepath.Clean(relPath)
-	if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", common.ValidationErrorf("%s %q must be a relative path within the current working directory", label, pathValue).WithParam("path")
-	}
-	if strings.ToLower(filepath.Ext(clean)) != ".html" {
+	if strings.ToLower(filepath.Ext(filePath)) != ".html" {
 		return "", common.ValidationErrorf("%s %q must point to a .html file", label, pathValue).WithParam("path")
 	}
-	data, err := cmdutil.ReadInputFile(runtime.FileIO(), clean)
+	resolvedPath, _, err := statDocResource(runtime, filePath)
+	var data []byte
+	if err == nil {
+		data, err = cmdutil.ReadInputFile(runtime.FileIO(), resolvedPath)
+	}
 	if err != nil {
-		return "", common.ValidationErrorf("%s %q cannot be read from the current working directory; check that the file exists relative to where lark-cli is running: %v", label, clean, err).WithParam("path").WithCause(err)
+		return "", common.ValidationErrorf("%s %q cannot be read (resolved path %q): %v", label, filePath, resolvedPath, err).WithParam("path").WithCause(err)
 	}
 	return string(data), nil
 }

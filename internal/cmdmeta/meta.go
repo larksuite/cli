@@ -62,7 +62,33 @@ const (
 	affordanceServiceKey = "cmdmeta.affordance.service"
 	affordanceMethodKey  = "cmdmeta.affordance.method"
 	declaredScopesKey    = "cmdmeta.declared_scopes"
+
+	// requiresFullTreeKey marks a command whose output describes the assembled
+	// command tree itself, so a target-only assembly would change its result.
+	requiresFullTreeKey = "cmdmeta.requires_full_tree"
 )
+
+// SetRequiresFullTree declares that cmd introspects the assembled command tree
+// (for example by reporting how many paths a policy denied). The root builder
+// expands every domain when routing reaches such a command, so its output does
+// not depend on which arguments happened to select it.
+func SetRequiresFullTree(cmd *cobra.Command) {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[requiresFullTreeKey] = "true"
+}
+
+// RequiresFullTree reports whether cmd or one of its ancestors was marked with
+// SetRequiresFullTree.
+func RequiresFullTree(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations[requiresFullTreeKey] == "true" {
+			return true
+		}
+	}
+	return false
+}
 
 // Meta groups the three command-level metadata axes consumed by the policy
 // engine and hook selectors.

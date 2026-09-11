@@ -21,7 +21,24 @@ const (
 )
 
 func ScanFile(path string, data []byte) []Finding {
-	return scanText(filepath.ToSlash(path), "file", string(data), isDetectorRuleFile(path))
+	file := filepath.ToSlash(path)
+	findings := scanText(file, "file", string(data), isDetectorRuleFile(path))
+	if !isCatalogFile(file) {
+		return findings
+	}
+
+	trustedLines := catalogTrustedGenericCredentialLines(data)
+	if len(trustedLines) == 0 {
+		return findings
+	}
+	filtered := findings[:0]
+	for _, finding := range findings {
+		if finding.Rule == "public_content_generic_credential" && trustedLines[finding.Line] {
+			continue
+		}
+		filtered = append(filtered, finding)
+	}
+	return filtered
 }
 
 func semanticCandidate(file, source, text string, line int) []Finding {
@@ -1086,6 +1103,12 @@ func messageForRule(rule string) string {
 		return "public contribution contains a CCM-Harness trailer"
 	case "public_content_semantic_candidate":
 		return "public contribution contains text for semantic public content review"
+	case "public_content_catalog_pii":
+		return "API catalog contains a personal email address"
+	case "public_content_catalog_internal_host":
+		return "API catalog contains an internal host name"
+	case "public_content_catalog_prompt_injection":
+		return "API catalog contains a prompt-injection marker"
 	default:
 		return "public contribution contains content that should not be published"
 	}

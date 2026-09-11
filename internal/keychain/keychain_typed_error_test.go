@@ -12,29 +12,26 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-// TestWrapErrorEmitsTypedAPIError pins the wrapError contract after the typed
-// errs migration: keychain failures surface as *errs.APIError with subtype
-// "unknown", exit code 1 (ExitAPI, unchanged from the legacy behavior), a
-// non-empty troubleshooting hint, and the underlying error reachable via
-// errors.Unwrap.
-func TestWrapErrorEmitsTypedAPIError(t *testing.T) {
+// TestWrapErrorEmitsTypedStorageError pins keychain as the single taxonomy
+// owner for its storage failures.
+func TestWrapErrorEmitsTypedStorageError(t *testing.T) {
 	underlying := errors.New("keyring backend exploded")
 	err := wrapError("Set", underlying)
 
-	var apiErr *errs.APIError
-	if !errors.As(err, &apiErr) {
-		t.Fatalf("wrapError returned %T (%v); expected *errs.APIError", err, err)
+	var storageErr *errs.InternalError
+	if !errors.As(err, &storageErr) {
+		t.Fatalf("wrapError returned %T (%v); expected *errs.InternalError", err, err)
 	}
-	if apiErr.Subtype != errs.SubtypeUnknown {
-		t.Errorf("subtype = %q, want %q", apiErr.Subtype, errs.SubtypeUnknown)
+	if storageErr.Subtype != errs.SubtypeStorage {
+		t.Errorf("subtype = %q, want %q", storageErr.Subtype, errs.SubtypeStorage)
 	}
-	if got := output.ExitCodeOf(err); got != output.ExitAPI {
-		t.Errorf("exit code = %d, want %d (ExitAPI, legacy parity)", got, output.ExitAPI)
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Errorf("exit code = %d, want %d (ExitInternal)", got, output.ExitInternal)
 	}
-	if !strings.Contains(apiErr.Message, "keychain Set failed") {
-		t.Errorf("message = %q, want it to contain %q", apiErr.Message, "keychain Set failed")
+	if !strings.Contains(storageErr.Message, "keychain Set failed") {
+		t.Errorf("message = %q, want it to contain %q", storageErr.Message, "keychain Set failed")
 	}
-	if apiErr.Hint == "" {
+	if storageErr.Hint == "" {
 		t.Error("hint is empty; wrapError must carry a troubleshooting hint")
 	}
 	if !errors.Is(err, underlying) {

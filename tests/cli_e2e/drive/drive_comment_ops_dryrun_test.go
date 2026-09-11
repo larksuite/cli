@@ -65,7 +65,7 @@ func TestDrive_CommentOpsDryRun(t *testing.T) {
 				"--dry-run",
 			},
 			wantMethod: "GET",
-			wantURL:    "/open-apis/wiki/v2/spaces/get_node",
+			wantURL:    "/open-apis/wiki/v2/spaces/node_by_token",
 			assert: func(t *testing.T, out string) {
 				if got := clie2e.DryRunGet(out, "api.0.params.token").String(); got != "wikcnE2EComment" {
 					t.Fatalf("wiki token = %q, want wikcnE2EComment\nstdout:\n%s", got, out)
@@ -217,7 +217,7 @@ func TestDrive_CommentOpsDryRun(t *testing.T) {
 				"--dry-run",
 			},
 			wantMethod: "GET",
-			wantURL:    "/open-apis/wiki/v2/spaces/get_node",
+			wantURL:    "/open-apis/wiki/v2/spaces/node_by_token",
 			assert: func(t *testing.T, out string) {
 				if got := clie2e.DryRunGet(out, "api.1.method").String(); got != "GET" {
 					t.Fatalf("api.1.method = %q, want GET\nstdout:\n%s", got, out)
@@ -290,7 +290,7 @@ func TestDrive_CommentOpsDryRun(t *testing.T) {
 				"--dry-run",
 			},
 			wantMethod: "GET",
-			wantURL:    "/open-apis/wiki/v2/spaces/get_node",
+			wantURL:    "/open-apis/wiki/v2/spaces/node_by_token",
 			assert: func(t *testing.T, out string) {
 				if got := clie2e.DryRunGet(out, "api.1.method").String(); got != "POST" {
 					t.Fatalf("api.1.method = %q, want POST\nstdout:\n%s", got, out)

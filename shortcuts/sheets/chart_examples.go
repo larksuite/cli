@@ -35,7 +35,7 @@ var chartExampleTemplates = map[string]string{
 	"radar":  chartSimpleExample("radar"),
 	"bubble": `{
   "position": {"row": 1, "col": "G"},
-  "size": {"width": 600, "height": 400},
+  "size": {"width": 640, "height": 400},
   "snapshot": {
     "title": {"text": "气泡图标题"},
     "plotArea": {"plot": {
@@ -61,7 +61,7 @@ var chartExampleTemplates = map[string]string{
 }`,
 	"waterfall": `{
   "position": {"row": 1, "col": "F"},
-  "size": {"width": 600, "height": 400},
+  "size": {"width": 640, "height": 400},
   "snapshot": {
     "title": {"text": "瀑布图标题"},
     "plotArea": {"plot": {
@@ -82,7 +82,7 @@ var chartExampleTemplates = map[string]string{
 }`,
 	"pareto": `{
   "position": {"row": 1, "col": "F"},
-  "size": {"width": 600, "height": 400},
+  "size": {"width": 640, "height": 400},
   "snapshot": {
     "title": {"text": "排列图标题"},
     "plotArea": {"plot": {
@@ -102,7 +102,7 @@ var chartExampleTemplates = map[string]string{
 }`,
 	"scatter": `{
   "position": {"row": 1, "col": "F"},
-  "size": {"width": 600, "height": 400},
+  "size": {"width": 640, "height": 400},
   "snapshot": {
     "title": {"text": "图表标题"},
     "plotArea": {"plot": {"type": "scatter"}},
@@ -115,7 +115,7 @@ var chartExampleTemplates = map[string]string{
 }`,
 	"pie": `{
   "position": {"row": 1, "col": "F"},
-  "size": {"width": 600, "height": 450},
+  "size": {"width": 720, "height": 440},
   "snapshot": {
     "title": {"text": "占比标题"},
     "plotArea": {"plot": {
@@ -134,7 +134,7 @@ var chartExampleTemplates = map[string]string{
 }`,
 	"combo": `{
   "position": {"row": 1, "col": "F"},
-  "size": {"width": 700, "height": 400},
+  "size": {"width": 720, "height": 420},
   "snapshot": {
     "title": {"text": "柱线组合"},
     "plotArea": {"plot": {
@@ -156,9 +156,13 @@ var chartExampleTemplates = map[string]string{
 // chartSimpleExample renders the shared minimal shape for plot types that
 // need nothing beyond plot.type (column / bar / line / area / radar).
 func chartSimpleExample(typ string) string {
+	width, height := 640, 400
+	if typ == "bar" {
+		width, height = 720, 420
+	}
 	return fmt.Sprintf(`{
   "position": {"row": 1, "col": "F"},
-  "size": {"width": 600, "height": 400},
+  "size": {"width": %d, "height": %d},
   "snapshot": {
     "title": {"text": "图表标题"},
     "plotArea": {"plot": {"type": %q}},
@@ -168,7 +172,7 @@ func chartSimpleExample(typ string) string {
       "dim2": {"series": [{"index": 2}, {"index": 3}]}
     }
   }
-}`, typ)
+}`, width, height, typ)
 }
 
 func chartExampleTypes() []string {

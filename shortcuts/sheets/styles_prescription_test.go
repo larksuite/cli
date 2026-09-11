@@ -366,7 +366,9 @@ func TestStylesFieldTypesValidated(t *testing.T) {
 	}{
 		{"boolean font_weight", `"font_weight":true`, "font_weight must be a string, got boolean"},
 		{"numeric background_color", `"background_color":123`, "background_color must be a string, got number"},
-		{"string font_size", `"font_size":"12"`, "font_size must be a number, got string"},
+		// A quoted number is coerced (see the reflow row in the styles
+		// corpus); a word is not a number in any reading and still fails.
+		{"non-numeric font_size", `"font_size":"large"`, "font_size must be a number, got string"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -579,14 +581,20 @@ func TestAggregatedIssuesKeepPrescriptions(t *testing.T) {
 		// the SAME defect collapse instead — pinned below.)
 		_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
 			"--url", testURL,
-			"--writes", `[{"range":"A1","cells":[[{"value":1}]]},{"sheet_name":"S","range":"A1:B1","cells":[[{"value":2}]]}]`,
+			"--writes", `[{"range":"A1","cells":[[{"value":1}]]},{"sheet_name":"S","range":"A1:A1","cells":[[{"value":2},{"value":3}]]}]`,
 		})
 		ve := requireValidation(t, err, "--writes has 2 issues")
 		if !strings.Contains(ve.Message, "+workbook-info") {
 			t.Errorf("the first issue's Hint prescription should be inlined, got %q", ve.Message)
 		}
-		if !strings.Contains(ve.Message, `--range "A1:B1" spans`) {
+		if !strings.Contains(ve.Message, `--range "A1:A1" spans`) {
 			t.Errorf("the second issue should be rendered too, got %q", ve.Message)
+		}
+		if ve.Param != "--writes" {
+			t.Errorf("Param = %q, want %q — the fold re-attributes to the outer flag", ve.Param, "--writes")
+		}
+		if ve.Cause == nil {
+			t.Error("Cause = nil, want the first inner issue preserved through the fold")
 		}
 	})
 

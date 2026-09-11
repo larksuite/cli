@@ -1153,7 +1153,7 @@ func TestSlidesCommentExecuteSuccessWithCompoundBlockID(t *testing.T) {
 func TestSlidesCommentViaWikiResolve(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1236,7 +1236,7 @@ func TestSheetCommentExecuteWithURL(t *testing.T) {
 func TestSheetCommentViaWikiResolve(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1272,7 +1272,7 @@ func TestSheetCommentViaWikiResolve(t *testing.T) {
 func TestSheetCommentViaWikiMissingBlockID(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1537,7 +1537,7 @@ func TestDryRunSheetDirectURL(t *testing.T) {
 func TestDryRunWikiResolvesToSheet(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1563,7 +1563,7 @@ func TestDryRunWikiResolvesToSheet(t *testing.T) {
 func TestDryRunWikiResolvesToDocxFull(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1650,7 +1650,7 @@ func TestDryRunBaseDirectURL(t *testing.T) {
 func TestDryRunWikiResolvesToSlides(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1687,7 +1687,7 @@ func TestDryRunWikiResolvesToSlides(t *testing.T) {
 func TestDryRunWikiSlidesInvalidBlockIDSurfaces(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1721,7 +1721,7 @@ func TestDryRunWikiSlidesInvalidBlockIDSurfaces(t *testing.T) {
 func TestDryRunWikiSlidesResolutionErrorSurfaces(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1835,11 +1835,14 @@ func TestDryRunFileDirectURL(t *testing.T) {
 func TestResolveWikiToDocxFullComment(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
-				"node": map[string]interface{}{"obj_type": "docx", "obj_token": "docxResolved"},
+				"node": map[string]interface{}{
+					"obj_type": "docx", "obj_token": "docxResolved",
+					"node_type": "shortcut", "node_token": "wikiToken", "origin_node_token": "wikiOriginal",
+				},
 			},
 		},
 	})
@@ -1869,7 +1872,7 @@ func TestResolveWikiToBaseComment(t *testing.T) {
 		t.Run(objType, func(t *testing.T) {
 			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 			reg.Register(&httpmock.Stub{
-				Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+				Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 				Body: map[string]interface{}{
 					"code": 0, "msg": "success",
 					"data": map[string]interface{}{
@@ -1925,7 +1928,7 @@ func TestResolveWikiToBaseRejectsIncompatibleFlags(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 			reg.Register(&httpmock.Stub{
-				Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+				Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 				Body: map[string]interface{}{
 					"code": 0, "msg": "success",
 					"data": map[string]interface{}{
@@ -1951,7 +1954,7 @@ func TestResolveWikiToBaseRejectsIncompatibleFlags(t *testing.T) {
 func TestResolveWikiToSlidesFullCommentRejected(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1974,7 +1977,7 @@ func TestResolveWikiToSlidesFullCommentRejected(t *testing.T) {
 func TestResolveWikiIncompleteNodeData(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1991,6 +1994,7 @@ func TestResolveWikiIncompleteNodeData(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "incomplete node data") {
 		t.Fatalf("expected incomplete node error, got: %v", err)
 	}
+	assertDriveCommentIncompleteNodeError(t, err)
 }
 
 func TestDocOldFormatLocalCommentRejected(t *testing.T) {

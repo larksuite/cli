@@ -521,7 +521,7 @@ func validateListBaseWorkspace(runtime *common.RuntimeContext) error {
 	}
 	pageToken := ""
 	for {
-		params := map[string]interface{}{"page_size": 100, "entity_type": "base"}
+		params := map[string]interface{}{"page_size": 30, "entity_type": "base"}
 		if pageToken != "" {
 			params["page_token"] = pageToken
 		}
