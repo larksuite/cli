@@ -2307,8 +2307,11 @@ func normalizeCommaFlagValues(values []string) string {
 
 func normalizeInlineFlagValues(values []string) (string, error) {
 	var all []InlineSpec
-	for _, raw := range values {
-		specs, err := parseInlineSpecs(raw)
+	for occurrence, raw := range values {
+		if strings.TrimSpace(raw) == "" {
+			return "", mailValidationParamError("--inline", "--inline occurrence %d must be a JSON object or array", occurrence+1)
+		}
+		specs, err := parseInlineSpecsOccurrence(raw, occurrence+1)
 		if err != nil {
 			return "", err
 		}
@@ -2341,13 +2344,15 @@ func countInlineSpecsForLog(values []string) int {
 }
 
 // parseInlineSpecs parses one --inline flag value as either a JSON array or a
-// single JSON object. Returns an empty slice when raw is empty.
+// single JSON object. Empty input is retained as the internal no-inline value;
+// normalizeInlineFlagValues rejects it when the user explicitly supplies it.
 func parseInlineSpecs(raw string) ([]InlineSpec, error) {
+	return parseInlineSpecsOccurrence(raw, 0)
+}
+
+func parseInlineSpecsOccurrence(raw string, occurrence int) ([]InlineSpec, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil, nil
-	}
-	if raw == "null" {
 		return nil, nil
 	}
 	var specs []InlineSpec
@@ -2355,27 +2360,34 @@ func parseInlineSpecs(raw string) ([]InlineSpec, error) {
 	case '{':
 		var spec InlineSpec
 		if err := json.Unmarshal([]byte(raw), &spec); err != nil {
-			return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", err).WithCause(err)
+			return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", inlineOccurrencePrefix(occurrence), err).WithCause(err)
 		}
 		specs = []InlineSpec{spec}
 	case '[':
 		if err := json.Unmarshal([]byte(raw), &specs); err != nil {
-			return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", err).WithCause(err)
+			return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", inlineOccurrencePrefix(occurrence), err).WithCause(err)
 		}
 	default:
-		return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]'")
+		return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]'", inlineOccurrencePrefix(occurrence))
 	}
 	for i, s := range specs {
 		cid := normalizeInlineCID(s.CID)
 		if cid == "" {
-			return nil, mailValidationParamError("--inline", "--inline entry %d: \"cid\" must not be empty", i)
+			return nil, mailValidationParamError("--inline", "%s--inline entry %d: \"cid\" must not be empty", inlineOccurrencePrefix(occurrence), i+1)
 		}
 		if strings.TrimSpace(s.FilePath) == "" {
-			return nil, mailValidationParamError("--inline", "--inline entry %d: \"file_path\" must not be empty", i)
+			return nil, mailValidationParamError("--inline", "%s--inline entry %d: \"file_path\" must not be empty", inlineOccurrencePrefix(occurrence), i+1)
 		}
 		specs[i].CID = cid
 	}
 	return specs, nil
+}
+
+func inlineOccurrencePrefix(occurrence int) string {
+	if occurrence <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("occurrence %d: ", occurrence)
 }
 
 func validateInlineWithPlainTextTemplate(inlineFlag string, plainText bool, plainTextParam string) error {

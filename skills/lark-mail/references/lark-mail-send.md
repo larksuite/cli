@@ -67,17 +67,17 @@ lark-cli mail +send --to 'alice@example.com' --subject '测试' --body '<p>test<
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--to '<email>'` | 是 | 收件人邮箱。多个收件人请重复传 `--to`，每次只放一个地址，参数值用单引号包住 |
+| `--to '<emails>'` | 是 | 收件人列表，可重复；每次既可传一个地址，也可传兼容 RFC display-name 的逗号列表。各次结果按输入顺序合并，参数值用单引号包住 |
 | `--subject <text>` | 是 | 邮件主题 |
 | `--body <text>` | 二选一 | 邮件正文。推荐使用 HTML 获得富文本排版；也支持纯文本（自动检测）。使用 `--plain-text` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径）。与 `--body-file` 互斥 |
 | `--body-file <path>` | 二选一 | 从文件读取邮件正文 HTML（相对路径，仅限 cwd 子树）。与 `--body` 互斥。文件大小上限 32 MB |
 | `--from <email>` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `--mailbox` 指定所属邮箱。默认读取邮箱主地址 |
 | `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。当发件人（`--from`）与邮箱不同时使用。可通过 `accessible_mailboxes` 查询可用邮箱 |
-| `--cc '<email>'` | 否 | 抄送邮箱。多个抄送请重复传 `--cc`，每次只放一个地址，参数值用单引号包住 |
-| `--bcc '<email>'` | 否 | 密送邮箱。多个密送请重复传 `--bcc`，每次只放一个地址，参数值用单引号包住 |
+| `--cc '<emails>'` | 否 | 抄送列表，可重复；每次可传一个地址或逗号列表，按输入顺序合并，参数值用单引号包住 |
+| `--bcc '<emails>'` | 否 | 密送列表，可重复；每次可传一个地址或逗号列表，按输入顺序合并，参数值用单引号包住 |
 | `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用。纯文本模式下也会自动追加纯文本签名（HTML 签名经 `PlainTextFromHTML` 转换，内联图片丢弃） |
-| `--attach '<path>'` | 否 | 附件文件路径。多个附件请重复传 `--attach`，每次只放一个相对路径，参数值用单引号包住；按传入顺序追加。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（HTML 邮件插入下载卡片，纯文本邮件追加下载链接），单个文件上限 3 GB |
-| `--inline '<json>'` | 否 | 高级用法：手动指定内嵌图片 CID 映射。多个 inline 图片请重复传 `--inline`，每次只放一个 JSON object，并用单引号包住：`'{"cid":"mycid","file_path":"./logo.png"}'`。`file_path` 必须是相对路径；CID 应唯一，例如随机十六进制字符串；在 body 中用 `<img src="cid:mycid">` 引用。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。不可与 `--plain-text` 同时使用 |
+| `--attach '<paths>'` | 否 | 附件路径，可重复；每次可传一个相对路径或逗号列表，整体按输入顺序追加。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件，单个文件上限 3 GB |
+| `--inline '<json>'` | 否 | 高级用法：每次接受一个 JSON object 或 JSON array，可重复并按 occurrence、数组内元素顺序合并。参数用单引号包住；`file_path` 必须是相对路径，CID 应唯一，并在 body 中以 `cid:` 引用。不可与 `--plain-text` 同时使用 |
 | `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `mail +signature` 查看可用签名。与 `--no-signature` 互斥 |
 | `--no-signature` | 否 | 跳过默认签名自动追加。与 `--signature-id` 互斥，同时使用时返回参数校验错误（退出码 2） |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
@@ -210,8 +210,8 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 ## 实现说明
 
 - 使用 EML 构建器生成完整 MIME 邮件并 base64url 编码后发送。
-- `--attach` 作为普通附件添加。多个附件请重复传 `--attach`，每次只放一个相对路径。
-- `--inline` 手动指定 inline 图片时，多个图片请重复传 `--inline`，每次只放一个 JSON object。每项需提供 `cid`（唯一标识符，可用随机十六进制字符串）和 `file_path`（相对路径），作为 inline part 嵌入邮件。
+- `--attach` 作为普通附件添加；可重复，每次也兼容逗号分隔的多个相对路径，顺序稳定保留。
+- `--inline` 每次接受一个 JSON object 或 JSON array，可重复并稳定合并；每项需提供 `cid` 和相对 `file_path`。
 - **超大附件**：当附件导致 EML 总大小（headers + body + inline images + attachments，base64 编码后）超过 25 MB 时，超出的文件自动通过 `medias/upload_*` API 上传到云端。HTML 邮件插入与飞书客户端一致的下载卡片；纯文本邮件追加包含文件名、大小和下载链接的文本块。单个文件上限 3 GB，总附件数量上限 250 个。
 
 ## 相关命令

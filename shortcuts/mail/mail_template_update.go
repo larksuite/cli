@@ -35,8 +35,8 @@ var MailTemplateUpdate = common.Shortcut{
 		{Name: "set-to", Desc: "Replace the To recipient list. Separate multiple addresses with commas. Pass --set-to=\"\" to clear the list."},
 		{Name: "set-cc", Desc: "Replace the Cc recipient list. Pass --set-cc=\"\" to clear the list."},
 		{Name: "set-bcc", Desc: "Replace the Bcc recipient list. Pass --set-bcc=\"\" to clear the list."},
-		{Name: "attach", Type: "string_array", Desc: "Additional non-inline attachment file path. Repeat --attach once per file; each file is uploaded to Drive and appended in flag order."},
-		{Name: "inline", Type: "string_array", Desc: "Additional inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string."},
+		{Name: "attach", Type: "string_array", Desc: "Additional non-inline attachment paths. May be repeated; each occurrence may contain comma-separated paths. Each file is uploaded to Drive and appended in input order."},
+		{Name: "inline", Type: "string_array", Desc: "Additional inline images as a JSON object or array. May be repeated; quote each occurrence. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		if runtime.Bool("print-patch-template") {

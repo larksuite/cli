@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- **mail**: accept repeated recipient, attachment, removal, and inline-image flags across compose shortcuts while preserving legacy comma-list and JSON-array inputs
+
 ## [v1.0.94] - 2026-09-07
 
 ### Features

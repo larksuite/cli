@@ -89,6 +89,31 @@ func TestNormalizeRepeatedCommaFlagsPreservesOrder(t *testing.T) {
 	}
 }
 
+func TestRepeatableFlagNormalizationMatchesLegacySingleOccurrence(t *testing.T) {
+	if got, want := normalizeRecipientFlagValues([]string{"a@x", "b@y"}), normalizeRecipientFlagValues([]string{"a@x,b@y"}); got != want {
+		t.Fatalf("repeated recipients = %q, legacy single occurrence = %q", got, want)
+	}
+	if got, want := normalizeCommaFlagValues([]string{"./a.pdf", "./b.pdf"}), normalizeCommaFlagValues([]string{"./a.pdf,./b.pdf"}); got != want {
+		t.Fatalf("repeated attachments = %q, legacy single occurrence = %q", got, want)
+	}
+	repeated, err := normalizeInlineFlagValues([]string{
+		`{"cid":"hero","file_path":"./hero.png"}`,
+		`{"cid":"logo","file_path":"./logo.png"}`,
+	})
+	if err != nil {
+		t.Fatalf("normalize repeated inline values: %v", err)
+	}
+	legacy, err := normalizeInlineFlagValues([]string{
+		`[{"cid":"hero","file_path":"./hero.png"},{"cid":"logo","file_path":"./logo.png"}]`,
+	})
+	if err != nil {
+		t.Fatalf("normalize legacy inline array: %v", err)
+	}
+	if repeated != legacy {
+		t.Fatalf("repeated inline = %q, legacy array = %q", repeated, legacy)
+	}
+}
+
 func TestNormalizeRepeatedInlineFlagsAppendsObjectAndArrayValues(t *testing.T) {
 	raw, err := normalizeInlineFlagValues([]string{
 		`{"cid":"hero","file_path":"./hero.png"}`,
@@ -135,14 +160,12 @@ func TestNormalizeRepeatedInlineFlagsAllowsDuplicateCIDForCompatibility(t *testi
 	}
 }
 
-func TestParseInlineSpecsNullIsEmptyForCompatibility(t *testing.T) {
-	specs, err := parseInlineSpecs(`null`)
-	if err != nil {
-		t.Fatalf("parseInlineSpecs(null) error = %v", err)
+func TestParseInlineSpecsRejectsNull(t *testing.T) {
+	_, err := parseInlineSpecs(`null`)
+	if err == nil || !strings.Contains(err.Error(), "JSON object or array") {
+		t.Fatalf("expected JSON object/array error, got %v", err)
 	}
-	if len(specs) != 0 {
-		t.Fatalf("parseInlineSpecs(null) = %#v, want empty", specs)
-	}
+	assertInlineValidationError(t, err)
 }
 
 func TestParseInlineSpecsRejectsNonObjectArrayJSON(t *testing.T) {
@@ -151,6 +174,65 @@ func TestParseInlineSpecsRejectsNonObjectArrayJSON(t *testing.T) {
 			_, err := parseInlineSpecs(raw)
 			if err == nil || !strings.Contains(err.Error(), "JSON object or array") {
 				t.Fatalf("expected JSON object/array error, got %v", err)
+			}
+			assertInlineValidationError(t, err)
+		})
+	}
+}
+
+func TestNormalizeRepeatedInlineFlagsReportsSafeOneBasedOccurrence(t *testing.T) {
+	secret := "TOP-SECRET-INLINE-PAYLOAD"
+	_, err := normalizeInlineFlagValues([]string{
+		`{"cid":"hero","file_path":"./hero.png"}`,
+		`{"cid":"` + secret + `","file_path":`,
+	})
+	if err == nil {
+		t.Fatal("expected invalid second occurrence to fail")
+	}
+	if !strings.Contains(err.Error(), "occurrence 2") {
+		t.Fatalf("error = %q, want one-based occurrence index", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("error must not echo inline input, got %q", err)
+	}
+	assertInlineValidationError(t, err)
+}
+
+func TestNormalizeRepeatedInlineFlagsRejectsExplicitEmptyOccurrence(t *testing.T) {
+	_, err := normalizeInlineFlagValues([]string{
+		`{"cid":"hero","file_path":"./hero.png"}`,
+		"   ",
+	})
+	if err == nil || !strings.Contains(err.Error(), "occurrence 2") {
+		t.Fatalf("expected empty second occurrence error, got %v", err)
+	}
+	assertInlineValidationError(t, err)
+}
+
+func TestMailRepeatableInlineValidationPrecedesSideEffects(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		extra    []string
+	}{
+		{name: "send", shortcut: MailSend},
+		{name: "draft-create", shortcut: MailDraftCreate},
+		{name: "reply", shortcut: MailReply},
+		{name: "reply-all", shortcut: MailReplyAll},
+		{name: "forward", shortcut: MailForward},
+		{name: "template-create", shortcut: MailTemplateCreate},
+		{name: "template-update", shortcut: MailTemplateUpdate, extra: []string{"--template-id", "1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args := append([]string{tc.shortcut.Command}, tc.extra...)
+			args = append(args,
+				"--inline", `{"cid":"hero","file_path":"./hero.png"}`,
+				"--inline", `{"cid":"broken","file_path":`,
+			)
+			err := runMountedMailShortcut(t, tc.shortcut, args, f, stdout)
+			if err == nil || !strings.Contains(err.Error(), "occurrence 2") {
+				t.Fatalf("expected inline validation before command side effects, got %v", err)
 			}
 			assertInlineValidationError(t, err)
 		})

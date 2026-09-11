@@ -177,6 +177,13 @@ lark-cli mail user_mailbox.messages -h
 lark-cli mail +send --to alice@example.com --subject '周报' \
   --body '<p>本周进展：</p><ul><li>完成 A 模块</li><li>修复 3 个 bug</li></ul>'
 
+# 列表 flag 可重复；每次也兼容旧式逗号列表，结果按输入顺序合并
+lark-cli mail +send --to '"ACME, Inc." <billing@example.com>,alice@example.com' \
+  --to 'bob@example.com' --attach './a.pdf,./b.pdf' --attach './c.pdf' \
+  --inline '[{"cid":"hero","file_path":"./hero.png"}]' \
+  --inline '{"cid":"logo","file_path":"./logo.png"}' \
+  --subject '资料' --body '<img src="cid:hero"><img src="cid:logo">'
+
 # ⚠️ 仅在内容极简时使用纯文本
 lark-cli mail +reply --message-id <id> --body '收到，谢谢'
 ```
