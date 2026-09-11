@@ -194,6 +194,16 @@ func TestCanonicalEnumValue(t *testing.T) {
 		{"middle", []string{"left", "center", "right"}, "center"}, // alias: horizontal middle
 		{"overwite", []string{"append", "overwrite"}, ""},         // typo is NOT canonical
 		{"delete", []string{"append", "overwrite"}, ""},           // nothing close
+		// Axis vocabulary: the plural and the abbreviation both name the
+		// singular the dimension enums carry.
+		{"col", []string{"row", "column"}, "column"},
+		{"cols", []string{"row", "column"}, "column"},
+		{"columns", []string{"row", "column"}, "column"},
+		{"rows", []string{"row", "column"}, "row"},
+		// …but an enum that carries the plural itself keeps it: merge_type's
+		// "columns" is its own value, not a spelling of something else.
+		{"columns", []string{"all", "rows", "columns"}, "columns"},
+		{"rows", []string{"all", "rows", "columns"}, "rows"},
 	}
 	for _, c := range cases {
 		if got := canonicalEnumValue(c.val, c.enum); got != c.want {
@@ -618,27 +628,24 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 		},
 		{
 			command:  "+cells-set-style",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--bg-color", "#FFF"},
-			wrong:    "--bg-color",
-			wantHint: []string{"--background-color"},
-		},
-		{
-			command:  "+cells-set-style",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--wrap-strategy", "overflow"},
 			wrong:    "--wrap-strategy",
 			wantHint: []string{"--word-wrap"},
 		},
 		{
-			command:  "+cells-set-style",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-all", "thin"},
-			wrong:    "--border-all",
-			wantHint: []string{"--border-styles", `"all"`},
-		},
-		{
+			// --border-all / --border / --border-type are renames onto the
+			// composite flag now (a bare value is all four sides), so what
+			// still prescribes is a spelling that names ONE side or attribute.
 			command:  "+cells-set-style",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-top", "thin"},
 			wrong:    "--border-top",
 			wantHint: []string{"--border-styles", `"top"`},
+		},
+		{
+			command:  "+cells-set-style",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-bottom-color", "#000000"},
+			wrong:    "--border-bottom-color",
+			wantHint: []string{"--border-styles"},
 		},
 		{
 			command:  "+cells-set-style",
@@ -752,6 +759,209 @@ func TestShortcuts_RequiredFlagsMarkedInHelp(t *testing.T) {
 		}
 		if got := usageOf(t, "+csv-put", "csv"); !strings.HasPrefix(got, "(required) ") {
 			t.Errorf("--csv usage = %q, want the required marker", got)
+		}
+	})
+}
+
+// TestShortcuts_FlagSpellingFolds pins the separator-and-casing fold: one rule
+// covering every spelling of a name this command does carry, with no per-name
+// entry, and no reach beyond the flags that exist. The wire vocabulary is
+// camelCase, so --sheetName is what a caller reading the JSON side writes.
+func TestShortcuts_FlagSpellingFolds(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a spelling that differs only in separators or case resolves", func(t *testing.T) {
+		t.Parallel()
+		for _, spelling := range []string{"--sheetName", "--sheet_name", "--sheet_Name", "--sheet.name", "--SHEET-NAME"} {
+			t.Run(spelling, func(t *testing.T) {
+				t.Parallel()
+				sc := shortcutFromRegistry(t, "+cells-get")
+				if _, _, err := runShortcutCapturingErr(t, sc, []string{
+					"--url", testURL, spelling, "Sheet1", "--range", "A1", "--dry-run",
+				}); err != nil {
+					t.Errorf("%s should resolve to --sheet-name, got: %v", spelling, err)
+				}
+			})
+		}
+	})
+
+	t.Run("an alias folds under the same rule", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set")
+		if _, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "s", "--startCell", "A1",
+			"--cells", `[[{"value":"x"}]]`, "--dry-run",
+		}); err != nil {
+			t.Errorf("--startCell should reach the --start-cell alias, got: %v", err)
+		}
+	})
+
+	t.Run("a flag that does not exist is not folded into one that does", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-get")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "s", "--rangee", "A1", "--dry-run",
+		})
+		ve := requireValidation(t, err, `unknown flag "--rangee"`)
+		if !strings.Contains(ve.Hint, "did you mean --range?") {
+			t.Errorf("the near-typo should still be suggested, not applied; hint = %q", ve.Hint)
+		}
+	})
+}
+
+// TestShortcuts_UnknownFlagNamesItsOwner pins the cross-command locator: a flag
+// this command does not carry but a sibling does is a fact about the surface,
+// and it beats an edit-distance neighbour that is not a near-typo. --csv to
+// --as is two edits over a three-letter name, which is how the neighbour used
+// to win.
+func TestShortcuts_UnknownFlagNamesItsOwner(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the sibling that carries the flag is named", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct{ flag, owner string }{
+			{"--csv", "+csv-put"},
+			{"--sheets", "+table-put"},
+		} {
+			t.Run(tc.flag, func(t *testing.T) {
+				t.Parallel()
+				// The locator reads the sibling set off the shared parent, so
+				// the rig has to mount more than the command under test.
+				err := runMounted(t, []string{"+cells-set", tc.owner}, "+cells-set", []string{
+					"--url", testURL, "--sheet-name", "s", "--range", "A1",
+					"--cells", `[[{"value":"x"}]]`, tc.flag, "x", "--dry-run",
+				})
+				ve := requireValidation(t, err, "unknown flag")
+				if !strings.Contains(ve.Hint, tc.owner) {
+					t.Errorf("hint should name %s, got %q", tc.owner, ve.Hint)
+				}
+			})
+		}
+	})
+
+	t.Run("a near-typo keeps its rename", func(t *testing.T) {
+		t.Parallel()
+		// --heights exists on +rows-resize; on its column sibling the caller
+		// wants that command's own --widths, not a tour of the domain.
+		sc := shortcutFromRegistry(t, "+cols-resize")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A:C", "--width2", "100", "--dry-run",
+		})
+		ve := requireValidation(t, err, "unknown flag")
+		if !strings.Contains(ve.Hint, "did you mean --width") {
+			t.Errorf("hint should rename to --width, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("a curated prescription still wins", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set-style")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1", "--bold", "--dry-run",
+		})
+		ve := requireValidation(t, err, "unknown flag")
+		if !strings.Contains(ve.Hint, "--font-weight bold") {
+			t.Errorf("the prescription should survive, got %q", ve.Hint)
+		}
+	})
+}
+
+// runMounted executes one command with the given siblings mounted beside it,
+// for the checks that read the sheets surface rather than a single command.
+func runMounted(t *testing.T, mount []string, command string, args []string) error {
+	t.Helper()
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig(t))
+	parent := &cobra.Command{Use: "sheets"}
+	for _, name := range mount {
+		shortcutFromRegistry(t, name).Mount(parent, f)
+	}
+	parent.SilenceErrors = true
+	parent.SilenceUsage = true
+	parent.SetArgs(append([]string{command}, args...))
+	return parent.Execute()
+}
+
+// TestShortcuts_RequiredFlagErrorCarriesTheFix pins the two halves of the
+// missing-required-flag answer: cobra's own opening words, which the error
+// classifier and several domain tests match on, plus what the flag takes and
+// one runnable example. 09-04..07 attributed 20447 rejections to the bare
+// form, whose only next step is a --help round trip.
+func TestShortcuts_RequiredFlagErrorCarriesTheFix(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the message keeps cobra's wording and gains the fix", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set-style")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "Sheet1", "--font-weight", "bold",
+		})
+		ve := requireValidation(t, err, `required flag(s) "range" not set`)
+		if !strings.Contains(ve.Hint, "--range takes") {
+			t.Errorf("hint should say what --range takes, got %q", ve.Hint)
+		}
+		if !strings.Contains(ve.Hint, "Example: lark-cli sheets +cells-set-style") {
+			t.Errorf("hint should carry the command's example, got %q", ve.Hint)
+		}
+		// The description is cut to its opening clause, and an abbreviation's
+		// period is not a sentence end. Asserted on the clause alone: the
+		// example tip that follows it would otherwise hide the boundary.
+		clause, _, _ := strings.Cut(ve.Hint, "; Example:")
+		if strings.HasSuffix(strings.TrimSpace(clause), "e.g") {
+			t.Errorf("hint should not stop inside an abbreviation, got %q", ve.Hint)
+		}
+		if !strings.Contains(clause, "`A1:B2`") {
+			t.Errorf("the clause should carry its own example through the abbreviation, got %q", clause)
+		}
+		if ve.Param != "--range" {
+			t.Errorf("Param = %q, want --range", ve.Param)
+		}
+	})
+
+	t.Run("several missing flags are named together", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+chart-create-basic")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "Sheet1",
+		})
+		ve := requireValidation(t, err, `required flag(s) "chart-type", "data-range" not set`)
+		for _, want := range []string{"--chart-type takes", "--data-range takes"} {
+			if !strings.Contains(ve.Hint, want) {
+				t.Errorf("hint should contain %q, got %q", want, ve.Hint)
+			}
+		}
+	})
+
+	t.Run("a payload-borne flag is satisfied by the payload", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cond-format-create")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "Sheet1", "--dry-run",
+			"--properties", `{"ranges":["Sheet1!A1:B2"],"rule_type":"containsBlanks","style":{"fore_color":"#FF0000"}}`,
+		})
+		if err != nil {
+			t.Fatalf("a rule written entirely in --properties must run, got: %v", err)
+		}
+	})
+
+	t.Run("neither carrier set names both ways in", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cond-format-create")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "Sheet1",
+		})
+		ve := requireValidation(t, err, `"ranges"`)
+		if !strings.Contains(ve.Hint, "or carry ranges inside --properties") {
+			t.Errorf("hint should offer the payload carrier, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("--print-schema still runs without the required flags", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set")
+		if _, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--print-schema", "--flag-name", "cells",
+		}); err != nil {
+			t.Fatalf("--print-schema must not require the run-path flags, got: %v", err)
 		}
 	})
 }

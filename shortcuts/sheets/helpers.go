@@ -374,7 +374,13 @@ func sheetsWikiNodeLookupProblem(err error) error {
 // Returned tuple: (sheetID, sheetName). Exactly one is non-empty — callers
 // pass both through to the tool input; the server picks whichever fits.
 func resolveSheetSelector(runtime *common.RuntimeContext) (sheetID, sheetName string, err error) {
-	if err := common.ExactlyOneTyped(runtime, "sheet-id", "sheet-name"); err != nil {
+	// Only the mutual exclusion is settled here. Whether a selector is
+	// REQUIRED is the execute path's question, because that is the only place
+	// that can answer the one the caller actually has — which sheet — by
+	// asking the workbook (resolveSheetSelectorExec). Validate and DryRun run
+	// offline, so enforcing it here turned "I did not name a sheet" into a
+	// failure before anything could look one up.
+	if err := common.MutuallyExclusiveTyped(runtime, "sheet-id", "sheet-name"); err != nil {
 		return "", "", err
 	}
 	if id := strings.TrimSpace(runtime.Str("sheet-id")); id != "" {
@@ -408,8 +414,62 @@ func validateViaInput(
 		sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 		sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 		_, err = build(runtime, token, sheetID, sheetName)
+		return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
+	}
+}
+
+// selectorMustBeExplicit names the commands where resolving "the only sheet"
+// would act on something the caller never named. Deleting a sub-sheet takes
+// the whole thing with it and has no narrower target to state, so it is the
+// one place where an omitted selector stays an error even when the answer is
+// unambiguous.
+var selectorMustBeExplicit = map[string]bool{"+sheet-delete": true}
+
+// deferMissingSheetSelector drops the one pre-flight complaint the execute
+// path can settle by asking the workbook (resolveSheetSelectorExec), and
+// returns every other error untouched. Two paths keep the rejection: --dry-run
+// sends nothing, so it cannot resolve the sheet either, and the commands above.
+func deferMissingSheetSelector(runtime *common.RuntimeContext, sheetID, sheetName string, err error) error {
+	if err != nil && sheetID == "" && sheetName == "" && isMissingSheetSelector(err) &&
+		!runtime.Bool("dry-run") && !selectorMustBeExplicit[runtime.Command()] {
+		// Pre-flight runs offline, and a missing selector is the one
+		// complaint the execute path can settle by asking the workbook
+		// (resolveSheetSelectorExec). Raising it here would fail the call
+		// before anything could look the sheet up; if the lookup cannot
+		// settle it either, the same error arrives from there.
+		//
+		return nil
+	}
+	return err
+}
+
+// validateSheetSelectorPreflight is what a hand-written Validate calls in
+// place of resolveSheetSelector when it wants the selector checked. It settles
+// the mutual exclusion always, and demands that a selector be present only on
+// --dry-run: a real run resolves a missing one against the workbook
+// (resolveSheetSelectorExec), while a preview sends nothing and so has no way
+// to, and must not print a request whose sheet the CLI would have filled in.
+func validateSheetSelectorPreflight(runtime *common.RuntimeContext) error {
+	sheetID, sheetName, err := resolveSheetSelector(runtime)
+	if err != nil {
 		return err
 	}
+	if runtime.Bool("dry-run") {
+		return requireSheetSelector(sheetID, sheetName)
+	}
+	return nil
+}
+
+// missingSheetSelectorMessage is the one wording for "no sheet was named",
+// written once so the predicate below and the execute-path resolver cannot
+// drift from what requireSheetSelector raises.
+const missingSheetSelectorMessage = "specify at least one of --sheet-id or --sheet-name"
+
+// isMissingSheetSelector reports whether an error is that complaint and not
+// another the same builder raises.
+func isMissingSheetSelector(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	return ok && strings.HasPrefix(p.Message, missingSheetSelectorMessage)
 }
 
 // requireSheetSelector is the flagView-agnostic counterpart of
@@ -430,7 +490,7 @@ func requireSheetSelector(sheetID, sheetName string) error {
 		// the gap is knowing WHICH name to pass, not that one is needed: a
 		// just-created workbook has a single sheet named Sheet1, and any
 		// other workbook needs one +workbook-info lookup.
-		return common.ValidationErrorf("specify at least one of --sheet-id or --sheet-name").
+		return common.ValidationErrorf("%s", missingSheetSelectorMessage).
 			WithHint("a freshly created workbook has one sheet named Sheet1 (`--sheet-name Sheet1`); otherwise list the real sheets with `lark-cli sheets +workbook-info --url <URL>`").
 			WithParams(
 				sheetsInvalidParam("sheet-id", "required; specify at least one"),
@@ -524,24 +584,58 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 	}
 	var out interface{}
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		// The conventions of whatever produced the payload — Python's
+		// literals and single quotes, a trailing comma, a string that never
+		// got its quotes — are the same data in another spelling, so they are
+		// rewritten rather than reported (see json_repair.go, which refuses
+		// every shape that would need a guess).
+		// A flag whose contract is a list of plain strings takes the bare
+		// string as the one-element list it can only be — the form the same
+		// value has on every sibling flag (--range "A1:B2"). Tried BEFORE the
+		// loose-JSON repair: a bare token with no punctuation ("Sheet1!A1")
+		// repairs into a valid JSON string, which would then satisfy the
+		// parse and reach the array check as a scalar.
+		if wrapped, ok := wrapBareListValue(runtime.Command(), name, raw); ok {
+			return finishParsedJSONFlag(runtime, name, wrapped)
+		}
+		if repaired, ok := repairLooseJSON(raw); ok {
+			var fixed interface{}
+			if json.Unmarshal([]byte(repaired), &fixed) == nil {
+				return finishParsedJSONFlag(runtime, name, fixed)
+			}
+		}
 		// Composite payloads that embed formulas / quotes / commas are the
 		// classic source of this error: inlined into the shell, the JSON gets
 		// mangled (e.g. `\$` → "invalid character in string escape"). For any
 		// flag that accepts stdin, steer the caller off the command line
 		// entirely, in the spelling their own shell has (mangledPayloadHint).
+		verr := sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).WithCause(err)
+		hint := jsonSyntaxContext(raw, err)
 		if flagAcceptsStdin(runtime.Command(), name) {
-			return nil, sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).
-				WithCause(err).
-				WithHint("%s", mangledPayloadHint(name))
+			if hint == "" {
+				hint = mangledPayloadHint(name)
+			} else {
+				hint += "; " + mangledPayloadHint(name)
+			}
 		}
-		return nil, sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).WithCause(err)
+		if hint != "" {
+			verr = verr.WithHint("%s", hint)
+		}
+		return nil, verr
 	}
+	return finishParsedJSONFlag(runtime, name, out)
+}
+
+// finishParsedJSONFlag carries a decoded payload the rest of the way, whether
+// it parsed strictly or came back through the loose-JSON repair: the habitual
+// shape rewrites, then schema validation.
+func finishParsedJSONFlag(runtime flagView, name string, out interface{}) (interface{}, error) {
 	// Unambiguous habitual shapes are rewritten onto the wire contract
 	// before validation (see jsonFlagNormalizers). Runs on the parsed value,
 	// so both the standalone cobra path and +batch-update sub-ops (whose
 	// mapFlagView.Str re-encodes composites through here) get the rewrite.
 	if norm := jsonFlagNormalizers[runtime.Command()][name]; norm != nil {
-		out = norm(out)
+		out = norm(runtime, out)
 	}
 	// Schema-driven flag validation at the user-input boundary. Skips
 	// --properties (validated at the input-builder tail after enhance
@@ -553,12 +647,44 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 	return out, nil
 }
 
+// bareStringListFlags are the (command, flag) pairs whose contract is a JSON
+// array of plain strings. Their value arrives bare often enough to be its own
+// cluster — the same A1 range that every sibling flag takes unquoted — and a
+// bare string names exactly one element, with a comma list naming several.
+var bareStringListFlags = map[string]map[string]bool{
+	"+cond-format-create": {"ranges": true},
+	"+cond-format-update": {"ranges": true},
+	"+cells-batch-clear":  {"ranges": true},
+}
+
+// wrapBareListValue lifts that bare value into its list. Only for a value that
+// is not JSON at all: a malformed array stays malformed, so its own error
+// still names the character that broke it.
+func wrapBareListValue(command, flag, raw string) (interface{}, bool) {
+	if !bareStringListFlags[command][flag] {
+		return nil, false
+	}
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, `"`) {
+		return nil, false
+	}
+	out := []interface{}{}
+	for _, part := range strings.Split(trimmed, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, false // a stray comma is not a list of ranges
+		}
+		out = append(out, part)
+	}
+	return out, true
+}
+
 // jsonFlagNormalizers rewrites, per (command, flag), unambiguous habitual
 // input shapes onto the wire contract before schema validation — same
 // contract as enum normalization: only a shape whose meaning is beyond
 // doubt may be rewritten; anything ambiguous must fail with a prescription
 // instead. Applied to the parsed JSON value inside parseJSONFlag.
-var jsonFlagNormalizers = map[string]map[string]func(interface{}) interface{}{
+var jsonFlagNormalizers = map[string]map[string]func(flagView, interface{}) interface{}{
 	"+cells-set":             {"cells": normalizeCellsFlagValue, "writes": normalizeWritesFlagValue},
 	"+cells-set-style":       {"border-styles": normalizeBorderStylesFlagValue},
 	"+cells-batch-set-style": {"border-styles": normalizeBorderStylesFlagValue},
@@ -573,7 +699,7 @@ var jsonFlagNormalizers = map[string]map[string]func(interface{}) interface{}{
 // Excel-habit form the chart backend rejects with "expected rgba() or
 // #RRGGBB/#RRGGBBAA"). In-place, recursive; anything not unambiguously a
 // bare hex color is untouched.
-func normalizeChartHexColors(v interface{}) interface{} {
+func normalizeChartHexColors(_ flagView, v interface{}) interface{} {
 	switch t := v.(type) {
 	case map[string]interface{}:
 		for k, val := range t {
@@ -589,11 +715,11 @@ func normalizeChartHexColors(v interface{}) interface{} {
 				normalizeChartHexColorList(arr)
 				continue
 			}
-			normalizeChartHexColors(val)
+			normalizeChartHexColors(nil, val)
 		}
 	case []interface{}:
 		for _, e := range t {
-			normalizeChartHexColors(e)
+			normalizeChartHexColors(nil, e)
 		}
 	}
 	return v
@@ -613,7 +739,7 @@ func normalizeChartHexColorList(arr []interface{}) {
 			normalizeChartHexColorList(nested)
 			continue
 		}
-		normalizeChartHexColors(e)
+		normalizeChartHexColors(nil, e)
 	}
 }
 
@@ -893,4 +1019,142 @@ func requireJSONArray(runtime flagView, name string) ([]interface{}, error) {
 		return nil, sheetsValidationForFlag(name, "--%s must be a JSON array", name)
 	}
 	return a, nil
+}
+
+// resolveSheetSelectorExec is resolveSheetSelector for the execute path, where
+// a workbook can be asked which sheets it has. A caller who named none gets
+// the only sheet there is; a caller who named none of several gets those
+// several by name, which is the lookup they would otherwise have to run
+// themselves (09-04..07: 11115 rejections, every one of them recoverable on
+// the next call — the gap was never that a selector is needed, it was WHICH
+// name to pass).
+//
+// The lookup costs one request and only on the path that was going to fail
+// anyway. Validate and DryRun keep the offline resolver: dry-run prints the
+// request it would send without sending anything, and reaching the network to
+// fill in a flag would break that.
+func resolveSheetSelectorExec(ctx context.Context, runtime *common.RuntimeContext, token string) (sheetID, sheetName string, err error) {
+	sheetID, sheetName, err = resolveSheetSelector(runtime)
+	if err != nil || sheetID != "" || sheetName != "" || strings.TrimSpace(token) == "" {
+		return sheetID, sheetName, err
+	}
+	if selectorMustBeExplicit[runtime.Command()] {
+		return "", "", requireSheetSelector("", "")
+	}
+	names, listErr := workbookSheetNames(ctx, runtime, token)
+	if listErr != nil {
+		// Authentication, permission, transport and not-found failures all
+		// land here, and none of them is fixed by naming a sheet. Report what
+		// actually failed, with its own category and retryability intact.
+		return "", "", listErr
+	}
+	if len(names) == 0 {
+		return "", "", requireSheetSelector("", "")
+	}
+	if len(names) == 1 {
+		return "", names[0], nil
+	}
+	return "", "", common.ValidationErrorf("%s", missingSheetSelectorMessage).
+		WithHint("this workbook has %d sheets: %s", len(names), strings.Join(names, ", ")).
+		WithParams(
+			sheetsInvalidParam("sheet-id", "required; specify at least one"),
+			sheetsInvalidParam("sheet-name", "required; specify at least one"),
+		)
+}
+
+// sheetGrid is a sub-sheet's own extent, which is what an unbounded range
+// ("A:C") means by "the whole column".
+type sheetGrid struct{ rows, cols int }
+
+// workbookSheetGrids reads every sub-sheet's grid in one structure call, keyed
+// by sheet name.
+func workbookSheetGrids(ctx context.Context, runtime *common.RuntimeContext, token string) (map[string]sheetGrid, error) {
+	out, err := callTool(ctx, runtime, token, ToolKindRead, "get_workbook_structure", map[string]interface{}{
+		"excel_id": token,
+	})
+	if err != nil {
+		return nil, err
+	}
+	grids := map[string]sheetGrid{}
+	for _, entry := range sheetEntriesFromStructure(out) {
+		name := structureSheetName(entry)
+		if name == "" {
+			continue
+		}
+		grids[name] = sheetGrid{rows: jsonInt(entry["row_count"]), cols: jsonInt(entry["column_count"])}
+	}
+	return grids, nil
+}
+
+// jsonInt reads a count out of a decoded JSON number, whichever numeric shape
+// the decoder produced.
+func jsonInt(raw interface{}) int {
+	switch n := raw.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case json.Number:
+		if v, err := n.Int64(); err == nil {
+			return int(v)
+		}
+	}
+	return 0
+}
+
+// workbookSheetNames lists the workbook's sub-sheet names in tab order,
+// hidden ones included: a hidden sheet is still a sheet the caller may mean,
+// and naming it beats reporting a workbook with fewer sheets than it has.
+func workbookSheetNames(ctx context.Context, runtime *common.RuntimeContext, token string) ([]string, error) {
+	out, err := callTool(ctx, runtime, token, ToolKindRead, "get_workbook_structure", map[string]interface{}{
+		"excel_id": token,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, entry := range sheetEntriesFromStructure(out) {
+		if name := structureSheetName(entry); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
+// structureSheetName reads a sub-sheet's name out of a structure entry. The
+// tool spells it sheet_name and the drive-side shape spells it title;
+// lookupSheetIndex and tableGetSheetMeta already read both, and an adapter
+// that knew only one would return no names at all against the other.
+func structureSheetName(entry map[string]interface{}) string {
+	for _, key := range []string{"sheet_name", "title"} {
+		if name, _ := entry[key].(string); strings.TrimSpace(name) != "" {
+			return strings.TrimSpace(name)
+		}
+	}
+	return ""
+}
+
+// sheetEntriesFromStructure digs the sub-sheet list out of the structure
+// response, which arrives either as the bare list or wrapped in a "sheets"
+// key depending on the tool's envelope.
+func sheetEntriesFromStructure(out interface{}) []map[string]interface{} {
+	switch shaped := out.(type) {
+	case []interface{}:
+		return mapEntries(shaped)
+	case map[string]interface{}:
+		if nested, ok := shaped["sheets"].([]interface{}); ok {
+			return mapEntries(nested)
+		}
+	}
+	return nil
+}
+
+func mapEntries(raw []interface{}) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(raw))
+	for _, item := range raw {
+		if entry, ok := item.(map[string]interface{}); ok {
+			out = append(out, entry)
+		}
+	}
+	return out
 }

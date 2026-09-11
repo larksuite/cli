@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/util"
@@ -195,6 +196,27 @@ func headingNames(names ...string) columnHeadings { return columnHeadings{names:
 // columnNames returns the flat name list the rest of the parser works against.
 func (c columnHeadings) columnNames() []string { return c.names }
 
+// columnEntryHeadingKeys are the keys a column object carries its heading
+// under when it is not spelled `name`. Each names the same thing in a
+// vocabulary these payloads come from: a table's `title` or `header`, a
+// dataframe's `label`, a schema's `field` or `key`. The value has to be a
+// non-empty string, which is what keeps a `field` holding a nested spec from
+// being read as a heading. 09-04..07: 2559 rejections said a column object had
+// no name, on entries that named it under one of these.
+var columnEntryHeadingKeys = []string{"title", "header", "label", "column", "field", "key"}
+
+// columnEntryHeading reads the heading out of a column object that did not
+// spell it `name`, returning the heading and the key it came from, or "" for
+// both when none of the alternatives carries one.
+func columnEntryHeading(obj map[string]interface{}) (heading, spelling string) {
+	for _, key := range columnEntryHeadingKeys {
+		if text, isStr := obj[key].(string); isStr && strings.TrimSpace(text) != "" {
+			return text, key
+		}
+	}
+	return "", ""
+}
+
 // UnmarshalJSON accepts the flat string array and the object-per-column array.
 func (c *columnHeadings) UnmarshalJSON(b []byte) error {
 	var raw []json.RawMessage
@@ -217,6 +239,14 @@ func (c *columnHeadings) UnmarshalJSON(b []byte) error {
 			return err
 		}
 		name, _ := obj["name"].(string)
+		if strings.TrimSpace(name) == "" {
+			var spelling string
+			if name, spelling = columnEntryHeading(obj); spelling != "" {
+				// Consumed as the heading, so the key-vocabulary check below
+				// does not then report it as one this entry has no room for.
+				delete(obj, spelling)
+			}
+		}
 		if strings.TrimSpace(name) == "" {
 			return fmt.Errorf(`columns[%d] is an object without a "name" string; a column entry is either the name itself ("Revenue") or an object carrying it ({"name":"Revenue","dtype":"float64"})`, i) //nolint:forbidigo // decode-time error; parseTablePutPayload wraps it into the typed --sheets validation error
 		}
@@ -336,10 +366,21 @@ func (c columnLabels) resolve(field string, idx int, sheet string, columns []str
 	}
 	out := make(map[string]string, len(c.positional))
 	for i, name := range columns {
-		if strings.TrimSpace(c.positional[i]) == "" {
+		label := strings.TrimSpace(c.positional[i])
+		if label == "" {
 			continue // unlabeled column: same as omitting it from the map
 		}
-		out[name] = c.positional[i]
+		// Positional entries are keyed by name from here on, and a repeated
+		// heading collapses two of them into one. Identical labels say the
+		// same thing either way; differing ones cannot both survive, and
+		// picking one would type a column the caller spelled out differently.
+		if prior, taken := out[name]; taken && prior != label {
+			return nil, common.ValidationErrorf(
+				"--sheets[%d] %q: %s gives column %q both %q and %q; the heading repeats, so a positional array cannot tell them apart",
+				idx, sheet, field, name, prior, label).
+				WithHint("rename one of the repeated columns, or key %s by name when the labels agree", field)
+		}
+		out[name] = label
 	}
 	return out, nil
 }
@@ -460,6 +501,16 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 	if raw == "" {
 		return nil, common.ValidationErrorf("--sheets is required")
 	}
+	// --sheets decodes into its own wire struct rather than through
+	// parseJSONFlag, so the loose-JSON repair is applied here too: the same
+	// payload conventions arrive on this flag (5072 of the 09-04..07 decode
+	// rejections, the largest share of any single flag). Strict input is never
+	// touched — the repair only runs once encoding/json has refused it.
+	if !json.Valid([]byte(raw)) {
+		if repaired, ok := repairLooseJSON(raw); ok {
+			raw = repaired
+		}
+	}
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.UseNumber()
 	var wire struct {
@@ -498,6 +549,9 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 				"expected shape: %s (columns is a flat string array; dtypes/formats are column-name-keyed maps; data is row-major)",
 				tablePutSheetsSkeleton)
 		}
+		if where := jsonSyntaxContext(raw, err); where != "" {
+			return nil, verr.WithHint("%s; %s", where, mangledPayloadHint("sheets"))
+		}
 		return nil, verr.WithHint("%s", mangledPayloadHint("sheets"))
 	}
 	// Reject trailing non-whitespace after the first JSON value: json.Decoder
@@ -514,10 +568,46 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 		}
 		p.Sheets = append(p.Sheets, spec)
 	}
+	if runtime.Command() == "+workbook-create" {
+		fillCreatedSheetNames(p)
+	}
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
 	return p, nil
+}
+
+// fillCreatedSheetNames names the sub-sheets of a NEW workbook that arrived
+// without a name, in payload order and skipping any spelling the caller used,
+// so the result is the SheetN series the workbook would have had anyway. The
+// caller who omits the name has one table and one workbook and takes the
+// default; demanding the word "Sheet1" back from them says nothing (09-04..07:
+// 1564 rejections across both entry points).
+//
+// Only on the create path. +table-put matches its payload to sub-sheets BY
+// NAME and creates what is absent, so an invented name there would write into
+// a sheet the caller never picked, or make a new one beside the sheet they
+// meant. That one keeps its rejection.
+func fillCreatedSheetNames(p *tablePayload) {
+	taken := make(map[string]bool, len(p.Sheets))
+	for i := range p.Sheets {
+		taken[strings.TrimSpace(p.Sheets[i].Name)] = true
+	}
+	next := 1
+	for i := range p.Sheets {
+		if strings.TrimSpace(p.Sheets[i].Name) != "" {
+			continue
+		}
+		for {
+			candidate := fmt.Sprintf("Sheet%d", next)
+			next++
+			if !taken[candidate] {
+				p.Sheets[i].Name = candidate
+				taken[candidate] = true
+				break
+			}
+		}
+	}
 }
 
 // normalize collapses the wire-level pandas-shaped tableSheetIn into the
@@ -546,6 +636,8 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 	}
 	dtypes = mergeInlineLabels(dtypes, in.Columns.dtypes)
 	formats = mergeInlineLabels(formats, in.Columns.formats)
+	dtypes = foldColumnLabelKeys(dtypes, columns)
+	formats = foldColumnLabelKeys(formats, columns)
 	seenCol := make(map[string]bool, len(columns))
 	spec.Columns = make([]tableColumnSpec, len(columns))
 	for j, name := range columns {
@@ -559,9 +651,12 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 			spec.Columns[j] = tableColumnSpec{Name: name, Type: "string", Format: "@"}
 			continue
 		}
-		if seenCol[name] {
-			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: duplicate column name %q", idx, in.Name, name)
-		}
+		// A repeated heading is a real table shape, not a mistake: a sheet is
+		// not a database, and two columns called "备注" are what the source
+		// data looked like. dtypes / formats are keyed by name, so an entry
+		// for a repeated name applies to each of its columns — the one
+		// reading available, and the same one the caller would get by
+		// spelling it twice. 09-04..07: 1334 rejections.
 		seenCol[name] = true
 		typ, format := dtypeToTypeFormat(dtypes[name])
 		if f, ok := formats[name]; ok {
@@ -570,10 +665,11 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 		spec.Columns[j] = tableColumnSpec{Name: name, Type: typ, Format: format}
 	}
 	// Surface dtypes/formats entries that reference a column the sheet doesn't
-	// have — almost always a typo (`"foramt"`, `"营 收"` with stray spaces) and
-	// silently ignoring them would let the writer succeed with the wrong
-	// formatting. The check runs after the column list is built so we can
-	// compare against the canonical set.
+	// have — silently ignoring them would let the writer succeed with the
+	// wrong formatting. What survives foldColumnLabelKeys is a key no column
+	// answers to under any spacing or casing, so it names nothing at all. The
+	// check runs after the column list is built so we can compare against the
+	// canonical set.
 	for k := range dtypes {
 		if !seenCol[k] {
 			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: dtypes references unknown column %q", idx, in.Name, k).
@@ -588,6 +684,141 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 	}
 	padShortRows(&spec)
 	return spec, nil
+}
+
+// foldColumnLabelKeys rewrites a dtypes / formats key onto the column it
+// names when only the spacing or the casing differs ("营 收" for "营收",
+// "Revenue" for "revenue"). Both maps are keyed by column name, and a key
+// written from the same source data that produced the headers picks up stray
+// spaces on the way; rejecting it cost the whole write over a formatting hint
+// (09-04..07: 657 rejections on dtypes alone).
+//
+// Only an unambiguous fold applies: the normalized form must match exactly one
+// distinct column, and a key that already matches a column verbatim is never
+// moved. Anything else is left as written, so a key that truly names nothing
+// still reports as an unknown column rather than being dropped on the floor.
+func foldColumnLabelKeys(labels map[string]string, columns []string) map[string]string {
+	if len(labels) == 0 {
+		return labels
+	}
+	exact := make(map[string]bool, len(columns))
+	byNormalized := make(map[string]map[string]bool, len(columns))
+	for _, c := range columns {
+		exact[c] = true
+		key := normalizeColumnLabelKey(c)
+		if byNormalized[key] == nil {
+			byNormalized[key] = map[string]bool{}
+		}
+		byNormalized[key][c] = true
+	}
+	out := make(map[string]string, len(labels))
+	for k, v := range labels {
+		if exact[k] {
+			out[k] = v
+			continue
+		}
+		candidates := byNormalized[normalizeColumnLabelKey(k)]
+		if len(candidates) != 1 {
+			out[k] = v // nothing to fold onto, or two columns answer to it
+			continue
+		}
+		target := sortedKeys(candidates)[0]
+		if _, taken := labels[target]; taken {
+			out[k] = v // the caller also spelled it exactly; keep both, report the stray
+			continue
+		}
+		if _, claimed := out[target]; claimed {
+			// A second stray folding onto the same column: which one wins
+			// would come from map iteration order, so neither does. The
+			// unfolded key then reports as an unknown column.
+			out[k] = v
+			continue
+		}
+		out[target] = v
+	}
+	return out
+}
+
+// normalizeColumnLabelKey folds a column name to the form two spellings of the
+// same heading share: no whitespace of any width, lowercased.
+func normalizeColumnLabelKey(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// fitColumnsToRows squares the declared columns against the rows that arrived,
+// in the two directions that carry no guess.
+//
+// A row longer than `columns` first has its trailing EMPTY cells dropped: a
+// nil or a blank string past the last column writes nothing, so the row was
+// already the width it declared and the padding came from whatever generated
+// it. What is still longer gets the columns it needs, with BLANK headings —
+// the shape a table with unnamed trailing columns has, which this payload
+// already accepts on the way in. Naming them would put a word in the caller's
+// header row that they never wrote.
+//
+// A sheet that declares no columns at all but carries rows is the --values
+// shape spelled on --sheets, so it takes the --values treatment: positional
+// type-less columns and no header row, which writes exactly the block that
+// arrived. A caller who asked for a header row explicitly is left alone —
+// there is no telling what they wanted it to say.
+//
+// 09-04..07: 2779 rejections on the width, 2299 on the missing columns.
+func fitColumnsToRows(s *tableSheetSpec) {
+	widest := 0
+	for r := range s.Rows {
+		s.Rows[r] = trimTrailingEmptyCells(s.Rows[r], len(s.Columns))
+		widest = max(widest, len(s.Rows[r]))
+	}
+	if widest == 0 {
+		return
+	}
+	if len(s.Columns) == 0 {
+		if s.Header != nil && *s.Header {
+			return // an explicit header row over columns nobody named
+		}
+		noHeader := false
+		s.Header = &noHeader
+		s.Columns = make([]tableColumnSpec, widest)
+		for i := range s.Columns {
+			s.Columns[i] = tableColumnSpec{Name: fmt.Sprintf("col%d", i+1)}
+		}
+		padShortRows(s)
+		return
+	}
+	for len(s.Columns) < widest {
+		s.Columns = append(s.Columns, tableColumnSpec{})
+	}
+	// Widening the column list leaves every SHORTER row short of it, and the
+	// writer indexes a row by column position. padShortRows ran in normalize,
+	// before this; it has to run again against the count this settled on.
+	padShortRows(s)
+}
+
+// trimTrailingEmptyCells drops the empty cells a row carries past the declared
+// column count. Only past it, and only empties: a row shorter than the columns
+// is padShortRows's business, and a real value out there is what the width
+// error is for.
+func trimTrailingEmptyCells(row []interface{}, columns int) []interface{} {
+	for len(row) > columns {
+		last := row[len(row)-1]
+		if last == nil {
+			row = row[:len(row)-1]
+			continue
+		}
+		if text, isStr := last.(string); isStr && strings.TrimSpace(text) == "" {
+			row = row[:len(row)-1]
+			continue
+		}
+		break
+	}
+	return row
 }
 
 // padShortRows right-pads every data row to the column count with nils, which
@@ -645,12 +876,17 @@ func (p *tablePayload) validate() error {
 	for i := range p.Sheets {
 		s := &p.Sheets[i]
 		if strings.TrimSpace(s.Name) == "" {
-			return common.ValidationErrorf("--sheets[%d]: name is required", i)
+			// Reached only on the write path: +workbook-create fills its own
+			// (fillCreatedSheetNames). Here the name is the selector, so it
+			// has to come from the caller.
+			return common.ValidationErrorf("--sheets[%d]: name is required", i).
+				WithHint("`name` picks the sub-sheet to write and creates it when absent; list the real names with `lark-cli sheets +workbook-info --url <URL>`, or use +workbook-create when the workbook itself is new")
 		}
 		if seen[s.Name] {
 			return common.ValidationErrorf("--sheets[%d]: duplicate sheet name %q", i, s.Name)
 		}
 		seen[s.Name] = true
+		fitColumnsToRows(s)
 		if len(s.Columns) == 0 {
 			// A header-less, data-less sheet is a legitimate request — "give
 			// me the tab, I will fill it later" — and rejecting it made the

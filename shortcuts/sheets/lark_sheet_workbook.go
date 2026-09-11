@@ -236,7 +236,7 @@ var SheetDelete = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -278,7 +278,7 @@ var SheetRename = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -317,7 +317,7 @@ var SheetMove = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
+		if err := validateSheetSelectorPreflight(runtime); err != nil {
 			return err
 		}
 		if !runtime.Changed("index") {
@@ -348,7 +348,7 @@ var SheetMove = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -424,7 +424,7 @@ var SheetCopy = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -497,7 +497,7 @@ func newSheetVisibilityShortcut(command, desc, op string) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -537,7 +537,7 @@ var SheetSetTabColor = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -889,6 +889,23 @@ func buildValuesPayload(runtime flagView, sheetStyles *workbookCreateSheetStyles
 	return payload, nil
 }
 
+// decodeValuesPayload decodes one JSON value with UseNumber, so large order
+// IDs keep full precision, and rejects trailing non-whitespace after it —
+// json.Decoder accepts that silently where json.Unmarshal does not (see
+// decoderExpectEOF).
+func decodeValuesPayload(raw string) (interface{}, error) {
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.UseNumber()
+	var v interface{}
+	if err := dec.Decode(&v); err != nil {
+		return nil, err
+	}
+	if err := decoderExpectEOF(dec); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
 // parseValuesRows decodes --values (JSON 2D array, with @file/stdin already
 // resolved by the flag layer) using UseNumber so numeric cells keep full
 // precision (large order IDs survive). Empty --values yields no rows.
@@ -897,17 +914,25 @@ func parseValuesRows(runtime flagView) ([][]interface{}, error) {
 	if raw == "" {
 		return nil, nil
 	}
-	dec := json.NewDecoder(strings.NewReader(raw))
-	dec.UseNumber()
-	var v interface{}
-	if err := dec.Decode(&v); err != nil {
-		return nil, common.ValidationErrorf("--values: invalid JSON: %v", err)
+	// --values decodes here rather than through parseJSONFlag, so it takes the
+	// same loose-JSON repair — but only after a strict decode has refused the
+	// input. Probing validity up front would scan and copy the whole payload a
+	// second time on the path that needs no repair at all.
+	v, err := decodeValuesPayload(raw)
+	if err != nil {
+		repaired, ok := repairLooseJSON(raw)
+		if !ok {
+			verr := common.ValidationErrorf("--values: invalid JSON: %v", err).WithCause(err)
+			if where := jsonSyntaxContext(raw, err); where != "" {
+				verr = verr.WithHint("%s", where)
+			}
+			return nil, verr
+		}
+		if v, err = decodeValuesPayload(repaired); err != nil {
+			return nil, common.ValidationErrorf("--values: invalid JSON: %v", err).WithCause(err)
+		}
 	}
-	// Reject trailing non-whitespace after the first JSON value: see
-	// decoderExpectEOF in lark_sheet_table_io.go for the rationale.
-	if err := decoderExpectEOF(dec); err != nil {
-		return nil, common.ValidationErrorf("--values: %v", err).WithCause(err)
-	}
+
 	arr, ok := v.([]interface{})
 	if !ok {
 		return nil, common.ValidationErrorf("--values must be a JSON 2D array")
@@ -1057,13 +1082,21 @@ const (
 )
 
 func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, error) {
-	root, ok := v.(map[string]interface{})
-	if !ok {
-		return nil, common.ValidationErrorf("--styles must be a JSON object shaped as {\"styles\":[...]}")
-	}
-	rawItems, ok := root["styles"]
-	if !ok {
-		return nil, common.ValidationErrorf("--styles.styles is required")
+	// A bare list at the top level can only be the items the envelope would
+	// have held — the same reading --sheets takes of its own bare list, and
+	// the two flags travel together in one call often enough that accepting
+	// it on one and not the other is its own trap.
+	var rawItems interface{}
+	switch shaped := v.(type) {
+	case []interface{}:
+		rawItems = shaped
+	case map[string]interface{}:
+		var present bool
+		if rawItems, present = shaped["styles"]; !present {
+			return nil, common.ValidationErrorf("--styles.styles is required")
+		}
+	default:
+		return nil, common.ValidationErrorf("--styles must be the object {\"styles\":[...]} or the bare [...] item list")
 	}
 	arr, ok := rawItems.([]interface{})
 	if !ok {
@@ -1078,6 +1111,9 @@ func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, er
 		if !ok {
 			return nil, common.ValidationErrorf("--styles.styles[%d] must be an object", i)
 		}
+		// Folded here rather than in the item parser: the sheet selector is
+		// read off the item by its callers before that parser runs.
+		foldStyleItemKeys(item)
 		items[i] = item
 	}
 	return items, nil
@@ -1102,7 +1138,58 @@ func boundedStyleProblems(probs *[]error, extra []error) {
 	}
 }
 
+// styleItemKeyAliases maps the spellings a styles item's own sections arrive
+// under onto the keys this payload carries. Each one names the same section
+// under another vocabulary: the sheet selector is `name` here and sheet_name
+// everywhere else in the domain, merges and sizes are spelled by their effect
+// ("row_heights") rather than by the section, and a section written in the
+// singular is the section. 09-04..07: 3938 rejections on an item key, and the
+// three the distance ranker could already name spelled the fix in the error
+// while refusing to apply it.
+var styleItemKeyAliases = map[string]string{
+	"sheet_name":    "name",
+	"sheet":         "name",
+	"title":         "name",
+	"cell_style":    "cell_styles",
+	"merges":        "cell_merges",
+	"merge_cells":   "cell_merges",
+	"cell_merge":    "cell_merges",
+	"row_heights":   "row_sizes",
+	"row_height":    "row_sizes",
+	"row_size":      "row_sizes",
+	"col_widths":    "col_sizes",
+	"col_width":     "col_sizes",
+	"column_widths": "col_sizes",
+	"column_width":  "col_sizes",
+	"col_size":      "col_sizes",
+}
+
+// foldStyleItemKeys renames the aliases above and lifts a section written as a
+// single object into the one-entry list it can only be, in place. A rename
+// that would collide with a key the caller also spelled is skipped, leaving
+// both for the unknown-key report rather than picking one.
+func foldStyleItemKeys(item map[string]interface{}) {
+	for _, alias := range sortedKeys(styleItemKeyAliases) {
+		target := styleItemKeyAliases[alias]
+		raw, present := item[alias]
+		if !present {
+			continue
+		}
+		if _, taken := item[target]; taken {
+			continue
+		}
+		item[target] = raw
+		delete(item, alias)
+	}
+	for _, section := range styleItemRangeSections {
+		if obj, isObj := item[section].(map[string]interface{}); isObj {
+			item[section] = []interface{}{obj}
+		}
+	}
+}
+
 func parseWorkbookCreateStyleItem(item map[string]interface{}, path string, existingSheet bool) (*workbookCreateStylePayload, []error) {
+	foldStyleItemKeys(item) // idempotent; the --values path reaches here directly
 	payload := &workbookCreateStylePayload{}
 	var probs []error
 	oversized := make(map[string]bool)

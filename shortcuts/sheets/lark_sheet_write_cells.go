@@ -108,7 +108,7 @@ var CellsSet = common.Shortcut{
 			runtime.Out(appendSheetsWarnings(out, notes), nil)
 			return nil
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -140,9 +140,10 @@ func narrowingNotes(note string) []string {
 
 // cellsSetWritesOps parses --writes ([{sheet_name|sheet_id, range, cells}, …])
 // and expands it into set_cell_range operations for ONE atomic batch_update.
-// Single source of truth per item: the sheet selector LIVES IN THE ITEM (same
-// convention as +batch-update sub-ops and +styles-put items — no top-level
-// fallback, no precedence table to remember). Every item runs through the
+// The sheet selector lives in the item (same convention as +batch-update
+// sub-ops and +styles-put items); a top-level --sheet-name / --sheet-id fills
+// in for the items that carry none, so a whole-payload single-sheet write
+// states its sheet once. Every item runs through the
 // exact standalone pipeline (key vocabulary, style acceptance layer, matrix
 // precheck, schema validation) via a per-item flag view, and item errors are
 // aggregated so one retry fixes them all. The payload rewrites land one step
@@ -154,9 +155,16 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 			return nil, nil, sheetsValidationForFlag("writes", "--writes and --%s are mutually exclusive: single region → --range + --cells; multiple regions → --writes alone", conflicting)
 		}
 	}
-	if strings.TrimSpace(runtime.Str("sheet-name")) != "" || strings.TrimSpace(runtime.Str("sheet-id")) != "" {
-		return nil, nil, sheetsValidationForFlag("writes", "--writes does not accept a top-level sheet selector — put sheet_name (or sheet_id) inside each writes item, same as +batch-update sub-ops")
-	}
+	// A top-level selector is the DEFAULT for items that name no sheet of
+	// their own, the same way --allow-overwrite fills the items below. It
+	// used to be rejected outright on the reasoning that one selector per
+	// item leaves no precedence table to remember; the precedence that
+	// actually needs remembering is the one the caller wrote, and every
+	// single-sheet --writes call had to repeat it on every item to say
+	// nothing new. 09-04..07: 19059 rejections, the single largest
+	// +cells-set cluster, on payloads that named the sheet exactly once.
+	topSheetID := strings.TrimSpace(runtime.Str("sheet-id"))
+	topSheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 	raw, err := requireJSONArray(runtime, "writes")
 	if err != nil {
 		return nil, nil, err
@@ -192,6 +200,11 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 		fv.normalizeRangeSheetPrefix()
 		sheetID := strings.TrimSpace(fv.Str("sheet-id"))
 		sheetName := strings.TrimSpace(fv.Str("sheet-name"))
+		if sheetID == "" && sheetName == "" {
+			// Read after normalizeRangeSheetPrefix, so an item that named its
+			// sheet in the range ("Sheet2!A1:B2") still wins over the default.
+			sheetID, sheetName = topSheetID, topSheetName
+		}
 		input, note, err := cellsSetInputWithNote(fv, token, sheetID, sheetName)
 		if err != nil {
 			// Prefix with the item index WITHOUT flattening: cellsSetInput's
@@ -289,7 +302,10 @@ func cellsSetInputWithNote(runtime flagView, token, sheetID, sheetName string) (
 		return nil, "", err
 	}
 	rangeStr := expandAnchorRange(strings.TrimSpace(runtime.Str("range")), cells)
-	if err := checkCellsMatchRange(cells, rangeStr); err != nil {
+	if err := checkCellsPayloadShape(cells); err != nil {
+		return nil, "", err
+	}
+	if err := checkRangeSheetAgreesWithSelector(rangeStr, sheetName); err != nil {
 		return nil, "", err
 	}
 	rangeStr, narrowNote := fitCellsRange(cells, rangeStr)
@@ -342,7 +358,7 @@ var CellsSetStyle = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -459,7 +475,7 @@ var CsvPut = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -788,7 +804,7 @@ var DropdownSet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -999,80 +1015,116 @@ func dropdownHighlightWarnings(runtime flagView) []string {
 
 // ─── range parsing helpers ────────────────────────────────────────────
 
-// checkCellsMatchRange rejects, before any network call, the cells-vs-range
-// mismatches the server would otherwise fail mid-batch ("cells row count (N)
-// does not match range row count (M)" — a recurring server-side error cluster
-// in eval traces, and the failure leaves earlier batch sub-ops applied).
-// Single-cell ranges are checked too: the server enforces the same strict
-// match on a bare "A1" (07-21 rerun, 12 rows against range row count 1).
-// Callers reach this with the anchor already resolved by expandAnchorRange,
-// so what still fails here is a range that states an extent and disagrees
-// with the payload. An unparsable range is the range validator's job, not
-// ours.
+// liftFlatCellsRow gives a one-dimensional payload its second dimension. Every
+// spreadsheet library these callers arrive from reads a flat list as one ROW
+// (openpyxl's append, the Sheets API's default majorDimension), so that is the
+// reading taken — except where the caller's own range says otherwise: a range
+// one column wide and several rows tall can only be asking for a column, and
+// writing a row there would put the data somewhere they did not name.
 //
-// The message states BOTH axes and hands back the range that fits the payload.
-// This is the largest single --cells failure class in the corpus (132
-// rejections across 93 case-runs), driven by off-by-one on the inclusive end
-// (A1:C10 is 10 rows, not 9) and by hand-counted ranges against real data;
-// reporting one axis at a time cost a second round trip whenever both were
-// off, and 16 of the 132 retried straight into the same error.
+// A payload that already has rows is left alone, and so is a mixed one, where
+// no single reading covers both halves. 09-04..07: 396 rejections read
+// "[0]: expected type array".
+func liftFlatCellsRow(cells []interface{}, rangeStr string) []interface{} {
+	if len(cells) == 0 {
+		return cells
+	}
+	lifted := make([]interface{}, 0, len(cells))
+	for _, item := range cells {
+		if _, isRow := item.([]interface{}); isRow {
+			return cells // already 2D
+		}
+		cell, isObj := item.(map[string]interface{})
+		if !isObj {
+			if scalar := scalarCellValue(item); scalar != nil {
+				cell = scalar
+			} else {
+				return cells // not a cell either; the schema names it
+			}
+		}
+		lifted = append(lifted, cell)
+	}
+	if target, err := parseCellRange(rangeStr); err == nil && target.cols == 1 && target.rows > 1 {
+		column := make([]interface{}, 0, len(lifted))
+		for _, cell := range lifted {
+			// Bound to an interface value before appending: a []interface{}
+			// handed straight to append's ...interface{} is the shape
+			// asasalint flags, since it usually means a spread was intended.
+			var row interface{} = []interface{}{cell}
+			column = append(column, row)
+		}
+		return column
+	}
+	var single interface{} = lifted
+	return []interface{}{single}
+}
+
+// checkCellsPayloadShape rejects, before any network call, a --cells payload
+// that has no extent to write at all: empty, or rows of differing widths that
+// padRaggedCellRows could not square off (a row that is not an array).
 //
-// Growing the range is never applied: it would write over rows the caller
-// never mentioned. Shrinking it to a payload that FITS inside the stated
-// range is applied (see fitCellsRange) — the cells are written in full at the
-// anchor either way, and the alternative was 122 rejections in the 08-29..31
-// reflow on a payload that was already unambiguous.
-func checkCellsMatchRange(cells []interface{}, rangeStr string) error {
+// It used to also enforce cells-vs-range agreement, which the server checks
+// too ("cells row count (N) does not match range row count (M)", a recurring
+// cluster in eval traces whose failure leaves earlier batch sub-ops applied).
+// That comparison is gone: the extent is no longer enforced in either
+// direction: fitCellsRange
+// sizes the write from the payload and reports what it shipped. Shrinking was
+// already applied (122 rejections in the 08-29..31 reflow on payloads that
+// were unambiguous); keeping the rejection only for the other direction was
+// the least defensible of the three available positions, since the command
+// overwrites non-empty cells by default (--allow-overwrite) and a bare
+// single-cell range has always been an anchor. What that costs is a real
+// check: a payload built one row short now writes quietly instead of failing
+// here, which is why the note fitCellsRange returns names the shipped range
+// rather than staying silent. 09-04..07: 21425 rejections across both
+// directions.
+func checkCellsPayloadShape(cells []interface{}) error {
 	if len(cells) == 0 {
 		return sheetsValidationForFlag("cells",
 			"--cells is empty; to clear values use +cells-clear --scope content (needs --yes), or pass a non-empty 2D array")
 	}
-	target, err := parseCellRange(rangeStr)
-	if err != nil {
-		return nil //nolint:nilerr // an unparsable range is reported by the range validation path with proper context
-	}
-	payloadRows, payloadCols, ok := cellsExtent(cells)
-	if !ok {
-		// A payload with no single extent has nothing to compare against the
-		// range, so it is its own bug and gets its own message — reporting it
-		// as a range mismatch would send the caller off to edit --range.
+	if _, _, ok := cellsExtent(cells); !ok {
+		// A payload with no single extent has no extent to write at, so it is
+		// its own bug and gets its own message — reporting it against --range
+		// would send the caller off to edit the wrong flag.
 		return raggedCellsError(cells)
 	}
-	if payloadRows == target.rows && payloadCols == target.cols {
-		return nil
-	}
-	if payloadRows <= target.rows && payloadCols <= target.cols {
-		return nil // fitCellsRange narrows the write to the payload
-	}
-	return sheetsValidationForFlag("cells",
-		"--cells is %d rows × %d columns but --range %q spans %d rows × %d columns; either write this payload to --range %q (same top-left, sized to the cells passed) or resize --cells to %d rows × %d columns — an A1 range covers both ends, so %q spans %d rows",
-		payloadRows, payloadCols, rangeStr, target.rows, target.cols,
-		target.sized(payloadRows, payloadCols), target.rows, target.cols, rangeStr, target.rows)
+	return nil
 }
 
-// fitCellsRange narrows a range to the payload that sits inside it, returning
-// the range to write and the note to report when it changed. Both ends of the
-// contract matter: the anchor is unchanged, so every cell lands exactly where
-// the caller put it, and no cell outside the payload is touched — the stated
-// range only ever said how far the caller THOUGHT the payload reached.
+// fitCellsRange sizes the range from the payload, in both directions,
+// returning the range to write and the note to report when it changed. The
+// anchor is the one thing the stated range is read for: every cell lands where
+// the caller put it, and the extent follows the data, which is how every
+// library these callers arrive from spells a write (gspread's update("A1",
+// values), openpyxl's anchor assignment) and how --start-cell already reads on
+// this command's CSV sibling.
 //
-// The dominant shape is a one-cell title against the range it will occupy once
-// merged, where writing the top-left is what a merged region needs anyway. A
-// payload that overflows the range is untouched here: that one has no reading
-// short of writing over rows nobody named, and checkCellsMatchRange rejects it.
+// The two directions carry different consequences, so the note says which one
+// happened. Narrowing touches nothing outside the payload; the dominant shape
+// is a one-cell title against the range it will occupy once merged. Widening
+// writes past the extent the caller stated, onto cells they did not name — the
+// payload is their own data and the command overwrites by default, but that is
+// the sentence the note has to say out loud.
 func fitCellsRange(cells []interface{}, rangeStr string) (string, string) {
 	target, err := parseCellRange(rangeStr)
 	if err != nil {
 		return rangeStr, ""
 	}
 	rows, cols, ok := cellsExtent(cells)
-	if !ok || rows > target.rows || cols > target.cols || (rows == target.rows && cols == target.cols) {
+	if !ok || (rows == target.rows && cols == target.cols) {
 		return rangeStr, ""
 	}
 	fitted := target.sized(rows, cols)
+	outcome := "narrowed"
+	tail := "cells land at the same top-left, and no cell outside them is touched"
+	if rows > target.rows || cols > target.cols {
+		outcome = "widened"
+		tail = "cells land at the same top-left, and the write reaches past the range you stated (pass --allow-overwrite=false to stop on a non-empty cell)"
+	}
 	return fitted, fmt.Sprintf(
-		"--cells is %d rows × %d columns, smaller than --range %q (%d × %d), so the write was narrowed to %q — cells land at the same top-left, and no cell outside them is touched",
-		rows, cols, rangeStr, target.rows, target.cols, fitted)
+		"--cells is %d rows × %d columns against --range %q (%d × %d), so the write was %s to %q — %s",
+		rows, cols, rangeStr, target.rows, target.cols, outcome, fitted, tail)
 }
 
 // cellsExtent measures a --cells payload: its row count and the width every
@@ -1132,6 +1184,29 @@ func raggedCellsError(cells []interface{}) error {
 		"--cells has %d rows but every row is empty; each row needs one entry per column, e.g. [[{\"value\":…}]]", len(cells))
 }
 
+// checkRangeSheetAgreesWithSelector rejects a --range whose sheet prefix names
+// a different sheet than the selector does. A prefix only survives to here
+// when the caller passed a selector too (every entry point consumes it into
+// the selector when none was given), so a disagreement is the caller naming
+// two sheets for one write, and the request would ship a range pointing at one
+// next to a sheet_name pointing at the other.
+//
+// This used to be caught sideways, by the extent check failing on a range that
+// was never sized; now that the extent follows the payload, the conflict needs
+// naming in its own right.
+func checkRangeSheetAgreesWithSelector(rangeStr, sheetName string) error {
+	if strings.TrimSpace(sheetName) == "" {
+		return nil // an id-only selector has no name to compare against
+	}
+	prefix, _, ok := scanSheetQualifier(strings.TrimSpace(rangeStr))
+	if !ok || strings.EqualFold(prefix, strings.TrimSpace(sheetName)) {
+		return nil
+	}
+	return sheetsValidationForFlag("range",
+		"--range %q names sheet %q while the selector names %q; keep one — drop the prefix from --range, or drop --sheet-name",
+		rangeStr, prefix, sheetName)
+}
+
 // expandAnchorRange gives a bare single-cell --range the anchor semantics
 // every spreadsheet library these callers arrive from already has (gspread's
 // update("A1", values), openpyxl's ws["A1"] = …): a top-left alone plus a
@@ -1143,18 +1218,13 @@ func raggedCellsError(cells []interface{}) error {
 // +csv-put already infers --start-cell's bottom-right from the CSV's own
 // counts; +cells-set was the odd one out.
 //
-// Only a bare "A1" expands: an explicit "A1:A1" states a 1×1 block, and a
-// payload disagreeing with a stated extent is a real mismatch. A ragged or
-// non-array payload has no extent to compute and falls through to
-// checkCellsMatchRange's prescription.
+// Only a bare "A1" expands here; a stated extent is sized by fitCellsRange
+// instead, which reports what it shipped. A ragged or non-array payload has no
+// extent to compute and falls through to checkCellsPayloadShape's message.
 //
-// A qualified anchor ("Sheet1!A1") does not expand either. It only reaches
-// here when the caller also passed --sheet-id / --sheet-name, since all three
-// entry points consume the prefix into the selector when none was given — so
-// the prefix is one that disagrees with the selector, and sizing it would ship
-// a range naming one sheet next to a sheet_name naming another. Left alone it
-// keeps failing checkCellsMatchRange locally, which is what it did before
-// anchors were inferred at all.
+// A qualified anchor ("Sheet1!A1") is left alone here and sized downstream like
+// any other stated range, once checkRangeSheetAgreesWithSelector has settled
+// whether its prefix and the selector name the same sheet.
 func expandAnchorRange(rangeStr string, cells []interface{}) string {
 	anchor, err := parseCellRange(rangeStr)
 	if err != nil || !anchor.anchored || anchor.sheetQualifier != "" {
@@ -1359,7 +1429,7 @@ var CellsSetImage = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
+		if err := validateSheetSelectorPreflight(runtime); err != nil {
 			return err
 		}
 		r := strings.TrimSpace(runtime.Str("range"))
@@ -1424,7 +1494,7 @@ var CellsSetImage = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}

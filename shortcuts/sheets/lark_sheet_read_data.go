@@ -43,7 +43,7 @@ var CellsGet = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
+		if err := validateSheetSelectorPreflight(runtime); err != nil {
 			return err
 		}
 		if strings.TrimSpace(runtime.Str("range")) == "" {
@@ -61,7 +61,7 @@ var CellsGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -146,7 +146,7 @@ var CsvGet = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
+		if err := validateSheetSelectorPreflight(runtime); err != nil {
 			return err
 		}
 		return nil
@@ -161,7 +161,7 @@ var CsvGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -271,7 +271,7 @@ var DropdownGet = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
+		if err := validateSheetSelectorPreflight(runtime); err != nil {
 			return err
 		}
 		if strings.TrimSpace(runtime.Str("range")) == "" {
@@ -289,7 +289,7 @@ var DropdownGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -329,7 +329,7 @@ var CondFormatResultGet = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
+		if err := validateSheetSelectorPreflight(runtime); err != nil {
 			return err
 		}
 		if strings.TrimSpace(runtime.Str("range")) == "" {
@@ -348,7 +348,7 @@ var CondFormatResultGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}

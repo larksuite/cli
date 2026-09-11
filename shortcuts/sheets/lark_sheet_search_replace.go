@@ -32,7 +32,7 @@ var CellsSearch = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
+		if err := validateSheetSelectorPreflight(runtime); err != nil {
 			return err
 		}
 		if strings.TrimSpace(runtime.Str("find")) == "" {
@@ -50,7 +50,7 @@ var CellsSearch = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -126,7 +126,7 @@ var CellsReplace = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}

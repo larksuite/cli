@@ -48,8 +48,7 @@ func newObjectListShortcut(spec objectListSpec) common.Shortcut {
 			if _, err := resolveSpreadsheetToken(runtime); err != nil {
 				return err
 			}
-			_, _, err := resolveSheetSelector(runtime)
-			return err
+			return validateSheetSelectorPreflight(runtime)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -61,7 +60,7 @@ func newObjectListShortcut(spec objectListSpec) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}

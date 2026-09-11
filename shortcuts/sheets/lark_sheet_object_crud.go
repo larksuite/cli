@@ -142,7 +142,7 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str(spec.sheetIDFlagOnCreate()))
 			sheetName := strings.TrimSpace(runtime.Str(spec.sheetNameFlagOnCreate()))
 			_, err = objectCreateInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -238,7 +238,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 			sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 			_, err = objectUpdateInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -251,7 +251,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -361,7 +361,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 			sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 			_, err = objectDeleteInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -374,7 +374,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -917,7 +917,7 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -1061,7 +1061,7 @@ var FilterCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -1145,7 +1145,7 @@ var FilterUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -1213,7 +1213,7 @@ var FilterDelete = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -1270,6 +1270,15 @@ var condFormatCompareTypes = []string{
 	"equal", "notEqual", "greaterThan", "greaterThanOrEqual", "lessThan", "lessThanOrEqual", "between", "notBetween",
 	"beginsWith", "endsWith", "containsText", "notContains", "is",
 }
+
+// condFormatCompareTypeSpellings are the keys a comparison arrives under when
+// it is not spelled compare_type. Every spreadsheet UI and API in this space
+// names the slot differently (Excel's "criteria", the OpenAPI's "operator",
+// plain "condition"), and the entry that carries one is otherwise complete.
+// Order matters only for an entry that carries two of them, which no reading
+// resolves anyway; the first wins and the rest reach the schema.
+// 09-04..07: 2852 rejections said an attrs entry was missing compare_type.
+var condFormatCompareTypeSpellings = []string{"operator", "comparison", "compare", "criteria", "condition"}
 
 // condFormatCompareAliases maps the symbol and abbreviation forms onto the
 // enum. Squashed keys (letters and digits only) are handled by the generic
@@ -1359,6 +1368,10 @@ func normalizeCondFormatStyle(style map[string]interface{}) {
 			delete(style, field)
 		}
 	}
+	// Before the flat-word loop: that loop reads style["font"] as a string,
+	// so an object or list value there reads as empty and the flat word
+	// replaces it outright, dropping whatever the composite asked for.
+	normalizeCondFormatFontValue(style)
 	for _, field := range sortedKeys(style) {
 		word, isFontWord := condFormatFontWords[field]
 		if !isFontWord {
@@ -1418,12 +1431,101 @@ func normalizeCondFormatStyle(style map[string]interface{}) {
 	}
 }
 
+// normalizeCondFormatFontValue folds the `font` slot onto its enum. The schema
+// spells the two effects as one string ("bold", "italic", "bold italic"),
+// while every font vocabulary the caller arrives from spells them as flags or
+// as a list, and neither order nor separator is fixed in what they write.
+// Recognized effects are collected and re-emitted in the enum's own order;
+// anything else in the slot is left for the schema to reject rather than
+// dropped. 09-04..07: 972 rejections on the object form alone.
+func normalizeCondFormatFontValue(style map[string]interface{}) {
+	raw, present := style["font"]
+	if !present {
+		return
+	}
+	var bold, italic bool
+	switch v := raw.(type) {
+	case map[string]interface{}:
+		for key, val := range v {
+			on, readable := val.(bool)
+			if !readable {
+				return // a member this fold cannot read at all
+			}
+			effect := condFormatFontWords[strings.ToLower(key)]
+			if effect == "" {
+				// An effect this enum has no room for (underline, size). Fold
+				// nothing: replacing the object would drop it in silence,
+				// while leaving it lets the schema report the type with the
+				// member still visible in the payload.
+				return
+			}
+			if !on {
+				continue
+			}
+			switch effect {
+			case "bold":
+				bold = true
+			case "italic":
+				italic = true
+			}
+		}
+		if !bold && !italic {
+			return // nothing asked for; the schema names the type mismatch
+		}
+	case []interface{}:
+		for _, item := range v {
+			word, isStr := item.(string)
+			if !isStr {
+				return
+			}
+			switch strings.ToLower(strings.TrimSpace(word)) {
+			case "bold":
+				bold = true
+			case "italic":
+				italic = true
+			default:
+				return
+			}
+		}
+		if !bold && !italic {
+			return
+		}
+	case string:
+		fields := strings.FieldsFunc(strings.ToLower(v), func(r rune) bool {
+			return r == ' ' || r == ',' || r == '+' || r == '|' || r == '\t'
+		})
+		if len(fields) == 0 {
+			return
+		}
+		for _, word := range fields {
+			switch word {
+			case "bold":
+				bold = true
+			case "italic":
+				italic = true
+			default:
+				return // an unrecognized word: leave the value as written
+			}
+		}
+	default:
+		return
+	}
+	switch {
+	case bold && italic:
+		style["font"] = condFormatFontBoth
+	case bold:
+		style["font"] = "bold"
+	case italic:
+		style["font"] = "italic"
+	}
+}
+
 // normalizeCondFormatProperties rewrites the unambiguous --properties habits
 // in place: attrs written as a single object instead of a one-entry list, a
 // comparison spelled as `operator` / in symbol form under a rule whose
 // contract is {compare_type, value|text}, and cell-style vocabulary in the
 // rule's style block.
-func normalizeCondFormatProperties(v interface{}) interface{} {
+func normalizeCondFormatProperties(_ flagView, v interface{}) interface{} {
 	props, ok := v.(map[string]interface{})
 	if !ok {
 		return v
@@ -1453,13 +1555,28 @@ func normalizeCondFormatProperties(v interface{}) interface{} {
 // normalizeCondFormatAttrEntry applies the operator rename and the
 // compare_type value canonicalization to one attrs entry.
 func normalizeCondFormatAttrEntry(entry map[string]interface{}) {
-	if _, taken := entry["compare_type"]; !taken {
-		_, hasValue := entry["value"]
-		_, hasText := entry["text"]
-		op, hasOperator := entry["operator"]
-		if hasOperator && (hasValue || hasText) && !condFormatEntryHasShapeKey(entry) {
-			entry["compare_type"] = op
-			delete(entry, "operator")
+	if _, taken := entry["compare_type"]; !taken && !condFormatEntryHasShapeKey(entry) {
+		for _, spelling := range condFormatCompareTypeSpellings {
+			raw, present := entry[spelling]
+			if !present {
+				continue
+			}
+			// Dispatch on the VALUE, not the key: `operator` is the
+			// timePeriod rule's own slot and holds words like "yesterday"
+			// there, so only a value this enum recognizes moves. That also
+			// makes the other spellings safe to add — a `condition` holding
+			// an object or a period word stays where it is.
+			word, isStr := raw.(string)
+			if !isStr {
+				continue
+			}
+			if !slices.Contains(condFormatCompareTypes, strings.TrimSpace(word)) &&
+				canonicalCondFormatCompareType(word) == "" {
+				continue
+			}
+			entry["compare_type"] = raw
+			delete(entry, spelling)
+			break
 		}
 	}
 	val, isStr := entry["compare_type"].(string)

@@ -51,7 +51,7 @@ var CellsClear = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -169,7 +169,7 @@ func newMergeShortcut(command, desc, op string, withMergeType bool) common.Short
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -293,7 +293,7 @@ func resizeExecute(dimension string) func(ctx context.Context, runtime *common.R
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -687,7 +687,7 @@ var RangeFill = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -726,7 +726,7 @@ var RangeSort = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -776,7 +776,7 @@ func transformExecuteFn(op string, withPasteType, _ bool) func(context.Context, 
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
