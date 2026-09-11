@@ -582,6 +582,12 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 				return finishParsedJSONFlag(runtime, name, fixed)
 			}
 		}
+		// A flag whose contract is a list of plain strings takes the bare
+		// string as the one-element list it can only be — the form the same
+		// value has on every sibling flag (--range "A1:B2").
+		if wrapped, ok := wrapBareListValue(runtime.Command(), name, raw); ok {
+			return finishParsedJSONFlag(runtime, name, wrapped)
+		}
 		// Composite payloads that embed formulas / quotes / commas are the
 		// classic source of this error: inlined into the shell, the JSON gets
 		// mangled (e.g. `\$` → "invalid character in string escape"). For any
@@ -623,6 +629,38 @@ func finishParsedJSONFlag(runtime flagView, name string, out interface{}) (inter
 		return nil, err
 	}
 	return out, nil
+}
+
+// bareStringListFlags are the (command, flag) pairs whose contract is a JSON
+// array of plain strings. Their value arrives bare often enough to be its own
+// cluster — the same A1 range that every sibling flag takes unquoted — and a
+// bare string names exactly one element, with a comma list naming several.
+var bareStringListFlags = map[string]map[string]bool{
+	"+cond-format-create": {"ranges": true},
+	"+cond-format-update": {"ranges": true},
+	"+cells-batch-clear":  {"ranges": true},
+}
+
+// wrapBareListValue lifts that bare value into its list. Only for a value that
+// is not JSON at all: a malformed array stays malformed, so its own error
+// still names the character that broke it.
+func wrapBareListValue(command, flag, raw string) (interface{}, bool) {
+	if !bareStringListFlags[command][flag] {
+		return nil, false
+	}
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, `"`) {
+		return nil, false
+	}
+	out := []interface{}{}
+	for _, part := range strings.Split(trimmed, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, false // a stray comma is not a list of ranges
+		}
+		out = append(out, part)
+	}
+	return out, true
 }
 
 // jsonFlagNormalizers rewrites, per (command, flag), unambiguous habitual

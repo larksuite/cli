@@ -362,3 +362,105 @@ func TestStyles_UnboundedRangeBounded(t *testing.T) {
 		requireValidation(t, err, "unsupported range form")
 	})
 }
+
+// TestDomainFlagAliases pins the renames that hold wherever the canonical flag
+// does. The 09-01..08 backflow counts them across the whole surface rather
+// than one command: --sheet 765 rows over 21 commands, --spreadsheet 541 over
+// 17, --ranges 525 over 18, the output family 450 over 19.
+func TestDomainFlagAliases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the short spelling reaches the long one", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name    string
+			command string
+			args    []string
+		}{
+			{"--sheet", "+cells-get", []string{"--url", testURL, "--sheet", "s", "--range", "A1"}},
+			{"--spreadsheet", "+cells-get", []string{"--spreadsheet", testToken, "--sheet-name", "s", "--range", "A1"}},
+			{"--ranges", "+cells-get", []string{"--url", testURL, "--sheet-name", "s", "--ranges", "A1:B2"}},
+			{"--output", "+csv-get", []string{"--url", testURL, "--sheet-name", "s", "--output", "./out.csv"}},
+			{"--font-name", "+cells-set-style", []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--font-name", "Arial"}},
+			{"--horizontal-align", "+cells-set-style", []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--horizontal-align", "center"}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, tc.command), append(tc.args, "--dry-run"))
+				if err != nil && strings.Contains(err.Error(), "unknown flag") {
+					t.Errorf("%s should reach its canonical flag, got: %v", tc.name, err)
+				}
+			})
+		}
+	})
+
+	t.Run("a command with its own meaning keeps it", func(t *testing.T) {
+		t.Parallel()
+		// +cells-unmerge takes ONE span per call, so --ranges there is a
+		// caller asking for several and the answer is how to send several.
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-unmerge"), []string{
+			"--url", testURL, "--sheet-name", "s", "--ranges", "A1:B2", "--dry-run",
+		})
+		ve := requireValidation(t, err, "unknown flag")
+		if !strings.Contains(ve.Hint, "one span per call") {
+			t.Errorf("the tailored prescription should survive, got %q", ve.Hint)
+		}
+	})
+}
+
+// TestValueCarryingFlagAliases pins the three renames whose value changes
+// shape on the way: a bare A1 range into the list --ranges takes, a bare line
+// word into the composite --border-styles takes, and a lone scalar into the
+// matrix --cells takes.
+func TestValueCarryingFlagAliases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a bare range becomes the one-element list", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cond-format-create"), []string{
+			"--url", testURL, "--sheet-name", "Sheet1", "--dry-run",
+			"--range", "Sheet1!A1:B2", "--rule-type", "containsBlanks",
+			"--properties", `{"style":{"fore_color":"#FF0000"}}`,
+		})
+		if err != nil {
+			t.Fatalf("a bare range should reach --ranges, got: %v", err)
+		}
+		if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), `"ranges":["Sheet1!A1:B2"]`) {
+			t.Errorf("the range should travel as a one-element list, got %q", stdout)
+		}
+	})
+
+	t.Run("a bare line word becomes all four sides", func(t *testing.T) {
+		t.Parallel()
+		for _, flag := range []string{"--border-type", "--border", "--border-all", "--border-styles"} {
+			t.Run(flag, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+					"--url", testURL, "--sheet-name", "s", "--range", "A1", flag, "solid", "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("%s solid should carry, got: %v", flag, err)
+				}
+				out := strings.ReplaceAll(stdout, `\"`, `"`)
+				for _, side := range []string{"top", "bottom", "left", "right"} {
+					if !strings.Contains(out, `"`+side+`":{"style":"solid"}`) {
+						t.Errorf("%s should set every side, got %q", flag, out)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("a lone scalar becomes the one cell", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1", "--value", "hello", "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--value should reach --cells, got: %v", err)
+		}
+		if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), `"cells":[[{"value":"hello"}]]`) {
+			t.Errorf("the scalar should become one cell, got %q", stdout)
+		}
+	})
+}

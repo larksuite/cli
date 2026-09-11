@@ -158,7 +158,19 @@ var commandFlagAliases = map[string]map[string]string{
 	// is the local half of the change; the flag's own definition, and the
 	// sentence in the skill claiming these two commands already agreed, live
 	// in the spec repo and follow separately.
-	"+cells-set": {"values": "cells", "start-cell": "range"},
+	"+cells-set": {"values": "cells", "start-cell": "range", "value": "cells"},
+	// The comparison range is a JSON array here and a bare A1 string
+	// everywhere else in the domain; wrapBareListValue reads the bare form as
+	// the one-element list it can only be, which is what makes the rename a
+	// pure one (1862 rows on create alone).
+	"+cond-format-create": {"range": "ranges"},
+	"+cond-format-update": {"range": "ranges"},
+	// The border flag is composite JSON, and the habitual spellings name a
+	// line rather than a side-keyed object: --border-type solid, --border
+	// thin. normalizeBorderStylesFlagValue reads a bare line word as all four
+	// sides, so the rename carries the value unchanged (1491 rows).
+	"+cells-set-style":       {"border-type": "border-styles", "border": "border-styles", "border-all": "border-styles"},
+	"+cells-batch-set-style": {"border-type": "border-styles", "border": "border-styles", "border-all": "border-styles"},
 	// 08-29..31 reflow, long-tail table. Each of these names an input the
 	// command already has under one other spelling, with identical value
 	// semantics: the import name (16 rejections, all but one on windows),
@@ -184,6 +196,57 @@ func squashFlagName(name string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// borderFlagPrescription answers any border spelling this command does not
+// carry. --border-type / --border / --border-all are renames onto the
+// composite flag (see commandFlagAliases); what reaches this text names a side
+// or an attribute, which only the JSON can express.
+const borderFlagPrescription = `borders take one composite flag: --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}' for all four sides, or per side '{"bottom":{"style":"solid","color":"#000000"}}' (sides: top/bottom/left/right); a bare --border-styles solid works too`
+
+// domainFlagAliases are renames that hold on EVERY command carrying the
+// canonical flag, rather than on one. The sheets surface spells its locators
+// in full (--sheet-name, --spreadsheet-token, --output-path) while callers
+// reach for the short form, and the short form names nothing else here — so
+// the rename is safe wherever the long one exists, and an entry costs one
+// table row instead of one per command.
+//
+// Applied only when the command registers the canonical name and does NOT
+// register the alias: +cond-format-create really has --ranges, so --range
+// there is a different question (see commandFlagAliases), and a command that
+// grows its own --output later takes it back automatically.
+//
+// 09-01..08 backflow, unknown-flag rows: --sheet 765 across 21 commands,
+// --spreadsheet 541 across 17, --ranges 525 across 18, --output / --file-path
+// / --outdir 450 across 19.
+var domainFlagAliases = map[string]string{
+	"sheet":                 "sheet-name",
+	"sheet_name":            "sheet-name",
+	"spreadsheet":           "spreadsheet-token",
+	"spreadsheet-id":        "spreadsheet-token",
+	"ranges":                "range",
+	"output":                "output-path",
+	"file-path":             "output-path",
+	"outdir":                "output-path",
+	"output-dir":            "output-path",
+	"font-name":             "font-family",
+	"horizontal-align":      "horizontal-alignment",
+	"vertical-align":        "vertical-alignment",
+	"halign":                "horizontal-alignment",
+	"valign":                "vertical-alignment",
+	"conditional-format-id": "rule-id",
+	"file-format":           "file-extension",
+	"file-type":             "file-extension",
+	"sort-conditions":       "sort-keys",
+	"sort-rules":            "sort-keys",
+}
+
+// domainAliasExceptions keeps a domain rename off a command whose own
+// prescription says something the rename would paper over. +cells-unmerge
+// takes ONE span per call, so --ranges there is a caller asking for several
+// and the answer is how to send several, not a silent narrowing to the first.
+var domainAliasExceptions = map[string]map[string]bool{
+	"+cells-unmerge": {"ranges": true},
 }
 
 // intuitiveFlagHints carries the prescription for habitual names whose fix
@@ -241,7 +304,36 @@ var intuitiveFlagHints = map[string]map[string]string{
 	"+cells-set": {
 		// Predictable prior from +table-put --styles: models will try to
 		// attach range-level styling to a --writes call the same way.
-		"styles": `range-level styling goes through +styles-put (same {"styles":[...]} vocabulary); per-cell styles ride inside the cells objects as cell_styles`,
+		"styles":      `range-level styling goes through +styles-put (same {"styles":[...]} vocabulary); per-cell styles ride inside the cells objects as cell_styles`,
+		"cell-styles": `per-cell styles ride inside each --cells entry ({"value":"x","cell_styles":{"font_weight":"bold"}}); a whole range at once goes through +cells-set-style`,
+		"payload":     `the write payload is --cells ([[{"value":"x"}]]), or --writes for several regions in one call`,
+		"formula":     `a formula is a cell field: --cells '[[{"formula":"=SUM(A1:A5)"}]]'`,
+	},
+	// The index vocabulary of the OpenAPI (start_index / end_index) against a
+	// CLI that names dimensions by A1 span. 09-01..08 backflow: 579 rows
+	// across the five dimension commands.
+	"+cols-resize": {
+		"start-index":     `+cols-resize names columns with --range: "C" is one column, "C:E" is three`,
+		"start-col-index": `+cols-resize names columns with --range: "C" is one column, "C:E" is three`,
+		"end-index":       `+cols-resize names columns with --range: "C" is one column, "C:E" is three`,
+		"col-count":       `+cols-resize names columns with --range: "C" is one column, "C:E" is three`,
+	},
+	"+rows-resize": {
+		"start-index":     `+rows-resize names rows with --range: "3" is one row, "3:5" is three`,
+		"start-row-index": `+rows-resize names rows with --range: "3" is one row, "3:5" is three`,
+		"end-index":       `+rows-resize names rows with --range: "3" is one row, "3:5" is three`,
+		"row-count":       `+rows-resize names rows with --range: "3" is one row, "3:5" is three`,
+	},
+	"+dim-hide": {
+		"start-index": `+dim-hide names what to hide with --range: "3:5" is rows, "C:E" is columns`,
+		"end-index":   `+dim-hide names what to hide with --range: "3:5" is rows, "C:E" is columns`,
+	},
+	"+cells-set-image": {
+		"image-url": "+cells-set-image uploads a LOCAL file: --file ./chart.png; download a remote image first",
+		"url":       "+cells-set-image uploads a LOCAL file: --file ./chart.png; --url names the spreadsheet, not the image",
+	},
+	"+float-image-create": {
+		"image-url": "+float-image-create uploads a LOCAL file: --file ./chart.png; download a remote image first",
 	},
 	"+table-put": {
 		"payload":    `the sub-sheet payload flag is --sheets ({"sheets":[{"name":"Sheet1","columns":[…],"data":[…]}]}); --values takes an untyped 2D array instead`,
@@ -275,12 +367,27 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"include-all": "+csv-get returns values only; for formulas / styles / comments use +cells-get --include formula,style",
 	},
 	"+cells-get": {
-		"value-only": "+cells-get returns values by default; --include adds categories on top, so drop this flag (or narrow the output with --jq)",
+		"value-only":      "+cells-get returns values by default; --include adds categories on top, so drop this flag (or narrow the output with --jq)",
+		"include-styles":  "categories are values of one flag: --include style (comma-separate for several, e.g. --include formula,style)",
+		"include-style":   "categories are values of one flag: --include style (comma-separate for several, e.g. --include formula,style)",
+		"include-formula": "categories are values of one flag: --include formula (comma-separate for several, e.g. --include formula,style)",
+		"formula":         "categories are values of one flag: --include formula (comma-separate for several, e.g. --include formula,style)",
+		"styles":          "categories are values of one flag: --include style (comma-separate for several, e.g. --include formula,style)",
+	},
+	// The rule's own parameters live inside --properties; the flags beside it
+	// are only the locator and the rule type. 09-01..08 backflow: 537 rows.
+	"+cond-format-create": {
+		"operator": `the comparison goes inside --properties: {"attrs":[{"compare_type":"greaterThan","value":"100"}], "style":{…}}`,
+		"attrs":    `attrs is a field of --properties: {"attrs":[{"compare_type":"greaterThan","value":"100"}], "style":{…}}`,
+		"text":     `the matched text goes inside --properties: {"attrs":[{"compare_type":"containsText","text":"done"}], "style":{…}}`,
+		"value":    `the compared value goes inside --properties: {"attrs":[{"compare_type":"greaterThan","value":"100"}], "style":{…}}`,
+		"style":    `the applied style goes inside --properties: {"attrs":[…], "style":{"fore_color":"#FF0000","font":"bold"}}`,
 	},
 	"+workbook-import": {
 		"output-path": "+workbook-import uploads a local file and returns the new spreadsheet's token and url; it writes nothing locally. Capture the JSON result instead, or use +workbook-export --output-path to pull a sheet back down",
 	},
 	"+styles-put": {
+		"payload":    `the styles payload flag is --styles ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
 		"sheet-name": `+styles-put has no sheet selector -- each --styles item carries its own "name" field ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
 		"sheet-id":   `+styles-put has no sheet selector -- each --styles item carries its own "name" field ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
 	},
@@ -300,7 +407,17 @@ var intuitiveFlagHints = map[string]map[string]string{
 // unknown-flag prescription.
 func chainFlagAliases(cmd *cobra.Command) {
 	aliases := commandFlagAliases[cmd.Name()]
-	usable := make(map[string]string, len(aliases))
+	usable := make(map[string]string, len(aliases)+len(domainFlagAliases))
+	for alias, target := range domainFlagAliases {
+		if domainAliasExceptions[cmd.Name()][alias] {
+			continue
+		}
+		if cmd.Flags().Lookup(alias) == nil && cmd.Flags().Lookup(target) != nil {
+			usable[alias] = target
+		}
+	}
+	// The per-command table wins: it is the narrower statement, and one of its
+	// entries reverses a domain one (--range means --ranges on cond-format).
 	for alias, target := range aliases {
 		if cmd.Flags().Lookup(alias) == nil && cmd.Flags().Lookup(target) != nil {
 			usable[alias] = target
@@ -554,6 +671,17 @@ func sheetsFlagErrorFunc(c *cobra.Command, ferr error) error {
 	// disagrees with the hint sends agents down the wrong retry.
 	// The map is keyed hyphenated but the parse error reports the flag as
 	// typed, so --frozen_rows must hit the same entry as --frozen-rows.
+	// The border family's per-side, per-attribute spellings are endless
+	// (--border-bottom-color, --border-top-width, …) and every one of them has
+	// the same answer: one composite flag. A prefix rule covers the tail at no
+	// per-name cost, the way the payload path's own border prescription does.
+	if c.Flags().Lookup("border-styles") != nil && strings.HasPrefix(squashFlagName(name), "border") {
+		hint = borderFlagPrescription
+		if list := inlineFlagList(valid); list != "" {
+			hint += "; valid flags: " + list
+		}
+		suggestions = nil
+	}
 	if rx, ok := intuitiveFlagHints[c.Name()][strings.ReplaceAll(name, "_", "-")]; ok {
 		hint = rx
 		if list := inlineFlagList(valid); list != "" {

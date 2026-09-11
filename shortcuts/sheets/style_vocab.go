@@ -711,10 +711,41 @@ func borderLineWidth(v interface{}) (float64, bool) {
 // unreachable on this path (07-28 root-cause report #2, 173 occurrences).
 // Non-object shapes pass through for the validator to prescribe.
 func normalizeBorderStylesFlagValue(_ flagView, v interface{}) interface{} {
+	// A bare line word or width is the whole spec: --border-styles solid, and
+	// the habitual spellings that alias onto this flag (--border-type solid,
+	// --border thin, --border 2). The side-keyed object is what the flag
+	// documents; one value can only mean all four sides, which is the reading
+	// the payload path's own shorthand takes (setSideScalar). 09-01..08
+	// backflow: 1491 rows arrived on the three aliases.
+	if side, ok := borderSpecFromScalar(v); ok {
+		v = map[string]interface{}{"all": side}
+	}
 	if m, ok := v.(map[string]interface{}); ok {
 		expandBorderAllShorthand(m)
 	}
 	return v
+}
+
+// borderSpecFromScalar reads one value as a side spec: a thickness word or a
+// pixel count fills weight and leaves the line solid, anything else is the
+// line style itself and meets the style enum downstream.
+func borderSpecFromScalar(v interface{}) (map[string]interface{}, bool) {
+	switch value := v.(type) {
+	case string:
+		word := strings.TrimSpace(value)
+		if word == "" {
+			return nil, false
+		}
+		if canon := borderWeightWord(word); canon != "" {
+			return map[string]interface{}{"style": "solid", "weight": canon}, true
+		}
+		return map[string]interface{}{"style": word}, true
+	case float64, json.Number:
+		if _, isWidth := borderLineWidth(v); isWidth {
+			return map[string]interface{}{"style": "solid", "weight": v}, true
+		}
+	}
+	return nil, false
 }
 
 // normalizeCellsFlagValue is the +cells-set --cells pre-validation pipeline:

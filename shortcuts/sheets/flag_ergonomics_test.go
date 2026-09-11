@@ -639,16 +639,19 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			wantHint: []string{"--word-wrap"},
 		},
 		{
-			command:  "+cells-set-style",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-all", "thin"},
-			wrong:    "--border-all",
-			wantHint: []string{"--border-styles", `"all"`},
-		},
-		{
+			// --border-all / --border / --border-type are renames onto the
+			// composite flag now (a bare value is all four sides), so what
+			// still prescribes is a spelling that names ONE side or attribute.
 			command:  "+cells-set-style",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-top", "thin"},
 			wrong:    "--border-top",
 			wantHint: []string{"--border-styles", `"top"`},
+		},
+		{
+			command:  "+cells-set-style",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-bottom-color", "#000000"},
+			wrong:    "--border-bottom-color",
+			wantHint: []string{"--border-styles"},
 		},
 		{
 			command:  "+cells-set-style",
@@ -803,9 +806,9 @@ func TestShortcuts_FlagSpellingFolds(t *testing.T) {
 		t.Parallel()
 		sc := shortcutFromRegistry(t, "+cells-get")
 		_, _, err := runShortcutCapturingErr(t, sc, []string{
-			"--url", testURL, "--sheet-name", "s", "--ranges", "A1", "--dry-run",
+			"--url", testURL, "--sheet-name", "s", "--rangee", "A1", "--dry-run",
 		})
-		ve := requireValidation(t, err, `unknown flag "--ranges"`)
+		ve := requireValidation(t, err, `unknown flag "--rangee"`)
 		if !strings.Contains(ve.Hint, "did you mean --range?") {
 			t.Errorf("the near-typo should still be suggested, not applied; hint = %q", ve.Hint)
 		}
@@ -844,15 +847,15 @@ func TestShortcuts_UnknownFlagNamesItsOwner(t *testing.T) {
 
 	t.Run("a near-typo keeps its rename", func(t *testing.T) {
 		t.Parallel()
-		// --range exists on plenty of siblings, but here the caller wants this
-		// command's own --ranges.
-		sc := shortcutFromRegistry(t, "+cond-format-create")
+		// --heights exists on +rows-resize; on its column sibling the caller
+		// wants that command's own --widths, not a tour of the domain.
+		sc := shortcutFromRegistry(t, "+cols-resize")
 		_, _, err := runShortcutCapturingErr(t, sc, []string{
-			"--url", testURL, "--sheet-name", "s", "--range", "A1", "--dry-run",
+			"--url", testURL, "--sheet-name", "s", "--range", "A:C", "--width2", "100", "--dry-run",
 		})
 		ve := requireValidation(t, err, "unknown flag")
-		if !strings.Contains(ve.Hint, "did you mean --ranges?") {
-			t.Errorf("hint should rename to --ranges, got %q", ve.Hint)
+		if !strings.Contains(ve.Hint, "did you mean --width") {
+			t.Errorf("hint should rename to --width, got %q", ve.Hint)
 		}
 	})
 
