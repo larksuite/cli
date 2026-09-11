@@ -212,7 +212,7 @@
 | `table_name` | 是  | 监控的数据表名 |
 | `record_watch_conjunction` | 否  | 记录筛选组合方式：`and` / `or`，默认 `and` |
 | `record_watch_info` | 否  | 记录级过滤条件（修改前值匹配），为空则监听全部 |
-| `field_watch_info` | 是  | 字段级监控条件列表，至少一个，多项之间为 OR |
+| `field_watch_info` | 是  | 字段级监控条件列表，至少一个 |
 | `trigger_control_list` | 否  | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
 | `condition_list` | 否  | 数组中的每个元素表示一个条件组，条件组之间为 OR，组内 conditions 之间必须为 AND |
 
