@@ -46,8 +46,11 @@ func (s *fileDomainScan) urlRewriteExempt(rel string, expr ast.Expr) bool {
 		switch n := node.(type) {
 		case *ast.CallExpr:
 			sel, ok := n.Fun.(*ast.SelectorExpr)
+			if !ok {
+				continue
+			}
 			pkg, pkgOK := sel.X.(*ast.Ident)
-			if ok && pkgOK && aliases[pkg.Name] && sel.Sel.Name == "Rewrite" {
+			if pkgOK && aliases[pkg.Name] && sel.Sel.Name == "Rewrite" {
 				return true
 			}
 		case *ast.FuncDecl:
