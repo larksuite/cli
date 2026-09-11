@@ -33,7 +33,7 @@ lark-cli apps +init --app-id app_xxx --dir ./my-app --dry-run
 - 长耗时命令：内部含 clone、生成项目代码（拉模板 + 装依赖）、提交推送、拉环境变量，没有内部超时。实测 full_stack 新建约 40-50 秒（缓存预热、内网），冷缓存约 100 秒，弱网会更长。给它至少 10 分钟的工具超时，或后台执行后在同一轮里主动轮询到进程退出；不要结束回合去等宿主的后台完成通知。
 - 成功只看 stdout envelope：退出码 0 且 `ok: true`，`data.scaffold` ∈ {`init`, `upgrade`, `already_initialized`}。没有 envelope（超时、被 kill、被中断）就是未完成，不能开始写代码。
 - 退出 0 不代表依赖已装好：脚手架内部依赖安装是软失败。full_stack / frontend 要核对 `node_modules/` 存在，缺失则 `npm install`。
-- 中断后先查进程：`pgrep -fl <app_id>` 非空说明初始化仍在后台跑（外层 shell 被 kill 不等于 CLI 和依赖安装已停止），等它退出后按核对清单判定即可，可能不必重跑；要重跑必须先 `pkill -P <pid>` 再 `kill <pid>` 清掉全部残留，再处理目录。
+- 中断后先查进程：`pgrep -fl <app_id>` 非空说明初始化仍在后台跑（外层 shell 被 kill 不等于 CLI 和依赖安装已停止）。最多再等 5 分钟，它自己退出后按核对清单判定即可，可能不必重跑；仍在跑或需要重跑时，必须先对每个 pid `pkill -P <pid>` 再 `kill <pid>`，确认 `pgrep -f <app_id>` 为空后再处理目录。
 - 中断残留：最常见是目录非空但没有 `.spark/meta.json`，重跑会报 `--dir` 非空；删除本次新建的目录后重跑。有 meta 但工作树脏或没有初始化提交也按半成品处理。只删本次新建目录，不动用户原有目录。
 - `git push failed`：脚手架已本地提交、未推送。不要重跑 `+init`（会短路成 `already_initialized`），改为 `+git-credential-init` 后 `git push origin sprint/default`。
 - 完整门禁、核对清单与失败动作表见 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)「`+init` 耗时、超时与成功门禁」。
