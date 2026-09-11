@@ -53,10 +53,10 @@ func TestDriveDownloadResolvesEntityToken(t *testing.T) {
 					"obj_token": "resolved_file", "obj_type": "file", "is_wiki_token": tc.isWiki, "status": tc.status,
 				}},
 			})
-			auth := registerDriveDownloadExportAuth(reg, "resolved_file", true)
+			auth := registerDriveDownloadViewAuth(reg, "resolved_file", true)
 			auth.OnMatch = func(r *http.Request) {
 				calls = append(calls, "auth")
-				if r.URL.Query().Get("type") != "file" || r.URL.Query().Get("action") != "export" {
+				if r.URL.Query().Get("type") != "file" || r.URL.Query().Get("action") != "view" {
 					t.Fatalf("incorrect auth query: %s", r.URL)
 				}
 			}
@@ -156,7 +156,7 @@ func TestDriveDownloadEntityLookupFallsBack(t *testing.T) {
 						Body: map[string]any{"code": 0, "data": map[string]any{"node": map[string]any{"obj_token": token, "obj_type": "file"}}},
 					})
 				}
-				registerDriveDownloadExportAuth(reg, token, true)
+				registerDriveDownloadViewAuth(reg, token, true)
 				reg.Register(&httpmock.Stub{
 					Method: http.MethodGet, URL: "/open-apis/drive/v1/files/" + token + "/download",
 					RawBody: []byte("fallback bytes"), ContentType: "application/octet-stream",
@@ -197,7 +197,7 @@ func TestDriveDownloadEntityTypeAndPermissionGuards(t *testing.T) {
 				Body: map[string]any{"code": 0, "data": map[string]any{"obj_token": "resolved_object", "obj_type": typ, "is_wiki_token": true}},
 			})
 			if typ == "file" {
-				registerDriveDownloadExportAuth(reg, "resolved_object", false)
+				registerDriveDownloadViewAuth(reg, "resolved_object", false)
 			}
 			err := mountAndRunDrive(t, DriveDownload, []string{"+download", "--file-token", "wiki_input", "--output", "never.bin", "--as", "bot"}, f, stdout)
 			p, ok := errs.ProblemOf(err)

@@ -56,7 +56,7 @@ func TestDriveDownloadDryRun_EntityLookup(t *testing.T) {
 			require.Equal(t, "GET", clie2e.DryRunGet(out, field("method")).String())
 			require.Equal(t, "/open-apis/drive/v1/permissions/resolved_file_token/members/auth", clie2e.DryRunGet(out, field("url")).String())
 			require.Equal(t, "file", clie2e.DryRunGet(out, field("params.type")).String())
-			require.Equal(t, "export", clie2e.DryRunGet(out, field("params.action")).String())
+			require.Equal(t, "view", clie2e.DryRunGet(out, field("params.action")).String())
 			index++
 			if !tc.explicit {
 				require.Equal(t, "POST", clie2e.DryRunGet(out, field("method")).String())
@@ -72,6 +72,7 @@ func TestDriveDownloadDryRun_EntityLookup(t *testing.T) {
 			require.Equal(t, "/open-apis/drive/v1/files/resolved_file_token/download", clie2e.DryRunGet(out, field("url")).String())
 			require.Equal(t, int64(index+1), clie2e.DryRunGet(out, "api.#").Int())
 		})
+
 	}
 }
 

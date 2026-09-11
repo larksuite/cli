@@ -1,0 +1,39 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+//go:build !windows
+
+package localfileio
+
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"syscall"
+
+	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/vfs"
+)
+
+// openAppendValidated applies the same pre-open identity and regular-file
+// checks as Open. O_NOFOLLOW closes the final-component symlink race and
+// O_NONBLOCK prevents a FIFO from wedging a download before it can be rejected.
+func openAppendValidated(path string, perm os.FileMode) (*os.File, error) {
+	pre, err := vfs.Stat(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		pre = nil
+	}
+
+	f, err := vfs.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, perm)
+	if err != nil {
+		return nil, err
+	}
+	if err := inspectOpenedFile(f, pre, true); err != nil {
+		_ = f.Close()
+		return nil, &fileio.PathValidationError{Err: err}
+	}
+	return f, nil
+}
