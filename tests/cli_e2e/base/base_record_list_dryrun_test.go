@@ -30,8 +30,8 @@ func TestBaseRecordListDryRunAcceptsFieldAlias(t *testing.T) {
 		"base", "+record-list",
 		"--base-token", "app_x",
 		"--table-id", "tbl_x",
-		"--field", "Name",
-		"--field", "Age",
+		"--field-id", "Name",
+		"--field-name", "Age",
 		"--limit", "3",
 	)
 
@@ -45,8 +45,8 @@ func TestBaseRecordListDryRunFieldAliasPreservesFieldValues(t *testing.T) {
 		"base", "+record-list",
 		"--base-token", "app_x",
 		"--table-id", "tbl_x",
-		"--field", "A,B",
-		"--field", "@Owner",
+		"--field-name", "A,B",
+		"--field-name", "@Owner",
 		"--field", "[JSON-looking]",
 		"--field", "Project Owner",
 		"--limit", "3",
@@ -63,7 +63,7 @@ func TestBaseRecordSearchDryRunAcceptsFieldAlias(t *testing.T) {
 		"--keyword", "Alice",
 		"--search-field", "Name",
 		"--field-id", "Name",
-		"--field", "Project Owner",
+		"--field-name", "Project Owner",
 	)
 
 	out := result.Stdout
@@ -79,7 +79,7 @@ func TestBaseRecordGetDryRunAcceptsFieldAlias(t *testing.T) {
 		"--table-id", "tbl_x",
 		"--record-id", "rec_1",
 		"--field", "Name",
-		"--field", "Project Owner",
+		"--field-name", "Project Owner",
 	)
 
 	out := result.Stdout
@@ -306,12 +306,12 @@ func TestBaseRecordProjectionDryRunKeepsActiveParamForFlagLikeFieldNames(t *test
 		wantParam string
 	}{
 		{
-			name: "canonical",
+			name: "canonical and field name alias",
 			args: []string{
 				"base", "+record-list", "--base-token", "app_x", "--table-id", "tbl_x",
-				"--field-id", "Cost--USD", "--field-id", "Cost--USD",
+				"--field-id", "Cost--USD", "--field-name", "Cost--USD",
 			},
-			wantParam: "--field-id",
+			wantParam: "--field-name",
 		},
 		{
 			name: "fields alias",

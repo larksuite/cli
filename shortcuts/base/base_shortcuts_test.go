@@ -773,9 +773,17 @@ func TestBaseRecordProjectionAliasesAreHidden(t *testing.T) {
 				t.Fatalf("public projection flag --field-id missing or hidden: %#v", primary)
 			}
 			help := cmd.Flags().FlagUsages()
-			fieldAlias := cmd.Flags().Lookup("field")
-			if fieldAlias == nil || fieldAlias.Name != "field-id" {
-				t.Fatalf("Lookup(field) = %#v, want canonical --field-id", fieldAlias)
+			for _, aliasName := range []string{"field", "field-name"} {
+				fieldAlias := cmd.Flags().Lookup(aliasName)
+				if fieldAlias != primary {
+					t.Fatalf("Lookup(%s) = %#v, want canonical --field-id", aliasName, fieldAlias)
+				}
+				for _, line := range strings.Split(help, "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "--"+aliasName+" ") || strings.HasPrefix(line, "--"+aliasName+",") {
+						t.Fatalf("help should not list canonical alias --%s:\n%s", aliasName, help)
+					}
+				}
 			}
 			for _, aliasName := range []string{"fields", "field-names"} {
 				alias := cmd.Flags().Lookup(aliasName)
@@ -787,12 +795,6 @@ func TestBaseRecordProjectionAliasesAreHidden(t *testing.T) {
 					if strings.HasPrefix(line, "--"+aliasName+" ") || strings.HasPrefix(line, "--"+aliasName+",") {
 						t.Fatalf("help should not include hidden --%s:\n%s", aliasName, help)
 					}
-				}
-			}
-			for _, line := range strings.Split(help, "\n") {
-				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "--field ") || strings.HasPrefix(line, "--field,") {
-					t.Fatalf("help should not list canonical alias --field:\n%s", help)
 				}
 			}
 		})

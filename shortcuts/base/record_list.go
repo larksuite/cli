@@ -20,7 +20,7 @@ var BaseRecordList = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		recordProjectionFieldFlag("field ID or name to include; repeat to project only needed fields"),
+		recordProjectionFieldFlag("field ID or name to include; repeat to project only needed fields; one field per occurrence; commas are not split"),
 		recordProjectionAliasFlag("fields"),
 		recordProjectionAliasFlag("field-names"),
 		recordListViewRefFlag(),
