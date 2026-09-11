@@ -375,7 +375,8 @@ func (c *APIClient) CallAPI(ctx context.Context, request RawApiRequest) (interfa
 }
 
 // paginateLoop runs the core pagination loop. For each successful page (code == 0),
-// it calls onResult if non-nil. It always accumulates and returns all raw page results.
+// it calls onResult if non-nil. It accumulates successful page results and returns
+// an error when a later page fails so callers cannot treat partial results as complete.
 func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opts PaginationOptions, onResult func(interface{}) error) ([]interface{}, error) {
 	var allResults []interface{}
 	var pageToken string
@@ -409,7 +410,7 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 				return nil, err
 			}
 			fmt.Fprintf(c.ErrOut, "[page %d] error, stopping pagination\n", page)
-			break
+			return allResults, err
 		}
 
 		if resultMap, ok := result.(map[string]interface{}); ok {
@@ -420,7 +421,7 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 					return allResults, nil
 				}
 				fmt.Fprintf(c.ErrOut, "[page %d] API error (code=%.0f), stopping pagination\n", page, code)
-				break
+				return allResults, c.CheckResponse(result, request.As)
 			}
 		}
 
@@ -479,7 +480,7 @@ func (c *APIClient) PaginateAll(ctx context.Context, request RawApiRequest, opts
 
 // StreamPages fetches all pages and streams each page's list items via onItems.
 // Returns the last page result (for error checking), whether any list items were found,
-// and any network error. Use this for streaming formats (ndjson, table, csv).
+// and any pagination error. Use this for streaming formats (ndjson, table, csv).
 func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onItems func([]interface{}) error, opts PaginationOptions) (result interface{}, hasItems bool, err error) {
 	totalItems := 0
 	results, loopErr := c.paginateLoop(ctx, request, opts, func(r interface{}) error {
