@@ -22,6 +22,43 @@ const apiBasePath = "/open-apis/spark/v1"
 // lark-apps SKILL.md ("app_id 获取"); the hint stays lean and does not repeat it.
 const appIDListHint = "verify --app-id is correct and you have access to the app; list your apps with `lark-cli apps +list`"
 
+// noArtifactUploadError answers the response an app gives when it does not
+// publish by uploading a prebuilt artifact.
+//
+// Such an app answers pre_release with 200 and an empty kv set, which read as
+// a malformed response and was reported as an internal error -- the command
+// blamed the server for an answer that is correct and expected. The app simply
+// publishes from its git repository, and the caller needs to be sent there.
+//
+// The distinction is worth drawing carefully: an empty kv set is a statement
+// about the app, while a populated one missing just the upload key really is a
+// response nobody can act on.
+func noArtifactUploadError(appID string, kvCount int, uploadKey string) error {
+	if kvCount > 0 {
+		return appsSubprocessEnvelopeError("pre_release for %s returned %d value(s) but no %s", appID, kvCount, uploadKey)
+	}
+	// The route starts at +init, not at "commit and push": someone who reached
+	// this error with a loose HTML file has no checkout to commit into, and a
+	// hint that assumes one leaves them stuck at step zero.
+	//
+	// The rest is left to the reference rather than spelled out here. Repeating
+	// the sequence would pin a branch convention this error does not own, and it
+	// would go stale silently -- the reference is where that flow is maintained.
+	return appsFailedPreconditionError(
+		"app %s does not publish by uploading an artifact: pre_release offers no upload target", appID).
+		WithHint("this app publishes from its git repository: start with `lark-cli apps +init --app-id " + appID +
+			"`, then follow skills/lark-apps/references/lark-apps-local-dev.md for the commit, push and `lark-cli apps +release-create` steps")
+}
+
+// preReleaseHint answers a pre_release failure, which is where this command
+// first learns whether the app accepts an uploaded artifact at all.
+//
+// It names both live possibilities rather than picking one: the call fails the
+// same way for an app id the caller cannot reach and for an app that publishes
+// from its git repository instead, and nothing in the response separates them.
+// Asserting either would send half the callers down a path that cannot work.
+const preReleaseHint = "verify --app-id is correct and you have access to the app. This command uploads a prebuilt artifact, which not every app accepts; an app that publishes from its git repository takes `lark-cli apps +release-create` after a commit and push instead"
+
 // appNoDatabaseCode / appNoDatabaseLegacyCode are the Spark business codes seen
 // when a db command runs against an app that has not initialized a database yet.
 // The raw server message carries internal workspace terminology, so the CLI

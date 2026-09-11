@@ -173,6 +173,10 @@ github.com/skip2/go-qrcode/bitset
 github.com/skip2/go-qrcode/reedsolomon
 github.com/spf13/cobra
 github.com/spf13/pflag
+github.com/tdewolff/parse/v2
+github.com/tdewolff/parse/v2/buffer
+github.com/tdewolff/parse/v2/css
+github.com/tdewolff/parse/v2/js
 github.com/xo/terminfo
 github.com/zalando/go-keyring
 github.com/zalando/go-keyring/internal/shellescape
