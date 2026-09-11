@@ -1,7 +1,7 @@
 
 # Base data-query DSL reference
 
-> **前置路由**: [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) | **认证或授权问题**: [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)
+> **前置路由**: [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) | **认证或授权问题**: [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)
 
 ## 限制
 

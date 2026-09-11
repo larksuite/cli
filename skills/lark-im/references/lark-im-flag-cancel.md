@@ -1,6 +1,6 @@
 # im +flag-cancel
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) for authentication, global parameters, and security rules.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) for authentication, global parameters, and security rules.
 
 This skill maps to shortcut: `lark-cli im +flag-cancel`. Underlying API: `POST /open-apis/im/v1/flags/cancel`.
 

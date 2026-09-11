@@ -5,16 +5,17 @@ package skillscheck
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 func TestSuiteTemplateMatchesCropContract(t *testing.T) {
 	repoRoot := filepath.Join("..", "..")
-	raw, err := os.ReadFile(filepath.Join(repoRoot, "isolated-skills", "lark-suite", "SKILL.md"))
+	raw, err := vfs.ReadFile(filepath.Join(repoRoot, "isolated-skills", "lark-suite", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,20 +26,28 @@ func TestSuiteTemplateMatchesCropContract(t *testing.T) {
 	if strings.Count(template, "<!-- LARK_SUITE_ROUTES -->") != 1 {
 		t.Fatal("suite template must contain exactly one route placeholder")
 	}
+	if !strings.Contains(template, "references/<skill-name>/GUIDE.md") {
+		t.Fatal("suite template must route nested guides through GUIDE.md")
+	}
+	if strings.Contains(template, "references/<skill-name>/SKILL.md") {
+		t.Fatal("suite template must not route nested guides through SKILL.md")
+	}
 }
 
 func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
 	repoRoot := filepath.Join("..", "..")
-	raw, err := os.ReadFile(filepath.Join(repoRoot, "skill-template", "lark-suite-business-info.json"))
+	raw, err := vfs.ReadFile(filepath.Join(repoRoot, "skill-template", "lark-suite-config.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var keywords map[string][]string
-	if err := json.Unmarshal(raw, &keywords); err != nil {
+	var config struct {
+		Keywords map[string][]string `json:"keywords"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
 		t.Fatal(err)
 	}
 
-	entries, err := os.ReadDir(filepath.Join(repoRoot, "skills"))
+	entries, err := vfs.ReadDir(filepath.Join(repoRoot, "skills"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +58,8 @@ func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
 		}
 	}
 	sort.Strings(directories)
-	keys := make([]string, 0, len(keywords))
-	for name := range keywords {
+	keys := make([]string, 0, len(config.Keywords))
+	for name := range config.Keywords {
 		keys = append(keys, name)
 	}
 	sort.Strings(keys)
