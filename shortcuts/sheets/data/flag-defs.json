@@ -3438,6 +3438,13 @@
         "desc": "Filter to a single chart reference_id"
       },
       {
+        "name": "only-thumbnail",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Return only rendered chart thumbnails instead of snapshot configs; image bytes are in details.thumbnail.base64 without a data: prefix"
+      },
+      {
         "name": "dry-run",
         "kind": "system",
         "type": "bool",
@@ -3597,6 +3604,13 @@
         "type": "string",
         "required": "optional",
         "desc": "Combo charts only; compare series units and magnitudes first and place a series that would be flattened on the right axis; pass left or right aligned with --dim2-indexes, one value per selected series"
+      },
+      {
+        "name": "series-data-labels",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Combo charts only; comma-separated data-label settings aligned with explicit --dim2-indexes, one value per selected series; none disables labels for that series; mutually exclusive with --data-labels, while --data-label-position applies to the remaining series"
       },
       {
         "name": "key-index",
@@ -3777,20 +3791,20 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Preset chart-level color palette; mutually exclusive with --colors",
+        "desc": "Preset chart-level color palette; mutually exclusive with --colors. Multi-category: brand (default) / rainbow (many series) / contrast (high contrast); use diverging for positive-negative data, muted for soft light tints, and mono-<color> for a single series or ordered magnitude (mono-cyan is cyan, mono-gray is neutral grey)",
         "enum": [
-          "brandColorSeries@v2",
-          "rainbowColorSeries@v2",
-          "complementaryColorSeries@v2",
-          "converseColorSeries@v2",
-          "primaryColorSeries@v2",
-          "singleColorSeries-B-@v2",
-          "singleColorSeries-W-@v2",
-          "singleColorSeries-G-@v2",
-          "singleColorSeries-Y-@v2",
-          "singleColorSeries-O-@v2",
-          "singleColorSeries-R-@v2",
-          "singleColorSeries-D-@v2"
+          "brand",
+          "rainbow",
+          "contrast",
+          "diverging",
+          "muted",
+          "mono-blue",
+          "mono-cyan",
+          "mono-green",
+          "mono-yellow",
+          "mono-orange",
+          "mono-red",
+          "mono-gray"
         ]
       },
       {
@@ -4047,20 +4061,20 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Preset chart-level color palette; mutually exclusive with --colors",
+        "desc": "Preset chart-level color palette; mutually exclusive with --colors. Multi-category: brand (default) / rainbow (many series) / contrast (high contrast); use diverging for positive-negative data, muted for soft light tints, and mono-<color> for a single series or ordered magnitude (mono-cyan is cyan, mono-gray is neutral grey)",
         "enum": [
-          "brandColorSeries@v2",
-          "rainbowColorSeries@v2",
-          "complementaryColorSeries@v2",
-          "converseColorSeries@v2",
-          "primaryColorSeries@v2",
-          "singleColorSeries-B-@v2",
-          "singleColorSeries-W-@v2",
-          "singleColorSeries-G-@v2",
-          "singleColorSeries-Y-@v2",
-          "singleColorSeries-O-@v2",
-          "singleColorSeries-R-@v2",
-          "singleColorSeries-D-@v2"
+          "brand",
+          "rainbow",
+          "contrast",
+          "diverging",
+          "muted",
+          "mono-blue",
+          "mono-cyan",
+          "mono-green",
+          "mono-yellow",
+          "mono-orange",
+          "mono-red",
+          "mono-gray"
         ]
       },
       {

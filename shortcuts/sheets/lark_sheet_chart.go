@@ -102,6 +102,18 @@ var chartSemanticConfigFlags = []string{
 	"color-palette",
 }
 
+var chartDataLabelModes = []string{
+	"none",
+	"value",
+	"category",
+	"percentage",
+	"value_category",
+	"value_percentage",
+	"category_percentage",
+	"value_category_percentage",
+	"series",
+}
+
 // ChartCreateBasic creates a complete server-side chart snapshot from a chart
 // type and a rectangular source range. The CLI only forwards semantic input;
 // it deliberately does not own or duplicate the full chart snapshot template.
@@ -115,6 +127,7 @@ var ChartCreateBasic = common.Shortcut{
 	HasFormat:   true,
 	Flags:       flagsFor("+chart-create-basic"),
 	PostMount:   configureChartSemanticCommand,
+	Normalize:   normalizeChartColorPalette,
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetToken(runtime)
 		if err != nil {
@@ -171,6 +184,7 @@ var ChartConfigUpdate = common.Shortcut{
 		"--dry-run validates the request shape only; execution reads the current chart snapshot, so X-axis bounds can still be rejected unless the existing bottom X axis is continuous (valueType=linear).",
 	},
 	PostMount: configureChartSemanticCommand,
+	Normalize: normalizeChartColorPalette,
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetToken(runtime)
 		if err != nil {
@@ -209,15 +223,6 @@ var ChartConfigUpdate = common.Shortcut{
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "manage_chart_object", input)
 		if err != nil {
 			return err
-		}
-		if runtime.Changed("last-point-label") {
-			updatedSnapshot, readErr := fetchChartSnapshot(
-				ctx, runtime, token, sheetID, sheetName, runtime.Str("chart-id"),
-			)
-			if readErr != nil {
-				return readErr
-			}
-			viewModel = chartViewModel(updatedSnapshot)
 		}
 		runtime.Out(withChartShortcutResult(out, "viewModel", viewModel), nil)
 		return nil
@@ -378,6 +383,9 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 	if chartType != "combo" && (rt.Changed("series-types") || rt.Changed("series-y-axes")) {
 		return nil, sheetsValidationForFlag("series-types", "--series-types and --series-y-axes are only valid for combo charts")
 	}
+	if chartType != "combo" && rt.Changed("series-data-labels") {
+		return nil, sheetsValidationForFlag("series-data-labels", "--series-data-labels is only valid for combo charts")
+	}
 	var seriesTypes []string
 	if rt.Changed("series-types") {
 		seriesTypes, err = parseChartEnumList(rt.Str("series-types"), "series-types", []string{"column", "line", "area", "scatter"})
@@ -396,6 +404,25 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 		}
 		if len(seriesYAxes) != len(dim2Indexes) {
 			return nil, sheetsValidationForFlag("series-y-axes", "--series-y-axes must contain one value per selected value series")
+		}
+	}
+	var seriesDataLabels []string
+	if rt.Changed("series-data-labels") {
+		if !rt.Changed("dim2-indexes") {
+			return nil, sheetsValidationForFlag("series-data-labels", "--series-data-labels requires explicit --dim2-indexes")
+		}
+		if rt.Changed("data-labels") {
+			return nil, common.ValidationErrorf("--series-data-labels and --data-labels are mutually exclusive").WithParams(
+				sheetsInvalidParam("series-data-labels", "cannot be used with --data-labels"),
+				sheetsInvalidParam("data-labels", "cannot be used with --series-data-labels"),
+			)
+		}
+		seriesDataLabels, err = parseChartEnumList(rt.Str("series-data-labels"), "series-data-labels", chartDataLabelModes)
+		if err != nil {
+			return nil, err
+		}
+		if len(seriesDataLabels) != len(dim2Indexes) {
+			return nil, sheetsValidationForFlag("series-data-labels", "--series-data-labels must contain one value per selected value series")
 		}
 	}
 	if chartType == "bubble" && (len(dim2Indexes) < 2 || len(dim2Indexes) > 4) {
@@ -472,6 +499,9 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 	if rt.Changed("series-y-axes") {
 		basic["series_y_axes"] = seriesYAxes
 	}
+	if rt.Changed("series-data-labels") {
+		basic["series_data_labels"] = seriesDataLabels
+	}
 	if err := validateChartColorFlags(rt); err != nil {
 		return nil, err
 	}
@@ -537,7 +567,7 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 		return nil, err
 	}
 	addChartSemanticConfig(rt, updates)
-	if len(updates) == 0 && !rt.Changed("last-point-label") {
+	if len(updates) == 0 {
 		return nil, common.ValidationErrorf("at least one chart configuration flag is required")
 	}
 	patch, _ := applyChartConfigPatch(map[string]interface{}{}, updates)
@@ -553,7 +583,6 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 	if err := validateInputAgainstSchema(rt, input); err != nil {
 		return nil, err
 	}
-	addChartCompatibilityFields(rt, input)
 	return input, nil
 }
 
@@ -680,7 +709,6 @@ func chartConfigUpdateInputFromSnapshot(
 	if err := validateInputAgainstSchema(rt, input); err != nil {
 		return nil, nil, err
 	}
-	addChartCompatibilityFields(rt, input)
 	return input, viewModel, nil
 }
 
@@ -1621,10 +1649,6 @@ func configureChartSemanticCommand(cmd *cobra.Command) {
 		cmd.Flags().Bool("stacked", false, "compatibility alias for --stack normal")
 		_ = cmd.Flags().MarkHidden("stacked")
 	}
-	if cmd.Name() == "+chart-config-update" && cmd.Flags().Lookup("last-point-label") == nil {
-		cmd.Flags().Bool("last-point-label", false, "deprecated compatibility flag")
-		_ = cmd.Flags().MarkHidden("last-point-label")
-	}
 	originalArgs := cmd.Args
 	cmd.Args = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 && cmd.Flags().Changed("smooth") && (args[0] == "true" || args[0] == "false") {
@@ -1641,14 +1665,6 @@ func configureChartSemanticCommand(cmd *cobra.Command) {
 	})
 }
 
-func addChartCompatibilityFields(rt flagView, input map[string]interface{}) {
-	if !rt.Changed("last-point-label") {
-		return
-	}
-	properties, _ := input["properties"].(map[string]interface{})
-	properties["last_point_label"] = rt.Bool("last-point-label")
-}
-
 func addChartSemanticConfig(rt flagView, out map[string]interface{}) {
 	for _, flag := range chartSemanticConfigFlags {
 		if !rt.Changed(flag) {
@@ -1659,6 +1675,16 @@ func addChartSemanticConfig(rt flagView, out map[string]interface{}) {
 			out[key] = rt.Int(flag)
 		} else if flag == "x-axis-min" || flag == "x-axis-max" || flag == "y-axis-min" || flag == "y-axis-max" {
 			out[key] = rt.Float64(flag)
+		} else if flag == "color-palette" {
+			// The flag carries a friendly palette name; the server expects the
+			// wire value. Normalize already folded any legacy wire input to its
+			// friendly spelling, so a lookup miss means a raw wire value the
+			// alias table does not cover — forward it unchanged.
+			value := rt.Str(flag)
+			if wire, ok := friendlyToWireChartPalette(value); ok {
+				value = wire
+			}
+			out[key] = value
 		} else {
 			out[key] = rt.Str(flag)
 		}

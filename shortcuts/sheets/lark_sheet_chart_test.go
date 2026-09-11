@@ -171,6 +171,52 @@ func TestChartCreateBasic_ConfigAndPlacement(t *testing.T) {
 	}
 }
 
+func TestChartColorPalette_FriendlyAliasTranslation(t *testing.T) {
+	t.Parallel()
+
+	// create path: friendly name and legacy wire value both reach the server as
+	// the wire value.
+	createCases := []struct {
+		input string
+		wire  string
+	}{
+		{input: "brand", wire: "brandColorSeries@v2"},
+		{input: "mono-cyan", wire: "singleColorSeries-W-@v2"},
+		{input: "brandColorSeries@v2", wire: "brandColorSeries@v2"},
+	}
+	for _, tc := range createCases {
+		t.Run("create/"+tc.input, func(t *testing.T) {
+			body := parseDryRunBody(t, ChartCreateBasic, []string{
+				"--url", testURL,
+				"--sheet-id", testSheetID,
+				"--chart-type", "line",
+				"--data-range", "A1:C4",
+				"--color-palette", tc.input,
+			})
+			basic := decodeToolInput(t, body, "manage_chart_object")["basic_chart"].(map[string]interface{})
+			if basic["color_palette"] != tc.wire {
+				t.Fatalf("color_palette = %v, want %q", basic["color_palette"], tc.wire)
+			}
+		})
+	}
+
+	// update path shares the same translation; verify it lands on the wire value
+	// in snapshot.style.colorTheme.
+	t.Run("update/mono-cyan", func(t *testing.T) {
+		body := parseDryRunBody(t, ChartConfigUpdate, []string{
+			"--url", testURL,
+			"--sheet-id", testSheetID,
+			"--chart-id", "chart-1",
+			"--color-palette", "mono-cyan",
+		})
+		snapshot := chartDryRunSnapshot(t, decodeToolInput(t, body, "manage_chart_object"))
+		colors := snapshot["style"].(map[string]interface{})["colorTheme"].([]interface{})
+		if len(colors) != 1 || colors[0] != "singleColorSeries-W-@v2" {
+			t.Fatalf("colorTheme = %#v, want [singleColorSeries-W-@v2]", colors)
+		}
+	})
+}
+
 func TestChartCreateBasic_MultipleAlignedRanges(t *testing.T) {
 	t.Parallel()
 	rangeValue := "'Data, 2026'!A1:A10,'Data, 2026'!K1:L10"
@@ -712,32 +758,6 @@ func TestChartConfigUpdate_DataLabelPositionDoesNotEnableLabels(t *testing.T) {
 	}
 }
 
-func TestChartConfigUpdate_LastPointLabelCompatibility(t *testing.T) {
-	t.Parallel()
-	chartConfigUpdate := shortcutFromRegistry(t, "+chart-config-update")
-	parent, _, _, _ := newTestRig(t, chartConfigUpdate)
-	cmd, _, err := parent.Find([]string{"+chart-config-update"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	flag := cmd.Flags().Lookup("last-point-label")
-	if flag == nil || !flag.Hidden {
-		t.Fatalf("--last-point-label compatibility flag = %#v, want registered and hidden", flag)
-	}
-
-	body := parseDryRunBody(t, chartConfigUpdate, []string{
-		"--url", testURL,
-		"--sheet-id", testSheetID,
-		"--chart-id", "chart-1",
-		"--last-point-label=true",
-	})
-	input := decodeToolInput(t, body, "manage_chart_object")
-	properties := input["properties"].(map[string]interface{})
-	if properties["last_point_label"] != true {
-		t.Fatalf("last_point_label = %#v, want true", properties["last_point_label"])
-	}
-}
-
 func TestChartSemanticShortcuts_CompatibleAliasesInBatch(t *testing.T) {
 	t.Parallel()
 	body := parseDryRunBody(t, BatchChartUpdate, []string{
@@ -936,6 +956,7 @@ func TestChartCreateBasic_ConfiguresComboSeriesSemantically(t *testing.T) {
 		"--dim2-indexes", "2,3,4",
 		"--series-types", "column,line,scatter",
 		"--series-y-axes", "left,left,right",
+		"--series-data-labels", "value,value,none",
 	})
 	basic := decodeToolInput(t, body, "manage_chart_object")["basic_chart"].(map[string]interface{})
 	if got := basic["series_types"]; !reflect.DeepEqual(got, []interface{}{"column", "line", "scatter"}) {
@@ -944,13 +965,16 @@ func TestChartCreateBasic_ConfiguresComboSeriesSemantically(t *testing.T) {
 	if got := basic["series_y_axes"]; !reflect.DeepEqual(got, []interface{}{"left", "left", "right"}) {
 		t.Fatalf("basic_chart.series_y_axes = %#v", got)
 	}
+	if got := basic["series_data_labels"]; !reflect.DeepEqual(got, []interface{}{"value", "value", "none"}) {
+		t.Fatalf("basic_chart.series_data_labels = %#v", got)
+	}
 }
 
 func TestChartCreateBasic_ConfiguresComboSeriesSemanticallyInBatch(t *testing.T) {
 	t.Parallel()
 	body := parseDryRunBody(t, BatchChartCreate, []string{
 		"--url", testURL,
-		"--operations", `[{"sheet_id":"sh1","chart_type":"combo","data_range":"A1:D7","dim2_indexes":[2,3,4],"series_types":["column","line","scatter"],"series_y_axes":["left","left","right"]}]`,
+		"--operations", `[{"sheet_id":"sh1","chart_type":"combo","data_range":"A1:D7","dim2_indexes":[2,3,4],"series_types":["column","line","scatter"],"series_y_axes":["left","left","right"],"series_data_labels":["value","value","none"]}]`,
 	})
 	input := decodeToolInput(t, body, "batch_update")
 	ops := input["operations"].([]interface{})
@@ -960,6 +984,9 @@ func TestChartCreateBasic_ConfiguresComboSeriesSemanticallyInBatch(t *testing.T)
 	}
 	if got := basic["series_y_axes"]; !reflect.DeepEqual(got, []interface{}{"left", "left", "right"}) {
 		t.Fatalf("batch basic_chart.series_y_axes = %#v", got)
+	}
+	if got := basic["series_data_labels"]; !reflect.DeepEqual(got, []interface{}{"value", "value", "none"}) {
+		t.Fatalf("batch basic_chart.series_data_labels = %#v", got)
 	}
 }
 
@@ -984,6 +1011,31 @@ func TestChartCreateBasic_ValidatesComboSeriesSemantics(t *testing.T) {
 			name: "invalid axis",
 			args: []string{"--chart-type", "combo", "--data-range", "A1:C7", "--series-y-axes", "left,secondary"},
 			want: "expected one of left, right",
+		},
+		{
+			name: "series labels on non combo",
+			args: []string{"--chart-type", "line", "--data-range", "A1:C7", "--dim2-indexes", "2,3", "--series-data-labels", "value,none"},
+			want: "only valid for combo charts",
+		},
+		{
+			name: "series labels require explicit indexes",
+			args: []string{"--chart-type", "combo", "--data-range", "A1:C7", "--series-data-labels", "value,none"},
+			want: "requires explicit --dim2-indexes",
+		},
+		{
+			name: "series label count",
+			args: []string{"--chart-type", "combo", "--data-range", "A1:D7", "--dim2-indexes", "2,3,4", "--series-data-labels", "value,none"},
+			want: "one value per selected value series",
+		},
+		{
+			name: "invalid series label",
+			args: []string{"--chart-type", "combo", "--data-range", "A1:C7", "--dim2-indexes", "2,3", "--series-data-labels", "value,invalid"},
+			want: "expected one of none, value",
+		},
+		{
+			name: "global and series labels are exclusive",
+			args: []string{"--chart-type", "combo", "--data-range", "A1:C7", "--dim2-indexes", "2,3", "--data-labels", "value", "--series-data-labels", "value,none"},
+			want: "mutually exclusive",
 		},
 	}
 	for _, tc := range cases {
@@ -1283,6 +1335,7 @@ func TestChartSemanticShortcuts_Validation(t *testing.T) {
 		{name: "invalid direction", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--data-direction", "horizontal"}},
 		{name: "colors cannot be empty", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--colors", ""}},
 		{name: "palette and colors are exclusive", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--color-palette", "brandColorSeries@v2", "--colors", "#112233,#445566"}},
+		{name: "invalid palette", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--color-palette", "blue"}},
 		{name: "size must be paired", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--width", "640"}},
 		{name: "misaligned cross-sheet ranges", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "'A'!A1:A4,'B'!B2:C4"}},
 		{name: "bubble roles on non-bubble chart", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--x-index", "2", "--y-index", "3"}},
