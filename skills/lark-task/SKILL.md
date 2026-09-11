@@ -21,6 +21,8 @@ metadata:
 3. help 中存在匹配 shortcut 时，使用 help 列出的完整 shortcut token（例如 `+create`）运行 `lark-cli task <shortcut> --help`，再按真实 flag 执行。
 4. help 中没有匹配 shortcut 时，不得尝试相似的 `+<verb>`；从 help 中选择原生 resource，运行 `lark-cli task <resource> --help` 确认 method，再运行 `lark-cli schema task.<resource>.<method>` 获取参数结构，最后调用 `lark-cli task <resource> <method> ...`。
 5. 遇到 `unknown_subcommand` 时必须停止猜测或尝试变体，回到第 2 步重新发现能力。
+6. shortcut 的 `--help` 暴露 `--print-schema` 时，构造复合 JSON 参数前必须运行 `lark-cli task <shortcut> --print-schema --flag-name <flag>`；参数 schema 是该 flag 可接受字段、类型和嵌套结构的权威来源。
+7. 目标字段不在 schema 中，或服务端以参数错误拒绝该字段时，将当前 shortcut 视为不匹配，回到第 1～3 步重新选择 shortcut；只有没有匹配 shortcut 时才进入第 4 步的原生 API 路径。
 
 shortcut 名称只能来自本 Skill 的 Shortcut 表或 `lark-cli task --help`；原生 resource/method 以逐级 help 为准，参数名、类型和嵌套结构以 method schema 为准。
 
@@ -76,112 +78,3 @@ shortcut 名称只能来自本 Skill 的 Shortcut 表或 `lark-cli task --help`�
 | [`+tasklist-search`](references/lark-task-tasklist-search.md) | search tasklists |
 | [`+tasklist-task-add`](references/lark-task-tasklist-task-add.md) | add tasks to a tasklist |
 | [`+tasklist-members`](references/lark-task-tasklist-members.md) | manage tasklist members |
-
-## API Resources
-
-```bash
-lark-cli schema task.<resource>.<method>   # 调用 API 前必须先查看参数结构
-lark-cli task <resource> <method> [flags] # 调用 API
-```
-
-> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
-
-### tasks
-
-  - `create` — 创建任务
-  - `delete` — 删除任务
-  - `get` — 获取任务详情
-  - `list` — 列取任务列表
-  - `patch` — 更新任务
-
-### tasklists
-
-  - `add_members` — 添加清单成员
-  - `create` — 创建清单
-  - `delete` — 删除清单
-  - `get` — 获取清单详情
-  - `list` — 获取清单列表
-  - `patch` — 更新清单
-  - `remove_members` — 移除清单成员
-  - `tasks` — 获取清单任务列表
-
-### subtasks
-
-  - `create` — 创建子任务
-  - `list` — 获取任务的子任务列表
-
-### members
-
-  - `add` — 添加任务成员
-  - `remove` — 移除任务成员
-
-### sections
-
-  - `create` — 创建自定义分组
-  - `delete` — 删除自定义分组
-  - `get` — 获取自定义分组详情
-  - `list` — 获取自定义分组列表
-  - `patch` — 更新自定义分组
-  - `tasks` — 获取自定义分组任务列表
-
-### custom_fields
-
-  - `create` — 创建自定义字段
-  - `get` — 获取自定义字段详情
-  - `patch` — 更新自定义字段
-  - `list` — 获取自定义字段列表
-  - `add` — 将自定义字段加入资源
-  - `remove` — 将自定义字段移出资源
-
-### custom_field_options
-
-  - `create` — 创建自定义字段选项
-  - `patch` — 更新自定义字段选项
-
-### agent
-
-  - `update_agent_profile` — 更新任务代理的主页内容数据。
-  - `register_agent` — 注册AI 智能体
-
-### agent_task_step_info
-
-  - `append_task_steps` — 写入任务记录。
-
-## 权限表
-
-| 方法 | 所需 scope |
-|------|-----------|
-| `tasks.create` | `task:task:write` |
-| `tasks.delete` | `task:task:write` |
-| `tasks.get` | `task:task:read` |
-| `tasks.list` | `task:task:read` |
-| `tasks.patch` | `task:task:write` |
-| `tasklists.add_members` | `task:tasklist:write` |
-| `tasklists.create` | `task:tasklist:write` |
-| `tasklists.delete` | `task:tasklist:write` |
-| `tasklists.get` | `task:tasklist:read` |
-| `tasklists.list` | `task:tasklist:read` |
-| `tasklists.patch` | `task:tasklist:write` |
-| `tasklists.remove_members` | `task:tasklist:write` |
-| `tasklists.tasks` | `task:tasklist:read` |
-| `subtasks.create` | `task:task:write` |
-| `subtasks.list` | `task:task:read` |
-| `members.add` | `task:task:write` |
-| `members.remove` | `task:task:write` |
-| `sections.create` | `task:section:write` |
-| `sections.delete` | `task:section:write` |
-| `sections.get` | `task:section:read` |
-| `sections.list` | `task:section:read` |
-| `sections.patch` | `task:section:write` |
-| `sections.tasks` | `task:section:read` |
-| `custom_fields.create` | `task:custom_field:write` |
-| `custom_fields.get` | `task:custom_field:read` |
-| `custom_fields.patch` | `task:custom_field:write` |
-| `custom_fields.list` | `task:custom_field:read` |
-| `custom_fields.add` | `task:custom_field:write` |
-| `custom_fields.remove` | `task:custom_field:write` |
-| `custom_field_options.create` | `task:custom_field:write` |
-| `custom_field_options.patch` | `task:custom_field:write` |
-| `agent.update_agent_profile` | `task:task:write` |
-| `agent.register_agent` | `task:task:write` |
-| `agent_task_step_info.append_task_steps` | `task:task:write` |

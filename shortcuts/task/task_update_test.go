@@ -32,6 +32,25 @@ func TestParseTaskGUIDs(t *testing.T) {
 	}
 }
 
+func TestUpdateTaskExposesDataSchemaDiscovery(t *testing.T) {
+	if UpdateTask.PrintFlagSchema == nil {
+		t.Fatal("UpdateTask.PrintFlagSchema is nil, want Meta-backed --data introspection")
+	}
+
+	f, _, _, _ := taskShortcutTestFactory(t)
+	parent := &cobra.Command{Use: "test"}
+	UpdateTask.Mount(parent, f)
+	cmd, _, err := parent.Find([]string{"+update"})
+	if err != nil {
+		t.Fatalf("find +update: %v", err)
+	}
+	for _, flag := range []string{"print-schema", "flag-name"} {
+		if cmd.Flags().Lookup(flag) == nil {
+			t.Errorf("+update flag --%s is missing", flag)
+		}
+	}
+}
+
 func TestTaskUpdateDryRunPreviewsEveryTaskID(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().String("task-id", "task-guid-1,https://applink.larksuite.com/client/todo/detail?guid=task-guid-2", "")

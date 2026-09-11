@@ -165,12 +165,17 @@ func TestSearchTasklist_Execute(t *testing.T) {
 						"code": 0,
 						"msg":  "success",
 						"data": map[string]interface{}{
-							"tasklist": map[string]interface{}{"guid": "tl-123", "name": "Q2 Plan", "url": "https://example.com/tl-123"},
+							"tasklist": map[string]interface{}{
+								"guid": "tl-123", "name": "Q2 Plan", "url": "https://example.com/tl-123",
+								"members": []interface{}{
+									map[string]interface{}{"id": "ou_editor", "name": "Editor", "role": "editor", "type": "user"},
+								},
+							},
 						},
 					},
 				})
 			},
-			wantParts: []string{`"guid": "tl-123"`, `"name": "Q2 Plan"`, `"notice": "The query is too long and has been truncated to the first 50 characters for search."`},
+			wantParts: []string{`"guid": "tl-123"`, `"name": "Q2 Plan"`, `"id": "ou_editor"`, `"name": "Editor"`, `"notice": "The query is too long and has been truncated to the first 50 characters for search."`},
 		},
 		{
 			name: "fallback on detail error",
