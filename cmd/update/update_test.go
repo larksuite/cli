@@ -4,21 +4,28 @@
 package cmdupdate
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
@@ -26,6 +33,182 @@ import (
 )
 
 const runLiveSkillsTestsEnv = "LARKSUITE_CLI_RUN_LIVE_SKILLS_TESTS"
+
+type updateManifestProvider struct {
+	manifestURL string
+	onResolve   func(context.Context)
+}
+
+func (p updateManifestProvider) Name() string { return "test-manifest" }
+func (p updateManifestProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return nil
+}
+func (p updateManifestProvider) ResolveManifestURL(ctx context.Context) string {
+	if p.onResolve != nil {
+		p.onResolve(ctx)
+	}
+	return p.manifestURL
+}
+
+func TestUpdateCommandPreservesCancellationContext(t *testing.T) {
+	type contextKey struct{}
+	ctx := context.WithValue(context.Background(), contextKey{}, "command")
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+	previousProvider := exttransport.GetProvider()
+	exttransport.Register(updateManifestProvider{
+		manifestURL: "://invalid",
+		onResolve: func(resolved context.Context) {
+			if resolved.Value(contextKey{}) != "command" || !errors.Is(resolved.Err(), context.Canceled) {
+				t.Error("distribution provider did not receive the command context")
+			}
+		},
+	})
+	t.Cleanup(func() { exttransport.Register(previousProvider) })
+
+	factory, _, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(factory)
+	cmd.SetContext(ctx)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("update succeeded with an invalid manifest URL")
+	}
+}
+
+func TestManifestCheckAcceptsHTTPAndReportsOpaqueDowngradeTarget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"schema":1,"version":"older-channel","artifacts":{"skills":{"url":"https://dist.example/skills","checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},%q:{"url":"https://dist.example/binary","checksum":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}`, runtime.GOOS+"-"+runtime.GOARCH)
+	}))
+	defer server.Close()
+	previousProvider := exttransport.GetProvider()
+	previousClient := distribution.DefaultClient
+	previousVersion := currentVersion
+	exttransport.Register(updateManifestProvider{manifestURL: server.URL})
+	distribution.DefaultClient = server.Client()
+	currentVersion = func() string { return "newer-channel" }
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		distribution.DefaultClient = previousClient
+		currentVersion = previousVersion
+	})
+
+	factory, stdout, _ := newTestFactory(t)
+	err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true, Check: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["action"] != "update_available" || got["target_version"] != "older-channel" || got["source"] != "manifest" {
+		t.Fatalf("output = %#v", got)
+	}
+	if _, exists := got["latest_version"]; exists {
+		t.Fatalf("manifest output must not label an arbitrary target as latest: %#v", got)
+	}
+}
+
+func TestManifestArtifactProtocolFailureUsesNetworkTaxonomy(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	payload := []byte("not an archive")
+	digest := fmt.Sprintf("sha256:%x", sha256.Sum256(payload))
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/manifest.json" {
+			_, _ = w.Write(payload)
+			return
+		}
+		artifactURL := server.URL + "/artifact"
+		fmt.Fprintf(w, `{"schema":1,"version":"target","artifacts":{"skills":{"url":%q,"checksum":%q},%q:{"url":%q,"checksum":%q}}}`,
+			artifactURL, digest, distribution.CurrentPlatformKey(), artifactURL, digest)
+	}))
+	defer server.Close()
+
+	previousProvider := exttransport.GetProvider()
+	previousClient := distribution.DefaultClient
+	previousVersion := currentVersion
+	exttransport.Register(updateManifestProvider{manifestURL: server.URL + "/manifest.json"})
+	distribution.DefaultClient = server.Client()
+	currentVersion = func() string { return "current" }
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		distribution.DefaultClient = previousClient
+		currentVersion = previousVersion
+	})
+
+	factory, stdout, _ := newTestFactory(t)
+	if err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true}); err == nil {
+		t.Fatal("update succeeded")
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	problem, _ := got["error"].(map[string]interface{})
+	if problem["type"] != "network" {
+		t.Fatalf("output = %#v", got)
+	}
+}
+
+func TestManifestUpdateRepairsSkillsWhenBinaryMatches(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(root, "config"))
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	entry, err := writer.Create("lark-approval/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("repaired")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	digest := fmt.Sprintf("sha256:%x", sha256.Sum256(archive.Bytes()))
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/skills.zip" {
+			_, _ = w.Write(archive.Bytes())
+			return
+		}
+		fmt.Fprintf(w, `{"schema":1,"version":"same","artifacts":{"skills":{"url":%q,"checksum":%q},%q:{"url":%q,"checksum":%q}}}`,
+			server.URL+"/skills.zip", digest, distribution.CurrentPlatformKey(), server.URL+"/unused.zip", digest)
+	}))
+	defer server.Close()
+	previousProvider := exttransport.GetProvider()
+	previousClient := distribution.DefaultClient
+	previousVersion := currentVersion
+	exttransport.Register(updateManifestProvider{manifestURL: server.URL + "/manifest.json"})
+	distribution.DefaultClient = server.Client()
+	currentVersion = func() string { return "same" }
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		distribution.DefaultClient = previousClient
+		currentVersion = previousVersion
+	})
+
+	factory, _, _ := newTestFactory(t)
+	if err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true}); err != nil {
+		t.Fatal(err)
+	}
+	skillDir := filepath.Join(root, ".agents", "skills", "lark-approval")
+	if err := os.RemoveAll(skillDir); err != nil {
+		t.Fatal(err)
+	}
+
+	factory, stdout, _ := newTestFactory(t)
+	if err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md")); err != nil || string(got) != "repaired" {
+		t.Fatalf("repaired Skill = %q, %v", got, err)
+	}
+	if !strings.Contains(stdout.String(), `"skills_action": "synced"`) {
+		t.Fatalf("output = %s", stdout.String())
+	}
+}
 
 // newTestFactory creates a test factory with minimal config.
 func newTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
@@ -240,25 +423,6 @@ func TestUpdatePnpm_Unavailable_ManualFallback(t *testing.T) {
 	}
 	if !strings.Contains(out, "pnpm add -g") {
 		t.Errorf("expected pnpm add -g hint, got: %s", out)
-	}
-}
-
-func TestNormalizeVersion(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{input: "1.2.3", want: "1.2.3"},
-		{input: "v1.2.3", want: "1.2.3"},
-		{input: "V1.2.3", want: "1.2.3"},
-		{input: " v1.2.3 ", want: "1.2.3"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := normalizeVersion(tt.input); got != tt.want {
-				t.Fatalf("normalizeVersion(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
 	}
 }
 
@@ -1263,6 +1427,26 @@ func TestRunSkillsAndState_UnknownOfficialSkillsBypassesVersionDedup(t *testing.
 
 	got := runSkillsAndState(&selfupdate.Updater{}, newTestIO(), "1.0.21", false, "")
 	if !called || got == nil || got.Err != nil {
+		t.Fatalf("runSkillsAndState() = %+v, called = %v", got, called)
+	}
+}
+
+func TestRunSkillsAndState_ManifestSourceBypassesVersionDedup(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{
+		Version:        "1.0.21",
+		SourceIdentity: "manifest:test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	originalSync := syncSkills
+	t.Cleanup(func() { syncSkills = originalSync })
+	called := false
+	syncSkills = func(skillscheck.SyncOptions) *skillscheck.SyncResult {
+		called = true
+		return &skillscheck.SyncResult{Action: "synced"}
+	}
+	if got := runSkillsAndState(&selfupdate.Updater{}, newTestIO(), "1.0.21", false, ""); !called || got == nil {
 		t.Fatalf("runSkillsAndState() = %+v, called = %v", got, called)
 	}
 }

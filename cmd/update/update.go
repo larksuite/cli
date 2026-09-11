@@ -4,6 +4,7 @@
 package cmdupdate
 
 import (
+	"context"
 	"fmt"
 	stdio "io"
 	"runtime"
@@ -15,11 +16,13 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/update"
 	"github.com/larksuite/cli/internal/urlrewrite"
+	"github.com/larksuite/cli/internal/versioncheck"
 )
 
 const (
@@ -31,7 +34,10 @@ const (
 
 // Overridable for testing.
 var (
-	fetchLatest    = func() (string, error) { return update.FetchLatest() }
+	fetchLatest = func() (string, error) {
+		target, err := update.FetchTargetForSource(context.Background(), distribution.Source{})
+		return target.Version, err
+	}
 	currentVersion = func() string { return build.Version }
 	currentOS      = runtime.GOOS
 	newUpdater     = func() *selfupdate.Updater { return selfupdate.New() }
@@ -39,15 +45,6 @@ var (
 )
 
 func isWindows() bool { return currentOS == osWindows }
-
-// normalizeVersion canonicalizes a version string for state comparison.
-// Strips a leading "v" so versions written from Makefile (git describe →
-// "v1.0.0") and npm (no prefix → "1.0.0") compare equal.
-func normalizeVersion(s string) string {
-	s = strings.TrimSpace(s)
-	s = strings.TrimPrefix(s, "v")
-	return strings.TrimPrefix(s, "V")
-}
 
 func releaseURL(version string) string {
 	return repoURL + "/releases/tag/v" + strings.TrimPrefix(version, "v")
@@ -102,10 +99,11 @@ func NewCmdUpdate(f *cmdutil.Factory) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update lark-cli to the latest version",
-		Long: `Update lark-cli to the latest version.
+		Short: "Update lark-cli and its managed Skills",
+		Long: `Update lark-cli using the active update source.
 
 Detects the installation method automatically:
+  - configured distribution: installs checksum-verified CLI and Skills artifacts
   - npm install:  runs npm install -g @larksuite/cli@<version>
   - pnpm install: runs pnpm add -g @larksuite/cli@<version>
   - manual/other: shows GitHub Releases download URL
@@ -115,7 +113,7 @@ Use --check to only check for updates without installing.
 
 The skill name "lark-suite" is reserved for CLI-managed suite layout.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return updateRun(opts)
+			return updateRunWithContext(cmd.Context(), opts)
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
@@ -129,6 +127,13 @@ The skill name "lark-suite" is reserved for CLI-managed suite layout.`,
 }
 
 func updateRun(opts *UpdateOptions) error {
+	return updateRunWithContext(nil, opts)
+}
+
+func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	io := opts.Factory.IOStreams
 	if _, err := skillscheck.ParseLayout(opts.SkillsLayout); err != nil {
 		return reportError(opts, io, "validation",
@@ -139,6 +144,19 @@ func updateRun(opts *UpdateOptions) error {
 			errs.NewValidationError(errs.SubtypeInvalidArgument, "--skills-layout cannot be used with --check").
 				WithParam("--skills-layout").
 				WithHint("Remove --skills-layout when using --check."))
+	}
+	src, configErr := distribution.ResolveSource(ctx)
+	if configErr != nil {
+		return reportError(opts, io, "configuration", configErr)
+	}
+	if src.ManifestMode() {
+		if strings.TrimSpace(opts.SkillsLayout) != "" {
+			return reportError(opts, io, "validation",
+				errs.NewValidationError(errs.SubtypeInvalidArgument, "--skills-layout is not supported by the configured distribution").
+					WithParam("--skills-layout"))
+		}
+		output.PendingNotice = nil
+		return runManifestUpdate(ctx, opts, src)
 	}
 	cur := currentVersion()
 	updater := newUpdater()
@@ -158,13 +176,13 @@ func updateRun(opts *UpdateOptions) error {
 	}
 
 	// 2. Validate version format
-	if update.ParseVersion(latest) == nil {
+	if versioncheck.Parse(latest) == nil {
 		return reportError(opts, io, "update_error",
 			errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid version from registry: %s", latest))
 	}
 
 	// 3. Compare versions
-	if !opts.Force && !update.IsNewer(latest, cur) {
+	if !opts.Force && !versioncheck.IsNewer(latest, cur) {
 		var skillsResult *skillscheck.SyncResult
 		if !opts.Check {
 			skillsResult = runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout)
@@ -431,8 +449,9 @@ func verificationFailureHint(updater *selfupdate.Updater, latest, pm string) str
 func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool, requestedLayout string) *skillscheck.SyncResult {
 	layout, _ := skillscheck.ParseLayout(requestedLayout)
 	if !force {
-		if state, ok, err := skillscheck.ReadState(); err == nil && ok && normalizeVersion(state.Version) == normalizeVersion(stateVersion) {
-			if !state.OfficialSkillsUnknown && (layout == "" || skillscheck.EffectiveLayout(state) == layout) {
+		if state, ok, err := skillscheck.ReadState(); err == nil && ok && versioncheck.Equal(state.Version, stateVersion) {
+			if !state.OfficialSkillsUnknown && skillscheck.MatchesSource(state, skillscheck.OfficialSourceIdentity) &&
+				(layout == "" || skillscheck.EffectiveLayout(state) == layout) {
 				return nil
 			}
 		}
@@ -498,7 +517,8 @@ func applySkillsStatus(env map[string]interface{}, target string) {
 	status := map[string]interface{}{
 		"current": state.Version,
 		"target":  target,
-		"in_sync": normalizeVersion(state.Version) == normalizeVersion(target) && !state.OfficialSkillsUnknown,
+		"in_sync": versioncheck.Equal(state.Version, target) &&
+			!state.OfficialSkillsUnknown && skillscheck.MatchesSource(state, skillscheck.OfficialSourceIdentity),
 	}
 	if state.OfficialSkillsUnknown {
 		status["official_unknown"] = true

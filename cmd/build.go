@@ -32,6 +32,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/commandhost"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/keychain"
 	internalplatform "github.com/larksuite/cli/internal/platform"
@@ -390,6 +391,8 @@ func assembleInternal(
 	request assemblyRequest,
 	cfg *buildConfig,
 ) (*buildRuntime, *cobra.Command, *hook.Registry, error) {
+	ctx = distribution.CaptureSource(ctx)
+
 	// cfg.globals.Profile is left zero here; it's bound to the --profile
 	// flag in RegisterGlobalFlags and filled by cobra's parse step.
 

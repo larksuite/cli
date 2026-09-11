@@ -67,7 +67,7 @@ func offerRootUpgrade(f *cmdutil.Factory, cmd *cobra.Command, projector *recover
 	// Gate 4: cached newer version. CheckCached applies opt-out (shouldSkip)
 	// and the IsNewer/semver validation chain; it reads the on-disk cache that
 	// the 24h-throttled RefreshCache maintains (CheckCached itself has no TTL).
-	info := checkRootCachedUpdate(build.Version)
+	info := checkRootCachedUpdate(cmd.Context(), build.Version)
 	if info == nil {
 		return
 	}
