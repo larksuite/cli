@@ -10,6 +10,8 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 )
 
+// TestPrepareInlineDocAttachments verifies attachment isolation without changing
+// surrounding XML bytes, literal markup, or repeated preparation results.
 func TestPrepareInlineDocAttachments(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -102,6 +104,8 @@ func TestPrepareInlineDocAttachments(t *testing.T) {
 	}
 }
 
+// TestDocsWritePreparesInlineAttachmentsBeforeAPI checks the actual create and
+// update requests so removing the shared preparation step fails the regression.
 func TestDocsWritePreparesInlineAttachmentsBeforeAPI(t *testing.T) {
 	const input = `<p>before <source token="file_a"/> between <source token="file_b"/> after</p>`
 	const want = `<p>before <span><source token="file_a"/></span> between <span><source token="file_b"/></span> after</p>`
@@ -130,6 +134,8 @@ func TestDocsWritePreparesInlineAttachmentsBeforeAPI(t *testing.T) {
 	}
 }
 
+// TestDocsPreparedInlineLocalAttachmentRetainsResourceBinding ensures the span
+// repair retains the marker needed to upload and bind a local attachment.
 func TestDocsPreparedInlineLocalAttachmentRetainsResourceBinding(t *testing.T) {
 	runtime := newLocalDocResourceTestRuntime(t, map[string]string{"report.txt": "fixture"})
 	input, err := prepareDocsV2WriteInputForFormat(runtime, "xml", docsV2WriteInput{

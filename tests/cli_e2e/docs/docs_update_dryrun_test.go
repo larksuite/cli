@@ -16,6 +16,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// TestDocs_DryRunDefaultsToV2OpenAPI checks the default DocsAI endpoint and the
+// prepared request body using placeholder credentials and no live API calls.
 func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 	// Fake creds are enough — dry-run short-circuits before any real API call.
 	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
