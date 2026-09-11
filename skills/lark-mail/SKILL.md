@@ -620,7 +620,7 @@ lark-cli mail <resource> <method> [flags] # 调用 API
   - `batch_modify` — 本接口提供修改邮件的能力，支持移动邮件的文件夹、给邮件添加和移除标签、标记邮件读和未读、移动邮件至垃圾邮件等能力。不支持移动邮件到已删除文件夹，如需，请使用批量删除邮件接口。
   - `batch_trash` — 通过指定邮件ID，批量移动邮件到已删除文件夹
   - `get` — 获取邮件详情
-  - `list` — 根据用户指定的标签或文件夹，列出对应位置下的邮件列表。注意，必须填写folder_id或label_id中的一个字段。
+  - `list` — 列出邮件列表。folder_id 和 label_id 均为可选；不传时返回当前用户邮箱的默认邮件列表，传其中一个时按文件夹或标签过滤。
   - `modify` — 本接口提供修改邮件的能力，支持移动邮件的文件夹、给邮件添加和移除标签、标记邮件已读和未读、移动邮件至垃圾邮件等能力。不支持移动邮件到已删除文件夹，如需删除邮件，请使用删除邮件接口。至少填写add_label_ids、remove_label_ids、add_folder中的一个参数。
   - `send_status` — 查询邮件发送状态
   - `trash` — 移动邮件到已删除文件夹。注意，该接口无法删除草稿，如需删除草稿，请使用删除草稿接口
@@ -702,10 +702,10 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.mail_contacts.list` | `mail:user_mailbox.mail_contact:read` |
 | `user_mailbox.mail_contacts.patch` | `mail:user_mailbox.mail_contact:write` |
 | `user_mailbox.message.attachments.download_url` | `mail:user_mailbox.message.body:read` |
-| `user_mailbox.messages.batch_get` | `mail:user_mailbox.message.subject:read` |
+| `user_mailbox.messages.batch_get` | `mail:user_mailbox.message:readonly`、`mail:user_mailbox.message.subject:read`、`mail:user_mailbox.message.address:read`、`mail:user_mailbox.message.body:read` |
 | `user_mailbox.messages.batch_modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.messages.batch_trash` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.messages.get` | `mail:user_mailbox.message.subject:read` |
+| `user_mailbox.messages.get` | `mail:user_mailbox.message:readonly`、`mail:user_mailbox.message.subject:read`、`mail:user_mailbox.message.address:read`、`mail:user_mailbox.message.body:read` |
 | `user_mailbox.messages.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.messages.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.messages.send_status` | `mail:user_mailbox.message:readonly` |

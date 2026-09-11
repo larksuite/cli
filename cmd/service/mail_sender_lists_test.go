@@ -199,8 +199,8 @@ func TestMailSenderServerErrorsRemainUnderstandable(t *testing.T) {
 			if !errors.As(err, &apiErr) {
 				t.Fatalf("error = %T %v, want APIError", err, err)
 			}
-			if apiErr.Message != message || !strings.Contains(err.Error(), message) {
-				t.Fatalf("server message = %q / %q, want %q", apiErr.Message, err.Error(), message)
+			if apiErr.Code != 190001 || apiErr.Message != message || !strings.Contains(err.Error(), message) {
+				t.Fatalf("server error = code %d message %q / %q, want code 190001 message %q", apiErr.Code, apiErr.Message, err.Error(), message)
 			}
 		})
 	}
