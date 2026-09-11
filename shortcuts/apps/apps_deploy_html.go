@@ -564,7 +564,7 @@ func executeHTMLDeploy(ctx context.Context, rctx *common.RuntimeContext) error {
 	preReleasePath := fmt.Sprintf("%s/apps/%s/pre_release", apiBasePath, validate.EncodePathSegment(plan.AppID))
 	preData, err := rctx.CallAPITyped("GET", preReleasePath, nil, nil)
 	if err != nil {
-		return withAppsHint(err, appIDListHint)
+		return withAppsHint(err, preReleaseHint)
 	}
 	kvm := parsePreReleaseKVs(preData)
 	uploadURL := kvm[appDevUploadURLKey]

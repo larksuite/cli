@@ -184,6 +184,7 @@ lark-cli apps +deploy --dir ./site --dry-run                       # 只看计�
 | `mutually exclusive` | `--file-path` 与 `--dir` 同时给了；发单文件用前者，发目录用后者 |
 | `--entry-file only applies together with --dir` | 单文件模式下不要传 `--entry-file` |
 | `only applies to the spark.json project mode` | `--skip-build` / `--no-verify` 属于项目模式，裸 HTML 发布下去掉 |
+| `pre_release` 相关的失败（GET .../pre_release 报错） | 这条链路上传的是**已构建好的产物**，不是所有应用都接受。可能是 `--app-id` 不对/没权限，也可能这个应用走的是 **git 发布链路**——那种应用要 `git commit` + `git push` 之后用 `+release-create`，见 [`lark-apps-local-dev.md`](lark-apps-local-dev.md) |
 | `must point at an .html file` / `must be an .html file` | `--file-path` 与 `--entry-file` 都只接受 `.html` |
 | `entry conflict` （`--file-path` 下） | 入口不叫 `index.html`，但它引用到的文件里有一个 `index.html`，两者会撞同一个产物路径；改名其中一个 |
 | stderr 里的 `warning: N reference(s) in the payload could not be published` | 页面引用的文件没进包；**发布照常完成，但线上会缺样式或脚本**。每条后面跟着按成因给的 `hint:`，照它做 |

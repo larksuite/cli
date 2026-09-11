@@ -631,3 +631,23 @@ func TestHTMLDeployResultCarriesSkippedReferences(t *testing.T) {
 		t.Errorf("a publish with nothing skipped must not carry an empty field: %#v", clean)
 	}
 }
+
+// pre_release is where a publish first learns whether the app accepts an
+// uploaded artifact. Answering that failure with "check your --app-id" sends
+// someone whose app publishes from git looking for a permissions problem they
+// do not have, so the alternative route has to be named.
+func TestPreReleaseFailureNamesTheGitRoute(t *testing.T) {
+	if !strings.Contains(preReleaseHint, "+release-create") {
+		t.Errorf("the hint must name the command that does work: %q", preReleaseHint)
+	}
+	if !strings.Contains(preReleaseHint, "--app-id") {
+		t.Errorf("an unreachable app id is still a live possibility and must stay named: %q", preReleaseHint)
+	}
+	// Naming a cause we cannot tell apart is how a hint sends people in
+	// circles; the failure looks identical either way.
+	for _, claim := range []string{"app type", "not supported", "unsupported"} {
+		if strings.Contains(strings.ToLower(preReleaseHint), claim) {
+			t.Errorf("the hint must not assert a cause the response cannot distinguish (%q): %q", claim, preReleaseHint)
+		}
+	}
+}

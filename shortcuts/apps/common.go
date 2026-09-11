@@ -22,6 +22,15 @@ const apiBasePath = "/open-apis/spark/v1"
 // lark-apps SKILL.md ("app_id 获取"); the hint stays lean and does not repeat it.
 const appIDListHint = "verify --app-id is correct and you have access to the app; list your apps with `lark-cli apps +list`"
 
+// preReleaseHint answers a pre_release failure, which is where this command
+// first learns whether the app accepts an uploaded artifact at all.
+//
+// It names both live possibilities rather than picking one: the call fails the
+// same way for an app id the caller cannot reach and for an app that publishes
+// from its git repository instead, and nothing in the response separates them.
+// Asserting either would send half the callers down a path that cannot work.
+const preReleaseHint = "verify --app-id is correct and you have access to the app. This command uploads a prebuilt artifact, which not every app accepts; an app that publishes from its git repository takes `lark-cli apps +release-create` after a commit and push instead"
+
 // appNoDatabaseCode / appNoDatabaseLegacyCode are the Spark business codes seen
 // when a db command runs against an app that has not initialized a database yet.
 // The raw server message carries internal workspace terminology, so the CLI

@@ -602,7 +602,7 @@ var AppsDeploy = common.Shortcut{
 		preReleasePath := fmt.Sprintf("%s/apps/%s/pre_release", apiBasePath, validate.EncodePathSegment(appID))
 		preData, err := rctx.CallAPITyped("GET", preReleasePath, nil, nil)
 		if err != nil {
-			return withAppsHint(err, appIDListHint)
+			return withAppsHint(err, preReleaseHint)
 		}
 		kvm := parsePreReleaseKVs(preData)
 		uploadURL := kvm[appDevUploadURLKey]
