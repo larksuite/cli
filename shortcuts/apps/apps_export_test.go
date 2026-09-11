@@ -76,7 +76,7 @@ func TestAppsExport_RejectsOutputTraversal(t *testing.T) {
 func TestAppsExport_DryRun(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsExport,
-		[]string{"+export", "--app-id", "app_x", "--checkpoint-id", "42", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
+		[]string{"+export", "--app-id", "app_x", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	var env dryRunAPIEnvelope
@@ -85,7 +85,7 @@ func TestAppsExport_DryRun(t *testing.T) {
 		t.Fatalf("dry-run = %s %s, want POST %s", env.API[0].Method, env.API[0].URL, exportURL())
 	}
 	out := stdout.String()
-	for _, want := range []string{"app_x", "42"} {
+	for _, want := range []string{"app_x"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dry-run output missing %q\n%s", want, out)
 		}
@@ -440,39 +440,5 @@ func TestAppsExport_RejectsLinkAsLocator(t *testing.T) {
 				t.Fatalf("Hint = %q, want it to point at the last segment", ve.Hint)
 			}
 		})
-	}
-}
-
-// TestAppsExport_RejectsInvalidCheckpointID keeps a non-numeric or non-positive
-// checkpoint id from reaching the gateway, where i64 binding fails with a message
-// that does not name the flag. Zero is rejected because the server reads it as
-// "latest", silently ignoring the flag the caller just set.
-func TestAppsExport_RejectsInvalidCheckpointID(t *testing.T) {
-	for _, value := range []string{"abc", "0", "-1", "1.5"} {
-		t.Run(value, func(t *testing.T) {
-			factory, stdout, _ := newAppsExecuteFactory(t)
-			err := runAppsShortcut(t, AppsExport,
-				[]string{"+export", "--app-id", "app_x", "--checkpoint-id", value, "--as", "user"}, factory, stdout)
-			var ve *errs.ValidationError
-			if !errors.As(err, &ve) {
-				t.Fatalf("err = %T %v, want *errs.ValidationError", err, err)
-			}
-			if ve.Param != "--checkpoint-id" {
-				t.Fatalf("Param = %q, want --checkpoint-id", ve.Param)
-			}
-		})
-	}
-}
-
-// TestAppsExport_AcceptsValidCheckpointID guards the validator against being so
-// strict it blocks the happy path.
-func TestAppsExport_AcceptsValidCheckpointID(t *testing.T) {
-	chdirTemp(t)
-	factory, stdout, reg := newAppsExecuteFactory(t)
-	reg.Register(archiveStub("app_x", 200, []byte("ZIPDATA"), "application/octet-stream", ""))
-	if err := runAppsShortcut(t, AppsExport,
-		[]string{"+export", "--app-id", "app_x", "--checkpoint-id", "42", "--output", "src.zip", "--as", "user"},
-		factory, stdout); err != nil {
-		t.Fatalf("Execute() = %v", err)
 	}
 }

@@ -23,7 +23,7 @@
 
 ## 导出的是「最后一次提交」，不是沙箱当前状态
 
-服务端对远端仓库跑 `git archive`，从不读沙箱文件系统。用户在沙箱里改了文件但没触发 checkpoint 或发布，**那些改动不在归档里**。
+服务端对远端仓库跑 `git archive`，从不读沙箱文件系统。用户在沙箱里改了文件但没提交或发布，**那些改动不在归档里**。
 
 这是设计如此，不是缺陷。若导出结果看起来"少了刚写的代码"，先确认改动是否已提交，而不是重试导出。
 
@@ -34,7 +34,6 @@
   字段区分，不再共用 path 段——调用方只有 token、没有 app_id 时也不用在路径里凑一个占位值。
   - 两者都只收**裸标识符**。拿到的是整条链接（`.../app/<app_id>` 或 `.../page/<token>`）时，
     只传最后一段——整条 URL 传进来会被本地拦下并提示，不会变成一个看起来像"应用不存在"的 404。
-- `--checkpoint-id` 可选，**正整数**，指定导出某个检查点；省略取默认分支最新提交（不要显式传 `0`）。
 - `--output` 可选，相对当前目录；省略时用服务端给的文件名（通常是 `<app_id>.zip`）。
 
 ## 示例
@@ -43,7 +42,6 @@
 lark-cli apps +export --app-id app_xxx --output ./src.zip
 lark-cli apps +export --app-id app_xxx                      # 存成 ./app_xxx.zip
 lark-cli apps +export --meta-token <share-token>            # 别人分享给你的应用
-lark-cli apps +export --app-id app_xxx --checkpoint-id 42
 lark-cli apps +export --app-id app_xxx --dry-run
 ```
 
@@ -61,4 +59,4 @@ lark-cli apps +export --app-id app_xxx --dry-run
 | 权限不足（403） | 你需要该应用的下载权限。**持有分享 token 不等于有权限** |
 | 应用不存在（404） | 用 `+list --keyword <name>` 核对 app_id |
 | 归档过大（413） | 超出导出体积上限，改用 `+git-credential-init` + 原生 git clone |
-| 参数报错 | `--app-id` 与 `--meta-token` 只能给一个，且必须给一个；两者都要裸标识符（不是整条链接），`--checkpoint-id` 要正整数 |
+| 参数报错 | `--app-id` 与 `--meta-token` 只能给一个，且必须给一个；两者都要裸标识符（不是整条链接） |

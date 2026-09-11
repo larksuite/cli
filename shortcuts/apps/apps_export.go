@@ -10,7 +10,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -42,7 +41,7 @@ var AppsExport = common.Shortcut{
 	Description: "Export an app's source code as a zip archive",
 	Risk:        "read",
 	Tips: []string{
-		"Exports the last commit on the app's default branch, not the sandbox working tree: changes made in the sandbox without a checkpoint are not included.",
+		"Exports the last commit on the app's default branch, not the sandbox working tree: uncommitted sandbox changes are not included.",
 		"Example: lark-cli apps +export --app-id <app_id> --output ./src.zip",
 		"Example (share token): lark-cli apps +export --meta-token <token>   # for an app shared with you; you still need download permission",
 		"Example (omit --output): lark-cli apps +export --app-id <app_id>   # saves to ./<app_id>.zip",
@@ -53,7 +52,6 @@ var AppsExport = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id, e.g. app_xxx (exactly one of --app-id / --meta-token)"},
 		{Name: "meta-token", Desc: "creative app share token — the LAST path segment of a /page/<token> link, not the full URL (exactly one of --app-id / --meta-token)"},
-		{Name: "checkpoint-id", Desc: "checkpoint id to export, a positive integer (default: latest commit on the default branch)"},
 		{Name: "output", Desc: "local output path, must be relative to the current directory (default: <app_id>.zip in cwd)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -134,10 +132,7 @@ func validateExportFlags(rctx *common.RuntimeContext) error {
 	// apart server-side, exactly like +get (whose --app-id is documented as "app ID
 	// or meta token"). validateRealAppID belongs to the commands whose server side
 	// only accepts a real app id (+init / +html-publish / +release-*), not here.
-	if err := validateExportLocatorShape(rctx); err != nil {
-		return err
-	}
-	return validateExportCheckpointID(rctx.Str("checkpoint-id"))
+	return validateExportLocatorShape(rctx)
 }
 
 // validateExportLocatorShape rejects a share link passed where a bare identifier
@@ -170,25 +165,6 @@ func validateExportLocatorShape(rctx *common.RuntimeContext) error {
 			"%s must be a bare app id or share token, not a URL or a path", param).
 			WithParam(param).
 			WithHint(`from an app link .../app/<app_id> or a share link .../page/<token>, pass only the last segment`)
-	}
-	return nil
-}
-
-// validateExportCheckpointID keeps a non-numeric --checkpoint-id from reaching the
-// gateway, where it would fail during i64 binding with a message that does not name
-// the flag. Zero and negatives are rejected too: the server reads 0 as "latest",
-// so passing it explicitly would silently ignore the flag the caller just set.
-func validateExportCheckpointID(raw string) error {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return nil
-	}
-	n, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || n <= 0 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--checkpoint-id must be a positive integer, got %q", value).
-			WithParam("--checkpoint-id").
-			WithHint("omit --checkpoint-id to export the latest commit on the default branch")
 	}
 	return nil
 }
@@ -226,7 +202,7 @@ func exportPath() string {
 
 // exportBody builds the request body shared by DryRun and Execute so the dry-run
 // output cannot drift from the real call. app_id / meta_token are exactly-one-of
-// (validated upstream); checkpoint_id is optional.
+// (validated upstream).
 func exportBody(rctx *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{}
 	if appID := strings.TrimSpace(rctx.Str("app-id")); appID != "" {
@@ -234,9 +210,6 @@ func exportBody(rctx *common.RuntimeContext) map[string]interface{} {
 	}
 	if metaToken := strings.TrimSpace(rctx.Str("meta-token")); metaToken != "" {
 		body["meta_token"] = metaToken
-	}
-	if checkpointID := strings.TrimSpace(rctx.Str("checkpoint-id")); checkpointID != "" {
-		body["checkpoint_id"] = checkpointID
 	}
 	return body
 }
