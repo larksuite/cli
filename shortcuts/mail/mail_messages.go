@@ -28,6 +28,7 @@ var MailMessages = common.Shortcut{
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
+	Citation:    mailMessagesCitationDefinition(),
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
 		{Name: "message-ids", Desc: `Required. Comma-separated email message IDs. You may pass more than 20 IDs; the CLI handles them in batches of 20 and merges output. Example: "<id1>,<id2>,<id3>"`, Required: true},
