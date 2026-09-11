@@ -30,7 +30,7 @@ lark-cli apps +init --app-id app_xxx --dir ./my-app --dry-run
 
 ## 耗时与失败处理
 
-- 长耗时命令：内部含 clone、生成项目代码（拉模板 + 装依赖）、提交推送、拉环境变量，没有内部超时。实测 full_stack 新建约 40-50 秒（缓存预热、内网），冷缓存约 100 秒，弱网会更长。给它至少 10 分钟的工具超时，或后台执行后轮询进程退出。
+- 长耗时命令：内部含 clone、生成项目代码（拉模板 + 装依赖）、提交推送、拉环境变量，没有内部超时。实测 full_stack 新建约 40-50 秒（缓存预热、内网），冷缓存约 100 秒，弱网会更长。给它至少 10 分钟的工具超时，或后台执行后在同一轮里主动轮询到进程退出；不要结束回合去等宿主的后台完成通知。
 - 成功只看 stdout envelope：退出码 0 且 `ok: true`，`data.scaffold` ∈ {`init`, `upgrade`, `already_initialized`}。没有 envelope（超时、被 kill、被中断）就是未完成，不能开始写代码。
 - 退出 0 不代表依赖已装好：脚手架内部依赖安装是软失败。full_stack / frontend 要核对 `node_modules/` 存在，缺失则 `npm install`。
 - 中断后先查进程：`pgrep -fl <app_id>` 非空说明初始化仍在后台跑（外层 shell 被 kill 不等于 CLI 和依赖安装已停止），等它退出后按核对清单判定即可，可能不必重跑；要重跑必须先 `pkill -P <pid>` 再 `kill <pid>` 清掉全部残留，再处理目录。
