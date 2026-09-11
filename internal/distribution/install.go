@@ -62,9 +62,9 @@ func SyncSkills(ctx context.Context, manifest *Manifest, opts InstallOptions) er
 		return typedErr
 	}
 	if err := withInstallLock(func() error {
-		_, finalize, err := syncPreparedSkills(skillsRoot, manifest, opts.SkillsDir)
+		update, err := syncPreparedSkills(skillsRoot, manifest, opts.SkillsDir)
 		if err == nil {
-			finalize()
+			update.Finalize()
 		}
 		return err
 	}); err != nil {
@@ -107,7 +107,8 @@ func installPreparedLocked(prepared *preparedUpdate, opts InstallOptions) error 
 	}
 	defer candidate.Cleanup()
 
-	rollbackSkills, finalizeSkills, err := syncPreparedSkills(
+	// Apply Skills first, keeping their backups until the binary is replaced.
+	skillsUpdate, err := syncPreparedSkills(
 		prepared.SkillsRoot,
 		prepared.Manifest,
 		opts.SkillsDir,
@@ -118,17 +119,18 @@ func installPreparedLocked(prepared *preparedUpdate, opts InstallOptions) error 
 	finalizeBinary, err := candidate.Install()
 	if err != nil {
 		cause := fmt.Errorf("replace binary: %w", err)
-		if rollbackErr := rollbackSkills(); rollbackErr != nil {
+		if rollbackErr := skillsUpdate.Rollback(); rollbackErr != nil {
 			return fmt.Errorf("%w (Skills rollback failed: %w)", cause, rollbackErr)
 		}
 		return cause
 	}
-	finalizeSkills()
+	// Both resources are installed; their backups can now be discarded.
+	skillsUpdate.Finalize()
 	finalizeBinary()
 	return nil
 }
 
-func syncPreparedSkills(root string, manifest *Manifest, targetDir string) (func() error, func(), error) {
+func syncPreparedSkills(root string, manifest *Manifest, targetDir string) (*skillscheck.TreeUpdate, error) {
 	return skillscheck.SyncPreparedTree(skillscheck.PreparedTreeOptions{
 		Root:           root,
 		Version:        manifest.Version,
