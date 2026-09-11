@@ -908,9 +908,18 @@ func TestAppDevPublishExecute_PreReleaseMissingKVs(t *testing.T) {
 		},
 	})
 	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout)
-	p := requireAppsProblem(t, err, errs.CategoryInternal)
-	if !strings.Contains(p.Message, "missing artifact_url") {
+	// An empty kv set is the answer an app gives when it publishes from its git
+	// repository. Calling that an internal error blamed the server for a
+	// correct response and left the caller retrying instead of switching route.
+	p := requireAppsProblem(t, err, errs.CategoryValidation)
+	if !strings.Contains(p.Message, "does not publish by uploading an artifact") {
 		t.Errorf("message = %q", p.Message)
+	}
+	// The route has to start where the caller actually is: with no checkout.
+	for _, want := range []string{"+init", "+release-create", "lark-apps-local-dev.md"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Errorf("hint should name %q, got %q", want, p.Hint)
+		}
 	}
 }
 

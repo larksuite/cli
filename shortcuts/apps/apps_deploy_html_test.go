@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/apps/deploy"
@@ -650,4 +652,33 @@ func TestPreReleaseFailureNamesTheGitRoute(t *testing.T) {
 			t.Errorf("the hint must not assert a cause the response cannot distinguish (%q): %q", claim, preReleaseHint)
 		}
 	}
+}
+
+// An app that publishes from git answers pre_release with 200 and an empty kv
+// set. That is a correct answer about the app, not a malformed response, and
+// reporting it as an internal error sent callers to retry or to file a server
+// bug when the fix was to use a different command. A populated set missing only
+// the upload key is a different thing: nobody can act on that.
+func TestNoArtifactUploadErrorSeparatesAppFromServerFault(t *testing.T) {
+	t.Run("empty kvs is a statement about the app", func(t *testing.T) {
+		err := noArtifactUploadError("app_x", 0, "artifact_url")
+		problem := requireAppsValidationProblem(t, err)
+		if !strings.Contains(problem.Message, "does not publish by uploading an artifact") {
+			t.Errorf("message should describe the app, not the response: %q", problem.Message)
+		}
+		if !strings.Contains(problem.Hint, "+release-create") {
+			t.Errorf("the hint must name the command that does work: %q", problem.Hint)
+		}
+	})
+
+	t.Run("values present but no upload key stays a server fault", func(t *testing.T) {
+		err := noArtifactUploadError("app_x", 3, "artifact_url")
+		var p *errs.Problem
+		if errors.As(err, &p) && p.Category == errs.CategoryValidation {
+			t.Errorf("a response nobody can act on must not be reported as the caller's precondition: %+v", p)
+		}
+		if !strings.Contains(err.Error(), "no artifact_url") {
+			t.Errorf("the message should say what the response was missing: %v", err)
+		}
+	})
 }

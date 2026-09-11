@@ -569,7 +569,7 @@ func executeHTMLDeploy(ctx context.Context, rctx *common.RuntimeContext) error {
 	kvm := parsePreReleaseKVs(preData)
 	uploadURL := kvm[appDevUploadURLKey]
 	if uploadURL == "" {
-		return appsSubprocessEnvelopeError("pre_release kvs missing %s", appDevUploadURLKey)
+		return noArtifactUploadError(plan.AppID, len(kvm), appDevUploadURLKey)
 	}
 	if u, perr := url.Parse(uploadURL); perr != nil || u.Scheme != "https" {
 		return appsSubprocessEnvelopeError("pre_release %s is not https; refusing to upload", appDevUploadURLKey)

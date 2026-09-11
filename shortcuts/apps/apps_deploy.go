@@ -607,7 +607,7 @@ var AppsDeploy = common.Shortcut{
 		kvm := parsePreReleaseKVs(preData)
 		uploadURL := kvm[appDevUploadURLKey]
 		if uploadURL == "" {
-			return appsSubprocessEnvelopeError("pre_release kvs missing %s", appDevUploadURLKey)
+			return noArtifactUploadError(appID, len(kvm), appDevUploadURLKey)
 		}
 		if u, perr := url.Parse(uploadURL); perr != nil || u.Scheme != "https" {
 			return appsSubprocessEnvelopeError("pre_release %s is not https; refusing to upload", appDevUploadURLKey)
