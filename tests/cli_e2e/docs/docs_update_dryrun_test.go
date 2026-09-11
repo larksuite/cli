@@ -16,6 +16,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// TestDocs_DryRunDefaultsToV2OpenAPI checks the default DocsAI endpoint and the
+// prepared request body using placeholder credentials and no live API calls.
 func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 	// Fake creds are enough — dry-run short-circuits before any real API call.
 	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
@@ -74,6 +76,21 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--dry-run",
 			},
 			wantContains: []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E"},
+		},
+		{
+			name: "create inline attachments",
+			args: []string{
+				"docs", "+create", "--content", `<p>before <source token="file_a"/> after</p>`, "--dry-run",
+			},
+			wantBody: map[string]any{"content": `<p>before <span><source token="file_a"/></span> after</p>`},
+		},
+		{
+			name: "update inline attachments",
+			args: []string{
+				"docs", "+update", "--doc", "doxcnDryRunE2E", "--command", "append",
+				"--content", `<p>before <source token="file_a"/> between <source token="file_b"/> after</p>`, "--dry-run",
+			},
+			wantBody: map[string]any{"content": `<p>before <span><source token="file_a"/></span> between <span><source token="file_b"/></span> after</p>`},
 		},
 		{
 			name: "update reference-map",
