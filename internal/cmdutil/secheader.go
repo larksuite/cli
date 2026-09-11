@@ -59,11 +59,6 @@ func BaseSecurityHeaders() http.Header {
 	if v := envvars.AgentName(); v != "" {
 		h.Set(HeaderAgentName, v)
 	}
-	for k, vs := range envvars.ExtraHeaders() {
-		for _, v := range vs {
-			h.Set(k, v)
-		}
-	}
 	return h
 }
 

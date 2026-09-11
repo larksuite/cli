@@ -27,8 +27,4 @@ const (
 	CliProxyEnable  = "LARKSUITE_CLI_PROXY_ENABLE"
 	CliProxyAddress = "LARKSUITE_CLI_PROXY_ADDRESS"
 	CliCAPath       = "LARKSUITE_CLI_CA_PATH"
-
-	// Internal environment routing used by repo-local dev wrappers.
-	CliEndpointDomain = "LARKSUITE_CLI_ENDPOINT_DOMAIN"
-	CliExtraHeaders   = "LARKSUITE_CLI_EXTRA_HEADERS"
 )
