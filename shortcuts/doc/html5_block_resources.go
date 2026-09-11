@@ -154,6 +154,7 @@ func prepareDocsV2WriteInputForFormat(runtime *common.RuntimeContext, format str
 		return docsV2WriteInput{}, err
 	}
 	refMap = mergeHTML5ReferenceMap(refMap, html5RefMap)
+	content = prepareInlineDocAttachments(format, content)
 	return docsV2WriteInput{
 		Content:        content,
 		ReferenceMap:   refMap,

@@ -76,6 +76,21 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 			wantContains: []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E"},
 		},
 		{
+			name: "create inline attachments",
+			args: []string{
+				"docs", "+create", "--content", `<p>before <source token="file_a"/> after</p>`, "--dry-run",
+			},
+			wantBody: map[string]any{"content": `<p>before <span><source token="file_a"/></span> after</p>`},
+		},
+		{
+			name: "update inline attachments",
+			args: []string{
+				"docs", "+update", "--doc", "doxcnDryRunE2E", "--command", "append",
+				"--content", `<p>before <source token="file_a"/> between <source token="file_b"/> after</p>`, "--dry-run",
+			},
+			wantBody: map[string]any{"content": `<p>before <span><source token="file_a"/></span> between <span><source token="file_b"/></span> after</p>`},
+		},
+		{
 			name: "update reference-map",
 			args: []string{
 				"docs", "+update",
