@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -141,12 +142,12 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 			`{"code":0,"access_token":"access-new","refresh_token":"refresh-new","expires_in":120,"refresh_token_expires_in":600}`), nil
 	})}
 
-	accessToken, err := GetValidAccessToken(client, opts)
+	token, err := GetValidAccessToken(context.Background(), client, opts)
 	if err != nil {
 		t.Fatalf("GetValidAccessToken() error = %v", err)
 	}
-	if accessToken != "access-new" || calls.Load() != 2 {
-		t.Fatalf("refresh result = (%q, %d calls), want access-new after one retry", accessToken, calls.Load())
+	if token == nil || token.AccessToken != "access-new" || calls.Load() != 2 {
+		t.Fatalf("refresh result = (%+v, %d calls), want access-new after one retry", token, calls.Load())
 	}
 	current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
 	if current == nil || current.RefreshToken != "refresh-new" || current.Scope != stored.Scope || current.GrantedAt != stored.GrantedAt {
@@ -165,9 +166,9 @@ func TestGetValidAccessTokenPreservesCorruptStoredTokenError(t *testing.T) {
 		t.Fatalf("keychain.Set() error = %v", err)
 	}
 
-	accessToken, err := GetValidAccessToken(http.DefaultClient, newRefreshTestOptions(stored))
-	if accessToken != "" {
-		t.Fatalf("access token = %q, want empty", accessToken)
+	token, err := GetValidAccessToken(context.Background(), http.DefaultClient, newRefreshTestOptions(stored))
+	if token != nil {
+		t.Fatalf("token = %+v, want nil", token)
 	}
 	problem, ok := errs.ProblemOf(err)
 	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeStorage {
@@ -276,12 +277,13 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 				t.Fatalf("SetStoredToken() error = %v", err)
 			}
 			var calls atomic.Int32
-			accessToken, err := GetValidAccessToken(
+			token, err := GetValidAccessToken(
+				context.Background(),
 				scriptedRefreshClient(t, tt.steps, &calls),
 				newRefreshTestOptions(stored),
 			)
-			if accessToken != "" {
-				t.Fatalf("access token = %q, want empty on refresh failure", accessToken)
+			if token != nil {
+				t.Fatalf("token = %+v, want nil on refresh failure", token)
 			}
 			problem := requireRefreshProblem(t, err, tt.wantCategory, tt.wantSubtype, tt.wantRetryable)
 			if tt.wantNeedAuth {
@@ -364,16 +366,16 @@ func TestRefreshDoesNotOverwriteNewerGeneration(t *testing.T) {
 				},
 			}}, &calls)
 
-			accessToken, err := GetValidAccessToken(client, newRefreshTestOptions(stored))
+			token, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
 			current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
 			if tt.deleteNext {
-				if !IsNeedUserAuthorizationError(err) || accessToken != "" || current != nil {
-					t.Fatalf("logout result = (access=%q, err=%v, stored=%#v), want deleted generation", accessToken, err, current)
+				if !IsNeedUserAuthorizationError(err) || token != nil || current != nil {
+					t.Fatalf("logout result = (token=%+v, err=%v, stored=%#v), want deleted generation", token, err, current)
 				}
 				return
 			}
-			if err != nil || accessToken != newGeneration.AccessToken {
-				t.Fatalf("refresh result = (access=%q, err=%v), want newer login generation", accessToken, err)
+			if err != nil || token == nil || token.AccessToken != newGeneration.AccessToken {
+				t.Fatalf("refresh result = (token=%+v, err=%v), want newer login generation", token, err)
 			}
 			if current == nil || current.RefreshToken != newGeneration.RefreshToken {
 				t.Fatalf("stored token = %#v, want newer login generation preserved", current)
@@ -403,8 +405,8 @@ func TestConcurrentRefreshesAreCoalesced(t *testing.T) {
 
 	const callers = 6
 	type result struct {
-		accessToken string
-		err         error
+		token *AccessTokenResult
+		err   error
 	}
 	start := make(chan struct{})
 	results := make(chan result, callers)
@@ -414,8 +416,8 @@ func TestConcurrentRefreshesAreCoalesced(t *testing.T) {
 		go func() {
 			ready.Done()
 			<-start
-			accessToken, err := GetValidAccessToken(client, newRefreshTestOptions(stored))
-			results <- result{accessToken: accessToken, err: err}
+			token, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
+			results <- result{token: token, err: err}
 		}()
 	}
 	ready.Wait()
@@ -430,8 +432,8 @@ func TestConcurrentRefreshesAreCoalesced(t *testing.T) {
 
 	for range callers {
 		result := <-results
-		if result.err != nil || result.accessToken != "access-new" {
-			t.Fatalf("concurrent refresh = (access=%q, err=%v), want shared refreshed token", result.accessToken, result.err)
+		if result.err != nil || result.token == nil || result.token.AccessToken != "access-new" {
+			t.Fatalf("concurrent refresh = (token=%+v, err=%v), want shared refreshed token", result.token, result.err)
 		}
 	}
 	if calls.Load() != 1 {
@@ -463,9 +465,9 @@ func TestRefreshStopsBeforeRequestWhenStorageProbeFails(t *testing.T) {
 		return nil, errors.New("unexpected refresh request")
 	})}
 
-	accessToken, err := GetValidAccessToken(client, newRefreshTestOptions(stored))
-	if accessToken != "" || calls.Load() != 0 {
-		t.Fatalf("refresh result = (access=%q, %d calls), want failure before HTTP", accessToken, calls.Load())
+	token, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
+	if token != nil || calls.Load() != 0 {
+		t.Fatalf("refresh result = (token=%+v, %d calls), want failure before HTTP", token, calls.Load())
 	}
 	if _, ok := errs.ProblemOf(err); !ok || !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v (%T), want typed storage failure preserving cause", err, err)
@@ -489,9 +491,9 @@ func TestExpiredRefreshTokenIsClearedWithoutRequest(t *testing.T) {
 		return nil, errors.New("unexpected refresh request")
 	})}
 
-	accessToken, err := GetValidAccessToken(client, newRefreshTestOptions(stored))
-	if accessToken != "" || !IsNeedUserAuthorizationError(err) {
-		t.Fatalf("expired refresh result = (access=%q, err=%v), want authorization required", accessToken, err)
+	token, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
+	if token != nil || !IsNeedUserAuthorizationError(err) {
+		t.Fatalf("expired refresh result = (token=%+v, err=%v), want authorization required", token, err)
 	}
 	if calls.Load() != 0 || mustGetStoredToken(t, stored.AppId, stored.UserOpenId) != nil {
 		t.Fatalf("expired refresh made %d request(s) or left token stored", calls.Load())

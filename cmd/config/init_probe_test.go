@@ -34,7 +34,7 @@ func (f *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	case strings.HasSuffix(req.URL.Path, "/oauth/v3/token"):
 		f.tatCalls++
 		if f.tatHandler == nil {
-			return jsonResp(200, `{"code":0,"access_token":"t-ok","token_type":"Bearer"}`), nil
+			return jsonResp(200, `{"code":0,"access_token":"t-ok","token_type":"Bearer","expires_in":7200}`), nil
 		}
 		return f.tatHandler(req)
 	case strings.HasSuffix(req.URL.Path, "/application/v6/larksuite_cli_app/probe"):

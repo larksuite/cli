@@ -53,7 +53,7 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	})
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    larkauth.PathOAuthTokenV2,
+		URL:    core.OAuthTokenV3Path,
 		Body: map[string]interface{}{
 			"access_token":             "user-access-token",
 			"refresh_token":            "refresh-token",
