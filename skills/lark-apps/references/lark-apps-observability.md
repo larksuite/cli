@@ -43,12 +43,12 @@ lark-cli apps +analytics-list --app-id <app_id> --analytics page-view --granular
 用户报"线上报错 / 很慢 / 页面空白 / 数据不对"时，先只读定位，拿到证据再决定改代码、改数据还是改配置：
 
 1. 记下复现路径、时间范围、出问题的用户身份和环境。
-2. 先核对线上版本与访问面，很多"线上坏了"其实是发了旧版本或可见范围没放开：`lark-cli apps +release-list --app-id <app_id> --page-size 1` 看最近 release 的 `status` 与 `commit_id`；`lark-cli apps +access-scope-get --app-id <app_id>` 看可见范围与登录要求；`lark-cli apps +env-list --app-id <app_id> --environment online` 看线上环境变量是否齐全（只看 key，不要 `--include-values`）。
+2. 先核对线上版本与访问面，很多"线上坏了"其实是发了旧版本或可见范围没放开：`lark-cli apps +release-list --app-id <app_id> --status finished --page-size 1` 取最近一次成功发布的 `release_id`，再用 `+release-get` 读它的 `commit_id`；`lark-cli apps +access-scope-get --app-id <app_id>` 看可见范围与登录要求；`lark-cli apps +env-list --app-id <app_id> --environment online` 看线上环境变量是否齐全（只看 key，不要 `--include-values`）。
 3. `+log-list --level error --since <范围>` 查错误日志，从结果里拿 `log_id` / `trace_id`。
 4. 有请求链路时 `+trace-get --trace-id <trace_id>` 看失败环节和耗时。
 5. `+metric-list --metric requests` / `--metric latency` / `--metric cpu` / `--metric memory` 看趋势，判断是个别请求还是整体劣化。
 6. 需要看数据时用 `+db-table-list` / `+db-table-get` / 只读 `+db-execute` 查目标环境（读 [`lark-apps-db.md`](lark-apps-db.md)）；排查过程中不要顺手改数据或改表。
-7. 证据齐了再修：改代码按 [`lark-apps-local-dev.md`](lark-apps-local-dev.md) 的 commit / push / release 链路发布，改配置用 `+env-set`，改数据按 [`lark-apps-db-execute.md`](lark-apps-db-execute.md) 的确认流程。
+7. 证据齐了再修：改代码按 [`lark-apps-local-dev.md`](lark-apps-local-dev.md) 的 commit / push / release 链路发布，改配置用 `+env-set --environment online`（高风险写，按 [`lark-apps-env.md`](lark-apps-env.md) 取得用户确认后再带 `--yes`），改数据按 [`lark-apps-db-execute.md`](lark-apps-db-execute.md) 的确认流程。
 
 ## 使用边界
 
