@@ -177,9 +177,12 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	if err != nil {
 		return nil, err
 	}
-	token, err := FetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret)
+	token, statusMessage, err := FetchTATWithStatusMessage(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret)
 	if err != nil {
 		return nil, err
+	}
+	if statusMessage != "" && p.errOut != nil {
+		fmt.Fprintln(p.errOut, statusMessage)
 	}
 	return &TokenResult{Token: token}, nil
 }

@@ -321,6 +321,9 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	}
 	authResp, err := larkauth.RequestDeviceAuthorization(httpClient, config.AppID, config.AppSecret, config.Brand, finalScope, f.IOStreams.ErrOut)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "device authorization failed: %v", err).WithCause(err)
 	}
 
@@ -373,8 +376,11 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 
 	// Step 3: Poll for token
 	log(msg.WaitingAuth)
-	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	result, err := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
 		authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
+	if err != nil {
+		return err
+	}
 
 	if !result.OK {
 		if opts.JSON {
@@ -402,6 +408,9 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	}
 	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
 	}
 
@@ -464,8 +473,15 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(recovery.RenderContext{Profile: f.Invocation.Profile}))
 	}
 	log(msg.WaitingAuth)
-	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	result, err := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
 		opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
+	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok &&
+			problem.Category == errs.CategoryPolicy && problem.Subtype == errs.SubtypeAccessDenied {
+			cleanupRequestedScope()
+		}
+		return err
+	}
 
 	if !result.OK {
 		if shouldRemoveLoginRequestedScope(result) {
@@ -486,6 +502,9 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	}
 	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
 	}
 

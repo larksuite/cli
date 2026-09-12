@@ -47,18 +47,19 @@ func (s *stubRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func TestFetchTAT_Success(t *testing.T) {
+	const statusMessage = "Some scopes were silently trimmed"
 	rt := &stubRoundTripper{
 		respCode: 200,
-		respBody: `{"code":0,"access_token":"t-abc","token_type":"Bearer","expires_in":7200}`,
+		respBody: `{"code":0,"access_token":"t-abc","token_type":"Bearer","expires_in":7200,"status_message":"Some scopes were silently trimmed"}`,
 	}
 	hc := &http.Client{Transport: rt}
 
-	token, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	token, gotStatusMessage, err := FetchTATWithStatusMessage(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if token != "t-abc" {
-		t.Errorf("token = %q, want t-abc", token)
+	if token != "t-abc" || gotStatusMessage != statusMessage {
+		t.Errorf("result = (%q, %q), want token and status message", token, gotStatusMessage)
 	}
 	if rt.gotReq.URL.String() != "https://accounts.feishu.cn/oauth/v3/token" {
 		t.Errorf("url = %s", rt.gotReq.URL.String())
@@ -71,6 +72,14 @@ func TestFetchTAT_Success(t *testing.T) {
 		if !strings.Contains(rt.gotBody, want) {
 			t.Errorf("request body missing %q: %s", want, rt.gotBody)
 		}
+	}
+
+	legacyToken, err := FetchTAT(context.Background(), &http.Client{Transport: &stubRoundTripper{
+		respCode: http.StatusOK,
+		respBody: `{"code":0,"access_token":"t-abc"}`,
+	}}, core.BrandFeishu, "cli_app", "secret_x")
+	if err != nil || legacyToken != "t-abc" {
+		t.Fatalf("FetchTAT() = (%q, %v), want legacy token-only success", legacyToken, err)
 	}
 }
 

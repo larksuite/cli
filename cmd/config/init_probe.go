@@ -24,14 +24,14 @@ const probeTimeout = 3 * time.Second
 
 // runProbe runs a best-effort credential validation after config init has
 // persisted the App ID and App Secret. It returns a non-nil error only for a
-// deterministic credential-rejection signal; every other outcome returns nil
+// deterministic credential or policy rejection; every other outcome returns nil
 // so that valid configurations and transient/upstream noise never block the
 // command.
 //
 // The function performs up to two HTTP calls in series, bounded by
 // probeTimeout:
 //
-//  1. A TAT request using the just-saved credentials. credential.FetchTAT
+//  1. A TAT request using the just-saved credentials. The credential helper
 //     returns a typed errs.* error (via the shared classifyTATResponseCode)
 //     only when the unified Token Endpoint deterministically rejected the
 //     credentials — an OAuth2 invalid_client / unauthorized_client classified as
@@ -44,9 +44,9 @@ const probeTimeout = 3 * time.Second
 //     so valid configurations are never disturbed by upstream noise.
 //     errs.IsTyped is the discriminator.
 //
-//  2. If TAT succeeded, a POST to the probe endpoint is fired. The outcome of
-//     that call (success, server error, timeout, parse failure) is always
-//     ignored — return nil regardless.
+//  2. If TAT succeeded, a POST to the probe endpoint is fired. Typed policy
+//     errors are propagated; every other outcome remains best-effort and is
+//     ignored.
 func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret string, brand core.LarkBrand) error {
 	if factory == nil {
 		return nil
@@ -59,7 +59,7 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 
-	token, err := credential.FetchTAT(ctx, httpClient, brand, appID, appSecret)
+	token, statusMessage, err := credential.FetchTATWithStatusMessage(ctx, httpClient, brand, appID, appSecret)
 	if err != nil {
 		// A typed error from FetchTAT is a deterministic credential rejection
 		// (classifyTATResponseCode). Propagate it so config init exits with the
@@ -71,8 +71,11 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 		}
 		return nil
 	}
+	if statusMessage != "" && factory.IOStreams != nil && factory.IOStreams.ErrOut != nil {
+		fmt.Fprintln(factory.IOStreams.ErrOut, statusMessage)
+	}
 
-	// TAT succeeded — fire the probe call. Any outcome is ignored.
+	// TAT succeeded — fire the probe call. Only typed policy errors propagate.
 	url := core.ResolveEndpoints(brand).Open + "/open-apis/application/v6/larksuite_cli_app/probe"
 	body := []byte(fmt.Sprintf(`{"from":"lark-cli/%s"}`, build.Version))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
@@ -84,6 +87,9 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
 		return nil
 	}
 	defer resp.Body.Close()
