@@ -5,11 +5,13 @@ package mail
 
 import (
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -86,6 +88,80 @@ func TestNormalizeRepeatedCommaFlagsPreservesOrder(t *testing.T) {
 	want := []string{"./a.pdf", "./b.pdf", "./c.pdf", "./d.pdf"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("paths = %#v, want %#v", got, want)
+	}
+}
+
+func TestValidateAttachmentFlagValuesReportsSafeOccurrence(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("existing.txt", []byte("ok"), 0o600); err != nil {
+		t.Fatalf("write existing attachment: %v", err)
+	}
+
+	secret := "TOP-SECRET-ATTACHMENT-NAME.txt"
+	err := validateAttachmentFlagValues(&localfileio.LocalFileIO{}, []string{
+		"existing.txt",
+		"missing.txt," + secret,
+	})
+	if err == nil {
+		t.Fatal("expected invalid second occurrence to fail")
+	}
+	for _, want := range []string{"--attach", "occurrence 2", "2 path(s)", "values redacted"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "missing.txt") || strings.Contains(err.Error(), secret) {
+		t.Fatalf("error must not echo attachment values, got %q", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error type = %T, want *errs.ValidationError", err)
+	}
+	if ve.Param != "--attach" {
+		t.Fatalf("validation param = %q, want --attach", ve.Param)
+	}
+}
+
+func TestMailRepeatableAttachmentValidationPrecedesSideEffects(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("existing.txt", []byte("ok"), 0o600); err != nil {
+		t.Fatalf("write existing attachment: %v", err)
+	}
+
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	secret := "TOP-SECRET-OCCURRENCE.txt"
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		extra    []string
+	}{
+		{name: "send", shortcut: MailSend, extra: []string{"--to", "a@example.com", "--subject", "subject", "--body", "<p>body</p>"}},
+		{name: "draft-create", shortcut: MailDraftCreate, extra: []string{"--subject", "subject", "--body", "<p>body</p>"}},
+		{name: "reply", shortcut: MailReply, extra: []string{"--message-id", "message", "--body", "<p>body</p>"}},
+		{name: "reply-all", shortcut: MailReplyAll, extra: []string{"--message-id", "message", "--body", "<p>body</p>"}},
+		{name: "forward", shortcut: MailForward, extra: []string{"--message-id", "message", "--to", "a@example.com", "--body", "<p>body</p>"}},
+		{name: "template-create", shortcut: MailTemplateCreate, extra: []string{"--name", "name", "--template-content", "<p>body</p>"}},
+		{name: "template-update", shortcut: MailTemplateUpdate, extra: []string{"--template-id", "1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args := append([]string{tc.shortcut.Command}, tc.extra...)
+			args = append(args,
+				"--attach", "existing.txt",
+				"--attach", secret,
+			)
+			err := runMountedMailShortcut(t, tc.shortcut, args, f, stdout)
+			if err == nil {
+				t.Fatal("expected attachment preflight failure")
+			}
+			for _, want := range []string{"--attach", "occurrence 2", "1 path(s)", "values redacted"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error = %q, want %q", err, want)
+				}
+			}
+			if strings.Contains(err.Error(), secret) {
+				t.Fatalf("error must not echo attachment value, got %q", err)
+			}
+		})
 	}
 }
 
@@ -216,12 +292,12 @@ func TestMailRepeatableInlineValidationPrecedesSideEffects(t *testing.T) {
 		shortcut common.Shortcut
 		extra    []string
 	}{
-		{name: "send", shortcut: MailSend},
-		{name: "draft-create", shortcut: MailDraftCreate},
-		{name: "reply", shortcut: MailReply},
-		{name: "reply-all", shortcut: MailReplyAll},
-		{name: "forward", shortcut: MailForward},
-		{name: "template-create", shortcut: MailTemplateCreate},
+		{name: "send", shortcut: MailSend, extra: []string{"--to", "a@example.com", "--subject", "subject", "--body", "<p>body</p>"}},
+		{name: "draft-create", shortcut: MailDraftCreate, extra: []string{"--subject", "subject", "--body", "<p>body</p>"}},
+		{name: "reply", shortcut: MailReply, extra: []string{"--message-id", "message", "--body", "<p>body</p>"}},
+		{name: "reply-all", shortcut: MailReplyAll, extra: []string{"--message-id", "message", "--body", "<p>body</p>"}},
+		{name: "forward", shortcut: MailForward, extra: []string{"--message-id", "message", "--to", "a@example.com", "--body", "<p>body</p>"}},
+		{name: "template-create", shortcut: MailTemplateCreate, extra: []string{"--name", "name", "--template-content", "<p>body</p>"}},
 		{name: "template-update", shortcut: MailTemplateUpdate, extra: []string{"--template-id", "1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

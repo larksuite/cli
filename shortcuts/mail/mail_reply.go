@@ -69,7 +69,6 @@ var MailReply = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		attach := normalizeCommaFlagValues(runtime.StrArray("attach"))
 		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
@@ -105,7 +104,7 @@ var MailReply = common.Shortcut{
 		if err := validateEventFlags(runtime); err != nil {
 			return err
 		}
-		if err := validateComposeInlineAndAttachments(runtime.FileIO(), attach, inline, runtime.Bool("plain-text"), ""); err != nil {
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.StrArray("attach"), inline, runtime.Bool("plain-text"), ""); err != nil {
 			return err
 		}
 		return validatePriorityFlag(runtime)

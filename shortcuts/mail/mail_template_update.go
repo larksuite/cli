@@ -108,6 +108,9 @@ var MailTemplateUpdate = common.Shortcut{
 		if name := runtime.Str("set-name"); name != "" && len([]rune(name)) > 100 {
 			return mailValidationParamError("--set-name", "--set-name must be at most 100 characters")
 		}
+		if err := validateAttachmentFlagValues(runtime.FileIO(), runtime.StrArray("attach")); err != nil {
+			return err
+		}
 		if _, err := normalizeInlineFlagValues(runtime.StrArray("inline")); err != nil {
 			return err
 		}

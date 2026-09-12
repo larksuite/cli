@@ -870,7 +870,7 @@ func TestMailTemplateCreate_DryRun(t *testing.T) {
 // inspect + GET + PUT planning and addTemplateUploadSteps for --attach.
 func TestMailTemplateUpdate_DryRun(t *testing.T) {
 	chdirTemp(t)
-	if err := os.WriteFile("attach.bin", []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile("attach.txt", []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -879,7 +879,7 @@ func TestMailTemplateUpdate_DryRun(t *testing.T) {
 		"+template-update",
 		"--template-id", "77",
 		"--set-subject", "new",
-		"--attach", "attach.bin",
+		"--attach", "attach.txt",
 		"--dry-run",
 	}, f, stdout)
 	if err != nil {
@@ -890,7 +890,7 @@ func TestMailTemplateUpdate_DryRun(t *testing.T) {
 		t.Errorf("expected templates/77 in dry-run, got %s", out)
 	}
 	if !strings.Contains(out, "upload_all") {
-		t.Errorf("expected upload step for attach.bin, got %s", out)
+		t.Errorf("expected upload step for attach.txt, got %s", out)
 	}
 }
 

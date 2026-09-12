@@ -76,7 +76,6 @@ var MailSend = common.Shortcut{
 		to := normalizeRecipientFlagValues(runtime.StrArray("to"))
 		cc := normalizeRecipientFlagValues(runtime.StrArray("cc"))
 		bcc := normalizeRecipientFlagValues(runtime.StrArray("bcc"))
-		attach := normalizeCommaFlagValues(runtime.StrArray("attach"))
 		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
@@ -122,7 +121,7 @@ var MailSend = common.Shortcut{
 		if err := validateRequiredResolvedBody(body, hasTemplate, "--body or --body-file is required; pass the full email body (or use --template-id)"); err != nil {
 			return err
 		}
-		if err := validateComposeInlineAndAttachments(runtime.FileIO(), attach, inline, runtime.Bool("plain-text"), body); err != nil {
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.StrArray("attach"), inline, runtime.Bool("plain-text"), body); err != nil {
 			return err
 		}
 		if err := validateEventFlags(runtime); err != nil {

@@ -2305,6 +2305,28 @@ func normalizeCommaFlagValues(values []string) string {
 	return strings.Join(normalizeCommaListFlagValues(values), ",")
 }
 
+// validateAttachmentFlagValues preserves the original --attach occurrence
+// boundary while preflighting every expanded path. Keeping that boundary here
+// lets validation errors identify the failing occurrence without echoing the
+// user-supplied value, which may contain sensitive path information.
+func validateAttachmentFlagValues(fio fileio.FileIO, values []string) error {
+	for occurrence, raw := range values {
+		paths := splitByComma(raw)
+		if len(paths) == 0 {
+			continue
+		}
+		if _, err := statAttachmentFiles(fio, paths); err != nil {
+			return mailValidationParamError(
+				"--attach",
+				"--attach occurrence %d (%d path(s), values redacted): attachment preflight failed",
+				occurrence+1,
+				len(paths),
+			).WithCause(err)
+		}
+	}
+	return nil
+}
+
 func normalizeInlineFlagValues(values []string) (string, error) {
 	var all []InlineSpec
 	for occurrence, raw := range values {
@@ -2563,7 +2585,7 @@ func validateRecipientCount(to, cc, bcc string) error {
 // flag pair before sending: it rejects --inline with --plain-text or with
 // a non-HTML body, and checks that every --attach path passes filename /
 // extension / size rules via the shared filecheck rules.
-func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFlag string, plainText bool, body string) error {
+func validateComposeInlineAndAttachments(fio fileio.FileIO, attachValues []string, inlineFlag string, plainText bool, body string) error {
 	if strings.TrimSpace(inlineFlag) != "" {
 		if plainText {
 			return mailValidationError("--inline is not supported with --plain-text (inline images require HTML body)").
@@ -2582,8 +2604,10 @@ func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFl
 	}
 	// Preflight: verify explicit file paths exist and pass blocked-extension
 	// checks so that --dry-run surfaces local errors before Execute.
-	allPaths := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
-	if _, err := statAttachmentFiles(fio, allPaths); err != nil {
+	if err := validateAttachmentFlagValues(fio, attachValues); err != nil {
+		return err
+	}
+	if _, err := statAttachmentFiles(fio, inlineSpecFilePaths(inlineSpecs)); err != nil {
 		return err
 	}
 	return nil

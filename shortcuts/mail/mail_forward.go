@@ -76,7 +76,6 @@ var MailForward = common.Shortcut{
 		to := normalizeRecipientFlagValues(runtime.StrArray("to"))
 		cc := normalizeRecipientFlagValues(runtime.StrArray("cc"))
 		bcc := normalizeRecipientFlagValues(runtime.StrArray("bcc"))
-		attach := normalizeCommaFlagValues(runtime.StrArray("attach"))
 		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
@@ -111,7 +110,7 @@ var MailForward = common.Shortcut{
 		if err := validateEventFlags(runtime); err != nil {
 			return err
 		}
-		if err := validateComposeInlineAndAttachments(runtime.FileIO(), attach, inline, runtime.Bool("plain-text"), ""); err != nil {
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.StrArray("attach"), inline, runtime.Bool("plain-text"), ""); err != nil {
 			return err
 		}
 		return validatePriorityFlag(runtime)

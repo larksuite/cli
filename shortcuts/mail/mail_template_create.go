@@ -94,6 +94,9 @@ var MailTemplateCreate = common.Shortcut{
 					mailInvalidParam("--template-content-file", "mutually exclusive with --template-content"),
 				)
 		}
+		if err := validateAttachmentFlagValues(runtime.FileIO(), runtime.StrArray("attach")); err != nil {
+			return err
+		}
 		inlineFlag, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
