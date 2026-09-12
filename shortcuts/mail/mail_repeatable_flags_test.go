@@ -57,6 +57,91 @@ func TestNormalizeRecipientFlagsPreservesUnicodeDisplayNameSemantics(t *testing.
 	}
 }
 
+func TestValidateRecipientFlagOccurrences(t *testing.T) {
+	for _, flagName := range []string{"to", "cc", "bcc"} {
+		t.Run(flagName+" rejects malformed later occurrence", func(t *testing.T) {
+			secret := "TOP-SECRET-RECIPIENT"
+			err := validateRecipientFlagOccurrences(flagName, []string{
+				`"Doe, John" <john@example.com>,jane@example.com`,
+				`"Broken, Recipient" <` + secret,
+			})
+			if err == nil {
+				t.Fatal("expected malformed second occurrence to fail")
+			}
+			for _, want := range []string{"--" + flagName, "occurrence 2", "value redacted"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error = %q, want %q", err, want)
+				}
+			}
+			if strings.Contains(err.Error(), secret) {
+				t.Fatalf("error must not echo recipient value, got %q", err)
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("error type = %T, want *errs.ValidationError", err)
+			}
+			if ve.Param != "--"+flagName {
+				t.Fatalf("validation param = %q, want --%s", ve.Param, flagName)
+			}
+		})
+
+		t.Run(flagName+" preserves compatible address lists", func(t *testing.T) {
+			err := validateRecipientFlagOccurrences(flagName, []string{
+				`"Doe, John" <john@example.com>,jane@example.com`,
+				`测试用户 <unicode@example.com>`,
+				``,
+			})
+			if err != nil {
+				t.Fatalf("compatible recipient list rejected: %v", err)
+			}
+		})
+	}
+}
+
+func TestMailRepeatableRecipientValidationPrecedesSideEffects(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	shortcuts := []struct {
+		name     string
+		shortcut common.Shortcut
+		extra    []string
+	}{
+		{name: "send", shortcut: MailSend, extra: []string{"--subject", "subject", "--body", "<p>body</p>"}},
+		{name: "draft-create", shortcut: MailDraftCreate, extra: []string{"--subject", "subject", "--body", "<p>body</p>"}},
+		{name: "reply", shortcut: MailReply, extra: []string{"--message-id", "message", "--body", "<p>body</p>"}},
+		{name: "reply-all", shortcut: MailReplyAll, extra: []string{"--message-id", "message", "--body", "<p>body</p>"}},
+		{name: "forward", shortcut: MailForward, extra: []string{"--message-id", "message", "--body", "<p>body</p>"}},
+		{name: "template-create", shortcut: MailTemplateCreate, extra: []string{"--name", "name", "--template-content", "<p>body</p>"}},
+	}
+
+	for _, shortcut := range shortcuts {
+		for _, flagName := range []string{"to", "cc", "bcc"} {
+			t.Run(shortcut.name+"/"+flagName, func(t *testing.T) {
+				secret := "TOP-SECRET-RECIPIENT"
+				args := append([]string{shortcut.shortcut.Command}, shortcut.extra...)
+				if flagName != "to" && (shortcut.name == "send" || shortcut.name == "forward") {
+					args = append(args, "--to", "required@example.com")
+				}
+				args = append(args,
+					"--"+flagName, `"Valid, Recipient" <valid@example.com>`,
+					"--"+flagName, `"Broken, Recipient" <`+secret,
+				)
+				err := runMountedMailShortcut(t, shortcut.shortcut, args, f, stdout)
+				if err == nil {
+					t.Fatal("expected recipient validation failure before command side effects")
+				}
+				for _, want := range []string{"--" + flagName, "occurrence 2", "value redacted"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Fatalf("error = %q, want %q", err, want)
+					}
+				}
+				if strings.Contains(err.Error(), secret) {
+					t.Fatalf("error must not echo recipient value, got %q", err)
+				}
+			})
+		}
+	}
+}
+
 func TestMailboxLongUnicodeDisplayNameSplitsEncodedWords(t *testing.T) {
 	name := strings.Repeat("测试用户", 20)
 	got := (Mailbox{Name: name, Email: "long@example.com"}).String()

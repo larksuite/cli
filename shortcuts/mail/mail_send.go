@@ -73,6 +73,9 @@ var MailSend = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateRecipientFlagValues(runtime); err != nil {
+			return err
+		}
 		to := normalizeRecipientFlagValues(runtime.StrArray("to"))
 		cc := normalizeRecipientFlagValues(runtime.StrArray("cc"))
 		bcc := normalizeRecipientFlagValues(runtime.StrArray("bcc"))

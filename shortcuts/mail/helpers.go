@@ -2293,6 +2293,38 @@ func normalizeRecipientFlagValues(values []string) string {
 	return strings.Join(parts, ", ")
 }
 
+// validateRecipientFlagValues strictly validates each repeated recipient flag
+// occurrence before any compose side effects. The occurrence boundary is kept
+// so errors can identify the bad argument without echoing recipient data.
+func validateRecipientFlagValues(runtime *common.RuntimeContext) error {
+	for _, flagName := range []string{"to", "cc", "bcc"} {
+		if err := validateRecipientFlagOccurrences(flagName, runtime.StrArray(flagName)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateRecipientFlagOccurrences(flagName string, values []string) error {
+	for occurrence, raw := range values {
+		for _, part := range splitAddressList(raw) {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if _, err := netmail.ParseAddress(part); err != nil {
+				return mailValidationParamError(
+					"--"+flagName,
+					"--%s occurrence %d contains an invalid recipient address (value redacted)",
+					flagName,
+					occurrence+1,
+				)
+			}
+		}
+	}
+	return nil
+}
+
 func normalizeCommaListFlagValues(values []string) []string {
 	var out []string
 	for _, raw := range values {

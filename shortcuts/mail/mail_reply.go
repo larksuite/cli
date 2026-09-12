@@ -69,6 +69,9 @@ var MailReply = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateRecipientFlagValues(runtime); err != nil {
+			return err
+		}
 		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
