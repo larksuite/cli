@@ -369,10 +369,10 @@ func meetingEventsIdentityFromParticipant(participant map[string]interface{}, se
 		}
 	}
 	if identity.ParticipantType == "" {
-		identity.ParticipantType = "human"
+		identity.ParticipantType = "unknown"
 	}
 	if identity.Role == "" {
-		identity.Role = "participant"
+		identity.Role = "unknown"
 	}
 	identity.Label = identityLabel(identity)
 	return identity
@@ -411,8 +411,32 @@ func meetingEventsParticipantTypeFromUserType(raw string) string {
 	switch raw {
 	case "1", "user", "human":
 		return "human"
-	case "2", "10", "bot", "app":
+	case "2", "room":
+		return "room"
+	case "3", "doc_user":
+		return "doc_user"
+	case "4", "neo_user":
+		return "neo_user"
+	case "5", "neo_guest_user":
+		return "neo_guest_user"
+	case "6", "pstn":
+		return "pstn"
+	case "7", "sip":
+		return "sip"
+	case "8", "share_box_user":
+		return "share_box_user"
+	case "9", "open_platform_app":
+		return "app"
+	case "10", "bot", "app":
 		return "bot"
+	case "100", "auto_detect":
+		return "auto_detect"
+	case "101", "room_detect":
+		return "room_detect"
+	case "102", "sid_detect":
+		return "human"
+	case "103", "webinar_attendee":
+		return "webinar_attendee"
 	case "":
 		return ""
 	default:
@@ -445,12 +469,14 @@ func meetingEventsRoleFromEventUserRole(raw string) string {
 		return "participant"
 	case "2", "host":
 		return "host"
+	case "3", "co_host", "cohost":
+		return "co_host"
 	case "4", "bot", "app":
 		return "bot"
 	case "", "0":
 		return ""
 	default:
-		return raw
+		return "unknown"
 	}
 }
 
@@ -1475,12 +1501,14 @@ func needsColon(description string) bool {
 
 func leaveAction(item map[string]interface{}) string {
 	switch int(common.GetFloat(item, "leave_reason")) {
+	case leaveReasonUserLeft:
+		return "离开了会议"
 	case leaveReasonMeetingEnded:
 		return "因会议结束离开了会议"
 	case leaveReasonKicked:
 		return "被移出了会议"
 	default:
-		return "离开了会议"
+		return "因未知原因离开了会议"
 	}
 }
 
