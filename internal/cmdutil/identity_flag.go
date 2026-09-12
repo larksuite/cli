@@ -12,11 +12,19 @@ import (
 )
 
 // AddAPIIdentityFlag registers the standard --as flag shape used by api/service commands.
-func AddAPIIdentityFlag(ctx context.Context, cmd *cobra.Command, f *Factory, target *string) {
+// supported lists the identities the command permits, rendered in both help and
+// shell completion. A nil slice keeps the unrestricted default shape ("identity
+// type: user | bot"); a non-nil slice (including an empty one) is rendered
+// verbatim so restricted methods stop advertising identities that CheckIdentity
+// will reject (see larksuite/cli#2206).
+func AddAPIIdentityFlag(ctx context.Context, cmd *cobra.Command, f *Factory, target *string, supported []string) {
+	if supported == nil {
+		supported = []string{"user", "bot"}
+	}
 	addIdentityFlag(ctx, cmd, f, target, identityFlagConfig{
 		defaultValue:     "",
-		usage:            "identity type: user | bot",
-		completionValues: []string{"user", "bot"},
+		usage:            "identity type: " + strings.Join(supported, " | "),
+		completionValues: supported,
 	})
 }
 
