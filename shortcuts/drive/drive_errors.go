@@ -9,8 +9,16 @@ import (
 	"net/http"
 	"strings"
 
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/shortcuts/common"
+)
+
+const (
+	driveFileReadAppScopeHint  = "stop retrying now; ask the app developer to apply for the required scope(s), and retry only after they have been approved and enabled"
+	driveFileReadRateLimitHint = "the request was rate limited; stop immediate retries and retry later using exponential backoff with jitter"
 )
 
 // wrapDriveNetworkErr returns err unchanged when it is already a typed errs.*
@@ -21,6 +29,58 @@ func wrapDriveNetworkErr(err error, format string, args ...any) error {
 		return err
 	}
 	return errs.NewNetworkError(errs.SubtypeNetworkTransport, format, args...).WithCause(err)
+}
+
+// classifyDriveFileReadStreamError recovers the two business errors these
+// shortcuts promise to guide from DoStream's current
+// "HTTP <status>: <JSON>" transport message. This compatibility shim is
+// deliberately local to Drive download/preview; expand it only if DoStream
+// exposes a structured response body or another Drive stream adopts the same
+// recovery contract.
+func classifyDriveFileReadStreamError(runtime *common.RuntimeContext, err error) error {
+	problem, ok := errs.ProblemOf(err)
+	if runtime == nil || !ok || problem == nil ||
+		problem.Category != errs.CategoryNetwork ||
+		problem.Subtype != errs.SubtypeNetworkTransport ||
+		problem.Code < http.StatusBadRequest {
+		return err
+	}
+
+	prefix := fmt.Sprintf("HTTP %d: ", problem.Code)
+	if !strings.HasPrefix(problem.Message, prefix) {
+		return err
+	}
+	body := strings.TrimSpace(strings.TrimPrefix(problem.Message, prefix))
+	if !strings.HasPrefix(body, "{") {
+		return err
+	}
+
+	header := make(http.Header)
+	header.Set("Content-Type", "application/json")
+	if problem.LogID != "" {
+		header.Set(larkcore.HttpHeaderKeyLogId, problem.LogID)
+	}
+	_, classified := runtime.ClassifyAPIResponse(&larkcore.ApiResp{
+		StatusCode: problem.Code,
+		Header:     header,
+		RawBody:    []byte(body),
+	})
+	classifiedProblem, classifiedOK := errs.ProblemOf(classified)
+	if !classifiedOK || classifiedProblem == nil ||
+		(classifiedProblem.Code != 99991672 && classifiedProblem.Code != 99991400) {
+		return err
+	}
+
+	var permissionErr *errs.PermissionError
+	if errors.As(classified, &permissionErr) {
+		permissionErr.WithCause(err)
+		return classified
+	}
+	var apiErr *errs.APIError
+	if errors.As(classified, &apiErr) {
+		apiErr.WithCause(err)
+	}
+	return classified
 }
 
 // withDriveDownloadForbiddenPreviewHint keeps the HTTP 403 network error from
@@ -46,7 +106,10 @@ func withDriveDownloadForbiddenPreviewHint(err error, _ string) error {
 // attaching an actionable recovery path for permission and throttling failures.
 func withDriveDownloadRecoveryHint(err error, fileToken string) error {
 	err = withDriveDownloadForbiddenPreviewHint(err, fileToken)
-	if !driveDownloadIsRateLimit(err) {
+	if problem, ok := errs.ProblemOf(err); ok && problem.Code == 99991672 && !strings.Contains(problem.Hint, "stop retrying now") {
+		err = appendDriveExportRecoveryHint(err, driveFileReadAppScopeHint)
+	}
+	if !driveFileReadIsRateLimit(err) {
 		return err
 	}
 
@@ -54,11 +117,25 @@ func withDriveDownloadRecoveryHint(err error, fileToken string) error {
 	if strings.Contains(problem.Hint, "exponential backoff") {
 		return err
 	}
-	const hint = "Drive download was rate limited; stop immediate retries and retry later with exponential backoff."
-	return appendDriveExportRecoveryHint(err, hint)
+	return appendDriveExportRecoveryHint(err, driveFileReadRateLimitHint)
 }
 
-func driveDownloadIsRateLimit(err error) bool {
+func withDrivePreviewRecoveryHint(err error) error {
+	if problem, ok := errs.ProblemOf(err); ok && problem.Code == 99991672 && !strings.Contains(problem.Hint, "stop retrying now") {
+		err = appendDriveExportRecoveryHint(err, driveFileReadAppScopeHint)
+	}
+	if !driveFileReadIsRateLimit(err) {
+		return err
+	}
+
+	problem, _ := errs.ProblemOf(err)
+	if strings.Contains(problem.Hint, "exponential backoff") {
+		return err
+	}
+	return appendDriveExportRecoveryHint(err, driveFileReadRateLimitHint)
+}
+
+func driveFileReadIsRateLimit(err error) bool {
 	problem, ok := errs.ProblemOf(err)
 	if !ok || problem == nil {
 		return false
