@@ -156,5 +156,6 @@ func shortcutList() []common.Shortcut {
 		HistoryList,
 		HistoryRevert,
 		HistoryRevertStatus,
+		Undo,
 	}
 }
