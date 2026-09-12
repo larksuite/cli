@@ -95,6 +95,7 @@ var MailSendReceipt = common.Shortcut{
 			Desc("Send read receipt: fetch the original message → verify the READ_RECEIPT_REQUEST label is present → build a reply with subject \"已读回执：<original>\" (zh) or \"Read receipt: <original>\" (en) picked by CJK detection on the original subject, In-Reply-To / References threading, and X-Lark-Read-Receipt-Mail: 1 → create draft and send. The backend extracts the private header, sets BodyExtra.IsReadReceiptMail, and DraftSend applies the READ_RECEIPT_SENT label to the outgoing message.").
 			GET(mailboxPath(mailboxID, "messages", messageID)).
 			Params(map[string]interface{}{"format": messageGetFormat(false)}).
+			GET(mailboxPath(mailboxID, "settings", "send_as")).
 			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{"raw": "<base64url-EML>"}).
@@ -130,7 +131,10 @@ var MailSendReceipt = common.Shortcut{
 			return mailFailedPreconditionError("original message %s has no sender address; cannot address receipt", messageID)
 		}
 
-		senderEmail := resolveComposeSenderEmail(runtime)
+		originalTo := toAddressEmailList(toAddressList(msg["to"]))
+		originalCC := toAddressEmailList(toAddressList(msg["cc"]))
+		sender := resolveComposeIdentity(runtime, mailboxID, composeScenarioReply, originalTo, originalCC)
+		senderEmail := sender.Email
 		if senderEmail == "" {
 			return mailValidationParamError("--from", "unable to determine sender email; please specify --from explicitly")
 		}
@@ -142,7 +146,7 @@ var MailSendReceipt = common.Shortcut{
 
 		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 			Subject(buildReceiptSubject(origSubject)).
-			From("", senderEmail).
+			From(sender.Name, senderEmail).
 			To("", origFromEmail).
 			TextBody([]byte(textBody)).
 			HTMLBody([]byte(htmlBody)).
