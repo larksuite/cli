@@ -58,6 +58,12 @@ lark-cli im +threads-messages-list --thread omt_xxx --dry-run
 | `--as <identity>` | No | Identity type: `user` (default) / `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 
+Every reply uses the shared message shape (see
+[lark-im-message-enrichment.md](lark-im-message-enrichment.md)). A reply the
+sender also sent to the chat carries `synced_to_chat_message` with the chat
+copy's `message_id`; reply to the original with `--reply-in-thread` to stay in
+the thread.
+
 ## Core Constraints
 
 ### 1. Source of `thread_id`
