@@ -4,7 +4,9 @@
 package base
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -401,6 +403,59 @@ func TestBaseDashboardBlockExecuteCreate(t *testing.T) {
 func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("switch row column %t", enabled), func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			stub := &httpmock.Stub{
+				Method: "PATCH",
+				URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"block_id": "blk_a",
+						"name":     "折线图",
+						"type":     "line",
+						"display_config": map[string]interface{}{
+							"switch_row_column": enabled,
+						},
+					},
+				},
+			}
+			reg.Register(stub)
+			args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_a", fmt.Sprintf("--switch-row-column=%t", enabled)}
+			if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+				t.Fatalf("err=%v", err)
+			}
+			var body map[string]interface{}
+			if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			displayConfig, ok := body["display_config"].(map[string]interface{})
+			if !ok || displayConfig["switch_row_column"] != enabled {
+				t.Fatalf("request body=%s", stub.CapturedBody)
+			}
+			var output map[string]interface{}
+			if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+				t.Fatalf("decode command output: %v", err)
+			}
+			data, ok := output["data"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("data=%#v output=%s", output["data"], stdout.String())
+			}
+			if data["updated"] != true {
+				t.Fatalf("updated=%#v output=%s", data["updated"], stdout.String())
+			}
+			block, ok := data["block"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("block=%#v output=%s", data["block"], stdout.String())
+			}
+			responseDisplayConfig, ok := block["display_config"].(map[string]interface{})
+			if !ok || responseDisplayConfig["switch_row_column"] != enabled {
+				t.Fatalf("block display_config=%#v output=%s", block["display_config"], stdout.String())
+			}
+		})
+	}
+
 	t.Run("update name and data-config", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -754,6 +809,33 @@ func TestBaseDashboardBlockDryRun_Update(t *testing.T) {
 	got := stdout.String()
 	if !strings.Contains(got, "PATCH /open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a") || !strings.Contains(got, "订单趋势v2") || !strings.Contains(got, "订单表2") {
 		t.Fatalf("stdout=%s", got)
+	}
+}
+
+func TestBaseDashboardBlockDryRun_UpdateSwitchRowColumn(t *testing.T) {
+	for _, enabled := range []string{"true", "false"} {
+		t.Run(enabled, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a", "--switch-row-column=" + enabled, "--dry-run", "--format", "pretty"}
+			if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+				t.Fatalf("err=%v", err)
+			}
+			want := `"display_config":{"switch_row_column":` + enabled + `}`
+			if got := stdout.String(); !strings.Contains(got, want) {
+				t.Fatalf("stdout missing %s: %s", want, got)
+			}
+		})
+	}
+}
+
+func TestBaseDashboardBlockDryRun_UpdateOmitsUnchangedSwitchRowColumn(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a", "--name", "unchanged", "--dry-run", "--format", "pretty"}
+	if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := stdout.String(); strings.Contains(got, "display_config") {
+		t.Fatalf("unchanged flag must preserve the existing default behavior: %s", got)
 	}
 }
 
