@@ -60,13 +60,14 @@ function resolveReleaseAsset(version, platformName, archName) {
 // Build the ordered list of binary mirror URLs to try. Resolution rules:
 //   1. npm_config_registry     — when the user has set a non-default
 //                                registry (npmmirror clone, corp Verdaccio,
-//                                Artifactory, …), include the derived path
-//                                first. Many of these proxies don't actually
-//                                host /-/binary/<pkg>/..., so we ALWAYS
+//                                Artifactory, …), include its derived
+//                                /-/binary path first, then its origin-level
+//                                /mirrors path. Many of these proxies don't
+//                                actually host /-/binary, and not every custom
+//                                registry hosts /mirrors either, so we ALWAYS
 //                                append the public npmmirror as a final
-//                                fallback so the install does not regress
-//                                from the previous behavior of "GitHub →
-//                                npmmirror".
+//                                fallback. This preserves the previous
+//                                "GitHub → npmmirror" behavior.
 //   2. registry.npmmirror.com  — public China mirror, always tried last.
 // The default public npmjs registry is skipped in step 1 because it does not
 // host binaries under /-/binary/...
@@ -75,13 +76,18 @@ function resolveReleaseAsset(version, platformName, archName) {
 // with http-only internal registries don't have their installs broken.
 function resolveMirrorUrls(env, archive, version) {
   const binaryPath = `/-/binary/lark-cli/v${version}/${archive}`;
+  const mirrorPath = `/mirrors/lark-cli/v${version}/${archive}`;
   const defaultUrl = joinUrl(DEFAULT_MIRROR_HOST, binaryPath);
 
   const urls = [];
   const registry = (env.npm_config_registry || "").trim();
   if (registry && !isDefaultNpmjsRegistry(registry) && isValidDownloadBase(registry)) {
     const base = new URL(registry);
-    urls.push(joinUrl(base.origin + base.pathname, binaryPath));
+    const binaryUrl = joinUrl(base.origin + base.pathname, binaryPath);
+    if (binaryUrl !== defaultUrl) {
+      urls.push(binaryUrl);
+      urls.push(joinUrl(base.origin, mirrorPath));
+    }
   }
   if (!urls.includes(defaultUrl)) urls.push(defaultUrl);
   return urls;
@@ -188,6 +194,20 @@ function download(url, destPath) {
   execFileSync("curl", args, { stdio: ["ignore", "ignore", "pipe"] });
 }
 
+function downloadVerifiedArchive(urls, archivePath, expectedHash, downloadFn = download) {
+  let lastErr;
+  for (const url of urls) {
+    try {
+      downloadFn(url, archivePath);
+      verifyChecksum(archivePath, expectedHash);
+      return;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
 function extractZipWindows(archivePath, destDir) {
   const psOpts = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"];
   const psStdio = ["ignore", "inherit", "inherit"];
@@ -234,25 +254,8 @@ function install() {
   const archivePath = path.join(tmpDir, archiveName);
 
   try {
-    // Walk the chain in order; stop at the first success. Default chain:
-    // GitHub → derived(npm_config_registry)? → npmmirror. The npmmirror
-    // tail preserves the pre-PR safety net when a corporate proxy doesn't
-    // actually host /-/binary/<pkg>/...
-    let lastErr;
-    let downloaded = false;
-    for (const url of downloadUrls) {
-      try {
-        download(url, archivePath);
-        downloaded = true;
-        break;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    if (!downloaded) throw lastErr;
-
     const expectedHash = getExpectedChecksum(archiveName);
-    verifyChecksum(archivePath, expectedHash);
+    downloadVerifiedArchive(downloadUrls, archivePath, expectedHash);
 
     if (isWindows) {
       extractZipWindows(archivePath, tmpDir);
@@ -354,11 +357,11 @@ if (require.main === module) {
       `  # 1. Use a proxy:\n` +
       `  export https_proxy=http://your-proxy:port\n` +
       `  npm install -g @larksuite/cli\n\n` +
-      `  # 2. Point to a corporate npm mirror that proxies /-/binary/lark-cli/...:\n` +
+      `  # 2. Point to a corporate npm mirror that hosts lark-cli binaries:\n` +
       `  npm install -g @larksuite/cli --registry=https://your-corp-mirror/`
     );
     process.exit(1);
   }
 }
 
-module.exports = { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls, resolveReleaseAsset, curlSupportsSslRevokeBestEffort, isCurlVersionSupported };
+module.exports = { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls, resolveReleaseAsset, downloadVerifiedArchive, curlSupportsSslRevokeBestEffort, isCurlVersionSupported };
