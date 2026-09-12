@@ -149,6 +149,7 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 | `distinct_count` | 全字段适用 |
 
 > `number` 包含 `style.type` 为 `progress` / `currency` / `rating` 等所有子类型。
+> 若命令返回 `ok=true`，但某个 `sum` / `avg` / `min` / `max` measure 的 `value` 为 `null`，先按“聚合成功但 measure 为 null”处理；不要立刻切到全量记录导出或打开 help 试错。
 
 **FilterGroup：**
 
@@ -315,6 +316,20 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 > - **范围型关键字**（`CurrentWeek`、`LastWeek`、`CurrentMonth`、`LastMonth`、`TheLastWeek`、`TheNextWeek`、`TheLastMonth`、`TheNextMonth`）仅支持 `is` 运算符。
 > - **关键字大小写敏感**：`ExactDate`、`Today`、`CurrentWeek` 等首字母大写，写错大小写会导致校验失败。
 
+日期粒度的连续区间（按月、季度、年度等）应使用同一时区下不重叠、不遗漏的边界。`isGreater` / `isLess` 是开区间；当字段值可能包含具体时刻时，要表达业务区间 `[start_date, next_start_date)`，将左边界设为 `start_date` 的文档时区本地零点，将右边界设为 `next_start_date` 的文档时区本地零点。只有确认字段存储的是日期粒度零点值，才可把左边界外移到前一天零点来包含起始日。不要把 UTC 零点毫秒值当作本地日期边界。
+
+```json
+{
+  "conjunction": "and",
+  "conditions": [
+    {"field_name": "<date_field>", "operator": "isGreater", "value": ["ExactDate", "<epoch_ms_for_start_at_document_timezone_midnight>"]},
+    {"field_name": "<date_field>", "operator": "isLess", "value": ["ExactDate", "<epoch_ms_for_next_start_at_document_timezone_midnight>"]}
+  ]
+}
+```
+
+连续切分时，相邻区间必须共用同一个 `next_start_date` 分界日：前一区间用它作右边界，后一区间用它作左边界。完成后，用同一非日期筛选范围下的各段计数之和对比去掉分段日期条件后的总计数。不一致时先修正边界，不要基于该聚合结果作答。
+
 *`attachment`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
@@ -408,6 +423,17 @@ CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identit
   ]
 }
 ```
+
+### 聚合成功但 measure 为 null
+
+`ok=true` 表示 DSL 已执行，不代表每个 measure 都可计算。若某个聚合列返回 `{"value": null}`，常见原因是该字段的真实类型或 formula / lookup 结果类型不适用于当前聚合函数，例如对文本化百分比、lookup 文本、附件或关联字段做 `avg` / `sum`。
+
+恢复顺序：
+
+1. 不要先跑 `+record-list --help` 或重复猜字段；用 `+field-list` 重新确认该 measure 字段的 `type`、`style.type`、formula 表达式、lookup 来源和聚合配置。
+2. 对照上方“聚合函数适用字段类型”表：`sum` / `avg` 只直接用于 number；`min` / `max` 只用于 number 或 datetime；计数类可继续用 `count` / `count_all` / `distinct_count`。
+3. 若该字段是 formula / lookup / 文本化百分比，优先寻找同表或源表里的底层 number 字段，用 `+data-query` 聚合底层数值，或读取必要分子/分母后本地复算目标指标。
+4. 只有确认 Base 云端查询服务无法对所需字段类型直接聚合时，才回到 `+record-list --format json --limit 200 --offset <n>`；一次性投影后续计算需要的业务 key、分组字段、连接字段和底层数值字段，避免读全表后再补查字段或重复扫描。
 
 ## 工作流
 
