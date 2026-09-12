@@ -46,6 +46,14 @@ func withDriveDownloadForbiddenPreviewHint(err error, _ string) error {
 // attaching an actionable recovery path for permission and throttling failures.
 func withDriveDownloadRecoveryHint(err error, fileToken string) error {
 	err = withDriveDownloadForbiddenPreviewHint(err, fileToken)
+	if problem, ok := errs.ProblemOf(err); ok && problem != nil && problem.Code == 1063001 {
+		problem.Retryable = false
+		const hint = "Drive export-permission preflight rejected the token/type combination; stop retrying the same input. Verify --file-token is an uploaded Drive file token, prefer --url when available, and use drive +export for docx/sheet/bitable/slides documents."
+		if !strings.Contains(problem.Hint, "stop retrying") {
+			return appendDriveExportRecoveryHint(err, hint)
+		}
+		return err
+	}
 	if !driveDownloadIsRateLimit(err) {
 		return err
 	}
