@@ -54,11 +54,12 @@ lark-cli slides +create --title "项目汇报" --slide @./slide-01.xml --dry-run
 - **`slides_added`**（integer，可选）：带页面创建时返回，成功添加的页面数量
 - **`images_uploaded`**（integer，可选）：页面 XML 中含 `@<本地路径>` 占位符时返回，已上传的去重后图片数量
 - **`permission_grant`**（object，可选）：仅 `--as bot` 时返回，说明是否已自动为当前 CLI 用户授予可管理权限
+- **`slide_issues`**（数组，可选）：带页面创建时才可能返回，逐项对应一个**已写入成功的页面**（标明页序和 `slide_id`），内容是服务端对该页的发现，不影响本次调用的成功状态。两种来源：页面 XML 里有服务端不支持的标签/属性被丢弃（**页面内容与提交的不一致**），或未达阻断级的版式校验发现。格式不固定，不要解析；出现就用 `+screenshot` 复核对应页
 
 > [!IMPORTANT]
 > 不带页面参数时，`slides +create` 只创建空白演示文稿。创建后用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加 slide 内容。
 >
-> 带了页面时，CLI 先创建空白演示文稿，再逐页调用 slide 创建接口添加页面。如果某一页添加失败，CLI 会停止并报错，已创建的演示文稿和已添加的页面会保留。
+> 带了页面时，CLI 先创建空白演示文稿，再逐页调用 slide 创建接口添加页面，每页各过一次服务端版式校验。如果某一页失败，CLI 会停止并报错，已创建的演示文稿和已添加的页面会保留，报错会指明失败页序和此前已成功写入的页数。
 >
 > 如果演示文稿是**以应用身份（bot）创建**的，如 `lark-cli slides +create --as bot`，CLI 会**尝试为当前 CLI 用户自动授予该演示文稿的 `full_access`（可管理权限）**。
 >
@@ -76,6 +77,7 @@ lark-cli slides +create --title "项目汇报" --slide @./slide-01.xml --dry-run
 | `--title` | 否 | 演示文稿标题（不传则默认 "Untitled"） |
 | `--slide` | 否 | 一页 `<slide>` XML，或 `@路径`；可重复，最多 10 次。格式见[页面输入形式](#页面输入形式) |
 | `--slides` | 否 | 页面 XML 的 JSON 字符串数组，最多 10 个；支持 `@文件` 和 `-`（stdin）。格式见[页面输入形式](#页面输入形式) |
+| `--no-lint` | 否 | 跳过服务端版式校验（默认开启，每页各校验一次）；仅在确认校验误判、页面必须原样发布时使用 |
 
 10 页是 CLI 的上限，服务端每次只接收一页。超过 10 页时先用 `+create` 创建空白 PPT，再用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加。
 
@@ -169,6 +171,7 @@ lark-cli slides +add-slide --as user \
 |--------|------|----------|
 | 400 | 参数错误 | 检查参数格式是否正确 |
 | 403 | 权限不足 | 检查是否拥有 `slides:presentation:create` 和 `slides:presentation:write_only` scope |
+| 4000153 `xml lint blocked` | 服务端版式校验拒绝了该页；演示文稿及其之前的页面已写入成功 | `error.message` 是完整的校验报告，按其中每条发现给出的修改建议修正后，用 `+add-slide` 从该页续接，无需重建整份演示文稿 |
 
 ## 相关命令
 

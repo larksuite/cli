@@ -45,6 +45,7 @@ lark-cli slides +add-slide --presentation "$PRES_ID" --slide @page3.xml --dry-ru
 | `--slide` | 是 | 一个完整的 `<slide>...</slide>` 文档；支持字面量、`@file`、stdin `-` |
 | `--before-slide-id` | 否 | 插到该 `slide_id` 之前；**不传就是追加到末尾** |
 | `--revision-id` | 否 | 演示文稿版本号，默认 `-1`（最新）；传具体版本号做乐观锁 |
+| `--no-lint` | 否 | 跳过服务端版式校验（默认开启）；仅在确认校验误判、该页必须原样发布时使用 |
 | `--dry-run` | 否 | 打印将要发起的请求（含图片上传步骤），不写入 |
 
 `@file` 路径**必须在 CWD 内**（如 `@./plan/page3.xml`）；绝对路径和 `../` 会被拒绝并报 `unsafe file path`。
@@ -73,14 +74,14 @@ lark-cli slides +add-slide --as user \
   "revision_id": 42,
   "before_slide_id": "slide_example_target_id",
   "images_uploaded": 1,
-  "issues": "[issue=unsupported_attr tag=<strong> attr=style]"
+  "issues": "<服务端返回的发现>"
 }
 ```
 
 | 字段 | 说明 |
 |------|------|
 | `slide_id` | 新创建页面的唯一标识 |
-| `issues` | 字符串，**只在服务端丢弃过内容时才出现**：页面创建成功，但括号里列出的标签/属性没写进去。出现就必须 `+screenshot` 复核，别当纯警告忽略；干净提交时这个字段不返回 |
+| `issues` | 字符串，仅在**页面已写入成功**且服务端有发现时返回，干净提交时不返回，不影响本次调用的成功状态。两种来源：提交的 XML 里有服务端不支持的标签/属性被丢弃（**页面内容与提交的不一致**），或未达阻断级的版式校验发现。格式不固定，不要解析；出现就用 `+screenshot` 复核该页，不要按普通告警忽略 |
 
 ## 常见错误
 
@@ -89,4 +90,5 @@ lark-cli slides +add-slide --as user \
 | `--slide is not a single complete <slide> document` | 传了 `<presentation>` 整份 XML，或多个 `<slide>` 拼在一起 | 一次只传一页，根元素必须是 `<slide>` |
 | `--slide cannot be empty` | `@file` 指向空文件，或 stdin 没内容 | 检查文件内容 |
 | 3350001 | XML 结构/转义有问题；**或 `--before-slide-id` 不是有效 `slide_id`** | 优先改用 `--slide @file` 绕开 shell 转义；插页失败先 `+xml-get` 回读确认 `slide_id`；再按 [workflow/error-handling.md](../workflow/error-handling.md) 排查 |
+| 4000153 `xml lint blocked` | 服务端版式校验拒绝了这一页，页面未写入 | `error.message` 是完整的校验报告，按其中每条发现给出的修改建议修正后重试 |
 | 1061004 / 403 | 当前身份对这份 PPT 没有编辑权限 | 检查是否拥有 `slides:presentation:update` 或 `slides:presentation:write_only` scope；wiki 链接另需 `wiki:node:read`，`@` 占位符另需 `docs:document.media:upload`；`--as bot` 还要求该 bot 对目标 PPT 有编辑权限 |
