@@ -1278,9 +1278,17 @@ func magicShareStartedEntries(payload map[string]interface{}, fallbackTime time.
 		}
 		title := strings.TrimSpace(common.GetString(common.GetMap(item, "share_doc"), "title"))
 		url := strings.TrimSpace(common.GetString(common.GetMap(item, "share_doc"), "url"))
+		detected := common.GetString(item, "start_reason") == "share_detected"
 		description := "开始共享内容"
+		if detected {
+			description = "正在共享内容"
+		}
 		if title != "" {
-			description = fmt.Sprintf("开始共享「%s」", title)
+			if detected {
+				description = fmt.Sprintf("正在共享「%s」", title)
+			} else {
+				description = fmt.Sprintf("开始共享「%s」", title)
+			}
 		}
 		var details []string
 		if url != "" {
@@ -1460,6 +1468,7 @@ func needsColon(description string) bool {
 			!strings.HasPrefix(description, "被移出") &&
 			!strings.HasPrefix(description, "会议结束") &&
 			!strings.HasPrefix(description, "开始共享") &&
+			!strings.HasPrefix(description, "正在共享") &&
 			!strings.HasPrefix(description, "结束共享")
 	}
 }
@@ -1610,11 +1619,36 @@ func chatReceivedSummary(payload map[string]interface{}) string {
 func magicShareStartedSummary(payload map[string]interface{}) string {
 	items := common.GetSlice(payload, "magic_share_started_items")
 	if len(items) > 1 {
+		detectedCount := 0
+		for _, raw := range items {
+			item, _ := raw.(map[string]interface{})
+			if common.GetString(item, "start_reason") == "share_detected" {
+				detectedCount++
+			}
+		}
+		switch {
+		case detectedCount == len(items):
+			return fmt.Sprintf("%d active shares", len(items))
+		case detectedCount > 0:
+			return fmt.Sprintf("%d share events (%d started, %d active)", len(items), len(items)-detectedCount, detectedCount)
+		}
 		return fmt.Sprintf("%d share start events", len(items))
 	}
 	item := firstSliceMap(payload, "magic_share_started_items")
 	shareID := common.GetString(item, "share_id")
 	title := common.GetString(common.GetMap(item, "share_doc"), "title")
+	if common.GetString(item, "start_reason") == "share_detected" {
+		switch {
+		case shareID != "" && title != "":
+			return fmt.Sprintf("share %s active: %s", shareID, title)
+		case shareID != "":
+			return fmt.Sprintf("share %s active", shareID)
+		case title != "":
+			return fmt.Sprintf("share active: %s", title)
+		default:
+			return "share active"
+		}
+	}
 	switch {
 	case shareID != "" && title != "":
 		return fmt.Sprintf("share %s started: %s", shareID, title)

@@ -77,7 +77,7 @@ func TestDriveReactReplyExecuteViaWikiDelete(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -288,7 +288,7 @@ func TestDriveReactReplyWikiNodeIncompleteResponse(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -309,6 +309,7 @@ func TestDriveReactReplyWikiNodeIncompleteResponse(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "incomplete node data") {
 		t.Fatalf("expected incomplete-node error, got %v", err)
 	}
+	assertDriveCommentIncompleteNodeError(t, err)
 }
 
 func TestDriveReactReplyDryRunDirect(t *testing.T) {
@@ -369,8 +370,8 @@ func TestDriveReactReplyDryRunWiki(t *testing.T) {
 		t.Fatalf("dry-run api call count = %d, want 2\nstdout:\n%s", len(api), stdout.String())
 	}
 	step1 := mustMapValue(t, api[0], "api[0]")
-	if got := mustStringField(t, step1, "url", "api[0].url"); !strings.Contains(got, "/wiki/v2/spaces/get_node") {
-		t.Fatalf("api[0].url = %q, want wiki get_node", got)
+	if got := mustStringField(t, step1, "url", "api[0].url"); !strings.Contains(got, "/wiki/v2/spaces/node_by_token") {
+		t.Fatalf("api[0].url = %q, want wiki node_by_token", got)
 	}
 	step2 := mustMapValue(t, api[1], "api[1]")
 	if got := mustStringField(t, step2, "method", "api[1].method"); got != "POST" {

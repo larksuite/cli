@@ -1905,7 +1905,7 @@ func TestDocsUpdateLocalResourceWikiDryRunResolvesDocxFirst(t *testing.T) {
 		"content": `<img path="@diagram.png"/>`,
 	})
 	dry := decodeDocDryRun(t, dryRunUpdateV2(context.Background(), runtime))
-	if len(dry.API) < 2 || dry.API[0].URL != "/open-apis/wiki/v2/spaces/get_node" {
+	if len(dry.API) < 2 || dry.API[0].URL != "/open-apis/wiki/v2/spaces/node_by_token" {
 		t.Fatalf("dry-run must resolve wiki first: %#v", dry.API)
 	}
 	if got := dry.API[1].URL; got != "/open-apis/docs_ai/v1/documents/%3Cresolved_docx_token%3E" {

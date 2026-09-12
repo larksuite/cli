@@ -59,7 +59,7 @@ func (postConverter) Convert(ctx *ConvertContext) string {
 	result = ResolveMentionKeys(result, ctx.MentionMap)
 	// Attachment zone (top-level "files" array, sibling of the locale keys) is
 	// rendered as trailing lines so agents can see file/folder keys for download.
-	if attachments := renderPostAttachments(parsed); attachments != "" {
+	if attachments := renderPostAttachments(ctx, parsed); attachments != "" {
 		result += "\n" + attachments
 	}
 	return result
@@ -80,7 +80,7 @@ func (postConverter) Convert(ctx *ConvertContext) string {
 //
 //	<file key="file_xxx" name="report.pdf"/>
 //	<folder key="file_yyy" name="assets"/>
-func renderPostAttachments(parsed map[string]interface{}) string {
+func renderPostAttachments(ctx *ConvertContext, parsed map[string]interface{}) string {
 	rawFiles, ok := parsed["files"].([]interface{})
 	if !ok || len(rawFiles) == 0 {
 		return ""
@@ -95,11 +95,35 @@ func renderPostAttachments(parsed map[string]interface{}) string {
 		if key == "" {
 			continue
 		}
+		name, _ := f["file_name"].(string)
 		tag := "file"
 		if isFolder, _ := f["is_folder"].(bool); isFolder {
 			tag = "folder"
+			// Expand folder attachments one level (same as folder messages):
+			// 1) prefetch cache hit (message_id + folder key) -> use cached XML;
+			// 2) "" cached value = prefetch already tried & failed -> degrade to
+			//    the single-line tag, no inline retry (page-wide failures must
+			//    not double GETs);
+			// 3) cache miss (or no cache) + Runtime + MessageID -> inline fetch;
+			// 4) otherwise fall back to the single-line tag below.
+			expanded := ""
+			if ctx != nil && ctx.MessageID != "" && ctx.FolderChildren != nil {
+				if xml, ok := ctx.FolderChildren[ctx.MessageID+folderCacheKeySep+key]; ok {
+					if xml != "" {
+						expanded = xml
+					}
+					// "" sentinel: leave expanded empty -> single-line, no retry
+				} else if ctx.Runtime != nil {
+					expanded = fetchFolderChildrenTree(ctx.Runtime, key, name, ctx.MessageID)
+				}
+			} else if ctx != nil && ctx.Runtime != nil && ctx.MessageID != "" {
+				expanded = fetchFolderChildrenTree(ctx.Runtime, key, name, ctx.MessageID)
+			}
+			if expanded != "" {
+				lines = append(lines, expanded)
+				continue
+			}
 		}
-		name, _ := f["file_name"].(string)
 		if name != "" {
 			lines = append(lines, fmt.Sprintf(`<%s key="%s" name="%s"/>`, tag, cardEscapeAttr(key), cardEscapeAttr(name)))
 		} else {

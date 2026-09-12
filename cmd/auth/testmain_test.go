@@ -8,14 +8,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/larksuite/cli/internal/registry/registrytest"
+	"github.com/larksuite/cli/internal/core"
 )
 
-// TestMain isolates auth command tests from the host machine: config, logs
-// and the registry cache are redirected to a temp dir, then the registry is
-// seeded from the tracked fixture and initialized eagerly. Domain-completion
-// tests read the registry, so without seeding a clean checkout would either
-// fail or trigger a remote metadata fetch.
+// TestMain isolates auth command tests from the host machine. The API Catalog
+// Snapshot is embedded and requires no cache seeding.
 //
 // Note: os.Exit skips deferred functions, so cleanup runs explicitly after
 // m.Run before exiting.
@@ -35,11 +32,11 @@ func TestMain(m *testing.M) {
 		os.RemoveAll(root)
 		os.Exit(2)
 	}
-	if err := registrytest.Seed(root); err != nil {
-		println("cmd/auth test setup: registrytest.Seed failed:", err.Error())
-		os.RemoveAll(root)
-		os.Exit(2)
-	}
+	// Never reach the live scopes.json endpoint from tests: default the remote
+	// fetch to "unavailable" so authLoginRun exercises the local fallback
+	// deterministically. A test that needs a specific remote sets fetchRemoteScopes
+	// itself and restores it.
+	fetchRemoteScopes = func(core.LarkBrand) (map[string][]string, bool) { return nil, false }
 	code := m.Run()
 	_ = os.RemoveAll(root)
 	os.Exit(code)

@@ -82,7 +82,7 @@ var SlidesXMLGet = common.Shortcut{
 		if ref.Kind == "wiki" {
 			presentationID = "<resolved_slides_token>"
 			dry.Desc("2-step orchestration: resolve wiki → fetch presentation XML").
-				GET("/open-apis/wiki/v2/spaces/get_node").
+				GET(slidesWikiNodeByTokenPath).
 				Desc("[1] Resolve wiki node to slides presentation").
 				Params(map[string]interface{}{"token": ref.Token})
 		} else {

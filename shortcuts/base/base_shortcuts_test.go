@@ -621,10 +621,8 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 		defaultVal string
 		help       string
 	}{
-		{name: "table list", shortcut: BaseTableList, flag: "limit", defaultVal: "50", help: "pagination size, range 1-100"},
 		{name: "template list", shortcut: BaseTemplateList, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
 		{name: "template search", shortcut: BaseTemplateSearch, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
-		{name: "field list", shortcut: BaseFieldList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
 		{name: "field search options", shortcut: BaseFieldSearchOptions, flag: "limit", defaultVal: "30", help: "pagination size, range 1-200"},
 		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "100", help: "maximum records to return; range 1-200, or 1-2000 for ndjson"},
 		{name: "view list", shortcut: BaseViewList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
@@ -656,6 +654,41 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 			}
 			if got := strings.Count(help, "default "+tt.defaultVal); got != 1 {
 				t.Fatalf("flag help default %s count=%d, want 1:\n%s", tt.defaultVal, got, help)
+			}
+		})
+	}
+}
+
+func TestBaseTableAndFieldListPaginationFlagsAreHiddenCompatibilityInputs(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		defaults map[string]string
+	}{
+		{name: "table list", shortcut: BaseTableList, defaults: map[string]string{"offset": "0", "limit": "300"}},
+		{name: "field list", shortcut: BaseFieldList, defaults: map[string]string{"offset": "0", "limit": "300"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "base"}
+			tt.shortcut.Mount(parent, &cmdutil.Factory{})
+			cmd := parent.Commands()[0]
+			help := cmd.Flags().FlagUsages()
+			for name, wantDefault := range tt.defaults {
+				flag := cmd.Flags().Lookup(name)
+				if flag == nil {
+					t.Fatalf("flag --%s missing", name)
+				}
+				if !flag.Hidden {
+					t.Fatalf("flag --%s should be hidden", name)
+				}
+				if flag.DefValue != wantDefault {
+					t.Fatalf("--%s default=%q, want %q", name, flag.DefValue, wantDefault)
+				}
+				if strings.Contains(help, "--"+name) {
+					t.Fatalf("hidden flag --%s leaked into help:\n%s", name, help)
+				}
 			}
 		})
 	}
@@ -853,6 +886,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			shortcut: BaseDashboardBlockCreate,
 			wantTips: []string{
 				`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}'`,
+				`--type nps --data-config '{"table_name":"Survey","group_by":[{"field_name":"Score","mode":"integrated"}],"category_range":[0,6,8,10]}'`,
 				`--type ranking --data-config '{"table_name":"Orders"`,
 				`--type text --data-config '{"text":"# Sales Dashboard"}'`,
 				"+table-list and +field-list",
@@ -1385,6 +1419,24 @@ func TestBaseFormQuestionsUpdateHelpGuidesFullOverwrite(t *testing.T) {
 	}
 }
 
+func TestBaseViewSetVisibleFieldsHelpIncludesFormInSharedContract(t *testing.T) {
+	setTips := strings.Join(BaseViewSetVisibleFields.Tips, "\n")
+	for _, want := range []string{
+		"form",
+		"For form views, use field IDs.",
+		"JSON object",
+		"controls both visibility and order",
+		"include every field that should remain visible",
+	} {
+		if !strings.Contains(setTips, want) {
+			t.Fatalf("set-visible-fields tips missing %q:\n%s", want, setTips)
+		}
+	}
+	if strings.Contains(strings.ToLower(setTips), "only reorders that same set") {
+		t.Fatalf("set-visible-fields tips retain the obsolete Form same-set restriction:\n%s", setTips)
+	}
+}
+
 func TestBaseAttachmentHelpGuidesAgents(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1759,7 +1811,7 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 		{
 			name:     "table list",
 			shortcut: BaseTableList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 101}),
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 301}),
 			param:    "--limit",
 		},
 		{
@@ -1777,7 +1829,7 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 		{
 			name:     "field list",
 			shortcut: BaseFieldList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 201}),
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 301}),
 			param:    "--limit",
 		},
 		{

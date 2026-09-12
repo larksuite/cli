@@ -406,13 +406,13 @@ func TestWikiMoveDryRunNodeMoveIncludesResolutionSteps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal dry run: %v", err)
 	}
-	if !bytes.Contains(data, []byte(`"description":"3-step orchestration:`)) {
+	if !bytes.Contains(data, []byte(`"description":"Resolve node tokens and spaces`)) {
 		t.Fatalf("dry run missing 3-step description: %s", string(data))
 	}
-	if !bytes.Contains(data, []byte(`"target_parent_token":"wik_parent"`)) {
+	if !bytes.Contains(data, []byte(`"target_parent_token":"\u003cresolved_parent_node_token\u003e"`)) {
 		t.Fatalf("dry run missing target_parent_token body: %s", string(data))
 	}
-	if !bytes.Contains(data, []byte(`/open-apis/wiki/v2/spaces/\u003cresolved_source_space_id\u003e/nodes/wik_node/move`)) {
+	if !bytes.Contains(data, []byte(`/open-apis/wiki/v2/spaces/\u003cresolved_source_space_id\u003e/nodes/\u003cresolved_node_token\u003e/move`)) {
 		t.Fatalf("dry run missing resolved source placeholder: %s", string(data))
 	}
 }
@@ -464,12 +464,12 @@ func TestResolveWikiNodeMoveSpacesUsesSourceAndTargetLookups(t *testing.T) {
 
 	client := &fakeWikiMoveClient{
 		nodes: map[string]*wikiNodeRecord{
-			"wik_node":   {SpaceID: "space_src"},
-			"wik_parent": {SpaceID: "space_dst"},
+			"wik_node":   {SpaceID: "space_src", NodeToken: "wik_node"},
+			"wik_parent": {SpaceID: "space_dst", NodeToken: "wik_parent"},
 		},
 	}
 
-	sourceSpaceID, targetSpaceID, err := resolveWikiNodeMoveSpaces(context.Background(), client, wikiMoveSpec{
+	sourceSpaceID, targetSpaceID, err := resolveWikiNodeMoveSpaces(context.Background(), client, &wikiMoveSpec{
 		NodeToken:         "wik_node",
 		TargetParentToken: "wik_parent",
 	})
@@ -489,11 +489,12 @@ func TestResolveWikiNodeMoveSpacesRejectsTargetSpaceMismatch(t *testing.T) {
 
 	client := &fakeWikiMoveClient{
 		nodes: map[string]*wikiNodeRecord{
-			"wik_parent": {SpaceID: "space_parent"},
+			"wik_node":   {SpaceID: "space_src", NodeToken: "wik_node"},
+			"wik_parent": {SpaceID: "space_parent", NodeToken: "wik_parent"},
 		},
 	}
 
-	_, _, err := resolveWikiNodeMoveSpaces(context.Background(), client, wikiMoveSpec{
+	_, _, err := resolveWikiNodeMoveSpaces(context.Background(), client, &wikiMoveSpec{
 		NodeToken:         "wik_node",
 		SourceSpaceID:     "space_src",
 		TargetSpaceID:     "space_other",
@@ -509,8 +510,8 @@ func TestRunWikiNodeMoveReturnsResolvedMetadata(t *testing.T) {
 
 	client := &fakeWikiMoveClient{
 		nodes: map[string]*wikiNodeRecord{
-			"wik_node":   {SpaceID: "space_src"},
-			"wik_parent": {SpaceID: "space_dst"},
+			"wik_node":   {SpaceID: "space_src", NodeToken: "wik_node"},
+			"wik_parent": {SpaceID: "space_dst", NodeToken: "wik_parent"},
 		},
 		moveNode: &wikiNodeRecord{
 			SpaceID:         "space_dst",
@@ -551,6 +552,7 @@ func TestRunWikiMoveDispatchesByMode(t *testing.T) {
 	client := &fakeWikiMoveClient{
 		docsResp: &wikiMoveDocsResponse{WikiToken: "wik_ready"},
 		moveNode: &wikiNodeRecord{SpaceID: "space_dst", NodeToken: "wik_node"},
+		nodes:    map[string]*wikiNodeRecord{"wik_node": {SpaceID: "space_src", NodeToken: "wik_node"}},
 	}
 
 	nodeOut, err := runWikiMove(context.Background(), client, runtime, wikiMoveSpec{
@@ -725,21 +727,21 @@ func TestWikiMoveExecuteNodeShortcut(t *testing.T) {
 	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"node": map[string]interface{}{"space_id": "space_src"},
+				"node": map[string]interface{}{"space_id": "space_src", "node_token": "wik_node"},
 			},
 		},
 	})
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"node": map[string]interface{}{"space_id": "space_dst"},
+				"node": map[string]interface{}{"space_id": "space_dst", "node_token": "wik_parent"},
 			},
 		},
 	})

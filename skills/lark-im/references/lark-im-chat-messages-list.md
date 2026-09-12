@@ -17,6 +17,9 @@ lark-cli im +chat-messages-list --chat-id oc_xxx
 # Get direct messages with a user (pass open_id and resolve p2p chat_id automatically)
 lark-cli im +chat-messages-list --user-id ou_xxx
 
+# Read message context as compact Markdown
+lark-cli im +chat-messages-list --chat-id oc_xxx --concise
+
 # Specify a time range (ISO 8601)
 lark-cli im +chat-messages-list --chat-id oc_xxx --start "2026-03-10T00:00:00+08:00" --end "2026-03-11T00:00:00+08:00"
 
@@ -51,6 +54,7 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 | `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
 | `--no-reactions` | No | Skip auto-fetching the `reactions` block |
 | `--download-resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default; no extra requests when omitted |
+| `--concise` | No | Render compact Markdown for message context |
 
 > Rule: `--chat-id` and `--user-id` are mutually exclusive. You must provide exactly one of them.
 
@@ -58,7 +62,7 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 
 ## Resource Rendering
 
-Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `![Image](img_xxx)`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). By default resource binaries are **not** downloaded.
+Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `![Image](img_xxx)`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). `folder` messages are expanded one level (children rendered inside the tag, see the row below). By default resource binaries are **not** downloaded.
 
 Two ways to get the binaries:
 - **In one pass:** add `--download-resources` to this command — every eligible resource (image/file/audio/video/media + post-embedded, excluding stickers) is downloaded into `./lark-im-resources/` and a `resources` block (`{message_id, key, type, local_path, size_bytes}`) is attached to each message. See [message enrichment](lark-im-message-enrichment.md#resource-auto-download---download-resources-opt-in).
@@ -68,6 +72,7 @@ Two ways to get the binaries:
 |---------|-------------|------|
 | Image | `![Image](img_xxx)` | `--download-resources`, or manually `im +messages-resources-download --type image` |
 | File | `<file key="file_xxx" .../>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
+| Folder (message) | `<folder key="file_xxx" name="assets" child_count="N"><file key="..." .../>…</folder>` (first-level children rendered inside; `has_more="true"` past the 10-item cap) | Folder itself is not a single-file resource; children are real files — download one with explicit `im +messages-resources-download --message-id <id> --file-key <child_key> --type file` (`--download-resources` auto-collection does not include folder children) |
 | Audio | `<audio key="file_xxx" duration="Xs"/>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
 | Video | `<video key="file_xxx" .../>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
 | Sticker | `[Sticker]` | Not downloadable (Feishu does not support fetching sticker resources) |

@@ -31,6 +31,9 @@ lark-cli im +threads-messages-list --thread omt_xxx --format pretty
 lark-cli im +threads-messages-list --thread omt_xxx --format table
 lark-cli im +threads-messages-list --thread omt_xxx --format csv
 
+# Read thread context as compact Markdown
+lark-cli im +threads-messages-list --thread omt_xxx --concise
+
 # View as a bot
 lark-cli im +threads-messages-list --thread omt_xxx --as bot
 
@@ -51,6 +54,7 @@ lark-cli im +threads-messages-list --thread omt_xxx --dry-run
 | `--page-all` | No | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
 | `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
 | `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
+| `--concise` | No | Render compact Markdown for thread context |
 | `--as <identity>` | No | Identity type: `user` (default) / `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 
@@ -100,7 +104,7 @@ lark-cli im +threads-messages-list --thread omt_xxx --page-token <PAGE_TOKEN>
 
 ## Resource Rendering
 
-Thread replies are rendered into human-readable text. Image messages appear as placeholders such as `![Image](img_xxx)`; by default resource binaries are **not** downloaded.
+Thread replies are rendered into human-readable text. Image messages appear as placeholders such as `![Image](img_xxx)`; `folder` replies are expanded one level (children rendered inside a `<folder ...>` tag); by default resource binaries are **not** downloaded.
 
 Pass `--download-resources` to download every eligible resource (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` in one pass and attach a `resources` block to each reply (see [message enrichment](lark-im-message-enrichment.md#resource-auto-download---download-resources-opt-in)). Otherwise download individual resources manually through `im +messages-resources-download` (see [lark-im-messages-resources-download](lark-im-messages-resources-download.md)).
 

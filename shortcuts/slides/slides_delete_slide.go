@@ -74,7 +74,7 @@ var SlidesDeleteSlide = common.Shortcut{
 			total = 2
 			presentationID = "<resolved_slides_token>"
 			dry.Desc("2-step orchestration: resolve wiki → delete page").
-				GET("/open-apis/wiki/v2/spaces/get_node").
+				GET(slidesWikiNodeByTokenPath).
 				Desc("[1/2] Resolve wiki node to slides presentation").
 				Params(map[string]interface{}{"token": ref.Token})
 			step = 2

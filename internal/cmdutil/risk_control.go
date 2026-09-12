@@ -19,9 +19,9 @@ func resolveSDKHostSignalSource(config workspaceConfigSource) riskcontrol.Source
 		return nil
 	}
 	workspace, configErr := config.MultiAppConfig()
-	// Default-on means an existing config with no explicit preference. Absent
-	// or unreadable config cannot authorize host-signal collection.
-	if configErr != nil || !workspace.RiskControlEnabled() {
+	// Only an explicit opt-out in a successfully loaded config suppresses
+	// collection. A load failure falls through to default-on.
+	if configErr == nil && !workspace.RiskControlEnabled() {
 		return nil
 	}
 	return riskcontrol.NewHostSource()

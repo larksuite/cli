@@ -748,7 +748,52 @@ func batchWarnings(runtime *common.RuntimeContext) []string {
 		out = append(out, dimInsertBeforeStyleWarning)
 	}
 	out = append(out, batchCollidingDimFreezeNotes(runtime)...)
+	out = append(out, batchNarrowedRangeNotes(runtime)...)
 	return append(out, batchLegacyDimFreezeNotes(runtime)...)
+}
+
+// batchNarrowedRangeNotes reports every +cells-set sub-op whose range was
+// narrowed to fit its payload. The narrowing happens inside the shared input
+// builder, so a nested {range:"A1:D4", cells:[[…2x2…]]} ships A1:B2 exactly as
+// the standalone call does — and used to do it silently, because only the
+// standalone path reconstructed a warning from its own flags.
+//
+// The ops are re-parsed rather than read off the translation: parseJSONFlag
+// decodes the flag afresh, so the builder run here cannot disturb the one that
+// produces the request. A sub-op that fails to build is skipped; the real
+// translation reports it.
+func batchNarrowedRangeNotes(runtime *common.RuntimeContext) []string {
+	rawOps, err := parseBatchOperationsFlag(runtime)
+	if err != nil {
+		return nil // a malformed --operations is the translator's to report.
+	}
+	var notes []string
+	for i, raw := range rawOps {
+		op, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if sc, _ := op["shortcut"].(string); sc != "+cells-set" {
+			continue
+		}
+		item, ok := op["input"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if err := normalizeSubOpInputKeys("+cells-set", item); err != nil {
+			continue
+		}
+		fv := newMapFlagViewForCommand("+cells-set", item)
+		fv.normalizeRangeSheetPrefix()
+		sheetID := strings.TrimSpace(fv.Str("sheet-id"))
+		sheetName := strings.TrimSpace(fv.Str("sheet-name"))
+		_, note, err := cellsSetInputWithNote(fv, "", sheetID, sheetName)
+		if err != nil || note == "" {
+			continue
+		}
+		notes = append(notes, fmt.Sprintf("operations[%d] (+cells-set): %s", i, note))
+	}
+	return notes
 }
 
 // batchIgnoredLocatorNotes makes the translator's intentional locator rewrite

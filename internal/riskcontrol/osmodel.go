@@ -11,8 +11,6 @@ import (
 	"sync"
 	"unicode"
 	"unicode/utf8"
-
-	"golang.org/x/net/http/httpguts"
 )
 
 // OSType is the server-side risk-control operating-system enum.
@@ -107,9 +105,8 @@ func normalizeDeviceModel(model string) string {
 	if model == "" || len(model) > deviceModelMaxBytes {
 		return ""
 	}
-	if !httpguts.ValidHeaderFieldValue(model) {
-		return ""
-	}
+	// Valid UTF-8 with control characters removed and whitespace normalized
+	// contains only bytes permitted in an HTTP header value.
 	return model
 }
 

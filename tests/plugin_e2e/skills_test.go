@@ -406,7 +406,6 @@ func TestForkSkillsBaseReplacementAndReferenceRemapWithoutHostBase(t *testing.T)
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
-		"LARKSUITE_CLI_REMOTE_META=off",
 	)
 	legacy := runWithEnv(t, bin, legacyEnv,
 		"docs", "+update", "--doc", "doccn-plugin-e2e", "--mode", "replace", "--as", "user")

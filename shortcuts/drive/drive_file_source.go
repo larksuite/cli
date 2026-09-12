@@ -5,6 +5,7 @@ package drive
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -19,27 +20,27 @@ const driveWikiNodeRetrieveScope = "wiki:node:retrieve"
 
 // driveFileSource is the normalized input for shortcuts that operate on a Drive
 // file (download / preview). Exactly one of FileToken or WikiToken is set:
-// FileToken is ready to use directly, while WikiToken must first be resolved to
-// an underlying file token via resolveDriveFileWikiSource.
+// The input flag determines the fallback path if entity lookup fails;
+// resolveDriveFileSource identifies the actual token type before use.
 type driveFileSource struct {
-	// FileToken is a direct Drive file token (from --file-token or a Drive
-	// file URL). Empty when the input is a wiki node needing resolution.
+	// FileToken holds input from --file-token or a Drive file URL. The actual
+	// token type is determined by entity lookup, not by the flag name.
 	FileToken string
-	// WikiToken is a wiki node token (from --wiki-token or a /wiki/ URL) that
-	// must be resolved to a file token before use.
+	// WikiToken holds input from --wiki-token or a /wiki/ URL and selects the
+	// legacy Wiki fallback if entity lookup fails.
 	WikiToken string
 	// InputParam records which flag supplied the input, so downstream errors
 	// point at the parameter the user actually set.
 	InputParam string
 }
 
-// NeedsWikiResolution reports whether the input is a wiki node that must be
-// resolved to an underlying Drive file token before the file operation runs.
+// NeedsWikiResolution reports whether the input requests Wiki resolution when
+// the entity lookup is unavailable.
 func (s driveFileSource) NeedsWikiResolution() bool {
 	return s.WikiToken != ""
 }
 
-// driveFileWikiResolution captures the get_node resolution result so it can be
+// driveFileWikiResolution captures a Wiki resolution result so it can be
 // echoed back in the command output for traceability.
 type driveFileWikiResolution struct {
 	Resolved  bool
@@ -50,8 +51,8 @@ type driveFileWikiResolution struct {
 
 // normalizeDriveFileSource validates the --file-token / --url / --wiki-token
 // trio (exactly one required) and classifies the input into a driveFileSource.
-// A /wiki/ URL or a bare --wiki-token is flagged for get_node resolution; a
-// Drive file token or file URL is used directly. Non-file document URLs are
+// A /wiki/ URL or a bare --wiki-token uses get_node when entity lookup fails;
+// other inputs fall back to the original token. Non-file document URLs are
 // rejected with a typed validation error rather than silently coerced, because
 // download/preview only operate on Drive files.
 func normalizeDriveFileSource(fileToken, rawURL, wikiToken string) (driveFileSource, error) {
@@ -136,6 +137,81 @@ func firstProvidedDriveFileSourceParam(fileToken, rawURL, wikiToken string) stri
 	default:
 		return "--wiki-token"
 	}
+}
+
+// addDriveFileSourceDryRun records entity lookup and the legacy fallback, then
+// returns the resolved token placeholder and the next step number.
+func addDriveFileSourceDryRun(plan *common.DryRunAPI, source driveFileSource) (string, int) {
+	token := source.FileToken
+	if source.NeedsWikiResolution() {
+		token = source.WikiToken
+	}
+	plan.GET(driveQueryByTokenPath).
+		Desc("[1] Best-effort entity lookup; use obj_token when obj_type is file, otherwise use +export; lookup errors fall back to the original resolution").
+		Params(map[string]interface{}{"token": token})
+	nextStep := 2
+	if source.NeedsWikiResolution() {
+		plan.GET("/open-apis/wiki/v2/spaces/get_node").
+			Desc("[2] Only if entity lookup fails: resolve wiki node to the underlying Drive file token (obj_type must be file)").
+			Params(map[string]interface{}{"token": source.WikiToken})
+		plan.Set("wiki_token", source.WikiToken)
+		nextStep++
+	} else {
+		plan.Set("fallback_file_token", source.FileToken)
+	}
+	return "resolved_file_token", nextStep
+}
+
+// resolveDriveFileSource treats entity lookup as a best-effort enhancement.
+// Only a successful, usable response replaces the original resolution path.
+func resolveDriveFileSource(ctx context.Context, runtime *common.RuntimeContext, source driveFileSource) (string, driveFileWikiResolution, error) {
+	token := source.FileToken
+	if source.NeedsWikiResolution() {
+		token = source.WikiToken
+	}
+	object, err := queryDriveTokenInfo(runtime, token)
+	if err == nil {
+		// A successful lookup is authoritative about the object type.
+		// Online documents still require +export, not the file download API.
+		if object.ObjType != "file" {
+			return "", driveFileWikiResolution{}, errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
+				"token resolved to %q, but download/preview only support uploaded Drive files",
+				object.ObjType,
+			).WithParam(source.InputParam).
+				WithHint("for doc/docx/sheet/bitable/slides documents, use drive +export instead")
+		}
+		var resolution driveFileWikiResolution
+		if object.IsWikiToken {
+			resolution = driveFileWikiResolution{
+				Resolved: true, WikiToken: token,
+				ObjToken: object.ObjToken, ObjType: object.ObjType,
+			}
+		}
+		return object.ObjToken, resolution, nil
+	}
+
+	// Error messages and causes can contain the token-bearing request URL or
+	// upstream response text. Only expose typed diagnostic fields here.
+	warning := "warning: token lookup failed; using original file resolution"
+	if problem, ok := errs.ProblemOf(err); ok {
+		warning += fmt.Sprintf(" (type=%s subtype=%s", problem.Category, problem.Subtype)
+		if problem.Code != 0 {
+			warning += fmt.Sprintf(" code=%d", problem.Code)
+		}
+		if problem.LogID != "" {
+			warning += fmt.Sprintf(" log_id=%q", problem.LogID)
+		}
+		warning += ")"
+	}
+	fmt.Fprintln(runtime.IO().ErrOut, warning)
+	if source.NeedsWikiResolution() {
+		if err := runtime.EnsureScopes([]string{driveWikiNodeRetrieveScope}); err != nil {
+			return "", driveFileWikiResolution{}, err
+		}
+		return resolveDriveFileWikiSource(ctx, runtime, source)
+	}
+	return source.FileToken, driveFileWikiResolution{}, nil
 }
 
 // resolveDriveFileWikiSource resolves a wiki node to its underlying Drive file

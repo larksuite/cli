@@ -57,9 +57,10 @@
 | 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例1-新增记录触发--发送消息) |
 | 按钮点击+调用外部接口+写入日志 | ButtonTrigger → HTTPClientAction → AddRecordAction | [下方](#示例-6-按钮触发--调用外部接口--写入同步日志) |
 | 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例2-定时触发--查找记录--循环遍历--发送消息) |
-| 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例3-条件分支-ifelsebranch) |
-| 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例4-多路分支-switchbranch) |
-| 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例5-组合场景-定时查找循环分支消息) |
+| 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例3-条件分支ifelsebranch) |
+| 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例4-多路分支switchbranch) |
+| 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例5-组合场景定时查找循环分支消息) |
+| AI 分类 | ... → AIClassificationBranch → 分类后处理 | [下方](#示例7-ai-分类用户反馈自动分流) |
 
 ---
 
@@ -738,6 +739,101 @@
 - `HTTPClientAction.response_value` 中声明了哪些字段，后续节点就只能引用这些字段；例如 `$.step_call_crm_api.body.success`、`$.step_call_crm_api.body.message`
 - `AddRecordAction` 常用于写日志表、操作审计表、同步结果表，便于追踪谁在什么时候触发了外部调用
 - 示例里的 `fldLeadName` / `fldMobile` / `fldCompany` / `fldOwner` 只是占位的 fieldId，请以实际表字段 ID 为准
+
+---
+
+### 示例 7: AI 分类（用户反馈自动分流）
+
+**场景**: 当用户反馈表新增记录时，AI 根据反馈内容分类为 Bug 或功能建议；无法判断时标记为待人工复核。
+
+```json
+{
+  "client_token": "1704067206",
+  "title": "用户反馈自动分流",
+  "steps": [
+    {
+      "id": "step_trigger",
+      "type": "AddRecordTrigger",
+      "title": "新增反馈时触发",
+      "next": "step_ai_classify",
+      "data": {
+        "table_name": "用户反馈表",
+        "watched_field_name": "反馈详情"
+      }
+    },
+    {
+      "id": "step_ai_classify",
+      "type": "AIClassificationBranch",
+      "title": "AI 判断反馈类型",
+      "children": {
+        "links": [
+          { "kind": "case", "to": "step_bug_action", "label": "branch_1", "desc": "Bug" },
+          { "kind": "case", "to": "step_feature_action", "label": "branch_2", "desc": "功能建议" },
+          { "kind": "case", "to": "step_other_action", "label": "default", "desc": "默认分支" }
+        ]
+      },
+      "next": null,
+      "data": {
+        "classes": [
+          {
+            "name": "Bug",
+            "desc": "功能报错、异常、崩溃、无法使用或结果错误"
+          },
+          {
+            "name": "功能建议",
+            "desc": "希望新增能力或改变产品行为"
+          }
+        ],
+        "content": [
+          { "value_type": "ref", "value": "$.step_trigger.fldFeedbackDetail" }
+        ],
+        "classification_rule": "有明确故障现象时优先归入 Bug；同时包含多个诉求时，以最影响用户完成任务的问题为准；信息不足时进入默认分支。"
+      }
+    },
+    {
+      "id": "step_bug_action",
+      "type": "SetRecordAction",
+      "title": "标记为 Bug",
+      "next": null,
+      "data": {
+        "table_name": "用户反馈表",
+        "ref_info": { "step_id": "step_trigger" },
+        "field_values": [
+          { "field_name": "分类", "value": [{ "value_type": "text", "value": "Bug" }] }
+        ]
+      }
+    },
+    {
+      "id": "step_feature_action",
+      "type": "SetRecordAction",
+      "title": "标记为功能建议",
+      "next": null,
+      "data": {
+        "table_name": "用户反馈表",
+        "ref_info": { "step_id": "step_trigger" },
+        "field_values": [
+          { "field_name": "分类", "value": [{ "value_type": "text", "value": "功能建议" }] }
+        ]
+      }
+    },
+    {
+      "id": "step_other_action",
+      "type": "SetRecordAction",
+      "title": "标记为待人工复核",
+      "next": null,
+      "data": {
+        "table_name": "用户反馈表",
+        "ref_info": { "step_id": "step_trigger" },
+        "field_values": [
+          { "field_name": "分类", "value": [{ "value_type": "text", "value": "待人工复核" }] }
+        ]
+      }
+    }
+  ]
+}
+```
+**关键点**:
+- `classes` 按顺序对应 `branch_1`、`branch_2`；`desc` 与分类名一致，`to` 指向已定义的下游 step；
 
 ---
 

@@ -206,6 +206,13 @@ const (
 	spreadsheetRefWiki  = "wiki"
 )
 
+const sheetsWikiNodeByTokenPath = "/open-apis/wiki/v2/spaces/node_by_token"
+
+type sheetsWikiNode struct {
+	ObjType  string
+	ObjToken string
+}
+
 // spreadsheetRef is a parsed --url / --spreadsheet-token input. A wiki ref holds
 // the still-unresolved wiki node_token; resolveSpreadsheetTokenExec turns it
 // into the real spreadsheet token at Execute time.
@@ -292,7 +299,7 @@ func pathSegmentAfter(path, prefix string) (string, bool) {
 // DryRun.
 //
 // A /wiki/ URL yields the still-unresolved wiki node_token: turning it into the
-// backing spreadsheet token needs a get_node call, which only Execute may make.
+// backing spreadsheet token needs a node_by_token call, which only Execute may make.
 // Validate/DryRun only need a non-empty, control-char-clean token, so the
 // node_token passes through unchanged here; Execute paths call
 // resolveSpreadsheetTokenExec instead.
@@ -306,7 +313,7 @@ func resolveSpreadsheetToken(runtime *common.RuntimeContext) (string, error) {
 
 // resolveSpreadsheetTokenExec is the Execute-time counterpart of
 // resolveSpreadsheetToken: it additionally resolves a /wiki/ URL's node_token to
-// the backing spreadsheet token via wiki get_node, verifying obj_type=sheet.
+// the backing spreadsheet token via wiki node_by_token, verifying obj_type=sheet.
 // Non-wiki inputs make no API call. Use this from every sheets Execute hook and
 // keep resolveSpreadsheetToken in Validate/DryRun so those stay network-free.
 func resolveSpreadsheetTokenExec(runtime *common.RuntimeContext) (string, error) {
@@ -328,21 +335,37 @@ func resolveWikiNodeToSpreadsheetToken(runtime *common.RuntimeContext, nodeToken
 	if err := runtime.EnsureScopes([]string{"wiki:node:read"}); err != nil {
 		return "", err
 	}
-	data, err := runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node",
+	data, err := runtime.CallAPITyped("GET", sheetsWikiNodeByTokenPath,
 		map[string]interface{}{"token": nodeToken}, nil)
 	if err != nil {
-		return "", err
+		return "", sheetsWikiNodeLookupProblem(err)
 	}
-	node := common.GetMap(data, "node")
-	objType := common.GetString(node, "obj_type")
-	objToken := common.GetString(node, "obj_token")
-	if objType == "" || objToken == "" {
-		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data for %q", nodeToken)
+	nodeData := common.GetMap(data, "node")
+	node := sheetsWikiNode{
+		ObjType:  common.GetString(nodeData, "obj_type"),
+		ObjToken: common.GetString(nodeData, "obj_token"),
 	}
-	if objType != "sheet" {
-		return "", sheetsValidationForFlag("url", "wiki URL resolves to obj_type=%q, but a spreadsheet (obj_type=sheet) is required", objType)
+	if node.ObjType == "" || node.ObjToken == "" {
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node_by_token returned incomplete node data for %q", nodeToken)
 	}
-	return objToken, nil
+	if node.ObjType != "sheet" {
+		return "", sheetsValidationForFlag("url", "wiki URL resolves to obj_type=%q, but a spreadsheet (obj_type=sheet) is required", node.ObjType)
+	}
+	return node.ObjToken, nil
+}
+
+func sheetsWikiNodeLookupProblem(err error) error {
+	if problem, ok := errs.ProblemOf(err); ok {
+		switch problem.Code {
+		case 131012:
+			problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+		case 131013, 131016:
+			problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+		case 131014:
+			problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+		}
+	}
+	return err
 }
 
 // resolveSheetSelector validates the --sheet-id / --sheet-name XOR and
@@ -504,12 +527,12 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 		// Composite payloads that embed formulas / quotes / commas are the
 		// classic source of this error: inlined into the shell, the JSON gets
 		// mangled (e.g. `\$` → "invalid character in string escape"). For any
-		// flag that accepts stdin, steer the caller there — passing the payload
-		// via `--<flag> - < file` sidesteps shell escaping entirely.
+		// flag that accepts stdin, steer the caller off the command line
+		// entirely, in the spelling their own shell has (mangledPayloadHint).
 		if flagAcceptsStdin(runtime.Command(), name) {
-			return nil, sheetsValidationForFlag(name,
-				"--%s: invalid JSON: %v; if the payload contains formulas / quotes / commas, pass it via stdin (`--%s - < file`) so the shell doesn't mangle the JSON",
-				name, err, name).WithCause(err)
+			return nil, sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).
+				WithCause(err).
+				WithHint("%s", mangledPayloadHint(name))
 		}
 		return nil, sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).WithCause(err)
 	}
@@ -541,6 +564,8 @@ var jsonFlagNormalizers = map[string]map[string]func(interface{}) interface{}{
 	"+cells-batch-set-style": {"border-styles": normalizeBorderStylesFlagValue},
 	"+chart-create":          {"properties": normalizeChartHexColors},
 	"+chart-update":          {"properties": normalizeChartHexColors},
+	"+cond-format-create":    {"properties": normalizeCondFormatProperties},
+	"+cond-format-update":    {"properties": normalizeCondFormatProperties},
 }
 
 // normalizeChartHexColors walks a chart properties payload and prefixes bare

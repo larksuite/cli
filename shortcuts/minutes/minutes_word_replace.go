@@ -19,7 +19,7 @@ import (
 const (
 	minutesWordReplaceNoEditPermission  = 2091005
 	minutesWordReplaceOthersEditing     = 2091110
-	minutesWordReplaceWordsNotFound     = 2091013
+	minutesWordReplaceWordsNotFound     = 2091111
 	minutesWordReplaceASRQuotaNotEnough = 2091008
 )
 

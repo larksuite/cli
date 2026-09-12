@@ -195,7 +195,7 @@ func dryRunUpdateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 	dry := common.NewDryRunAPI()
 	if len(resources) > 0 && ref.Kind == "wiki" {
 		documentID = "<resolved_docx_token>"
-		dry.GET("/open-apis/wiki/v2/spaces/get_node").
+		dry.GET(docWikiNodeByTokenPath).
 			Desc("Resolve wiki node to its docx document before writing local resources").
 			Params(map[string]interface{}{"token": ref.Token})
 	}

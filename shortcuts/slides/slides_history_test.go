@@ -190,7 +190,7 @@ func TestSlidesHistoryDryRunWithWikiPresentation(t *testing.T) {
 	if len(dry.API) != 2 {
 		t.Fatalf("api calls = %d, want 2: %#v", len(dry.API), dry.API)
 	}
-	if got, want := dry.API[0].URL, "/open-apis/wiki/v2/spaces/get_node"; got != want {
+	if got, want := dry.API[0].URL, "/open-apis/wiki/v2/spaces/node_by_token"; got != want {
 		t.Fatalf("wiki dry-run URL = %q, want %q", got, want)
 	}
 	if got := dry.API[0].Params["token"]; got != "wikcn123" {
@@ -347,7 +347,7 @@ func TestSlidesHistoryExecuteResolvesWikiPresentation(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{

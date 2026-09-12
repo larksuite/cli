@@ -10,11 +10,9 @@ import (
 	"github.com/larksuite/cli/internal/envvars"
 )
 
-// ResolveStartupBrand resolves the brand before the command tree is built, so
-// the registry's remote metadata overlay uses the configured brand from the
-// first catalog access. It mirrors the credential chain's brand precedence —
-// environment, then the active profile's raw config entry — without touching
-// the keychain (no secrets are needed to know the brand).
+// ResolveStartupBrand retains the legacy startup-brand resolution order for
+// wrapper mains that still pass its result to WithStartupBrand.
+// Deprecated: committed catalog selection is brand-independent.
 func ResolveStartupBrand(profile string) core.LarkBrand {
 	if raw := os.Getenv(envvars.CliBrand); raw != "" {
 		return core.ParseBrand(raw)

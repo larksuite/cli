@@ -39,6 +39,7 @@ var ImThreadsMessagesList = common.Shortcut{
 		{Name: "page-size", Default: fmt.Sprintf("%d", threadsMessagesListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", threadsMessagesListMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
+		{Name: "concise", Type: "bool", Desc: "render compact Markdown for message context"},
 		downloadResourcesFlag,
 	}, common.PageAllFlags()...),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -77,6 +78,9 @@ var ImThreadsMessagesList = common.Shortcut{
 		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateConciseOutputFlags(runtime); err != nil {
+			return err
+		}
 		threadId := runtime.Str("thread")
 		const threadParam = "--thread"
 		if threadId == "" {
@@ -129,11 +133,12 @@ var ImThreadsMessagesList = common.Shortcut{
 		// Passing nameCache also pre-resolves every sub-item's sender open_id
 		// in one batched contact API call.
 		mergePrefetch := convertlib.PrefetchMergeForwardSubItems(runtime, rawItems, nameCache)
+		folderPrefetch := convertlib.PrefetchFolderChildren(runtime, rawItems)
 
 		downloadResources := runtime.Bool("download-resources")
 		messages := make([]map[string]interface{}, 0, len(rawItems))
 		for _, m := range result.items {
-			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources))
+			messages = append(messages, convertlib.FormatMessageItemWithFolderPrefetchOpts(m, runtime, nameCache, mergePrefetch, folderPrefetch, downloadResources))
 		}
 
 		// Enrich: resolve sender names for outer messages (reuses cache from merge_forward)
@@ -156,9 +161,19 @@ var ImThreadsMessagesList = common.Shortcut{
 			"has_more":   hasMore,
 			"page_token": nextPageToken,
 		}
-		runtime.OutFormat(outData, &output.Meta{
-			Pagination: pagination,
-		}, func(w io.Writer) {
+		if runtime.Bool("concise") {
+			return outputMessagesConcise(runtime, conciseMessageView{
+				Type:  conciseMessageViewThread,
+				Title: "Thread messages",
+				ChatSections: []conciseChatSection{{
+					ThreadID: threadId,
+					Messages: messages,
+				}},
+				HasMore:   hasMore,
+				NextToken: nextPageToken,
+			})
+		}
+		runtime.OutFormat(outData, &output.Meta{Pagination: pagination}, func(w io.Writer) {
 			if len(messages) == 0 {
 				fmt.Fprintln(w, "No messages in this thread.")
 				return

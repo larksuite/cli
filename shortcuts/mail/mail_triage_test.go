@@ -2132,7 +2132,11 @@ func TestMailTriageCustomFolderResolvesOnceAcrossListPages(t *testing.T) {
 	// is the load-bearing "exactly once" assertion).
 	const folderScope = "mail:user_mailbox.folder:read"
 	cfg := mailTestConfig()
-	if stored := auth.GetStoredToken(cfg.AppID, cfg.UserOpenId); stored != nil {
+	stored, readErr := auth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
+	if readErr != nil {
+		t.Fatalf("GetStoredToken() error = %v", readErr)
+	}
+	if stored != nil {
 		if !strings.Contains(stored.Scope, folderScope) {
 			stored.Scope = stored.Scope + " " + folderScope
 			if err := auth.SetStoredToken(stored); err != nil {

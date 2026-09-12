@@ -32,7 +32,7 @@ lark-cli slides +replace-slide --as user \
 cat parts.json | lark-cli slides +replace-slide --as user \
   --presentation $PRES_ID --slide-id $SID --parts -
 
-# wiki URL 直接传（CLI 自动 get_node → 拿真实 xml_presentation_id）
+# wiki URL 直接传（CLI 自动通过 node_by_token 拿真实 xml_presentation_id）
 lark-cli slides +replace-slide --as user \
   --presentation "https://xxx.feishu.cn/wiki/wikcnXXXXXX" --slide-id pfG \
   --parts '[{"action":"block_insert","insertion":"<shape type=\"rect\" width=\"100\" height=\"100\"/>"}]'
