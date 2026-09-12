@@ -358,7 +358,7 @@ func (u *Updater) RemoveGlobalSkills(names []string) *NpmResult {
 }
 
 func (u *Updater) runSkillsAdd(source string) *NpmResult {
-	return u.runSkillsCommand("-y", "skills", "add", source, "-g", "-y")
+	return u.runSkillsCommand("-y", "skills", "add", source, "-g", "-y", "--copy")
 }
 
 func (u *Updater) runSkillsListGlobal() *NpmResult {
@@ -368,7 +368,7 @@ func (u *Updater) runSkillsListGlobal() *NpmResult {
 func (u *Updater) runSkillsInstall(source string, nameList []string) *NpmResult {
 	args := []string{"-y", "skills", "add", source, "-s"}
 	args = append(args, nameList...)
-	args = append(args, "-g", "-y")
+	args = append(args, "-g", "-y", "--copy")
 	return u.runSkillsCommand(args...)
 }
 
