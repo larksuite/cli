@@ -1815,6 +1815,102 @@ func TestMailTriageStructuredOutputPreservesMailboxID(t *testing.T) {
 	}
 }
 
+func TestMailTriageStructuredOutputLabelsFollowFlag(t *testing.T) {
+	tests := []struct {
+		name                string
+		args                []string
+		register            func(*httpmock.Registry) *httpmock.Stub
+		wantLabels          []interface{}
+		wantBatchGetRequest bool
+	}{
+		{
+			name: "list path without labels omits labels",
+			args: []string{"+triage", "--format", "json", "--filter", `{"folder_id":"INBOX"}`},
+			register: func(reg *httpmock.Registry) *httpmock.Stub {
+				registerMailTriageListStub(reg, "me", []string{"msg_001", "msg_002"}, false, "")
+				return registerMailTriageBatchStub(reg, "me", []map[string]interface{}{
+					mailTriageBatchMessageWithLabels("msg_001", "List one", "IMPORTANT"),
+					mailTriageBatchMessageWithLabels("msg_002", "List two", "FLAGGED"),
+				})
+			},
+		},
+		{
+			name: "list path with labels keeps labels",
+			args: []string{"+triage", "--format", "data", "--labels", "--filter", `{"folder_id":"INBOX"}`},
+			register: func(reg *httpmock.Registry) *httpmock.Stub {
+				registerMailTriageListStub(reg, "me", []string{"msg_001", "msg_002"}, false, "")
+				return registerMailTriageBatchStub(reg, "me", []map[string]interface{}{
+					mailTriageBatchMessageWithLabels("msg_001", "List one", "IMPORTANT", "FLAGGED"),
+					mailTriageBatchMessage("msg_002", "List two"),
+				})
+			},
+			wantLabels: []interface{}{"IMPORTANT,FLAGGED", ""},
+		},
+		{
+			name: "search path without labels omits labels and skips metadata batch get",
+			args: []string{"+triage", "--format", "json", "--query", "budget"},
+			register: func(reg *httpmock.Registry) *httpmock.Stub {
+				registerMailTriageSearchStub(reg, "me", []interface{}{
+					mailTriageSearchItem("msg_search_001", "Search one"),
+				}, false, "")
+				return nil
+			},
+		},
+		{
+			name: "search path with labels keeps labels and requests metadata batch get",
+			args: []string{"+triage", "--format", "json", "--labels", "--query", "budget"},
+			register: func(reg *httpmock.Registry) *httpmock.Stub {
+				registerMailTriageSearchStub(reg, "me", []interface{}{
+					mailTriageSearchItem("msg_search_001", "Search one"),
+					mailTriageSearchItem("msg_search_002", "Search two"),
+				}, false, "")
+				return registerMailTriageBatchStub(reg, "me", []map[string]interface{}{
+					mailTriageBatchMessageWithLabels("msg_search_001", "Search one", "IMPORTANT"),
+					mailTriageBatchMessage("msg_search_002", "Search two"),
+				})
+			},
+			wantLabels:          []interface{}{"IMPORTANT", ""},
+			wantBatchGetRequest: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := mailShortcutTestFactory(t)
+			defer reg.Verify(t)
+
+			batchStub := tt.register(reg)
+
+			if err := runMountedMailShortcut(t, MailTriage, tt.args, f, stdout); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			messages := mailTriageMessagesFromOutput(t, decodeMailTriageJSONOutput(t, stdout))
+			if tt.wantLabels != nil && len(messages) != len(tt.wantLabels) {
+				t.Fatalf("message count mismatch: got %d, want %d", len(messages), len(tt.wantLabels))
+			}
+			for i, msg := range messages {
+				labelValue, hasLabels := msg["labels"]
+				if tt.wantLabels == nil {
+					if hasLabels {
+						t.Fatalf("message[%d] should omit labels, got %#v", i, labelValue)
+					}
+					continue
+				}
+				if !hasLabels {
+					t.Fatalf("message[%d] should include labels", i)
+				}
+				if labelValue != tt.wantLabels[i] {
+					t.Fatalf("message[%d] labels = %#v, want %#v", i, labelValue, tt.wantLabels[i])
+				}
+			}
+			if tt.wantBatchGetRequest {
+				assertTriageBatchGetMetadataRequest(t, batchStub, []string{"msg_search_001", "msg_search_002"})
+			}
+		})
+	}
+}
+
 // TestMailTriageMissingMessageMetadataStillGetsMailboxID verifies fallback rows keep mailbox IDs.
 func TestMailTriageMissingMessageMetadataStillGetsMailboxID(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
@@ -2004,12 +2100,12 @@ func registerMailTriageListStub(reg *httpmock.Registry, mailbox string, items []
 	})
 }
 
-func registerMailTriageBatchStub(reg *httpmock.Registry, mailbox string, messages []map[string]interface{}) {
+func registerMailTriageBatchStub(reg *httpmock.Registry, mailbox string, messages []map[string]interface{}) *httpmock.Stub {
 	rawMessages := make([]interface{}, 0, len(messages))
 	for _, msg := range messages {
 		rawMessages = append(rawMessages, msg)
 	}
-	reg.Register(&httpmock.Stub{
+	stub := &httpmock.Stub{
 		Method: "POST",
 		URL:    mailboxPath(mailbox, "messages", "batch_get"),
 		Body: map[string]interface{}{
@@ -2018,7 +2114,9 @@ func registerMailTriageBatchStub(reg *httpmock.Registry, mailbox string, message
 				"messages": rawMessages,
 			},
 		},
-	})
+	}
+	reg.Register(stub)
+	return stub
 }
 
 // registerMailTriageSearchStub registers a mailbox search response for triage tests.
@@ -2052,6 +2150,16 @@ func mailTriageBatchMessage(messageID, subject string) map[string]interface{} {
 	}
 }
 
+func mailTriageBatchMessageWithLabels(messageID, subject string, labels ...string) map[string]interface{} {
+	msg := mailTriageBatchMessage(messageID, subject)
+	labelIDs := make([]interface{}, 0, len(labels))
+	for _, label := range labels {
+		labelIDs = append(labelIDs, label)
+	}
+	msg["label_ids"] = labelIDs
+	return msg
+}
+
 func mailTriageSearchItem(messageID, subject string) map[string]interface{} {
 	return map[string]interface{}{
 		"meta_data": map[string]interface{}{
@@ -2059,6 +2167,32 @@ func mailTriageSearchItem(messageID, subject string) map[string]interface{} {
 			"title":          subject,
 			"from":           map[string]interface{}{"name": "Alice", "mail_address": "alice@example.com"},
 		},
+	}
+}
+
+func assertTriageBatchGetMetadataRequest(t *testing.T, stub *httpmock.Stub, wantIDs []string) {
+	t.Helper()
+	if stub == nil {
+		t.Fatal("expected batch_get stub")
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal batch_get body: %v, body=%s", err, string(stub.CapturedBody))
+	}
+	if body["format"] != "metadata" {
+		t.Fatalf("batch_get format = %#v, want metadata", body["format"])
+	}
+	gotRaw, ok := body["message_ids"].([]interface{})
+	if !ok {
+		t.Fatalf("batch_get message_ids type mismatch: %T", body["message_ids"])
+	}
+	if len(gotRaw) != len(wantIDs) {
+		t.Fatalf("batch_get message_ids length = %d, want %d", len(gotRaw), len(wantIDs))
+	}
+	for i, want := range wantIDs {
+		if gotRaw[i] != want {
+			t.Fatalf("batch_get message_ids[%d] = %#v, want %q", i, gotRaw[i], want)
+		}
 	}
 }
 
