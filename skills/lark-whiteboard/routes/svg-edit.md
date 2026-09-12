@@ -14,7 +14,7 @@ SVG 导出是**纯视觉快照**，再次导入后画板语义（思维导图层
 
 ## Workflow
 
-### 0. 用户确认（强制）
+### 0. Semantic-loss route consent（强制）
 
 执行任何编辑前，先判断**紧邻的上一条用户消息**是否已明确确认有损编辑：
 
@@ -23,7 +23,9 @@ SVG 导出是**纯视觉快照**，再次导入后画板语义（思维导图层
 
 > SVG 编辑只保证视觉层面对齐，画板语义（层级/节点类型/思维导图结构/表格结构/连线绑定/容器类型/mention 等）将不可恢复，是否继续？
 
-这是**知情确认**（动手前让用户对语义丢失止损）；真正的破坏性写入在 Step 4 还会再经 `--overwrite` dry-run 确认一次，二者职责不同、都不可省。
+这是**知情确认**（动手前让用户对语义丢失止损）；真正的破坏性写入还必须回到中央 Workflow 的 replace 分支，经 `--overwrite` dry-run 和 final overwrite gate 确认。二者职责不同、都不可省。
+
+**用户未确认前不得执行后续步骤。** 这一步只允许开始有损的本地 artifact 编辑，不是远端覆盖授权。
 
 ### 1. 导出当前画板 SVG
 
@@ -32,7 +34,7 @@ lark-cli whiteboard +export \
   --whiteboard-token <TOKEN> \
   --output-type svg \
   --output <dir>/original.svg \
-  --as user
+  --as <identity>
 ```
 
 ### 2. 编辑 SVG
@@ -65,24 +67,20 @@ npx -y @larksuite/whiteboard-cli@^0.2.13 -i <dir>/edited.svg -f svg --check
 结合 PNG 视觉效果和 `--check` 报告进行调整，有问题则修改 SVG 后重新渲染（最多 2 轮）。
 - SVG 本地渲染预览时，画板中的图片因 session 原因无法正常显示，属于预期内的行为。
 
-### 4. 写回画板
+### 4. 交回 Workflow
 
-`--overwrite` 会清空原画板内容，确认后再执行
+本 route 到此停止。把编辑产物、preview、检查结果和语义损失摘要交回中央 Workflow，由 replace 分支生成不发请求的本地请求预览、展示精确覆盖请求并取得 final overwrite approval。
 
-```bash
-# dry-run 探测
-lark-cli whiteboard +update \
-  --whiteboard-token <TOKEN> \
-  --source @<dir>/edited.svg \
-  --input_format svg \
-  --idempotent-token <10+字符唯一串> \
-  --overwrite --dry-run --as user
+route 不直接写远端画板，也不把第一阶段 consent 当作最终授权。
 
-# 用户确认后执行
-lark-cli whiteboard +update \
-  --whiteboard-token <TOKEN> \
-  --source @<dir>/edited.svg \
-  --input_format svg \
-  --idempotent-token <10+字符唯一串> \
-  --overwrite --as user
-```
+## Artifact Contract
+
+本 route 交回 [`lark-whiteboard-workflow.md`](../references/lark-whiteboard-workflow.md#svg-edit)：
+
+- `original.svg`：导出的原始视觉快照，仅作为本地编辑输入。
+- `edited.svg`：完整 replace artifact。
+- `edited.png`：最终本地 preview。
+- 本地 `--check` 结果和人工视觉审查结论。
+- 语义损失摘要：node ID、连接语义、层级、表格、mention、锁定、评论等不再保留。
+
+本 route 只服务 replace。append、patch 或 delete 不得在失败后自动转入本 route。

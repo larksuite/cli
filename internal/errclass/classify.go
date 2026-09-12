@@ -144,12 +144,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 			Action:  action,
 		}
 	case errs.CategoryAPI:
-		// A server-supplied detail (lifted into base.Hint above) wins over the
-		// context-free APIHint default; only fall back to APIHint when absent.
-		if base.Hint == "" {
-			base.Hint = APIHint(base.Subtype) // "" for subtypes without a context-free default
-		}
-		return &errs.APIError{Problem: base}
+		return buildAPIError(base, resp)
 	default:
 		// Fail closed: an unrecognized Category routes to InternalError
 		// instead of emitting an empty Problem on the wire.
@@ -163,6 +158,17 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 			},
 		}
 	}
+}
+
+func buildAPIError(p errs.Problem, resp map[string]any) *errs.APIError {
+	// Structured field violations are the strongest server diagnostic. Detail
+	// values are next, then the context-free APIHint default.
+	if hint := apiFieldViolationHint(resp); hint != "" {
+		p.Hint = hint
+	} else if p.Hint == "" {
+		p.Hint = APIHint(p.Subtype) // "" for subtypes without a context-free default
+	}
+	return &errs.APIError{Problem: p}
 }
 
 // buildSecurityPolicyError extracts challenge_url and the hint from a Lark API
@@ -521,6 +527,47 @@ func liftErrorDetailValues(resp map[string]any) string {
 		}
 	}
 	return strings.Join(values, "; ")
+}
+
+// apiFieldViolationHint builds a hint from valid resp.error.field_violations
+// entries in upstream order. An entry is valid when field or description is a
+// non-blank string; malformed entries are ignored.
+func apiFieldViolationHint(resp map[string]any) string {
+	errBlock, ok := resp["error"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	raw, ok := errBlock["field_violations"].([]any)
+	if !ok || len(raw) == 0 {
+		return ""
+	}
+	hints := make([]string, 0, len(raw))
+	for _, item := range raw {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		field, _ := entry["field"].(string)
+		description, _ := entry["description"].(string)
+		if strings.TrimSpace(field) == "" {
+			field = ""
+		}
+		if strings.TrimSpace(description) == "" {
+			description = ""
+		}
+		if field == "" && description == "" {
+			continue
+		}
+		switch {
+		case field != "" && description != "":
+			hints = append(hints, field+": "+description)
+		case field != "":
+			hints = append(hints, field)
+		case description != "":
+			hints = append(hints, description)
+		}
+	}
+	return strings.Join(hints, "; ")
 }
 
 // extractMissingScopes walks resp["error"]["permission_violations"][].subject.

@@ -2,7 +2,7 @@
 name: lark-whiteboard
 version: 1.0.0
 description: >
-  飞书画板：查询和编辑飞书云文档中的画板。支持导出画板为预览图片、导出原始节点结构、使用多种格式更新画板内容。
+  飞书画板：查询和编辑飞书云文档中的画板。支持导出画板为预览图片、导出原始节点结构、使用多种格式更新画板内容，并支持按节点增量创建、更新和删除。
   当用户需要查看画板内容、导出画板图片、编辑画板时使用此 skill。不负责：飞书云文档内容编辑（lark-doc）、文档内嵌电子表格/Base（lark-sheets / lark-base）。
 metadata:
   requires:
@@ -14,42 +14,40 @@ metadata:
 > - 运行 `lark-cli --version`，确认可用，无需询问用户。
 > - 运行 `npx -y @larksuite/whiteboard-cli@^0.2.13 -v`，确认可用，无需询问用户。
 
-**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
-
----
+**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理和 `--as user` / `--as bot` 的差异。**
 
 ## 快速决策
 
-**身份**：画板操作默认使用 `--as user`。仅当需要以应用身份上传时使用 `--as bot`。
+路由前必须按顺序完成以下准备：
 
-> 先判断「只读还是写入」，再在对应表内按上到下匹配，**命中即停**。
+1. 用[范围守卫](references/lark-whiteboard-workflow.md#范围守卫)判断用户要操作文档结构还是同一画布；范围不明时先澄清。
+2. 先[拆分复合请求](references/lark-whiteboard-workflow.md#请求原子化)，再逐个原子操作匹配；first-match 只对单个原子操作生效。
+3. 任何写操作都先读取实际 board state；用户声称画板为空只能作为线索。
+4. 按 `lark-shared` 的身份选择原则和目标资源权限选择 `user` 或 `bot`：用户个人空间或以用户权限分享的资源优先 `user`，应用自有、明确授权给应用的资源或 bot-only 环境使用 `bot`。确定后在读取、请求预览、写入和验证中保持同一身份。
 
-### A. 只读 · 查看 / 导出（不改画板）
-
-| 用户需求 | 行动 |
+| 原子目标 | 入口 |
 |---|---|
-| 查看画板内容 / 导出图片 | [`+export --output-type preview`](references/lark-whiteboard-export.md)                       |
-| 导出 SVG 矢量图 | [`+export --output-type svg`](references/lark-whiteboard-export.md)                       |
-| 提取画板的 Mermaid/PlantUML 源码 | [`+export --output-type source`](references/lark-whiteboard-export.md) |
+| 查看、导出、获取源码或原始节点，不改变画板 | `read/export` → [`+export`](references/lark-whiteboard-export.md) |
+| 向已确认的空白画板写入第一批内容 | `initialize` → [创作 Workflow](references/lark-whiteboard-workflow.md#创作-workflow) |
+| 向非空画板只新增内容，不修改既有内容 | `append` → [编辑 Workflow](references/lark-whiteboard-workflow.md#编辑-workflow) |
+| 只修改既有内容 | `patch` → [编辑 Workflow](references/lark-whiteboard-workflow.md#编辑-workflow) |
+| 只删除既有内容 | `delete` → [编辑 Workflow](references/lark-whiteboard-workflow.md#编辑-workflow) |
+| 丢弃非空画板的全部旧内容并写入完整最终状态 | `replace` → [编辑 Workflow](references/lark-whiteboard-workflow.md#编辑-workflow) |
 
-### B. 写入 · 创作 / 编辑（会改画板，命中即停）
-
-| 场景 | 行动 | 写入方式 | 对原内容 |
-|---|---|---|---|
-| 用户**已提供** Mermaid/PlantUML/SVG 代码，或明确指定用该格式 | 使用该代码 → [`+update`](references/lark-whiteboard-update.md)，`--input_format` 取单值 `mermaid` / `plantuml` / `svg`；写入非空已有画板并需要 overwrite 时，先确认会整板重建；若 SVG 用于修改已有画板，先走 [`routes/svg-edit.md`](routes/svg-edit.md) 有损确认 | overwrite / append | 按用户要求 |
-| 从零新建复杂图表（架构/流程/组织等） | → **[§ 创作 Workflow](references/lark-whiteboard-workflow.md#创作-workflow)** | 首次写入 | — |
-| 修改 / 增补已有画板 | → **[§ 编辑 Workflow](references/lark-whiteboard-workflow.md#编辑-workflow)** | 见该表 | 见该表 |
+输入格式、输入是否就绪、目标是否已定位，只能缩小已经选定的操作如何执行，不能成为新的主路由。当前 Shortcut 的可执行边界、确认规则和禁止 fallback 统一由 [Workflow](references/lark-whiteboard-workflow.md) 决定。
 
 ## Shortcuts
 
-| Shortcut                                          | 说明 |
-|---------------------------------------------------|---|
-| [`+export`](references/lark-whiteboard-export.md) | 导出画板为预览图片、SVG 矢量图、代码或原始节点结构。 |
-| [`+update`](references/lark-whiteboard-update.md) | 更新画板，支持 PlantUML、Mermaid、SVG 或 OpenAPI 原生格式 |
-
----
+| Shortcut | 说明 |
+|---|---|
+| [`+export`](references/lark-whiteboard-export.md) | 导出 preview、SVG、代码或原始节点结构。 |
+| [`+update`](references/lark-whiteboard-update.md) | 初始化空白画板、向非空画板追加新内容，或在明确整板替换时覆盖完整内容。 |
+| [`+node-create`](references/lark-whiteboard-node-create.md) | 向已有画板追加已编译的 OpenAPI 节点。 |
+| [`+node-update`](references/lark-whiteboard-node-update.md) | 按精确 node id 批量更新已有节点字段。 |
+| [`+node-delete`](references/lark-whiteboard-node-delete.md) | 按已确认的 node id 删除节点；真实执行需要 `--yes`。 |
 
 ## 不在本 skill 范围
-- 文档内容编辑 → lark-doc [lark-doc](../lark-doc/SKILL.md)
-- 在文档中创建画板 → [lark-doc-whiteboard.md](../lark-doc/references/lark-doc-whiteboard.md)
+
+- 文档内容编辑 → [lark-doc](../lark-doc/SKILL.md)
+- 在文档中创建、插入或移动画板 block → [lark-doc-whiteboard.md](../lark-doc/references/lark-doc-whiteboard.md)
 - 表格 / Base 操作 → [lark-sheets](../lark-sheets/SKILL.md) / [lark-base](../lark-base/SKILL.md)

@@ -131,3 +131,41 @@ func TestAgentTrace_AcceptsMaxLengthValue(t *testing.T) {
 		t.Fatalf("AgentTrace() = %q, want %d-byte value accepted", got, agentTraceMaxLen)
 	}
 }
+
+func TestTTEnv_EmptyWhenEnvUnset(t *testing.T) {
+	t.Setenv(CliTTEnv, "")
+	if got := TTEnv(); got != "" {
+		t.Fatalf("TTEnv() = %q, want empty when env unset", got)
+	}
+}
+
+func TestTTEnv_ReturnsCleanValue(t *testing.T) {
+	const ttEnv = "ppe_whiteboard_mindnote"
+	t.Setenv(CliTTEnv, ttEnv)
+	if got := TTEnv(); got != ttEnv {
+		t.Fatalf("TTEnv() = %q, want %q", got, ttEnv)
+	}
+}
+
+func TestTTEnv_TrimsWhitespace(t *testing.T) {
+	const ttEnv = "ppe_whiteboard_mindnote"
+	t.Setenv(CliTTEnv, "  "+ttEnv+"  ")
+	if got := TTEnv(); got != ttEnv {
+		t.Fatalf("TTEnv() = %q, want %q (whitespace trimmed)", got, ttEnv)
+	}
+}
+
+func TestTTEnv_RejectsCRLFInjection(t *testing.T) {
+	t.Setenv(CliTTEnv, "ppe_x\r\nX-Evil: attack")
+	if got := TTEnv(); got != "" {
+		t.Fatalf("TTEnv() = %q, want empty for CR/LF value", got)
+	}
+}
+
+func TestTTEnv_RejectsOverlongValue(t *testing.T) {
+	longVal := strings.Repeat("a", ttEnvMaxLen+1)
+	t.Setenv(CliTTEnv, longVal)
+	if got := TTEnv(); got != "" {
+		t.Fatalf("TTEnv() returned non-empty for %d-byte value (max %d)", len(longVal), ttEnvMaxLen)
+	}
+}
