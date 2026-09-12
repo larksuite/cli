@@ -85,6 +85,18 @@ func decodeShortcutEnvelopeData(t *testing.T, stdout *bytes.Buffer) map[string]i
 	return envelope.Data
 }
 
+func decodeShortcutEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]interface{} {
+	t.Helper()
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("Unmarshal(stdout) error = %v, stdout=%s", err, stdout.String())
+	}
+	if envelope["ok"] != true {
+		t.Fatalf("expected ok output, stdout=%s", stdout.String())
+	}
+	return envelope
+}
+
 func encodeFixtureEMLForMailTest(raw string) string {
 	return base64.URLEncoding.EncodeToString([]byte(raw))
 }
