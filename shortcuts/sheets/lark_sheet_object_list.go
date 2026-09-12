@@ -31,6 +31,11 @@ type objectListSpec struct {
 	// Optional id filter. Empty filterFlag → no filter flag exposed.
 	filterFlag  string // CLI flag name (without leading --), e.g. "chart-id"
 	filterField string // tool input key, e.g. "chart_id"
+
+	// Optional boolean toggle. Empty boolFlag → no bool flag exposed.
+	// When the flag is set, boolField is written to the tool input as true.
+	boolFlag  string // CLI flag name (without leading --), e.g. "only-thumbnail"
+	boolField string // tool input key, e.g. "only_thumbnail"
 }
 
 func newObjectListShortcut(spec objectListSpec) common.Shortcut {
@@ -83,6 +88,9 @@ func objectListInput(runtime *common.RuntimeContext, token, sheetID, sheetName s
 			input[spec.filterField] = v
 		}
 	}
+	if spec.boolFlag != "" && runtime.Bool(spec.boolFlag) {
+		input[spec.boolField] = true
+	}
 	return input
 }
 
@@ -95,6 +103,8 @@ var ChartList = newObjectListShortcut(objectListSpec{
 	toolName:    "get_chart_objects",
 	filterFlag:  "chart-id",
 	filterField: "chart_id",
+	boolFlag:    "only-thumbnail",
+	boolField:   "only_thumbnail",
 })
 
 // PivotList — list pivot tables on a sheet.
