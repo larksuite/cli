@@ -75,6 +75,12 @@
 npx @larksuite/cli@latest install
 ```
 
+如需安装聚合后的 `lark-suite` 布局，而不是默认的独立 Skills：
+
+```bash
+npx @larksuite/cli@latest install --skills-layout suite
+```
+
 **方式二 — 从源码安装：**
 
 需要 Go `v1.23`+ 和 Python 3。

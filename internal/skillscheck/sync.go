@@ -429,12 +429,7 @@ func syncLayout(runner SkillsRunner, source string, layout Layout, plan SyncPlan
 			return fmt.Errorf("archive install failed: %s", resultDetail(result))
 		}
 	}
-	if hasInstalledSkill(installed, "lark-suite") {
-		if result := runner.RemoveGlobalSkills([]string{"lark-suite"}); result == nil || result.Err != nil {
-			return fmt.Errorf("remove lark-suite failed: %s", resultDetail(result))
-		}
-	}
-	return nil
+	return cleanupSeparate(runner, plan, installed)
 }
 
 func fallbackSeparate(opts SyncOptions, previous *SkillsState, readable bool, local []string, installed []installedSkill, plan *SyncPlan, reasons []string) *SyncResult {
@@ -467,14 +462,12 @@ func fallbackSeparate(opts SyncOptions, previous *SkillsState, readable bool, lo
 			Force:  opts.Force,
 		}
 	}
-	if hasInstalledSkill(installed, "lark-suite") {
-		if result := opts.Runner.RemoveGlobalSkills([]string{"lark-suite"}); result == nil || result.Err != nil {
-			return &SyncResult{Action: "failed", Layout: LayoutSeparate, Err: fmt.Errorf("remove lark-suite failed: %s", resultDetail(result)), Force: opts.Force}
-		}
-	}
 	if plan == nil {
 		empty := SyncPlan{Version: opts.Version}
 		plan = &empty
+	}
+	if err := cleanupSeparate(opts.Runner, *plan, installed); err != nil {
+		return &SyncResult{Action: "failed", Layout: LayoutSeparate, Err: err, Force: opts.Force}
 	}
 	warning := ""
 	if installResult != nil {
