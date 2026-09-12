@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lark Standup Report"
+  short_description: "Generate sourced Lark daily and weekly reports"
+  default_prompt: "Use $lark-workflow-standup-report to generate today's sourced work report and create the Feishu document."
