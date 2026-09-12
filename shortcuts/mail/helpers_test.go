@@ -455,7 +455,7 @@ func TestPrintMessageOutputSchema(t *testing.T) {
 	out := stdout.String()
 	// Verify key fields from the schema are present
 	for _, key := range []string{
-		"body_plain_text", "body_html", "attachments", "head_from",
+		"body_plain_text", "body_html", "attachments", "head_from", "reply_to_message_id",
 		"bcc", "date", "smtp_message_id", "in_reply_to", "references",
 		"internal_date", "message_state", "message_state_text",
 		"folder_id", "label_ids", "priority_type", "priority_type_text",
@@ -1187,6 +1187,34 @@ func TestParsePriority(t *testing.T) {
 				t.Errorf("parsePriority(%q) = %q, want %q", tc.input, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestBuildMessageOutput_ReplyToMessageID verifies build message output preserves reply_to_message_id.
+func TestBuildMessageOutput_ReplyToMessageID(t *testing.T) {
+	out := buildMessageOutput(map[string]interface{}{
+		"message_id":           "m1",
+		"reply_to_message_id":  "parent-message-id",
+		"reply_to":             "reply-to@example.com",
+		"body_plain_text":      base64.RawURLEncoding.EncodeToString([]byte("body")),
+		"non_string_extension": 123,
+	}, false)
+	if got := out["reply_to_message_id"]; got != "parent-message-id" {
+		t.Fatalf("reply_to_message_id = %v, want parent-message-id", got)
+	}
+	if got := out["reply_to"]; got != "reply-to@example.com" {
+		t.Fatalf("reply_to = %v, want reply-to@example.com", got)
+	}
+}
+
+// TestBuildMessageOutput_ReplyToMessageIDOmittedWhenEmpty verifies empty reply_to_message_id is omitted.
+func TestBuildMessageOutput_ReplyToMessageIDOmittedWhenEmpty(t *testing.T) {
+	out := buildMessageOutput(map[string]interface{}{
+		"message_id":          "m1",
+		"reply_to_message_id": "",
+	}, false)
+	if _, ok := out["reply_to_message_id"]; ok {
+		t.Fatalf("reply_to_message_id should be omitted when empty: %#v", out)
 	}
 }
 
