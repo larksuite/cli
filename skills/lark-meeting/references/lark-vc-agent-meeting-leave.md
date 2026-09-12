@@ -25,9 +25,9 @@ lark-cli vc +meeting-leave --as bot --meeting-id 69xxxxxxxxxxxxx28
 
 `--meeting-id` 必须是会议的长数字 ID，通常由 `+meeting-join --as bot` 返回体中的 `meeting.id` 提供，也可从应用身份 `+meeting-list-active --as bot --user-id <user_open_id>` 返回体中的 `meeting_id` 获取。**传 9 位会议号会失败**。
 
-### 2. 优先使用 bot 身份
+### 2. 仅支持 bot 身份
 
-这是应用机器人离会能力，使用与入会或 active meeting 发现相同的 `--as bot`。只能让当前身份自己离会，无法强制移出其他参会人。
+这是应用机器人离会能力，该 shortcut 仅支持 `bot` 身份，必须使用 `--as bot`。只能让当前身份自己离会，无法强制移出其他参会人。
 
 ### 3. 当前身份必须在会议中
 

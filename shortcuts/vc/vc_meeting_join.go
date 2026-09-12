@@ -47,7 +47,7 @@ var VCMeetingJoin = common.Shortcut{
 	Description: "Join a meeting by meeting number (bot join)",
 	Risk:        "write",
 	Scopes:      []string{"vc:meeting.bot.join:write"},
-	AuthTypes:   []string{"user", "bot"},
+	AuthTypes:   []string{"bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "meeting-number", Required: true, Desc: "meeting number to join"},
@@ -62,9 +62,6 @@ var VCMeetingJoin = common.Shortcut{
 		mn := strings.TrimSpace(runtime.Str("meeting-number"))
 		if !validMeetingNumber(mn) {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--meeting-number must be exactly 9 digits, got %q", mn).WithParam("--meeting-number")
-		}
-		if meetingJoinAction(runtime) == meetingJoinActionStart && !runtime.As().IsBot() {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--action start requires --as bot").WithParam("--action")
 		}
 		return nil
 	},
