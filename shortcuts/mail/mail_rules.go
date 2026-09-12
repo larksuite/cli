@@ -370,7 +370,7 @@ var MailRuleReorder = common.Shortcut{
 	AuthTypes:   mailRuleAuthTypes,
 	HasFormat:   true,
 	Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
-		common.Flag{Name: "rule-ids", Type: "string_slice", Desc: "Full target rule ID order. Must contain every current rule exactly once."},
+		common.Flag{Name: "rule-ids", Type: "string_slice", Desc: "Target rule IDs to prioritize; omitted current rules are appended in their existing relative order."},
 		common.Flag{Name: "move-rule-id", Desc: "Rule ID to move in the current order."},
 		common.Flag{Name: "before-rule-id", Desc: "Place --move-rule-id before this rule."},
 		common.Flag{Name: "after-rule-id", Desc: "Place --move-rule-id after this rule."},
@@ -1608,6 +1608,11 @@ func validateRuleReorderFlags(rt *common.RuntimeContext) error {
 	if full == move {
 		return mailValidationError("exactly one of --rule-ids or --move-rule-id is required")
 	}
+	if full {
+		if _, err := normalizeSubmittedRuleIDs(rt.StrSlice("rule-ids")); err != nil {
+			return err
+		}
+	}
 	targets := 0
 	for _, set := range []bool{
 		strings.TrimSpace(rt.Str("before-rule-id")) != "",
@@ -1630,11 +1635,16 @@ func validateRuleReorderFlags(rt *common.RuntimeContext) error {
 
 func buildRuleTargetOrder(rt *common.RuntimeContext, current []mailRuleEnvelope) ([]string, error) {
 	currentIDs := envelopeRuleIDs(current)
-	if ids := normalizeRuleIDs(rt.StrSlice("rule-ids")); len(ids) > 0 {
-		if err := validateFullRuleOrder(ids, currentIDs); err != nil {
+	if len(rt.StrSlice("rule-ids")) > 0 {
+		ids, err := normalizeSubmittedRuleIDs(rt.StrSlice("rule-ids"))
+		if err != nil {
 			return nil, err
 		}
-		return ids, nil
+		target, err := completeRuleTargetOrder(ids, currentIDs)
+		if err != nil {
+			return nil, err
+		}
+		return target, nil
 	}
 	moveID := strings.TrimSpace(rt.Str("move-rule-id"))
 	order := removeString(currentIDs, moveID)
@@ -1653,34 +1663,49 @@ func buildRuleTargetOrder(rt *common.RuntimeContext, current []mailRuleEnvelope)
 	}
 }
 
-func validateFullRuleOrder(target, current []string) error {
-	if len(target) != len(current) {
-		return mailValidationParamError("--rule-ids", "--rule-ids must contain every current rule id exactly once (got %d, want %d)", len(target), len(current))
+func completeRuleTargetOrder(submitted, current []string) ([]string, error) {
+	if len(submitted) == 0 {
+		return nil, mailValidationParamError("--rule-ids", "--rule-ids must include at least one rule id")
 	}
-	want := make(map[string]int, len(current))
+	known := make(map[string]bool, len(current))
 	for _, id := range current {
-		want[id]++
+		known[id] = true
 	}
-	for _, id := range target {
-		want[id]--
+	seen := make(map[string]bool, len(submitted))
+	target := make([]string, 0, len(current))
+	for _, id := range submitted {
+		if seen[id] {
+			return nil, mailValidationParamError("--rule-ids", "--rule-ids contains duplicate rule id %s", id)
+		}
+		if !known[id] {
+			return nil, mailValidationParamError("--rule-ids", "--rule-ids contains unknown rule id %s; run +rule-list first", id)
+		}
+		seen[id] = true
+		target = append(target, id)
 	}
-	for id, count := range want {
-		if count != 0 {
-			return mailValidationParamError("--rule-ids", "--rule-ids mismatch for %s; run +rule-list first and submit the complete order", id)
+	for _, id := range current {
+		if !seen[id] {
+			target = append(target, id)
 		}
 	}
-	return nil
+	return target, nil
 }
 
-func normalizeRuleIDs(ids []string) []string {
+func normalizeSubmittedRuleIDs(ids []string) ([]string, error) {
 	var out []string
+	seen := make(map[string]bool, len(ids))
 	for _, id := range ids {
-		id = strings.TrimSpace(id)
-		if id != "" {
-			out = append(out, id)
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			return nil, mailValidationParamError("--rule-ids", "--rule-ids contains an empty rule id")
 		}
+		if seen[trimmed] {
+			return nil, mailValidationParamError("--rule-ids", "--rule-ids contains duplicate rule id %s", trimmed)
+		}
+		seen[trimmed] = true
+		out = append(out, trimmed)
 	}
-	return out
+	return out, nil
 }
 
 func insertRelative(order []string, moveID, targetID string, after bool) ([]string, error) {
