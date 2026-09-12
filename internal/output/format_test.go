@@ -28,6 +28,72 @@ func TestFormatValue_JSON(t *testing.T) {
 	}
 }
 
+func TestWriteFormattedJSONPreservesNullContainers(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		data interface{}
+		want string
+	}{
+		{name: "nil map", data: map[string]interface{}(nil), want: "null"},
+		{name: "nil slice", data: []interface{}(nil), want: "null"},
+		{name: "empty map", data: map[string]interface{}{}, want: "{}"},
+		{name: "empty slice", data: []interface{}{}, want: "[]"},
+		{
+			name: "nested map values",
+			data: map[string]interface{}{
+				"map":   map[string]interface{}(nil),
+				"slice": []interface{}(nil),
+			},
+			want: `{"map":null,"slice":null}`,
+		},
+		{
+			name: "nested slice values",
+			data: []interface{}{map[string]interface{}(nil), []interface{}(nil)},
+			want: `[null,null]`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := WriteFormatted(&buf, tt.data, FormatJSON); err != nil {
+				t.Fatalf("WriteFormatted() error = %v", err)
+			}
+			var compact bytes.Buffer
+			if err := json.Compact(&compact, buf.Bytes()); err != nil {
+				t.Fatalf("invalid JSON output: %v", err)
+			}
+			if got := compact.String(); got != tt.want {
+				t.Fatalf("JSON output = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWriteFormattedNDJSONPreservesRecordWithNullSlice(t *testing.T) {
+	data := map[string]interface{}{
+		"name": "Alice",
+		"tags": []interface{}(nil),
+	}
+	var buf bytes.Buffer
+	if err := WriteFormatted(&buf, data, FormatNDJSON); err != nil {
+		t.Fatalf("WriteFormatted() error = %v", err)
+	}
+	if got, want := buf.String(), "{\"name\":\"Alice\",\"tags\":null}\n"; got != want {
+		t.Fatalf("NDJSON output = %q, want %q", got, want)
+	}
+}
+
+func TestWriteFormattedNDJSONEmptySlices(t *testing.T) {
+	for _, data := range [][]interface{}{nil, {}} {
+		var buf bytes.Buffer
+		if err := WriteFormatted(&buf, data, FormatNDJSON); err != nil {
+			t.Fatalf("WriteFormatted() error = %v", err)
+		}
+		if buf.Len() != 0 {
+			t.Fatalf("empty slice should emit no records, got %q", buf.String())
+		}
+	}
+}
+
 func TestFormatValue_NDJSON(t *testing.T) {
 	data := map[string]interface{}{
 		"data": map[string]interface{}{

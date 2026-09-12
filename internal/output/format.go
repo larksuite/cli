@@ -54,12 +54,18 @@ func toGeneric(v interface{}) interface{} {
 	case nil:
 		return nil
 	case map[string]interface{}:
+		if value == nil {
+			return value
+		}
 		out := make(map[string]interface{}, len(value))
 		for key, item := range value {
 			out[key] = toGeneric(item)
 		}
 		return out
 	case []interface{}:
+		if value == nil {
+			return value
+		}
 		out := make([]interface{}, len(value))
 		for index, item := range value {
 			out[index] = toGeneric(item)
