@@ -6,14 +6,14 @@
 
 [中文版](./README.zh.md) | [English](./README.md)
 
-The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by the [larksuite](https://github.com/larksuite) team — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Slides, Calendar, Mail, Tasks, Meetings, Markdown, and more, with 200+ commands and 26 AI Agent [Skills](./skills/).
+The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by the [larksuite](https://github.com/larksuite) team — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Slides, Calendar, Mail, Tasks, Meetings, Markdown, and more, with 200+ commands and 28 AI Agent [Skills](./skills/).
 
 [Install](#installation--quick-start) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Enterprise](#personal-or-enterprise) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
 
 ## Why lark-cli?
 
-- **Agent-Native Design** — 24 structured [Skills](./skills/) out of the box, compatible with popular AI tools — Agents can operate Lark with zero extra setup
-- **Wide Coverage** — 18 business domains, 200+ curated commands, 26 AI Agent [Skills](./skills/)
+- **Agent-Native Design** — 28 structured [Skills](./skills/) out of the box, compatible with popular AI tools — Agents can operate Lark with zero extra setup
+- **Wide Coverage** — 18 business domains, 200+ curated commands, 28 AI Agent [Skills](./skills/)
 - **AI-Friendly & Optimized** — Every command is tested with real Agents, featuring concise parameters, smart defaults, and structured output to maximize Agent call success rates
 - **Open Source, Zero Barriers** — MIT license, ready to use, just `npm install`
 - **Up and Running in 3 Minutes** — One-click app creation, interactive login, from install to first API call in just 3 steps
@@ -152,7 +152,12 @@ lark-cli auth status
 | `lark-wiki`                     | Knowledge spaces, nodes, documents                                                                             |
 | `lark-event`                    | Real-time event subscriptions (WebSocket), regex routing & agent-friendly format                               |
 | `lark-meeting`                  | Search live or historical meetings, inspect participants and artifacts, analyze transcripts, manage Minutes, and assist in meetings |
+| `lark-minutes`                  | Compatibility entry that routes explicitly named requests to `lark-meeting`                                   |
+| `lark-note`                     | Compatibility entry that routes explicitly named requests to `lark-meeting`                                   |
+| `lark-vc`                       | Compatibility entry that routes explicitly named requests to `lark-meeting`                                   |
+| `lark-vc-agent`                 | Compatibility entry that routes explicitly named requests to `lark-meeting`                                   |
 | `lark-whiteboard`               | Whiteboard/chart DSL rendering                                                                                 |
+| `lark-apps`                     | Spark/Miaoda app development, design, hosting, deployment, observability, and automation                       |
 | `lark-openapi-explorer`         | Explore underlying APIs from official docs                                                                     |
 | `lark-skill-maker`              | Custom skill creation framework                                                                                |
 | `lark-attendance`               | Query personal attendance check-in records                                                                     |
