@@ -118,6 +118,38 @@ func TestHandleBaseAPIResultClassifiesKnownPermissionCode(t *testing.T) {
 	}
 }
 
+func TestHandleBaseAPIResultClassifiesBaseResourcePermission(t *testing.T) {
+	result := map[string]interface{}{
+		"code": 91403,
+		"msg":  "you don't have permission",
+		"data": map[string]interface{}{},
+	}
+
+	_, err := handleBaseAPIResultAny(result, nil, "list dashboards")
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T %v", err, err)
+	}
+	if p.Code != 91403 {
+		t.Fatalf("code=%d", p.Code)
+	}
+	if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied {
+		t.Fatalf("category/subtype=%s/%s", p.Category, p.Subtype)
+	}
+	perm, ok := err.(*errs.PermissionError)
+	if !ok {
+		t.Fatalf("err=%T, want *errs.PermissionError", err)
+	}
+	if perm.Identity != "current identity" {
+		t.Fatalf("identity=%q", perm.Identity)
+	}
+	for _, want := range []string{"resource access denied", "Base owner", "Do not run auth login"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Fatalf("hint=%q missing %q", p.Hint, want)
+		}
+	}
+}
+
 func TestAttachBaseResponseLogIDFromHeader(t *testing.T) {
 	result := map[string]interface{}{
 		"code": 91402,
