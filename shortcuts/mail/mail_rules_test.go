@@ -1165,6 +1165,27 @@ func TestMailRuleReorderShortcutPostsFullAndMoveOrders(t *testing.T) {
 		assertRuleIDsBody(t, post.CapturedBody, "c,b,a")
 	})
 
+	t.Run("partial order appends missing current rules", func(t *testing.T) {
+		f, stdout, _, reg := mailShortcutTestFactory(t)
+		reg.Register(mailRuleListStub(
+			mailRuleTestRawRule("a", "A"),
+			mailRuleTestRawRule("b", "B"),
+			mailRuleTestRawRule("c", "C"),
+			mailRuleTestRawRule("d", "D"),
+		))
+		post := &httpmock.Stub{
+			Method: "POST",
+			URL:    "open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		}
+		reg.Register(post)
+
+		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "c,a", "--format", "json"}, f, stdout); err != nil {
+			t.Fatalf("run +rule-reorder partial error = %v", err)
+		}
+		assertRuleIDsBody(t, post.CapturedBody, "c,a,b,d")
+	})
+
 	t.Run("move to bottom", func(t *testing.T) {
 		f, stdout, _, reg := mailShortcutTestFactory(t)
 		reg.Register(mailRuleListStub(
@@ -1488,11 +1509,14 @@ func TestMailRuleScalarHelpersCoverFallbacks(t *testing.T) {
 }
 
 func TestMailRuleOrderValidationErrors(t *testing.T) {
-	if err := validateFullRuleOrder([]string{"a"}, []string{"a", "b"}); err == nil {
-		t.Fatal("expected length mismatch error")
+	if got, err := completeRuleTargetOrder([]string{"a"}, []string{"a", "b"}); err != nil || strings.Join(got, ",") != "a,b" {
+		t.Fatalf("completeRuleTargetOrder partial = %v, %v; want a,b", got, err)
 	}
-	if err := validateFullRuleOrder([]string{"a", "a"}, []string{"a", "b"}); err == nil {
-		t.Fatal("expected duplicate mismatch error")
+	if _, err := completeRuleTargetOrder([]string{"a", "a"}, []string{"a", "b"}); err == nil {
+		t.Fatal("expected duplicate rule id error")
+	}
+	if _, err := completeRuleTargetOrder([]string{"a", "z"}, []string{"a", "b"}); err == nil {
+		t.Fatal("expected unknown rule id error")
 	}
 	if _, err := insertRelative([]string{"a", "b"}, "c", "", true); err == nil {
 		t.Fatal("expected missing target error")
@@ -1502,9 +1526,10 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
+		name      string
+		args      []string
+		want      string
+		wantParam string
 	}{
 		{
 			name: "no mode",
@@ -1522,24 +1547,45 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			want: "move mode requires exactly one",
 		},
 		{
-			name: "move missing rule",
-			args: []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
-			want: "is not in current rule order",
+			name:      "move missing rule",
+			args:      []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
+			want:      "is not in current rule order",
+			wantParam: "--move-rule-id",
 		},
 		{
-			name: "full mismatch",
-			args: []string{"+rule-reorder", "--rule-ids", "a,z"},
-			want: "mismatch",
+			name:      "unknown full order rule",
+			args:      []string{"+rule-reorder", "--rule-ids", "a,z"},
+			want:      "unknown rule id z",
+			wantParam: "--rule-ids",
+		},
+		{
+			name:      "duplicate full order rule",
+			args:      []string{"+rule-reorder", "--rule-ids", "a,a"},
+			want:      "duplicate rule id a",
+			wantParam: "--rule-ids",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, stdout, _, reg := mailShortcutTestFactory(t)
-			if strings.Contains(tc.want, "current rule order") || strings.Contains(tc.want, "mismatch") {
+			if strings.Contains(tc.want, "current rule order") || strings.Contains(tc.want, "unknown rule id") || strings.Contains(tc.want, "duplicate rule id") {
 				reg.Register(mailRuleListStub(mailRuleTestRawRule("a", "A"), mailRuleTestRawRule("b", "B")))
 			}
 			err := runMountedMailShortcut(t, MailRuleReorder, append(tc.args, "--format", "json"), f, stdout)
 			if err == nil {
 				t.Fatal("expected reorder error")
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error type = %T, want *errs.ValidationError: %v", err, err)
+			}
+			if validationErr.Param != tc.wantParam {
+				t.Fatalf("validation error param = %q, want %q", validationErr.Param, tc.wantParam)
+			}
+			if tc.wantParam == "" && len(validationErr.Params) != 0 {
+				t.Fatalf("validation error params = %#v, want none", validationErr.Params)
+			}
+			if tc.wantParam != "" && validationErr.Param == "" && len(validationErr.Params) == 0 {
+				t.Fatalf("validation error missing parameter contract: %#v", validationErr)
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
