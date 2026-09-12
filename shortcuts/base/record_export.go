@@ -236,9 +236,7 @@ func executeRecordListNDJSON(
 		params := cloneMap(baseParams)
 		params["offset"] = currentOffset
 		params["limit"] = pageLimit
-		data, err := baseV3Call(runtime, "GET", baseV3Path(
-			"bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records",
-		), params, nil)
+		data, err := listRecordsVerified(runtime, params)
 		if err != nil {
 			return err
 		}
