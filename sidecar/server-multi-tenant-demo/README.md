@@ -243,6 +243,50 @@ All management requests require HMAC signing with the shared `proxy.key`.
 The HMAC covers method, path, timestamp, and body SHA-256 — see
 `verifyManagementHMAC` in `auth_bridge.go` for the canonical string format.
 
+## Scope auto-discovery
+
+The sidecar automatically discovers the app's enabled user scopes via the
+Lark API. This eliminates the need for manual scope configuration or cache
+seeding.
+
+### How it works
+
+When `handleLogin` is called without an explicit `scope` parameter:
+
+1. **Check cache** — load `$LARKSUITE_CLI_CONFIG_DIR/cache/discovered_scopes.json`.
+   If it exists and is less than **24 hours** old, use it directly.
+2. **API discovery** — query
+   `GET /open-apis/application/v6/applications/:app_id` using the sidecar's
+   tenant access token (from `app_id` + `app_secret`). Extract all scopes
+   with `token_types` containing `"user"`.
+3. **Stale-cache fallback** — if the API call fails but a stale cache exists,
+   use it (degraded service is preferable to no service when scopes were
+   previously known).
+4. **Explicit error** — if both API discovery and cache are unavailable,
+   return a **503** error with a diagnostic message guiding the operator to
+   enable the `application:application:self_manage` scope. No silent fallback
+   to `offline_access`.
+
+### Prerequisites
+
+The app must have the `application:application:self_manage` scope enabled so
+the sidecar can query its own scope list. This is a read-only scope that
+lets the app introspect its configuration.
+
+### Cache format
+
+```json
+{
+  "scopes": "drive:doc:read im:message:send calendar:event:read",
+  "updated_at": 1718276400,
+  "source": "api"
+}
+```
+
+The legacy `auth_login_scopes/` directory (populated by `lark-cli auth login
+--no-wait`) is still read for backward compatibility but is always treated as
+stale to trigger a fresh API discovery.
+
 ## Design decisions
 
 1. **HMAC key as client identity** — the key is the existing trust anchor.
@@ -254,11 +298,17 @@ The HMAC covers method, path, timestamp, and body SHA-256 — see
    falling back to another user's token is a security violation. Unmapped
    clients receive an explicit error prompting them to log in.
 
-3. **One sidecar instance per app** — keeps `app_secret` scoping simple and
+3. **No fallback to `offline_access`** — when scope discovery fails and no
+   cache exists, the sidecar returns an explicit error instead of silently
+   falling back to `offline_access` (which would result in `scope_count=1`
+   and effectively no useful permissions). This ensures failures are visible
+   and actionable.
+
+4. **One sidecar instance per app** — keeps `app_secret` scoping simple and
    avoids cross-app token confusion. Multi-app support is achieved by running
    multiple instances on different ports.
 
-4. **Proxy.key reuse across restarts** — when multiple sidecar instances start
+5. **Proxy.key reuse across restarts** — when multiple sidecar instances start
    concurrently, they all write to the same key file. The last writer wins,
    leaving other instances with stale in-memory keys. Reusing the existing
    key eliminates this race.
@@ -269,7 +319,7 @@ The HMAC covers method, path, timestamp, and body SHA-256 — see
 | --- | --- |
 | `main.go` | Entry point: flag parsing, key loading, server lifecycle |
 | `handler.go` | `proxyHandler.ServeHTTP` — multi-key HMAC verification and request forwarding |
-| `auth_bridge.go` | Management endpoints: login, poll, status, user mapping persistence |
+| `auth_bridge.go` | Management endpoints: login, poll, status, user mapping persistence, scope auto-discovery |
 | `forward.go` | Forwarding HTTP client + proxy-header filter |
 | `allowlist.go` | Target host / identity allowlists |
 | `audit.go` | Log path/error sanitization |
