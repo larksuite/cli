@@ -33,10 +33,10 @@ var MailTemplateUpdate = common.Shortcut{
 		{Name: "set-template-content-file", Desc: "Replace template body content with the contents of a file (relative path only). Mutually exclusive with --set-template-content."},
 		{Name: "set-plain-text", Type: "bool", Desc: "Set is_plain_text_mode=true."},
 		{Name: "set-to", Desc: "Replace the To recipient list. Separate multiple addresses with commas. Pass --set-to=\"\" to clear the list."},
-		{Name: "set-cc", Desc: "Replace the Cc recipient list. Pass --set-cc=\"\" to clear the list."},
-		{Name: "set-bcc", Desc: "Replace the Bcc recipient list. Pass --set-bcc=\"\" to clear the list."},
-		{Name: "attach", Type: "string_array", Desc: "Additional non-inline attachment file path. Repeat --attach once per file; each file is uploaded to Drive and appended in flag order."},
-		{Name: "inline", Type: "string_array", Desc: "Additional inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string."},
+		{Name: "set-cc", Desc: "Replace the complete Cc recipient list with this single flag value; separate multiple addresses with commas. Pass --set-cc=\"\" to clear the list."},
+		{Name: "set-bcc", Desc: "Replace the complete Bcc recipient list with this single flag value; separate multiple addresses with commas. Pass --set-bcc=\"\" to clear the list."},
+		{Name: "attach", Type: "string_array", Desc: "Additional non-inline attachment path. Repeat --attach or pass comma-separated paths in one occurrence; files are uploaded and appended in input order."},
+		{Name: "inline", Type: "string_array", Desc: "Additional inline images as a JSON object or array per --inline occurrence; repeat to append in order. Values are not comma-split. file_path must be relative and CID unique."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		if runtime.Bool("print-patch-template") {
@@ -225,6 +225,12 @@ var MailTemplateUpdate = common.Shortcut{
 		}
 		retainedAttachments := templateAttachmentsForFinalContent(tpl.TemplateContent, tpl.Attachments, contentChanged)
 		if err := validateTemplateInlineUpdate(tpl.TemplateContent, retainedAttachments, inlineSpecs, contentChanged); err != nil {
+			return err
+		}
+		if err := validateRepeatedAttachmentFlagFiles(runtime.FileIO(), runtime.StrArray("attach")); err != nil {
+			return err
+		}
+		if err := validateRepeatedInlineFlagFiles(runtime.FileIO(), runtime.StrArray("inline")); err != nil {
 			return err
 		}
 

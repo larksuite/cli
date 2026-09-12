@@ -27,11 +27,11 @@ var MailTemplateCreate = common.Shortcut{
 		{Name: "template-content", Desc: "Template body content. Prefer HTML. Referenced local images (<img src=\"./file.png\">) are auto-uploaded to Drive and rewritten to cid: refs."},
 		{Name: "template-content-file", Desc: "Optional. Path to a file whose contents become --template-content. Relative path only. Mutually exclusive with --template-content."},
 		{Name: "plain-text", Type: "bool", Desc: "Mark the template as plain-text mode (is_plain_text_mode=true). Cannot be used with --inline; use only for pure plain-text templates."},
-		{Name: "to", Type: "string_array", Desc: "Optional. Default To recipient email address. Repeat --to once per recipient; quote each value. Display-name format is supported."},
-		{Name: "cc", Type: "string_array", Desc: "Optional. Default Cc recipient email address. Repeat --cc once per recipient; quote each value."},
-		{Name: "bcc", Type: "string_array", Desc: "Optional. Default Bcc recipient email address. Repeat --bcc once per recipient; quote each value."},
-		{Name: "attach", Type: "string_array", Desc: "Optional. Non-inline attachment file path, relative path only. Repeat --attach once per file; order is preserved for LARGE/SMALL classification."},
-		{Name: "inline", Type: "string_array", Desc: "Optional. Inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string."},
+		{Name: "to", Type: "string_array", Desc: "Optional. Default To list. Repeat --to or pass a comma-separated list in one occurrence; quoted display-name commas are preserved."},
+		{Name: "cc", Type: "string_array", Desc: "Optional. Default Cc list. Repeat --cc or pass a comma-separated list in one occurrence; quoted display-name commas are preserved."},
+		{Name: "bcc", Type: "string_array", Desc: "Optional. Default Bcc list. Repeat --bcc or pass a comma-separated list in one occurrence; quoted display-name commas are preserved."},
+		{Name: "attach", Type: "string_array", Desc: "Optional. Non-inline attachment path, relative path only. Repeat --attach or pass comma-separated paths in one occurrence; input order is preserved."},
+		{Name: "inline", Type: "string_array", Desc: "Optional. Inline images as a JSON object or array per --inline occurrence; repeat to append in order. Values are not comma-split. file_path must be relative and CID unique."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveComposeMailboxID(runtime)
@@ -78,6 +78,9 @@ var MailTemplateCreate = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateRepeatedRecipientFlags(runtime); err != nil {
+			return err
+		}
 		if err := validateBotMailboxNotMe(runtime); err != nil {
 			return err
 		}
@@ -143,6 +146,12 @@ var MailTemplateCreate = common.Shortcut{
 			return mailFailedPreconditionError("template content exceeds %d MB (got %.1f MB)",
 				maxTemplateContentBytes/(1024*1024),
 				float64(len(content))/1024/1024)
+		}
+		if err := validateRepeatedAttachmentFlagFiles(runtime.FileIO(), runtime.StrArray("attach")); err != nil {
+			return err
+		}
+		if err := validateRepeatedInlineFlagFiles(runtime.FileIO(), runtime.StrArray("inline")); err != nil {
+			return err
 		}
 
 		rewritten, atts, err := buildTemplatePayloadFromFlags(

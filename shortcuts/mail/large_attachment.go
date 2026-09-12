@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -135,6 +136,51 @@ func statAttachmentFiles(fio fileio.FileIO, paths []string) ([]attachmentFile, e
 		})
 	}
 	return files, nil
+}
+
+// validateRepeatedAttachmentFlagFiles preflights every path while the raw
+// occurrence boundary is still available, so failures can identify the exact
+// --attach occurrence instead of reporting only the flattened path.
+func validateRepeatedAttachmentFlagFiles(fio fileio.FileIO, values []string) error {
+	for i, raw := range values {
+		if err := validateRepeatedFileFlagOccurrence(fio, "--attach", i+1, splitByComma(raw)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateRepeatedInlineFlagFiles(fio fileio.FileIO, values []string) error {
+	for i, raw := range values {
+		specs, err := parseInlineSpecsOccurrence(raw, i+1)
+		if err != nil {
+			return err
+		}
+		if err := validateRepeatedFileFlagOccurrence(fio, "--inline", i+1, inlineSpecFilePaths(specs)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateRepeatedFileFlagOccurrence(fio fileio.FileIO, flagName string, occurrence int, paths []string) error {
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		name := filepath.Base(path)
+		if err := filecheck.CheckBlockedExtension(name); err != nil {
+			return mailValidationParamError(flagName, "%s occurrence %d: %v", flagName, occurrence, err).WithCause(err)
+		}
+		if _, err := fio.Stat(path); err != nil {
+			reason := "cannot read file"
+			if errors.Is(err, fileio.ErrPathValidation) {
+				reason = "unsafe file path"
+			}
+			return mailValidationParamError(flagName, "%s occurrence %d: %s: %v", flagName, occurrence, reason, err).WithCause(err)
+		}
+	}
+	return nil
 }
 
 // uploadLargeAttachments uploads oversized files to the mail attachment storage
