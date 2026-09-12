@@ -425,6 +425,17 @@ func commitBinding(
 	projector *recovery.Projector,
 ) error {
 	multi := &core.MultiAppConfig{Apps: []core.AppConfig{*appConfig}}
+	// Preserve workspace-level policy across re-bind: strict mode and risk
+	// control are workspace settings, independent of which app is bound.
+	// CurrentApp/PreviousApp are not carried over — they reference the
+	// previous binding's profiles, which this bind replaces.
+	if previousConfigBytes != nil {
+		var prev core.MultiAppConfig
+		if json.Unmarshal(previousConfigBytes, &prev) == nil {
+			multi.StrictMode = prev.StrictMode
+			multi.RiskControl = prev.RiskControl
+		}
+	}
 
 	if err := vfs.MkdirAll(core.GetConfigDir(), 0700); err != nil {
 		return errs.NewInternalError(errs.SubtypeFileIO, "failed to create workspace directory: %v", err).WithCause(err)
