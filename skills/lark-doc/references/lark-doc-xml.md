@@ -21,11 +21,41 @@
 - 完整文档以唯一的 `<title>` 开头；正文标题使用 `<h1>` 至 `<h9>`，层级须连续，不跳级，例如 `<h1>` 后不能直接使用 `<h3>`，应先出现 `<h2>`。需要自动编号时设置 `seq="auto"`，系统会按标题层级生成并递增阿拉伯数字编号，例如一级标题为 `1`，二级标题为 `1.1`。
 - 有序列表：默认属性 `seq="auto"`，需从指定数字开始时设置对应值，如 `seq="3"`。
 
-## 表格
+## 表格智能辨别与原生渲染规范
 
-- `<table><thead><tr><th><p>表头</p></th></tr></thead><tbody><tr><td><p>内容</p></td></tr></tbody></table>`
-- `<colgroup><col /></colgroup>` 紧跟 `<table>` 定义列宽；`width` 表示列宽，可选 `span` 表示连续作用的列数。
-- `<th>` / `<td>` 支持 `background-color`、`vertical-align`、`colspan`、`rowspan`；`vertical-align`：`top | middle | bottom`；`background-color` 支持基础色相、`light-{色相}`、`medium-gray`，表头优先使用 `light-gray` 或 `medium-gray`，彩色单元格仅用于表达状态或分类。被合并的单元格不再写入。
+飞书云文档支持两种表格形态，在生成与转译时须智能识别：
+
+### 1. 原生普通文档表格 (`<table>`) — 默认推荐
+
+对于常规的说明对照表、退改规则表、时刻表、设施清单等**无单元格公式计算需求**的静态数据，必须优先使用飞书 Docx 原生 `<table>` 结构：
+
+- **结构与表头配色**：表头 `<th>` 统一配置 `background-color="light-gray"`，确保排版清晰透气；
+- **单元格富文本**：`<td>` 内部完全支持 `<br/>` 换行、`<b>` 加粗、`<code>` 以及行内组件；
+- `<colgroup><col /></colgroup>` 紧跟 `<table>` 定义列宽；`width` 表示列宽，可选 `span` 表示连续作用的列数；
+- `<th>` / `<td>` 支持 `background-color`、`vertical-align`、`colspan`、`rowspan`；被合并的单元格不再写入。
+- **结构示例**：
+  ```xml
+  <table>
+    <colgroup><col span="2" width="120"/></colgroup>
+    <thead>
+      <tr>
+        <th background-color="light-gray"><b>项目</b></th>
+        <th background-color="light-gray"><b>规则说明</b></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>退改死线</td>
+        <td>入住日<b>前 7 天 17:00 前</b>免费取消<br/><code>超时不可退</code></td>
+      </tr>
+    </tbody>
+  </table>
+  ```
+
+### 2. 嵌入式电子表格 (`<sheet>`) 的选型边界与嵌套
+
+- **主要表格形态选型**：仅当表格明确需要单元格公式运算（如以 `=` 开头的 `=SUM(...)`、`=AVERAGE(...)` 等）或需要多工作表联动时，主要形态才选型为 `<sheet>` 电子表格资源块，避免无计算需求的内容被退化为带坐标轴和复杂界面的电子表格。
+- **单元格高级嵌套支持**：在复杂报表场景中，原生表格单元格（`<td>`）支持作为容器嵌套内嵌 `<sheet>` 资源块（如 `<td><sheet type="blank"></sheet></td>`），实现多维嵌套布局。
 
 ## 扩展标签
 
