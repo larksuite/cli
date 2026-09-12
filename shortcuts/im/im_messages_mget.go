@@ -18,15 +18,17 @@ import (
 const maxMGetMessageIDs = 50
 
 var ImMessagesMGet = common.Shortcut{
-	Service:     "im",
-	Command:     "+messages-mget",
-	Description: "Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies",
-	Risk:        "read",
-	Scopes:      []string{"im:message:readonly"},
-	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
-	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:               "im",
+	Command:               "+messages-mget",
+	Description:           "Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies",
+	Risk:                  "read",
+	Scopes:                []string{"im:message:readonly"},
+	UserScopes:            []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user"},
+	BotScopes:             []string{"im:message.group_msg", "im:message.p2p_msg:readonly"},
+	ConditionalUserScopes: []string{convertlib.ImMessageReactionsReadScope},
+	ConditionalBotScopes:  []string{convertlib.ImMessageReactionsReadScope},
+	AuthTypes:             []string{"user", "bot"},
+	HasFormat:             true,
 	Flags: []common.Flag{
 		{Name: "message-ids", Aliases: []string{"message-id"}, Desc: "message IDs, comma-separated (om_xxx,om_yyy)", Required: true},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
