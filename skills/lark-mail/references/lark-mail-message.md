@@ -194,6 +194,7 @@ lark-cli mail user_mailbox.message.attachments download_url \
 ```
 
 普通附件和内嵌图片使用同一个 `user_mailbox.message.attachments download_url` 原生 API（无 shortcut 封装），传入 `attachments[].id` 即可。
+该 API 返回的 `download_url` 是短时效临时预签名下载链接，通常约 2 小时或更短时间内有效且可能更早失效，并且最多只能下载 2 次。不能当作长期可点击链接发送给用户或持久化；仅在用户准备下载时现取，并读取 OAPI response `data` 顶层字段 `download_url_usage_hint` 的服务端说明。
 
 ## 日程邀请邮件
 
