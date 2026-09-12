@@ -34,6 +34,7 @@ lark-cli slides +update-slide --as user \
 | `--content` | 是 | 这一页的完整目标 XML，单一 `<slide>` 根；支持字面量、`@file`、stdin `-`。别名：`--xml` / `--slide-xml` / `--slide-content` / `--content-xml` |
 | `--revision-id` | 否 | 默认 `-1`（最新）。它只选择服务端执行所基于的快照，不是“页面有新编辑就拒绝”的乐观锁；传旧版本号会以旧快照重建页面并丢弃其后的编辑 |
 | `--tid` | 否 | 调用方提供的任务/事务标识，CLI 原样透传；用于关联同一编辑任务或重试，不等同于版本前置条件，不能单独保证并发冲突时拒绝写入。一般留空 |
+| `--no-lint` | 否 | 跳过服务端版式校验（默认开启）；仅在确认校验误判、该页必须原样发布时使用 |
 
 `@file` 和 `+xml-get --output` 一样**只接受当前目录下的相对路径**，绝对路径会被拒。
 命令别名：`slides +update`（隐藏）；服务别名：`lark-cli slide …` 等价于 `lark-cli slides …`。
@@ -147,6 +148,7 @@ lark-cli slides +xml-get --as user \
 | `slide_id` | 与传入相同——整页覆盖不换页 id |
 | `revision_id` | 写入后的新版本号 |
 | `images_uploaded` | 仅当 `--content` 带 `@` 占位符时出现：本次去重后实际上传的图片张数 |
+| `issues` | 仅在**页面已写入成功**且服务端有发现时返回，不影响本次调用的成功状态。内容是未达阻断级的版式校验发现。格式不固定，不要解析；出现就用 `+screenshot` 复核该页 |
 
 服务端拒绝这次写入时（`failed_reason` 非空）**不会**返回成功输出，而是报错并带上原因——单个 part 承载整页，任何失败都意味着页面没被写入。
 
@@ -160,4 +162,5 @@ lark-cli slides +xml-get --as user \
 | 3350001，原因包含 `not found` | `--presentation` 不匹配，或 `--slide-id` 对应的页面已被删除 | 检查 `--presentation` 和 `--slide-id`，再用 `slides +xml-get` 回读当前页面 ID |
 | 3350001，其他 invalid param | `--content` 的 XML 结构有问题（如 `<shape>` 缺 `<content/>`、包含服务端不支持的元素） | 按 [error-handling.md](../workflow/error-handling.md) 检查 `--content` 的 XML 结构 |
 | 3350002 not found | `--revision-id` 传了不存在的版本号 | 用 `-1` 或真实存在的 `revision_id` |
+| 4000153 `xml lint blocked` | 服务端版式校验拒绝了本次写回，页面维持原状 | `error.message` 是完整的校验报告，按其中每条发现给出的修改建议修正后重试 |
 | 1061004 / 403 | 当前身份对这份 PPT 没有编辑权限 | 检查是否拥有 `slides:presentation:update` 或 `slides:presentation:write_only` scope；wiki 链接另需 `wiki:node:read`，`@` 占位符另需 `docs:document.media:upload`；`--as bot` 还要求该 bot 对目标 PPT 有编辑权限 |

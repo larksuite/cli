@@ -53,6 +53,7 @@
 | 1061004 forbidden | 当前用户对演示文稿无编辑权限 | 确认当前用户对目标 PPT 有编辑权限 |
 | 3350001 | XML 非 well-formed、XML 结构不符合服务端要求，或 replace 片段问题 | 优先检查未转义字符；replace 场景再看 `block_id` 和 `<content/>` |
 | 3350002 | `revision_id` 大于当前版本 | 用 `-1` 取当前版本，或重新用 `slides +xml-get` 取最新 `revision_id` |
+| 4000153 `xml lint blocked` | 服务端版式校验拒绝了本次写入，被拒的页面未写入（`+create` 逐页提交，之前的页面保留） | 完整的校验报告在 `error.message`；`+replace-pages --continue-on-error` 不中断整批，被拒的那几页改在 `results[]` 里以 `error_code: 4000153` + `error`（同一份报告）+ `hint` 给出。按报告里每条发现的修改建议修正后重试。只有阻断级发现会拦截，未拦截的发现不会丢失——写入成功时通过返回值里的 `issues` 字段给出。确认误判时才用 `--no-lint` |
 | validation: unsafe file path | `--file` 给了绝对路径或上层路径 | `--file` 必须是 CWD 内相对路径；先 `cd` 到素材目录再执行 |
 
 ## Command-Specific References
