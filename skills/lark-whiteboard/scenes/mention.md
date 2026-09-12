@@ -35,7 +35,7 @@
 }
 ```
 
-写入画板走标准 DSL 路径（`npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.json --to openapi --format json | lark-cli whiteboard +update ... --input_format raw`），无需手写 raw JSON。
+写入画板走标准 DSL 路径（`npx -y @larksuite/whiteboard-cli@^0.2.14 -i diagram.json --to openapi --format json | lark-cli whiteboard +update ... --input_format raw`），无需手写 raw JSON。
 
 ## 正反例
 
