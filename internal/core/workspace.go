@@ -72,6 +72,14 @@ func (w Workspace) IsLocal() bool {
 
 // DetectWorkspaceFromEnv determines the workspace from process environment.
 //
+// Escape hatch: LARKSUITE_CLI_FORCE_LOCAL == "1" forces WorkspaceLocal,
+// overriding every Agent signal below. Agent path variables such as
+// HERMES_HOME / OPENCLAW_HOME are user-facing and get exported into shell
+// profiles, so unrelated automation that merely inherits them would otherwise
+// be misrouted into an Agent context it never opted into (see issue #1405).
+// Setting LARKSUITE_CLI_FORCE_LOCAL=1 in such jobs restores normal local
+// config without unsetting the inherited Agent variables.
+//
 // Detection is signal-based, not credential-based: we look for environment
 // variables that the host Agent itself sets when launching a subprocess.
 // Generic FEISHU_APP_ID / FEISHU_APP_SECRET are intentionally NOT used —
@@ -79,6 +87,8 @@ func (w Workspace) IsLocal() bool {
 // false-positive routing into a Hermes workspace.
 //
 // Priority:
+//  0. LARKSUITE_CLI_FORCE_LOCAL == "1" → WorkspaceLocal (escape hatch,
+//     overrides every signal below; see note above).
 //  1. Any OpenClaw signal → WorkspaceOpenClaw
 //     - OPENCLAW_CLI == "1":  subprocess marker (added 2026-03-09 via
 //     OpenClaw PR #41411). Most precise, but absent on older builds.
@@ -100,6 +110,9 @@ func (w Workspace) IsLocal() bool {
 //     mirrors the OPENCLAW_CLI / HERMES_QUIET style.
 //  4. Otherwise → WorkspaceLocal
 func DetectWorkspaceFromEnv(getenv func(string) string) Workspace {
+	if getenv("LARKSUITE_CLI_FORCE_LOCAL") == "1" {
+		return WorkspaceLocal
+	}
 	if getenv("OPENCLAW_CLI") == "1" ||
 		getenv("OPENCLAW_HOME") != "" ||
 		getenv("OPENCLAW_STATE_DIR") != "" ||
