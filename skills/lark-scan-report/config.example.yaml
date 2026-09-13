@@ -1,0 +1,186 @@
+# ============================================================
+# Lark Daily Report — User Configuration
+# ============================================================
+# Copy this file to config.yaml and fill in your values.
+# Never commit config.yaml — it contains personal data.
+# ============================================================
+
+# ----------------------------------------------------------
+# General
+# ----------------------------------------------------------
+general:
+  timezone: "Asia/Shanghai"
+  language: "zh"                       # zh | en
+  archive_dir: "reports"
+  weekly_log_dir: "reports/weekly-logs"
+  last_scan_file: "reports/.last-scan-ts"
+
+# ----------------------------------------------------------
+# Task Fetching
+# ----------------------------------------------------------
+tasks:
+  enabled: true
+  include_tasklists: true
+  include_subtasks: true
+  extra_fields:
+    - due
+    - assignee
+    - priority
+    - description
+  tasklist_filter: []
+
+  # --- Section (Guild) name mapping ---
+  # Sections API is unavailable (404), so we hardcode the mapping.
+  # To find your section GUIDs: run `lark-cli tasks get <task_id>`
+  # and look at the `tasklists[].section_guid` field for any task
+  # in each section. Then map them here.
+  section_names:
+    # "<your-section-guid>": "TODO"
+    # "<your-section-guid>": "Ongoing Project"
+    # "<your-section-guid>": "Tracking"
+    # "<your-section-guid>": "Content Topic"
+
+  # Classification rules based on section:
+  # - TODO + Ongoing Project = active work (show as primary)
+  # - Tracking             = tracking (show separately, lower priority)
+  # - Content Topic        = memo, hidden from reports
+
+# ----------------------------------------------------------
+# User Scope (for weekly report extraction)
+# ----------------------------------------------------------
+scope:
+  description: "周报只提取 scope 范围内的事项"
+  areas:
+    - name: "Area 1"
+      keywords: ["keyword1", "keyword2"]
+    # Add more areas that match your role/responsibilities
+
+# ----------------------------------------------------------
+# Message Scanning
+# ----------------------------------------------------------
+messages:
+  enabled: true
+
+  # --- Source toggles ---
+  sources:
+    p2p: true
+    group: true
+    topic: true
+    bot: false
+
+  # --- Delta mode ---
+  # Every scan reads .last-scan-ts as --start, writes current time after completion.
+  # First run (no timestamp file): falls back to time_range below.
+  delta:
+    enabled: true
+    fallback_range: "last_24h"
+
+  # --- Group filtering ---
+  group_filter:
+    max_member_count: 0                # 0 = no limit
+
+    # Tier 1: full scan, every message
+    whitelist:
+      # - chat_id: "oc_xxxx"
+      #   name: "Your Key Group Name"
+
+    # Never scan these groups
+    blacklist:
+      # - chat_id: "oc_xxxx"
+      #   name: "Noisy Group"
+      #   reason: "why excluded"
+
+  # --- Scan phases ---
+  scan_phases:
+
+    - name: "discover-active"
+      description: "Find all chats with activity since last scan"
+      action: "messages-search"
+      params:
+        page_size: 50
+        page_all: true
+      report_types: ["morning", "evening", "full"]
+
+    - name: "whitelist-full"
+      description: "Full messages from key groups"
+      action: "chat-messages-list"
+      target: "whitelist"
+      params:
+        page_size: 50
+        page_all: true
+      report_types: ["morning", "evening", "full", "quick"]
+
+    - name: "p2p-discovered"
+      description: "Full messages from all active private chats"
+      action: "chat-messages-list"
+      target: "discovered_p2p"
+      params:
+        page_size: 50
+        page_all: true
+      report_types: ["morning", "evening", "full"]
+
+    - name: "groups-discovered"
+      description: "Full messages from all other active groups"
+      action: "chat-messages-list"
+      target: "discovered_groups"
+      params:
+        page_size: 50
+        page_all: true
+      report_types: ["morning", "evening", "full"]
+
+    - name: "at-me-catchall"
+      description: "Catch any @mentions not already covered"
+      action: "messages-search"
+      params:
+        is_at_me: true
+        page_size: 30
+      report_types: ["morning", "evening", "full", "quick"]
+
+    - name: "thread-tracking"
+      description: "Follow up on active threads"
+      action: "threads-messages-list"
+      target: "whitelist"
+      params:
+        page_size: 20
+      report_types: ["morning", "evening", "full"]
+
+# ----------------------------------------------------------
+# Report Types
+# ----------------------------------------------------------
+report_types:
+  morning:
+    description: "Morning briefing — today's plan + overnight catch-up"
+    archive: true
+    schedule: "30 2 * * 1-5"          # 10:30 UTC+8, Mon-Fri
+
+  evening:
+    description: "Evening wrap-up — today's completions + status"
+    archive: true
+    schedule: "0 14 * * 1-5"          # 22:00 UTC+8, Mon-Fri
+
+  weekly:
+    description: "Weekly summary — accumulated from weekday logs"
+    archive: true
+    schedule: "0 7 * * 0"             # Sun 15:00 UTC+8
+
+  quick:
+    description: "Quick scan — delta since last report, minimal"
+    archive: false
+    trigger: "manual"
+
+  full:
+    description: "Full report — comprehensive snapshot"
+    archive: true
+    trigger: "manual"
+
+# ----------------------------------------------------------
+# Output
+# ----------------------------------------------------------
+output:
+  default_format: "card"              # text | card
+
+  # send_to:
+  #   type: "user"
+  #   id: "ou_xxx"                    # Your Lark open_id
+
+  card_theme: "blue"
