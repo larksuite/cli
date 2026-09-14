@@ -289,3 +289,96 @@ func TestRangesCommands_PrescribeTheSheetPrefix(t *testing.T) {
 		})
 	}
 }
+
+// A quoted sheet name may contain a comma, and the multi-area splitter has to
+// be the quote-aware one everywhere -- including the read expansion, which
+// used strings.Split and forwarded two halves of one name as two ranges.
+func TestMultiArea_QuotedSheetNameWithAComma(t *testing.T) {
+	t.Parallel()
+
+	t.Run("read expansion keeps the name whole", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-get"), []string{
+			"--url", testURL, "--sheet-name", "Q1,Sales",
+			"--range", `'Q1,Sales'!A1,'Q1,Sales'!B2`, "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("a quoted name carrying a comma should survive, got: %v", err)
+		}
+		for _, want := range []string{`'Q1,Sales'!A1`, `'Q1,Sales'!B2`} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("expected %q intact in the request, got %q", want, stdout)
+			}
+		}
+	})
+
+	// The rejection path counts areas too, and counting on a naive split would
+	// report four areas for two.
+	t.Run("the refusal counts two areas, not four", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+			"--url", testURL, "--sheet-name", "Q1,Sales",
+			"--range", `'Q1,Sales'!A1,'Q1,Sales'!B2`, "--font-weight", "bold", "--dry-run",
+		})
+		requireValidation(t, err, "lists 2 separate areas")
+	})
+}
+
+// +filter-update / +filter-delete need the sub-sheet's id (filter_id ==
+// sheet_id), which neither an omitted selector nor an explicit --sheet-name
+// supplies. The old error told the caller to run +workbook-info and pass the
+// id by hand; the execute path can make that trade itself.
+func TestFilter_SheetNameTradedForTheID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the sole sheet needs no selector at all", func(t *testing.T) {
+		t.Parallel()
+		if _, err := runShortcutWithStubs(t, FilterDelete,
+			[]string{"--url", testURL, "--yes"},
+			structureStub("OnlySheet"), structureStub("OnlySheet"),
+			toolStub("manage_filter_object", `{"ok":true}`)); err != nil {
+			t.Fatalf("the only sheet is the one meant, got: %v", err)
+		}
+	})
+
+	t.Run("an explicit name is resolved to its id", func(t *testing.T) {
+		t.Parallel()
+		if _, err := runShortcutWithStubs(t, FilterDelete,
+			[]string{"--url", testURL, "--sheet-name", "Two", "--yes"},
+			structureStub("One", "Two"),
+			toolStub("manage_filter_object", `{"ok":true}`)); err != nil {
+			t.Fatalf("--sheet-name should be traded for the id, got: %v", err)
+		}
+	})
+
+	// A preview performs no lookup, so it still has to be given the id -- and
+	// says so, instead of claiming no lookup exists anywhere.
+	t.Run("a preview still requires the id", func(t *testing.T) {
+		t.Parallel()
+		_, err := runShortcutWithStubs(t, FilterDelete,
+			[]string{"--url", testURL, "--sheet-name", "Two", "--yes", "--dry-run"})
+		requireValidation(t, err, "a preview and a +batch-update sub-op both perform no lookup")
+	})
+}
+
+// The omitted-selector lookup is a READ issued by commands that mostly declare
+// only the write scope. Every command that can omit a selector has to declare
+// it conditionally, or a least-privilege token passes pre-flight and then 403s
+// inside the lookup. Derived from the flags, so this cannot drift.
+func TestOmittedSelectorReadScopeIsDeclared(t *testing.T) {
+	t.Parallel()
+	for _, sc := range Shortcuts() {
+		if selectorMustBeExplicit[sc.Command] || !hasSheetSelectorFlag(sc.Flags) {
+			continue
+		}
+		declared := false
+		for _, s := range sc.DeclaredScopesForIdentity("user") {
+			if s == sheetsStructureReadScope {
+				declared = true
+			}
+		}
+		if !declared {
+			t.Errorf("%s can omit its sheet selector but never declares %s", sc.Command, sheetsStructureReadScope)
+		}
+	}
+}

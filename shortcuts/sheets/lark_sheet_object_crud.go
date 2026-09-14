@@ -1140,7 +1140,7 @@ var FilterUpdate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+filter-update"),
-	Validate:    validateViaInput(filterUpdateInput),
+	Validate:    validateFilterViaInput(filterUpdateInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -1156,6 +1156,9 @@ var FilterUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		if sheetID, sheetName, err = resolveFilterSheetID(ctx, runtime, token, sheetID, sheetName); err != nil {
+			return err
+		}
 		input, err := filterUpdateInput(runtime, token, sheetID, sheetName)
 		if err != nil {
 			return err
@@ -1169,12 +1172,66 @@ var FilterUpdate = common.Shortcut{
 	},
 }
 
+// filterSheetIDReason is shared by the two filter builders and by the deferral
+// that recognises their error, so the three cannot drift apart.
+const filterSheetIDReason = "filter_id must equal sheet_id; a --sheet-name is traded for it on a real standalone run, " +
+	"but a preview and a +batch-update sub-op both perform no lookup — pass --sheet-id there"
+
+// deferFilterSheetIDLookup drops the id requirement in the one place it can be
+// settled later: a standalone real run, where Execute trades the name for the
+// id (resolveFilterSheetID) before the builder is called again. A preview has
+// no lookup, and a +batch-update sub-op is validated through the builder
+// directly with no execute step of its own, so both keep the error.
+func deferFilterSheetIDLookup(runtime *common.RuntimeContext, err error) error {
+	if err == nil || runtime.Bool("dry-run") {
+		return err
+	}
+	if strings.TrimSpace(runtime.Str("sheet-name")) == "" {
+		return err
+	}
+	if p, ok := errs.ProblemOf(err); !ok || !strings.Contains(p.Message, filterSheetIDReason) {
+		return err
+	}
+	return nil
+}
+
+// validateFilterViaInput is validateViaInput plus that deferral.
+func validateFilterViaInput(
+	build func(fv flagView, token, sheetID, sheetName string) (map[string]interface{}, error),
+) func(ctx context.Context, runtime *common.RuntimeContext) error {
+	inner := validateViaInput(build)
+	return func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return deferFilterSheetIDLookup(runtime, inner(ctx, runtime))
+	}
+}
+
+// resolveFilterSheetID settles the one thing +filter-update / +filter-delete
+// need and the selector resolver does not hand them: the sub-sheet's id, which
+// the filter tool uses as the filter_id. The resolver answers an omitted
+// selector with the sole sheet's NAME, and an explicit --sheet-name is a name
+// too, so both arrive here needing the same translation the old error told the
+// caller to perform by hand ("call +workbook-info first"). Doing it here is
+// what that sentence was describing.
+func resolveFilterSheetID(ctx context.Context, runtime *common.RuntimeContext, token, sheetID, sheetName string) (string, string, error) {
+	if sheetID != "" || sheetName == "" {
+		return sheetID, sheetName, nil
+	}
+	resolved, _, err := lookupSheetIndex(ctx, runtime, token, "", sheetName)
+	if err != nil {
+		return "", "", err
+	}
+	// The name is dropped along with the trade: the two selectors are mutually
+	// exclusive, and keeping both would fail the very check the id was fetched
+	// to satisfy.
+	return resolved, "", nil
+}
+
 func filterUpdateInput(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
 		return nil, err
 	}
 	if sheetID == "" {
-		return nil, sheetsValidationForFlag("sheet-id", "+filter-update requires --sheet-id (filter_id must equal sheet_id; --sheet-name needs a network lookup unavailable here — call +workbook-info first or pass --sheet-id directly)")
+		return nil, sheetsValidationForFlag("sheet-id", "+filter-update requires --sheet-id ("+filterSheetIDReason+")")
 	}
 	if strings.TrimSpace(runtime.Str("range")) == "" {
 		return nil, sheetsValidationForFlag("range", "--range is required")
@@ -1208,7 +1265,7 @@ var FilterDelete = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+filter-delete"),
-	Validate:    validateViaInput(filterDeleteInput),
+	Validate:    validateFilterViaInput(filterDeleteInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -1222,6 +1279,9 @@ var FilterDelete = common.Shortcut{
 		}
 		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
+			return err
+		}
+		if sheetID, sheetName, err = resolveFilterSheetID(ctx, runtime, token, sheetID, sheetName); err != nil {
 			return err
 		}
 		input, err := filterDeleteInput(runtime, token, sheetID, sheetName)
@@ -1248,7 +1308,7 @@ func filterDeleteInput(runtime flagView, token, sheetID, sheetName string) (map[
 		return nil, err
 	}
 	if sheetID == "" {
-		return nil, sheetsValidationForFlag("sheet-id", "+filter-delete requires --sheet-id (filter_id must equal sheet_id; --sheet-name needs a network lookup unavailable here — call +workbook-info first or pass --sheet-id directly)")
+		return nil, sheetsValidationForFlag("sheet-id", "+filter-delete requires --sheet-id ("+filterSheetIDReason+")")
 	}
 	input := map[string]interface{}{
 		"excel_id":  token,

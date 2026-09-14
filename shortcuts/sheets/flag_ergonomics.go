@@ -957,7 +957,10 @@ func splitRangeAreas(raw string) []string {
 		return []string{trimmed}
 	}
 	areas := make([]string, 0, 2)
-	for _, part := range strings.Split(trimmed, ",") {
+	// splitAreasRespectingQuotes, not strings.Split: a quoted sheet name may
+	// contain a comma ('Q1,Sales'!A1), and splitting on it would forward two
+	// halves of one name as two ranges.
+	for _, part := range splitAreasRespectingQuotes(trimmed) {
 		if part = strings.TrimSpace(part); part != "" {
 			areas = append(areas, part)
 		}
@@ -995,7 +998,7 @@ func rejectMultiAreaRange(rng string) error {
 	if !strings.Contains(rng, ",") {
 		return nil
 	}
-	areas := strings.Split(rng, ",")
+	areas := splitAreasRespectingQuotes(rng)
 	hint := "use the enclosing rectangle in one call"
 	if enclosing := enclosingRangeHint(areas); enclosing != "" {
 		hint = fmt.Sprintf("use the enclosing rectangle in one call (--range %q)", enclosing)

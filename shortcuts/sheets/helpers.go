@@ -1101,6 +1101,11 @@ func resolveSheetSelectorExec(ctx context.Context, runtime *common.RuntimeContex
 	return resolveOmittedSheetSelector(ctx, runtime, token, "", "")
 }
 
+// sheetsStructureReadScope is what get_workbook_structure needs. Commands that
+// resolve an omitted selector declare it as a ConditionalScope, since only the
+// paths that actually ask the workbook require it.
+const sheetsStructureReadScope = "sheets:spreadsheet:read"
+
 // resolveOmittedSheetSelector is the workbook lookup behind
 // resolveSheetSelectorExec, taking the pair already read from whatever flags
 // the command spells them with. The object-create commands name theirs
@@ -1112,6 +1117,14 @@ func resolveOmittedSheetSelector(ctx context.Context, runtime *common.RuntimeCon
 	}
 	if selectorMustBeExplicit[runtime.Command()] {
 		return "", "", requireSheetSelector("", "")
+	}
+	// The lookup is a READ, on commands that mostly declare only the write
+	// scope. Checking first turns a 403 arriving from get_workbook_structure --
+	// on a call whose own pre-flight already passed -- into the ordinary
+	// missing-scope error, naming the scope. Silent no-op when the resolver
+	// exposes no scope metadata, so nothing new can fail here.
+	if err := runtime.EnsureScopes([]string{sheetsStructureReadScope}); err != nil {
+		return "", "", err
 	}
 	names, listErr := workbookSheetNames(ctx, runtime, token)
 	if listErr != nil {
