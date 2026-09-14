@@ -51,7 +51,6 @@ var selectorDeferralCases = []struct {
 func TestSheetSelector_DeferralReachesEveryResolver(t *testing.T) {
 	t.Parallel()
 	for _, tc := range selectorDeferralCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			args := append([]string{"--url", testURL}, tc.args...)
@@ -69,7 +68,6 @@ func TestSheetSelector_DeferralReachesEveryResolver(t *testing.T) {
 func TestSheetSelector_DryRunStillRequiresIt(t *testing.T) {
 	t.Parallel()
 	for _, tc := range selectorDeferralCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			args := append([]string{"--url", testURL}, tc.args...)
