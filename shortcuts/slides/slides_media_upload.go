@@ -49,7 +49,7 @@ func slidesMediaParentType(presentationToken string) string {
 
 // unresolvedSlidesTokenPlaceholder is what a dry-run shows in place of a
 // presentation token it cannot know: the caller passed a wiki reference, and
-// resolving it needs the get_node call a preview must not make.
+// resolving it needs the node_by_token call a preview must not make.
 const unresolvedSlidesTokenPlaceholder = "<resolved_slides_token>"
 
 // slidesDryRunParentType returns the parent_type a dry-run should preview for
@@ -114,7 +114,7 @@ var SlidesMediaUpload = common.Shortcut{
 			uploadNode = unresolvedSlidesTokenPlaceholder
 			stepBase = 2
 			dry.Desc("2-step orchestration: resolve wiki → upload media").
-				GET("/open-apis/wiki/v2/spaces/get_node").
+				GET(slidesWikiNodeByTokenPath).
 				Desc("[1] Resolve wiki node to slides presentation").
 				Params(map[string]interface{}{"token": ref.Token})
 		} else {

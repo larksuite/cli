@@ -7,19 +7,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"path/filepath"
 
-	_ "golang.org/x/image/bmp"
-	_ "golang.org/x/image/tiff"
-	_ "golang.org/x/image/webp"
-
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/imageconfig"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -28,6 +21,27 @@ var alignMap = map[string]int{
 	"left":   1,
 	"center": 2,
 	"right":  3,
+}
+
+const docWikiNodeByTokenPath = "/open-apis/wiki/v2/spaces/node_by_token"
+
+type docWikiNode struct {
+	ObjToken string
+	ObjType  string
+}
+
+func docWikiNodeLookupProblem(err error) error {
+	if problem, ok := errs.ProblemOf(err); ok {
+		switch problem.Code {
+		case 131012:
+			problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+		case 131013, 131016:
+			problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+		case 131014:
+			problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+		}
+	}
+	return err
 }
 
 // readClipboardImage is the clipboard read function, swappable in tests to
@@ -171,7 +185,7 @@ var DocMediaInsert = common.Shortcut{
 			documentID = "<resolved_docx_token>"
 			stepBase = 2
 			d.Desc(fmt.Sprintf("%d-step orchestration: resolve wiki → query root → create block → upload file → bind to block (auto-rollback on failure)", totalSteps)).
-				GET("/open-apis/wiki/v2/spaces/get_node").
+				GET(docWikiNodeByTokenPath).
 				Desc("[1] Resolve wiki node to docx document").
 				Params(map[string]interface{}{"token": docRef.Token})
 		} else {
@@ -454,25 +468,27 @@ func resolveDocxDocumentID(runtime *common.RuntimeContext, input string) (string
 	case "wiki":
 		data, err := runtime.CallAPITyped(
 			"GET",
-			"/open-apis/wiki/v2/spaces/get_node",
+			docWikiNodeByTokenPath,
 			map[string]interface{}{"token": docRef.Token},
 			nil,
 		)
 		if err != nil {
-			return "", err
+			return "", docWikiNodeLookupProblem(err)
 		}
 
-		node := common.GetMap(data, "node")
-		objType := common.GetString(node, "obj_type")
-		objToken := common.GetString(node, "obj_token")
-		if objType == "" || objToken == "" {
-			return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data")
+		nodeData := common.GetMap(data, "node")
+		node := docWikiNode{
+			ObjToken: common.GetString(nodeData, "obj_token"),
+			ObjType:  common.GetString(nodeData, "obj_type"),
 		}
-		if objType != "docx" {
-			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but this document operation only supports docx documents", objType).WithParam("--doc")
+		if node.ObjType == "" || node.ObjToken == "" {
+			return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node_by_token returned incomplete node data")
+		}
+		if node.ObjType != "docx" {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but this document operation only supports docx documents", node.ObjType).WithParam("--doc")
 		}
 
-		return objToken, nil
+		return node.ObjToken, nil
 	default:
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "this document operation only supports docx documents").WithParam("--doc")
 	}
@@ -502,8 +518,8 @@ func computeMissingDimension(userWidth, userHeight, nativeWidth, nativeHeight in
 	return imageDimensions{width: userWidth, height: userHeight}
 }
 
-func detectImageDimensions(r io.Reader) (width, height int, err error) {
-	cfg, _, err := image.DecodeConfig(r)
+func detectImageDimensions(r io.ReaderAt) (width, height int, err error) {
+	cfg, _, err := imageconfig.Decode(r)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -524,7 +540,7 @@ func detectImageConfigFromPath(fio fileio.FileIO, filePath string) (int, int, st
 		return 0, 0, "", err
 	}
 	defer f.Close()
-	cfg, format, err := image.DecodeConfig(f)
+	cfg, format, err := imageconfig.Decode(f)
 	if err != nil {
 		return 0, 0, "", err
 	}

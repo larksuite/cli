@@ -274,7 +274,7 @@ func TestAddSlideResolvesWikiURL(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -420,7 +420,7 @@ func TestAddSlideDryRunPlansWikiResolution(t *testing.T) {
 	if len(steps) != 2 {
 		t.Fatalf("planned %d calls, want resolve then add: %#v", len(steps), steps)
 	}
-	resolve := assertDryRunStep(t, steps, 0, "GET", "/open-apis/wiki/v2/spaces/get_node")
+	resolve := assertDryRunStep(t, steps, 0, "GET", "/open-apis/wiki/v2/spaces/node_by_token")
 	resolveParams, _ := resolve["params"].(map[string]interface{})
 	if resolveParams["token"] != "wikcnTOKEN" {
 		t.Fatalf("resolve token = %v, want wikcnTOKEN", resolveParams["token"])

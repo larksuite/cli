@@ -7,8 +7,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -116,7 +118,7 @@ func TestSlidesMediaUploadFromSlidesURL(t *testing.T) {
 	}
 }
 
-// TestSlidesMediaUploadFromWikiURL verifies wiki URL → get_node lookup is performed
+// TestSlidesMediaUploadFromWikiURL verifies wiki URL → node_by_token lookup is performed
 // and the resolved obj_token is used as parent_node.
 func TestSlidesMediaUploadFromWikiURL(t *testing.T) {
 	dir := t.TempDir()
@@ -128,7 +130,7 @@ func TestSlidesMediaUploadFromWikiURL(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -173,7 +175,7 @@ func TestSlidesMediaUploadWikiWrongType(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -196,6 +198,53 @@ func TestSlidesMediaUploadWikiWrongType(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "docx") {
 		t.Fatalf("err = %v, want mention of resolved obj_type", err)
+	}
+}
+
+func TestSlidesMediaUploadClassifiesNodeByTokenErrors(t *testing.T) {
+	const wikiToken = "wikcn_lookup_error"
+	for _, tt := range []struct {
+		code    int
+		subtype errs.Subtype
+	}{
+		{code: 131012, subtype: errs.SubtypeNotFound},
+		{code: 131013, subtype: errs.SubtypeInvalidParameters},
+		{code: 131014, subtype: errs.SubtypeFailedPrecondition},
+		{code: 131016, subtype: errs.SubtypeInvalidParameters},
+	} {
+		t.Run(fmt.Sprint(tt.code), func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+			f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			reg.Register(&httpmock.Stub{
+				Method:  "GET",
+				URL:     "/open-apis/wiki/v2/spaces/node_by_token",
+				Headers: http.Header{"X-Tt-Logid": []string{"slides-wiki-lookup-log"}},
+				Body:    map[string]interface{}{"code": tt.code, "msg": "lookup rejected"},
+				OnMatch: func(req *http.Request) {
+					if got := req.URL.Query().Get("token"); got != wikiToken {
+						t.Errorf("lookup token = %q, want %q", got, wikiToken)
+					}
+				},
+			})
+
+			err := runSlidesShortcut(t, f, stdout, SlidesMediaUpload, []string{
+				"+media-upload",
+				"--file", "missing.png",
+				"--presentation", "https://x.feishu.cn/wiki/" + wikiToken,
+				"--as", "user",
+			})
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryAPI || problem.Subtype != tt.subtype || problem.Code != tt.code || problem.Retryable {
+				t.Fatalf("error = %#v (%v), want terminal api/%s/%d", problem, err, tt.subtype, tt.code)
+			}
+			if problem.LogID != "slides-wiki-lookup-log" || !strings.Contains(problem.Message, "lookup rejected") {
+				t.Fatalf("upstream metadata not preserved: %#v", problem)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("unexpected success output: %s", stdout)
+			}
+		})
 	}
 }
 

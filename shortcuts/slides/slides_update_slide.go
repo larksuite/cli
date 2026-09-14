@@ -164,7 +164,7 @@ func updateSlideDryRun(_ context.Context, runtime *common.RuntimeContext) *commo
 	if ref.Kind == "wiki" {
 		presentationID = unresolvedSlidesTokenPlaceholder
 		dry.Desc(fmt.Sprintf("%d-step orchestration: resolve wiki → replace slide", total)).
-			GET("/open-apis/wiki/v2/spaces/get_node").
+			GET(slidesWikiNodeByTokenPath).
 			Desc(fmt.Sprintf("[%d/%d] Resolve wiki node to slides presentation", step, total)).
 			Params(map[string]interface{}{"token": ref.Token})
 		step++

@@ -156,6 +156,8 @@ func TestDocMediaInsertDryRunWithClipboardUsesPlaceholder(t *testing.T) {
 }
 
 func TestDocMediaInsertDryRunWikiAddsResolveStep(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-test-app"))
 
 	err := mountAndRunDocs(t, DocMediaInsert, []string{
@@ -170,6 +172,9 @@ func TestDocMediaInsertDryRunWikiAddsResolveStep(t *testing.T) {
 	}
 
 	out := stdout.String()
+	if !strings.Contains(out, "/open-apis/wiki/v2/spaces/node_by_token") {
+		t.Fatalf("dry-run output missing node_by_token resolve endpoint: %s", out)
+	}
 	if !strings.Contains(out, "Resolve wiki node to docx document") {
 		t.Fatalf("dry-run output missing wiki resolve step: %s", out)
 	}
@@ -736,10 +741,12 @@ func TestDocMediaInsertBindFailureReportsUploadedStateAndRollback(t *testing.T) 
 }
 
 func TestDocMediaInsertExecuteResolvesWikiBeforeFileCheck(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, _, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-insert-exec-app"))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
@@ -768,6 +775,81 @@ func TestDocMediaInsertExecuteResolvesWikiBeforeFileCheck(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want no wiki resolution progress", stderr.String())
+	}
+}
+
+func TestDocMediaInsertRejectsWikiResolvingToNonDocxBeforeFileCheck(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-insert-non-docx-app"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "mindnote",
+					"obj_token": "mindnoteResolved123",
+				},
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "https://example.larksuite.com/wiki/xxxxxx",
+		"--file", "missing.png",
+		"--as", "bot",
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--doc")
+	if !strings.Contains(err.Error(), `wiki resolved to "mindnote"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDocMediaInsertClassifiesNodeByTokenErrors(t *testing.T) {
+	for _, tt := range []struct {
+		code    int
+		subtype errs.Subtype
+	}{
+		{code: 131012, subtype: errs.SubtypeNotFound},
+		{code: 131013, subtype: errs.SubtypeInvalidParameters},
+		{code: 131014, subtype: errs.SubtypeFailedPrecondition},
+		{code: 131016, subtype: errs.SubtypeInvalidParameters},
+	} {
+		t.Run(fmt.Sprint(tt.code), func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+			f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-insert-wiki-error-app"))
+			lookup := &httpmock.Stub{
+				Method:  "GET",
+				URL:     "/open-apis/wiki/v2/spaces/node_by_token",
+				Headers: http.Header{"X-Tt-Logid": []string{"docs-wiki-lookup-log"}},
+				Body:    map[string]interface{}{"code": tt.code, "msg": "lookup rejected"},
+			}
+			reg.Register(lookup)
+
+			err := mountAndRunDocs(t, DocMediaInsert, []string{
+				"+media-insert",
+				"--doc", "https://example.larksuite.com/wiki/xxxxxx",
+				"--file", "missing.png",
+				"--as", "bot",
+			}, f, stdout)
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Code != tt.code || problem.Subtype != tt.subtype || problem.Retryable {
+				t.Fatalf("error = %#v (%v), want terminal %s/%d", problem, err, tt.subtype, tt.code)
+			}
+			if problem.LogID != "docs-wiki-lookup-log" || !strings.Contains(problem.Message, "lookup rejected") {
+				t.Fatalf("upstream metadata not preserved: %#v", problem)
+			}
+			if len(lookup.CapturedBodies) != 1 || stdout.Len() != 0 {
+				t.Fatalf("lookup calls = %d, stdout = %q", len(lookup.CapturedBodies), stdout.String())
+			}
+		})
 	}
 }
 

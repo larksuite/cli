@@ -8,10 +8,6 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io/fs"
 	"path/filepath"
 	"strconv"
@@ -21,6 +17,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/imageconfig"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -1444,7 +1441,7 @@ var CellsSetImage = common.Shortcut{
 		if err != nil {
 			return sheetsInputStatError("image", err)
 		}
-		imgCfg, _, err := image.DecodeConfig(imgFile)
+		imgCfg, _, err := imageconfig.Decode(imgFile)
 		imgFile.Close()
 		if err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "decode image dimensions: %s", err).

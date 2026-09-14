@@ -8,14 +8,14 @@
 
 - 用户要**整理 / 盘点 / 归类 / 重构知识库、个人文档库、文档库目录或 Wiki 节点结构**，或要生成整理方案、目标目录树、移动计划时，不要只使用 Wiki 节点 API。必须先阅读 [`../lark-drive/references/lark-drive-workflow-knowledge-organize.md`](../lark-drive/references/lark-drive-workflow-knowledge-organize.md)，该 workflow 负责 Drive / Wiki / 个人文档库的统一入口解析、资源盘点、分类计划、写前确认和结果验证。
 - 用户要把**已有 Wiki 节点移出知识库，放到 Drive 文件夹或“我的空间”根目录**：使用 `wiki +move-to-drive`，不要使用 `wiki +move` 或 `drive +move`。执行前确认源节点与目标位置。
-- 用户给的是知识库 URL（`.../wiki/<token>`），且后续要查成员/加成员/删成员：先调用 `lark-cli wiki spaces get_node --params '{"token":"<wiki_token>"}'` 获取 `space_id`，后续成员接口统一使用 `space_id`。
+- 用户给的是知识库 URL（`.../wiki/<token>`），且后续要查成员/加成员/删成员：先确定下游成员操作的身份（默认 `user`；用户明确要求应用 / bot 视角时用 `bot`），再调用 `lark-cli wiki +node-get --node-token '<wiki_url>' --as user --format json`，从 `data.space_id` 获取空间 ID；下游使用 bot 时将示例中的身份改为 `--as bot`。节点解析与后续成员操作必须使用相同身份。
 - 用户要**删除**知识空间（`wiki +delete-space`）但只给了名称或 URL：**不能**把名称 / URL 原样传给 `--space-id`，必须先解析出真实 `space_id`。解析方式：
-  - URL（`.../wiki/<token>`）：`lark-cli wiki spaces get_node --params '{"token":"<wiki_token>"}' --format json`，读 `data.node.space_id`。
+  - URL（`.../wiki/<token>`）：先确定后续 `wiki +delete-space` 的身份（默认 `user`；明确要求 bot 视角时用 `bot`），再调用 `lark-cli wiki +node-get --node-token '<wiki_url>' --as user --format json`，读取 `data.space_id`；下游使用 bot 时将示例中的身份改为 `--as bot`。解析和删除必须使用相同身份。
   - 只知名称：`lark-cli wiki spaces list --format json`，边翻页边收集 items 并按 `name` 精确匹配；**一旦任一页累计到至少 1 条精确匹配就停止翻页**。只有当翻完所有页（`has_more=false`）仍无精确匹配时，才对已收集的全量 items 做宽松匹配（`name` trim 空格、大小写不敏感、子串包含）。
   - **关键安全约束**：无论精确还是模糊，**无论命中 1 条还是多条，发起删除前都必须把候选（`name` + `space_id` + `description` + `space_type`）列给用户，由用户明确选定一个 `space_id` 再执行**。不要因为"只命中一条"就自动执行删除。
   - 命中 0 条：停下来问用户是名称拼错了还是调用方无权限；**不要**自行改名字重试。
   - 用户明确选定后再执行 `lark-cli wiki +delete-space --space-id <ID> --yes`（高风险写操作，必须显式 `--yes`）。
-  - 反例：不要把 wiki URL / 名称直接当 `--space-id`（如 `--space-id "https://.../wiki/<wiki_token>"`）；务必先用 `wiki spaces get_node` 解析出 `data.node.space_id` 再传。
+  - 反例：不要把 wiki URL / 名称直接当 `--space-id`（如 `--space-id "https://.../wiki/<wiki_token>"`）；务必先用 `wiki +node-get` 解析出 `data.space_id` 再传。
 - 用户要在知识库中创建新节点，优先使用 `lark-cli wiki +node-create`。
 - 用户说“给知识库添加成员/管理员”：先把目标解析成“用户 / 群 / 部门 / 应用”四类之一，再决定 `--member-type`，不要先调 `wiki +member-add` 再根据报错反推类型。
 - 用户说“部门 + bot”：这是已知不支持路径。不要继续尝试 `wiki +member-add --as bot`；直接提示必须改成 `--as user`，或明确告知当前要求无法完成。

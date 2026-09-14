@@ -12,22 +12,22 @@ lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/<wiki_token>'
 
 输出中的 `type` 是底层对象类型，`token` 是后续命令应使用的 canonical token。`wiki_node` 字段保留节点侧信息，如 `space_id`、`node_token`、`obj_token`、`obj_type`。
 
-## 手动方式
+## 节点详情方式
 
-如果不能使用 shortcut，再调用 Wiki 节点接口：
+如果后续操作需要 Wiki 节点侧的字段，使用 `wiki +node-get`：
 
 ```bash
-lark-cli wiki spaces get_node --params '{"token":"<wiki_token>"}'
+lark-cli wiki +node-get --node-token 'https://xxx.feishu.cn/wiki/<wiki_token>' --format json
 ```
 
 从返回值中读取：
 
 | 字段 | 含义 |
 |------|------|
-| `node.obj_type` | 底层对象类型，如 `docx`、`doc`、`sheet`、`bitable`、`slides`、`file`、`mindnote` |
-| `node.obj_token` | 底层对象 token，用于对应业务 skill 或原生 API |
-| `node.node_token` / `token` | Wiki 节点 token，用于 Wiki 节点层级操作 |
-| `node.space_id` | 所属知识空间 |
+| `data.obj_type` | 底层对象类型，如 `docx`、`doc`、`sheet`、`bitable`、`slides`、`file`、`mindnote` |
+| `data.obj_token` | 底层对象 token，用于对应业务 skill 或原生 API |
+| `data.node_token` | Wiki 节点 token，用于 Wiki 节点层级操作 |
+| `data.space_id` | 所属知识空间 |
 
 ## 路由
 

@@ -12,7 +12,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"image"
 	"io"
 	"math"
 	"math/big"
@@ -28,6 +27,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/imageconfig"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -556,7 +556,7 @@ func downloadRemoteDocImageContent(runtime *common.RuntimeContext, rawURL string
 	if int64(len(content)) > remoteDocImageMaxBytes {
 		return remoteDocImageDownload{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "remote image #%d exceeds 20MiB limit", occurrence).WithParam("href")
 	}
-	config, detectedFormat, err := image.DecodeConfig(bytes.NewReader(content))
+	config, detectedFormat, err := imageconfig.Decode(bytes.NewReader(content))
 	if err != nil {
 		return remoteDocImageDownload{}, errs.NewValidationError(
 			errs.SubtypeInvalidArgument,

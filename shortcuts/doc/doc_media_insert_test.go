@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -714,4 +715,30 @@ func TestDocMediaInsertValidateFileView(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A TIFF supplied through FileIO or the clipboard must keep random access all
+// the way to its decoder, including when the IFD points beyond the input.
+func TestDetectImageDimensionsRejectsTIFFOffsetWithoutBuffering(t *testing.T) {
+	const offset = 1 << 20
+	data := []byte{'I', 'I', 42, 0, 0, 0, 0, 0}
+	binary.LittleEndian.PutUint32(data[4:], offset)
+	wantErr := errors.New("TIFF offset outside source")
+	r := &invalidTIFFOffsetReader{Reader: bytes.NewReader(data), err: wantErr}
+	_, _, err := detectImageDimensions(r)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("error = %v, want source offset error", err)
+	}
+}
+
+type invalidTIFFOffsetReader struct {
+	*bytes.Reader
+	err error
+}
+
+func (r *invalidTIFFOffsetReader) ReadAt(p []byte, off int64) (int, error) {
+	if off == 1<<20 {
+		return 0, r.err
+	}
+	return r.Reader.ReadAt(p, off)
 }

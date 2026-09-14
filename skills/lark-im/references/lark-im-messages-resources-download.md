@@ -51,6 +51,8 @@ Different resource markers in message content correspond to different `file_key`
 
 Stickers cannot be downloaded with this command.
 
+A folder itself cannot be downloaded: expand it with `lark-cli im files folder --recursive` first (see [lark-im](../SKILL.md)), then download the files it contains.
+
 ## Output
 
 On success, read:

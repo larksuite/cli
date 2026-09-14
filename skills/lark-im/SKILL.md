@@ -66,6 +66,8 @@ Some message-listing shortcuts support `--concise` for compact Markdown output. 
 
 `+chat-messages-list`, `+messages-mget`, and `+threads-messages-list` accept `--download-resources` to save eligible attachments into `./lark-im-resources/` and add a `resources` array to each message. It is off by default; stickers are not downloadable. A failed attachment is reported on that resource without aborting the message pull. Use [`+messages-resources-download`](references/lark-im-messages-resources-download.md) for one attachment. See [`references/lark-im-message-enrichment.md`](references/lark-im-message-enrichment.md) for the output contract.
 
+**Folder resources** are containers, not files — a folder `file_key` cannot be downloaded directly. Expand it first with `lark-cli im files folder --recursive --file-key <folder_key> --srctype message --srcid <message_id>`, then download the files inside with [`+messages-resources-download`](references/lark-im-messages-resources-download.md).
+
 ### Card Messages (Interactive)
 
 **Before sending, replying with, or updating any `interactive` card (`+messages-send` / `+messages-reply` / `messages.patch`), you MUST read [`references/card/lark-im-card-create.md`](references/card/lark-im-card-create.md) and follow its workflow.** The card JSON passed to `--msg-type interactive --content` (send/reply) or `messages.patch --data` (update) must be the output of that workflow — never hand-write or copy a card payload.
@@ -122,7 +124,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 | [`+messages-mget`](references/lark-im-messages-mget.md) | Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies |
 | [`+messages-read-status`](references/lark-im-message-read-status.md) | Batch query whether the current user read 1–50 messages; user-only; returns readable items and invalid message IDs |
 | [`+messages-reply`](references/lark-im-messages-reply.md) | Reply to a message (supports thread replies); user/bot; supports text/markdown/post/media replies, reply-in-thread, idempotency key |
-| [`+messages-resources-download`](references/lark-im-messages-resources-download.md) | Download an image or file attached to a message; user/bot |
+| [`+messages-resources-download`](references/lark-im-messages-resources-download.md) | Download an image/file from a message; folders are not directly downloadable — expand with `im files folder --recursive` first, then download the files inside; user/bot |
 | [`+messages-search`](references/lark-im-messages-search.md) | Search messages across chats (supports keyword, sender, time range filters) with user or bot identity; filters by chat/sender/attachment/time, supports auto-pagination via `--page-all` / `--page-limit`, enriches results via batched mget and chats batch_query |
 | [`+messages-send`](references/lark-im-messages-send.md) | Send a message to a chat or direct message; user/bot; sends to chat-id or user-id with text/markdown/post/media, supports idempotency key |
 | [`+threads-messages-list`](references/lark-im-threads-messages-list.md) | List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports --order asc/desc sorting, auto-pagination |

@@ -5,6 +5,7 @@ package drive
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,207 +13,76 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestDrivePreviewDryRun_ListOnly verifies preview dry-run request structure
-// for list mode.
-func TestDrivePreviewDryRun_ListOnly(t *testing.T) {
-	setDriveDryRunConfigEnv(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-
-	result, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args: []string{
-			"drive", "+preview",
-			"--file-token", "fileDryRunPreview",
-			"--list-only",
-			"--dry-run",
-		},
-		DefaultAs: "bot",
-	})
-	require.NoError(t, err)
-	result.AssertExitCode(t, 0)
-
-	out := result.Stdout
-	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "POST" {
-		t.Fatalf("method=%q, want POST\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/medias/fileDryRunPreview/preview_result" {
-		t.Fatalf("url=%q, want preview_result endpoint\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "mode").String(); got != "list" {
-		t.Fatalf("mode=%q, want list\nstdout:\n%s", got, out)
-	}
-}
-
-// TestDrivePreviewDryRun_Download verifies preview dry-run request structure
-// for download mode.
-func TestDrivePreviewDryRun_Download(t *testing.T) {
-	setDriveDryRunConfigEnv(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-
-	result, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args: []string{
-			"drive", "+preview",
-			"--file-token", "fileDryRunPreview",
-			"--type", "pdf",
-			"--version", "12",
-			"--output", "./artifacts/report",
-			"--dry-run",
-		},
-		DefaultAs: "bot",
-	})
-	require.NoError(t, err)
-	result.AssertExitCode(t, 0)
-
-	out := result.Stdout
-	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 2 {
-		t.Fatalf("api count=%d, want 2\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.0.body.version").String(); got != "12" {
-		t.Fatalf("version=%q, want 12\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.1.method").String(); got != "GET" {
-		t.Fatalf("download method=%q, want GET\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/medias/fileDryRunPreview/preview_download" {
-		t.Fatalf("download url=%q, want preview_download endpoint\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.1.params.preview_type").String(); got != "<selected type_code from preview_result>" {
-		t.Fatalf("preview_type=%q, want placeholder\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.1.params.version").String(); got != "12" {
-		t.Fatalf("download version=%q, want 12\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "requested_type").String(); got != "pdf" {
-		t.Fatalf("requested_type=%q, want pdf\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "output").String(); got != "./artifacts/report" {
-		t.Fatalf("output=%q, want ./artifacts/report\nstdout:\n%s", got, out)
-	}
-}
-
-// TestDrivePreviewDryRun_SourceFile verifies source_file mode maps to a direct
-// source artifact download request.
-func TestDrivePreviewDryRun_SourceFile(t *testing.T) {
-	setDriveDryRunConfigEnv(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-
-	result, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args: []string{
-			"drive", "+preview",
-			"--file-token", "fileDryRunPreview",
-			"--type", "source_file",
-			"--version", "12",
-			"--output", "./artifacts/source",
-			"--dry-run",
-		},
-		DefaultAs: "bot",
-	})
-	require.NoError(t, err)
-	result.AssertExitCode(t, 0)
-
-	out := result.Stdout
-	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 1 {
-		t.Fatalf("api count=%d, want 1\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
-		t.Fatalf("method=%q, want GET\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/medias/fileDryRunPreview/preview_download" {
-		t.Fatalf("url=%q, want preview download endpoint\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.0.params.preview_type").String(); got != "16" {
-		t.Fatalf("preview_type=%q, want 16\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.0.params.version").String(); got != "12" {
-		t.Fatalf("version=%q, want 12\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "requested_type").String(); got != "source_file" {
-		t.Fatalf("requested_type=%q, want source_file\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "selected_type").String(); got != "source_file" {
-		t.Fatalf("selected_type=%q, want source_file\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "selected_type_code").String(); got != "16" {
-		t.Fatalf("selected_type_code=%q, want 16\nstdout:\n%s", got, out)
-	}
-}
-
-// TestDrivePreviewDryRun_WikiURLResolvesBeforePreview verifies a /wiki/ URL
-// prepends a get_node resolution step ahead of the preview_result step.
-func TestDrivePreviewDryRun_WikiURLResolvesBeforePreview(t *testing.T) {
-	setDriveDryRunConfigEnv(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-
-	result, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args: []string{
-			"drive", "+preview",
-			"--url", "https://example.feishu.cn/wiki/wikiDryRunPreview",
-			"--list-only",
-			"--dry-run",
-		},
-		DefaultAs: "bot",
-	})
-	require.NoError(t, err)
-	result.AssertExitCode(t, 0)
-
-	out := result.Stdout
-	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 2 {
-		t.Fatalf("api count=%d, want 2 (get_node + preview_result)\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
-		t.Fatalf("api.0.url=%q, want wiki get_node\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.0.params.token").String(); got != "wikiDryRunPreview" {
-		t.Fatalf("api.0.params.token=%q, want wiki token\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "wiki_token").String(); got != "wikiDryRunPreview" {
-		t.Fatalf("wiki_token=%q, want wiki token\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/medias/obj_token_from_wiki_node/preview_result" {
-		t.Fatalf("api.1.url=%q, want preview_result from resolved token\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "mode").String(); got != "list" {
-		t.Fatalf("mode=%q, want list\nstdout:\n%s", got, out)
-	}
-}
-
-// TestDrivePreviewDryRun_WikiTokenSourceFile verifies --wiki-token feeds the
-// source_file download path via the resolved file token.
-func TestDrivePreviewDryRun_WikiTokenSourceFile(t *testing.T) {
-	setDriveDryRunConfigEnv(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-
-	result, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args: []string{
-			"drive", "+preview",
-			"--wiki-token", "wikiDryRunPreview",
-			"--type", "source_file",
-			"--output", "./artifacts/source",
-			"--dry-run",
-		},
-		DefaultAs: "bot",
-	})
-	require.NoError(t, err)
-	result.AssertExitCode(t, 0)
-
-	out := result.Stdout
-	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 2 {
-		t.Fatalf("api count=%d, want 2 (get_node + preview_download)\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
-		t.Fatalf("api.0.url=%q, want wiki get_node\nstdout:\n%s", got, out)
-	}
-	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/medias/obj_token_from_wiki_node/preview_download" {
-		t.Fatalf("api.1.url=%q, want preview_download from resolved token\nstdout:\n%s", got, out)
+// TestDrivePreviewDryRun_EntityLookup pins token identification and the
+// downstream request plan in every preview mode and accepted input form.
+func TestDrivePreviewDryRun_EntityLookup(t *testing.T) {
+	for _, source := range []struct {
+		name, flag, input string
+		wiki              bool
+	}{
+		{"file", "--file-token", "inputToken", false},
+		{"file URL", "--url", "https://example.com/file/inputToken", false},
+		{"wiki", "--wiki-token", "inputToken", true},
+		{"wiki URL", "--url", "https://example.com/wiki/inputToken", true},
+	} {
+		for _, mode := range []string{"list", "source_file", "pdf"} {
+			t.Run(source.name+"/"+mode, func(t *testing.T) {
+				setDriveDryRunConfigEnv(t)
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				t.Cleanup(cancel)
+				args := []string{"drive", "+preview", source.flag, source.input, "--version", "12", "--dry-run"}
+				if mode == "list" {
+					args = append(args, "--list-only")
+				} else {
+					args = append(args, "--type", mode, "--output", "./artifacts/preview")
+				}
+				result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "bot"})
+				require.NoError(t, err)
+				result.AssertExitCode(t, 0)
+				out := result.Stdout
+				require.Equal(t, "GET", clie2e.DryRunGet(out, "api.0.method").String())
+				require.Equal(t, "/open-apis/drive/v2/files/query_by_token", clie2e.DryRunGet(out, "api.0.url").String())
+				require.Equal(t, "inputToken", clie2e.DryRunGet(out, "api.0.params.token").String())
+				require.Contains(t, clie2e.DryRunGet(out, "api.0.desc").String(), "Best-effort")
+				index := 1
+				if source.wiki {
+					require.Equal(t, "GET", clie2e.DryRunGet(out, "api.1.method").String())
+					require.Equal(t, "/open-apis/wiki/v2/spaces/get_node", clie2e.DryRunGet(out, "api.1.url").String())
+					require.Equal(t, "inputToken", clie2e.DryRunGet(out, "api.1.params.token").String())
+					require.Contains(t, clie2e.DryRunGet(out, "api.1.desc").String(), "Only if entity lookup fails")
+					require.Equal(t, "inputToken", clie2e.DryRunGet(out, "wiki_token").String())
+					index++
+				} else {
+					require.Equal(t, "inputToken", clie2e.DryRunGet(out, "fallback_file_token").String())
+				}
+				field := func(suffix string) string { return fmt.Sprintf("api.%d.%s", index, suffix) }
+				if mode != "source_file" {
+					require.Equal(t, "POST", clie2e.DryRunGet(out, field("method")).String())
+					require.Equal(t, "/open-apis/drive/v1/medias/resolved_file_token/preview_result", clie2e.DryRunGet(out, field("url")).String())
+					require.Equal(t, "12", clie2e.DryRunGet(out, field("body.version")).String())
+					index++
+				}
+				if mode == "list" {
+					require.Equal(t, "list", clie2e.DryRunGet(out, "mode").String())
+				} else {
+					require.Equal(t, "download", clie2e.DryRunGet(out, "mode").String())
+					require.Equal(t, mode, clie2e.DryRunGet(out, "requested_type").String())
+					require.Equal(t, "./artifacts/preview", clie2e.DryRunGet(out, "output").String())
+					require.Equal(t, "GET", clie2e.DryRunGet(out, field("method")).String())
+					require.Equal(t, "/open-apis/drive/v1/medias/resolved_file_token/preview_download", clie2e.DryRunGet(out, field("url")).String())
+					require.Equal(t, "12", clie2e.DryRunGet(out, field("params.version")).String())
+					wantType := "<selected type_code from preview_result>"
+					if mode == "source_file" {
+						wantType = "16"
+						require.Equal(t, "source_file", clie2e.DryRunGet(out, "selected_type").String())
+						require.Equal(t, "16", clie2e.DryRunGet(out, "selected_type_code").String())
+					}
+					require.Equal(t, wantType, clie2e.DryRunGet(out, field("params.preview_type")).String())
+					index++
+				}
+				require.Equal(t, int64(index), clie2e.DryRunGet(out, "api.#").Int())
+			})
+		}
 	}
 }
 

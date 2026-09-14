@@ -72,7 +72,7 @@ var DocResourceDownload = common.Shortcut{
 		d := common.NewDryRunAPI()
 		if docRef.Kind == "wiki" {
 			documentID = "<resolved_docx_token>"
-			d.GET("/open-apis/wiki/v2/spaces/get_node").
+			d.GET(docWikiNodeByTokenPath).
 				Desc("[1] Resolve wiki node to docx document").
 				Params(map[string]interface{}{"token": docRef.Token})
 		}
@@ -173,7 +173,7 @@ var DocResourceUpdate = common.Shortcut{
 		d := common.NewDryRunAPI()
 		if docRef.Kind == "wiki" {
 			documentID = "<resolved_docx_token>"
-			d.GET("/open-apis/wiki/v2/spaces/get_node").
+			d.GET(docWikiNodeByTokenPath).
 				Desc("[1] Resolve wiki node to docx document").
 				Params(map[string]interface{}{"token": docRef.Token})
 		}
@@ -267,7 +267,7 @@ var DocResourceDelete = common.Shortcut{
 		d := common.NewDryRunAPI()
 		if docRef.Kind == "wiki" {
 			documentID = "<resolved_docx_token>"
-			d.GET("/open-apis/wiki/v2/spaces/get_node").
+			d.GET(docWikiNodeByTokenPath).
 				Desc("[1] Resolve wiki node to docx document").
 				Params(map[string]interface{}{"token": docRef.Token})
 		}
