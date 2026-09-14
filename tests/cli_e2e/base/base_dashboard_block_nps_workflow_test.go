@@ -31,7 +31,7 @@ func TestBaseDashboardBlockNPSWorkflow(t *testing.T) {
 		ctx,
 		baseToken,
 		tableName,
-		`[{"name":"Name","type":"text"},{"name":"Satisfaction","type":"rating"}]`,
+		`[{"name":"Name","type":"text"},{"name":"Satisfaction","type":"number","style":{"type":"rating","icon":"star","min":1,"max":5}}]`,
 		`{"name":"Main","type":"grid"}`,
 	)
 
