@@ -7,7 +7,7 @@
    - `lark-cli base table.records create` ✅
    - `lark-cli base records create` ❌
 2. **优先使用 Shortcut** — 有 Shortcut 的操作不要手拼原生 API
-3. **写记录前** — 先调用 `table.fields list` 获取字段 `type/ui_type`，再读 [lark-base-cell-value.md](../../skills/lark-base/references/lark-base-cell-value.md)；该文档是 CellValue 的 source of truth
+3. **写记录前** — 先调用 `table.fields list` 获取字段 `type/ui_type`，再读 [Record / CellValue](../../skills/lark-base/SKILL.md#record)；该文档是 CellValue 的 source of truth
 4. **写字段前** — 先读 [lark-base-field-schema.md](../../skills/lark-base/references/lark-base-field-schema.md) 确认字段类型 JSON 结构
 5. **筛选查询前** — 先读 [lark-base-view-set-filter.md](../../skills/lark-base/references/lark-base-view-set-filter.md)，当前 `base/v3` 通过 `view.filter update + table.records list` 组合完成筛选读取
 6. **批量上限 200 条/次** — 同一表建议串行写入，并在批次间延迟 0.5–1 秒
@@ -116,6 +116,6 @@ lark-cli wiki +node-get --node-token 'https://xxx.feishu.cn/wiki/Pgrrwvr********
 ## 参考文档
 
 - [lark-base-field-schema.md](../../skills/lark-base/references/lark-base-field-schema.md) — 字段类型 JSON 配置
-- [lark-base-cell-value.md](../../skills/lark-base/references/lark-base-cell-value.md) — CellValue source of truth
+- [Record / CellValue](../../skills/lark-base/SKILL.md#record) — CellValue source of truth
 - [lark-base-view-set-filter.md](../../skills/lark-base/references/lark-base-view-set-filter.md) — 查询筛选指南（filter / operator / sort / 分页）
 - 具体命令示例由命令 --help 内置 tips 承接；复杂 JSON 只读上方保留 reference
