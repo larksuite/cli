@@ -23,7 +23,6 @@ var recordCellValueHappyPathTips = []string{
 	`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}], [{"id":"oc_xxx"}], [{"id":"rec_xxx"}]; location uses {"lng":116.397428,"lat":39.90923}; null clears a cell when allowed.`,
 	"User and group fields always use arrays; when multiple=false, the array can contain only one item.",
 	"Do not guess user/chat/linked-record IDs or location coordinates; resolve them first with the relevant contact/im/record lookup flow.",
-	"Use lark-base-cell-value.md for complex CellValue shapes and special field types; do not invent values for fields not covered by the happy path.",
 }
 
 type recordSelection struct {

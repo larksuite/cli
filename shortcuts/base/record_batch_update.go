@@ -26,7 +26,7 @@ var BaseRecordBatchUpdate = common.Shortcut{
 		`Example: {"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}.`,
 		"The response contains only optional ignored_fields and does not check whether record IDs exist; read records back when confirmation is required.",
 		"Before writing, use +field-list to confirm real writable fields; do not write system fields, formula, lookup, or attachment fields as normal CellValue.",
-		"Batch update supports max 200 records per call; use the record-batch-update guide for command limits and edge cases.",
+		"Batch update supports max 200 records per call.",
 	}, recordCellValueHappyPathTips...),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateRecordJSON(runtime)
