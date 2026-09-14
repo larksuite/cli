@@ -18,27 +18,6 @@ View 是同一 Table 的展示与组织方式，共享底层记录；创建视�
 
 选择捷径：**日常读写数据、无特殊展示需求 → grid；按状态/类别处理 → kanban；比较时间跨度 → gantt；按日期找事项 → calendar；浏览卡片内容 → gallery。** Gantt 和 Calendar 都能展示时间相关实体，区别是前者强调跨度与重叠，后者强调日期位置。
 
-## 当前 CLI 配置范围
-
-下表统一列出各类型的 CLI 配置能力；后面的 few-shot 只展示具体需求所需的操作。
-
-| 操作 | grid | kanban | gantt | calendar | gallery |
-|---|:---:|:---:|:---:|:---:|:---:|
-| 创建、查询、改名、删除 | 支持 | 支持 | 支持 | 支持 | 支持 |
-| `+view-set-filter` 筛选 | 支持 | 支持 | 支持 | 支持 | 支持 |
-| `+view-set-visible-fields` 字段显隐/顺序 | 支持 | 支持 | 支持 | 支持 | 支持 |
-| `+view-set-sort` 排序 | 支持 | 支持 | 支持 | 不支持 | 支持 |
-| `+view-set-group` 分组 | 支持 | 支持 | 支持 | 不支持 | 不支持 |
-| `+view-set-timebar` 时间条 | 不支持 | 不支持 | 支持 | 支持 | 不支持 |
-| `+view-set-card` 卡片封面 | 不支持 | 支持 | 不支持 | 不支持 | 支持 |
-
-- 每个 `set` 都有对应 `get`：例如 `+view-get-group`、`+view-get-timebar`。修改已有配置时先读取，只在已知原状态的基础上构造目标配置。
-- `visible_fields` 是最终可见字段的完整有序列表，遗漏字段会隐藏；主字段可能被服务端固定在首位。隐藏展示字段不删除字段或记录。
-- `sort_config` 最多 10 项；`group_config` 最多 3 项，具体分组字段须适用于目标视图。看板通常先配置一个明确的分类字段。`group_config[].desc` 控制分组排序，记录顺序使用 `sort_config`。
-- `timebar` 必须提供 `start_time`、`end_time`、`title`；前两者引用日期/时间字段，`title` 引用用于标识事项的字段。不要用创建时间代替用户真正要求的任务排期；记录也需要有相应时间值。
-- `card` 当前通过 `cover_field` 选择附件字段或用 `null` 清除封面。
-- `form` 不属于这里的五种创建类型，表单使用 Form 命令。
-
 ## Few-shot：按目的创建与配置
 
 以下是相互独立的选型示例，不是一套必须全执行的步骤。`BASE_TOKEN`、`TABLE_ID` 使用已解析的真实资源坐标；字段名示例假定目标表已有相应字段，配置前用 `+field-list` 核实类型与名称。`--view-id` 接受真实 ID 或名称；示例使用新建视图的唯一名称，名称不唯一时使用实际返回 ID。
@@ -48,9 +27,14 @@ View 是同一 Table 的展示与组织方式，共享底层记录；创建视�
 需求：“按项目分组查看任务，优先显示最早截止的任务。”
 
 ```bash
+# 默认视图；支持筛选、字段显隐、分组、排序；不支持时间条和卡片封面。
+# 创建 JSON 支持对象/数组，type 默认 grid；不要塞入 group_by/property，form 走 Form 命令。
 lark-cli base +view-create --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --json '{"name":"任务明细","type":"grid"}' --as user
+# visible_fields 是完整有序列表；遗漏即隐藏，不删除数据，主字段可能固定在首位。
 lark-cli base +view-set-visible-fields --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "任务明细" --json '{"visible_fields":["任务名称","项目","状态","截止时间"]}' --as user
+# group_config 最多 3 项，字段须适用于目标视图；空数组清除分组。
 lark-cli base +view-set-group --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "任务明细" --json '{"group_config":[{"field":"项目","desc":false}]}' --as user
+# sort_config 最多 10 项；空数组清除排序。配置 JSON 用对象包装，不传裸数组。
 lark-cli base +view-set-sort --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "任务明细" --json '{"sort_config":[{"field":"截止时间","desc":false}]}' --as user
 ```
 
@@ -59,6 +43,8 @@ lark-cli base +view-set-sort --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" -
 需求：“待办、进行中、已完成各一列，每列按截止时间排列。”前置：状态字段是包含相应选项的单选字段。
 
 ```bash
+# 支持筛选、字段显隐、分组、排序、卡片封面；不支持时间条。
+# 优先按一个单选/多选字段分栏；group 的 desc 排列分组，sort 排列组内记录。
 lark-cli base +view-create --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --json '{"name":"任务看板","type":"kanban"}' --as user
 lark-cli base +view-set-group --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "任务看板" --json '{"group_config":[{"field":"状态","desc":false}]}' --as user
 lark-cli base +view-set-visible-fields --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "任务看板" --json '{"visible_fields":["任务名称","负责人","截止时间"]}' --as user
@@ -70,8 +56,11 @@ lark-cli base +view-set-sort --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" -
 需求：“查看任务开始到结束的排期，左侧只保留任务和负责人。”
 
 ```bash
+# 支持筛选、字段显隐、分组、排序、时间条；不支持卡片封面。
+# timebar 必填开始、结束、标题；起止字段须为日期/时间且记录有值，按业务排期选择。
 lark-cli base +view-create --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --json '{"name":"任务排期","type":"gantt"}' --as user
 lark-cli base +view-set-timebar --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "任务排期" --json '{"start_time":"开始时间","end_time":"结束时间","title":"任务名称"}' --as user
+# 左侧通常保留 1–3 个关键字段，为时间轴留空间。
 lark-cli base +view-set-visible-fields --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "任务排期" --json '{"visible_fields":["任务名称","负责人"]}' --as user
 ```
 
@@ -80,6 +69,8 @@ lark-cli base +view-set-visible-fields --base-token "$BASE_TOKEN" --table-id "$T
 需求：“在日历上查看每项活动的安排。”
 
 ```bash
+# 支持筛选、字段显隐、时间条；不支持通用分组、排序和卡片封面。
+# timebar 必填开始、结束、标题；起止字段须为日期/时间且记录有值。
 lark-cli base +view-create --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --json '{"name":"活动日历","type":"calendar"}' --as user
 lark-cli base +view-set-timebar --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "活动日历" --json '{"start_time":"活动开始","end_time":"活动结束","title":"活动名称"}' --as user
 ```
@@ -89,6 +80,8 @@ lark-cli base +view-set-timebar --base-token "$BASE_TOKEN" --table-id "$TABLE_ID
 需求：“以图片卡片浏览产品，展示名称、分类和价格。”前置：产品图片是附件字段。
 
 ```bash
+# 支持筛选、字段显隐、排序、卡片封面；不支持分组和时间条。
+# cover_field 使用附件字段；传 null 清除封面。
 lark-cli base +view-create --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --json '{"name":"产品画册","type":"gallery"}' --as user
 lark-cli base +view-set-card --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "产品画册" --json '{"cover_field":"产品图片"}' --as user
 lark-cli base +view-set-visible-fields --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "产品画册" --json '{"visible_fields":["产品名称","分类","价格"]}' --as user
@@ -97,7 +90,9 @@ lark-cli base +view-set-visible-fields --base-token "$BASE_TOKEN" --table-id "$T
 ### 通用生命周期：发现、筛选、改名、清理
 
 ```bash
-# 发现与检查：已有目标视图时直接配置它
+# 五种视图均支持查询、改名、删除；已有目标视图时直接配置它。
+# 修改已有配置先读对应 get（如 +view-get-group）；需要验收时再读回。
+# 批量创建逐项执行，可能部分成功；异常或同名冲突后先 list 确认，避免盲重试。
 lark-cli base +view-list --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --as user
 lark-cli base +view-get --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "$VIEW_ID" --as user
 
@@ -107,12 +102,8 @@ lark-cli base +view-set-filter --base-token "$BASE_TOKEN" --table-id "$TABLE_ID"
 # 改名用 --name；创建用 --json 中的 name
 lark-cli base +view-rename --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "$VIEW_ID" --name "进行中任务" --as user
 
-# 用户明确要求删除该视图且目标已确认时执行
+# 用户明确要求且目标已确认时删除视图；不删除底层记录。
 lark-cli base +view-delete --base-token "$BASE_TOKEN" --table-id "$TABLE_ID" --view-id "$VIEW_ID" --as user --yes
 ```
-
-创建支持单对象或对象数组，`type` 默认 `grid`；批量创建逐项执行，中途失败时前面的视图可能已创建。超时、异常或同名冲突后先用 `+view-list` 确认状态，复用已创建的目标，避免整批盲重试。删除 View 移除该展示配置，不是删除底层记录。
-
-配置的 `--json` 使用对应对象：`{"group_config":[...]}`、`{"sort_config":[...]}`、`{"visible_fields":[...]}`，不要把裸数组或 `group_by/property` 塞进创建请求。清除排序/分组分别传 `{"sort_config":[]}` / `{"group_config":[]}`；清除封面传 `{"cover_field":null}`。需要确认最终展示时，再读取对应配置或按视图读取记录。
 
 筛选详细写法见 [View filter](lark-base-view-set-filter.md)；该文档继续路由公共条件协议。
