@@ -107,10 +107,40 @@ func detailArtifactsStub(token, transcript string) *httpmock.Stub {
 		"minute_todos":    []interface{}{map[string]interface{}{"content": "Buy milk"}},
 		"minute_chapters": []interface{}{map[string]interface{}{"title": "Intro", "summary_content": "Opening"}},
 		"keywords":        []interface{}{"budget", "roadmap"},
+		"artifact_status": map[string]interface{}{
+			"summary":         map[string]interface{}{"status": "completed"},
+			"minute_todos":    map[string]interface{}{"status": "completed"},
+			"minute_chapters": map[string]interface{}{"status": "completed"},
+			"keywords":        map[string]interface{}{"status": "completed"},
+			"transcript":      map[string]interface{}{"status": "completed"},
+		},
 	}
 	if transcript != "" {
 		data["transcript"] = transcript
 	}
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/minutes/v1/minutes/" + token + "/artifacts",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": data,
+		},
+	}
+}
+
+// detailArtifactsStubWithStatus mirrors detailArtifactsStub but lets a test
+// supply an arbitrary artifact_status block so partial/skipped/generating
+// paths can be exercised without hand-rolling the JSON envelope.
+func detailArtifactsStubWithStatus(token string, extra map[string]interface{}, artifactStatus map[string]string) *httpmock.Stub {
+	data := map[string]interface{}{}
+	for k, v := range extra {
+		data[k] = v
+	}
+	status := map[string]interface{}{}
+	for k, v := range artifactStatus {
+		status[k] = map[string]interface{}{"status": v}
+	}
+	data["artifact_status"] = status
 	return &httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/minutes/v1/minutes/" + token + "/artifacts",
@@ -247,6 +277,9 @@ func TestDetail_DryRun_WithArtifactFlags(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "artifacts") {
 		t.Errorf("dry-run should show artifacts API path when artifact flags are set, got: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "need_artifact_status") {
+		t.Errorf("dry-run should surface need_artifact_status query param, got: %s", stdout.String())
 	}
 }
 
@@ -588,6 +621,237 @@ func TestDetail_WaitReady_DoesNotPollNonProcessingErrors(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Fatalf("non-processing error should not be retried, callCount=%d", callCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// artifact_status tests
+// ---------------------------------------------------------------------------
+
+// TestDetail_Execute_ArtifactStatus_MixedSkippedGenerating verifies the new
+// artifact_status flow: the hint field surfaces which artifacts are still
+// generating and which the server has decided to skip, and the caller gets a
+// next_command inviting --wait-ready. It also pins that need_artifact_status
+// is wired in on the artifacts request (backends ignoring the flag would fail
+// this test since the response would not include artifact_status).
+func TestDetail_Execute_ArtifactStatus_MixedSkippedGenerating(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(detailMinuteGetStub("tokmix", "note_mix", "Mixed Statuses"))
+
+	artStub := detailArtifactsStubWithStatus("tokmix", map[string]interface{}{
+		"summary":  "Ready summary",
+		"keywords": []interface{}{"a", "b"},
+	}, map[string]string{
+		"summary":         "completed",
+		"minute_todos":    "generating",
+		"minute_chapters": "completed",
+		"keywords":        "completed",
+		"transcript":      "skipped",
+	})
+	reg.Register(artStub)
+
+	err := detailMountAndRun(t, MinutesDetail, []string{
+		"+detail", "--minute-tokens", "tokmix",
+		"--summary", "--todo", "--transcript", "--keyword",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := artStub.CapturedHeaders; got == nil {
+		t.Fatalf("artifacts stub was never called")
+	}
+	m := firstDetailMinute(t, stdout.Bytes())
+	if errMsg, _ := m["error"].(string); errMsg != "" {
+		t.Fatalf("expected no error, got %q", errMsg)
+	}
+	hint, _ := m["hint"].(string)
+	// Natural-language hint carries all the information an agent needs.
+	for _, must := range []string{
+		"still generating: minute_todos",
+		"skipped (not generated",
+		"transcript",
+		"already completed",
+		"Rerun with --wait-ready",
+	} {
+		if !strings.Contains(hint, must) {
+			t.Fatalf("hint must contain %q, got %q", must, hint)
+		}
+	}
+	next, _ := m["next_command"].(string)
+	if !strings.Contains(next, "--wait-ready") || !strings.Contains(next, "tokmix") {
+		t.Fatalf("next_command should invite --wait-ready, got %q", next)
+	}
+	// completed artifacts still land in the artifacts map
+	arts, _ := m["artifacts"].(map[string]any)
+	if arts["summary"] != "Ready summary" {
+		t.Fatalf("summary should still be returned even when siblings are pending, got %v", arts["summary"])
+	}
+	// Confirm we didn't accidentally add extra structured status fields.
+	for _, gone := range []string{"pending_artifacts", "skipped_artifacts", "artifact_status"} {
+		if _, ok := m[gone]; ok {
+			t.Fatalf("agent-facing envelope should route status via hint, %q must not be re-emitted", gone)
+		}
+	}
+}
+
+// TestDetail_Execute_ArtifactStatus_SkippedOnlyIsTerminal verifies that when
+// the only remaining state is "skipped", the shortcut does not suggest a
+// wait-ready retry — skipped is terminal.
+func TestDetail_Execute_ArtifactStatus_SkippedOnlyIsTerminal(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(detailMinuteGetStub("tokskip", "note_skip", "Skipped Only"))
+	reg.Register(detailArtifactsStubWithStatus("tokskip", map[string]interface{}{
+		"summary": "Only summary",
+	}, map[string]string{
+		"summary":      "completed",
+		"minute_todos": "skipped",
+	}))
+
+	err := detailMountAndRun(t, MinutesDetail, []string{
+		"+detail", "--minute-tokens", "tokskip",
+		"--summary", "--todo", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	m := firstDetailMinute(t, stdout.Bytes())
+	if _, ok := m["next_command"]; ok {
+		t.Fatalf("skipped-only must not suggest a rerun, got %v", m["next_command"])
+	}
+	hint, _ := m["hint"].(string)
+	if !strings.Contains(hint, "skipped (not generated") || !strings.Contains(hint, "minute_todos") {
+		t.Fatalf("hint should mention skipped minute_todos, got %q", hint)
+	}
+	if strings.Contains(hint, "still generating") {
+		t.Fatalf("skipped-only hint must not mention still generating, got %q", hint)
+	}
+	if strings.Contains(hint, "--wait-ready") {
+		t.Fatalf("skipped-only hint must not invite --wait-ready (terminal state), got %q", hint)
+	}
+}
+
+// TestDetail_WaitReady_PollsUntilRequestedArtifactsComplete verifies the
+// wait-ready loop: it keeps polling while a *requested* artifact is still
+// generating, and stops as soon as all requested artifacts are settled — even
+// if unrequested siblings remain in "generating".
+func TestDetail_WaitReady_PollsUntilRequestedArtifactsComplete(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(detailMinuteGetStub("tokwait", "note_wait", "Wait Ready"))
+
+	// First hit: summary still generating.
+	reg.Register(detailArtifactsStubWithStatus("tokwait", map[string]interface{}{}, map[string]string{
+		"summary":      "generating",
+		"minute_todos": "generating",
+	}))
+	// Second hit: summary finished; caller only asked for summary so we should stop.
+	reg.Register(detailArtifactsStubWithStatus("tokwait", map[string]interface{}{
+		"summary": "Ready now",
+	}, map[string]string{
+		"summary":      "completed",
+		"minute_todos": "generating",
+	}))
+
+	err := detailMountAndRun(t, MinutesDetail, []string{
+		"+detail", "--minute-tokens", "tokwait", "--summary", "--wait-ready",
+		"--wait-timeout-seconds", "5", "--wait-interval-seconds", "1", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	m := firstDetailMinute(t, stdout.Bytes())
+	if hint, _ := m["hint"].(string); strings.Contains(hint, "still generating") {
+		t.Fatalf("should not report pending once requested artifact completed, got hint=%q", hint)
+	}
+	arts, _ := m["artifacts"].(map[string]any)
+	if arts["summary"] != "Ready now" {
+		t.Fatalf("summary = %v, want Ready now", arts["summary"])
+	}
+}
+
+// TestDetail_WaitReady_TimeoutSurfacesPendingArtifacts confirms the wait loop
+// gives up cleanly once the deadline elapses and surfaces the still-pending
+// artifacts via the natural-language hint instead of throwing away the payload.
+func TestDetail_WaitReady_TimeoutSurfacesPendingArtifacts(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(detailMinuteGetStub("tokwaitto", "note_to", "Wait Timeout"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/minutes/v1/minutes/tokwaitto/artifacts",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"artifact_status": map[string]interface{}{
+					"summary": map[string]interface{}{"status": "generating"},
+				},
+			},
+		},
+		Reusable: true,
+	})
+
+	err := detailMountAndRun(t, MinutesDetail, []string{
+		"+detail", "--minute-tokens", "tokwaitto", "--summary", "--wait-ready",
+		"--wait-timeout-seconds", "1", "--wait-interval-seconds", "2", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	m := firstDetailMinute(t, stdout.Bytes())
+	hint, _ := m["hint"].(string)
+	if !strings.Contains(hint, "still generating: summary") {
+		t.Fatalf("hint should surface still-generating summary, got %q", hint)
+	}
+	if !strings.Contains(hint, "--wait-ready timeout elapsed") {
+		t.Fatalf("hint should acknowledge that --wait-ready already ran, got %q", hint)
+	}
+	// With --wait-ready set we already polled to timeout; don't suggest rerunning it.
+	if _, ok := m["next_command"]; ok {
+		t.Fatalf("wait-ready timeout should not re-suggest --wait-ready, got %v", m["next_command"])
+	}
+}
+
+// TestParseMinutesDetailArtifactStatus verifies the pure parser handles the
+// server envelope, ignoring malformed entries.
+func TestParseMinutesDetailArtifactStatus(t *testing.T) {
+	got := parseMinutesDetailArtifactStatus(map[string]interface{}{
+		"artifact_status": map[string]any{
+			"summary":         map[string]any{"status": "completed"},
+			"minute_todos":    map[string]any{"status": "skipped"},
+			"minute_chapters": map[string]any{"status": "generating"},
+			"weird":           "malformed",
+			"blank":           map[string]any{"status": ""},
+		},
+	})
+	want := map[string]string{
+		"summary":         "completed",
+		"minute_todos":    "skipped",
+		"minute_chapters": "generating",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parseMinutesDetailArtifactStatus = %v, want %v", got, want)
+	}
+	if parseMinutesDetailArtifactStatus(map[string]interface{}{}) != nil {
+		t.Fatal("missing artifact_status must return nil")
+	}
+}
+
+func TestMinutesDetailPendingArtifacts(t *testing.T) {
+	status := map[string]string{
+		"summary":      "completed",
+		"minute_todos": "generating",
+		"transcript":   "skipped",
+	}
+	pending := minutesDetailPendingArtifacts(status, []string{"summary", "minute_todos", "transcript"})
+	if !reflect.DeepEqual(pending, []string{"minute_todos"}) {
+		t.Fatalf("pending = %v", pending)
+	}
+	// keys not requested must not block callers
+	if got := minutesDetailPendingArtifacts(status, []string{"summary"}); len(got) != 0 {
+		t.Fatalf("unrequested keys must not surface: pending=%v", got)
 	}
 }
 

@@ -35,6 +35,29 @@ const (
 	minutesDetailArtifactsScope       = "minutes:minutes.artifacts:read"
 )
 
+// Per-artifact status values returned by the /artifacts endpoint when
+// need_artifact_status=true.
+const (
+	artifactStatusCompleted  = "completed"
+	artifactStatusGenerating = "generating"
+	artifactStatusSkipped    = "skipped"
+)
+
+// minutesDetailArtifactStatusKeys maps a shortcut flag to the response key that
+// carries its generation status under artifact_status. Order determines how
+// pending/skipped hints are rendered.
+var minutesDetailArtifactStatusKeys = []struct {
+	Flag       string
+	StatusKey  string
+	ResultName string // key used in the shortcut's `artifacts` map
+}{
+	{"summary", "summary", "summary"},
+	{"todo", "minute_todos", "todos"},
+	{"chapter", "minute_chapters", "chapters"},
+	{"keyword", "keywords", "keywords"},
+	{"transcript", "transcript", "transcript_file"},
+}
+
 var validMinuteTokenDetail = regexp.MustCompile(`^[a-z0-9]+$`)
 
 // minuteDetailItem represents a single minute detail result.
@@ -92,62 +115,71 @@ func fetchMinuteDetail(ctx context.Context, runtime *common.RuntimeContext, minu
 	needTranscript := runtime.Bool("transcript")
 	needKeyword := runtime.Bool("keyword")
 
-	if len(artifactFlags) > 0 {
-		artData, err := callMinutesDetailAPIUntilReady(ctx, runtime, waitReady, waitTimeout, waitInterval, func() (map[string]interface{}, error) {
-			return runtime.CallAPITyped(http.MethodGet,
-				fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/artifacts", validate.EncodePathSegment(minuteToken)), nil, nil)
-		})
-		if err != nil {
-			if isMinutesDetailProcessingError(err) {
-				markMinutesDetailProcessing(result, minuteToken, artifactFlags, "minute artifacts are still being generated")
-			} else {
-				result.Error = fmt.Sprintf("failed to query minute artifacts: %v", err)
-			}
-		} else {
-			artifacts := make(map[string]any)
-			if needSummary {
-				if v, ok := artData["summary"].(string); ok && v != "" {
-					artifacts["summary"] = v
-				} else {
-					artifacts["summary"] = ""
-				}
-			}
-			if needTodo {
-				if v, ok := artData["minute_todos"].([]any); ok && len(v) > 0 {
-					artifacts["todos"] = v
-				} else {
-					artifacts["todos"] = []any{}
-				}
-			}
-			if needChapter {
-				if v, ok := artData["minute_chapters"].([]any); ok && len(v) > 0 {
-					artifacts["chapters"] = v
-				} else {
-					artifacts["chapters"] = []any{}
-				}
-			}
-			if needKeyword {
-				if v, ok := artData["keywords"].([]any); ok && len(v) > 0 {
-					artifacts["keywords"] = v
-				} else {
-					artifacts["keywords"] = []any{}
-				}
-			}
-			if needTranscript {
-				if v, ok := artData["transcript"].(string); ok && v != "" {
-					if path := saveDetailTranscript(runtime, minuteToken, result.Title, []byte(v)); path != "" {
-						artifacts["transcript_file"] = path
-					} else {
-						artifacts["transcript_file"] = ""
-					}
-				} else {
-					artifacts["transcript_file"] = ""
-				}
-			}
-			result.Artifacts = artifacts
-		}
+	if len(artifactFlags) == 0 {
+		return result
 	}
 
+	requestedKeys := requestedMinutesDetailStatusKeys(runtime)
+	artifactsParams := map[string]interface{}{"need_artifact_status": "true"}
+
+	artData, err := callMinutesDetailArtifactsUntilReady(ctx, waitReady, waitTimeout, waitInterval, requestedKeys, func() (map[string]interface{}, error) {
+		return runtime.CallAPITyped(http.MethodGet,
+			fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/artifacts", validate.EncodePathSegment(minuteToken)), artifactsParams, nil)
+	})
+	if err != nil {
+		if isMinutesDetailProcessingError(err) {
+			markMinutesDetailProcessing(result, minuteToken, artifactFlags, "minute artifacts are still being generated")
+		} else {
+			result.Error = fmt.Sprintf("failed to query minute artifacts: %v", err)
+		}
+		return result
+	}
+
+	statusMap := parseMinutesDetailArtifactStatus(artData)
+
+	artifacts := make(map[string]any)
+	if needSummary {
+		if v, ok := artData["summary"].(string); ok && v != "" {
+			artifacts["summary"] = v
+		} else {
+			artifacts["summary"] = ""
+		}
+	}
+	if needTodo {
+		if v, ok := artData["minute_todos"].([]any); ok && len(v) > 0 {
+			artifacts["todos"] = v
+		} else {
+			artifacts["todos"] = []any{}
+		}
+	}
+	if needChapter {
+		if v, ok := artData["minute_chapters"].([]any); ok && len(v) > 0 {
+			artifacts["chapters"] = v
+		} else {
+			artifacts["chapters"] = []any{}
+		}
+	}
+	if needKeyword {
+		if v, ok := artData["keywords"].([]any); ok && len(v) > 0 {
+			artifacts["keywords"] = v
+		} else {
+			artifacts["keywords"] = []any{}
+		}
+	}
+	if needTranscript {
+		if v, ok := artData["transcript"].(string); ok && v != "" {
+			if path := saveDetailTranscript(runtime, minuteToken, result.Title, []byte(v)); path != "" {
+				artifacts["transcript_file"] = path
+			} else {
+				artifacts["transcript_file"] = ""
+			}
+		} else {
+			artifacts["transcript_file"] = ""
+		}
+	}
+	result.Artifacts = artifacts
+
+	applyMinutesDetailArtifactStatus(result, statusMap, requestedKeys, minuteToken, artifactFlags, waitReady)
 	return result
 }
 
@@ -206,6 +238,154 @@ func requestedMinutesDetailArtifactFlags(runtime *common.RuntimeContext) []strin
 		}
 	}
 	return flags
+}
+
+// requestedMinutesDetailStatusKeys returns the artifact_status keys (as sent by
+// the /artifacts API) that correspond to the flags the user actually asked for.
+// Order matches minutesDetailArtifactStatusKeys so hints stay stable.
+func requestedMinutesDetailStatusKeys(runtime *common.RuntimeContext) []string {
+	var keys []string
+	for _, entry := range minutesDetailArtifactStatusKeys {
+		if runtime.Bool(entry.Flag) {
+			keys = append(keys, entry.StatusKey)
+		}
+	}
+	return keys
+}
+
+// parseMinutesDetailArtifactStatus extracts artifact_status.{key}.status from
+// the artifacts response into a flat map. Missing keys or malformed shapes are
+// skipped rather than treated as failures — the API only ships this block when
+// need_artifact_status=true.
+func parseMinutesDetailArtifactStatus(artData map[string]interface{}) map[string]string {
+	statusRaw, _ := artData["artifact_status"].(map[string]any)
+	if len(statusRaw) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(statusRaw))
+	for key, value := range statusRaw {
+		entry, _ := value.(map[string]any)
+		status, _ := entry["status"].(string)
+		if status != "" {
+			out[key] = status
+		}
+	}
+	return out
+}
+
+// minutesDetailPendingArtifacts returns the requested artifact keys that are
+// still reported as `generating` in the response's artifact_status block. It
+// intentionally ignores unrequested keys so callers only block on artifacts
+// the user asked for.
+func minutesDetailPendingArtifacts(status map[string]string, requestedKeys []string) []string {
+	if len(status) == 0 {
+		return nil
+	}
+	var pending []string
+	for _, key := range requestedKeys {
+		if status[key] == artifactStatusGenerating {
+			pending = append(pending, key)
+		}
+	}
+	return pending
+}
+
+// applyMinutesDetailArtifactStatus turns per-artifact generation status into a
+// human-readable hint (and, when actionable, a next_command). Agents get all
+// the routing info they need without extra structured fields:
+//   - "still generating: A, B" invites another poll / --wait-ready
+//   - "skipped (not generated): C, D" flags terminal states so callers stop
+//     waiting
+//   - "already completed: …" repeats what already landed in `artifacts`, so a
+//     glance at hint alone suffices to summarise what happened.
+func applyMinutesDetailArtifactStatus(result *minuteDetailItem, status map[string]string, requestedKeys []string, minuteToken string, artifactFlags []string, waitReady bool) {
+	if len(status) == 0 {
+		return
+	}
+
+	var pending, skipped, completed []string
+	for _, key := range requestedKeys {
+		switch status[key] {
+		case artifactStatusGenerating:
+			pending = append(pending, key)
+		case artifactStatusSkipped:
+			skipped = append(skipped, key)
+		case artifactStatusCompleted:
+			completed = append(completed, key)
+		}
+	}
+	if len(pending) == 0 && len(skipped) == 0 {
+		return
+	}
+
+	var parts []string
+	if len(pending) > 0 {
+		parts = append(parts, fmt.Sprintf("still generating: %s", strings.Join(pending, ", ")))
+	}
+	if len(skipped) > 0 {
+		parts = append(parts, fmt.Sprintf("skipped (not generated, will not be produced): %s", strings.Join(skipped, ", ")))
+	}
+	if len(completed) > 0 {
+		parts = append(parts, fmt.Sprintf("already completed: %s", strings.Join(completed, ", ")))
+	}
+	hint := strings.Join(parts, "; ")
+	if len(pending) > 0 && !waitReady {
+		hint += ". Rerun with --wait-ready to block until the remaining artifacts finish, or retry later."
+	} else if len(pending) > 0 && waitReady {
+		hint += ". --wait-ready timeout elapsed; retry later or extend --wait-timeout-seconds."
+	} else if len(skipped) > 0 {
+		hint += "."
+	}
+
+	if result.Hint != "" {
+		result.Hint = result.Hint + " " + hint
+	} else {
+		result.Hint = hint
+	}
+
+	if len(pending) > 0 && !waitReady {
+		result.NextCommand = minutesDetailNextCommand(minuteToken, artifactFlags)
+	}
+}
+
+// callMinutesDetailArtifactsUntilReady wraps the artifacts call in a wait loop
+// that resolves once every requested artifact is either completed or skipped.
+// When --wait-ready is off it collapses to a single call. Server-returned
+// processing errors (2091003) still short-circuit through the shared helper.
+func callMinutesDetailArtifactsUntilReady(ctx context.Context, waitReady bool, timeout, interval time.Duration, requestedKeys []string, call func() (map[string]interface{}, error)) (map[string]interface{}, error) {
+	if !waitReady {
+		return call()
+	}
+
+	deadline := time.Now().Add(timeout)
+	for {
+		data, err := call()
+		if err != nil {
+			if !isMinutesDetailProcessingError(err) {
+				return nil, err
+			}
+			// fall through to the shared "still processing" delay
+		} else if len(minutesDetailPendingArtifacts(parseMinutesDetailArtifactStatus(data), requestedKeys)) == 0 {
+			return data, nil
+		}
+
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 || interval > remaining {
+			// Return the last response so callers can surface which artifacts
+			// stayed pending, rather than dropping the whole payload.
+			return data, err
+		}
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func markMinutesDetailProcessing(result *minuteDetailItem, minuteToken string, artifactFlags []string, reason string) {
@@ -292,7 +472,7 @@ var MinutesDetail = common.Shortcut{
 		{Name: "keyword", Type: "bool", Desc: "include keywords"},
 		{Name: "output-dir", Desc: "output directory for transcript files (default: ./minutes/{minute_token}/)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing transcript files"},
-		{Name: "wait-ready", Type: "bool", Desc: "wait until minute metadata/artifacts are ready", Hidden: true},
+		{Name: "wait-ready", Type: "bool", Desc: "wait until requested artifacts finish generating (skipped artifacts do not block)", Hidden: true},
 		{Name: "wait-timeout-seconds", Type: "int", Default: "300", Desc: "maximum seconds to wait for readiness", Hidden: true},
 		{Name: "wait-interval-seconds", Type: "int", Default: "15", Desc: "seconds between readiness checks", Hidden: true},
 	},
@@ -326,7 +506,8 @@ var MinutesDetail = common.Shortcut{
 			Set("minute_tokens", common.SplitCSV(tokens))
 
 		if len(requestedMinutesDetailArtifactFlags(runtime)) > 0 {
-			d.GET("/open-apis/minutes/v1/minutes/{minute_token}/artifacts")
+			d.GET("/open-apis/minutes/v1/minutes/{minute_token}/artifacts").
+				Params(map[string]interface{}{"need_artifact_status": "true"})
 		}
 		return d
 	},
@@ -403,6 +584,12 @@ var MinutesDetail = common.Shortcut{
 						if len(parts) > 0 {
 							row["artifacts"] = strings.Join(parts, ", ")
 						}
+					}
+					if r.Hint != "" {
+						row["hint"] = r.Hint
+					}
+					if r.NextCommand != "" {
+						row["next_command"] = r.NextCommand
 					}
 				}
 				rows = append(rows, row)
