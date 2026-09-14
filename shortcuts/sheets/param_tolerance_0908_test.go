@@ -659,3 +659,58 @@ func TestCondFormat_AverageWordsStayRefused(t *testing.T) {
 		})
 	}
 }
+
+// The column count a payload ends up with is not always the one it declared:
+// fitColumnsToRows widens it to the widest data row. sheetCreateDims clamps a
+// new grid to 200 columns, so a wider payload is a write the backend cannot
+// accept -- and on +workbook-create it fails after the workbook exists.
+func TestTablePut_ColumnCeiling(t *testing.T) {
+	t.Parallel()
+	payload := func(startCell string, columns, width int) string {
+		cols := make([]interface{}, columns)
+		for i := range cols {
+			cols[i] = fmt.Sprintf("c%d", i)
+		}
+		row := make([]interface{}, width)
+		for i := range row {
+			row[i] = float64(1)
+		}
+		sheet := map[string]interface{}{"name": "S", "columns": cols, "data": []interface{}{row}}
+		if startCell != "" {
+			sheet["start_cell"] = startCell
+		}
+		out, err := json.Marshal(map[string]interface{}{"sheets": []interface{}{sheet}})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		return string(out)
+	}
+
+	for _, tt := range []struct {
+		name, startCell string
+		columns, width  int
+		wantErr         bool
+	}{
+		{"exactly at the ceiling", "", 200, 200, false},
+		{"one past it", "", 201, 201, true},
+		// The declaration is inside the ceiling; the DATA row pushes it past.
+		{"widened past it by the data", "", 1, 201, true},
+		// The anchor counts, exactly as it does when the grid is sized.
+		{"the anchor offset counts", "C1", 199, 199, true},
+		{"anchored but still inside", "C1", 198, 198, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
+				"--url", testURL, "--sheets", payload(tt.startCell, tt.columns, tt.width), "--dry-run",
+			})
+			if tt.wantErr {
+				requireValidation(t, err, "exceeds the 200-column sheet limit")
+				return
+			}
+			if err != nil {
+				t.Fatalf("a payload inside the ceiling should pass, got: %v", err)
+			}
+		})
+	}
+}

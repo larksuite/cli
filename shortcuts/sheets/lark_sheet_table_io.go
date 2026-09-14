@@ -688,7 +688,7 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 	// built long before validate's checkCellBudget can refuse it. Only the
 	// per-sheet product is known here; the cross-sheet total is still summed
 	// later, and a single sheet over the cap fails either way.
-	if err := checkTablePutCellBudget(int64(len(spec.Rows)) * int64(len(spec.Columns))); err != nil {
+	if err := checkTablePutCellBudget(budgetRows(&spec) * int64(len(spec.Columns))); err != nil {
 		return tableSheetSpec{}, err
 	}
 	padShortRows(&spec)
@@ -794,7 +794,7 @@ func fitColumnsToRows(s *tableSheetSpec, projected *int64) error {
 	//
 	// The running total is checked per sheet, so the payload is refused at the
 	// sheet that crosses the cap rather than after every sheet has padded.
-	cells := int64(len(s.Rows)) * int64(max(widest, len(s.Columns)))
+	cells := budgetRows(s) * int64(max(widest, len(s.Columns)))
 	if err := checkTablePutCellBudget(cells); err != nil {
 		return err
 	}
@@ -919,6 +919,9 @@ func (p *tablePayload) validate() error {
 		if err := fitColumnsToRows(s, &projected); err != nil {
 			return err
 		}
+		if err := checkSheetColumnCeiling(s, i); err != nil {
+			return err
+		}
 		if len(s.Columns) == 0 {
 			// A header-less, data-less sheet is a legitimate request — "give
 			// me the tab, I will fill it later" — and rejecting it made the
@@ -988,13 +991,25 @@ func (p *tablePayload) validate() error {
 // process before the first write leaves.
 const maxTablePutCells = 1_000_000
 
+// budgetRows is the row count a payload actually materializes: its data rows
+// plus the header row buildSheetMatrix prepends. Counting only len(Rows) let a
+// header-only payload past every budget below -- a million columns and zero
+// data rows measured 809MB -- because the product was zero.
+func budgetRows(s *tableSheetSpec) int64 {
+	rows := int64(len(s.Rows))
+	if headerOn(s) {
+		rows++
+	}
+	return rows
+}
+
 // checkCellBudget rejects a payload whose total materialized cell count across
 // all sheets exceeds maxTablePutCells. Counted in int64 to stay overflow-safe on
 // pathological row/column counts.
 func (p *tablePayload) checkCellBudget() error {
 	var total int64
 	for i := range p.Sheets {
-		total += int64(len(p.Sheets[i].Rows)) * int64(len(p.Sheets[i].Columns))
+		total += budgetRows(&p.Sheets[i]) * int64(len(p.Sheets[i].Columns))
 	}
 	return checkTablePutCellBudget(total)
 }
@@ -1005,7 +1020,7 @@ func (p *tablePayload) checkCellBudgetWithStyles(styles *workbookCreateSheetStyl
 	var total int64
 	for i := range p.Sheets {
 		s := &p.Sheets[i]
-		rows, cols := len(s.Rows), len(s.Columns)
+		rows, cols := int(budgetRows(s)), len(s.Columns)
 		_, baseCol, baseRow, _ := sheetAnchor(s)
 		if s.Mode == "append" {
 			// Append resolves its real row at Execute time. Zero is a safe upper
@@ -1626,6 +1641,31 @@ func createSheet(ctx context.Context, runtime *common.RuntimeContext, token, nam
 		return "", fmt.Errorf("sheet %q created but resolving its id failed: %w", name, err) //nolint:forbidigo // intermediate error; surfaced as a partial_success message string via tablePutPartial, not a typed final error
 	}
 	return id, nil
+}
+
+// maxSheetColumns is the backend's hard column ceiling, the same one
+// sheetCreateDims clamps a new grid to.
+const maxSheetColumns = 200
+
+// checkSheetColumnCeiling refuses a payload wider than the grid can ever be.
+// Auto-widening (fitColumnsToRows) makes this reachable without the caller
+// declaring it: one declared column and a 201-value row becomes 201 columns,
+// while sheetCreateDims clamps the created grid to 200, so the write is a
+// guaranteed API failure -- and on +workbook-create it fails AFTER the
+// workbook exists, leaving one created but not written. The anchor counts,
+// exactly as it does when the grid is sized.
+func checkSheetColumnCeiling(s *tableSheetSpec, idx int) error {
+	_, col0, _, err := sheetAnchor(s)
+	if err != nil {
+		return nil //nolint:nilerr // a bad anchor is sheetAnchor's error to report, not this check's
+	}
+	if total := col0 + len(s.Columns); total > maxSheetColumns {
+		return common.ValidationErrorf(
+			"--sheets[%d] %q: %d columns exceeds the %d-column sheet limit", idx, s.Name, total, maxSheetColumns).
+			WithHint("the widest data row decides the column count when `columns` is shorter than it; split the table across sheets, or drop columns past %d",
+				maxSheetColumns)
+	}
+	return nil
 }
 
 // sheetCreateDims sizes a to-be-created sheet to the spec's write range so the
