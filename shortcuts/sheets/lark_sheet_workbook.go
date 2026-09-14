@@ -612,6 +612,9 @@ var WorkbookCreate = common.Shortcut{
 			if err := payload.checkCellBudgetWithStyles(styles); err != nil {
 				return err
 			}
+			if err := payload.checkGridCeilingWithStyles(styles); err != nil {
+				return err
+			}
 			return checkStylesAnchors(payload, styles, true)
 		}
 		// Untyped --values path: parse (and validate) --styles as a single sheet

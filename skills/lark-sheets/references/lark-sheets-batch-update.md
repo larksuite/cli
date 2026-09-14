@@ -9,7 +9,7 @@
 3. **预期条数前置断言**：涉及"批量填充 N 行"或"对 M 个区域分别写入"时，建议先把 N、M 硬编码进代码，回读后比较实际与预期；不一致就优先再发一轮 `+batch-update` 补齐，补不齐则在交付说明里列出缺口。
 4. **三条工具硬约束**：`--yes` 必带（high-risk-write，不带退出码 10）；单次 ≤100 条 operations，超出按批拆分；`+cells-batch-set-style` / `+cells-batch-clear` 等批量类 shortcut 不可嵌入 operations（它们本身就是批量原子操作，直接顶层调用）。
 
-若本次 `+batch-update` 的任一子操作写入了公式、复制了公式模板、或导入了含公式的数据块，回读之外必须对本次公式范围逐段执行 `+formula-verify --exit-on-error`；`partial` 拆分续扫，全部分段 `status='success'` 后才完成。`+batch-update` 只保证写入动作按序执行，不保证公式运行结果 zero-error。AI 公式改走 `+formula-verify --ai-only`，按 `references/lark-sheets-formula-verify.md` 的异步抽检规则交付（`failed` / `unsupported` 先修，只剩 pending 可交付并说明后台仍在计算）。
+若本次 `+batch-update` 的任一子操作写入了公式、复制了公式模板、或导入了含公式的数据块，回读之外必须对本次公式范围逐段执行 `+formula-verify --exit-on-error`；`partial` 拆分续扫，全部分段 `status='success'` 后才完成。`+batch-update` 只保证写入动作按序执行，不保证公式运行结果 zero-error。AI 公式改走 `+formula-verify --ai-only`，按 `references/lark-sheets-formula-verify.md` 的全区间一次异步状态检查规则交付（`failed` / `unsupported` 先修，只剩 pending 可交付并说明后台仍在计算）。
 
 ## 使用场景
 
@@ -32,7 +32,7 @@
 **公式相关批处理的完成流程**：
 - 写前：先读 `references/lark-sheets-formula-translation.md`，把公式改写成飞书可执行语义。
 - 写时：用 `+batch-update` 一次性完成插行/写公式/复制模板等成套动作。
-- 写后：回读关键公式，并对本次公式范围逐段运行 `+formula-verify --exit-on-error`，全部 success 后完成；AI 公式改用 `+formula-verify --ai-only`，按 `references/lark-sheets-formula-verify.md` 的异步抽检规则交付。
+- 写后：回读关键公式，并对本次公式范围逐段运行 `+formula-verify --exit-on-error`，全部 success 后完成；AI 公式改用 `+formula-verify --ai-only`，按 `references/lark-sheets-formula-verify.md` 的全区间一次异步状态检查规则交付。
 
 **`+dropdown-update` 的选项模式（`--options` / `--source-range` 二选一）+ 配色规则**（更新会重写完整验证规则；需要保留已有配色时先回读并透传 `--colors`）见 [`references/lark-sheets-write-cells.md`](lark-sheets-write-cells.md) 的「Dropdown 选项 + 配色」节，本文不重复。`+dropdown-delete` 不涉及这些 flag。
 

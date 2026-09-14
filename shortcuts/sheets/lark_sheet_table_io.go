@@ -71,6 +71,9 @@ var TablePut = common.Shortcut{
 		if err := payload.checkCellBudgetWithStyles(styles); err != nil {
 			return err
 		}
+		if err := payload.checkGridCeilingWithStyles(styles); err != nil {
+			return err
+		}
 		// Anchor bounds too (same as +workbook-create): a payload targeting a
 		// MISSING sheet used to create it before the write phase rejected the
 		// out-of-anchor style range — reporting "no sheets were written" while
@@ -1689,6 +1692,44 @@ func checkSheetGridCeiling(s *tableSheetSpec, idx int) error {
 			return common.ValidationErrorf(
 				"--sheets[%d] %q: %d rows exceeds the %d-row sheet limit", idx, s.Name, total, maxSheetRows).
 				WithHint("the write goes out in batches, so a payload over the limit lands its first batches and fails on a later one; split the table across sheets instead")
+		}
+	}
+	return nil
+}
+
+// checkGridCeilingWithStyles re-checks the ceiling against the footprint the
+// STYLES produce. checkSheetGridCeiling only sees the data matrix, and
+// applyWorkbookCreateStylesToMatrix runs after it: a cell_styles range of
+// A50001 grows a 1x1 payload to 50,001 rows, and GS1 grows it to 201 columns,
+// both past a grid sheetCreateDims has already clamped. Uses the same extent
+// sheetCreateDims sizes from, so merges and row/col sizes count as well.
+func (p *tablePayload) checkGridCeilingWithStyles(styles *workbookCreateSheetStyles) error {
+	for i := range p.Sheets {
+		s := &p.Sheets[i]
+		_, baseCol, baseRow, err := sheetAnchor(s)
+		if err != nil {
+			continue // sheetAnchor's error to report, not this check's
+		}
+		styleRows, styleCols := workbookCreateStyleDimensions(styles.styleFor(i), baseCol, baseRow)
+		if styleRows == 0 && styleCols == 0 {
+			continue
+		}
+		if cols := baseCol + max(len(s.Columns), styleCols); cols > maxSheetColumns {
+			return common.ValidationErrorf(
+				"--styles for sheet %q reaches column %d, past the %d-column sheet limit", s.Name, cols, maxSheetColumns).
+				WithHint("a cell_styles / col_sizes / cell_merges range past the grid is written as cells, not just formatting; keep the range inside %d columns",
+					maxSheetColumns)
+		}
+		// append resolves its base row remotely, so only its data rows are
+		// known here; checkAppendRowCeiling settles that side.
+		if s.Mode == "append" {
+			continue
+		}
+		if rows := baseRow + max(len(s.Rows)+headerRowCount(s), styleRows); rows > maxSheetRows {
+			return common.ValidationErrorf(
+				"--styles for sheet %q reaches row %d, past the %d-row sheet limit", s.Name, rows, maxSheetRows).
+				WithHint("a cell_styles / row_sizes / cell_merges range past the grid is written as cells, not just formatting; keep the range inside %d rows",
+					maxSheetRows)
 		}
 	}
 	return nil

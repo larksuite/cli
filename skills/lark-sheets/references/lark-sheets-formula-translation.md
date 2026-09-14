@@ -46,7 +46,7 @@
 
 1. 按本文完成公式改写后，用 `references/lark-sheets-write-cells.md` / `references/lark-sheets-batch-update.md` 把公式真实写入表格。
 2. 公式一旦落表，必须对本次新增 / 修改的公式范围逐段运行 `+formula-verify --exit-on-error`；关键公式区还要回读首、中、末及汇总行的 `formula`。
-3. 每段 `status='success'` 后才结束公式任务；`errors_found` 继续修复，`partial` 缩小 `--range` 或按 sheet 拆分续扫，不能用说明替代完整验证；AI 公式不套这条 success 收敛，按下方「AI 公式」的异步抽检规则交付。
+3. 每段 `status='success'` 后才结束公式任务；`errors_found` 继续修复，`partial` 缩小 `--range` 或按 sheet 拆分续扫，不能用说明替代完整验证；AI 公式不套这条 success 收敛，按下方「AI 公式」的全区间一次异步状态检查规则交付。
 
 **静态值改公式（"让统计表跟随源数据变化"类任务）额外一步**：改写前先快照原静态值，公式写完后逐格与快照 diff。不一致时先尝试口径变体（`>` / `>=`、取整方式、匹配列）逼近原值；仍不一致不算失败——原静态值可能对应旧数据或含未声明口径——但必须在交付说明中给出 diff 表与所用口径的解释，禁止不声明差异直接交付。
 

@@ -794,3 +794,59 @@ func TestBudgetRows_CountsTheForcedAppendHeader(t *testing.T) {
 		t.Errorf("1,000,000 cells is at the cap, got: %v", err)
 	}
 }
+
+// checkSheetGridCeiling only sees the DATA matrix, and the styles pass runs
+// after it: applyWorkbookCreateStylesToMatrix grows the matrix to the style
+// extent, so a 1x1 payload with a cell_styles range of A50001 or GS1 (column
+// 201) reaches past a grid sheetCreateDims has already clamped. The write goes
+// out in batches, so that fails remotely with earlier batches applied.
+func TestTablePut_StylesCannotReExpandPastTheCeiling(t *testing.T) {
+	t.Parallel()
+	const data = `{"sheets":[{"name":"S","columns":["a"],"data":[[1]]}]}`
+
+	for _, tt := range []struct{ name, styles, want string }{
+		{"cell_styles past the last row",
+			`{"styles":[{"name":"S","cell_styles":[{"range":"A50001","font_weight":"bold"}]}]}`, "past the 50000-row"},
+		{"cell_styles past the last column",
+			`{"styles":[{"name":"S","cell_styles":[{"range":"GS1","font_weight":"bold"}]}]}`, "past the 200-column"},
+		// The independent visual ops share the same footprint helper, so they
+		// are covered by the same check rather than a second one.
+		{"cell_merges past the last column",
+			`{"styles":[{"name":"S","cell_merges":[{"range":"A1:GS1"}]}]}`, "past the 200-column"},
+		{"col_sizes past the last column",
+			`{"styles":[{"name":"S","col_sizes":[{"range":"A:GS","type":"pixel","size":80}]}]}`, "past the 200-column"},
+		{"row_sizes past the last row",
+			`{"styles":[{"name":"S","row_sizes":[{"range":"1:50001","type":"pixel","size":20}]}]}`, "past the 50000-row"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
+				"--url", testURL, "--sheets", data, "--styles", tt.styles, "--dry-run",
+			})
+			requireValidation(t, err, tt.want)
+		})
+	}
+
+	t.Run("a style inside the grid is untouched", func(t *testing.T) {
+		t.Parallel()
+		if _, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
+			"--url", testURL, "--sheets", data,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1:B2","font_weight":"bold"}]}]}`,
+			"--dry-run",
+		}); err != nil {
+			t.Fatalf("a style inside the grid should pass, got: %v", err)
+		}
+	})
+
+	// The last column is GR (200); GS is the first one past it.
+	t.Run("the last column itself is inside", func(t *testing.T) {
+		t.Parallel()
+		if _, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
+			"--url", testURL, "--sheets", data,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"GR1","font_weight":"bold"}]}]}`,
+			"--dry-run",
+		}); err != nil {
+			t.Fatalf("column 200 is inside the ceiling, got: %v", err)
+		}
+	})
+}

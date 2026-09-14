@@ -1,11 +1,11 @@
 # Lark Sheet Formula Verify（+formula-verify）
 
-> **本文定位**：飞书表格"公式写入后是否真的零错误"的诊断入口。公式的书写规则与 Excel→飞书迁移的语义规则一律以 `references/lark-sheets-formula-translation.md` 为唯一权威，本文不重复；本文聚焦"写完之后如何用一次调用发现公式错误"与 AI 公式的异步抽检交付。
+> **本文定位**：飞书表格"公式写入后是否真的零错误"的诊断入口。公式的书写规则与 Excel→飞书迁移的语义规则一律以 `references/lark-sheets-formula-translation.md` 为唯一权威，本文不重复；本文聚焦"写完之后如何用一次调用发现公式错误"与 AI 公式的全区间一次异步状态检查交付。
 >
 > **边界**：本文不讲公式怎么写（去 `references/lark-sheets-formula-translation.md`），也不讲公式怎么写入表格（去 `references/lark-sheets-write-cells.md` / `references/lark-sheets-batch-update.md`）。本文只讲两件事：
 >
 > - **普通公式**：任务里发生公式落表、批量填充公式、`--copy-to-range` 扩展公式、导入含公式 workbook 时，对本次公式范围逐段跑 `+formula-verify --exit-on-error`；`errors_found` 修复、`partial` 拆分续扫，全部分段 `status='success'` 后才算完成。
-> - **AI 公式**（`=AI(...)`）：不要用普通公式的"轮询到 zero-error"逻辑；改用 `+formula-verify --ai-only --range` 按「AI 公式校验」的异步抽检规则交付。
+> - **AI 公式**（`=AI(...)`）：不要用普通公式的"轮询到 zero-error"逻辑；改用 `+formula-verify --ai-only --range` 按「AI 公式校验」的全区间一次异步状态检查规则交付。
 
 ## 为什么需要自检
 
@@ -40,7 +40,7 @@
 
 ## 写入后诊断规则
 
-任何批量公式 / 含公式列写入完成后，都必须对本次新增 / 修改的公式范围逐段调用 `+formula-verify --exit-on-error`。不要等用户显式说"校验一下公式"才执行；只要任务动作包含写公式，这一步就是完成路径的一部分。AI 公式不套这条：`=AI(...)` 是异步计算，按「AI 公式校验」的抽检规则交付，不等 `status='success'`。触发场景：
+任何批量公式 / 含公式列写入完成后，都必须对本次新增 / 修改的公式范围逐段调用 `+formula-verify --exit-on-error`。不要等用户显式说"校验一下公式"才执行；只要任务动作包含写公式，这一步就是完成路径的一部分。AI 公式不套这条：`=AI(...)` 是异步计算，按「AI 公式校验」的全区间一次异步状态检查规则交付，不等 `status='success'`。触发场景：
 
 - `+cells-set` / `+csv-put`
 - `+cells-set --copy-to-range` / 模板单元格向整列或整块扩展公式
