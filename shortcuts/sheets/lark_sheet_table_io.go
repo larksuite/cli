@@ -71,9 +71,6 @@ var TablePut = common.Shortcut{
 		if err := payload.checkCellBudgetWithStyles(styles); err != nil {
 			return err
 		}
-		if err := payload.checkGridCeilingWithStyles(styles); err != nil {
-			return err
-		}
 		// Anchor bounds too (same as +workbook-create): a payload targeting a
 		// MISSING sheet used to create it before the write phase rejected the
 		// out-of-anchor style range — reporting "no sheets were written" while
@@ -922,9 +919,6 @@ func (p *tablePayload) validate() error {
 		if err := fitColumnsToRows(s, &projected); err != nil {
 			return err
 		}
-		if err := checkSheetGridCeiling(s, i); err != nil {
-			return err
-		}
 		if len(s.Columns) == 0 {
 			// A header-less, data-less sheet is a legitimate request — "give
 			// me the tab, I will fill it later" — and rejecting it made the
@@ -1400,11 +1394,6 @@ func writeSheetData(ctx context.Context, runtime *common.RuntimeContext, token, 
 	if err != nil {
 		return nil, err
 	}
-	if s.Mode == "append" {
-		if err := checkAppendRowCeiling(s, baseRow, len(matrix)); err != nil {
-			return nil, err
-		}
-	}
 	matrix, err = applyWorkbookCreateStylesToMatrix(matrix, styles, col0, baseRow, fmt.Sprintf("--styles for sheet %q", s.Name))
 	if err != nil {
 		return nil, err
@@ -1659,103 +1648,24 @@ func createSheet(ctx context.Context, runtime *common.RuntimeContext, token, nam
 	return id, nil
 }
 
-// maxSheetColumns / maxSheetRows are the backend's hard grid ceilings, the same
-// ones sheetCreateDims clamps a new grid to.
-const (
-	maxSheetColumns = 200
-	maxSheetRows    = 50000
-)
-
-// checkSheetColumnCeiling refuses a payload wider than the grid can ever be.
-// Auto-widening (fitColumnsToRows) makes this reachable without the caller
-// declaring it: one declared column and a 201-value row becomes 201 columns,
-// while sheetCreateDims clamps the created grid to 200, so the write is a
-// guaranteed API failure -- and on +workbook-create it fails AFTER the
-// workbook exists, leaving one created but not written. The anchor counts,
-// exactly as it does when the grid is sized.
-func checkSheetGridCeiling(s *tableSheetSpec, idx int) error {
-	_, col0, row0, err := sheetAnchor(s)
-	if err != nil {
-		return nil //nolint:nilerr // a bad anchor is sheetAnchor's error to report, not this check's
-	}
-	if total := col0 + len(s.Columns); total > maxSheetColumns {
-		return common.ValidationErrorf(
-			"--sheets[%d] %q: %d columns exceeds the %d-column sheet limit", idx, s.Name, total, maxSheetColumns).
-			WithHint("the widest data row decides the column count when `columns` is shorter than it; split the table across sheets, or drop columns past %d",
-				maxSheetColumns)
-	}
-	// append's real bottom row is whatever already sits in the sheet, which
-	// only the execute path knows; checkAppendRowCeiling settles that one once
-	// lastDataRow comes back, before the first batch leaves.
-	if s.Mode != "append" {
-		if total := row0 + len(s.Rows) + headerRowCount(s); total > maxSheetRows {
-			return common.ValidationErrorf(
-				"--sheets[%d] %q: %d rows exceeds the %d-row sheet limit", idx, s.Name, total, maxSheetRows).
-				WithHint("the write goes out in batches, so a payload over the limit lands its first batches and fails on a later one; split the table across sheets instead")
-		}
-	}
-	return nil
-}
-
-// checkGridCeilingWithStyles re-checks the ceiling against the footprint the
-// STYLES produce. checkSheetGridCeiling only sees the data matrix, and
-// applyWorkbookCreateStylesToMatrix runs after it: a cell_styles range of
-// A50001 grows a 1x1 payload to 50,001 rows, and GS1 grows it to 201 columns,
-// both past a grid sheetCreateDims has already clamped. Uses the same extent
-// sheetCreateDims sizes from, so merges and row/col sizes count as well.
-func (p *tablePayload) checkGridCeilingWithStyles(styles *workbookCreateSheetStyles) error {
-	for i := range p.Sheets {
-		s := &p.Sheets[i]
-		_, baseCol, baseRow, err := sheetAnchor(s)
-		if err != nil {
-			continue // sheetAnchor's error to report, not this check's
-		}
-		styleRows, styleCols := workbookCreateStyleDimensions(styles.styleFor(i), baseCol, baseRow)
-		if styleRows == 0 && styleCols == 0 {
-			continue
-		}
-		if cols := baseCol + max(len(s.Columns), styleCols); cols > maxSheetColumns {
-			return common.ValidationErrorf(
-				"--styles for sheet %q reaches column %d, past the %d-column sheet limit", s.Name, cols, maxSheetColumns).
-				WithHint("a cell_styles / col_sizes / cell_merges range past the grid is written as cells, not just formatting; keep the range inside %d columns",
-					maxSheetColumns)
-		}
-		// append resolves its base row remotely, so only its data rows are
-		// known here; checkAppendRowCeiling settles that side.
-		if s.Mode == "append" {
-			continue
-		}
-		if rows := baseRow + max(len(s.Rows)+headerRowCount(s), styleRows); rows > maxSheetRows {
-			return common.ValidationErrorf(
-				"--styles for sheet %q reaches row %d, past the %d-row sheet limit", s.Name, rows, maxSheetRows).
-				WithHint("a cell_styles / row_sizes / cell_merges range past the grid is written as cells, not just formatting; keep the range inside %d rows",
-					maxSheetRows)
-		}
-	}
-	return nil
-}
-
-// checkAppendRowCeiling is the row half of the ceiling for append, where the
-// bottom row depends on what the sheet already holds. Checked after the lookup
-// and before the first batch, so an over-long append is refused whole rather
-// than landing its first 50,000 rows and failing on the next one.
-func checkAppendRowCeiling(s *tableSheetSpec, baseRow, matrixRows int) error {
-	if total := baseRow + matrixRows; total > maxSheetRows {
-		return common.ValidationErrorf(
-			"%q: appending %d rows below row %d reaches row %d, past the %d-row sheet limit",
-			s.Name, matrixRows, baseRow, total, maxSheetRows).
-			WithHint("append what fits and continue in another sheet; the write goes out in batches, so this would otherwise land its first batches before failing")
-	}
-	return nil
-}
-
 // sheetCreateDims sizes a to-be-created sheet to the spec's write range so the
 // grid matches the payload from the start (the backend would also auto-expand
 // on write; see createSheet). It accounts for the start_cell offset, the
 // optional header row, and any --styles extent (so a cell_styles / merge /
 // resize op past the data still fits the grid). The backend's 20×200 defaults
-// are kept as floors (ordinary small tables are created exactly as before) and
-// its hard limits (200 cols, 50000 rows) as ceilings.
+// are kept as floors (ordinary small tables are created exactly as before).
+//
+// 200 cols / 50000 rows are clamped here because they are what the CREATE call
+// accepts (+sheet-create validates the same pair) -- not because a sheet may
+// not exceed them. Live-verified 2026-09-14: writing GS1 (column 201) and IZ1
+// (column 260) into a 200-column sheet grew its grid to A1:IZ200 and both
+// values read back, and A60000 on a 20-column sheet grew the rows the same
+// way. The one refusal the backend does issue counts CELLS, not rows or
+// columns ("exceeded the maximum number of cells per sheet", code 602133003,
+// seen at 50001x260), and checkCellBudgetWithStyles already bounds that at
+// maxTablePutCells. So a payload is never refused locally for being wide or
+// tall; the grid it is created with starts at the create maximum and the
+// backend expands it from there.
 func sheetCreateDims(s *tableSheetSpec, styles *workbookCreateStylePayload) (rows, cols int) {
 	_, col0, row0, _ := sheetAnchor(s)
 	cols = col0 + len(s.Columns)

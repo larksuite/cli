@@ -207,11 +207,11 @@ func TestStylesItem_BorderStylesLiftedIntoTheSingleEntry(t *testing.T) {
 	}
 }
 
-// The wrap and freeze spellings used to get a prescription that spelled the
-// rename and nothing else. For wrap the stated reason — "the values differ
-// too" — no longer holds: --word-wrap's enum normalizer already reads
-// true/false, the Google Sheets API words and the bare ones, so the name was
-// all that was left. The freeze counts were always the same integer.
+// The wrap spellings used to get a prescription that spelled the rename and
+// nothing else. The stated reason — "the values differ too" — no longer
+// holds: --word-wrap's enum normalizer already reads true/false, the Google
+// Sheets API words and the bare ones, so the name was all that was left.
+// The freeze spellings are NOT here; see TestDimFreeze_KeepsItsPrescription.
 func TestFlagRenames_FromTheUnknownFlagTable(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
@@ -227,16 +227,6 @@ func TestFlagRenames_FromTheUnknownFlagTable(t *testing.T) {
 			[]string{"--range", "A1", "--wrap", "false"}, `"word_wrap": "overflow"`},
 		{"border-style joins border-type", "+cells-set-style",
 			[]string{"--range", "A1", "--border-style", "solid"}, `"border_styles"`},
-		{"frozen-rows is rows", "+dim-freeze",
-			[]string{"--frozen-rows", "2"}, `"freeze_rows": 2`},
-		{"frozen-row-count is rows", "+dim-freeze",
-			[]string{"--frozen-row-count", "2"}, `"freeze_rows": 2`},
-		// The parse error reports the flag as typed, so the underscore
-		// spelling has to fold onto the same alias as the hyphenated one.
-		{"the underscore spelling folds too", "+dim-freeze",
-			[]string{"--frozen_rows", "2"}, `"freeze_rows": 2`},
-		{"frozen-cols is cols", "+dim-freeze",
-			[]string{"--frozen-cols", "1"}, `"freeze_columns": 1`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -247,6 +237,33 @@ func TestFlagRenames_FromTheUnknownFlagTable(t *testing.T) {
 			}
 			if !strings.Contains(stdout, tt.wantInRequest) {
 				t.Errorf("expected %s in the request, got %q", tt.wantInRequest, stdout)
+			}
+		})
+	}
+}
+
+// +dim-freeze sends the WHOLE freeze state every call, so --frozen-rows 2 as
+// a silent rename would ship freeze_rows:2 with no freeze_columns and unfreeze
+// an existing column freeze the caller never mentioned. The names stay on the
+// prescription tier, where the answer can name the other axis.
+func TestDimFreeze_KeepsItsPrescription(t *testing.T) {
+	t.Parallel()
+	for _, flag := range []string{
+		"--frozen-rows", "--frozen-row-count", "--row-count",
+		// The parse error reports the flag as typed, so the underscore
+		// spelling has to reach the same entry as the hyphenated one.
+		"--frozen_rows",
+		"--frozen-cols", "--frozen-columns", "--frozen-col-count", "--column-count",
+	} {
+		t.Run(flag, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+dim-freeze"),
+				[]string{"--url", testURL, "--sheet-name", "s", flag, "2", "--dry-run"})
+			ve := requireValidation(t, err, "unknown flag")
+			for _, want := range []string{"one call states the whole freeze state", "UNFROZEN"} {
+				if !strings.Contains(ve.Hint, want) {
+					t.Errorf("hint should carry %q, got %q", want, ve.Hint)
+				}
 			}
 		})
 	}
@@ -315,6 +332,28 @@ func TestMultiArea_QuotedSheetNameWithAComma(t *testing.T) {
 			if !strings.Contains(stdout, want) {
 				t.Errorf("expected %q intact in the request, got %q", want, stdout)
 			}
+		}
+	})
+
+	// The bare-value lift splits too: wrapBareListValue turns an unbracketed
+	// --ranges into its JSON array, and a naive split halved the name there
+	// the same way the read expansion used to.
+	t.Run("the bare --ranges lift keeps the name whole", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-batch-clear"), []string{
+			"--url", testURL, "--ranges", `'Q1,Sales'!A1:B2`,
+			"--scope", "content", "--yes", "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("a bare range carrying a quoted comma should survive, got: %v", err)
+		}
+		// One operation, its prefix parsed back into the whole sheet name --
+		// the naive split sent "'Q1" and "Sales'!A1:B2" as two.
+		if n := strings.Count(stdout, `"tool_name": "clear_cell_range"`); n != 1 {
+			t.Errorf("expected 1 cleared area, got %d in %q", n, stdout)
+		}
+		if !strings.Contains(stdout, `"sheet_name": "Q1,Sales"`) {
+			t.Errorf("expected the sheet name intact in the request, got %q", stdout)
 		}
 	})
 
@@ -660,25 +699,21 @@ func TestCondFormat_AverageWordsStayRefused(t *testing.T) {
 	}
 }
 
-// The column count a payload ends up with is not always the one it declared:
-// fitColumnsToRows widens it to the widest data row. sheetCreateDims clamps a
-// new grid to 200 columns, so a wider payload is a write the backend cannot
-// accept -- and on +workbook-create it fails after the workbook exists.
-func TestTablePut_ColumnCeiling(t *testing.T) {
+// 200 columns and 50000 rows are what the CREATE call accepts, not a limit on
+// what a sheet may hold: the backend expands the grid on write. Live-verified
+// 2026-09-14 -- GS1 (column 201) and IZ1 (column 260) written into a
+// 200-column sheet grew it to A1:IZ200 with both values readable, and A60000
+// on a 20-column sheet grew the rows. These payloads used to be refused
+// offline; the only cap that is real counts CELLS and is checkCellBudget's.
+func TestTablePut_WideAndTallPayloadsAreNotRefusedLocally(t *testing.T) {
 	t.Parallel()
-	payload := func(startCell string, columns, width int) string {
-		cols := make([]interface{}, columns)
+
+	wide := func(columns int) string {
+		cols := make([]string, columns)
 		for i := range cols {
 			cols[i] = fmt.Sprintf("c%d", i)
 		}
-		row := make([]interface{}, width)
-		for i := range row {
-			row[i] = float64(1)
-		}
-		sheet := map[string]interface{}{"name": "S", "columns": cols, "data": []interface{}{row}}
-		if startCell != "" {
-			sheet["start_cell"] = startCell
-		}
+		sheet := map[string]interface{}{"name": "S", "columns": cols, "data": []interface{}{}}
 		out, err := json.Marshal(map[string]interface{}{"sheets": []interface{}{sheet}})
 		if err != nil {
 			t.Fatalf("marshal: %v", err)
@@ -686,88 +721,41 @@ func TestTablePut_ColumnCeiling(t *testing.T) {
 		return string(out)
 	}
 
-	for _, tt := range []struct {
-		name, startCell string
-		columns, width  int
-		wantErr         bool
-	}{
-		{"exactly at the ceiling", "", 200, 200, false},
-		{"one past it", "", 201, 201, true},
-		// The declaration is inside the ceiling; the DATA row pushes it past.
-		{"widened past it by the data", "", 1, 201, true},
-		// The anchor counts, exactly as it does when the grid is sized.
-		{"the anchor offset counts", "C1", 199, 199, true},
-		{"anchored but still inside", "C1", 198, 198, false},
+	for _, tt := range []struct{ name, sheets, styles string }{
+		{"260 columns", wide(260), ""},
+		// The styles pass grows the matrix after the data does, and reached
+		// past the same phantom ceiling.
+		{"cell_styles at column 201", `{"sheets":[{"name":"S","columns":["a"],"data":[[1]]}]}`,
+			`{"styles":[{"name":"S","cell_styles":[{"range":"GS1","font_weight":"bold"}]}]}`},
+		{"cell_merges past column 200", `{"sheets":[{"name":"S","columns":["a"],"data":[[1]]}]}`,
+			`{"styles":[{"name":"S","cell_merges":[{"range":"A1:GS1"}]}]}`},
+		{"col_sizes past column 200", `{"sheets":[{"name":"S","columns":["a"],"data":[[1]]}]}`,
+			`{"styles":[{"name":"S","col_sizes":[{"range":"A:GS","type":"pixel","size":80}]}]}`},
+		{"row_sizes past row 50000", `{"sheets":[{"name":"S","columns":["a"],"data":[[1]]}]}`,
+			`{"styles":[{"name":"S","row_sizes":[{"range":"1:50001","type":"pixel","size":20}]}]}`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
-				"--url", testURL, "--sheets", payload(tt.startCell, tt.columns, tt.width), "--dry-run",
-			})
-			if tt.wantErr {
-				requireValidation(t, err, "exceeds the 200-column sheet limit")
-				return
+			args := []string{"--url", testURL, "--sheets", tt.sheets}
+			if tt.styles != "" {
+				args = append(args, "--styles", tt.styles)
 			}
-			if err != nil {
-				t.Fatalf("a payload inside the ceiling should pass, got: %v", err)
+			if _, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), append(args, "--dry-run")); err != nil {
+				t.Fatalf("the backend expands the grid for this; it should not be refused locally, got: %v", err)
 			}
 		})
 	}
-}
 
-// The row half of the grid ceiling. The write goes out in batches, so a
-// payload past the limit lands its first batches and fails on a later one --
-// the column ceiling already refuses its half locally, and this is the same
-// refusal for rows.
-func TestTablePut_RowCeiling(t *testing.T) {
-	t.Parallel()
-	payload := func(startCell string, rows int, header *bool) string {
-		data := make([]interface{}, rows)
-		for i := range data {
-			data[i] = []interface{}{float64(i)}
-		}
-		sheet := map[string]interface{}{"name": "S", "columns": []interface{}{"a"}, "data": data}
-		if startCell != "" {
-			sheet["start_cell"] = startCell
-		}
-		if header != nil {
-			sheet["header"] = *header
-		}
-		out, err := json.Marshal(map[string]interface{}{"sheets": []interface{}{sheet}})
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		return string(out)
-	}
-	no := false
-
-	for _, tt := range []struct {
-		name, startCell string
-		rows            int
-		header          *bool
-		wantErr         bool
-	}{
-		{"exactly at the ceiling", "", 50000, &no, false},
-		{"one past it", "", 50001, &no, true},
-		// The header occupies a row, so 50,000 data rows plus one is over.
-		{"the header row counts", "", 50000, nil, true},
-		// The anchor counts, as it does when the grid is sized.
-		{"the anchor offset counts", "A10", 49995, &no, true},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
-				"--url", testURL, "--sheets", payload(tt.startCell, tt.rows, tt.header), "--dry-run",
-			})
-			if tt.wantErr {
-				requireValidation(t, err, "exceeds the 50000-row sheet limit")
-				return
-			}
-			if err != nil {
-				t.Fatalf("a payload inside the ceiling should pass, got: %v", err)
-			}
-		})
-	}
+	// What the backend does refuse is the cell count, and that cap is already
+	// checkCellBudget's -- 50001 rows x 260 columns is the shape that failed
+	// live, and it is over maxTablePutCells here too.
+	t.Run("the cell budget still binds", func(t *testing.T) {
+		t.Parallel()
+		no := false
+		p := &tablePayload{Sheets: []tableSheetSpec{{Name: "S", Header: &no,
+			Columns: make([]tableColumnSpec, 260), Rows: make([][]interface{}, 50001)}}}
+		requireValidation(t, p.checkCellBudget(), "cell safety cap")
+	})
 }
 
 // headerOn cannot see that an appended-to sheet is empty, but writeSheetData
@@ -793,60 +781,4 @@ func TestBudgetRows_CountsTheForcedAppendHeader(t *testing.T) {
 	if err := (&tablePayload{Sheets: []tableSheetSpec{*explicit}}).checkCellBudget(); err != nil {
 		t.Errorf("1,000,000 cells is at the cap, got: %v", err)
 	}
-}
-
-// checkSheetGridCeiling only sees the DATA matrix, and the styles pass runs
-// after it: applyWorkbookCreateStylesToMatrix grows the matrix to the style
-// extent, so a 1x1 payload with a cell_styles range of A50001 or GS1 (column
-// 201) reaches past a grid sheetCreateDims has already clamped. The write goes
-// out in batches, so that fails remotely with earlier batches applied.
-func TestTablePut_StylesCannotReExpandPastTheCeiling(t *testing.T) {
-	t.Parallel()
-	const data = `{"sheets":[{"name":"S","columns":["a"],"data":[[1]]}]}`
-
-	for _, tt := range []struct{ name, styles, want string }{
-		{"cell_styles past the last row",
-			`{"styles":[{"name":"S","cell_styles":[{"range":"A50001","font_weight":"bold"}]}]}`, "past the 50000-row"},
-		{"cell_styles past the last column",
-			`{"styles":[{"name":"S","cell_styles":[{"range":"GS1","font_weight":"bold"}]}]}`, "past the 200-column"},
-		// The independent visual ops share the same footprint helper, so they
-		// are covered by the same check rather than a second one.
-		{"cell_merges past the last column",
-			`{"styles":[{"name":"S","cell_merges":[{"range":"A1:GS1"}]}]}`, "past the 200-column"},
-		{"col_sizes past the last column",
-			`{"styles":[{"name":"S","col_sizes":[{"range":"A:GS","type":"pixel","size":80}]}]}`, "past the 200-column"},
-		{"row_sizes past the last row",
-			`{"styles":[{"name":"S","row_sizes":[{"range":"1:50001","type":"pixel","size":20}]}]}`, "past the 50000-row"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
-				"--url", testURL, "--sheets", data, "--styles", tt.styles, "--dry-run",
-			})
-			requireValidation(t, err, tt.want)
-		})
-	}
-
-	t.Run("a style inside the grid is untouched", func(t *testing.T) {
-		t.Parallel()
-		if _, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
-			"--url", testURL, "--sheets", data,
-			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1:B2","font_weight":"bold"}]}]}`,
-			"--dry-run",
-		}); err != nil {
-			t.Fatalf("a style inside the grid should pass, got: %v", err)
-		}
-	})
-
-	// The last column is GR (200); GS is the first one past it.
-	t.Run("the last column itself is inside", func(t *testing.T) {
-		t.Parallel()
-		if _, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
-			"--url", testURL, "--sheets", data,
-			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"GR1","font_weight":"bold"}]}]}`,
-			"--dry-run",
-		}); err != nil {
-			t.Fatalf("column 200 is inside the ceiling, got: %v", err)
-		}
-	})
 }
