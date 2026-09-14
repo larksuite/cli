@@ -94,7 +94,7 @@ func TestCalendar_UpdateEventWorkflow(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		assert.Equal(t, eventID, gjson.Get(result.Stdout, "data.event_id").String())
+		assert.Equal(t, eventID, gjson.Get(result.Stdout, "data.updated_event.event_id").String())
 	})
 
 	t.Run("verify updated event as bot", func(t *testing.T) {

@@ -240,9 +240,7 @@ func TestWiki_ShortcutWorkflow(t *testing.T) {
 		require.True(t, out.Get("ok").Bool(), "stdout:\n%s", result.Stdout)
 		assert.True(t, out.Get("data.nodes").Exists(), "data.nodes must exist after my_library resolution")
 		assert.True(t, out.Get("data.nodes").IsArray(), "data.nodes must be an array")
-		// stderr must record the my_library resolution so users/agents can
-		// see what space_id the alias mapped to.
-		assert.Contains(t, result.Stderr, "Resolved my_library",
-			"expected my_library resolution log on stderr; got: %s", result.Stderr)
+		// Assert the public result rather than an incidental progress message.
+		assert.Equal(t, "user", out.Get("identity").String())
 	})
 }

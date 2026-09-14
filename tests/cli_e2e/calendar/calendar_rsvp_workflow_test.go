@@ -9,33 +9,25 @@ import (
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
-func requireFreebusyEntry(t *testing.T, stdout string, startAt time.Time, endAt time.Time, expectedRSVP string) {
-	t.Helper()
-
-	var matched gjson.Result
-	for _, item := range gjson.Parse(stdout).Get("data").Array() {
-		itemStart, err := time.Parse(time.RFC3339, item.Get("start_time").String())
-		require.NoError(t, err, "stdout:\n%s", stdout)
-		itemEnd, err := time.Parse(time.RFC3339, item.Get("end_time").String())
-		require.NoError(t, err, "stdout:\n%s", stdout)
-
-		if !itemStart.Equal(startAt) || !itemEnd.Equal(endAt) {
+// raw_busy retains RSVP state; the default busy view merges intervals and drops it.
+func hasFreebusyEntry(stdout, userID string, startAt, endAt time.Time, expectedRSVP string) bool {
+	for _, user := range gjson.Get(stdout, "data.users").Array() {
+		if user.Get("user_id").String() != userID {
 			continue
 		}
-		if item.Get("rsvp_status").String() != expectedRSVP {
-			continue
+		for _, item := range user.Get("raw_busy").Array() {
+			start, startErr := time.Parse(time.RFC3339, item.Get("start_time").String())
+			end, endErr := time.Parse(time.RFC3339, item.Get("end_time").String())
+			if startErr == nil && endErr == nil && start.Equal(startAt) && end.Equal(endAt) && item.Get("rsvp_status").String() == expectedRSVP {
+				return true
+			}
 		}
-		matched = item
-		break
 	}
-
-	require.True(t, matched.Exists(), "expected freebusy entry start=%s end=%s rsvp=%s in stdout:\n%s", startAt.Format(time.RFC3339), endAt.Format(time.RFC3339), expectedRSVP, stdout)
-	assert.Equal(t, expectedRSVP, matched.Get("rsvp_status").String(), "stdout:\n%s", stdout)
+	return false
 }
 
 func TestCalendar_RSVPWorkflowAsUser(t *testing.T) {
@@ -48,6 +40,7 @@ func TestCalendar_RSVPWorkflowAsUser(t *testing.T) {
 
 	userOpenID := getCurrentUserOpenIDForCalendar(t, ctx)
 	calendarID := getPrimaryCalendarID(t, ctx)
+	userCalendarID := getCurrentUserPrimaryCalendarID(t, ctx)
 	startAt := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Minute)
 	endAt := startAt.Add(30 * time.Minute)
 	startTime := startAt.Format(time.RFC3339)
@@ -58,6 +51,7 @@ func TestCalendar_RSVPWorkflowAsUser(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
 				"calendar", "+freebusy",
+				"--type", "raw_busy",
 				"--start", startTime,
 				"--end", endTime,
 			},
@@ -66,8 +60,8 @@ func TestCalendar_RSVPWorkflowAsUser(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		data := gjson.Get(result.Stdout, "data")
-		require.True(t, data.IsArray() || data.Type == gjson.Null, "stdout:\n%s", result.Stdout)
+		users := gjson.Get(result.Stdout, "data.users")
+		require.True(t, users.IsArray(), "stdout:\n%s", result.Stdout)
 	})
 
 	t.Run("create invite-only event as bot", func(t *testing.T) {
@@ -105,13 +99,28 @@ func TestCalendar_RSVPWorkflowAsUser(t *testing.T) {
 		})
 	})
 
+	// Invitations are copied to the attendee's primary calendar asynchronously.
+	// RSVP must target that calendar, not the organizer bot's calendar.
+	t.Run("wait for invitation as user", func(t *testing.T) {
+		require.NotEmpty(t, eventID)
+		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
+			Args:      []string{"calendar", "events", "get"},
+			DefaultAs: "user",
+			Params:    map[string]any{"calendar_id": userCalendarID, "event_id": eventID},
+		}, clie2e.RetryOptions{})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+		require.Equal(t, eventID, gjson.Get(result.Stdout, "data.event.event_id").String(), "stdout:\n%s", result.Stdout)
+	})
+
 	t.Run("reply tentative as user", func(t *testing.T) {
 		require.NotEmpty(t, eventID, "event should be created before RSVP")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
 				"calendar", "+rsvp",
-				"--calendar-id", calendarID,
+				"--calendar-id", userCalendarID,
 				"--event-id", eventID,
 				"--rsvp-status", "tentative",
 			},
@@ -120,7 +129,7 @@ func TestCalendar_RSVPWorkflowAsUser(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		require.Equal(t, calendarID, gjson.Get(result.Stdout, "data.calendar_id").String(), "stdout:\n%s", result.Stdout)
+		require.Equal(t, userCalendarID, gjson.Get(result.Stdout, "data.calendar_id").String(), "stdout:\n%s", result.Stdout)
 		require.Equal(t, eventID, gjson.Get(result.Stdout, "data.event_id").String(), "stdout:\n%s", result.Stdout)
 		require.Equal(t, "tentative", gjson.Get(result.Stdout, "data.rsvp_status").String())
 	})
@@ -129,42 +138,30 @@ func TestCalendar_RSVPWorkflowAsUser(t *testing.T) {
 		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 			Args: []string{
 				"calendar", "+freebusy",
+				"--type", "raw_busy",
 				"--start", startTime,
 				"--end", endTime,
 			},
 			DefaultAs: "user",
 		}, clie2e.RetryOptions{
 			ShouldRetry: func(result *clie2e.Result) bool {
-				if result == nil || result.ExitCode != 0 || !gjson.Get(result.Stdout, "status").Bool() {
-					return true
+				if result == nil || result.ExitCode != 0 || !gjson.Get(result.Stdout, "ok").Bool() {
+					return false
 				}
-				for _, item := range gjson.Parse(result.Stdout).Get("data").Array() {
-					itemStart, err := time.Parse(time.RFC3339, item.Get("start_time").String())
-					if err != nil {
-						return true
-					}
-					itemEnd, err := time.Parse(time.RFC3339, item.Get("end_time").String())
-					if err != nil {
-						return true
-					}
-					if itemStart.Equal(startAt) && itemEnd.Equal(endAt) && item.Get("rsvp_status").String() == "tentative" {
-						return false
-					}
-				}
-				return true
+				return !hasFreebusyEntry(result.Stdout, userOpenID, startAt, endAt, "tentative")
 			},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		requireFreebusyEntry(t, result.Stdout, startAt, endAt, "tentative")
+		require.True(t, hasFreebusyEntry(result.Stdout, userOpenID, startAt, endAt, "tentative"), "expected tentative entry; stdout:\n%s", result.Stdout)
 	})
 
 	t.Run("reply accept as user", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
 				"calendar", "+rsvp",
-				"--calendar-id", calendarID,
+				"--calendar-id", userCalendarID,
 				"--event-id", eventID,
 				"--rsvp-status", "accept",
 			},
@@ -173,7 +170,7 @@ func TestCalendar_RSVPWorkflowAsUser(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		require.Equal(t, calendarID, gjson.Get(result.Stdout, "data.calendar_id").String(), "stdout:\n%s", result.Stdout)
+		require.Equal(t, userCalendarID, gjson.Get(result.Stdout, "data.calendar_id").String(), "stdout:\n%s", result.Stdout)
 		require.Equal(t, eventID, gjson.Get(result.Stdout, "data.event_id").String(), "stdout:\n%s", result.Stdout)
 		require.Equal(t, "accept", gjson.Get(result.Stdout, "data.rsvp_status").String())
 	})
@@ -182,34 +179,22 @@ func TestCalendar_RSVPWorkflowAsUser(t *testing.T) {
 		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 			Args: []string{
 				"calendar", "+freebusy",
+				"--type", "raw_busy",
 				"--start", startTime,
 				"--end", endTime,
 			},
 			DefaultAs: "user",
 		}, clie2e.RetryOptions{
 			ShouldRetry: func(result *clie2e.Result) bool {
-				if result == nil || result.ExitCode != 0 || !gjson.Get(result.Stdout, "status").Bool() {
-					return true
+				if result == nil || result.ExitCode != 0 || !gjson.Get(result.Stdout, "ok").Bool() {
+					return false
 				}
-				for _, item := range gjson.Parse(result.Stdout).Get("data").Array() {
-					itemStart, err := time.Parse(time.RFC3339, item.Get("start_time").String())
-					if err != nil {
-						return true
-					}
-					itemEnd, err := time.Parse(time.RFC3339, item.Get("end_time").String())
-					if err != nil {
-						return true
-					}
-					if itemStart.Equal(startAt) && itemEnd.Equal(endAt) && item.Get("rsvp_status").String() == "accept" {
-						return false
-					}
-				}
-				return true
+				return !hasFreebusyEntry(result.Stdout, userOpenID, startAt, endAt, "accept")
 			},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		requireFreebusyEntry(t, result.Stdout, startAt, endAt, "accept")
+		require.True(t, hasFreebusyEntry(result.Stdout, userOpenID, startAt, endAt, "accept"), "expected accept entry; stdout:\n%s", result.Stdout)
 	})
 }

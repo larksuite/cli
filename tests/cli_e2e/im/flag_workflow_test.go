@@ -91,6 +91,7 @@ func TestIM_FlagWorkflowAsUser(t *testing.T) {
 			Args: []string{
 				"im", "+flag-cancel",
 				"--message-id", messageID,
+				"--flag-type", "message",
 			},
 			DefaultAs: "user",
 		})

@@ -196,10 +196,20 @@ func TestTask_TasklistWorkflowAsUser(t *testing.T) {
 	t.Run("list tasklists and find patched tasklist as user", func(t *testing.T) {
 		require.NotEmpty(t, tasklistGUID, "tasklist GUID should be patched before list")
 
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 			Args:      []string{"task", "tasklists", "list"},
 			DefaultAs: "user",
 			Params:    map[string]any{"page_size": 50},
+		}, clie2e.RetryOptions{
+			// The list index can lag behind a successful patch and single-item get.
+			Attempts: 6,
+			ShouldRetry: func(result *clie2e.Result) bool {
+				if result == nil || result.ExitCode != 0 {
+					return false // Keep API failures visible; only poll list visibility.
+				}
+				item := gjson.Get(result.Stdout, `data.items.#(guid=="`+tasklistGUID+`")`)
+				return !item.Exists() || item.Get("name").String() != patchedTasklistName
+			},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

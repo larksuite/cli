@@ -303,6 +303,10 @@ jobs:
           - bash .codebase/preview/pipeline.test.sh
           - bash .codebase/preview/scripts.test.sh
           - node --test .codebase/preview/build-preview-package.test.js
+      - name: Run internal live credential tests
+        commands:
+          - node --test .codebase/e2e/*.test.js
+
 
   skill_format_check:
     name: Skill Format Check
@@ -649,11 +653,9 @@ jobs:
   # itself instead. LARKSUITE_CLI_BRAND is the exception the public job also
   # makes: brand alone leaves the provider inactive.
   #
-  # TEST_USER_ACCESS_TOKEN is deliberately not configured. A user access token
-  # lives two hours (internal/auth/uat_client.go) and a token handed in through
-  # the environment is used verbatim with no refresh, so a stored value would
-  # be stale within the day and turn 50 clean skips into 50 auth failures.
-  # Those user-identity cases therefore skip; the run prints the count.
+  # UAT is acquired per run via BBQ OpenAPI. Stable invocation credentials
+  # live in Codebase Variables; session authorization stays in the BBQ script.
+  # Both identities must pass live smoke tests before the selected suite runs.
   e2e_live:
     name: E2E Live
     image: hub.byted.org/codebase/ci_go_1_23:latest
@@ -664,6 +666,10 @@ jobs:
       TEST_BOT1_APP_ID: ${{ TEST_BOT1_APP_ID }}
       TEST_BOT1_APP_SECRET: ${{ TEST_BOT1_APP_SECRET }}
       LARKSUITE_CLI_BRAND: feishu
+      E2E_BBQ_BASE_URL: ${{ E2E_BBQ_BASE_URL }}
+      E2E_BBQ_SPACE_NODE_ID: ${{ E2E_BBQ_SPACE_NODE_ID }}
+      E2E_BBQ_SCRIPT_ID: ${{ E2E_BBQ_SCRIPT_ID }}
+      E2E_BBQ_ACCESS_TOKEN: ${{ E2E_BBQ_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout
       - name: Merge the target branch
@@ -695,6 +701,8 @@ jobs:
           - cat /tmp/e2e-domains.txt
       - name: Run live E2E
         commands:
+          - mkdir -p e2e-live-report
+          - echo 0 > e2e-live-report/exit-code
           - MODE=$(sed -n 's/^mode=//p' /tmp/e2e-domains.txt)
           - LIVE_PKGS=$(sed -n 's/^live_packages=//p' /tmp/e2e-domains.txt)
           - 'case "$MODE" in skip|subset|full) ;; *) echo "e2e_domains.js produced an unusable mode [$MODE]"; exit 1;; esac'
@@ -703,43 +711,21 @@ jobs:
           - make build
           - export LARK_CLI_BIN="$PWD/lark-cli"
           - export RUNNER_TEMP=/tmp
-          # fetch_e2e_tat.js prints `::add-mask::<token>`, which the GitHub
-          # runner intercepts and never renders. This platform has no such
-          # directive, so the line would put the token in the log verbatim.
-          # Hence the filter, and hence deleting both the log and the token
-          # file as soon as the value is in the shell.
-          - 'if ! LARKSUITE_CLI_APP_ID="$TEST_BOT1_APP_ID" node scripts/fetch_e2e_tat.js > /tmp/tat-log.txt 2>&1; then grep -v -- "::add-mask::" /tmp/tat-log.txt || true; rm -f /tmp/tat-log.txt; echo "could not fetch the tenant access token"; exit 1; fi'
-          - grep -v -- '::add-mask::' /tmp/tat-log.txt || true
-          - rm -f /tmp/tat-log.txt
-          - 'if [ ! -f /tmp/e2e-live-tat ]; then echo "the tenant token file was not produced"; exit 1; fi'
-          - export TEST_TENANT_ACCESS_TOKEN="$(cat /tmp/e2e-live-tat)"
-          - rm -f /tmp/e2e-live-tat
-          # Same preflight as the public job: a bad credential fails once here
-          # instead of arriving as a hundred failing tests. Both CLI names are
-          # scoped to this single command, so the run below still receives its
-          # credentials the way the harness expects - per command, and only for
-          # the ones that ask for bot identity (tests/cli_e2e/core.go).
-          - 'if ! LARKSUITE_CLI_APP_ID="$TEST_BOT1_APP_ID" LARKSUITE_CLI_TENANT_ACCESS_TOKEN="$TEST_TENANT_ACCESS_TOKEN" ./lark-cli whoami --as bot > /tmp/whoami.json; then echo "tenant credential preflight failed"; exit 1; fi'
-          - jq -e '.identity == "bot" and .available == true and .tokenStatus == "ready"' /tmp/whoami.json > /dev/null
-          - echo "tenant credential preflight passed"
-          - 'echo "live E2E mode $MODE, packages $LIVE_PKGS"'
-          # gotestsum re-runs only the cases that failed, exactly as the public
-          # job does. These tests lean on the Feishu backend, so a single
-          # upstream hiccup would otherwise fail the merge gate for everyone:
-          # the first two runs here each lost one unrelated case, the second to
-          # `900015002 Read data from socket timeout` inside the sheets service.
-          # standard-verbose rather than testname, so the raw --- SKIP lines
-          # survive for the count below. GOSUMDB is off for the same reason as
-          # the other tool fetches in this file: sum.golang.org is unreachable,
-          # and go.sum still pins and verifies every dependency of the build.
           - export GOSUMDB=off
+          - export LIVE_PKGS
+          # Keep token values inside the wrapper; the runner traces commands.
+          # It reuses the TAT helper and injects only TEST_* into the Go harness.
           - rc=0
-          - 'go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$LIVE_PKGS" --format standard-verbose -- -count=1 -timeout=20m > /tmp/live-out.txt 2>&1 || rc=$?'
-          - cat /tmp/live-out.txt
-          # Without a user access token every user-identity case skips. Print
-          # the count so a green run is not read as full coverage.
-          - 'echo "skipped cases: $(grep -c -- "--- SKIP" /tmp/live-out.txt || true)"'
-          - 'if [ "$rc" != "0" ]; then exit "$rc"; fi'
+          - node .codebase/e2e/run-live.js || rc=$?
+          - echo "$rc" > e2e-live-report/exit-code
+      - name: Upload live E2E report
+        uses: actions/upload-artifact
+        inputs:
+          name: e2e-live-report
+          path: e2e-live-report
+      - name: Preserve live E2E exit status
+        commands:
+          - 'exit "$(cat e2e-live-report/exit-code)"'
 
   # The tarball a reviewer or QA installs to run this merge request's CLI
   # without building it. Built on every run, like the public preview package,
