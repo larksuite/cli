@@ -199,11 +199,9 @@ lark-cli base +record-batch-update \
 
 ### View
 
-View 是同一 Table records 上的持久化筛选、排序、分组和展示配置，共享底层 records，不产生数据副本。一次性查询直接使用 Record 读取；需要在 Base UI 中长期保存、共享或复用访问方式时使用 View。
+View 共享 Table 的底层记录；没有特殊展示需求时优先使用 `grid`。读取已有视图用 `+view-list` / `+view-get`。
 
-选择视图类型或创建、配置视图前，读取 [View 类型与生命周期](references/lark-base-view.md)。
-
-**读取 View：** 使用 `+view-list` / `+view-get`，并通过 `+view-get-filter` / `+view-get-sort` / `+view-get-group` / `+view-get-visible-fields` / `+view-get-timebar` / `+view-get-card` 读取持久化配置。**写入 View：** 使用 `+view-create` / `+view-rename` / `+view-delete` 管理 View，并通过对应的 `+view-set-*` 更新筛选、排序、分组、可见字段、时间轴和卡片配置；筛选结构读 [View filter](references/lark-base-view-set-filter.md)，由该文档继续路由公共 condition 协议。
+**所有 View 编辑前必读 [View 类型与生命周期](references/lark-base-view.md)**，包括创建、改名、配置修改（筛选、排序、分组、字段显隐、时间条、卡片）和删除。视图选型、适用配置及完整操作示例统一在该 reference 中。
 
 ### Form
 
