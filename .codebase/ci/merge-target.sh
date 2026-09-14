@@ -53,8 +53,9 @@ if git merge-base --is-ancestor "$target" HEAD; then
 fi
 
 # --no-ff keeps HEAD a commit of its own even when the source branch is behind
-# the target. A fast-forward would land HEAD exactly on origin/main, which the
-# baseline resolution in ci.yaml reads as a trunk run.
+# the target, so the run stays distinguishable from the trunk tip it would
+# otherwise fast-forward onto, and the baseline stays the target rather than
+# whatever HEAD~1 happens to be.
 echo "merging $target_branch ($target) into $(git rev-parse HEAD)"
 if ! git -c user.name="Codebase CI" -c user.email="ci@localhost" \
   merge --no-edit --no-ff "$target"; then

@@ -53,11 +53,25 @@
 # the trigger. The public workflow spells it
 # `pull_request.base.sha || github.event.before || 'origin/main'`. There is no
 # equivalent of `event.before` here, so the six jobs that resolve a baseline
-# decide it from the checkout itself: HEAD equal to origin/main means this is
-# the trunk run and the baseline is HEAD~1 (main lands one squashed commit per
-# MR, so that is the previous trunk tip); otherwise it is the MR's target
-# commit. Getting this wrong fails loudly rather than quietly — every one of
+# read CI_EVENT_NAME, and the three cases line up with the three the public
+# expression has. A `push` run is the trunk one, and the baseline is HEAD~1
+# (main lands one squashed commit per MR, so that is the previous trunk tip) —
+# `event.before` upstream. A `change` run passes CI_EVENT_CHANGE_TARGET_SHA —
+# `pull_request.base.sha` upstream. Anything else, a manual run above all,
+# passes nothing and resolve-changed-from.sh falls back to the merge base with
+# origin/main, which is where the branch left main — the `'origin/main'` arm
+# upstream. Getting this wrong fails loudly rather than quietly: every one of
 # those jobs asserts the baseline did not resolve to HEAD.
+#
+# The trunk test used to compare HEAD with origin/main, which is a race:
+# origin/main is refetched when each job checks out, so a second merge landing
+# while a trunk run is still going makes HEAD differ from it, the run is
+# mistaken for a merge request, and the empty target leaves the baseline
+# resolving to HEAD. It fired on 2026-09-14, two merges three minutes apart,
+# and visibly only in E2E Live — the job that starts last. E2E Dry Run had the
+# same baseline and stayed green, because it was the one job of the six missing
+# the assertion; it now has it. Which trigger fired is a property of the event,
+# so read it from the event and not from a ref that moves under the run.
 #
 # deadcode is the one job the public workflow skips on push, because its
 # baseline is `origin/<base_ref>`, which a push event does not have. It skips
@@ -211,7 +225,7 @@ jobs:
       - name: Run incremental lint
         commands:
           - export GOSUMDB=off
-          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"; fi'
+          - 'if [ "${CI_EVENT_NAME:-}" = "push" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="${CI_EVENT_CHANGE_TARGET_SHA:-}"; fi'
           - export QUALITY_GATE_CHANGED_FROM
           - CHANGED_FROM="$(bash scripts/resolve-changed-from.sh)"
           - 'echo "changed-from baseline: $CHANGED_FROM"'
@@ -423,9 +437,9 @@ jobs:
           # The public job is pull-request-only, because its baseline is
           # `origin/<base_ref>`, which a push event does not have. Mirror that:
           # the trunk run has nothing this job is meant to compare against.
-          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then echo "the public dead code job is pull-request-only, so the trunk run is a no-op"; exit 0; fi'
+          - 'if [ "${CI_EVENT_NAME:-}" != "change" ]; then echo "the public dead code job is pull-request-only, so a ${CI_EVENT_NAME:-nameless} run is a no-op"; exit 0; fi'
           - export GOSUMDB=off
-          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - export QUALITY_GATE_CHANGED_FROM="${CI_EVENT_CHANGE_TARGET_SHA:-}"
           - BASE="$(bash scripts/resolve-changed-from.sh)"
           - 'echo "deadcode baseline is $BASE"'
           - 'if [ "$(git rev-parse "$BASE")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so the incremental comparison would be empty"; exit 1; fi'
@@ -463,7 +477,7 @@ jobs:
       # be closed later by writing the MR title and body into that file.
       - name: Run the deterministic gate
         commands:
-          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"; fi'
+          - 'if [ "${CI_EVENT_NAME:-}" = "push" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="${CI_EVENT_CHANGE_TARGET_SHA:-}"; fi'
           - export QUALITY_GATE_CHANGED_FROM
           - export QUALITY_GATE_CHANGED_FROM="$(bash scripts/resolve-changed-from.sh)"
           - 'echo "quality gate baseline is $QUALITY_GATE_CHANGED_FROM"'
@@ -524,7 +538,7 @@ jobs:
       - name: Secret scan
         commands:
           - export GOSUMDB=off
-          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"; fi'
+          - 'if [ "${CI_EVENT_NAME:-}" = "push" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="${CI_EVENT_CHANGE_TARGET_SHA:-}"; fi'
           - export QUALITY_GATE_CHANGED_FROM
           - BASE="$(bash scripts/resolve-changed-from.sh)"
           - 'echo "gitleaks scans the range $BASE..HEAD"'
@@ -595,10 +609,11 @@ jobs:
       # every domain.
       - name: Run dry-run E2E for the affected domains
         commands:
-          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"; fi'
+          - 'if [ "${CI_EVENT_NAME:-}" = "push" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="${CI_EVENT_CHANGE_TARGET_SHA:-}"; fi'
           - export QUALITY_GATE_CHANGED_FROM
           - BASE="$(bash scripts/resolve-changed-from.sh)"
           - 'echo "e2e baseline is $BASE"'
+          - 'if [ "$(git rev-parse "$BASE")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so no domain would be selected"; exit 1; fi'
           - git diff --name-only "$BASE" HEAD > /tmp/e2e-changed.txt
           - cat /tmp/e2e-changed.txt
           - E2E_DOMAIN_CHANGED_FILES=/tmp/e2e-changed.txt node scripts/e2e_domains.js > /tmp/e2e-domains.txt
@@ -670,7 +685,7 @@ jobs:
           - echo "credentials present"
       - name: Resolve the affected domains
         commands:
-          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"; fi'
+          - 'if [ "${CI_EVENT_NAME:-}" = "push" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="${CI_EVENT_CHANGE_TARGET_SHA:-}"; fi'
           - export QUALITY_GATE_CHANGED_FROM
           - BASE="$(bash scripts/resolve-changed-from.sh)"
           - 'if [ "$(git rev-parse "$BASE")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so no domain would be selected"; exit 1; fi'

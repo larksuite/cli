@@ -26,6 +26,20 @@ ci.fetch("jobs").each do |name, job|
   end
 end
 
+# Which trigger fired is a property of the event. Deriving it from how HEAD
+# compares with a ref that moves under the run raced with the next merge and
+# broke a trunk run on 2026-09-14. Assert the positive: a step that picks a
+# baseline has to read the event to do it. A negated check on one spelling of
+# the old comparison would miss every equivalent way of writing it.
+ci.fetch("jobs").each do |name, job|
+  job.fetch("steps").each do |step|
+    commands = Array(step["commands"]).map(&:to_s)
+    next unless commands.any? { |c| c.include?("QUALITY_GATE_CHANGED_FROM=") }
+    next if commands.any? { |c| c.include?("CI_EVENT_NAME") }
+    failures << "#{name}: the step that picks a baseline must read CI_EVENT_NAME, not infer the trigger from repository state"
+  end
+end
+
 abort("ci pipeline contract:\n  " + failures.join("\n  ")) unless failures.empty?
 puts "ci pipeline contract: #{ci.fetch("jobs").size} jobs verify the merge result"
 RUBY
