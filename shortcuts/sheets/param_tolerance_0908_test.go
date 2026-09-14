@@ -5,6 +5,8 @@ package sheets
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -529,4 +531,84 @@ func TestPivotCreate_OmittedTargetIsLeftToTheBackend(t *testing.T) {
 			t.Errorf("the explicit target should have reached the request: %s", seen)
 		}
 	})
+}
+
+// The other shape that reaches a padding path before any budget check: rows
+// are padded out to the DECLARED column count in normalize, long before
+// validate's checkCellBudget. 8,000 declared columns against 2,000 one-cell
+// rows is 80KB of JSON and a 16M-cell rectangle (measured: 416MB peak, against
+// 34MB for a trivial payload). fitColumnsToRows covers the ragged shape; this
+// covers the wide-declaration one.
+func TestTablePut_DeclaredColumnsBudgetedBeforePadding(t *testing.T) {
+	t.Parallel()
+
+	sheetWith := func(columns, rows int) map[string]interface{} {
+		cols := make([]interface{}, columns)
+		for i := range cols {
+			cols[i] = fmt.Sprintf("c%d", i)
+		}
+		data := make([]interface{}, rows)
+		for i := range data {
+			data[i] = []interface{}{float64(1)}
+		}
+		return map[string]interface{}{"name": "S", "columns": cols, "data": data}
+	}
+
+	t.Run("a wide declaration over the cap is refused before padding", func(t *testing.T) {
+		t.Parallel()
+		in := &tableSheetIn{}
+		raw, err := json.Marshal(sheetWith(8000, 2000))
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if err := json.Unmarshal(raw, in); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		spec, err := in.normalize(0)
+		requireValidation(t, err, "over the 1000000-cell safety cap")
+		if len(spec.Rows) != 0 {
+			t.Errorf("the spec should come back empty, got %d rows", len(spec.Rows))
+		}
+	})
+
+	t.Run("a declaration inside the cap still pads", func(t *testing.T) {
+		t.Parallel()
+		in := &tableSheetIn{}
+		raw, err := json.Marshal(sheetWith(4, 3))
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if err := json.Unmarshal(raw, in); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		spec, err := in.normalize(0)
+		if err != nil {
+			t.Fatalf("a small payload should normalize, got: %v", err)
+		}
+		for r := range spec.Rows {
+			if len(spec.Rows[r]) != 4 {
+				t.Errorf("row %d = %d cells, want 4", r, len(spec.Rows[r]))
+			}
+		}
+	})
+}
+
+// +styles-put closes a whole-column cell_styles range against the sheet's real
+// grid, which is a structure READ from a command declaring only the write
+// scope. It carries no sheet selector, so the flag-derived declaration in
+// Shortcuts() does not reach it and it has to say so itself.
+func TestStylesPut_DeclaresTheGridReadScope(t *testing.T) {
+	t.Parallel()
+	for _, sc := range Shortcuts() {
+		if sc.Command != "+styles-put" {
+			continue
+		}
+		for _, s := range sc.DeclaredScopesForIdentity("user") {
+			if s == sheetsStructureReadScope {
+				return
+			}
+		}
+		t.Fatalf("+styles-put reads the workbook grid but declares %v", sc.DeclaredScopesForIdentity("user"))
+	}
+	t.Fatal("+styles-put not found in the registry")
 }

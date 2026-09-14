@@ -682,6 +682,15 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 				WithHint("%s", columnKeyHint("formats", k, columns))
 		}
 	}
+	// Budget before padding, for the same reason fitColumnsToRows does: this
+	// pads every row out to the DECLARED column count, so 8,000 columns
+	// against 2,000 one-cell rows is 80KB of JSON and a 16M-cell rectangle,
+	// built long before validate's checkCellBudget can refuse it. Only the
+	// per-sheet product is known here; the cross-sheet total is still summed
+	// later, and a single sheet over the cap fails either way.
+	if err := checkTablePutCellBudget(int64(len(spec.Rows)) * int64(len(spec.Columns))); err != nil {
+		return tableSheetSpec{}, err
+	}
 	padShortRows(&spec)
 	return spec, nil
 }

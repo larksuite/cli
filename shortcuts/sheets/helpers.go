@@ -1154,6 +1154,12 @@ type sheetGrid struct{ rows, cols int }
 // workbookSheetGrids reads every sub-sheet's grid in one structure call, keyed
 // by sheet name.
 func workbookSheetGrids(ctx context.Context, runtime *common.RuntimeContext, token string) (map[string]sheetGrid, error) {
+	// Same read, same reason as resolveOmittedSheetSelector: +styles-put
+	// declares only the write scope, and this is the lookup behind closing an
+	// unbounded range against the sheet's own grid.
+	if err := runtime.EnsureScopes([]string{sheetsStructureReadScope}); err != nil {
+		return nil, err
+	}
 	out, err := callTool(ctx, runtime, token, ToolKindRead, "get_workbook_structure", map[string]interface{}{
 		"excel_id": token,
 	})

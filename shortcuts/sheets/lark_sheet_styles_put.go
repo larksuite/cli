@@ -35,9 +35,14 @@ var StylesPut = common.Shortcut{
 	Description: "Apply one declarative visual spec (styles/merges/row-col sizes/freeze) to existing sheets; sent as one batch request, or several when the spec is large (each atomic on its own, no rollback).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
-	Flags:       flagsFor("+styles-put"),
+	// A whole-column / whole-row cell_styles range is closed against the
+	// sheet's real grid (newSheetGridBounder), which is a structure READ. This
+	// command has no sheet selector, so the flag-derived declaration in
+	// Shortcuts() does not reach it and it is stated here.
+	ConditionalScopes: []string{"sheets:spreadsheet:read"},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
+	Flags:             flagsFor("+styles-put"),
 	Tips: []string{
 		`Example: lark-cli sheets +styles-put --url <URL> --styles '{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1:F1","font_weight":"bold"}],"freeze":{"rows":1}}]}'`,
 		"Same --styles vocabulary as +workbook-create / +table-put; one item per target sheet, name = the real sheet name.",
