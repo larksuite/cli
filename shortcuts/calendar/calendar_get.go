@@ -94,6 +94,7 @@ type calendarEvent struct {
 	Recurrence          string                    `json:"recurrence,omitempty"`
 	Status              string                    `json:"status,omitempty"`
 	IsException         bool                      `json:"is_exception"`
+	IsExternal          *bool                     `json:"is_external,omitempty"`
 	RecurringEventID    string                    `json:"recurring_event_id,omitempty"`
 	CreateTime          string                    `json:"create_time,omitempty"`
 	EventOrganizer      *calendarEventOrganizer   `json:"event_organizer,omitempty"`
@@ -260,6 +261,9 @@ var CalendarGet = common.Shortcut{
 				"end":              endStr,
 				"free_busy_status": freeBusyStatus,
 				"self_rsvp_status": selfRsvpStatus,
+			}
+			if isExternal, ok := out["is_external"].(bool); ok {
+				row["is_external"] = isExternal
 			}
 			output.PrintTable(w, []map[string]interface{}{row})
 			fmt.Fprintln(w)

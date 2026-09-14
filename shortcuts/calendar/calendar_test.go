@@ -3554,6 +3554,93 @@ func TestGet_Success_FlattensAndConvertsTimes(t *testing.T) {
 	}
 }
 
+func TestGet_SurfacesIsExternal(t *testing.T) {
+	// The event detail now carries is_external marking a cross-tenant (external)
+	// event; +get must surface it verbatim rather than drop it.
+	t.Run("external true", func(t *testing.T) {
+		f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_ext_1",
+			Body: map[string]interface{}{
+				"code": 0, "msg": "success",
+				"data": map[string]interface{}{
+					"event": map[string]interface{}{
+						"event_id":    "evt_ext_1",
+						"summary":     "External Sync",
+						"is_external": true,
+						"start_time":  map[string]interface{}{"timestamp": "1742515200"},
+						"end_time":    map[string]interface{}{"timestamp": "1742518800"},
+					},
+				},
+			},
+		})
+		if err := mountAndRun(t, CalendarGet, []string{"+get", "--calendar-id", "cal_test123", "--event-id", "evt_ext_1", "--as", "bot"}, f, stdout); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		out := stdout.String()
+		if !strings.Contains(out, "\"is_external\": true") {
+			t.Errorf("expected is_external=true in output, got: %s", out)
+		}
+	})
+
+	// is_external=false is still meaningful (event is explicitly non-external),
+	// so it must be preserved rather than dropped.
+	t.Run("external false preserved", func(t *testing.T) {
+		f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_ext_0",
+			Body: map[string]interface{}{
+				"code": 0, "msg": "success",
+				"data": map[string]interface{}{
+					"event": map[string]interface{}{
+						"event_id":    "evt_ext_0",
+						"summary":     "Internal Sync",
+						"is_external": false,
+						"start_time":  map[string]interface{}{"timestamp": "1742515200"},
+						"end_time":    map[string]interface{}{"timestamp": "1742518800"},
+					},
+				},
+			},
+		})
+		if err := mountAndRun(t, CalendarGet, []string{"+get", "--calendar-id", "cal_test123", "--event-id", "evt_ext_0", "--as", "bot"}, f, stdout); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		out := stdout.String()
+		if !strings.Contains(out, "\"is_external\": false") {
+			t.Errorf("expected is_external=false preserved in output, got: %s", out)
+		}
+	})
+
+	// When the API omits is_external, +get must not synthesize it.
+	t.Run("absent omitted", func(t *testing.T) {
+		f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_ext_absent_0",
+			Body: map[string]interface{}{
+				"code": 0, "msg": "success",
+				"data": map[string]interface{}{
+					"event": map[string]interface{}{
+						"event_id":   "evt_ext_absent_0",
+						"summary":    "Legacy",
+						"start_time": map[string]interface{}{"timestamp": "1742515200"},
+						"end_time":   map[string]interface{}{"timestamp": "1742518800"},
+					},
+				},
+			},
+		})
+		if err := mountAndRun(t, CalendarGet, []string{"+get", "--calendar-id", "cal_test123", "--event-id", "evt_ext_absent_0", "--as", "bot"}, f, stdout); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		out := stdout.String()
+		if strings.Contains(out, "is_external") {
+			t.Errorf("is_external must be omitted when absent, got: %s", out)
+		}
+	})
+}
+
 func TestGet_UnifiesDescriptionRich(t *testing.T) {
 	// Read exposes a single unified description field carrying the rich value
 	// when present, and the plain text otherwise; description_rich is dropped.
