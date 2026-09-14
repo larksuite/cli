@@ -147,11 +147,7 @@ var commandFlagAliases = map[string]map[string]string{
 	// the command having no notion of inserting before anything. Kept to
 	// --position alone: --start-index / --end-index name a half-open pair
 	// whose end would have to be guessed, so those keep their prescription.
-	"+dim-delete": {"position": "range"},
-	// The frozen-* spellings name exactly the count --rows / --cols take, and
-	// the value is the same integer; the prescription they used to get spelled
-	// the rename and nothing else.
-	"+dim-freeze":          {"frozen-rows": "rows", "frozen-row-count": "rows", "row-count": "rows", "frozen-cols": "cols", "frozen-columns": "cols", "frozen-col-count": "cols", "frozen-column-count": "cols", "col-count": "cols", "column-count": "cols"},
+	"+dim-delete":          {"position": "range"},
 	"+cols-resize":         {"cols": "range", "size": "width"},
 	"+rows-resize":         {"rows": "range", "size": "height"},
 	"+range-fill":          {"source": "source-range", "target": "target-range"},
@@ -236,6 +232,10 @@ const borderFlagPrescription = `borders take one composite flag: --border-styles
 // there is a different question (see commandFlagAliases), and a command that
 // grows its own --output later takes it back automatically.
 //
+// --outdir / --output-dir are deliberately NOT here: they name a directory,
+// which only +workbook-export implements (directoryValuedExportAliases), and
+// every other --output-path is strictly a file path. They stay per-command.
+//
 // 09-01..08 backflow, unknown-flag rows: --sheet 765 across 21 commands,
 // --spreadsheet 541 across 17, --ranges 525 across 18, --output / --file-path
 // / --outdir 450 across 19.
@@ -247,8 +247,6 @@ var domainFlagAliases = map[string]string{
 	"ranges":                "range",
 	"output":                "output-path",
 	"file-path":             "output-path",
-	"outdir":                "output-path",
-	"output-dir":            "output-path",
 	"font-name":             "font-family",
 	"horizontal-align":      "horizontal-alignment",
 	"vertical-align":        "vertical-alignment",
@@ -290,10 +288,27 @@ var intuitiveFlagHints = map[string]map[string]string{
 	"+dim-insert": {
 		"dimension": "+dim-insert infers rows vs columns from --position: a row number like 3 inserts rows, a column letter like C inserts columns; pair with --count N",
 	},
+	// Not a silent rename despite naming the same integer: +dim-freeze sends
+	// the whole freeze state every call, so --frozen-rows 2 alone would ship
+	// freeze_rows:2 with no freeze_columns and quietly unfreeze a column
+	// freeze the caller never mentioned. The prescription is what names the
+	// other axis. 09-01..08 backflow adds the *-count spellings.
+	//
 	// Must prescribe --rows / --cols, never the retired --dimension/--count
 	// pair (DEPRECATED(phase-2) on dimFreezeLegacyNote): those flags are hidden
 	// from --help, so they do not even appear in the "valid flags" list printed
 	// beside this hint, and using them earns a second note steering back here.
+	"+dim-freeze": {
+		"frozen-rows":         "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"frozen-row-count":    "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"row-count":           "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"frozen-cols":         "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"frozen-columns":      "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"frozen-col-count":    "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"frozen-column-count": "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"col-count":           "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"column-count":        "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+	},
 	"+cells-set-style": {
 		"bold":      "use --font-weight bold",
 		"italic":    "use --font-style italic",

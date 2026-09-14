@@ -656,8 +656,9 @@ func finishParsedJSONFlag(runtime flagView, name string, out interface{}) (inter
 type bareListMode int
 
 const (
-	// bareListSplitCommas: the element vocabulary is A1 ranges, which never
-	// contain a comma, so a comma can only be separating two of them.
+	// bareListSplitCommas: the element vocabulary is A1 ranges, whose only
+	// comma-bearing part is a quoted sheet name, so splitAreasRespectingQuotes
+	// settles which commas separate two of them.
 	bareListSplitCommas bareListMode = iota
 	// bareListWrapOnly: the elements are free text a caller chose, so a comma
 	// is as likely to be inside one element as between two. Only a value with
@@ -699,7 +700,9 @@ func wrapBareListValue(command, flag, raw string) (interface{}, bool) {
 		return []interface{}{trimmed}, true
 	}
 	out := []interface{}{}
-	for _, part := range strings.Split(trimmed, ",") {
+	// Split the way the domain's own range parser does: a comma inside a
+	// quoted sheet name ('Q1,Sales'!A1:B2) belongs to that one range.
+	for _, part := range splitAreasRespectingQuotes(trimmed) {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			return nil, false // a stray comma is not a list of ranges
