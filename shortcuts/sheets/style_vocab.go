@@ -1272,7 +1272,20 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 			// box with a solid left edge.
 			if side != "all" {
 				if allSide, spread := bs["all"].(map[string]interface{}); spread {
-					bs[side] = allSide
+					// Merged, not replaced: the selected side may already
+					// carry attributes the caller spelled for it alone
+					// (border_left_color), and those are the narrower
+					// statement, so only what it lacks comes from "all".
+					sideObj, exists := bs[side].(map[string]interface{})
+					if !exists {
+						sideObj = map[string]interface{}{}
+					}
+					for attr, val := range allSide {
+						if _, taken := sideObj[attr]; !taken {
+							sideObj[attr] = val
+						}
+					}
+					bs[side] = sideObj
 					delete(bs, "all")
 				}
 			}

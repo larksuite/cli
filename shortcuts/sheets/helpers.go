@@ -1038,6 +1038,18 @@ func resolveSheetSelectorExec(ctx context.Context, runtime *common.RuntimeContex
 	if err != nil || sheetID != "" || sheetName != "" || strings.TrimSpace(token) == "" {
 		return sheetID, sheetName, err
 	}
+	return resolveOmittedSheetSelector(ctx, runtime, token, "", "")
+}
+
+// resolveOmittedSheetSelector is the workbook lookup behind
+// resolveSheetSelectorExec, taking the pair already read from whatever flags
+// the command spells them with. The object-create commands name theirs
+// differently (createSheetIDFlag / createSheetNameFlag), so they cannot go
+// through the reader above but need the same answer.
+func resolveOmittedSheetSelector(ctx context.Context, runtime *common.RuntimeContext, token, sheetID, sheetName string) (string, string, error) {
+	if sheetID != "" || sheetName != "" || strings.TrimSpace(token) == "" {
+		return sheetID, sheetName, nil
+	}
 	if selectorMustBeExplicit[runtime.Command()] {
 		return "", "", requireSheetSelector("", "")
 	}

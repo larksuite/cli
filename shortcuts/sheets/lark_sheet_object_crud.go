@@ -164,6 +164,13 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			sheetID := strings.TrimSpace(runtime.Str(spec.sheetIDFlagOnCreate()))
 			sheetName := strings.TrimSpace(runtime.Str(spec.sheetNameFlagOnCreate()))
+			// Validate defers a missing selector to here, so here is where it
+			// gets answered; this factory reads its own flag names, which is
+			// why it cannot go through resolveSheetSelectorExec.
+			sheetID, sheetName, err = resolveOmittedSheetSelector(ctx, runtime, token, sheetID, sheetName)
+			if err != nil {
+				return err
+			}
 			input, err := objectCreateInput(runtime, token, sheetID, sheetName, spec)
 			if err != nil {
 				return err

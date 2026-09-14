@@ -606,6 +606,10 @@ func TestPivotCreate_SchemaValidates(t *testing.T) {
 // allowEmptySheetSelectorOnCreate=true. Every other *-create must still
 // reject empty --sheet-id / --sheet-name (this is the guardrail that
 // keeps the change minimally scoped).
+// TestObjectCreate_RequiresSheetSelector pins where the selector requirement
+// is settled on the create path. A real run defers it to execution, which
+// answers it against the workbook (resolveOmittedSheetSelector); --dry-run
+// sends nothing and so cannot, which is where the rejection still belongs.
 func TestObjectCreate_RequiresSheetSelector(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -621,7 +625,7 @@ func TestObjectCreate_RequiresSheetSelector(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, _, err := runShortcutCapturingErr(t, tt.sc, tt.args)
+			_, _, err := runShortcutCapturingErr(t, tt.sc, append(tt.args, "--dry-run"))
 			requireValidation(t, err, "specify at least one of --sheet-id or --sheet-name")
 		})
 	}

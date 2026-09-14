@@ -523,6 +523,40 @@ func TestReviewRegressions(t *testing.T) {
 		}
 	})
 
+	t.Run("a side selector keeps that side's own attributes", func(t *testing.T) {
+		t.Parallel()
+		// border_left_color creates the left side before border_style folds
+		// onto all; the selection must merge into it, not replace it.
+		cell := map[string]interface{}{
+			"border_type": "LEFT_BORDER", "border_style": "dashed", "border_left_color": "#FF0000",
+		}
+		if err := foldBorderFamilyAliases(cell, "--styles"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		sides, _ := cell["border_styles"].(map[string]interface{})
+		left, _ := sides["left"].(map[string]interface{})
+		if len(sides) != 1 || left["style"] != "dashed" || left["color"] != "#FF0000" {
+			t.Errorf("border_styles = %v, want one dashed red left side", sides)
+		}
+	})
+
+	t.Run("object-create resolves an omitted selector at execution", func(t *testing.T) {
+		t.Parallel()
+		// Validate defers it, so the create path has to answer it; otherwise
+		// the deferral just moves the same failure deeper.
+		_, err := runShortcutWithStubs(t, shortcutFromRegistry(t, "+cond-format-create"),
+			[]string{
+				"--url", testURL, "--rule-type", "containsBlanks", "--ranges", `["Sheet1!A1:B2"]`,
+				"--properties", `{"style":{"fore_color":"#FF0000"}}`,
+			},
+			structureStub("只有一个"),
+			toolStub("manage_conditional_format_object", `{"conditional_format_id":"cf1"}`),
+		)
+		if err != nil {
+			t.Fatalf("the only sheet is the one meant on create too, got: %v", err)
+		}
+	})
+
 	t.Run("a side selector carries the line the caller spelled", func(t *testing.T) {
 		t.Parallel()
 		cell := map[string]interface{}{"border_type": "LEFT_BORDER", "border_style": "dashed"}
