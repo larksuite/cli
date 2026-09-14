@@ -4,8 +4,11 @@
 package sheets
 
 import (
+	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/httpmock"
 )
 
 // A dropdown option is a label the caller wrote, so a comma inside one is as
@@ -455,5 +458,75 @@ func TestTablePut_RaggedPayloadBudgetedBeforePadding(t *testing.T) {
 			t.Fatalf("the first sheet fits on its own, got: %v", err)
 		}
 		requireValidation(t, fitColumnsToRows(big(), &projected), "over the 1000000-cell safety cap")
+	})
+}
+
+// Omitting the pivot's target sheet is not a missing selector -- it is the
+// contract. The backend then creates a fresh sub-sheet for the result, which
+// is the zero-overwrite path +pivot-create's own tips recommend. The
+// omitted-selector resolver must not answer it: in a single-sheet workbook it
+// would name the sheet holding the SOURCE data and land the pivot on top of
+// it, and in a multi-sheet one it would demand a selector the command does not
+// require. Execute is where this broke; the dry-run and input-builder tests
+// never reached the resolver.
+func TestPivotCreate_OmittedTargetIsLeftToTheBackend(t *testing.T) {
+	t.Parallel()
+	const props = `{"rows":[{"field":"a"}],"values":[{"field":"b","statistic_type":"sum"}]}`
+
+	// The stub takes every pivot call and keeps the body, so the assertion is
+	// on what was actually sent rather than on which stub happened to match.
+	capturing := func(seen *[]byte) *httpmock.Stub {
+		return &httpmock.Stub{
+			Method: "POST",
+			URL:    "/tools/invoke_",
+			BodyFilter: func(b []byte) bool {
+				if bytes.Contains(b, []byte("manage_pivot_table_object")) {
+					*seen = append([]byte(nil), b...)
+					return true
+				}
+				return false
+			},
+			Body: map[string]interface{}{"code": 0, "msg": "ok",
+				"data": map[string]interface{}{"output": `{"ok":true}`}},
+		}
+	}
+	carriesSelector := func(b []byte) bool {
+		return bytes.Contains(b, []byte("sheet_name")) || bytes.Contains(b, []byte("sheet_id"))
+	}
+
+	for _, tt := range []struct {
+		name   string
+		sheets []string
+	}{
+		{"a single-sheet workbook is not used as the target", []string{"Data"}},
+		{"a multi-sheet workbook does not demand one either", []string{"Data", "Other"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var seen []byte
+			if _, err := runShortcutWithStubs(t, PivotCreate,
+				[]string{"--url", testURL, "--source", "'Data'!A1:C10", "--properties", props},
+				capturing(&seen)); err != nil {
+				t.Fatalf("an omitted target is the documented path, got: %v", err)
+			}
+			if carriesSelector(seen) {
+				t.Errorf("the request carried a placement selector the caller never gave: %s", seen)
+			}
+		})
+	}
+
+	// An explicit target is still honoured and still reaches the request.
+	t.Run("an explicit target is forwarded", func(t *testing.T) {
+		t.Parallel()
+		var seen []byte
+		if _, err := runShortcutWithStubs(t, PivotCreate,
+			[]string{"--url", testURL, "--source", "'Data'!A1:C10",
+				"--target-sheet-name", "Report", "--properties", props},
+			capturing(&seen)); err != nil {
+			t.Fatalf("an explicit target should be forwarded, got: %v", err)
+		}
+		if !carriesSelector(seen) {
+			t.Errorf("the explicit target should have reached the request: %s", seen)
+		}
 	})
 }

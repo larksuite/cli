@@ -1809,7 +1809,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "JSON 2D array `[[{cell},...],...]`; `--range` sets the top-left anchor and the written extent is inferred from this array's row/column counts — an array larger than `--range` writes past it (overwriting by default), so `--dry-run` first and read the echoed extent. Each cell may carry `value` / `formula` / `multiple_values` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image). To write selected values into a multi-select dropdown cell, use `multiple_values:[{\"value\":...}]`; do not join multiple options with commas into one `value`. Run `--print-schema` for full fields",
+        "desc": "JSON 2D array `[[{cell},...],...]`. A bare `--range A1` (or `--start-cell`) is the top-left ANCHOR and this array supplies the extent; a `--range` that states a rectangle (`A1:B2`) BOUNDS the write — a smaller array narrows it, and a larger one is refused rather than written past the range. Each cell may carry `value` / `formula` / `multiple_values` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image). To write selected values into a multi-select dropdown cell, use `multiple_values:[{\"value\":...}]`; do not join multiple options with commas into one `value`. Run `--print-schema` for full fields",
         "input": [
           "file",
           "stdin"

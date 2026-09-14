@@ -167,9 +167,19 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			// Validate defers a missing selector to here, so here is where it
 			// gets answered; this factory reads its own flag names, which is
 			// why it cannot go through resolveSheetSelectorExec.
-			sheetID, sheetName, err = resolveOmittedSheetSelector(ctx, runtime, token, sheetID, sheetName)
-			if err != nil {
-				return err
+			//
+			// Except where an absent selector is the point. Pivot's contract is
+			// that omitting the target makes the BACKEND create a fresh sheet
+			// for the result, which is the zero-overwrite path its own tips
+			// recommend. Resolving it here would fill in the sole sheet -- the
+			// one holding the source data -- and land the pivot on top of it,
+			// or, in a workbook with several sheets, demand a selector the
+			// command does not require.
+			if !(spec.allowEmptySheetSelectorOnCreate && sheetID == "" && sheetName == "") {
+				sheetID, sheetName, err = resolveOmittedSheetSelector(ctx, runtime, token, sheetID, sheetName)
+				if err != nil {
+					return err
+				}
 			}
 			input, err := objectCreateInput(runtime, token, sheetID, sheetName, spec)
 			if err != nil {
@@ -1215,6 +1225,15 @@ func validateFilterViaInput(
 func resolveFilterSheetID(ctx context.Context, runtime *common.RuntimeContext, token, sheetID, sheetName string) (string, string, error) {
 	if sheetID != "" || sheetName == "" {
 		return sheetID, sheetName, nil
+	}
+	// This lookup is a READ on a write command, exactly like the one in
+	// resolveOmittedSheetSelector -- and it is the path that resolver does NOT
+	// cover, since an explicit --sheet-name makes it return before its own
+	// check. The conditional scope is declared either way, but declaring it
+	// does not enforce it, so without this a least-privilege token reaches a
+	// 403 from inside get_workbook_structure.
+	if err := runtime.EnsureScopes([]string{sheetsStructureReadScope}); err != nil {
+		return "", "", err
 	}
 	resolved, _, err := lookupSheetIndex(ctx, runtime, token, "", sheetName)
 	if err != nil {

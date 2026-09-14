@@ -88,7 +88,7 @@ lark-cli sheets +range-copy --url "<表格URL>" --sheet-name "<真实表名>" \
 
 > 以下是用 `+cells-set`（及 `+cells-set-style`）做富写入时的常用模式与准则；选哪个 shortcut 见上方「使用场景」。
 
-`+cells-set` 为一块区域设置值 / 公式 / 批注 / 样式，也支持 `rich_text` 的 `type: "embed-image"` 嵌入单元格图片。**关键：`--cells` 恒为二维数组（行 × 格），单格也是 `[[{"value":…}]]`；`--range` 只定左上角锚点，实际落区按 `--cells` 自身的行列数推断——数组比 `--range` 大就写到该范围之外、且默认覆盖，写前 `--dry-run` 看一眼回显的落区**。
+`+cells-set` 为一块区域设置值 / 公式 / 批注 / 样式，也支持 `rich_text` 的 `type: "embed-image"` 嵌入单元格图片。**关键：`--cells` 恒为二维数组（行 × 格），单格也是 `[[{"value":…}]]`；裸 `--range A1`（或 `--start-cell`）是左上角**锚点**，落区由 `--cells` 自身的行列数决定；写成矩形（`A1:B2`）则是**边界**——数组比它小会收窄，比它大会被拒绝,而不是写到范围之外**。
 
 > **单元格图片 vs 浮动图片**：图若**属于某条记录、要随那行排序 / 筛选 / 增删**（凭证 / 证件照 / 每行配图，话里带「对应 / 每行 / 这列」等绑定词）→ **单元格图片**（本工具）：用 `+cells-set-image`（最短）或 `+cells-set` 的 `rich_text` + `type: "embed-image"`。只是自由摆放的装饰（logo / 水印 / 封面）→ 浮动图片，见 lark-sheets-float-image。别因「浮动图更好控制 / 更熟」默认选浮动图——它承载"对应某记录"的图会随增删行 / 排序错位。
 
@@ -306,7 +306,7 @@ _公共四件套 · 系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--range` | string | xor | 写入区域（A1 格式）。与 `--writes` 二选一（单区域用 --range+--cells，多区域用 --writes） |
 | `--start-cell` | string | optional | `--range` 的别名（与 `+csv-put` 一致，用 --start-cell 定左上角锚点）；传区间时按区间左上角起写（隐藏 flag：不在 `--help` 列出，但可正常传入） |
-| `--cells` | string + File + Stdin（复合 JSON） | xor | JSON：2D 数组 `[[{cell},...],...]`；`--range` 定左上角锚点，实际写入范围按本数组的行列数推断——数组大于 `--range` 时会写到该范围之外（默认覆盖），先 `--dry-run` 看回显的落区。每个 cell 可含 `value` / `formula` / `multiple_values` / `cell_styles` / `note` / `rich_text`（含 `type="embed-image"` 单元格嵌图）等。向启用多选的下拉单元格写入选中值时，必须用 `multiple_values:[{"value":...}]`，不要把多个选项用逗号拼成一个 `value`；完整字段跑 `--print-schema` |
+| `--cells` | string + File + Stdin（复合 JSON） | xor | JSON：2D 数组 `[[{cell},...],...]`；裸 `--range A1`（或 `--start-cell`）是左上角锚点，写入范围按本数组的行列数推断；`--range` 写成矩形（`A1:B2`）则是边界——本数组比它小会收窄，比它大会被拒绝。每个 cell 可含 `value` / `formula` / `multiple_values` / `cell_styles` / `note` / `rich_text`（含 `type="embed-image"` 单元格嵌图）等。向启用多选的下拉单元格写入选中值时，必须用 `multiple_values:[{"value":...}]`，不要把多个选项用逗号拼成一个 `value`；完整字段跑 `--print-schema` |
 | `--writes` | string + File + Stdin（复合 JSON） | xor | 多区域写入 JSON 数组（最多 100 项），每项 `{sheet_name\|sheet_id, range, cells}`——**跨 sheet 的项把 sheet 定位写在项里**（与 +batch-update 子操作、+styles-put 项同惯例），项内没写则取顶层 `--sheet-name` / `--sheet-id`，cells 结构同 `--cells`（二维数组，可逐格带 cell_styles/border_styles）。整批展开为**单次批量提交**（fail-fast，失败后先回读再补发），支持跨 sheet；典型场景：批量修复散布多处的公式、跨表同构写入——不要为此拼 +batch-update 的 --operations。与 `--range`+`--cells` 二选一；范围级统一样式不在此做，写完接 +styles-put |
 | `--allow-overwrite` | bool | optional | 允许覆盖非空 cell（默认 true）；设为 false 时遇非空 cell 报错 |
 | `--max-cells` | int | optional | 防爆，默认 50000（隐藏 flag：不在 `--help` 列出，但可正常传入） |
@@ -554,7 +554,7 @@ lark-cli sheets +csv-put --spreadsheet-token shtXXX --sheet-id "$SID" \
 
 > **定位 + 写入边界（关键，避免误覆盖）**：
 > - 定位用 `--start-cell`（锚点 = 左上角单元格）；也接受 `--range` 别名（与 `+csv-get` / `+cells-set` 一致，传区间会自动取左上角）。
-> - ⚠️ `--start-cell` / `--range` **只定左上角、不限制写入大小**：CSV 从锚点按自身行列数 auto-expand 铺开。给一个"小 range"**不会**截断数据——超出部分照写，且默认覆盖。`+cells-set` 的 `--range` + `--cells` 同理：range 定锚点，落区按 cells 自身行列数推断。
+> - ⚠️ `--start-cell` / `--range` **只定左上角、不限制写入大小**：CSV 从锚点按自身行列数 auto-expand 铺开。给一个"小 range"**不会**截断数据——超出部分照写，且默认覆盖。`+cells-set` 只有裸 `--range A1` 是这个语义；`--range` 一旦写成矩形就是边界，`--cells` 超出它会被拒绝。
 > - dry-run 与成功响应都回显 `writes_range`（实际落区，如 `B2:D4`）：**写前先 `--dry-run` 看一眼落区**，确认不会盖到相邻数据。
 > - 要保护非空 cell：`--allow-overwrite=false`（落区内出现非空 cell 即报错）。
 
