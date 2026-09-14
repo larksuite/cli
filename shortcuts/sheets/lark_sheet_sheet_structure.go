@@ -300,7 +300,7 @@ var DimDelete = common.Shortcut{
 				return err
 			}
 			_, err = dimDeleteRangesOps(runtime, token, sheetID, sheetName)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		}
 		return validateDimRangeOp("delete")(ctx, runtime)
 	},
@@ -436,7 +436,7 @@ func validateDimRangeOp(op string) func(ctx context.Context, runtime *common.Run
 		sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 		sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 		_, err = dimRangeOpInput(runtime, token, sheetID, sheetName, op)
-		return err
+		return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 	}
 }
 
@@ -450,7 +450,7 @@ func validateDimGroupOp(op string) func(ctx context.Context, runtime *common.Run
 		sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 		sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 		_, err = dimGroupInput(runtime, token, sheetID, sheetName, op)
-		return err
+		return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 	}
 }
 

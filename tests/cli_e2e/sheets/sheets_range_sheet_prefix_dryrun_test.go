@@ -157,12 +157,21 @@ func TestSheets_QualifiedAnchorNotExpandedDryRun(t *testing.T) {
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 2)
-	combined := result.Stdout + "\n" + result.Stderr
-	// The envelope is JSON, so the message's own quotes arrive escaped.
-	for _, want := range []string{`names sheet \"Sheet1\"`, `selector names \"Other\"`} {
-		if !strings.Contains(combined, want) {
-			t.Fatalf("expected the two sheets named, missing %q:\nstdout:\n%s\nstderr:\n%s", want, result.Stdout, result.Stderr)
-		}
+
+	// Assert the typed envelope, not just the prose: the message is free to be
+	// reworded, while type / subtype / param are the contract a caller
+	// branches on. (Pinning only the text is what made this test fail on a
+	// reworded message once already.) No cause is asserted -- this path adds
+	// none, and ValidationError.Cause is excluded from the JSON envelope.
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+	require.Equal(t, "--range", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+
+	// Supplemental: the message has to name BOTH sheets, which is the whole
+	// reason this conflict gets its own error instead of a size mismatch.
+	msg := gjson.Get(result.Stderr, "error.message").String()
+	for _, want := range []string{`names sheet "Sheet1"`, `selector names "Other"`} {
+		require.Contains(t, msg, want, result.Stderr)
 	}
 }
 

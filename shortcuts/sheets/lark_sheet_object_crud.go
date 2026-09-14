@@ -899,7 +899,7 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 			// uploadedImageToken="": Validate never uploads; floatImageProperties
 			// still validates the --image path and the source XOR.
 			_, err = floatImageWriteInput(runtime, token, sheetID, sheetName, op, withIDFlag, "")
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			ref, _ := parseSpreadsheetRef(runtime)
