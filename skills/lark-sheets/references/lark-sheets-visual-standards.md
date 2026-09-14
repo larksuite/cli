@@ -1,7 +1,7 @@
 # 飞书表格样式与配色规范
 
 > **本文定位**：飞书表格"正确视觉输出"的取值标准与美化决策流——配色、表头、对齐、数值格式、斑马纹、列宽行高、图表展示，以及新增 / 继承 / 美化已有区域三类场景的做法。
-> **边界**：本文只讲"样式长什么样、怎么决策"；**怎么调用工具写入样式**（`cell_styles` / `border_styles` 字段、合并、resize 等参数）见 `lark-sheets-write-cells` / `lark-sheets-range-operations` / `lark-sheets-batch-update`。**条件格式**（高亮 / 标红 / 数据条 / 色阶）见 `lark-sheets-conditional-format`。本文不含 shortcut，通用编辑准则见主 SKILL.md「飞书表格编辑准则」。
+> **边界**：本文只讲"样式长什么样、怎么决策"；**怎么调用工具写入样式**（`cell_styles` / `border_styles` 字段、合并、resize 等参数）见 `references/lark-sheets-write-cells.md` / `references/lark-sheets-range-operations.md` / `references/lark-sheets-batch-update.md`。**条件格式**（高亮 / 标红 / 数据条 / 色阶）见 `references/lark-sheets-conditional-format.md`。本文不含 shortcut，通用编辑准则见主 SKILL.md「飞书表格编辑准则」。
 
 ## 最高优先级原则
 
@@ -11,18 +11,18 @@
 - **美化只动样式属性，不动数据**：对**已有区域**做美化时，**只能**修改 `font` / `fill` / `border` / `alignment` / `number_format` 这 5 类样式属性。**禁止**改动原始单元格的 `value` / `formula`、合并区域、行列结构、Sheet 名称。如果美化需求需要改变数据布局（例如"汇总行加进表里"），必须把"加汇总行"和"美化"拆成两步，前者属于编辑动作、需另行得到用户授权。
 - **不可见视觉属性也属保护对象**：原表的**合并范围、对齐方式（H-Align/V-Align）、行高列宽、数字格式**是用户能感知但不一定会明示的视觉属性。即使用户没说"保留这些"，**禁止**因写入新内容而修改它们；写公式 / 写值 / 写新列时只传 `value` / `formula`，不要重置 `alignment` / `number_format` 等字段为默认值（重置等同于改动）。**例外**：用户明示要修改这些属性时（如"调整对齐 / 合并 / 列宽"）才能动；用户**点名美化**（"美化 / 让表清晰 / 适合打印"）视同授权下节 checklist 的全部 5 个维度（含列宽行高）。
 - **标红 / 高亮默认用背景色**：用户说"标红 / 标出来 / 高亮"时，默认改**背景色**（可叠加字体色）——背景色在人工核对与导出后都更醒目；仅当用户明确说"字体标红"才只改字体色。
-- **打印 / 下载类任务的完成标准是导出后也无遮挡**：涉及"适合打印 / 下载 / 导出"时，在线表格调整完行高列宽后，导出 xlsx 再检查一次无截断、无 `####`、无溢出；长文本列给足列宽并设明确行高兜底值，不要只依赖 auto。
-- **美化范围必须覆盖所有用户语义目标**：用户说"给表格加边框 / 美化整个表"时，范围 = 实际数据区域**含所有数据行**（含汇总行、总计行、表尾备注行），不能停在"看起来主体内容结束"的地方。落地前先用 `current_region` + 末尾 5~10 行核对真实末行（同 `lark-sheets-read-data` 的「确定数据范围的正确流程」），再设置美化范围。范围漏掉用户提到的目标行 / 列**直接判失败**。
+- **打印 / 下载类任务的完成标准是导出后也无遮挡**：涉及"适合打印 / 下载 / 导出"时，飞书表格调整完行高列宽后，导出 xlsx 再检查一次无截断、无 `####`、无溢出；长文本列给足列宽并设明确行高兜底值，不要只依赖 auto。
+- **美化范围必须覆盖所有用户语义目标**：用户说"给表格加边框 / 美化整个表"时，范围 = 实际数据区域**含所有数据行**（含汇总行、总计行、表尾备注行），不能停在"看起来主体内容结束"的地方。落地前先用 `current_region` + 末尾 5~10 行核对真实末行（同 `references/lark-sheets-read-data.md` 的「确定数据范围的正确流程」），再设置美化范围。范围漏掉用户提到的目标行 / 列视为未完成，需补齐后再交付。
 
 ## 美化任务 5 维度 checklist（用户**点名美化**——"美化 / 让表更清晰 / 适合打印"时必做；"整理"默认指数据整理，不触发本节）
 
-当用户**点名美化**（"美化 / 让表清晰 / 适合打印 / 调整样式"——"整理"不算，那是数据整理）时，**必须**遍历以下 5 个维度逐一落地，**只动一处就交付**（如只加边框）属于违规。**已有表点名美化时，5 个维度的取值先沿用原表色系 / 对齐（继承原则优先），checklist 只补原表缺失的维度**：
+当用户**点名美化**（"美化 / 让表清晰 / 适合打印 / 调整样式"——"整理"不算，那是数据整理）时，**必须**遍历以下 5 个维度逐一落地，只做一项（如只加边框）就交付是不完整的。**已有表点名美化时，5 个维度的取值先沿用原表色系 / 对齐（继承原则优先），checklist 只补原表缺失的维度**：
 
 1. **表头格式区分**：表头行加粗 + 背景色填充（与数据行有色差）+ 居中对齐；多行表头时全部行同步处理
 2. **对齐方式**：文本列左对齐、数值 / 货币 / 百分比列右对齐、日期 / 分类列居中；垂直方向统一居中
 3. **数值格式**：每列统一小数位 + 千分位（用 `number_format`）；金额列统一货币符号；同一列内**禁止**出现 0 位 / 1 位 / 2 位小数混杂
 4. **边框**：覆盖范围按上方「美化范围必须覆盖所有用户语义目标」规则（含汇总 / 总计 / 表尾说明行），内外框线清晰
-5. **列宽 + 行高 + 自动换行**：详细规则见 `lark-sheets-range-operations` 的「写入后列宽自适应」章节（按最长字符数扩列宽 / 长文本设置 `cell_styles.word_wrap="auto-wrap"` + 调高行高 / 长数字设置 `number_format` 防科学计数法）
+5. **列宽 + 行高 + 自动换行**：详细规则见 `references/lark-sheets-range-operations.md` 的「写入后列宽自适应」章节（按最长字符数扩列宽 / 长文本设置 `cell_styles.word_wrap="auto-wrap"` + 调高行高 / 长数字设置 `number_format` 防科学计数法）
 
 **差异化标注场景**：用户要求"重复行 / 异常值 / 重要项视觉区分"时，标注列 / 行必须设置与普通数据**显著不同**的 `cell_styles`（背景色 + 加粗 + 字体色至少改一项），不能与普通数据格式完全一致。
 
@@ -57,7 +57,7 @@
 
 ### 4. 整体结构
 
-- 长表/宽表考虑冻结行列，方便滚动查看。
+- 数据行超过一屏的长表 / 宽表，收尾冻住表头（表头上方还有标题 / 说明行时一并冻住）：`+dim-freeze` 或 `+styles-put` 的 `freeze` 一次给全行列（整份状态覆盖，拆两次只留最后一次的轴），再 `+sheet-info` 回读确认。原表已有冻结设置的不动。
 - **长文本处理**：启用自动换行，行高合理调整以确保阅读舒适，添加适当垂直留白，目标是清晰、专业、不拥挤的布局。
 - 保持表格简洁，合理分组（可用合并单元格展示分组），在适当位置添加合计或汇总行。
 - **区域分隔**：多阶段或多类别时，使用柔和背景色块进行逻辑分区，而非简单边框。
@@ -94,7 +94,7 @@
   5. 若工作表已无足够空间，优先向下方空白区域放置，保持图表间至少 1 行或 1 列的间距。
 
 > 飞书表格中颜色需带 `#` 前缀（如 `#0070C0`），与 openpyxl 的无前缀写法不同。
-> 具体工具调用参数格式，请读取对应工具 skill（`lark-sheets-write-cells`、`lark-sheets-conditional-format`、`lark-sheets-range-operations` 等）。
+> 具体工具调用参数格式，请读取对应工具 skill（`references/lark-sheets-write-cells.md`、`references/lark-sheets-conditional-format.md`、`references/lark-sheets-range-operations.md` 等）。
 
 ---
 
@@ -145,22 +145,22 @@
 - 至少读 2 行（末行 + 倒数第二行）才能判断是否有斑马纹交替色
 - 若倒数两行背景色不同（如 #FFFFFF 与 #F3F4F6），新行按奇偶延续，不要固定一个色
 
-> 具体继承哪些字段、怎么采样与写入（`+cells-get` 读源行 `cell_styles` + `border_styles`、`+sheet-info --include row_heights,merges` 读行高合并、带齐 6 类样式写入）见 `lark-sheets-write-cells` 的「新增列 / 新增行的样式继承」章节——`border_styles` 四边最易遗漏，以那里为准。
+> 具体继承哪些字段、怎么采样与写入（`+cells-get` 读源行 `cell_styles` + `border_styles`、`+sheet-info --include row_heights,merges` 读行高合并、带齐 6 类样式写入）见 `references/lark-sheets-write-cells.md` 的「新增列 / 新增行的样式继承」章节——`border_styles` 四边易遗漏，以那里为准。
 
 #### 2B. 基于模板区域的修改（copy 保留所有格式）
 
 **核心思路：三步分层法**
 
 ```
-Step 1 — 格式铺开：`+batch-update` + `+range-copy`（或 `+range-fill`）
+Step 1 — 格式铺开：`+range-copy --paste-type formats`
   └── 将模板行/区域的 **全部格式**（样式、边框、数字格式、数据验证等）复制到目标区域
-  └── 推荐用 `+range-copy --paste-type formats`（仅复制格式，目标值/公式保留），即"格式刷"
-  └── 若需连带公式平移填充（如公式列结构一致），改用 `+range-fill --series-type copy` 或 `+range-copy --paste-type all`
+  └── 即"格式刷"——只复制格式，目标值/公式保留
+  └── 若需连带公式平移填充（如公式列结构一致），改用 `+range-fill --series-type copy`
 
-Step 2 — 内容覆写：`+batch-update` + `+cells-set`（仅传 value/formula，不传任何样式）
-  └── 将每行的实际数据写入，cell_styles 全部省略，因为格式已在 Step 1 中就位
+Step 2 — 内容覆写：`+cells-set`（仅传 value/formula，不传任何样式）
+  └── 将每行实际数据写入，cell_styles 全部省略，因为格式已在 Step 1 中就位
 
-Step 3 — 微调收尾：`+rows-resize --heights` / `+cols-resize --widths`（行高列宽 map 一次调用完成）、`+batch-update` + `+cells-{merge|unmerge}` 等
+Step 3 — 微调收尾：`+rows-resize --heights` / `+cols-resize --widths`（行高列宽 map 一次调用完成）、`+cells-{merge|unmerge}` 等
   └── 调整行高列宽、处理合并单元格、扩展条件格式范围等边缘情况
 ```
 
@@ -172,7 +172,7 @@ Step 3 — 微调收尾：`+rows-resize --heights` / `+cols-resize --widths`（�
 
 **场景：纯"格式刷"（用户说"把 A 列样式应用到 B 列"、"格式复制过去"、"只刷格式不改数据"）**
 
-单步即可，无需三步分层：调用 `+range-copy --paste-type formats`，`--source-range` 为样式来源、`--target-range` 为目标起点。参数细节见 `lark-sheets-range-operations`。
+单步即可，无需三步分层：调用 `+range-copy --paste-type formats`，`--source-range` 为样式来源、`--target-range` 为目标起点。参数细节见 `references/lark-sheets-range-operations.md`。
 
 ### 场景三：已有区域格式美化
 
@@ -207,4 +207,4 @@ Step 3 — 微调收尾：`+rows-resize --heights` / `+cols-resize --widths`（�
 - 美化表头/分组标题时，若需修改合并区域的范围或样式，遵循"先 `unmerge` → 修改 → 再 `merge`"顺序。
 - 合并区域样式只写左上角，不要对合并内的其他单元格重复写入样式。
 
-> 合并单元格完整的安全操作规则（含数据保护、样式占位等 5 条）见 `lark-sheets-range-operations` 的 `+cells-{merge|unmerge}` 章节。
+> 合并单元格完整的安全操作规则（含数据保护、样式占位等 5 条）见 `references/lark-sheets-range-operations.md` 的 `+cells-{merge|unmerge}` 章节。

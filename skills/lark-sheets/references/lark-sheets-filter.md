@@ -17,7 +17,7 @@
 
 典型工作流：先读取现有筛选器了解配置 → 执行创建/更新/删除 → **必须再次读取验证结果**。
 
-**只读场景例外**：用户只是想知道哪些数据满足条件、并不要求修改表格展示时，可以走 `lark-sheets-read-data` 读后文本回答，不必创建筛选器。
+**只读场景例外**：用户只是想知道哪些数据满足条件、并不要求修改表格展示时，可以走 `references/lark-sheets-read-data.md` 读后文本回答，不必创建筛选器。
 
 **常见配置错误（必须注意）**：
 - **筛选范围必须覆盖表头行**：筛选器的 range 必须从表头行开始（如 `A1:F100`），不能只包含数据行。缺少表头会导致筛选条件无法正确匹配列
@@ -127,4 +127,4 @@ lark-cli sheets +filter-delete --url "..." --sheet-id "$SID" --yes
 
 - `Validate`：XOR 公共四件套；`+filter-create` 校验 `--range` 至少 2 行（表头 + 至少 1 行数据）；`+filter-update` 必须先 `+filter-list` 确认目标存在；`+filter-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：输出"将要 POST/PATCH/DELETE 的 filter 请求模板"。
-- `Execute`：写后不自动回读；如需确认，自行调用 `+filter-list` 查看当前筛选条件 + 已过滤行数。
+- `Execute`：写后不自动回读；create/update 后必须调用 `+filter-list` 核对 range、rules 与已过滤行数；delete 后 list 确认筛选器不存在。

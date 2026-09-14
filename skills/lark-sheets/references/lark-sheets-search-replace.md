@@ -6,7 +6,7 @@
 
 1. **明确替换范围**：建议显式说明"只替换 X 列 / X 区域，还是全表替换"。避免默认全表替换——容易误改无关列。范围应由用户指令决定，模糊时主动询问。
 2. **dry-run 命中数量**：先用 `+cells-search` 在同一范围、同一关键词、同一匹配选项（大小写 / 精确 / 正则）下统计命中数量。把数量和**期望命中数**（用户明示的或基于业务理解推断的）对照；不一致先排查（关键词太宽？范围太大？）。
-3. **替换后回读校验**：执行后再次 `+cells-search` 旧关键词，预期为 0；并对替换后的若干代表性单元格回读确认值符合预期。
+3. **替换后全量校验**：执行后再次 `+cells-search` 旧关键词，预期为 0；指定了完整 range 与旧值枚举时逐项搜索，随机抽样不能替代。**例外**：新值本身包含旧值时（如 `v1`→`v1.1`，或子串替换后新值仍含关键词），子串搜索仍会命中，此时零命中判据不成立——改用整格精确匹配（`--match-entire-cell` 类选项）核对，或直接回读代表性单元格确认已是新值，别据非零命中判未替换而重复执行（会得到 `v1.1.1`）。只有用户明确要求本地 xlsx / 下载 / 打印，或正在验证导入前的本地 Excel 文件时，才运行本地产物检查脚本。
 
 ## 使用场景
 
@@ -102,10 +102,10 @@ lark-cli sheets +cells-replace --url "https://example.feishu.cn/sheets/shtXXX" \
   --sheet-name "Sheet1" --regex --find "(\\d{4})-(\\d{2})" --replacement "$2/$1" --dry-run
 ```
 
-> `+cells-replace` 虽然 Risk = write，但范围大或正则错可能改一堆。**强烈推荐工作流**：先 `+cells-search` 看匹配数，再 `+cells-replace --dry-run` 预览，最后真正执行。
+> `+cells-replace` 虽然 Risk = write，但范围大或正则写错可能批量修改大量非目标单元格。**建议工作流**：先 `+cells-search` 看匹配数，再 `+cells-replace --dry-run` 预览，最后真正执行。
 
 ### Validate / DryRun / Execute 约束
 
 - `Validate`：XOR 公共四件套；`--find` 非空；正则模式下 `--find` 必须是合法正则。
 - `DryRun`：`+cells-search` 输出请求模板；`+cells-replace` 额外返回预估替换数（`would_replace_count`）。
-- `Execute`：写后不自动回读；如需确认，自行用 `+cells-search` 复查旧值是否已不再命中。
+- `Execute`：替换后必须用 `+cells-search` 复查旧值剩余命中，并回读首、中、末代表性单元格；目标是旧值命中归零或明确列出未替换项。

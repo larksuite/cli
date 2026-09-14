@@ -291,7 +291,17 @@ func cellsSetInputWithNote(runtime flagView, token, sheetID, sheetName string) (
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
 		return nil, "", err
 	}
-	if strings.TrimSpace(runtime.Str("range")) == "" {
+	// --start-cell is the anchor spelling +csv-put documents, and --range reads
+	// as one here too: fitCellsRange sizes the write from the payload, so the
+	// two carry the same value with the same meaning. It is a declared hidden
+	// flag rather than a normalizer alias because a registered flag shadows an
+	// alias of the same name, which would silently cost the spelling entirely.
+	// --range stays canonical, so it wins when both are given.
+	rangeStr := strings.TrimSpace(runtime.Str("range"))
+	if rangeStr == "" {
+		rangeStr = strings.TrimSpace(runtime.Str("start-cell"))
+	}
+	if rangeStr == "" {
 		return nil, "", sheetsValidationForFlag("range", "--range is required")
 	}
 	cells, err := requireJSONArray(runtime, "cells")
@@ -301,7 +311,7 @@ func cellsSetInputWithNote(runtime flagView, token, sheetID, sheetName string) (
 	if err := normalizeTypedCellsStyleAliases(cells, "--cells"); err != nil {
 		return nil, "", err
 	}
-	rangeStr := expandAnchorRange(strings.TrimSpace(runtime.Str("range")), cells)
+	rangeStr = expandAnchorRange(rangeStr, cells)
 	if err := checkCellsPayloadShape(cells); err != nil {
 		return nil, "", err
 	}

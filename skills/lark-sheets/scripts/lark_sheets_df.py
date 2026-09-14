@@ -8,7 +8,7 @@ This is the same 7-line snippet the skill docs already inline (see
 `lark-sheets-read-data` "输出 → DataFrame（2 行 helper）"), pulled out
 so callers can `import` it instead of copy-pasting:
 
-    from sheets_df import df_to_sheet, sheet_to_df
+    from lark_sheets_df import df_to_sheet, sheet_to_df
 
 Callers run lark-cli themselves; this file is a library, not a CLI.
 """

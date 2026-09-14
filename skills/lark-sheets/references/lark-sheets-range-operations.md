@@ -28,6 +28,8 @@
 - 调整行高列宽时，先读取相邻行列尺寸再决定像素值，不要随意猜测
 - `--copy-to-range`（`+cells-set` 的参数）复制的是值/公式/样式，不含行高列宽。需要统一尺寸时另行调用 `+rows-resize / +cols-resize`
 
+**排序必须覆盖完整记录宽度**：`+range-sort --range` 是整行记录原子移动的边界，必须从记录第一列覆盖到最后一列；“按 B 列排序”只表示 `--sort-keys` 选 B，不是把 range 写成 `B:B`。范围含表头时加 `--has-header`。排序后回读前几行和末行，确认各列仍保持同行关系。
+
 ## 写入后列宽自适应（防内容遮挡）
 
 写入文本 / 数值后**必须**主动检查列宽是否适配，否则会出现"内容被截断 / 长数字显示为科学计数法 / 文本溢出被相邻列遮挡"等用户感知问题：
@@ -36,7 +38,7 @@
 2. **判定阈值**：当前列宽（用 `+sheet-info --include row_heights,col_widths` 拿）≥ 最长字符数 × 字体宽度系数 + buffer 才算适配。默认列宽 11 通常只够 11 个半角字符或 5-6 个汉字，写长文本前必扩宽。
 3. **修复二选一**：
    - **扩列宽**：用 `+rows-resize / +cols-resize` 把目标列宽设为 `max(表头字符数, 内容采样最长字符数) × 8 + 16` 像素（经验值）
-   - **自动换行**：在 `+cells-set` 时给单元格设置 `cell_styles.word_wrap="auto-wrap"`（可选值：`overflow` / `auto-wrap` / `word-clip`；`cell_styles` 字段见 `lark-sheets-write-cells`），并用 `+rows-resize / +cols-resize` 调高对应行的行高
+   - **自动换行**：在 `+cells-set` 时给单元格设置 `cell_styles.word_wrap="auto-wrap"`（可选值：`overflow` / `auto-wrap` / `word-clip`；`cell_styles` 字段见 `references/lark-sheets-write-cells.md`），并用 `+rows-resize / +cols-resize` 调高对应行的行高
 4. **新增列默认列宽规则**：新增列宽度 ≥ `max(表头字符数, 内容采样最长字符数) × 8 + 16` 像素，**禁止**用默认 11 直接交付。
 
 **典型反例**：默认列宽 11 但内容含 12+ 字符的中文 / 含单位的数值（如 `109.10μmol/L`）/ 长数字未设 `number_format` 显示为科学计数法 —— 用户在结果表里看不到完整原值。
@@ -53,8 +55,9 @@
 4. **对合并区域设置样式**：只对完整 range 设置一次 `cell_styles`（写在左上角单元格），其余位置用 `{}` 占位。
 5. **新增合并时数据保护**：合并前确认目标区域只有左上角有数据，其余单元格为空，否则合并会导致非左上角的数据丢失。
 6. **批量取消合并一次调用即可**：当一个范围（整列 `A:A`、整行 `3:3`、矩形 `A1:D100`）内存在多个合并区域，直接调一次 `+cells-unmerge` 传入这个大范围，会一次性取消该范围内所有合并区域；**不要**为每个合并区域单独调用 unmerge，也不要用 `+batch-update` 拆成多次 unmerge。
+7. **合并 / 取消合并后必须验证**：`+sheet-info --include merges` 核目标范围，再 `+cells-get` 回读左上角值和非左上角清空状态。
 
-**⚠️ 多区域合并不要逐个调用**：对**多个**不同区域执行 `+cells-merge` 时，写成一份 `+styles-put --styles` 的 `cell_merges` 一次交付（合并与样式 / 行高列宽 / 冻结同属一份声明式规格，见 `lark-sheets-styles-put`）；只有当合并夹在**跨类型、有顺序依赖**的操作链里（如插列 → 合并 → 写表头）才用 `+batch-update`（fail-fast，失败处置与入参格式见 `lark-sheets-batch-update`）。行高列宽同理**不需要** `+batch-update`：多行 / 多列不同尺寸直接用 `+rows-resize --heights` / `+cols-resize --widths` 的 map 形态，一次调用完成。
+**⚠️ 多区域合并不要逐个调用**：对**多个**不同区域执行 `+cells-merge` 时，写成一份 `+styles-put --styles` 的 `cell_merges` 一次交付（合并与样式 / 行高列宽 / 冻结同属一份声明式规格，见 `references/lark-sheets-styles-put.md`）；只有当合并夹在**跨类型、有顺序依赖**的操作链里（如插列 → 合并 → 写表头）才用 `+batch-update`（fail-fast，失败处置与入参格式见 `references/lark-sheets-batch-update.md`）。行高列宽同理**不需要** `+batch-update`：多行 / 多列不同尺寸直接用 `+rows-resize --heights` / `+cols-resize --widths` 的 map 形态，一次调用完成。
 
 **唯一例外**：`+cells-unmerge` 原生支持传一个大 range 一次性取消其中所有合并区域，应直接单次调用，**不要**拆进 `+batch-update`。
 
@@ -76,9 +79,9 @@
 
 1. sort 前先用 `+csv-get` 抽样目标列的前 3–5 行确认原始值形态，不要只看列名和用户问题就直接排。
 2. 若是纯数字或日期 → 直接 sort。
-3. 若是带符号 / 表达式 / 单位的文本 → **不要直接排**：
-   - 简单场景（货币、千分位、单位前缀）：新增辅助列，用公式提取数值（如 `=VALUE(SUBSTITUTE(SUBSTITUTE(A2,"¥",""),",",""))`），按辅助列排序，排完可按需清除辅助列。
-- 复杂场景（多段表达式、中文单位、混合格式）：分批 `+csv-get` 读到本地，按数值排序后用 `+csv-put` / `+cells-set` 分批回写。
+3. 若是带符号 / 表达式 / 单位的文本 → **不要直接排，也不要读值后用 `+csv-put` 覆盖原表来模拟排序**：
+   - 简单场景（货币、千分位、单位前缀）：新增辅助列，用公式提取数值（如 `=VALUE(SUBSTITUTE(SUBSTITUTE(A2,"¥",""),",",""))`），再用 `+range-sort` 按辅助列原子排序；排完可按需删除辅助列。
+   - 复杂场景（多段表达式、中文单位、混合格式）：先写辅助数值列，再用 `+range-sort`；无法可靠提取时保留原顺序并说明，禁止整块覆盖回写。
 
 ## Shortcuts
 
@@ -215,11 +218,11 @@ _排序条件列表（仅 sort 操作）_
 
 ### `+cells-clear`
 
-> ⚠️ **`--scope all` 清整表是不可逆的大范围破坏**：会一并抹掉该区域的合并单元格、原公式，以及图表 / 透视表引用的数据源列（这类列常在主数据区右侧，视觉上"看着没用"却被图例 / 系列引用）。**"美化 / 规范化一张已有表"永远不需要 clear 原表再重写**——若你打算"清空原表 → 写入重排后的版本"，说明走错了路径，应改为原地只刷样式（见 `lark-sheets-visual-standards` 场景三）。
+> ⚠️ **`--scope all` 清整表是不可逆的大范围破坏**：会一并抹掉该区域的合并单元格、原公式，以及图表 / 透视表引用的数据源列（这类列常在主数据区右侧，视觉上"看着没用"却被图例 / 系列引用）。**"美化 / 规范化一张已有表"永远不需要 clear 原表再重写**——若你打算"清空原表 → 写入重排后的版本"，说明走错了路径，应改为原地只刷样式（见 `references/lark-sheets-visual-standards.md` 场景三）。
 
 > **删不掉嵌入对象**：`+cells-clear`（任何 `--scope`，含 `all`）只清单元格的值 / 格式，**删不掉**压在范围内的透视表 / 图表等嵌入对象——后端会报 `can not find embedded block`。删透视表用 `+pivot-delete`、删图表用 `+chart-delete`（先用 `+pivot-list` / `+chart-list` 拿对象 id）。
 
-> 需要一次清除**多个不连续 range**（如把内容搬走后批量去掉散落各处的边框/底色）时，改用 `lark-sheets-batch-update` 的 `+cells-batch-clear`，避免对 `+cells-clear` 逐个 range 调用。
+> 需要一次清除**多个不连续 range**（如把内容搬走后批量去掉散落各处的边框/底色）时，改用 `references/lark-sheets-batch-update.md` 的 `+cells-batch-clear`，避免对 `+cells-clear` 逐个 range 调用。
 
 ```bash
 # dry-run 先看
@@ -270,7 +273,7 @@ lark-cli sheets +cols-resize --url "..." --sheet-id "$SID" --range "A:E" --type 
 
 **列宽没有 auto-fit**：需要"列宽自适应内容"时，按"写入后列宽自适应"一节的公式估算像素值（`max(表头字符数, 内容最长字符数) × 8 + 16`）后用 `--widths` 显式设置。
 
-> 同时出现在 `lark-sheets-sheet-structure.md` —— 行高 / 列宽调整也算行列结构层动作。
+> 同时出现在 `references/lark-sheets-sheet-structure.md` —— 行高 / 列宽调整也算行列结构层动作。
 
 ### `+range-move` / `+range-copy`
 
@@ -294,4 +297,4 @@ lark-cli sheets +range-sort --url "..." --sheet-id "$SID" --range "A1:E100" --ha
 
 - `Validate`：XOR 公共四件套；`+cells-clear` 强制 `--yes` 或 `--dry-run`；`+range-*` 校验源 / 目标 range 在同一 spreadsheet；`+range-sort` 的 `--sort-keys` 必须合法 JSON 数组且 col 都在 `--range` 内；`+rows-resize` / `+cols-resize` 两种形态二选一——统一形态必须给 `--range` 且至少给 `--height`/`--width` 或 `--type` 之一（`--type standard`/`auto` 不能与像素 flag 同给，`--type pixel` 共存 OK），map 形态（`--heights`/`--widths`）不能与 `--range`/`--height`/`--width`/`--type` 混用，map 键必须与命令维度一致（行数字 / 列字母）、不得重复，值为正整数像素或模式字符串；列宽 < 20px 拒绝（疑似 Excel 字符单位）；`+cols-resize` 不接受 `auto`（列宽不支持自适应）。map 形态在 `+batch-update` 子操作里不可用（它本身就是批量提交）。
 - `DryRun`：所有写操作输出"将要 PATCH 的 range + 受影响 cell 数估算"。
-- `Execute`：写后不自动回读；如需确认，自行调用 `+cells-get --range <影响范围>` 抽样比对。
+- `Execute`：sort/move/copy/fill 后回读首、中、末记录；merge/unmerge 后 `+sheet-info --include merges` + `+cells-get` 核范围、左上角值与边界；clear 后确认目标 scope 已空；resize 结果用 `+sheet-info` 核尺寸，不能只读 cell 值。
