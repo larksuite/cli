@@ -200,3 +200,48 @@ func TestStylesItem_BorderStylesLiftedIntoTheSingleEntry(t *testing.T) {
 		})
 	}
 }
+
+// The wrap and freeze spellings used to get a prescription that spelled the
+// rename and nothing else. For wrap the stated reason — "the values differ
+// too" — no longer holds: --word-wrap's enum normalizer already reads
+// true/false, the Google Sheets API words and the bare ones, so the name was
+// all that was left. The freeze counts were always the same integer.
+func TestFlagRenames_FromTheUnknownFlagTable(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name, command string
+		args          []string
+		wantInRequest string
+	}{
+		{"wrap-text carries a boolean", "+cells-set-style",
+			[]string{"--range", "A1", "--wrap-text", "true"}, `"word_wrap": "auto-wrap"`},
+		{"wrap-strategy carries the API word", "+cells-set-style",
+			[]string{"--range", "A1", "--wrap-strategy", "WRAP"}, `"word_wrap": "auto-wrap"`},
+		{"bare wrap", "+cells-set-style",
+			[]string{"--range", "A1", "--wrap", "false"}, `"word_wrap": "overflow"`},
+		{"border-style joins border-type", "+cells-set-style",
+			[]string{"--range", "A1", "--border-style", "solid"}, `"border_styles"`},
+		{"frozen-rows is rows", "+dim-freeze",
+			[]string{"--frozen-rows", "2"}, `"freeze_rows": 2`},
+		{"frozen-row-count is rows", "+dim-freeze",
+			[]string{"--frozen-row-count", "2"}, `"freeze_rows": 2`},
+		// The parse error reports the flag as typed, so the underscore
+		// spelling has to fold onto the same alias as the hyphenated one.
+		{"the underscore spelling folds too", "+dim-freeze",
+			[]string{"--frozen_rows", "2"}, `"freeze_rows": 2`},
+		{"frozen-cols is cols", "+dim-freeze",
+			[]string{"--frozen-cols", "1"}, `"freeze_columns": 1`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			args := append([]string{"--url", testURL, "--sheet-name", "s"}, tt.args...)
+			stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, tt.command), append(args, "--dry-run"))
+			if err != nil {
+				t.Fatalf("%s should be a rename, got: %v", tt.name, err)
+			}
+			if !strings.Contains(stdout, tt.wantInRequest) {
+				t.Errorf("expected %s in the request, got %q", tt.wantInRequest, stdout)
+			}
+		})
+	}
+}

@@ -577,16 +577,6 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			wantHint: []string{"--position", "--count"},
 		},
 		{
-			command: "+dim-freeze",
-			args:    []string{"--url", testURL, "--sheet-name", "s", "--frozen-rows", "2"},
-			wrong:   "--frozen-rows",
-			// Must prescribe the CURRENT spelling: --dimension/--count is
-			// retired and hidden from --help, so a hint naming it would point at
-			// a flag missing from the same error's valid-flags list.
-			wantHint:   []string{"--rows N"},
-			rejectHint: []string{"--dimension", "--count"},
-		},
-		{
 			command:  "+cells-set-style",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--bold", "true"},
 			wrong:    "--bold",
@@ -605,32 +595,10 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			wantHint: []string{`"start_cell"`, "+csv-put"},
 		},
 		{
-			command:    "+dim-freeze",
-			args:       []string{"--url", testURL, "--sheet-name", "s", "--frozen-row-count", "1"},
-			wrong:      "--frozen-row-count",
-			wantHint:   []string{"--rows N"},
-			rejectHint: []string{"--dimension", "--count"},
-		},
-		{
-			// The parse error reports the flag as typed: the underscore
-			// spelling must hit the same curated entry as the hyphenated one.
-			command:    "+dim-freeze",
-			args:       []string{"--url", testURL, "--sheet-name", "s", "--frozen_rows", "2"},
-			wrong:      "--frozen_rows",
-			wantHint:   []string{"--rows N"},
-			rejectHint: []string{"--dimension", "--count"},
-		},
-		{
 			command:  "+cells-set-style",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--font-bold", "true"},
 			wrong:    "--font-bold",
 			wantHint: []string{"--font-weight bold"},
-		},
-		{
-			command:  "+cells-set-style",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--wrap-strategy", "overflow"},
-			wrong:    "--wrap-strategy",
-			wantHint: []string{"--word-wrap"},
 		},
 		{
 			// --border-all / --border / --border-type are renames onto the
@@ -1146,8 +1114,8 @@ func TestReflowFlagVocabulary(t *testing.T) {
 	t.Run("wrap and style spellings get prescriptions", func(t *testing.T) {
 		t.Parallel()
 		for _, tc := range []struct{ flag, want string }{
-			{"--wrap-text", "use --word-wrap"},
-			{"--text-wrap", "use --word-wrap"},
+			// The wrap spellings are renames now (the enum normalizer already
+			// reads their values); --style still names no single flag.
 			{"--style", "there is no single --style flag"},
 		} {
 			t.Run(tc.flag, func(t *testing.T) {

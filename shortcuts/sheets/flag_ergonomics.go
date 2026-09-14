@@ -147,7 +147,11 @@ var commandFlagAliases = map[string]map[string]string{
 	// the command having no notion of inserting before anything. Kept to
 	// --position alone: --start-index / --end-index name a half-open pair
 	// whose end would have to be guessed, so those keep their prescription.
-	"+dim-delete":          {"position": "range"},
+	"+dim-delete": {"position": "range"},
+	// The frozen-* spellings name exactly the count --rows / --cols take, and
+	// the value is the same integer; the prescription they used to get spelled
+	// the rename and nothing else.
+	"+dim-freeze":          {"frozen-rows": "rows", "frozen-row-count": "rows", "row-count": "rows", "frozen-cols": "cols", "frozen-columns": "cols", "frozen-col-count": "cols", "frozen-column-count": "cols", "col-count": "cols", "column-count": "cols"},
 	"+cols-resize":         {"cols": "range", "size": "width"},
 	"+rows-resize":         {"rows": "range", "size": "height"},
 	"+range-fill":          {"source": "source-range", "target": "target-range"},
@@ -176,8 +180,15 @@ var commandFlagAliases = map[string]map[string]string{
 	// line rather than a side-keyed object: --border-type solid, --border
 	// thin. normalizeBorderStylesFlagValue reads a bare line word as all four
 	// sides, so the rename carries the value unchanged (1491 rows).
-	"+cells-set-style":       {"border-type": "border-styles", "border": "border-styles", "border-all": "border-styles"},
-	"+cells-batch-set-style": {"border-type": "border-styles", "border": "border-styles", "border-all": "border-styles"},
+	// wrap-text / wrap-strategy → word-wrap: these used to get a prescription
+	// on the grounds that the VALUES differ too. They no longer do — the enum
+	// normalizer already reads true/false, the Google Sheets API words
+	// (WRAP / OVERFLOW / CLIP) and the bare CSS-ish ones onto this enum, so
+	// nothing is left for the caller to change but the name.
+	// border-style joins border-type / border / border-all: a bare line word
+	// is read as all four sides by normalizeBorderStylesFlagValue.
+	"+cells-set-style":       {"border-type": "border-styles", "border": "border-styles", "border-all": "border-styles", "border-style": "border-styles", "wrap-text": "word-wrap", "wrap-strategy": "word-wrap", "text-wrap": "word-wrap", "wrap": "word-wrap"},
+	"+cells-batch-set-style": {"border-type": "border-styles", "border": "border-styles", "border-all": "border-styles", "border-style": "border-styles", "wrap-text": "word-wrap", "wrap-strategy": "word-wrap", "text-wrap": "word-wrap", "wrap": "word-wrap"},
 	// 08-29..31 reflow, long-tail table. Each of these names an input the
 	// command already has under one other spelling, with identical value
 	// semantics: the import name (16 rejections, all but one on windows),
@@ -185,7 +196,9 @@ var commandFlagAliases = map[string]map[string]string{
 	// within the did-you-mean budget -- "title" shares no prefix with "name",
 	// and "replace" is 4 edits from "replacement".
 	"+workbook-import": {"title": "name"},
-	"+workbook-export": {"file": "output-path", "outdir": "output-path", "output-dir": "output-path", "output": "output-path"},
+	// type → file-extension: --file-format and --file-type already resolve, and
+	// the only "type" this command has is the export format.
+	"+workbook-export": {"file": "output-path", "outdir": "output-path", "output-dir": "output-path", "output": "output-path", "type": "file-extension"},
 	"+cells-replace":   {"replace": "replacement"},
 	"+csv-get":         {"output": "output-path"},
 	// +sheet-create already answers to "name"; new-title joins new-name on
@@ -281,33 +294,16 @@ var intuitiveFlagHints = map[string]map[string]string{
 	// pair (DEPRECATED(phase-2) on dimFreezeLegacyNote): those flags are hidden
 	// from --help, so they do not even appear in the "valid flags" list printed
 	// beside this hint, and using them earns a second note steering back here.
-	"+dim-freeze": {
-		"frozen-rows":         "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state)",
-		"frozen-cols":         "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
-		"frozen-columns":      "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
-		"frozen-row-count":    "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state)",
-		"frozen-col-count":    "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
-		"frozen-column-count": "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
-	},
 	"+cells-set-style": {
 		"bold":      "use --font-weight bold",
 		"italic":    "use --font-style italic",
 		"underline": "use --font-line underline",
 		"font-bold": "use --font-weight bold",
-		// Google Sheets API vocabulary (wrapStrategy), plus the openpyxl / CSS
-		// wrap spellings (08-29..31 reflow: 4 of the 22 unknown-flag
-		// rejections). Not silent renames — the values differ too
-		// (--wrap-text true vs --word-wrap auto-wrap).
-		"wrap-strategy": "use --word-wrap (overflow / auto-wrap / word-clip)",
-		"wrap-text":     "use --word-wrap (overflow / auto-wrap / word-clip)",
-		"text-wrap":     "use --word-wrap (overflow / auto-wrap / word-clip)",
-		"wrap":          "use --word-wrap (overflow / auto-wrap / word-clip)",
 		// There is no composite style flag here: the OpenAPI's {style:{…}}
 		// envelope is one flat flag per field on this command.
 		"style": "there is no single --style flag — pass each field on its own: --font-weight, --font-style, --font-color, --background-color, --font-size, --border-styles",
 		// The border family: the only border flag is --border-styles (composite
 		// JSON); color and per-side variants ride inside it.
-		"border-style":  `borders take one composite flag: --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}' (sides: top/bottom/left/right, or "all" for all four)`,
 		"border-color":  `border color rides inside --border-styles JSON, e.g. --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}'`,
 		"border-top":    `per-side borders ride inside --border-styles JSON, e.g. --border-styles '{"top":{"style":"solid","weight":"thin","color":"#000000"}}'`,
 		"border-bottom": `per-side borders ride inside --border-styles JSON, e.g. --border-styles '{"bottom":{"style":"solid","weight":"thin","color":"#000000"}}'`,
