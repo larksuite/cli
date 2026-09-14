@@ -166,7 +166,7 @@ func TestMailThreadBotExplicitMailboxPassesValidation(t *testing.T) {
 func TestMailThreadModifyBotDefaultMailboxMeReturnsValidationError(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify", "--as", "bot", "--thread-ids", "thread_xxx", "--add-folder", "archive",
+		"+thread-modify", "--as", "bot", "--thread-id", "thread_xxx", "--folder-id", "archive",
 	}, f, stdout)
 	assertValidationError(t, err, "does not support --mailbox me")
 }
@@ -174,7 +174,7 @@ func TestMailThreadModifyBotDefaultMailboxMeReturnsValidationError(t *testing.T)
 func TestMailThreadModifyBotExplicitMailboxPassesValidation(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify", "--as", "bot", "--mailbox", "alice@example.com", "--thread-ids", "thread_xxx", "--add-folder", "archive", "--dry-run",
+		"+thread-modify", "--as", "bot", "--mailbox", "alice@example.com", "--thread-id", "thread_xxx", "--folder-id", "archive", "--dry-run",
 	}, f, stdout)
 	assertValidatePasses(t, err)
 }
@@ -182,7 +182,7 @@ func TestMailThreadModifyBotExplicitMailboxPassesValidation(t *testing.T) {
 func TestMailThreadTrashBotDefaultMailboxMeReturnsValidationError(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailThreadTrash, []string{
-		"+thread-trash", "--as", "bot", "--thread-ids", "thread_xxx", "--dry-run",
+		"+thread-trash", "--as", "bot", "--thread-id", "thread_xxx", "--dry-run",
 	}, f, stdout)
 	assertValidationError(t, err, "does not support --mailbox me")
 }
@@ -190,7 +190,7 @@ func TestMailThreadTrashBotDefaultMailboxMeReturnsValidationError(t *testing.T) 
 func TestMailThreadTrashBotExplicitMailboxPassesValidation(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailThreadTrash, []string{
-		"+thread-trash", "--as", "bot", "--mailbox", "alice@example.com", "--thread-ids", "thread_xxx", "--dry-run",
+		"+thread-trash", "--as", "bot", "--mailbox", "alice@example.com", "--thread-id", "thread_xxx", "--dry-run",
 	}, f, stdout)
 	assertValidatePasses(t, err)
 }
