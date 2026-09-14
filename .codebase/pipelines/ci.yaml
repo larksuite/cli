@@ -32,9 +32,22 @@
 # and lint stay offline and finish sooner.
 #
 # Two triggers, matching the public workflow's `pull_request` and
-# `push: branches: [main]`. The MR run is the merge gate; the trunk run is what
-# catches a regression that only appears once two independently-green MRs sit
-# on main together.
+# `push: branches: [main]`. The MR run is the merge gate; the trunk run is the
+# last line of defence, and now that every job verifies the merge result it
+# should stay quiet.
+#
+# Every job merges the target branch before it does anything else.
+# actions/checkout checks out CI_HEAD_SHA, the source branch tip, so without
+# that step a merge request is verified against a tree that has never met the
+# current main. Two changes touching different regions of the same file merge
+# cleanly and can still be incompatible; main broke that way on 2026-09-14,
+# with both runs green. The public workflow gets this for free, because a
+# pull_request run checks out refs/pull/<n>/merge. This platform exposes no
+# merge ref, so .codebase/ci/merge-target.sh does the merge in the job; it is a
+# no-op on trunk, tag and manual runs, and a conflict fails the job and asks
+# the author to rebase. It also makes the baseline below exact: the target
+# commit is an ancestor of HEAD afterwards, so the incremental checks diff
+# against it directly instead of falling back to a merge base.
 #
 # Every incremental check needs a baseline, and which commit that is depends on
 # the trigger. The public workflow spells it
@@ -79,6 +92,9 @@ jobs:
     image: hub.byted.org/codebase/ci_go_1_23:latest
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       # Records the toolchain and module-proxy settings the image ships with,
       # so a proxy or sumdb failure is diagnosable from the log alone.
       - name: Toolchain
@@ -124,6 +140,9 @@ jobs:
     if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       # python3 --version first: if the image ships without it, the log says
       # so instead of leaving a bare fetch_meta failure to interpret.
       - name: Fetch API registry
@@ -172,6 +191,9 @@ jobs:
     if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       # golangci-lint and the lint module both report only on what this MR
       # changed. resolve-changed-from.sh turns the MR's target commit into a
       # usable baseline and falls back on its own when that commit is missing
@@ -208,6 +230,9 @@ jobs:
     if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       # The image ships no Node, and several suites need it: `apps init`
       # preflights a LookPath for npx, script-test needs `node --test`, and
       # e2e_domains.js resolves the affected domains. The public unit-test and
@@ -246,6 +271,12 @@ jobs:
           - make script-test
       # The internal release pipeline and its stage scripts live under
       # .codebase/release and are not part of the public Makefile target.
+      # The CI helper the other jobs depend on, tested against a real
+      # repository shaped like a merge request checkout.
+      - name: Run internal CI script tests
+        commands:
+          - bash .codebase/ci/merge-target.test.sh
+          - bash .codebase/ci/pipeline.test.sh
       - name: Run internal release tests
         commands:
           - bash .codebase/release/pipeline.test.sh
@@ -264,6 +295,9 @@ jobs:
     image: hub.byted.org/codebase/ci_go_1_23:latest
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       - name: Install Node
         commands:
           - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
@@ -292,6 +326,9 @@ jobs:
     if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       # Compiles and runs the authsidecar* build-tagged code the default test
       # matrix never sees. Needs neither the registry nor Node, same as the
       # public sidecar-integration job.
@@ -306,6 +343,9 @@ jobs:
     if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       - name: Fetch API registry
         commands:
           - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
@@ -350,6 +390,9 @@ jobs:
     if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       - name: Fetch API registry
         commands:
           - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
@@ -405,6 +448,9 @@ jobs:
     if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       # The deterministic CLI gate: command naming, error facts, output shape
       # and skill references. `make quality-gate` builds the binary first, so
       # it pulls the registry through the build target. Resolving the baseline
@@ -431,6 +477,9 @@ jobs:
     if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       # No registry fetch on purpose: the clean tree must embed only the
       # committed meta_data_default.json stub, which reproduces the state a
       # customer fork builds in. Same reasoning as the public job.
@@ -443,6 +492,9 @@ jobs:
     image: hub.byted.org/codebase/ci_go_1_23:latest
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       - name: Fetch API registry
         commands:
           - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
@@ -516,6 +568,9 @@ jobs:
     timeout: 20
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       - name: Fetch API registry
         commands:
           - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
@@ -596,6 +651,9 @@ jobs:
       LARKSUITE_CLI_BRAND: feishu
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       - name: Fetch API registry
         commands:
           - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
@@ -705,6 +763,9 @@ jobs:
     timeout: 30
     steps:
       - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
       - name: Install Node
         commands:
           - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
