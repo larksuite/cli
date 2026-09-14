@@ -11,7 +11,7 @@
           "id": "chats.create",
           "path": "chats",
           "httpMethod": "POST",
-          "description": "Create a group. Identity: supports `user` and `bot`",
+          "description": "Create a group. Identity: `bot` only (`tenant_access_token`).",
           "parameters": {
             "user_id_type": {
               "type": "string",
@@ -707,7 +707,6 @@
             "im:chat:create_by_user"
           ],
           "accessTokens": [
-            "user",
             "tenant"
           ],
           "danger": true,
