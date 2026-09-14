@@ -4,6 +4,7 @@
 package sheets
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -72,4 +73,29 @@ func TestCellsSetInput_RequiresAnAnchor(t *testing.T) {
 	})
 	_, _, err := cellsSetInputWithNote(fv, "tok", "sid", "")
 	requireValidation(t, err, "--range is required")
+}
+
+// +dim-insert carries a real --position, and the habit reaches +dim-delete,
+// which names rows and columns by an A1 span. The value needs no translation:
+// --range reads a lone "5" as the single row 5. The command is destructive, so
+// the cases below pin that the span it deletes is exactly the one named.
+func TestDimDelete_PositionNamesTheSpan(t *testing.T) {
+	for _, tt := range []struct{ name, position, wantRange string }{
+		{"row number", "5", "5"},
+		{"column letter", "C", "C"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := shortcutFromRegistry(t, "+dim-delete")
+			stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+				"--url", testURL, "--sheet-name", "s",
+				"--position", tt.position, "--yes", "--dry-run",
+			})
+			if err != nil {
+				t.Fatalf("--position should reach --range, got: %v", err)
+			}
+			if !strings.Contains(stdout, `"range": "`+tt.wantRange+`"`) {
+				t.Errorf("expected range %q in the request, got %q", tt.wantRange, stdout)
+			}
+		})
+	}
 }

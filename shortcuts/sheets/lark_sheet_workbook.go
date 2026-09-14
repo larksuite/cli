@@ -1186,6 +1186,46 @@ func foldStyleItemKeys(item map[string]interface{}) {
 			item[section] = []interface{}{obj}
 		}
 	}
+	liftItemLevelBorderStyles(item)
+}
+
+// borderKeysInACellStyle are the spellings that already put a border on a
+// cell_styles entry. Squashed, so border_styles / borderStyles / border-type
+// all collapse onto one of these.
+var borderKeysInACellStyle = map[string]bool{
+	"borderstyles": true, "border": true, "bordertype": true,
+	"borders": true, "borderall": true,
+}
+
+// liftItemLevelBorderStyles moves a border_styles written on the styles ITEM
+// down onto its cell_styles entry. A border needs a range, and the item has
+// none of its own — the only range in reach is the entry's, so the move is
+// unambiguous exactly when there is one entry and it has no border already.
+//
+// Anything else keeps the item-level key, and with it the unknown-key error
+// and its prescription: two entries means two candidate ranges and nothing
+// here says which was meant, and an entry that already carries a border would
+// have to have one of the two silently dropped.
+func liftItemLevelBorderStyles(item map[string]interface{}) {
+	border, present := item["border_styles"]
+	if !present {
+		return
+	}
+	entries, isList := item["cell_styles"].([]interface{})
+	if !isList || len(entries) != 1 {
+		return
+	}
+	entry, isObj := entries[0].(map[string]interface{})
+	if !isObj {
+		return
+	}
+	for k := range entry {
+		if borderKeysInACellStyle[squashStyleFieldKey(k)] {
+			return
+		}
+	}
+	entry["border_styles"] = border
+	delete(item, "border_styles")
 }
 
 func parseWorkbookCreateStyleItem(item map[string]interface{}, path string, existingSheet bool) (*workbookCreateStylePayload, []error) {

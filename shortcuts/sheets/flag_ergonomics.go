@@ -140,6 +140,14 @@ var commandFlagAliases = map[string]map[string]string{
 	// spells the pixel dimension "size", and pre-2026-07 batches accepted it
 	// here too — the rename is the single largest sub-op error cluster in
 	// eval traces (15+ hits). Same pixel-count semantics, safe to rewrite.
+	// position → range: +dim-insert takes a real --position, and the habit
+	// carries to its sibling, which names rows and columns by an A1 span. The
+	// value survives the rename untouched — --range takes a lone "5" as the
+	// single row 5, which is the only thing "delete at position 5" can mean,
+	// the command having no notion of inserting before anything. Kept to
+	// --position alone: --start-index / --end-index name a half-open pair
+	// whose end would have to be guessed, so those keep their prescription.
+	"+dim-delete":          {"position": "range"},
 	"+cols-resize":         {"cols": "range", "size": "width"},
 	"+rows-resize":         {"rows": "range", "size": "height"},
 	"+range-fill":          {"source": "source-range", "target": "target-range"},
@@ -364,7 +372,6 @@ var intuitiveFlagHints = map[string]map[string]string{
 		// 18 rejections, the largest single long-tail entry. +dim-insert does
 		// take --position, so the habit carries over to its sibling, where
 		// rows and columns are named by an A1 span instead.
-		"position":    `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
 		"index":       `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
 		"start-index": `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
 		"end-index":   `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
@@ -892,12 +899,52 @@ func chainMultiAreaRange(cmd *cobra.Command) {
 		if want, err := c.Flags().GetBool("print-schema"); err == nil && want {
 			return nil
 		}
-		rng, err := c.Flags().GetString("range")
-		if err != nil {
-			return nil //nolint:nilerr // the command has no plain --range; nothing to check
+		// Lookup normalizes, so on a command where --range is an ALIAS the
+		// lookup lands on the flag it aliases and this guard would judge a
+		// value that never belonged to it. +chart-create-basic is exactly
+		// that: its real flag is --data-range, whose contract takes the
+		// comma-separated multi-range this check exists to refuse.
+		fl := c.Flags().Lookup("range")
+		if fl == nil || fl.Name != "range" {
+			return nil
 		}
-		return rejectMultiAreaRange(rng)
+		if multiAreaReadCommands[c.Name()] {
+			return nil // splitRangeAreas forwards each area as its own range
+		}
+		return rejectMultiAreaRange(fl.Value.String())
 	}
+}
+
+// multiAreaReadCommands are the read commands whose tool input is already a
+// LIST of ranges, so the areas a caller joined with commas go on the wire as
+// the several ranges they name. The rewrite adds no semantics these commands
+// do not have: one read, several rectangles, the response keyed by range.
+// Write and style commands stay with the prescription — fanning one call into
+// several changes what a partial failure leaves behind.
+var multiAreaReadCommands = map[string]bool{
+	"+cells-get":              true,
+	"+dropdown-get":           true,
+	"+cond-format-result-get": true,
+}
+
+// splitRangeAreas reads the --range value as the list of areas it names. A
+// single range never contains a comma, so a comma can only be separating two
+// of them; a value with none is the one-element list it has always been.
+func splitRangeAreas(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.Contains(trimmed, ",") {
+		return []string{trimmed}
+	}
+	areas := make([]string, 0, 2)
+	for _, part := range strings.Split(trimmed, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			areas = append(areas, part)
+		}
+	}
+	if len(areas) == 0 {
+		return []string{trimmed}
+	}
+	return areas
 }
 
 // rejectMultiAreaRange answers the Excel multi-area habit — several

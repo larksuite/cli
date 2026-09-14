@@ -1312,6 +1312,14 @@ var condFormatCompareAliases = map[string]string{
 	"ne":       "notEqual",
 	"neq":      "notEqual",
 	"contains": "containsText",
+	// The bare comparative, with "than" dropped. gt / ge / >= already resolve,
+	// so refusing the spelled-out form of the same comparison is arbitrary;
+	// "greater" can only mean greaterThan, since greaterThanOrEqual is the one
+	// that has to say so.
+	"greater": "greaterThan",
+	"less":    "lessThan",
+	"above":   "greaterThan",
+	"below":   "lessThan",
 }
 
 // condFormatShapeKeys are the keys that identify an attrs entry as belonging

@@ -1202,10 +1202,11 @@ func TestReflowLongTailVocabulary(t *testing.T) {
 			name, command, want string
 			args                []string
 		}{
-			// 18 rejections, the largest long-tail entry: +dim-insert does
-			// take --position, so the habit carries to its sibling.
-			{"dim-delete has no position", "+dim-delete", `--range: "3:5" deletes rows`,
-				[]string{"--url", testURL, "--sheet-name", "s", "--position", "3"}},
+			// --position now resolves to --range (see the alias table); the
+			// half-open index pair still cannot be guessed and keeps its
+			// prescription.
+			{"dim-delete has no start-index", "+dim-delete", `--range: "3:5" deletes rows`,
+				[]string{"--url", testURL, "--sheet-name", "s", "--start-index", "3"}},
 			{"cells-unmerge takes one span", "+cells-unmerge", "one span per call",
 				[]string{"--url", testURL, "--sheet-name", "s", "--ranges", `["A1:B2"]`}},
 			{"csv-get returns values only", "+csv-get", "+cells-get --include",

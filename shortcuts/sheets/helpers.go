@@ -611,6 +611,11 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 		// entirely, in the spelling their own shell has (mangledPayloadHint).
 		verr := sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).WithCause(err)
 		hint := jsonSyntaxContext(raw, err)
+		// A bare comma list on a wrap-only flag is the dominant shape here,
+		// and the syntax context would only point at the first byte of a word.
+		if comma := bareListCommaHint(runtime.Command(), name, raw); comma != "" {
+			hint = comma
+		}
 		if flagAcceptsStdin(runtime.Command(), name) {
 			if hint == "" {
 				hint = mangledPayloadHint(name)
@@ -647,26 +652,51 @@ func finishParsedJSONFlag(runtime flagView, name string, out interface{}) (inter
 	return out, nil
 }
 
+// bareListMode says what a comma means inside a bare value.
+type bareListMode int
+
+const (
+	// bareListSplitCommas: the element vocabulary is A1 ranges, which never
+	// contain a comma, so a comma can only be separating two of them.
+	bareListSplitCommas bareListMode = iota
+	// bareListWrapOnly: the elements are free text a caller chose, so a comma
+	// is as likely to be inside one element as between two. Only a value with
+	// no comma at all is unambiguous enough to lift; the rest gets the split
+	// spelled out for it to confirm (bareListCommaHint).
+	bareListWrapOnly
+)
+
 // bareStringListFlags are the (command, flag) pairs whose contract is a JSON
 // array of plain strings. Their value arrives bare often enough to be its own
 // cluster — the same A1 range that every sibling flag takes unquoted — and a
-// bare string names exactly one element, with a comma list naming several.
-var bareStringListFlags = map[string]map[string]bool{
-	"+cond-format-create": {"ranges": true},
-	"+cond-format-update": {"ranges": true},
-	"+cells-batch-clear":  {"ranges": true},
+// bare string names exactly one element.
+var bareStringListFlags = map[string]map[string]bareListMode{
+	"+cond-format-create": {"ranges": bareListSplitCommas},
+	"+cond-format-update": {"ranges": bareListSplitCommas},
+	"+cells-batch-clear":  {"ranges": bareListSplitCommas},
+	// Dropdown options are user-authored labels; "Yes, with conditions" is one
+	// option, not two.
+	"+dropdown-set":    {"options": bareListWrapOnly},
+	"+dropdown-update": {"options": bareListWrapOnly},
 }
 
 // wrapBareListValue lifts that bare value into its list. Only for a value that
 // is not JSON at all: a malformed array stays malformed, so its own error
 // still names the character that broke it.
 func wrapBareListValue(command, flag, raw string) (interface{}, bool) {
-	if !bareStringListFlags[command][flag] {
+	mode, listed := bareStringListFlags[command][flag]
+	if !listed {
 		return nil, false
 	}
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" || strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, `"`) {
 		return nil, false
+	}
+	if mode == bareListWrapOnly {
+		if strings.Contains(trimmed, ",") {
+			return nil, false // ambiguous: bareListCommaHint spells out the split
+		}
+		return []interface{}{trimmed}, true
 	}
 	out := []interface{}{}
 	for _, part := range strings.Split(trimmed, ",") {
@@ -677,6 +707,36 @@ func wrapBareListValue(command, flag, raw string) (interface{}, bool) {
 		out = append(out, part)
 	}
 	return out, true
+}
+
+// bareListCommaHint is what a bareListWrapOnly flag says instead of guessing:
+// the caller's own value, split the obvious way and re-spelled as the JSON
+// array the flag takes, for them to confirm. Splitting it here would silently
+// halve an option that legitimately contains a comma.
+func bareListCommaHint(command, flag, raw string) string {
+	if mode, listed := bareStringListFlags[command][flag]; !listed || mode != bareListWrapOnly {
+		return ""
+	}
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || !strings.Contains(trimmed, ",") ||
+		strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, `"`) {
+		return ""
+	}
+	parts := []interface{}{}
+	for _, part := range strings.Split(trimmed, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			parts = append(parts, part)
+		}
+	}
+	if len(parts) < 2 {
+		return ""
+	}
+	encoded, err := json.Marshal(parts)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("--%s takes a JSON array; if that value is %d separate options, pass %s — "+
+		"an option that itself contains a comma has to be quoted as one element", flag, len(parts), encoded)
 }
 
 // jsonFlagNormalizers rewrites, per (command, flag), unambiguous habitual

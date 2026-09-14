@@ -126,6 +126,14 @@ var cellStyleAliases = []struct{ alias, canonical string }{
 	{"wrap_text", "word_wrap"},
 	{"text_wrap", "word_wrap"},
 	{"wrap_strategy", "word_wrap"},
+	// Bare "wrap" is the same concept with the noun dropped, and it arrived
+	// far more often than the three spellings above that were already taken.
+	// Refusing only the shortest of four spellings of one concept is a rule
+	// no caller can infer.
+	{"wrap", "word_wrap"},
+	// text_color names the same thing font_color does; the prescription it
+	// used to get said exactly that and nothing else.
+	{"text_color", "font_color"},
 }
 
 // cellStyleValueAliases carries the style words that name a field this
@@ -222,7 +230,6 @@ var styleFieldPrescriptions = map[string]string{
 	// vocabulary, and the silent-alias admission bar excludes those.
 	"bg_color":   "the cell fill is background_color",
 	"fill_color": "the cell fill is background_color",
-	"text_color": "the text color is font_color",
 	// 08-29..31 reflow, --styles unknown-field group (96 rejections on
 	// +styles-put alone). These name real concepts that the payload does
 	// carry — just not inside a cell_styles item, so the fix is structural
@@ -231,7 +238,6 @@ var styleFieldPrescriptions = map[string]string{
 	"row_heights":   `row height is a sheet-level row_sizes entry, not a cell style ({"row_sizes":[{"range":"1:1","type":"pixel","size":30}]})`,
 	"column_width":  `column width is a sheet-level col_sizes entry, not a cell style ({"col_sizes":[{"range":"A:C","type":"pixel","size":120}]})`,
 	"col_width":     `column width is a sheet-level col_sizes entry, not a cell style ({"col_sizes":[{"range":"A:C","type":"pixel","size":120}]})`,
-	"wrap":          `automatic line wrapping is word_wrap ("auto-wrap" to wrap, "overflow" to spill, "word-clip" to truncate)`,
 	"unmerge_cells": "a styles payload only adds merges (cell_merges); undo an existing one with +cells-unmerge --range <A1 range>",
 }
 
@@ -524,17 +530,30 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 			if _, has := cell["type"]; has {
 				return common.ValidationErrorf("%s[%d][%d].type is not a cell field — the value type is inferred from the JSON value; control display format via cell_styles.number_format", path, r, c)
 			}
+			// border_styles written one level too deep is the same object in
+			// the same cell under the same name — the only thing wrong is its
+			// depth, which the error used to state and then refuse to act on.
+			// Lifted before the shorthand expansion below so a nested "all"
+			// gets the same treatment a correctly placed one does. A cell
+			// carrying both keeps the error: that is two different borders for
+			// one cell, and nothing here says which one the caller meant.
+			if st, isObj := cell["cell_styles"].(map[string]interface{}); isObj {
+				if nested, misNested := st["border_styles"]; misNested {
+					if _, alsoTop := cell["border_styles"]; alsoTop {
+						return common.ValidationErrorf(
+							"%s[%d][%d] sets border_styles both on the cell and inside cell_styles; keep the one on the cell",
+							path, r, c)
+					}
+					cell["border_styles"] = nested
+					delete(st, "border_styles")
+				}
+			}
 			if bs, ok := cell["border_styles"].(map[string]interface{}); ok {
 				expandBorderAllShorthand(bs)
 			}
 			st, ok := cell["cell_styles"].(map[string]interface{})
 			if !ok {
 				continue
-			}
-			if _, misNested := st["border_styles"]; misNested {
-				return common.ValidationErrorf(
-					"%s[%d][%d].cell_styles.border_styles is not valid — border_styles is a top-level cell field, a sibling of cell_styles; move it up one level",
-					path, r, c)
 			}
 			if err := normalizeCellStyleAliases(st, fmt.Sprintf("%s[%d][%d].cell_styles", path, r, c)); err != nil {
 				return err

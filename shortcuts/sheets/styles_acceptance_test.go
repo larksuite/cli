@@ -278,8 +278,8 @@ var stylesPriorCorpus = []struct {
 		wantErr: "no nested style object"},
 	{name: "bg_color prescribed", fields: map[string]interface{}{"bg_color": "#FFFFFF"},
 		wantErr: "the cell fill is background_color"},
-	{name: "text_color prescribed", fields: map[string]interface{}{"text_color": "#000000"},
-		wantErr: "the text color is font_color"},
+	{name: "text_color is font_color", fields: map[string]interface{}{"text_color": "#000000"},
+		check: wantStyle("font_color", "#000000")},
 	// prescriptions (ambiguous / unsupported / typo)
 	{name: "fore_color prescribed", fields: map[string]interface{}{"fore_color": "#F00"}, wantErr: "ambiguous"},
 	{name: "indent rejected not ignored", fields: map[string]interface{}{"indent": float64(2)}, wantErr: "not a supported style field"},
@@ -298,8 +298,12 @@ var stylesPriorCorpus = []struct {
 		fields: map[string]interface{}{"row_height": float64(30)}, wantErr: "row_sizes"},
 	{name: "column_width prescribes col_sizes",
 		fields: map[string]interface{}{"column_width": float64(120)}, wantErr: "col_sizes"},
-	{name: "bare wrap prescribes word_wrap",
-		fields: map[string]interface{}{"wrap": true}, wantErr: "word_wrap"},
+	// wrap_text / text_wrap / wrap_strategy were already taken; the bare noun
+	// is the fourth spelling of the one wrap concept.
+	{name: "bare wrap is word_wrap",
+		fields: map[string]interface{}{"wrap": true}, check: wantStyle("word_wrap", "auto-wrap")},
+	{name: "bare wrap keeps an unreadable value's error",
+		fields: map[string]interface{}{"wrap": "sort of"}, wantErr: "word_wrap"},
 	{name: "unmerge_cells prescribes the unmerge command",
 		fields: map[string]interface{}{"unmerge_cells": "A1:B2"}, wantErr: "+cells-unmerge"},
 	// 08-29..31 reflow, second pass. `type` is the line-kind slot in the Lark

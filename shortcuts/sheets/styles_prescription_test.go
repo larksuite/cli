@@ -144,20 +144,39 @@ func TestCellsSet_BorderAllAndMisNestedBorder(t *testing.T) {
 		}
 	})
 
-	t.Run("mis-nested border_styles intercepted", func(t *testing.T) {
+	// border_styles one level too deep is the same object under the same name
+	// in the same cell; only its depth is wrong, so it is lifted rather than
+	// described back to the caller.
+	t.Run("mis-nested border_styles is lifted", func(t *testing.T) {
 		t.Parallel()
 		sc := shortcutFromRegistry(t, "+cells-set")
-		_, _, err := runShortcutCapturingErr(t, sc, []string{
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
 			"--url", testURL,
 			"--sheet-name", "s",
 			"--range", "A1",
 			"--cells", `[[{"value":"x","cell_styles":{"font_weight":"bold","border_styles":{"top":{"style":"solid"}}}}]]`,
 			"--dry-run",
 		})
-		ve := requireValidation(t, err, "cell_styles.border_styles is not valid")
-		if !strings.Contains(ve.Message, "sibling of cell_styles") {
-			t.Errorf("message should prescribe moving it up one level, got %q", ve.Message)
+		if err != nil {
+			t.Fatalf("mis-nested border_styles should lift and pass, got: %v", err)
 		}
+		if !strings.Contains(stdout, `"border_styles"`) || !strings.Contains(stdout, `"font_weight"`) {
+			t.Errorf("both the lifted border and the sibling style should survive, got %q", stdout)
+		}
+	})
+
+	// Two borders for one cell is the one shape no reading resolves.
+	t.Run("border_styles on both levels conflicts", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A1",
+			"--cells", `[[{"value":"x","border_styles":{"top":{"style":"solid"}},"cell_styles":{"border_styles":{"all":{"style":"dashed"}}}}]]`,
+			"--dry-run",
+		})
+		requireValidation(t, err, "both on the cell and inside cell_styles")
 	})
 }
 

@@ -1,0 +1,202 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package sheets
+
+import (
+	"strings"
+	"testing"
+)
+
+// A dropdown option is a label the caller wrote, so a comma inside one is as
+// likely as a comma between two. Only a value with no comma at all is lifted;
+// the rest gets the split spelled out to confirm rather than applied.
+func TestDropdownOptions_BareValue(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a lone bare option becomes the one-element list", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+dropdown-set"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:A5",
+			"--options", "Approved", "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("a bare option should be accepted, got: %v", err)
+		}
+		if !strings.Contains(stdout, `Approved`) {
+			t.Errorf("the option should reach the request, got %q", stdout)
+		}
+	})
+
+	t.Run("a comma list is not split, and the error carries the split", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+dropdown-set"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:A5",
+			"--options", "Yes,No", "--dry-run",
+		})
+		ve := requireValidation(t, err, "invalid JSON")
+		for _, want := range []string{`["Yes","No"]`, "2 separate options"} {
+			if !strings.Contains(ve.Hint, want) {
+				t.Errorf("hint should carry %q, got %q", want, ve.Hint)
+			}
+		}
+	})
+}
+
+// The bare comparative with "than" dropped. gt / ge / >= already resolved, so
+// refusing the spelled-out form of the same comparison was arbitrary.
+func TestCondFormat_BareComparativeSpellings(t *testing.T) {
+	t.Parallel()
+	for spelling, want := range map[string]string{
+		"greater": "greaterThan",
+		"less":    "lessThan",
+		"above":   "greaterThan",
+		"below":   "lessThan",
+	} {
+		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
+			stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cond-format-create"), []string{
+				"--url", testURL, "--sheet-name", "s", "--ranges", `["A1:B2"]`,
+				"--properties", `{"rule_type":"cellIs","attrs":[{"compare_type":"` + spelling +
+					`","value":"5"}],"style":{"font_color":"#ff0000"}}`,
+				"--dry-run",
+			})
+			if err != nil {
+				t.Fatalf("%q should resolve to %q, got: %v", spelling, want, err)
+			}
+			if !strings.Contains(stdout, want) {
+				t.Errorf("expected compare_type %q in the request, got %q", want, stdout)
+			}
+		})
+	}
+}
+
+// The multi-area guard reads --range through pflag, which normalizes; on a
+// command where --range is an ALIAS the lookup lands on the flag it aliases.
+// +chart-create-basic is exactly that, and its real --data-range takes the
+// comma-separated multi-range the guard exists to refuse.
+func TestChartDataRange_MultiAreaNotBlocked(t *testing.T) {
+	t.Parallel()
+	for _, flag := range []string{"--data-range", "--range"} {
+		t.Run(flag, func(t *testing.T) {
+			t.Parallel()
+			if _, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+chart-create-basic"), []string{
+				"--url", testURL, "--sheet-name", "s", "--chart-type", "column",
+				flag, "A1:B10,D1:E10", "--dry-run",
+			}); err != nil {
+				t.Fatalf("a chart data range takes several areas, got: %v", err)
+			}
+		})
+	}
+}
+
+// splitAreasRespectingQuotes exists because a quoted sheet name may itself
+// contain a comma, which separates nothing.
+func TestSplitAreasRespectingQuotes(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"no comma", "A1:B2", []string{"A1:B2"}},
+		{"two areas", "A1:B2,D1:E2", []string{"A1:B2", "D1:E2"}},
+		{"comma inside a quoted sheet name", "'Q1,Sales'!A1:B2", []string{"'Q1,Sales'!A1:B2"}},
+		{"quoted name beside a second area", "'Q1,Sales'!A1:B2,D1:E2", []string{"'Q1,Sales'!A1:B2", "D1:E2"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := splitAreasRespectingQuotes(tt.raw)
+			if strings.Join(got, "|") != strings.Join(tt.want, "|") {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// A multi-area range is one call against one sheet, so a qualifier repeated on
+// every area is lifted once and stripped from all of them; two different
+// sheets are left alone rather than silently retargeted.
+func TestSplitRangeSheetPrefixAcrossAreas(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name, raw, wantSheet, wantRest string
+		wantOK                         bool
+	}{
+		{"same qualifier on both", "'Q1'!A1:A2,'Q1'!C1:D2", "Q1", "A1:A2,C1:D2", true},
+		{"only the first qualified", "Sheet1!A1:B2,D1:E2", "Sheet1", "A1:B2,D1:E2", true},
+		{"no qualifier anywhere", "A1:B2,D1:E2", "", "", false},
+		{"two different sheets", "Sheet1!A1:B2,Sheet2!D1:E2", "", "", false},
+		{"single area keeps prior behaviour", "Sheet1!A1:B2", "Sheet1", "A1:B2", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			sheet, rest, ok := splitRangeSheetPrefixAcrossAreas(tt.raw)
+			if ok != tt.wantOK || sheet != tt.wantSheet || rest != tt.wantRest {
+				t.Errorf("got (%q, %q, %v), want (%q, %q, %v)",
+					sheet, rest, ok, tt.wantSheet, tt.wantRest, tt.wantOK)
+			}
+		})
+	}
+}
+
+// A border needs a range, and a styles ITEM has none of its own. When the item
+// carries exactly one cell_styles entry, that entry's range is the only one in
+// reach, so a border_styles hoisted to the item is unambiguous; every other
+// shape keeps the item-level key and with it the prescription.
+func TestStylesItem_BorderStylesLiftedIntoTheSingleEntry(t *testing.T) {
+	t.Parallel()
+
+	t.Run("one entry without a border takes it", func(t *testing.T) {
+		t.Parallel()
+		item := map[string]interface{}{
+			"name": "S1",
+			"cell_styles": []interface{}{
+				map[string]interface{}{"range": "A1:B2", "font_weight": "bold"},
+			},
+			"border_styles": map[string]interface{}{"all": map[string]interface{}{"style": "solid"}},
+		}
+		foldStyleItemKeys(item)
+		if _, still := item["border_styles"]; still {
+			t.Fatalf("border_styles should have moved off the item, got %v", item)
+		}
+		entry := item["cell_styles"].([]interface{})[0].(map[string]interface{})
+		if _, landed := entry["border_styles"]; !landed {
+			t.Errorf("border_styles should be on the entry, got %v", entry)
+		}
+	})
+
+	for _, tt := range []struct {
+		name string
+		item map[string]interface{}
+	}{
+		{"two entries leave two candidate ranges", map[string]interface{}{
+			"name": "S1",
+			"cell_styles": []interface{}{
+				map[string]interface{}{"range": "A1:B2"},
+				map[string]interface{}{"range": "C1:D2"},
+			},
+			"border_styles": map[string]interface{}{"all": map[string]interface{}{"style": "solid"}},
+		}},
+		{"an entry that already has a border", map[string]interface{}{
+			"name": "S1",
+			"cell_styles": []interface{}{
+				map[string]interface{}{"range": "A1:B2", "border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "solid"}}},
+			},
+			"border_styles": map[string]interface{}{"all": map[string]interface{}{"style": "dashed"}},
+		}},
+		{"no cell_styles to land on", map[string]interface{}{
+			"name":          "S1",
+			"row_sizes":     []interface{}{map[string]interface{}{"range": "1:1", "type": "pixel", "size": float64(30)}},
+			"border_styles": map[string]interface{}{"all": map[string]interface{}{"style": "solid"}},
+		}},
+	} {
+		t.Run(tt.name+" keeps the item-level key", func(t *testing.T) {
+			t.Parallel()
+			foldStyleItemKeys(tt.item)
+			if _, still := tt.item["border_styles"]; !still {
+				t.Errorf("border_styles should have been left for the unknown-key report, got %v", tt.item)
+			}
+		})
+	}
+}
