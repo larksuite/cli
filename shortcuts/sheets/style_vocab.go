@@ -546,6 +546,13 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 					}
 					cell["border_styles"] = nested
 					delete(st, "border_styles")
+					// A cell_styles that held nothing else is gone with it: an
+					// empty style object is not what the caller wrote, and
+					// shipping one would put a field on the wire that the
+					// correctly spelled payload does not carry.
+					if len(st) == 0 {
+						delete(cell, "cell_styles")
+					}
 				}
 			}
 			if bs, ok := cell["border_styles"].(map[string]interface{}); ok {

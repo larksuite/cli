@@ -57,7 +57,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Only verify AI formulas (=AI(prompt, [range])), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously: use this flag with --range as the first post-write sample check, not cells-get polling; if the sample has no explicit failed/unsupported state, delivery may proceed with pending formulas while telling the user that computation continues in the background."
+        "desc": "Only verify AI formulas (=AI(prompt, [range])), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously: after writing, let --range cover the entire written range (this flag is read-only and cheap, so do not sample), and do not poll results with +cells-get; the delivery criterion is ai_formula_failed_count == 0 and ai_formula_total == expected count, after which delivery may proceed with pending formulas while telling the user that computation continues in the background."
       }
     ]
   },

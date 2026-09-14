@@ -50,13 +50,14 @@ func TestDropdownOptions_BareValue(t *testing.T) {
 
 // The bare comparative with "than" dropped. gt / ge / >= already resolved, so
 // refusing the spelled-out form of the same comparison was arbitrary.
+//
+// "above" / "below" stay refused: aboveAverage is a rule_type in this same
+// schema, so they name a plausible OTHER rule rather than a comparison.
 func TestCondFormat_BareComparativeSpellings(t *testing.T) {
 	t.Parallel()
 	for spelling, want := range map[string]string{
 		"greater": "greaterThan",
 		"less":    "lessThan",
-		"above":   "greaterThan",
-		"below":   "lessThan",
 	} {
 		t.Run(spelling, func(t *testing.T) {
 			t.Parallel()
@@ -611,4 +612,50 @@ func TestStylesPut_DeclaresTheGridReadScope(t *testing.T) {
 		t.Fatalf("+styles-put reads the workbook grid but declares %v", sc.DeclaredScopesForIdentity("user"))
 	}
 	t.Fatal("+styles-put not found in the registry")
+}
+
+// Lifting border_styles out of cell_styles must leave the payload exactly as
+// the correctly spelled one, including NOT leaving an empty cell_styles behind
+// when the border was its only key.
+func TestCellsSet_LiftedBorderMatchesTheCorrectSpelling(t *testing.T) {
+	t.Parallel()
+	run := func(cells string) string {
+		t.Helper()
+		stdout, _, err := runShortcutCapturingErr(t, CellsSet, []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1",
+			"--cells", cells, "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("payload should be accepted: %v", err)
+		}
+		return stdout
+	}
+	lifted := run(`[[{"value":"x","cell_styles":{"border_styles":{"all":{"style":"solid"}}}}]]`)
+	direct := run(`[[{"value":"x","border_styles":{"all":{"style":"solid"}}}]]`)
+	if strings.Contains(lifted, `"cell_styles"`) {
+		t.Errorf("an emptied cell_styles should not reach the request: %s", lifted)
+	}
+	if lifted != direct {
+		t.Errorf("lifted payload differs from the correctly spelled one:\n lifted: %s\n direct: %s", lifted, direct)
+	}
+}
+
+// aboveAverage is a rule_type in the same schema, so "above" names a plausible
+// other rule rather than a comparison operator. It keeps the did-you-mean.
+func TestCondFormat_AverageWordsStayRefused(t *testing.T) {
+	t.Parallel()
+	for _, spelling := range []string{"above", "below"} {
+		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cond-format-create"), []string{
+				"--url", testURL, "--sheet-name", "s", "--ranges", `["A1:B2"]`,
+				"--properties", `{"rule_type":"cellIs","attrs":[{"compare_type":"` + spelling +
+					`","value":"5"}],"style":{"font_color":"#ff0000"}}`,
+				"--dry-run",
+			})
+			if err == nil {
+				t.Fatalf("%q is ambiguous against the aboveAverage rule and must not be rewritten", spelling)
+			}
+		})
+	}
 }

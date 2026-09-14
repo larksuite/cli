@@ -1395,10 +1395,12 @@ var condFormatCompareAliases = map[string]string{
 	// so refusing the spelled-out form of the same comparison is arbitrary;
 	// "greater" can only mean greaterThan, since greaterThanOrEqual is the one
 	// that has to say so.
+	//
+	// "above" / "below" are deliberately NOT here: aboveAverage is a rule_type
+	// in this same schema, so a caller writing "above" may mean that rule
+	// rather than a comparison, and the did-you-mean is the honest answer.
 	"greater": "greaterThan",
 	"less":    "lessThan",
-	"above":   "greaterThan",
-	"below":   "lessThan",
 }
 
 // condFormatShapeKeys are the keys that identify an attrs entry as belonging
