@@ -82,7 +82,7 @@
 `--ai-only` 让 `+formula-verify` 只校验 AI 公式、跳过普通公式的 Excel 错误扫描，专用于写完 AI 公式后的异步状态检查。**它必须是第一校验入口；禁止先用 `+cells-get` / `+csv-get` 轮询 AI 结果。**
 
 - **`--ai-only` 返回字段**（机读判据以这些为准，均为整数）：
-  - `ai_formula_total`——被识别为 AI 公式的单元格总数。⚠️ `--range` 只透传给后端，AI-only 汇总**不保证**按它收窄，这个总数可能覆盖范围外的 AI 公式——**认返回里的单元格定位，不要拿它和本次预期条数做等值比对**。
+  - `ai_formula_total`——后端返回的 AI 公式汇总计数，**不是本次写入的单元格条数**（同一批写入的多个 AI 公式可能只计为 1），`--range` 也不收窄它——**认返回里的单元格定位，不要拿它和本次预期条数做等值比对**。
   - `ai_formula_done`——已算出结果的条数。
   - `ai_formula_pending_count`——仍在后台计算（`pending`）的条数。
   - `ai_formula_failed_count`——失败 / 不支持的条数。
