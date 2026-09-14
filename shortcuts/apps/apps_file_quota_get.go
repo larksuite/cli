@@ -14,7 +14,8 @@ import (
 // AppsFileQuotaGet reports an app's file-storage usage（动词对齐 +db-quota-get）。
 //
 // GET /apps/{app_id}/storage/file_quota。storage_quota_bytes / usage_percent 在配额未对接（=0）时
-// 不输出（json 删字段、pretty 只打已用量）。
+// 不输出（json 删字段、pretty 只打已用量）。usage_percent 按 roundUsagePercent 取一位小数，
+// 与 +db-quota-get 同口径。
 var AppsFileQuotaGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+file-quota-get",
@@ -67,9 +68,7 @@ func projectFileQuota(data map[string]interface{}) map[string]interface{} {
 	// 配额未对接（storage_quota_bytes=0/缺失）时不输出 quota / usage_percent，避免误导。
 	if q, ok := numericAsFloat(data["storage_quota_bytes"]); ok && q > 0 {
 		out["storage_quota_bytes"] = data["storage_quota_bytes"]
-		if v, ok := data["usage_percent"]; ok {
-			out["usage_percent"] = v
-		}
+		putUsagePercent(out, data)
 	}
 	return out
 }
