@@ -919,7 +919,7 @@ func (p *tablePayload) validate() error {
 		if err := fitColumnsToRows(s, &projected); err != nil {
 			return err
 		}
-		if err := checkSheetColumnCeiling(s, i); err != nil {
+		if err := checkSheetGridCeiling(s, i); err != nil {
 			return err
 		}
 		if len(s.Columns) == 0 {
@@ -996,11 +996,19 @@ const maxTablePutCells = 1_000_000
 // header-only payload past every budget below -- a million columns and zero
 // data rows measured 809MB -- because the product was zero.
 func budgetRows(s *tableSheetSpec) int64 {
-	rows := int64(len(s.Rows))
-	if headerOn(s) {
-		rows++
+	return int64(len(s.Rows)) + int64(headerRowCount(s))
+}
+
+// headerRowCount is whether a header row may be written, as one predicate. It
+// is not headerOn: append to an EMPTY sheet with no explicit choice forces a
+// header (writeSheetData), which headerOn reports as false because it cannot
+// know the sheet is empty. sheetCreateDims already sized for that case; the
+// budget did not, and undercounted by a row.
+func headerRowCount(s *tableSheetSpec) int {
+	if headerOn(s) || (s.Mode == "append" && s.Header == nil) {
+		return 1
 	}
-	return rows
+	return 0
 }
 
 // checkCellBudget rejects a payload whose total materialized cell count across
@@ -1389,6 +1397,11 @@ func writeSheetData(ctx context.Context, runtime *common.RuntimeContext, token, 
 	if err != nil {
 		return nil, err
 	}
+	if s.Mode == "append" {
+		if err := checkAppendRowCeiling(s, baseRow, len(matrix)); err != nil {
+			return nil, err
+		}
+	}
 	matrix, err = applyWorkbookCreateStylesToMatrix(matrix, styles, col0, baseRow, fmt.Sprintf("--styles for sheet %q", s.Name))
 	if err != nil {
 		return nil, err
@@ -1643,9 +1656,12 @@ func createSheet(ctx context.Context, runtime *common.RuntimeContext, token, nam
 	return id, nil
 }
 
-// maxSheetColumns is the backend's hard column ceiling, the same one
-// sheetCreateDims clamps a new grid to.
-const maxSheetColumns = 200
+// maxSheetColumns / maxSheetRows are the backend's hard grid ceilings, the same
+// ones sheetCreateDims clamps a new grid to.
+const (
+	maxSheetColumns = 200
+	maxSheetRows    = 50000
+)
 
 // checkSheetColumnCeiling refuses a payload wider than the grid can ever be.
 // Auto-widening (fitColumnsToRows) makes this reachable without the caller
@@ -1654,8 +1670,8 @@ const maxSheetColumns = 200
 // guaranteed API failure -- and on +workbook-create it fails AFTER the
 // workbook exists, leaving one created but not written. The anchor counts,
 // exactly as it does when the grid is sized.
-func checkSheetColumnCeiling(s *tableSheetSpec, idx int) error {
-	_, col0, _, err := sheetAnchor(s)
+func checkSheetGridCeiling(s *tableSheetSpec, idx int) error {
+	_, col0, row0, err := sheetAnchor(s)
 	if err != nil {
 		return nil //nolint:nilerr // a bad anchor is sheetAnchor's error to report, not this check's
 	}
@@ -1664,6 +1680,30 @@ func checkSheetColumnCeiling(s *tableSheetSpec, idx int) error {
 			"--sheets[%d] %q: %d columns exceeds the %d-column sheet limit", idx, s.Name, total, maxSheetColumns).
 			WithHint("the widest data row decides the column count when `columns` is shorter than it; split the table across sheets, or drop columns past %d",
 				maxSheetColumns)
+	}
+	// append's real bottom row is whatever already sits in the sheet, which
+	// only the execute path knows; checkAppendRowCeiling settles that one once
+	// lastDataRow comes back, before the first batch leaves.
+	if s.Mode != "append" {
+		if total := row0 + len(s.Rows) + headerRowCount(s); total > maxSheetRows {
+			return common.ValidationErrorf(
+				"--sheets[%d] %q: %d rows exceeds the %d-row sheet limit", idx, s.Name, total, maxSheetRows).
+				WithHint("the write goes out in batches, so a payload over the limit lands its first batches and fails on a later one; split the table across sheets instead")
+		}
+	}
+	return nil
+}
+
+// checkAppendRowCeiling is the row half of the ceiling for append, where the
+// bottom row depends on what the sheet already holds. Checked after the lookup
+// and before the first batch, so an over-long append is refused whole rather
+// than landing its first 50,000 rows and failing on the next one.
+func checkAppendRowCeiling(s *tableSheetSpec, baseRow, matrixRows int) error {
+	if total := baseRow + matrixRows; total > maxSheetRows {
+		return common.ValidationErrorf(
+			"%q: appending %d rows below row %d reaches row %d, past the %d-row sheet limit",
+			s.Name, matrixRows, baseRow, total, maxSheetRows).
+			WithHint("append what fits and continue in another sheet; the write goes out in batches, so this would otherwise land its first batches before failing")
 	}
 	return nil
 }
@@ -1687,9 +1727,7 @@ func sheetCreateDims(s *tableSheetSpec, styles *workbookCreateStylePayload) (row
 	// header WILL be written, so size for it here. Without this the sheet is
 	// created one row short and append-near-50000 / append-at-N-cols-200
 	// would bounce off the backend's hard cap.
-	if headerOn(s) || (s.Mode == "append" && s.Header == nil) {
-		rows++
-	}
+	rows += headerRowCount(s)
 	// --styles can reach past the data (cell_styles on blank cells get padded
 	// into the matrix and written; merges / resizes run as separate ops). Size
 	// the grid to cover them too. workbookCreateStyleDimensions returns the

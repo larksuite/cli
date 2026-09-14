@@ -714,3 +714,83 @@ func TestTablePut_ColumnCeiling(t *testing.T) {
 		})
 	}
 }
+
+// The row half of the grid ceiling. The write goes out in batches, so a
+// payload past the limit lands its first batches and fails on a later one --
+// the column ceiling already refuses its half locally, and this is the same
+// refusal for rows.
+func TestTablePut_RowCeiling(t *testing.T) {
+	t.Parallel()
+	payload := func(startCell string, rows int, header *bool) string {
+		data := make([]interface{}, rows)
+		for i := range data {
+			data[i] = []interface{}{float64(i)}
+		}
+		sheet := map[string]interface{}{"name": "S", "columns": []interface{}{"a"}, "data": data}
+		if startCell != "" {
+			sheet["start_cell"] = startCell
+		}
+		if header != nil {
+			sheet["header"] = *header
+		}
+		out, err := json.Marshal(map[string]interface{}{"sheets": []interface{}{sheet}})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		return string(out)
+	}
+	no := false
+
+	for _, tt := range []struct {
+		name, startCell string
+		rows            int
+		header          *bool
+		wantErr         bool
+	}{
+		{"exactly at the ceiling", "", 50000, &no, false},
+		{"one past it", "", 50001, &no, true},
+		// The header occupies a row, so 50,000 data rows plus one is over.
+		{"the header row counts", "", 50000, nil, true},
+		// The anchor counts, as it does when the grid is sized.
+		{"the anchor offset counts", "A10", 49995, &no, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
+				"--url", testURL, "--sheets", payload(tt.startCell, tt.rows, tt.header), "--dry-run",
+			})
+			if tt.wantErr {
+				requireValidation(t, err, "exceeds the 50000-row sheet limit")
+				return
+			}
+			if err != nil {
+				t.Fatalf("a payload inside the ceiling should pass, got: %v", err)
+			}
+		})
+	}
+}
+
+// headerOn cannot see that an appended-to sheet is empty, but writeSheetData
+// forces a header there anyway. Every consumer of "will a header be written"
+// has to use the same predicate, or the budget undercounts by a row.
+func TestBudgetRows_CountsTheForcedAppendHeader(t *testing.T) {
+	t.Parallel()
+	appendNoChoice := &tableSheetSpec{Name: "S", Mode: "append",
+		Columns: make([]tableColumnSpec, 200), Rows: make([][]interface{}, 5000)}
+	if got := headerRowCount(appendNoChoice); got != 1 {
+		t.Errorf("append with no header choice may still write one, got %d", got)
+	}
+	p := &tablePayload{Sheets: []tableSheetSpec{*appendNoChoice}}
+	requireValidation(t, p.checkCellBudget(), "1000200 cells")
+
+	// An explicit header:false on append writes none, and is budgeted as none.
+	no := false
+	explicit := &tableSheetSpec{Name: "S", Mode: "append", Header: &no,
+		Columns: make([]tableColumnSpec, 200), Rows: make([][]interface{}, 5000)}
+	if got := headerRowCount(explicit); got != 0 {
+		t.Errorf("an explicit header:false writes no header, got %d", got)
+	}
+	if err := (&tablePayload{Sheets: []tableSheetSpec{*explicit}}).checkCellBudget(); err != nil {
+		t.Errorf("1,000,000 cells is at the cap, got: %v", err)
+	}
+}
