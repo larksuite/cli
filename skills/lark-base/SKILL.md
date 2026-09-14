@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.23
+version: 1.2.22
 description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限、模板中心（多维表格模板分类/列表/搜索）；遇到 Base/多维表格/bitable、BaseApp/AppMode、/base/ 或 /app/ 链接时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
@@ -202,16 +202,6 @@ lark-cli base +record-batch-update \
 View 是同一 Table records 上的持久化筛选、排序、分组和展示配置，共享底层 records，不产生数据副本。一次性查询直接使用 Record 读取；需要在 Base UI 中长期保存、共享或复用访问方式时使用 View。
 
 **读取 View：** 使用 `+view-list` / `+view-get`，并通过 `+view-get-filter` / `+view-get-sort` / `+view-get-group` / `+view-get-visible-fields` / `+view-get-timebar` / `+view-get-card` 读取持久化配置。**写入 View：** 使用 `+view-create` / `+view-rename` / `+view-delete` 管理 View，并通过对应的 `+view-set-*` 更新筛选、排序、分组、可见字段、时间轴和卡片配置；筛选结构读 [View filter](references/lark-base-view-set-filter.md)，由该文档继续路由公共 condition 协议。
-
-创建 View 的名称和类型放在 `--json` 内，不使用 `--name`、`--view-name` 或 `--view-type`：
-
-```bash
-lark-cli base +view-create \
-  --base-token <base_token> --table-id <table_id> \
-  --json '{"name":"任务看板","type":"kanban"}' --as user
-```
-
-`type` 可选 `grid`、`kanban`、`gallery`、`calendar`、`gantt`，省略时默认 `grid`；表单走 Form 命令。分组、筛选和排序使用对应的 `+view-set-*`，不要在创建 JSON 中添加 `group_by`、`group_field` 或 `property`。创建超时或返回异常时，先用 `+view-list` 确认是否已创建；已有目标视图则复用其 ID，避免直接重试创建。
 
 ### Form
 
