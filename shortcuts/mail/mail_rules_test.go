@@ -1514,23 +1514,20 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 	} else if !reflect.DeepEqual(got, []string{"b", "a", "c"}) {
 		t.Fatalf("completeRuleTargetOrder = %#v", got)
 	}
-	if _, err := completeRuleTargetOrder([]string{"a", "a"}, []string{"a", "b"}); err == nil {
-		t.Fatal("expected duplicate error")
-	}
-	if _, err := completeRuleTargetOrder([]string{"a", "z"}, []string{"a", "b"}); err == nil {
-		t.Fatal("expected unknown rule error")
-	}
-	if _, err := insertRelative([]string{"a", "b"}, "c", "", true); err == nil {
-		t.Fatal("expected missing target error")
-	}
-	if _, err := insertRelative([]string{"a", "b"}, "c", "z", true); err == nil {
-		t.Fatal("expected unknown target error")
-	}
+	_, err := completeRuleTargetOrder([]string{"a", "a"}, []string{"a", "b"})
+	assertMailRuleValidationError(t, err, "--rule-ids")
+	_, err = completeRuleTargetOrder([]string{"a", "z"}, []string{"a", "b"})
+	assertMailRuleValidationError(t, err, "--rule-ids")
+	_, err = insertRelative([]string{"a", "b"}, "c", "", true)
+	assertMailRuleValidationError(t, err, "")
+	_, err = insertRelative([]string{"a", "b"}, "c", "z", true)
+	assertMailRuleValidationError(t, err, "")
 
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
+		name      string
+		args      []string
+		want      string
+		wantParam string
 	}{
 		{
 			name: "no mode",
@@ -1548,14 +1545,16 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			want: "move mode requires exactly one",
 		},
 		{
-			name: "move missing rule",
-			args: []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
-			want: "is not in current rule order",
+			name:      "move missing rule",
+			args:      []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
+			want:      "is not in current rule order",
+			wantParam: "--move-rule-id",
 		},
 		{
-			name: "full mismatch",
-			args: []string{"+rule-reorder", "--rule-ids", "a,z"},
-			want: "unknown rule id",
+			name:      "full mismatch",
+			args:      []string{"+rule-reorder", "--rule-ids", "a,z"},
+			want:      "unknown rule id",
+			wantParam: "--rule-ids",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1570,7 +1569,35 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
 			}
+			assertMailRuleValidationError(t, err, tc.wantParam)
 		})
+	}
+}
+
+func assertMailRuleValidationError(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Param != wantParam {
+		t.Fatalf("param = %q, want %q", validationErr.Param, wantParam)
+	}
+	if validationErr.Cause != nil {
+		t.Fatalf("unexpected wrapped cause: %v", validationErr.Cause)
 	}
 }
 
