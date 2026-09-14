@@ -770,18 +770,35 @@ func normalizeColumnLabelKey(name string) string {
 // there is no telling what they wanted it to say.
 //
 // 09-04..07: 2779 rejections on the width, 2299 on the missing columns.
-func fitColumnsToRows(s *tableSheetSpec) {
+func fitColumnsToRows(s *tableSheetSpec, projected *int64) error {
 	widest := 0
 	for r := range s.Rows {
 		s.Rows[r] = trimTrailingEmptyCells(s.Rows[r], len(s.Columns))
 		widest = max(widest, len(s.Rows[r]))
 	}
+	// Budget the RECTANGLE before padding builds it. A compact ragged payload
+	// states far fewer cells than it occupies -- one 8,000-cell row followed by
+	// 2,000 empty ones is 54KB of JSON and a 16M-slot matrix -- and
+	// checkCellBudget runs at the end of validate, after padShortRows has
+	// already materialized it. Measuring is cheap: trimming above only reslices,
+	// so the widest count is known without allocating the rectangle.
+	//
+	// The running total is checked per sheet, so the payload is refused at the
+	// sheet that crosses the cap rather than after every sheet has padded.
+	cells := int64(len(s.Rows)) * int64(max(widest, len(s.Columns)))
+	if err := checkTablePutCellBudget(cells); err != nil {
+		return err
+	}
+	*projected += cells
+	if err := checkTablePutCellBudget(*projected); err != nil {
+		return err
+	}
 	if widest == 0 {
-		return
+		return nil
 	}
 	if len(s.Columns) == 0 {
 		if s.Header != nil && *s.Header {
-			return // an explicit header row over columns nobody named
+			return nil // an explicit header row over columns nobody named
 		}
 		noHeader := false
 		s.Header = &noHeader
@@ -790,7 +807,7 @@ func fitColumnsToRows(s *tableSheetSpec) {
 			s.Columns[i] = tableColumnSpec{Name: fmt.Sprintf("col%d", i+1)}
 		}
 		padShortRows(s)
-		return
+		return nil
 	}
 	for len(s.Columns) < widest {
 		s.Columns = append(s.Columns, tableColumnSpec{})
@@ -799,6 +816,7 @@ func fitColumnsToRows(s *tableSheetSpec) {
 	// writer indexes a row by column position. padShortRows ran in normalize,
 	// before this; it has to run again against the count this settled on.
 	padShortRows(s)
+	return nil
 }
 
 // trimTrailingEmptyCells drops the empty cells a row carries past the declared
@@ -873,6 +891,9 @@ func (p *tablePayload) validate() error {
 		return common.ValidationErrorf("--sheets: must contain at least one sheet")
 	}
 	seen := make(map[string]bool, len(p.Sheets))
+	// Accumulated across sheets so the cap bounds the whole payload, not each
+	// sheet on its own (fitColumnsToRows checks it before it pads).
+	var projected int64
 	for i := range p.Sheets {
 		s := &p.Sheets[i]
 		if strings.TrimSpace(s.Name) == "" {
@@ -886,7 +907,9 @@ func (p *tablePayload) validate() error {
 			return common.ValidationErrorf("--sheets[%d]: duplicate sheet name %q", i, s.Name)
 		}
 		seen[s.Name] = true
-		fitColumnsToRows(s)
+		if err := fitColumnsToRows(s, &projected); err != nil {
+			return err
+		}
 		if len(s.Columns) == 0 {
 			// A header-less, data-less sheet is a legitimate request — "give
 			// me the tab, I will fill it later" — and rejecting it made the

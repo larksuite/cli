@@ -382,3 +382,78 @@ func TestOmittedSelectorReadScopeIsDeclared(t *testing.T) {
 		}
 	}
 }
+
+// A ragged payload states far fewer cells than the rectangle it occupies: one
+// 8,000-cell row followed by 2,000 empty ones is 54KB of JSON and a 16M-slot
+// matrix. padShortRows used to build that matrix before checkCellBudget ran at
+// the end of validate, so the cap could only reject a payload the process had
+// already allocated (measured: 575MB peak for this input).
+//
+// Both shapes reach a padding path -- one with no columns declared, one whose
+// column list gets widened -- so both are pinned here. The budget is checked
+// while only the slice headers have moved, which is why these return fast
+// instead of allocating first.
+func TestTablePut_RaggedPayloadBudgetedBeforePadding(t *testing.T) {
+	t.Parallel()
+
+	ragged := func(columns []tableColumnSpec, width, empties int) *tableSheetSpec {
+		rows := make([][]interface{}, 0, empties+1)
+		first := make([]interface{}, width)
+		for i := range first {
+			first[i] = float64(i)
+		}
+		rows = append(rows, first)
+		for i := 0; i < empties; i++ {
+			rows = append(rows, []interface{}{})
+		}
+		return &tableSheetSpec{Name: "S", Columns: columns, Rows: rows}
+	}
+
+	for _, tt := range []struct {
+		name    string
+		columns []tableColumnSpec
+	}{
+		{"no columns declared", nil},
+		{"declared columns get widened", []tableColumnSpec{{Name: "a"}, {Name: "b"}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var projected int64
+			s := ragged(tt.columns, 8000, 2000)
+			err := fitColumnsToRows(s, &projected)
+			requireValidation(t, err, "over the 1000000-cell safety cap")
+			// The rectangle must not have been built on the way to that error.
+			for r := range s.Rows {
+				if r > 0 && len(s.Rows[r]) != 0 {
+					t.Fatalf("row %d was padded to %d cells before the budget rejected it", r, len(s.Rows[r]))
+				}
+			}
+		})
+	}
+
+	t.Run("a payload inside the cap is still squared off", func(t *testing.T) {
+		t.Parallel()
+		var projected int64
+		s := ragged(nil, 4, 2)
+		if err := fitColumnsToRows(s, &projected); err != nil {
+			t.Fatalf("a small payload should pad, got: %v", err)
+		}
+		for r := range s.Rows {
+			if len(s.Rows[r]) != 4 {
+				t.Errorf("row %d = %d cells, want 4", r, len(s.Rows[r]))
+			}
+		}
+	})
+
+	// The cap bounds the whole payload, so two sheets that each fit but
+	// together do not are refused at the one that crosses it.
+	t.Run("the total is accumulated across sheets", func(t *testing.T) {
+		t.Parallel()
+		var projected int64
+		big := func() *tableSheetSpec { return ragged(nil, 1000, 699) }
+		if err := fitColumnsToRows(big(), &projected); err != nil {
+			t.Fatalf("the first sheet fits on its own, got: %v", err)
+		}
+		requireValidation(t, fitColumnsToRows(big(), &projected), "over the 1000000-cell safety cap")
+	})
+}
