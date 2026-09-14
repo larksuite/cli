@@ -399,7 +399,7 @@ func TestDocResourceCoverDryRunsPlanAPIs(t *testing.T) {
 	if len(update.API) != 3 {
 		t.Fatalf("update dry-run API count = %d, want 3", len(update.API))
 	}
-	if got := update.API[0].URL; got != "/open-apis/wiki/v2/spaces/get_node" {
+	if got := update.API[0].URL; got != "/open-apis/wiki/v2/spaces/node_by_token" {
 		t.Fatalf("wiki resolve URL = %q", got)
 	}
 	if got := update.API[1].URL; got != "/open-apis/drive/v1/medias/upload_all" {

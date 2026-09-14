@@ -49,7 +49,7 @@ metadata:
 
 Shortcut 是对常用操作的高级封装（`lark-cli wiki +<verb> [flags]`）。有 Shortcut 的操作优先使用。
 
-获取或解析 Wiki 节点统一优先使用 `wiki +node-get`，包括只为获取 `space_id`、`node_token`、`obj_token` 或 `obj_type` 的中间步骤。只有当前 CLI 不提供该 shortcut，或任务明确需要 shortcut 未输出的原始响应字段时，才回退到 `wiki spaces get_node`；回退前先运行 `lark-cli schema wiki.spaces.get_node`。
+获取或解析 Wiki 节点统一使用 `wiki +node-get`，包括只为获取 `space_id`、`node_token`、`obj_token` 或 `obj_type` 的中间步骤。
 
 | Shortcut | 说明 |
 |----------|------|
@@ -95,7 +95,6 @@ lark-cli wiki <resource> <method> [flags]  # 调用 API
 
 - `create` — 创建知识空间
 - `get` — 获取知识空间信息
-- `get_node` — 获取知识空间节点信息
 - `list` — 获取知识空间列表
 
 ### members
