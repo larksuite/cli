@@ -22,7 +22,7 @@ var AppsFileQuotaGet = common.Shortcut{
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +file-quota-get --app-id <app_id>",
-		"Tip: get just the usage percent with -q '.usage_percent'",
+		"Tip: get just the usage percent with -q '.data.usage_percent' (present only once a quota is provisioned)",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},

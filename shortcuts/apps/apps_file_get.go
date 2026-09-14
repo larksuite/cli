@@ -22,7 +22,7 @@ var AppsFileGet = common.Shortcut{
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +file-get --app-id <app_id> --path /1858537546760216.png",
-		"Tip: extract a single field with --jq, e.g. -q '.size_bytes' or -q '.download_url'",
+		"Tip: extract a single field with --jq, e.g. -q '.data.size_bytes' or -q '.data.download_url'",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
