@@ -203,6 +203,32 @@ func TestVCMeetingScreenshot_ClassifiesHTTPErrorJSONBusinessError(t *testing.T) 
 	}
 }
 
+func TestVCMeetingScreenshot_PreservesFeatureUnavailableCode(t *testing.T) {
+	chdirForTest(t)
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method:      http.MethodPost,
+		URL:         vcMeetingScreenshotAPIPath,
+		Status:      http.StatusBadRequest,
+		Body:        map[string]interface{}{"code": 128006, "msg": "meeting screenshot is currently in limited availability and is not available for this meeting."},
+		ContentType: "application/json; charset=utf-8",
+	})
+
+	err := mountAndRun(t, VCMeetingScreenshot, []string{
+		"+meeting-screenshot", "--as", "user", "--meeting-id", "9876543210123", "--output", "shot.jpg",
+	}, f, stdout)
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("run screenshot command error = %T %v, want *errs.APIError", err, err)
+	}
+	if apiErr.Code != 128006 {
+		t.Fatalf("problem = %+v, want code 128006", apiErr.Problem)
+	}
+	if _, statErr := os.Stat("shot.jpg"); !os.IsNotExist(statErr) {
+		t.Fatalf("shot.jpg stat error = %v, want file not created", statErr)
+	}
+}
+
 func TestVCMeetingScreenshot_DefaultOutputIncludesMilliseconds(t *testing.T) {
 	chdirForTest(t)
 	originalNow := meetingScreenshotNow

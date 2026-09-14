@@ -1,6 +1,6 @@
-# 应用机器人参会与会中互动
+# 应用机器人或用户身份参会与会中互动
 
-编排应用机器人的完整会中流程：发现已在参加的会议，或在用户明确授权后发起或加入会议；随后拉取会中事件、发送文本或会中表情、操作倒计时，并仅在用户明确要求时结束会议或离会。
+编排应用机器人和用户身份的会议生命周期操作。应用机器人使用 `--as bot`；用户身份使用 `--as user`。
 
 ## 选择入口
 
@@ -10,6 +10,8 @@
 | 应用机器人可能已在会中 | 已知目标用户 `user_open_id` 时，先用 `+meeting-list-active --as bot --user-id <user_open_id>` 发现会议 |
 | 用户明确要求机器人入会、旁听或代参会 | 使用 `+meeting-join --as bot` |
 | 用户明确要求机器人发起日程会议 | 使用 `+meeting-join --as bot --action start` |
+| 用户明确要求以用户身份入会 | 使用 `+meeting-join --as user` |
+| 用户明确要求以用户身份发起日程会议 | 使用 `+meeting-join --as user --action start` |
 | 只想查当前用户所在会议 | 使用 [会中事件与会中互动](live-meeting-interact.md) 的用户身份路径，不让应用机器人入会 |
 
 用户只提供 9 位会议号或询问会议内容，不等于授权机器人入会。
@@ -31,19 +33,25 @@ lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
 
 ## 发起或加入会议
 
-只有用户明确要求应用机器人发起、加入、旁听或代参会时才执行。输入是 9 位会议号，不是长整数 `meeting_id`。
+只有用户明确要求以应用机器人或用户身份发起、加入、旁听或代参会时才执行。输入是 9 位会议号，不是长整数 `meeting_id`。
 
 ```bash
-# 发起日程会议并加入
+# 应用机器人发起日程会议并加入
 lark-cli vc +meeting-join --as bot --meeting-number <9_digit_meeting_number> --action start
 
-# 加入正在进行的会议
+# 应用机器人加入正在进行的会议
 lark-cli vc +meeting-join --as bot --meeting-number <9_digit_meeting_number>
+
+# 用户身份发起日程会议并加入
+lark-cli vc +meeting-join --as user --meeting-number <9_digit_meeting_number> --action start
+
+# 用户身份加入正在进行的会议
+lark-cli vc +meeting-join --as user --meeting-number <9_digit_meeting_number>
 ```
 
 - 入会前确认目标会议号和用户意图；这是对其他参会人可见的写操作。
 - `--action start` 仅用于发起符合条件的日程会议；未传时保持加入正在进行的会议。
-- 保存返回的 `meeting.id`；后续邀请、拉取事件、发送会中消息、操作倒计时、结束或离会都使用该 ID 与 `--as bot`。
+- 保存返回的 `meeting.id` 和来源身份；后续操作必须沿用该身份，不要在 `--as user` 与 `--as bot` 之间静默切换。
 - 应用机器人可以同时加入多场会议；加入新会议前不需要退出其他会议。
 - 根据返回状态确认入会成功，不要把“请求已发起”当作已入会。
 
@@ -54,15 +62,19 @@ lark-cli vc +meeting-join --as bot --meeting-number <9_digit_meeting_number>
 只有用户明确要求邀请时才执行。输入是长数字 `meeting_id`，不是 9 位会议号。
 
 ```bash
-# 邀请指定用户
+# 应用机器人邀请指定用户
 lark-cli vc +meeting-invite --as bot --meeting-id <meeting_id> --type SELECTED --open-ids <open_id>
 
 # 邀请全部合格日程参会人
 lark-cli vc +meeting-invite --as bot --meeting-id <meeting_id> --type ALL_SUGGESTED
+
+# 用户身份邀请指定用户
+lark-cli vc +meeting-invite --as user --meeting-id <meeting_id> --type SELECTED --open-ids <open_id>
 ```
 
-- 应用机器人必须已在目标 Calendar VC 中。
-- `SELECTED` 接收用户 `open_id`；`ALL_SUGGESTED` 由服务端筛选合格日程参会人。
+- 当前身份必须已在目标会议中。
+- `SELECTED` 接收用户 `open_id`；`--as user` 路径只支持 `SELECTED`。
+- `ALL_SUGGESTED` 仅支持 `--as bot`，由服务端筛选合格日程参会人；不要切换身份绕过限制。
 - 以返回结果确认邀请状态，不把请求提交当作参会人已入会。
 
 邀请类型、人数上限和结果语义见 [`lark-vc-agent-meeting-invite`](../references/lark-vc-agent-meeting-invite.md)。
@@ -125,24 +137,34 @@ lark-cli vc +meeting-countdown --as bot --meeting-id <meeting_id> --action prolo
 只有用户明确要求结束整场会议时才执行；不要把结束会议和机器人离会混用。
 
 ```bash
+# 用户身份结束整场会议
+lark-cli vc +meeting-end --as user --meeting-id <meeting_id> --yes
+
+# 当前 Host 应用机器人结束整场会议
 lark-cli vc +meeting-end --as bot --meeting-id <meeting_id> --yes
 ```
 
 - 输入是长数字 `meeting_id`。
-- 当前应用机器人必须是 Host；结束成功会结束整场会议。
+- 常规进行中会议中，当前用户或应用机器人都必须是当前 Host 并具备结束目标会议的权限；服务端按会议状态和权限作最终判定。
+- 结束成功会结束整场会议。
 - 根据返回状态确认会议已结束。
+- 沿用当前身份，不得为了执行成功在 `--as user` 与 `--as bot` 之间静默切换。
 
-身份、权限和失败原因见 [`lark-vc-agent-meeting-end`](../references/lark-vc-agent-meeting-end.md)。
+身份、权限和失败原因见 [用户身份](../references/lark-vc-meeting-end.md) 与 [应用身份](../references/lark-vc-agent-meeting-end.md)。
 
 ## 离开会议
 
-只有用户明确要求机器人退出、离开或结束参会时才执行：
+只有用户明确要求当前身份退出、离开或结束参会时才执行：
 
 ```bash
+# 应用机器人离会
 lark-cli vc +meeting-leave --as bot --meeting-id <meeting_id>
+
+# 用户身份离会
+lark-cli vc +meeting-leave --as user --meeting-id <meeting_id>
 ```
 
-- 使用入会返回或应用身份活跃会议查询得到的 `meeting_id`，并确认机器人当前在该会议中。
+- 使用入会返回或活跃会议查询得到的 `meeting_id`，确认当前身份在该会议中，并沿用入会身份。
 - 不要因为任务完成而自动离会。
 - 用户只要会后产物时，转入会议产物场景，不为此先执行离会。
 - 根据返回状态确认离会完成。

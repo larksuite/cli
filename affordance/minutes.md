@@ -89,3 +89,8 @@ lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --operation add -
 
 ### Skills
 - lark-meeting/references/lark-minutes-apply-permission.md
+
+## +share-permission
+
+### Skills
+- lark-meeting/references/lark-minutes-share-permission.md

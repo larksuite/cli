@@ -45,14 +45,14 @@ type meetingInviteResult struct {
 	Status int
 }
 
-// VCMeetingInvite invites users through the Agent bot invite path.
+// VCMeetingInvite invites users through the Agent meeting invite path.
 var VCMeetingInvite = common.Shortcut{
 	Service:     "vc",
 	Command:     "+meeting-invite",
-	Description: "Invite selected or all eligible users as the app bot",
+	Description: "Invite selected users or all eligible Calendar attendees",
 	Risk:        "write",
-	Scopes:      []string{"vc:meeting.bot.join:write"},
-	AuthTypes:   []string{"bot"},
+	BotScopes:   []string{"vc:meeting.bot.join:write"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "meeting-id", Required: true, Desc: "meeting ID"},
@@ -113,6 +113,9 @@ func validateMeetingInviteFlags(runtime *common.RuntimeContext) error {
 	case meetingInviteTypeAllSuggested:
 		if len(openIDs) != 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--open-ids must not be set when --type is ALL_SUGGESTED").WithParam("--open-ids")
+		}
+		if !runtime.IsBot() {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "ALL_SUGGESTED is not supported for user identity").WithParam("--type")
 		}
 	}
 	return nil

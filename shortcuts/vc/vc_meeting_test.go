@@ -266,18 +266,43 @@ func TestMeetingJoin_Validate_Valid(t *testing.T) {
 	}
 }
 
-func TestMeetingJoin_Validate_StartRequiresBot(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+func TestMeetingJoin_StartAction_UserDryRun(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 
 	err := mountAndRun(t, VCMeetingJoin, []string{
 		"+meeting-join", "--as", "user",
 		"--meeting-number", "123456789",
 		"--action", "start",
 		"--dry-run",
-	}, f, nil)
+	}, f, stdout)
 
-	if err == nil || !strings.Contains(err.Error(), "--action start requires --as bot") {
+	if err != nil {
 		t.Fatalf("start action error = %v", err)
+	}
+	for _, want := range []string{meetingBotJoinPath, `"action": 2`} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("dry-run output missing %q: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestMeetingLifecycleScopesByIdentity(t *testing.T) {
+	for _, shortcut := range []struct {
+		name string
+		item common.Shortcut
+	}{
+		{name: "join", item: VCMeetingJoin},
+		{name: "leave", item: VCMeetingLeave},
+		{name: "invite", item: VCMeetingInvite},
+	} {
+		t.Run(shortcut.name, func(t *testing.T) {
+			if got := shortcut.item.ScopesForIdentity("user"); len(got) != 0 {
+				t.Fatalf("ScopesForIdentity(user) = %v, want no user preflight scopes", got)
+			}
+			if got := shortcut.item.ScopesForIdentity("bot"); !reflect.DeepEqual(got, []string{"vc:meeting.bot.join:write"}) {
+				t.Fatalf("ScopesForIdentity(bot) = %v, want [vc:meeting.bot.join:write]", got)
+			}
+		})
 	}
 }
 
@@ -609,6 +634,58 @@ func TestMeetingJoin_Execute_APIError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid meeting number") {
 		t.Errorf("error should surface API message, got: %v", err)
+	}
+}
+
+func TestMeetingJoin_StartErrorsPreserveUpstreamCodeAndMessage(t *testing.T) {
+	tests := []struct {
+		name    string
+		code    int
+		message string
+	}{
+		{
+			name:    "agent join precondition disabled",
+			code:    121016,
+			message: `This agent is currently unable to join the meeting. Ask the meeting host to enable "AI Summary" and try again. If it is already enabled, verify that "Allow agents to join meetings" is enabled in the current meeting's "Security" settings.`,
+		},
+		{
+			name:    "AI summary quota insufficient",
+			code:    121020,
+			message: "AI summary quota is insufficient",
+		},
+		{
+			name:    "calendar start permission denied",
+			code:    121021,
+			message: "You are not permitted to start this scheduled meeting.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    meetingBotJoinPath,
+				Body:   map[string]interface{}{"code": tt.code, "msg": tt.message},
+			})
+
+			err := mountAndRun(t, VCMeetingJoin, []string{
+				"+meeting-join",
+				"--as", "user",
+				"--meeting-number", "123456789",
+				"--action", "start",
+			}, f, &bytes.Buffer{})
+			if err == nil {
+				t.Fatal("expected API error")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf() ok=false, error=%T %v", err, err)
+			}
+			if problem.Code != tt.code || problem.Message != tt.message {
+				t.Fatalf("problem = %+v, want code=%d message=%q", problem, tt.code, tt.message)
+			}
+		})
 	}
 }
 
@@ -1397,6 +1474,42 @@ func TestMeetingInvite_DryRun(t *testing.T) {
 	}
 }
 
+func TestMeetingInvite_UserSelectedDryRun(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, VCMeetingInvite, []string{
+		"+meeting-invite",
+		"--meeting-id", "7628568141510692381",
+		"--type", "SELECTED",
+		"--open-ids", "ou_a",
+		"--dry-run",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("user SELECTED invite error = %v", err)
+	}
+	for _, want := range []string{meetingBotInvitePath, `"invite_type": 2`, `"id": "ou_a"`} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("dry-run output missing %q: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestMeetingInvite_UserRejectsAllSuggested(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, VCMeetingInvite, []string{
+		"+meeting-invite",
+		"--meeting-id", "7628568141510692381",
+		"--type", "ALL_SUGGESTED",
+		"--dry-run",
+		"--as", "user",
+	}, f, nil)
+	if err == nil || !strings.Contains(err.Error(), "ALL_SUGGESTED is not supported for user identity") {
+		t.Fatalf("user ALL_SUGGESTED error = %v", err)
+	}
+}
+
 func TestMeetingInvite_ExecuteSelectedPrettyOutput(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	var gotUserIDType string
@@ -1593,13 +1706,20 @@ func TestValidateMeetingIDFlag(t *testing.T) {
 }
 
 func TestMeetingEndValidateRejectsInvalidMeetingID(t *testing.T) {
-	cmd := &cobra.Command{Use: "test"}
-	cmd.Flags().String("meeting-id", "", "")
-	_ = cmd.Flags().Set("meeting-id", "invalid")
-	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
-
-	if err := VCMeetingEnd.Validate(context.Background(), runtime); err == nil || !strings.Contains(err.Error(), "--meeting-id must be a positive integer") {
-		t.Fatalf("validate error = %v", err)
+	for _, tt := range []struct {
+		identity core.Identity
+		want     string
+	}{
+		{identity: core.AsUser, want: "--meeting-id must be a positive base-10 int64"},
+		{identity: core.AsBot, want: "--meeting-id must be a positive integer"},
+	} {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("meeting-id", "", "")
+		_ = cmd.Flags().Set("meeting-id", "invalid")
+		runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), tt.identity)
+		if err := VCMeetingEnd.Validate(context.Background(), runtime); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Fatalf("identity %s validate error = %v, want %q", tt.identity, err, tt.want)
+		}
 	}
 }
 
@@ -1706,8 +1826,14 @@ func TestMeetingEnd_ExecuteHandlesAPIErrorAndEmptyData(t *testing.T) {
 	})
 }
 
-func TestVCMeetingEndUsesManageScope(t *testing.T) {
-	if !reflect.DeepEqual(VCMeetingEnd.Scopes, []string{"vc:meeting.bot.manage:write"}) {
-		t.Fatalf("VCMeetingEnd.Scopes = %v", VCMeetingEnd.Scopes)
+func TestVCMeetingEndUsesIdentitySpecificScopes(t *testing.T) {
+	if !reflect.DeepEqual(VCMeetingEnd.AuthTypes, []string{"user", "bot"}) {
+		t.Fatalf("VCMeetingEnd.AuthTypes = %v, want [user bot]", VCMeetingEnd.AuthTypes)
+	}
+	if !reflect.DeepEqual(VCMeetingEnd.DeclaredScopesForIdentity("user"), []string{"vc:meeting"}) {
+		t.Fatalf("user scopes = %v", VCMeetingEnd.DeclaredScopesForIdentity("user"))
+	}
+	if !reflect.DeepEqual(VCMeetingEnd.DeclaredScopesForIdentity("bot"), []string{"vc:meeting.bot.manage:write"}) {
+		t.Fatalf("bot scopes = %v", VCMeetingEnd.DeclaredScopesForIdentity("bot"))
 	}
 }

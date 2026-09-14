@@ -25,6 +25,12 @@ lark-cli vc +meeting-screenshot --as bot --meeting-id <long_meeting_id> --output
 | `--output <relative-path>` | 可选。指定 JPEG 文件名或包含子目录的相对路径；相对于执行命令时的当前工作目录。 |
 | `--overwrite` | 可选。目标文件已存在时允许替换；不传时命令会失败并保留原文件。 |
 
+## 常见错误
+
+| 错误现象 | 根本原因 | 解决方案 |
+| --- | --- | --- |
+| `128006`: `meeting screenshot is currently in limited availability and is not available for this meeting.` | 会议截图能力仍在灰度，当前会议不在可用范围内 | 不要通过切换 `--as` 身份或新增 scope 绕过。确认目标会议归属方是否在截图能力范围内；如果应当可用，保留 `log_id` 交给服务端排查 |
+
 ## 文件路径与结果
 
 - 未指定 `--output` 时，默认写入当前工作目录下的 `meeting-screenshots/<meeting_id>-<UTC timestamp>.jpg`。

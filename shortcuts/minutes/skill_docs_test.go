@@ -90,6 +90,27 @@ func TestMinutesApplyPermissionHasReference(t *testing.T) {
 	}
 }
 
+func TestMinutesSharePermissionHasReference(t *testing.T) {
+	if !hasAuthType(MinutesSharePermission.AuthTypes, "user") || hasAuthType(MinutesSharePermission.AuthTypes, "bot") {
+		t.Fatalf("MinutesSharePermission.AuthTypes = %v, want user only", MinutesSharePermission.AuthTypes)
+	}
+	if !hasFlag(MinutesSharePermission.Flags, "minute-token") {
+		t.Fatalf("MinutesSharePermission flags = %v, want minute-token", MinutesSharePermission.Flags)
+	}
+
+	reference := readSkillDoc(t, "skills/lark-meeting/references/lark-minutes-share-permission.md")
+	for _, must := range []string{"仅支持 `--as user`", "不支持 `--as bot`", "minutes:permission:write", "permissions/share", "参会人"} {
+		if !strings.Contains(reference, must) {
+			t.Errorf("lark-minutes-share-permission.md must cover %q", must)
+		}
+	}
+
+	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
+	if !strings.Contains(skill, "references/lark-minutes-share-permission.md") {
+		t.Error("skills/lark-meeting/SKILL.md command table must link +share-permission to its reference doc")
+	}
+}
+
 func TestLegacyMinutesSkillRoutesToMeetingSkill(t *testing.T) {
 	skill := readSkillDoc(t, "skills/lark-minutes/SKILL.md")
 	for _, must := range []string{
