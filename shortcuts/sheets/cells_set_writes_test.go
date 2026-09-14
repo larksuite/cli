@@ -268,9 +268,11 @@ func TestCellsSetWrites(t *testing.T) {
 	})
 }
 
-// TestCellsSet_RangeNarrowedToPayload pins the narrowing: a payload that fits
-// inside the stated range is written at the same anchor, sized to itself,
-// and the difference is reported rather than silently applied.
+// TestCellsSet_RangeSizedFromPayload pins what a stated range may be reshaped
+// into. A payload that fits INSIDE the stated rectangle is written at the same
+// anchor, sized to itself, and the difference reported. A payload that does
+// not fit is refused rather than widened -- see
+// TestCellsSet_ExplicitRectangleIsNotWidened.
 func TestCellsSet_RangeSizedFromPayload(t *testing.T) {
 	t.Parallel()
 
@@ -281,10 +283,9 @@ func TestCellsSet_RangeSizedFromPayload(t *testing.T) {
 		{"a title against the range it will occupy once merged", "A1:D1", "A1:A1", `[[{"value":"标题"}]]`},
 		{"a block smaller on both axes", "A1:D4", "A1:B2", `[[{"value":1},{"value":2}],[{"value":3},{"value":4}]]`},
 		{"an exact fit is untouched", "A1:B1", "A1:B1", `[[{"value":1},{"value":2}]]`},
-		// The other direction: the stated extent is an anchor plus a guess at
-		// how far the data reached, and the data is the one that knows.
-		{"a payload wider than the stated range", "A1:A1", "A1:B1", `[[{"value":1},{"value":2}]]`},
-		{"a payload larger on both axes", "B2:C3", "B2:D4", `[[{"value":1},{"value":2},{"value":3}],[{"value":4},{"value":5},{"value":6}],[{"value":7},{"value":8},{"value":9}]]`},
+		// A bare top-left states no extent, so the payload supplies it.
+		{"a bare anchor takes the payload's extent", "A1", "A1:B1", `[[{"value":1},{"value":2}]]`},
+		{"a bare anchor away from the origin", "B2", "B2:D4", `[[{"value":1},{"value":2},{"value":3}],[{"value":4},{"value":5},{"value":6}],[{"value":7},{"value":8},{"value":9}]]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -301,20 +302,48 @@ func TestCellsSet_RangeSizedFromPayload(t *testing.T) {
 		})
 	}
 
-	t.Run("the note names the shipped range and which way it moved", func(t *testing.T) {
+	t.Run("the note names the shipped range and why it moved", func(t *testing.T) {
 		t.Parallel()
-		// Widening writes onto cells the caller did not name, so silence
-		// would be the bug: the note is the only record that the shipped
-		// extent is not the stated one.
+		// The shipped extent differing from the stated one is only acceptable
+		// while it is stated out loud; the note is that record.
 		for _, tc := range []struct{ name, stated, cells, want string }{
-			{"widened", "A1:A1", `[[{"value":1},{"value":2}]]`, "widened to \"A1:B1\""},
 			{"narrowed", "A1:D1", `[[{"value":1}]]`, "narrowed to \"A1:A1\""},
+			{"anchor expanded", "A1", `[[{"value":1},{"value":2}]]`, "top-left anchor"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
-				_, note := fitCellsRange(mustCellsPayload(t, tc.cells), tc.stated)
+				_, note, err := fitCellsRange(mustCellsPayload(t, tc.cells), tc.stated)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
 				if !strings.Contains(note, tc.want) {
 					t.Errorf("note = %q, want it to contain %q", note, tc.want)
+				}
+			})
+		}
+	})
+
+	// A rectangle states a boundary. Writing past it would touch cells the
+	// call never names, with overwrite on by default, and a warning returned
+	// after the write cannot undo that -- so it is refused, and the error
+	// carries both ways to say what was meant.
+	t.Run("an explicit rectangle is refused, not widened", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct{ name, stated, cells, wantFit, wantAnchor string }{
+			{"one column past the end", "A1:A1", `[[{"value":1},{"value":2}]]`, `"A1:B1"`, `"A1"`},
+			{"larger on both axes", "B2:C3", `[[{"value":1},{"value":2},{"value":3}],[{"value":4},{"value":5},{"value":6}],[{"value":7},{"value":8},{"value":9}]]`, `"B2:D4"`, `"B2"`},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
+					"--url", testURL, "--sheet-name", "s", "--range", tc.stated,
+					"--cells", tc.cells, "--dry-run",
+				})
+				ve := requireValidation(t, err, "reach past the range onto cells the call does not name")
+				for _, want := range []string{tc.wantFit, tc.wantAnchor} {
+					if !strings.Contains(ve.Hint, want) {
+						t.Errorf("hint should offer %s, got %q", want, ve.Hint)
+					}
 				}
 			})
 		}

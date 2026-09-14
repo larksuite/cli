@@ -318,7 +318,10 @@ func cellsSetInputWithNote(runtime flagView, token, sheetID, sheetName string) (
 	if err := checkRangeSheetAgreesWithSelector(rangeStr, sheetName); err != nil {
 		return nil, "", err
 	}
-	rangeStr, narrowNote := fitCellsRange(cells, rangeStr)
+	rangeStr, narrowNote, err := fitCellsRange(cells, rangeStr)
+	if err != nil {
+		return nil, "", err
+	}
 	input := map[string]interface{}{
 		"excel_id": token,
 		"range":    rangeStr,
@@ -1102,39 +1105,52 @@ func checkCellsPayloadShape(cells []interface{}) error {
 	return nil
 }
 
-// fitCellsRange sizes the range from the payload, in both directions,
-// returning the range to write and the note to report when it changed. The
-// anchor is the one thing the stated range is read for: every cell lands where
-// the caller put it, and the extent follows the data, which is how every
-// library these callers arrive from spells a write (gspread's update("A1",
-// values), openpyxl's anchor assignment) and how --start-cell already reads on
-// this command's CSV sibling.
+// fitCellsRange reconciles the payload's extent with the range that was
+// stated. What it may do depends on which of the two the caller wrote.
 //
-// The two directions carry different consequences, so the note says which one
-// happened. Narrowing touches nothing outside the payload; the dominant shape
-// is a one-cell title against the range it will occupy once merged. Widening
-// writes past the extent the caller stated, onto cells they did not name — the
-// payload is their own data and the command overwrites by default, but that is
-// the sentence the note has to say out loud.
-func fitCellsRange(cells []interface{}, rangeStr string) (string, string) {
+// A bare top-left ("A1", or the --start-cell spelling of it) states no extent
+// at all: it is an anchor, and the extent follows the data, which is how every
+// library these callers arrive from spells a write (gspread's update("A1",
+// values), openpyxl's anchor assignment) and how --csv-put already reads. Most
+// anchors are expanded before this by expandAnchorRange; one carrying a sheet
+// qualifier reaches here still anchored.
+//
+// A rectangle ("A1:B2") states an extent, and the two directions are not
+// symmetric. Narrowing touches nothing outside the payload — the dominant
+// shape is a one-cell title against the range it will occupy once merged — so
+// it proceeds, and says so. Widening writes past the boundary the caller drew,
+// onto cells they did not name, with overwrite on by default; a warning
+// returned after the write cannot prevent that, so it is refused instead. The
+// caller who meant the payload's extent has two ways to say so, and the error
+// names both.
+func fitCellsRange(cells []interface{}, rangeStr string) (string, string, error) {
 	target, err := parseCellRange(rangeStr)
 	if err != nil {
-		return rangeStr, ""
+		// A range this cannot parse is not this function's to report: the
+		// range is forwarded untouched and the parse failure surfaces from
+		// whoever actually needs it taken apart.
+		return rangeStr, "", nil //nolint:nilerr // reshaping is skipped, not failed
 	}
 	rows, cols, ok := cellsExtent(cells)
 	if !ok || (rows == target.rows && cols == target.cols) {
-		return rangeStr, ""
+		return rangeStr, "", nil
 	}
 	fitted := target.sized(rows, cols)
-	outcome := "narrowed"
-	tail := "cells land at the same top-left, and no cell outside them is touched"
+	if target.anchored {
+		return fitted, fmt.Sprintf(
+			"--range %q is a single cell, so it was read as the top-left anchor and the write covers %q (%d rows × %d columns, from --cells)",
+			rangeStr, fitted, rows, cols), nil
+	}
 	if rows > target.rows || cols > target.cols {
-		outcome = "widened"
-		tail = "cells land at the same top-left, and the write reaches past the range you stated (pass --allow-overwrite=false to stop on a non-empty cell)"
+		return "", "", sheetsValidationForFlag("cells",
+			"--cells is %d rows × %d columns but --range %q covers %d × %d; writing it would reach past the range onto cells the call does not name",
+			rows, cols, rangeStr, target.rows, target.cols).
+			WithHint("state the extent you mean (--range %q), or drop the end cell to write from an anchor (--range %q), which takes its extent from --cells",
+				fitted, target.sheetQualifier+target.start)
 	}
 	return fitted, fmt.Sprintf(
-		"--cells is %d rows × %d columns against --range %q (%d × %d), so the write was %s to %q — %s",
-		rows, cols, rangeStr, target.rows, target.cols, outcome, fitted, tail)
+		"--cells is %d rows × %d columns against --range %q (%d × %d), so the write was narrowed to %q — cells land at the same top-left, and no cell outside them is touched",
+		rows, cols, rangeStr, target.rows, target.cols, fitted), nil
 }
 
 // cellsExtent measures a --cells payload: its row count and the width every

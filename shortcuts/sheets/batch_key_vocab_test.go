@@ -288,17 +288,16 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 			"+cells-clear",
 		},
 		{
-			// Neither direction is a rejection any more: fitCellsRange sizes
-			// the write from the payload and the note says what shipped
-			// (TestCellsSet_RangeSizedFromPayload owns that assertion). What
-			// the precheck still owns is a payload with no extent at all.
-			"payload larger than the stated range passes",
+			// A stated rectangle is a boundary: a payload that does not fit
+			// inside it is refused rather than widened past it. Narrowing
+			// stays allowed (TestCellsSet_RangeSizedFromPayload owns that).
+			"payload larger than the stated rectangle is refused",
 			map[string]interface{}{"sheet_name": "S1", "range": "A1:B1",
 				"cells": []interface{}{
 					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
 					[]interface{}{map[string]interface{}{"value": "c"}, map[string]interface{}{"value": "d"}},
 				}},
-			"",
+			"reach past the range",
 		},
 		{
 			// A row that stops at its last written cell is squared off with
@@ -333,10 +332,19 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 			"",
 		},
 		{
-			// An explicit "A1:A1" states a 1x1 block, which the payload now
-			// widens like any other stated extent.
-			"explicit 1x1 range is sized from the payload",
+			// "A1:A1" states a 1x1 block as deliberately as any other
+			// rectangle -- the caller wrote the end cell -- so it is a
+			// boundary too. The bare "A1" below is the anchor spelling.
+			"explicit 1x1 rectangle is refused",
 			map[string]interface{}{"sheet_name": "S1", "range": "A1:A1",
+				"cells": []interface{}{
+					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
+				}},
+			"reach past the range",
+		},
+		{
+			"a bare anchor takes its extent from the payload",
+			map[string]interface{}{"sheet_name": "S1", "range": "A1",
 				"cells": []interface{}{
 					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
 				}},
