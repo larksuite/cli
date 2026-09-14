@@ -121,11 +121,11 @@ lark-cli apps +release-create --app-id app_xxx
 
 ### 通过后、写代码前核对
 
-脚手架内部的依赖安装是软失败：装不上也会正常退出，`+init` 仍报成功且不会转述安装错误。所以门禁通过后仍要核对：
+`+init` 的职责是把远端应用绑定到本地目录（凭证、clone、工作分支、平台元数据、平台受控文件、首次提交推送、环境变量），**装依赖和起服务都不在它的职责内**：空仓库路径下脚手架会顺手装一次且失败也不报错，已有仓库路径则完全不装。所以 envelope 报成功只代表仓库已绑定，下面这些要自己核对：
 
 1. `<dir>/.spark/meta.json` 存在，且 `app_id` 与目标应用一致。
 2. `git log --oneline -3` 能看到初始化提交；`git status --porcelain` 为空；`git rev-parse HEAD` 与 `git rev-parse origin/sprint/default` 一致。
-3. full_stack / frontend：`node_modules/` 存在且非空，缺失则先 `npm install` 再继续；html 无此步。
+3. full_stack / frontend：`node_modules/` 存在且非空，缺失就**自己 `npm install`**，不要为此重跑 `+init`——已有仓库上重跑会触发平台文件同步并产生一次提交推送，代价远大于装依赖，而且它本来也不会帮你装。html 无此步。
 4. full_stack / frontend：`.env.local` 存在。缺失或 envelope 里 `env_pulled=false` 时先执行 `lark-cli apps +env-pull --app-id <app_id> --project-path <dir>`；html 应用 `env_pull_skipped=true` 是正常的。
 5. 按上文「`+init` 完成后必须执行」读取项目 guide。
 
