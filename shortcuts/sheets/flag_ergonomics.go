@@ -376,6 +376,31 @@ var intuitiveFlagHints = map[string]map[string]string{
 	"+cells-unmerge": {
 		"ranges": `+cells-unmerge takes one span per call: --range "A1:B2"; unmerge several regions with several calls (or one +batch-update carrying them all)`,
 	},
+	// The --ranges commands name their sheet inside each entry, as a bare A1
+	// prefix. Without these the generic locator answers instead, and it only
+	// says which OTHER commands take --sheet-name -- never where the sheet
+	// goes here. --sheet-id has no expression at all in a prefix, which the
+	// flag's own contract states (a prefix is the display name, never a
+	// reference_id), so it is pointed at --sheet-name rather than at a form
+	// that does not exist.
+	"+cells-batch-clear": {
+		"sheet-name": rangesCarryTheSheetPrefix("+cells-batch-clear", `["Sheet1!A2:Z1000","Sheet2!A2:Z1000"]`),
+		"sheet-id":   rangesCarryTheSheetIDPrefix("+cells-batch-clear", `["Sheet1!A2:Z1000"]`),
+		"sheet":      rangesCarryTheSheetPrefix("+cells-batch-clear", `["Sheet1!A2:Z1000","Sheet2!A2:Z1000"]`),
+		"range":      `+cells-batch-clear takes the plural --ranges, each entry carrying its own sheet prefix: --ranges '["Sheet1!A1:B2"]'`,
+	},
+	"+dropdown-delete": {
+		"sheet-name": rangesCarryTheSheetPrefix("+dropdown-delete", `["Sheet1!A1:A10"]`),
+		"sheet-id":   rangesCarryTheSheetIDPrefix("+dropdown-delete", `["Sheet1!A1:A10"]`),
+		"sheet":      rangesCarryTheSheetPrefix("+dropdown-delete", `["Sheet1!A1:A10"]`),
+		"range":      `+dropdown-delete takes the plural --ranges, each entry carrying its own sheet prefix: --ranges '["Sheet1!A1:A10"]'`,
+	},
+	"+dropdown-update": {
+		"sheet-name": rangesCarryTheSheetPrefix("+dropdown-update", `["Sheet1!A1:A10"]`),
+		"sheet-id":   rangesCarryTheSheetIDPrefix("+dropdown-update", `["Sheet1!A1:A10"]`),
+		"sheet":      rangesCarryTheSheetPrefix("+dropdown-update", `["Sheet1!A1:A10"]`),
+		"range":      `+dropdown-update takes the plural --ranges, each entry carrying its own sheet prefix: --ranges '["Sheet1!A1:A10"]'`,
+	},
 	"+csv-get": {
 		"include":     "+csv-get returns values only; for formulas / styles / comments use +cells-get --include formula,style",
 		"include-all": "+csv-get returns values only; for formulas / styles / comments use +cells-get --include formula,style",
@@ -941,6 +966,19 @@ func splitRangeAreas(raw string) []string {
 		return []string{trimmed}
 	}
 	return areas
+}
+
+// rangesCarryTheSheetPrefix and its sheet-id counterpart phrase the one answer
+// the --ranges commands have for a sheet selector: the sheet is named inside
+// each entry, bare and unquoted, and there is no top-level flag for it.
+func rangesCarryTheSheetPrefix(command, example string) string {
+	return fmt.Sprintf("%s has no sheet selector — each --ranges entry names its own sheet as a bare A1 prefix: --ranges '%s' "+
+		"(the prefix is the sheet's display name, written without quotes; entries may name different sheets)", command, example)
+}
+
+func rangesCarryTheSheetIDPrefix(command, example string) string {
+	return fmt.Sprintf("%s has no sheet selector, and a reference_id cannot appear in one — each --ranges entry names its sheet by "+
+		"DISPLAY NAME as a bare A1 prefix: --ranges '%s' (look the name up with +sheet-list if you only have the id)", command, example)
 }
 
 // rejectMultiAreaRange answers the Excel multi-area habit — several
