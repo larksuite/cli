@@ -39,9 +39,9 @@
     {
       "name": "im",
       "file": "services/im.json",
-      "revision": 17,
-      "size": 257232,
-      "sha256": "12521681648bcb850dc0570ba229404d5420a7ee4cb55a14f253162968aa465a"
+      "revision": 18,
+      "size": 257214,
+      "sha256": "1d10dab9fb27b26bb2895472c93abb8c7c20a9d02403da3aa02f9f117eb8043d"
     },
     {
       "name": "mail",
@@ -88,9 +88,9 @@
     {
       "name": "task",
       "file": "services/task.json",
-      "revision": 15,
-      "size": 455002,
-      "sha256": "8a67a1c1819e51c9c335ebcf0c8399563b3f1465f96093bb0294e559744ae28e"
+      "revision": 16,
+      "size": 454984,
+      "sha256": "8c78d5c69a3672e99de30097254638b0e283559d1b2ce9ae2e36c4227b80b22e"
     },
     {
       "name": "vc",
