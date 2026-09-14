@@ -59,7 +59,7 @@ func TestVCRecordingControlAffordanceMatchesSkillReference(t *testing.T) {
 
 	const reference = "lark-meeting/references/lark-vc-recording-control.md"
 	for _, command := range []string{"+meeting-recording-start", "+meeting-recording-stop"} {
-		raw, ok := For("vc", command)
+		raw, ok := For(apicatalog.Catalog{}, "vc", command)
 		if !ok {
 			t.Fatalf("For(vc, %s) returned no affordance", command)
 		}
@@ -95,7 +95,7 @@ func TestVCParticipantAudioAffordanceMatchesSkillReference(t *testing.T) {
 
 	const reference = "lark-meeting/references/lark-vc-meeting-participant-audio.md"
 	for _, command := range []string{"+meeting-participant-mute", "+meeting-participant-unmute"} {
-		raw, ok := For("vc", command)
+		raw, ok := For(apicatalog.Catalog{}, "vc", command)
 		if !ok {
 			t.Fatalf("For(vc, %s) returned no affordance", command)
 		}

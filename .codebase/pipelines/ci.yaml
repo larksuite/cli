@@ -357,15 +357,24 @@ jobs:
       # the MR's target. resolve-changed-from.sh yields the baseline and
       # degrades on its own when that commit is missing from a shallow
       # checkout. Line:col is stripped so unrelated line shifts do not read as
-      # new findings. A baseline that cannot be analysed downgrades to a
-      # warning instead of failing, matching the public job.
+      # new findings.
       # The tool is INSTALLED rather than run through a pipe, and that is the
       # point: every failure `go` prints starts with "go:", the filter strips
       # exactly those lines, and with no pipefail the pipeline would still exit
       # 0 — leaving an empty file that compares as "no dead code". Installing it
-      # makes a fetch failure end the step. Both baseline degradations that used
-      # to live here are gone for the same reason: upstream lets a missing
-      # baseline worktree fail the job, and so should this.
+      # makes a fetch failure end the step.
+      # Each analysis writes a raw file first and is filtered afterwards,
+      # rather than piping into sed. The step runs under /bin/sh, which has no
+      # pipefail, so a pipeline's status is the last command's and a failing
+      # deadcode would pass for an empty result. Written this way the status is
+      # deadcode's own. The two analyses then fail
+      # differently on purpose. An unanalysable revision is this change's
+      # problem, so it fails. An unanalysable baseline leaves the question
+      # "does this add dead code" unanswerable, so it skips, the way the public
+      # job does — without that, a broken target branch turns every finding in
+      # HEAD into a new one and fails the very merge request that repairs it,
+      # which is what happened here on 2026-09-14. A broken trunk is reported
+      # by the trunk run, not by blaming the next change.
       - name: Dead code check (incremental)
         commands:
           # The public job is pull-request-only, because its baseline is
@@ -378,15 +387,13 @@ jobs:
           - 'echo "deadcode baseline is $BASE"'
           - 'if [ "$(git rev-parse "$BASE")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so the incremental comparison would be empty"; exit 1; fi'
           - go install golang.org/x/tools/cmd/deadcode@v0.31.0
-          - WORK="$(pwd)"
-          - deadcode -test ./... | sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' | sort > /tmp/dc-head.txt
+          - 'if ! deadcode -test ./... > /tmp/dc-head.raw; then echo "this revision could not be analysed"; exit 1; fi'
+          - sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' /tmp/dc-head.raw | sort > /tmp/dc-head.txt
           - rm -rf /tmp/dc-base
           - git worktree add -q /tmp/dc-base "$BASE"
-          - cd /tmp/dc-base
-          - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
-          - deadcode -test ./... | sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' | sort > /tmp/dc-base.txt
-          - cd "$WORK"
+          - 'if ! ( cd /tmp/dc-base; if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; fi; deadcode -test ./... > /tmp/dc-base.raw ); then echo "the baseline $BASE could not be analysed, so there is nothing to compare against; skipping the incremental check"; git worktree remove -f /tmp/dc-base; exit 0; fi'
           - git worktree remove -f /tmp/dc-base
+          - sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' /tmp/dc-base.raw | sort > /tmp/dc-base.txt
           - comm -23 /tmp/dc-head.txt /tmp/dc-base.txt > /tmp/dc-new.txt
           - 'if [ -s /tmp/dc-new.txt ]; then echo "new dead code found"; cat /tmp/dc-new.txt; exit 1; fi'
           - echo "no new dead code introduced"
