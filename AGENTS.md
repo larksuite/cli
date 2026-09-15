@@ -175,7 +175,11 @@ For plugin distributions, read [Ship skills and command guidance](extension/plat
 | Internal refactor, no behavior change | Not needed | Not needed |
 
 Dry-run tests use placeholder credentials and assert method, URL, params, and
-body without a real API call. Confirm contracts with `--help` and `schema` first.
+body without a real API call. Confirm contracts with `--help` and `schema`
+first: `lark-cli <domain> --help` lists that domain's methods flattened,
+`lark-cli <domain> <resource> <method> --help` gives params and the request
+body, and `lark-cli schema <domain>` / `lark-cli schema <domain>.<resource>.<method>`
+give the machine-readable index and contract.
 If no deterministic, cleanable live flow exists, do not leak tenant state or add
 a flaky test; document the blocker, fixture conditions, and substitute evidence.
 

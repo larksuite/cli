@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/schema"
 	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
@@ -96,21 +97,112 @@ func registerServiceWithContext(ctx context.Context, parent *cobra.Command, svc 
 		var path []string
 		for _, seg := range ref.ResourcePath {
 			path = append(path, seg)
-			resCmd = ensureChildCommand(resCmd, seg, resourceShort(seg, verbs[strings.Join(path, ".")]))
+			resCmd = ensureChildCommand(resCmd, seg,
+				resourceShort(seg, verbs[strings.Join(path, ".")], resourceDescriptionAt(svc, path)))
+			// The domain listing names every method directly, so a resource row
+			// would only duplicate it while naming no method to call. Hiding is
+			// listing-only — `lark-cli im chat.members --help` still resolves.
+			resCmd.Hidden = true
+			// Every level needs it, not just the domain: a nested resource's own
+			// children are hidden by this same loop, so completing only at the
+			// domain would strip the deeper groups the walk still registers.
+			resCmd.ValidArgsFunction = completeResourceGroups
 		}
 		resCmd.AddCommand(buildMethodCommand(ctx, f, newMethodCommandSpec(ref), nil, parent.PersistentFlags()))
 	}
+
+	// Hiding a resource keeps it out of the flattened listing, which already
+	// names every method under it. Cobra reads the same flag when completing,
+	// though, so hiding alone would strip the domain's entire native surface
+	// from `lark-cli <domain> <TAB>` while leaving every path typeable — the two
+	// surfaces would then disagree about what exists, which is the one thing the
+	// flattened listing was introduced to stop.
+	svcCmd.ValidArgsFunction = completeResourceGroups
 }
 
-// resourceShort summarizes a resource as its sorted verb list, or the
-// "<name> operations" placeholder for an intermediate group with no methods.
-func resourceShort(seg string, verbs []string) string {
+// completeResourceGroups offers the resource groups the domain listing hides.
+// Cobra completes the visible children (the +shortcuts) on its own and appends
+// these, so the completed set matches what domain help lists: a group appears
+// only when a method under it is actually reachable, mirroring
+// flattenedAPIMethods, which skips a leaf a policy layer took away. Completing
+// a group whose every method is concealed would hand back a path that rejects
+// even --help.
+func completeResourceGroups(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	// Only the first hop is missing: once a resource is named, Cobra finds that
+	// (hidden) command and completes its own visible method children normally.
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var out []string
+	for _, child := range cmd.Commands() {
+		if !child.Hidden || !strings.HasPrefix(child.Name(), toComplete) {
+			continue
+		}
+		if child.Annotations[schemaPathAnnotation] != "" {
+			continue // a policy-hidden method leaf, not a resource group
+		}
+		if !hasReachableMethod(child) {
+			continue
+		}
+		out = append(out, child.Name()+"\t"+child.Short)
+	}
+	sort.Strings(out)
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
+// hasReachableMethod reports whether any method leaf below cmd is still
+// invocable, descending through nested resource groups.
+func hasReachableMethod(cmd *cobra.Command) bool {
+	for _, child := range cmd.Commands() {
+		if child.Annotations[schemaPathAnnotation] != "" {
+			if !child.Hidden {
+				return true
+			}
+			continue
+		}
+		if hasReachableMethod(child) {
+			return true
+		}
+	}
+	return false
+}
+
+// resourceShort summarizes a resource. A catalog-supplied description wins when
+// present, since it says what the resource is rather than which verbs it has;
+// otherwise this falls back to the sorted verb list, or the "<name> operations"
+// placeholder for an intermediate group with no methods. The description is
+// upstream text, so it goes through the same sanitizing as every other rendered
+// description.
+func resourceShort(seg string, verbs []string, description string) string {
+	if d := schema.SanitizeIndexDesc(description); d != "" {
+		return d
+	}
 	if len(verbs) == 0 {
 		return seg + " operations"
 	}
 	sorted := append([]string(nil), verbs...)
 	sort.Strings(sorted)
 	return strings.Join(sorted, ", ")
+}
+
+// resourceDescriptionAt walks path down the service's resource tree and returns
+// that node's description, or "" when either the node or the field is absent.
+func resourceDescriptionAt(svc meta.Service, path []string) string {
+	if len(path) == 0 {
+		return ""
+	}
+	res, ok := svc.Resource(path[0])
+	if !ok {
+		return ""
+	}
+	for _, seg := range path[1:] {
+		next, ok := res.Resources[seg]
+		if !ok {
+			return ""
+		}
+		res = next
+	}
+	return res.Description
 }
 
 // serviceShort is the service command's help summary: the localized description
@@ -339,8 +431,14 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 	// Build-time Long; the agent guidance is added lazily by PrepareMethodHelp
 	// (setMethodHelpData records the coordinates it needs).
 	paramsOnly := opts.binder.paramsOnlyHelp()
-	cmd.Long = methodLong(m.Description, spec.schemaPath, paramsOnly)
-	setMethodHelpData(cmd, spec.serviceName, m.ID, spec.schemaPath, paramsOnly)
+	// Only methods whose metadata documents body fields get the contract; for a
+	// bare --data escape hatch there is nothing to describe.
+	var body string
+	if spec.declaresBody {
+		body = bodyHelp(m.Data())
+	}
+	cmd.Long = methodLong(m.Description, spec.schemaPath, paramsOnly, body)
+	setMethodHelpData(cmd, spec.serviceName, m.ID, spec.schemaPath, paramsOnly, body)
 
 	// Group flags for the grouped --help renderer (typed param flags are grouped
 	// as API Parameters by the binder). tagFlagGroup is a no-op for flags not

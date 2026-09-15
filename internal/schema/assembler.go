@@ -250,6 +250,7 @@ func assemble(serviceName string, resourcePath []string, m meta.Method) Envelope
 
 	return Envelope{
 		Name:         name,
+		Command:      commandPrefix + name,
 		Description:  normalizeDesc(m.Description),
 		InputSchema:  buildInputSchema(m),
 		OutputSchema: buildOutputSchema(m),

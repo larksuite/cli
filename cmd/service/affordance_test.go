@@ -476,3 +476,177 @@ func TestPrepareDomainHelp_FallsBackToShort(t *testing.T) {
 		t.Errorf("Short should seed Long when no hand-authored Long exists; got:\n%s", dom.Long)
 	}
 }
+
+// buildIMDomainForTest assembles an im domain command tree carrying both
+// +shortcuts and Meta API methods — the flattened listing and the positional
+// pointer both depend on that combination.
+func buildIMDomainForTest(t *testing.T) *cobra.Command {
+	t.Helper()
+	root := &cobra.Command{Use: "lark-cli"}
+	f := &cmdutil.Factory{}
+	svc := meta.ServiceFromMap(map[string]interface{}{
+		"name":        "im",
+		"description": "Messaging API",
+		"servicePath": "/open-apis/im/v1",
+		"resources": map[string]interface{}{
+			"chat.members": map[string]interface{}{
+				"methods": map[string]interface{}{
+					"delete": map[string]interface{}{
+						"description": "将用户或机器人移出群聊。Identity: supports user and bot",
+						"httpMethod":  "DELETE",
+					},
+					"get": map[string]interface{}{
+						"description": "获取群成员列表",
+						"httpMethod":  "GET",
+					},
+				},
+			},
+		},
+	})
+	registerService(root, svc, f)
+
+	im, _, err := root.Find([]string{"im"})
+	if err != nil {
+		t.Fatalf("im domain command not registered: %v", err)
+	}
+	for _, name := range []string{"+messages-send", "+chat-create"} {
+		sc := &cobra.Command{Use: name, Short: name + " shortcut", Run: func(*cobra.Command, []string) {}}
+		cmdmeta.SetDomain(sc, "im")
+		im.AddCommand(sc)
+	}
+	return im
+}
+
+func TestPrepareDomainHelp_FlattensAPIMethods(t *testing.T) {
+	imCmd := buildIMDomainForTest(t)
+	if !overlayRenderer(t, nil, nil, nil).PrepareDomainHelp(imCmd) {
+		t.Fatal("PrepareDomainHelp must apply to a domain command")
+	}
+	long := imCmd.Long
+	// Flattened line: the path exactly as it runs + first-sentence description.
+	if !strings.Contains(long, "chat.members delete") {
+		t.Errorf("domain help must list flattened method paths, got:\n%s", long)
+	}
+	// The dotted join is what a reader would copy and fail with, so it must not
+	// appear anywhere in the listing.
+	if strings.Contains(long, "chat.members.delete") {
+		t.Errorf("a listed method must not be rendered in its non-executable dotted form, got:\n%s", long)
+	}
+	if !strings.Contains(long, "将用户或机器人移出群聊") {
+		t.Errorf("flattened row must carry the method description, got:\n%s", long)
+	}
+	if strings.Contains(long, "Identity:") {
+		t.Error("flattened descriptions must be first-sentence only")
+	}
+	// The resource intermediate rows must not appear in the visible listing.
+	for _, c := range imCmd.Commands() {
+		if c.Name() == "chat.members" && !c.Hidden {
+			t.Error("resource intermediate command must be hidden from the listing")
+		}
+	}
+	// Boundary line survives flattening (shortcuts + API methods coexist).
+	if !strings.Contains(long, "Prefer a +-prefixed shortcut") {
+		t.Error("the shortcut-preference boundary line must survive flattening")
+	}
+}
+
+func TestPrepareDomainHelp_ResourceHelpStillReachable(t *testing.T) {
+	imCmd := buildIMDomainForTest(t)
+	res, _, err := imCmd.Find([]string{"chat.members"})
+	if err != nil || res == nil || res.Name() != "chat.members" {
+		t.Fatalf("hidden resource command must stay invocable, got %v / %v", res, err)
+	}
+}
+
+const shortcutPointer = "+shortcuts are listed under Available Commands below"
+
+func TestPrepareDomainHelp_ListingPointsAtShortcutSection(t *testing.T) {
+	// cobra renders Long (this listing) above UsageString (the Available
+	// Commands block holding the +shortcuts), so the flattened Meta API rows
+	// physically come first — the reverse of the stated preference. The header
+	// carries a positional pointer so a top-down reader knows the shortcuts
+	// exist further down.
+	imCmd := buildIMDomainForTest(t)
+	if !overlayRenderer(t, nil, nil, nil).PrepareDomainHelp(imCmd) {
+		t.Fatal("PrepareDomainHelp must apply to a domain command")
+	}
+	if !strings.Contains(imCmd.Long, shortcutPointer) {
+		t.Errorf("listing header must point at the shortcut section, got:\n%s", imCmd.Long)
+	}
+	// Positional only: the preference judgement stays on the boundary line, so
+	// the header must not restate it.
+	header := listingHeaderLine(t, imCmd.Long)
+	if strings.Contains(strings.ToLower(header), "prefer") {
+		t.Errorf("the pointer must state position only, not restate preference: %q", header)
+	}
+	if !strings.Contains(imCmd.Long, "Prefer a +-prefixed shortcut") {
+		t.Error("the boundary line must remain the single place stating preference")
+	}
+}
+
+func TestPrepareDomainHelp_NoPointerWhenDomainHasNoShortcuts(t *testing.T) {
+	// An API-only domain has no Available Commands shortcut rows, so there is
+	// nothing to point at and the pointer must be omitted.
+	apiOnly := buildIMDomainForTest(t)
+	removeShortcutChildren(apiOnly) // before PrepareDomainHelp: the base is captured on first call
+	if !overlayRenderer(t, nil, nil, nil).PrepareDomainHelp(apiOnly) {
+		t.Fatal("PrepareDomainHelp must apply to an API-only domain")
+	}
+	if strings.Contains(apiOnly.Long, shortcutPointer) {
+		t.Errorf("API-only domain must not carry the shortcut pointer, got:\n%s", apiOnly.Long)
+	}
+	if !strings.Contains(apiOnly.Long, "chat.members delete") {
+		t.Error("removing shortcuts must not remove the flattened API listing")
+	}
+}
+
+func TestPrepareDomainHelp_OmitsHiddenMethodLeaves(t *testing.T) {
+	// A method a policy layer took away is hidden but keeps its
+	// method-schema-path annotation (strict mode's stub copies every annotation
+	// off the original; cmdpolicy hides its deny stub in place). Listing it would
+	// advertise a path that rejects even --help.
+	imCmd := buildIMDomainForTest(t)
+	res, _, err := imCmd.Find([]string{"chat.members"})
+	if err != nil {
+		t.Fatalf("chat.members resource command not registered: %v", err)
+	}
+	for _, m := range res.Commands() {
+		if m.Name() == "delete" {
+			m.Hidden = true
+		}
+	}
+	if !overlayRenderer(t, nil, nil, nil).PrepareDomainHelp(imCmd) {
+		t.Fatal("PrepareDomainHelp must apply to a domain command")
+	}
+	if strings.Contains(imCmd.Long, "chat.members delete") {
+		t.Errorf("a hidden method leaf must not be listed, got:\n%s", imCmd.Long)
+	}
+	// The hidden sibling must not take the whole resource down with it — the
+	// listing is per method, not per resource.
+	if !strings.Contains(imCmd.Long, "chat.members get") {
+		t.Errorf("a visible sibling must stay listed, got:\n%s", imCmd.Long)
+	}
+}
+
+// listingHeaderLine returns the "API methods (…):" header line from a rendered
+// domain Long.
+func listingHeaderLine(t *testing.T, long string) string {
+	t.Helper()
+	for _, line := range strings.Split(long, "\n") {
+		if strings.HasPrefix(line, "API methods (") {
+			return line
+		}
+	}
+	t.Fatalf("no API methods header in:\n%s", long)
+	return ""
+}
+
+// removeShortcutChildren strips the +-prefixed children so the domain looks
+// API-only to the renderer.
+func removeShortcutChildren(cmd *cobra.Command) {
+	for _, c := range cmd.Commands() {
+		if strings.HasPrefix(c.Name(), "+") {
+			cmd.RemoveCommand(c)
+		}
+	}
+}

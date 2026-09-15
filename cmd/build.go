@@ -491,7 +491,7 @@ func assembleInternal(
 	rootCmd.AddCommand(api.NewCmdApiWithContext(ctx, f, nil))
 	rootCmd.AddCommand(schema.NewCmdSchemaWithVisibility(f, func(path []string) bool {
 		return runtime.surface.CanReference(surface.CommandID(strings.Join(path, "/")))
-	}, nil))
+	}, nil, schema.WithConcealment(func() bool { return anyPluginRestricts(plugins) })))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
 	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))
@@ -583,8 +583,7 @@ func assembleInternal(
 	// Presentation is an explicit host projection over the exact enforcement
 	// decisions. With no opt-in, legacy Restrict and YAML policy behavior is
 	// mechanically unchanged.
-	var hasConcealedCommands bool
-	runtime.surface, hasConcealedCommands = applyDistributionPresentation(rootCmd, cfg.presentation, denied)
+	runtime.surface, _ = applyDistributionPresentation(rootCmd, cfg.presentation, denied)
 
 	// Resolve skill assets and canonical references before installing hooks.
 	// A declared customization is a build-integrity boundary: failure must
@@ -607,15 +606,16 @@ func assembleInternal(
 		return finalizeFailedBuild(runtime, rootCmd)
 	}
 
-	// Install hooks only on business commands. The concealment-specific help
-	// command is attached afterwards, preserving Cobra's historical contract
-	// that help is not observed or wrapped by plugins.
+	// Install hooks only on business commands. The help command is attached
+	// afterwards, preserving Cobra's historical contract that help is not
+	// observed or wrapped by plugins.
 	if hookRegistry != nil {
 		installHooks(rootCmd, hookRegistry)
 	}
-	if hasConcealedCommands {
-		installHelpCommand(rootCmd)
-	}
+	// Unconditional: the concealment message is only one of the two things the
+	// stock help command cannot say. The other — that the name it was handed
+	// does not exist — applies to every build.
+	installHelpCommand(rootCmd)
 	finalizeRootCommandGroups(rootCmd, runtime.surface)
 
 	if hookRegistry != nil && !cfg.deferStartup {
@@ -790,4 +790,34 @@ func routeDomains(root *cobra.Command, args []string, catalogNames, shortcutDoma
 		}
 	}
 	return selectNoDomains
+}
+
+// anyPluginRestricts reports whether any frozen plugin declares it will register
+// a command restriction. Capabilities is a pre-flight declaration, which is what
+// makes the answer available before the plugins are installed; the framework
+// keeps it honest by aborting an install whose declaration disagrees with
+// whether Install actually calls Restrict.
+func anyPluginRestricts(plugins []platform.Plugin) bool {
+	for _, p := range plugins {
+		if pluginDeclaresRestrict(p) {
+			return true
+		}
+	}
+	return false
+}
+
+// pluginDeclaresRestrict reads one plugin's declaration without letting a faulty
+// plugin decide how the CLI fails. Capabilities is third-party code, and calling
+// it this early moves it ahead of the install pipeline that owns panics from it:
+// unguarded, a panic here would escape as a stack trace instead of the
+// capabilities_panic envelope install produces. Recovering keeps that report
+// where it belongs, and a plugin that cannot answer is counted as restricting —
+// the same direction every other unknown takes.
+func pluginDeclaresRestrict(p platform.Plugin) (declares bool) {
+	defer func() {
+		if recover() != nil {
+			declares = true
+		}
+	}()
+	return p.Capabilities().Restricts
 }

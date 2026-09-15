@@ -6,6 +6,7 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -242,10 +243,15 @@ func TestUnknownSubcommandRunE_UnknownReturnsStructuredError(t *testing.T) {
 	if !strings.Contains(verr.Message, "lark-cli drive") {
 		t.Errorf("message should name the group path, got %q", verr.Message)
 	}
-	// "+bogus" has no close neighbor among drive's subcommands, so the hint falls
-	// back to pointing at --help (suggestions, when present, are folded into hint).
-	if !strings.Contains(verr.Hint, "--help") {
-		t.Errorf("hint should guide to --help when there is no suggestion, got %q", verr.Hint)
+	// "+bogus" has no close neighbour among drive's subcommands, which is the
+	// case where the name most likely does not exist at all — and pointing at
+	// --help there answers nothing, leaving a caller to conclude the capability
+	// is missing and reach for the raw `api` channel. The hint must name the set,
+	// and it must be the set --help would have listed.
+	for _, name := range []string{"+search", "+upload", "files"} {
+		if !strings.Contains(verr.Hint, name) {
+			t.Errorf("hint must name %q among the group's real subcommands, got %q", name, verr.Hint)
+		}
 	}
 }
 
@@ -302,6 +308,58 @@ func TestAvailableSubcommandNames_SplitsDeprecatedGroup(t *testing.T) {
 	}
 }
 
+// A resource group is hidden so domain help can name its methods directly
+// (cmd/service/service.go) while staying invocable. Ranking only the visible
+// children therefore leaves the most likely mistake — a method under one of those
+// hidden groups — with no candidate at all, which is what the dotted names in
+// domain help used to run into.
+func TestUnknownSubcommandRunE_SuggestsMethodUnderHiddenResource(t *testing.T) {
+	_, drive, files := newGroupTree()
+	files.Hidden = true
+
+	err := unknownSubcommandRunE(drive, []string{"files.lst"})
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if len(verr.Params) != 1 {
+		t.Fatalf("params = %v, want one entry", verr.Params)
+	}
+	found := false
+	for _, s := range verr.Params[0].Suggestions {
+		if s == "files list" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("suggestions = %v, want them to include the runnable %q", verr.Params[0].Suggestions, "files list")
+	}
+}
+
+// A name that is exactly a method's path with dots for separators is not a typo
+// to rank against neighbours — the tree holds that method, so the correction is
+// certain and must be stated as the one thing to run.
+func TestUnknownSubcommandRunE_RewritesDottedMethodPath(t *testing.T) {
+	_, drive, files := newGroupTree()
+	files.Hidden = true
+
+	err := unknownSubcommandRunE(drive, []string{"files.list"})
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if len(verr.Params) != 1 || verr.Params[0].Name != "files.list" {
+		t.Fatalf("params = %v, want one entry named files.list", verr.Params)
+	}
+	got := verr.Params[0].Suggestions
+	if len(got) != 1 || got[0] != "files list" {
+		t.Errorf("suggestions = %v, want exactly [%q]", got, "files list")
+	}
+	if !strings.Contains(verr.Hint, "lark-cli drive files list") {
+		t.Errorf("hint = %q, want it to name the runnable command", verr.Hint)
+	}
+}
+
 // unknownSubcommandRunE ranks suggestions across both current and deprecated
 // subcommands so a mistyped legacy alias resolves; the closest match is folded
 // into the hint.
@@ -335,5 +393,62 @@ func TestUnknownSubcommandRunE_SuggestsAcrossDeprecatedBucket(t *testing.T) {
 	}
 	if !strings.Contains(verr.Hint, "+read") {
 		t.Errorf("hint %q should suggest +read (typo target across deprecated bucket)", verr.Hint)
+	}
+}
+
+// A flag written apart from its value puts that value ahead of the first real
+// positional in the raw invocation. The rejected name must still be the one
+// cobra named: an envelope whose message blames one token and whose params blame
+// another is worse than params that were never added, and the ranked
+// suggestions would be computed against the wrong string too.
+func TestRootUnknownCommandRewrite_AnchorsOnTheNameCobraRejected(t *testing.T) {
+	root, _, _ := newGroupTree()
+	installUnknownSubcommandGuard(root)
+
+	saved := rawInvocationArgs
+	t.Cleanup(func() { rawInvocationArgs = saved })
+
+	for _, tc := range []struct {
+		name     string
+		raw      []string
+		rejected string
+		want     string // the runnable form the suggestion must carry
+	}{
+		{"separated flag value ahead of the path", []string{"--profile", "work", "drive.files.list"}, "drive.files.list", "drive files list"},
+		{"inline flag value", []string{"--profile=work", "drive.files.list"}, "drive.files.list", "drive files list"},
+		{"no flags at all", []string{"drive.files.list"}, "drive.files.list", "drive files list"},
+		{"path split across arguments", []string{"--profile", "work", "drive.files", "list"}, "drive.files", "drive files list"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rawInvocationArgs = tc.raw
+			cobraErr := fmt.Errorf("unknown command %q for %q", tc.rejected, "lark-cli")
+
+			var verr *errs.ValidationError
+			if !errors.As(rootUnknownCommandRewrite(root, cobraErr), &verr) {
+				t.Fatalf("expected a *errs.ValidationError, got %v", rootUnknownCommandRewrite(root, cobraErr))
+			}
+			if len(verr.Params) != 1 {
+				t.Fatalf("expected exactly one param, got %+v", verr.Params)
+			}
+			if verr.Params[0].Name != tc.rejected {
+				t.Errorf("param names %q, but cobra rejected %q", verr.Params[0].Name, tc.rejected)
+			}
+			if got := verr.Params[0].Suggestions; len(got) != 1 || got[0] != tc.want {
+				t.Errorf("suggestions = %v, want exactly [%q]", got, tc.want)
+			}
+			if !strings.Contains(verr.Hint, tc.want) {
+				t.Errorf("hint must name the runnable form %q, got %q", tc.want, verr.Hint)
+			}
+		})
+	}
+}
+
+// A message that is not cobra's unknown-command rejection is passed through
+// untouched: this rewrite has no business re-typing every root-level failure.
+func TestRootUnknownCommandRewrite_LeavesOtherErrorsAlone(t *testing.T) {
+	root, _, _ := newGroupTree()
+	other := errors.New("flag needs an argument: --profile")
+	if got := rootUnknownCommandRewrite(root, other); got != other {
+		t.Errorf("expected the original error to pass through, got %v", got)
 	}
 }

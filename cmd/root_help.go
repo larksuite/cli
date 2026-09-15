@@ -37,11 +37,17 @@ var rootLongSections = []rootHelpSection{
 		{text: `lark-cli — Lark/Feishu CLI tool.
 
 AGENT QUICKSTART (driving this as an agent? start here):
-    Browse commands:  lark-cli <domain> --help            # +shortcuts (preferred) and raw API resources`},
+    Browse commands:  lark-cli <domain> --help            # +shortcuts (preferred) and flattened API methods`},
 		{target: surface.CommandSchema, text: `
+    List API methods: lark-cli schema <domain>            # one line per method, machine-readable
     Inspect a call:   lark-cli schema <service>.<resource>.<method>   # params, types, scopes, examples`},
+		// The naming rule belongs to the command tree, not to schema, so it is
+		// stated here rather than beside the two schema-gated lines above: a build
+		// without `schema` still lists flattened methods in domain help, and a
+		// reader still has to know that a resource keeps its own dots.
 		{text: `
-    Prefer a +shortcut over the raw API resource when one matches the task.
+    Run a method:     lark-cli <domain> <resource> <method>   # split on spaces; a resource keeps its own dots (chat.members)
+    Prefer a +shortcut over the raw API method when one matches the task.
     Risk: each command's --help shows read | write | high-risk-write;
           high-risk-write needs --yes, only after the user confirms.
     On any API call: --jq <expr> filters JSON output, --dry-run previews the request (runs nothing).`},

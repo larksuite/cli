@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/spf13/cobra"
 )
 
 func schemaTestFactory(t *testing.T, config *core.CliConfig) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
@@ -29,6 +30,15 @@ func schemaTestFactory(t *testing.T, config *core.CliConfig) (*cmdutil.Factory, 
 	}
 	f.APICatalog = snapshot.Catalog()
 	return f, out, errOut, in
+}
+
+// schemaTestCatalog is the full catalog the resolve-error tests navigate. They
+// exercise rendering and hints directly rather than through a command, so they
+// need the catalog alone rather than a whole Factory.
+func schemaTestCatalog(t *testing.T) apicatalog.Catalog {
+	t.Helper()
+	f, _, _, _ := schemaTestFactory(t, nil)
+	return f.APICatalog
 }
 
 func TestSchemaCmd_FlagParsing(t *testing.T) {
@@ -69,7 +79,8 @@ func TestSchemaCmd_APICatalogCompletionAndRun(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), `"name": "drive `) {
+	// A service target renders the method index, whose rows are dotted paths.
+	if !strings.Contains(stdout.String(), `"path": "drive.`) {
 		t.Fatalf("drive schema output missing drive methods: %s", stdout.String())
 	}
 }
@@ -107,7 +118,7 @@ func TestSchemaCmd_OutputFlagsAcceptedForCompat(t *testing.T) {
 	}
 }
 
-func TestSchemaCmd_NoArgs_JSON_IsArray(t *testing.T) {
+func TestSchemaCmd_NoArgs_RendersServiceIndex(t *testing.T) {
 	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
@@ -116,19 +127,32 @@ func TestSchemaCmd_NoArgs_JSON_IsArray(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := strings.TrimSpace(stdout.String())
-	if !strings.HasPrefix(out, "[") {
+	// The bare form renders a service index object, not the former array of
+	// every method's full envelope — that shape exceeded any practical
+	// single-response budget.
+	if !strings.HasPrefix(out, "{") {
 		head := out
 		if len(head) > 80 {
 			head = head[:80]
 		}
-		t.Errorf("expected JSON array root, first 80 chars:\n%s", head)
+		t.Errorf("expected JSON object root, first 80 chars:\n%s", head)
 	}
-	var envs []map[string]interface{}
-	if err := json.Unmarshal([]byte(out), &envs); err != nil {
+	var idx struct {
+		Kind     string `json:"kind"`
+		Services []struct {
+			Name string `json:"name"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal([]byte(out), &idx); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	if len(envs) < 193 {
-		t.Errorf("envelopes count = %d, want >= 193", len(envs))
+	if idx.Kind != "service_index" {
+		t.Errorf("kind = %q, want service_index", idx.Kind)
+	}
+	// Every service the catalog knows must be listed — this index is the entry
+	// point for discovering them, so a missing one is unreachable.
+	if want := len(f.APICatalog.Services()); len(idx.Services) != want {
+		t.Errorf("services count = %d, want %d", len(idx.Services), want)
 	}
 }
 
@@ -232,7 +256,7 @@ func TestSchemaCmd_SpaceSeparatedPath_EqualsDotted(t *testing.T) {
 	}
 }
 
-func TestSchemaCmd_ServiceListIsArray(t *testing.T) {
+func TestSchemaCmd_ServiceRendersMethodIndex(t *testing.T) {
 	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
@@ -240,17 +264,26 @@ func TestSchemaCmd_ServiceListIsArray(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	var envs []map[string]interface{}
-	if err := json.Unmarshal(stdout.Bytes(), &envs); err != nil {
+	var idx struct {
+		Kind    string `json:"kind"`
+		Service string `json:"service"`
+		Methods []struct {
+			Path string `json:"path"`
+		} `json:"methods"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &idx); err != nil {
 		t.Fatalf("unmarshal failed: %v\n%s", err, stdout.String())
 	}
-	if len(envs) == 0 {
-		t.Fatal("expected non-empty array for service im")
+	if idx.Kind != "method_index" || idx.Service != "im" {
+		t.Errorf("kind/service = %q/%q, want method_index/im", idx.Kind, idx.Service)
 	}
-	for _, e := range envs {
-		name, _ := e["name"].(string)
-		if !strings.HasPrefix(name, "im ") {
-			t.Errorf("envelope name %q does not start with \"im \"", name)
+	if len(idx.Methods) == 0 {
+		t.Fatal("expected non-empty method index for service im")
+	}
+	// Scoping to one service must not leak another service's methods.
+	for _, m := range idx.Methods {
+		if !strings.HasPrefix(m.Path, "im.") {
+			t.Errorf("method path %q does not start with \"im.\"", m.Path)
 		}
 	}
 }
@@ -304,8 +337,14 @@ func TestSchemaCmd_UnknownService(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for unknown service")
 	}
+	// A name that is no domain at all must be called unknown. "No API methods
+	// for" asserts the name exists, which is the wording reserved for
+	// shortcut-only domains (see TestResolveError_ShortcutOnlyDomainPointsAtHelp).
 	if !strings.Contains(err.Error(), "Unknown service") {
 		t.Errorf("expected 'Unknown service' error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "nonexistent_service") {
+		t.Errorf("error must name the rejected service, got: %v", err)
 	}
 	var ve *errs.ValidationError
 	if !errors.As(err, &ve) {
@@ -316,6 +355,14 @@ func TestSchemaCmd_UnknownService(t *testing.T) {
 	}
 	if !strings.Contains(ve.Hint, "Available:") {
 		t.Errorf("expected hint listing available services, got: %q", ve.Hint)
+	}
+	// The hint must not hand back a command that fails the same way the rejected
+	// call just did — that trades one dead end for another.
+	if strings.Contains(ve.Hint, "lark-cli nonexistent_service") {
+		t.Errorf("hint must not suggest running the rejected name as a command, got: %q", ve.Hint)
+	}
+	if !strings.Contains(ve.Hint, "lark-cli --help") {
+		t.Errorf("hint must offer a usable next step, got: %q", ve.Hint)
 	}
 }
 
@@ -348,6 +395,187 @@ func TestSchemaCmd_UnknownMethod_TypedValidation(t *testing.T) {
 	}
 }
 
+// Completion candidate generation (dotted + space forms, strict-mode filtering,
+// dotted-resource handling) now lives in internal/apicatalog and is covered by
+// apicatalog's TestComplete. cmd/schema only adapts catalog.Complete to cobra.
+
+func TestResolveError_ShortcutPathPointsAtHelp(t *testing.T) {
+	var buf bytes.Buffer
+	err := runSchemaCatalog(&buf, []string{"im", "+messages-send"}, core.StrictModeOff, schemaTestCatalog(t), nil, nil, "", nil, nil)
+	if err == nil {
+		t.Fatal("a +shortcut path must not resolve")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("error must carry a problem envelope")
+	}
+	for _, want := range []string{
+		"shortcuts are documented in --help, not schema",
+		"lark-cli im +messages-send --help",
+		"lark-cli im --help",
+	} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Errorf("hint must contain %q, got %q", want, problem.Hint)
+		}
+	}
+}
+
+func TestResolveError_UnknownResourceAlsoPointsAtSchemaIndex(t *testing.T) {
+	var buf bytes.Buffer
+	err := runSchemaCatalog(&buf, []string{"mail", "nonexist"}, core.StrictModeOff, schemaTestCatalog(t), nil, nil, "", nil, nil)
+	if err == nil {
+		t.Fatal("an unknown resource must not resolve")
+	}
+	problem, _ := errs.ProblemOf(err)
+	// The candidate list stays; only the guidance sentence is added.
+	if !strings.Contains(problem.Hint, "Available:") {
+		t.Errorf("hint must keep the candidate list, got %q", problem.Hint)
+	}
+	if !strings.Contains(problem.Hint, "lark-cli schema mail") {
+		t.Errorf("hint must point at the method index, got %q", problem.Hint)
+	}
+}
+
+func TestResolveError_SanitizesEchoedInput(t *testing.T) {
+	var buf bytes.Buffer
+	err := runSchemaCatalog(&buf, []string{"im", "+bad\x1b[31mname"}, core.StrictModeOff, schemaTestCatalog(t), nil, nil, "", nil, nil)
+	if err == nil {
+		t.Fatal("must not resolve")
+	}
+	problem, _ := errs.ProblemOf(err)
+	if strings.Contains(problem.Hint, "\x1b") {
+		t.Errorf("hint must not echo control characters, got %q", problem.Hint)
+	}
+}
+
+// The rejected segment appears in both the message and the hint, so both go
+// through the same whitelist — a raw bidi override in the message could still
+// reorder how the rejection reads.
+func TestResolveError_SanitizesShortcutMessageToo(t *testing.T) {
+	var buf bytes.Buffer
+	err := runSchemaCatalog(&buf, []string{"im", "+bad‮name"}, core.StrictModeOff, schemaTestCatalog(t), nil, nil, "", nil, nil)
+	if err == nil {
+		t.Fatal("must not resolve")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("error must carry a problem envelope")
+	}
+	if strings.ContainsRune(problem.Message, '‮') {
+		t.Errorf("message must not echo bidi controls, got %q", problem.Message)
+	}
+	if strings.ContainsRune(problem.Hint, '‮') {
+		t.Errorf("hint must not echo bidi controls, got %q", problem.Hint)
+	}
+}
+
+// The shortcut and service branches were sanitized from the start; the resource,
+// method and path rejections echoed their subject raw. Every branch shares one
+// envelope that an agent parses, so each has to reach it through the same
+// whitelist — a bidi override surviving in any one of them can reorder how the
+// whole rejection reads.
+//
+// The parts are passed pre-split, exactly as apicatalog.ParsePath would hand
+// them over, because a single dotted argument resolves as a service name and
+// would test the service branch instead — which was never the unsanitized one.
+// wantPrefix pins which branch each case actually reaches, so the test cannot
+// silently drift back onto an already-safe path.
+func TestResolveError_SanitizesEveryRejectedSubject(t *testing.T) {
+	const bidi = "\u202e"
+	for _, tc := range []struct {
+		name       string
+		parts      []string
+		wantPrefix string
+	}{
+		{"resource", []string{"im", "chat" + bidi + "members", "get"}, "Unknown resource:"},
+		{"method", []string{"im", "chats", "ge" + bidi + "t"}, "Unknown method:"},
+		{"control in resource", []string{"im", "chat\x1b[31mmembers", "get"}, "Unknown resource:"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := runSchemaCatalog(&buf, tc.parts, core.StrictModeOff, schemaTestCatalog(t), nil, nil, "", nil, nil)
+			if err == nil {
+				t.Fatal("must not resolve")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatal("error must carry a problem envelope")
+			}
+			if !strings.HasPrefix(problem.Message, tc.wantPrefix) {
+				t.Fatalf("case reached the wrong branch: message %q, want prefix %q", problem.Message, tc.wantPrefix)
+			}
+			for _, field := range []struct{ label, text string }{
+				{"message", problem.Message},
+				{"hint", problem.Hint},
+			} {
+				if strings.Contains(field.text, bidi) {
+					t.Errorf("%s must not echo bidi controls, got %q", field.label, field.text)
+				}
+				if strings.Contains(field.text, "\x1b") {
+					t.Errorf("%s must not echo control characters, got %q", field.label, field.text)
+				}
+			}
+		})
+	}
+}
+
+// A name that is absent from the API catalog but present in the command tree —
+// a +shortcut-only domain, or a CLI command like `auth` — must not be called
+// unknown, and the rejection must point back at the help tree.
+func TestResolveError_ExistingCommandWithoutAPIPointsAtHelp(t *testing.T) {
+	var buf bytes.Buffer
+	exists := func(name string) bool { return name == "docs" }
+	err := runSchemaCatalog(&buf, []string{"docs"}, core.StrictModeOff, schemaTestCatalog(t), nil, nil, "", exists, nil)
+	if err == nil {
+		t.Fatal("a shortcut-only domain has no API methods and must not resolve")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("error must carry a problem envelope")
+	}
+	if strings.Contains(problem.Message, "Unknown service") {
+		t.Errorf("message must not claim the domain is unknown, got %q", problem.Message)
+	}
+	if !strings.Contains(problem.Message, "docs") {
+		t.Errorf("message must name the rejected domain, got %q", problem.Message)
+	}
+	for _, want := range []string{"lark-cli docs --help", "lark-cli --help"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Errorf("hint must offer %q, got %q", want, problem.Hint)
+		}
+	}
+}
+
+// The command tree, not the shortcut registry, decides which branch a name
+// takes: CLI commands such as `auth` provide no API methods and no +shortcuts,
+// yet `lark-cli auth --help` works, so calling them unknown misleads just as
+// much as it does for a shortcut-only domain.
+func TestSchemaCmd_CLICommandIsNotCalledUnknown(t *testing.T) {
+	for _, name := range []string{"auth", "config", "whoami"} {
+		f, _, _, _ := schemaTestFactory(t, nil)
+		root := &cobra.Command{Use: "lark-cli"}
+		root.AddCommand(&cobra.Command{Use: name, RunE: func(*cobra.Command, []string) error { return nil }})
+		root.AddCommand(NewCmdSchema(f, nil))
+		root.SetArgs([]string{"schema", name})
+		root.SetOut(&bytes.Buffer{})
+		root.SetErr(&bytes.Buffer{})
+		err := root.Execute()
+		if err == nil {
+			t.Fatalf("%s has no API methods and must not resolve", name)
+		}
+		problem, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("%s: error must carry a problem envelope", name)
+		}
+		if strings.Contains(problem.Message, "Unknown service") {
+			t.Errorf("%s: message must not claim the command is unknown, got %q", name, problem.Message)
+		}
+		if !strings.Contains(problem.Hint, "lark-cli "+name+" --help") {
+			t.Errorf("%s: hint must point at the command's own help, got %q", name, problem.Hint)
+		}
+	}
+}
+
 // Base completion navigation (dotted + space forms, strict-mode filtering,
 // dotted-resource handling) lives in internal/apicatalog. The tests below pin
 // cmd/schema's build-local surface projection around that navigator.
@@ -358,26 +586,58 @@ func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.
 		return strings.Join(path, "/") != "mail/user_mailbox.messages/list"
 	}
 
+	// The bare form renders the service index, which names services rather than
+	// methods. Both services survive projection here because each keeps at least
+	// one visible method.
 	var out bytes.Buffer
-	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, nil, visible); err != nil {
+	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, nil, visible, "", nil, nil); err != nil {
 		t.Fatalf("broad schema failed: %v", err)
 	}
-	var envelopes []map[string]interface{}
-	if err := json.Unmarshal(out.Bytes(), &envelopes); err != nil {
+	var index struct {
+		Kind     string `json:"kind"`
+		Services []struct {
+			Name string `json:"name"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &index); err != nil {
 		t.Fatalf("broad schema output is not JSON: %v\n%s", err, out.String())
 	}
-	names := make(map[string]bool, len(envelopes))
-	for _, envelope := range envelopes {
-		name, _ := envelope["name"].(string)
-		names[name] = true
+	if index.Kind != "service_index" {
+		t.Errorf("kind = %q, want service_index", index.Kind)
 	}
-	if names["mail user_mailbox.messages list"] {
-		t.Error("broad schema retained concealed mail messages list")
+	services := make(map[string]bool, len(index.Services))
+	for _, svc := range index.Services {
+		services[svc.Name] = true
 	}
-	for _, want := range []string{"mail user_mailbox.messages get", "im messages list"} {
-		if !names[want] {
-			t.Errorf("broad schema lost visible method %q: %v", want, names)
+	for _, want := range []string{"mail", "im"} {
+		if !services[want] {
+			t.Errorf("service index lost %q: %v", want, services)
 		}
+	}
+
+	// A concealed method can only surface in the method index, so that is where
+	// listing-side projection has to be asserted.
+	out.Reset()
+	if err := runSchemaCatalog(&out, []string{"mail"}, core.StrictModeOff, catalog, nil, visible, "", nil, nil); err != nil {
+		t.Fatalf("mail method index failed: %v", err)
+	}
+	var methodIndex struct {
+		Methods []struct {
+			Path string `json:"path"`
+		} `json:"methods"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &methodIndex); err != nil {
+		t.Fatalf("mail method index is not JSON: %v\n%s", err, out.String())
+	}
+	paths := make(map[string]bool, len(methodIndex.Methods))
+	for _, m := range methodIndex.Methods {
+		paths[m.Path] = true
+	}
+	if paths["mail.user_mailbox.messages.list"] {
+		t.Error("method index retained concealed mail messages list")
+	}
+	if !paths["mail.user_mailbox.messages.get"] {
+		t.Errorf("method index lost visible sibling: %v", paths)
 	}
 
 	out.Reset()
@@ -388,6 +648,9 @@ func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.
 		catalog,
 		nil,
 		visible,
+		"",
+		nil,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("concealed exact method unexpectedly resolved")
@@ -455,10 +718,10 @@ func TestSchemaSurfaceProjectionPreservesDefaultAndDeniedVisibleCatalog(t *testi
 	allVisible := func([]string) bool { return true }
 
 	var defaultOut, projectedOut bytes.Buffer
-	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil, nil); err != nil {
+	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil, nil, "", nil, nil); err != nil {
 		t.Fatalf("default schema failed: %v", err)
 	}
-	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, nil, allVisible); err != nil {
+	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, nil, allVisible, "", nil, nil); err != nil {
 		t.Fatalf("all-visible schema failed: %v", err)
 	}
 	if defaultOut.String() != projectedOut.String() {

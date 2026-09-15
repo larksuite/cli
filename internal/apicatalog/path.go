@@ -6,26 +6,27 @@ package apicatalog
 import "strings"
 
 // ParsePath normalizes positional command arguments into the path segments
-// Resolve consumes. It accepts two equivalent forms:
+// Resolve consumes. Every argument is split on ".", so all of these name the
+// same target:
 //
-//	im.messages.reply  -> single arg, split on "."
-//	im messages reply  -> multiple args, used as-is
+//	im.messages.reply     -> one dotted argument
+//	im messages reply     -> separate arguments
+//	im messages.reply     -> a mix of the two
 //
-// "im chat.members bots" as a single quoted arg is NOT supported; quote
-// arguments individually if your shell needs it. A resource keeps its internal
-// dots when passed as one segment (e.g. "chat.members"); findResource's
-// longest-prefix descent resolves both the split and the one-segment forms to
-// the same target. Returns nil for zero args (bare invocation -> TargetAll).
+// Splitting only the single-argument form used to make the mixed one fail while
+// the dotted one succeeded — and the resulting "Unknown resource" quoted back a
+// string that, passed as one argument, resolved perfectly well. A resource keeps
+// its internal dots either way: findResource rejoins segments longest-prefix
+// first, so "chat.members" as one argument and as two both descend to the same
+// resource. Returns nil for zero args (bare invocation -> TargetAll).
 func ParsePath(args []string) []string {
-	switch len(args) {
-	case 0:
-		return nil
-	case 1:
-		if strings.Contains(args[0], ".") {
-			return strings.Split(args[0], ".")
+	var out []string
+	for _, arg := range args {
+		if !strings.Contains(arg, ".") {
+			out = append(out, arg)
+			continue
 		}
-		return []string{args[0]}
-	default:
-		return args
+		out = append(out, strings.Split(arg, ".")...)
 	}
+	return out
 }

@@ -50,6 +50,14 @@ cmd/api/download.bin
 app.log
 /sidecar-server-demo
 /server-demo
+# `make examples-build` runs `go build` with no -o, so each example lands in the
+# repo root as a ~50 MB binary named after its package. Anchored to the root on
+# purpose: a bare pattern would also match extension/platform/examples/<name>/,
+# excluding the sources themselves.
+/audit-observer
+/audit-observer.exe
+/readonly-policy
+/readonly-policy.exe
 .tmp/
 cover*.out
 

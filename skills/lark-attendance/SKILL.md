@@ -39,11 +39,12 @@ metadata:
 ## API Resources
 
 ```bash
-lark-cli schema attendance.<resource>.<method>   # 调用 API 前必须先查看参数结构
+lark-cli attendance <resource> <method> --help  # 请求体骨架与字段说明，调用前先看这个
+lark-cli schema attendance.<resource>.<method>   # 完整契约：深层嵌套结构、outputSchema
 lark-cli attendance <resource> <method> [flags]  # 调用 API
 ```
 
-> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
+> **重要**：使用原生 API 时，先看 method `--help` —— 它内嵌了 `--data` 的请求体骨架与字段说明。只有深层嵌套结构，或需要完整契约（含 `outputSchema`）时才查 `schema`。两者都不要猜测字段格式。
 
 ### user_tasks
 

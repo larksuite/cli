@@ -17,8 +17,15 @@ import (
 // The REST route (httpMethod/path) is deliberately NOT exposed: every
 // schema-resolvable method already has a typed command, so the raw path would
 // only tempt an agent toward the `api` escape hatch.
+//
+// Name is the MCP tool identifier and stays as the spec defines it. Command is
+// the same string prefixed with the binary — the one field a reader can copy and
+// run without knowing that Name happens to be argv. It mirrors the method
+// index's `command` so both discovery surfaces answer "how do I run this?" the
+// same way.
 type Envelope struct {
 	Name         string        `json:"name"`
+	Command      string        `json:"command"`
 	Description  string        `json:"description"`
 	InputSchema  *InputSchema  `json:"inputSchema"`
 	OutputSchema *OutputSchema `json:"outputSchema"`

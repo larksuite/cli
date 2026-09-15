@@ -1332,3 +1332,128 @@ func TestServiceMethod_JsonFlag_Accepted(t *testing.T) {
 		t.Fatal("expected runF to be called")
 	}
 }
+
+func TestResourceShort_UsesCatalogDescriptionWhenPresent(t *testing.T) {
+	if got, want := resourceShort("chat.members", []string{"get", "create"}, "Group member management"),
+		"Group member management"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	// Absent description: byte-identical to the verb-list rendering.
+	if got, want := resourceShort("chat.members", []string{"get", "create"}, ""), "create, get"; got != want {
+		t.Errorf("fallback: got %q, want %q", got, want)
+	}
+	// An intermediate group with neither description nor methods.
+	if got, want := resourceShort("chat", nil, ""), "chat operations"; got != want {
+		t.Errorf("placeholder: got %q, want %q", got, want)
+	}
+	// Descriptions are upstream text, so they go through the same sanitizing as
+	// every other rendered description.
+	if got := resourceShort("chat.members", nil, "a\x1b[31mred\ttail"); got != "ared tail" {
+		t.Errorf("description must be sanitized, got %q", got)
+	}
+}
+
+// The description has to reach the resource command from the catalog, not just
+// be accepted by resourceShort: the field is optional and absent from today's
+// metadata, so the wiring is what makes it usable once upstream adds it.
+func TestRegisterService_ResourceDescriptionReachesCommand(t *testing.T) {
+	parent := &cobra.Command{Use: "root"}
+	f := &cmdutil.Factory{}
+	svc := meta.ServiceFromMap(map[string]interface{}{
+		"name":        "im",
+		"description": "Messaging API",
+		"servicePath": "/open-apis/im/v1",
+		"resources": map[string]interface{}{
+			"chat.members": map[string]interface{}{
+				"description": "Group member management",
+				"methods": map[string]interface{}{
+					"get": map[string]interface{}{"description": "List members", "httpMethod": "GET"},
+				},
+			},
+			"messages": map[string]interface{}{
+				"methods": map[string]interface{}{
+					"list": map[string]interface{}{"description": "List messages", "httpMethod": "GET"},
+				},
+			},
+		},
+	})
+	registerService(parent, svc, f)
+
+	withDesc, _, err := parent.Find([]string{"im", "chat.members"})
+	if err != nil {
+		t.Fatalf("chat.members not registered: %v", err)
+	}
+	if withDesc.Short != "Group member management" {
+		t.Errorf("resource Short = %q, want the catalog description", withDesc.Short)
+	}
+	// A resource without the field keeps the verb-list rendering unchanged.
+	noDesc, _, err := parent.Find([]string{"im", "messages"})
+	if err != nil {
+		t.Fatalf("messages not registered: %v", err)
+	}
+	if noDesc.Short != "list" {
+		t.Errorf("resource without description = %q, want the verb list %q", noDesc.Short, "list")
+	}
+}
+
+// Nested resources are a shape the metadata model and apicatalog's walk both
+// support (meta.Resource carries its own Resources, and walkResources recurses
+// through them), and registerService builds one command per path segment. No
+// committed service uses more than one segment today, so the fixture supplies
+// the nesting: completing only at the domain would leave every intermediate
+// group uncompletable the moment a catalog does.
+func TestCompleteResourceGroups_ReachesNestedResources(t *testing.T) {
+	parent := &cobra.Command{Use: "root"}
+	svc := meta.ServiceFromMap(map[string]interface{}{
+		"name":        "fixture",
+		"description": "Fixture API",
+		"servicePath": "/open-apis/fixture/v1",
+		"resources": map[string]interface{}{
+			"outer": map[string]interface{}{
+				"resources": map[string]interface{}{
+					"inner": map[string]interface{}{
+						"methods": map[string]interface{}{
+							"get": map[string]interface{}{"httpMethod": "GET", "description": "Get one."},
+						},
+					},
+				},
+			},
+		},
+	})
+	registerService(parent, svc, &cmdutil.Factory{})
+
+	domain, _, err := parent.Find([]string{"fixture"})
+	if err != nil {
+		t.Fatalf("fixture domain not registered: %v", err)
+	}
+	if domain.ValidArgsFunction == nil {
+		t.Fatal("domain command must complete its hidden resource groups")
+	}
+	comps, _ := domain.ValidArgsFunction(domain, nil, "")
+	if !hasCompletion(comps, "outer") {
+		t.Fatalf("domain completion lost the outer resource: %v", comps)
+	}
+
+	outer, _, err := parent.Find([]string{"fixture", "outer"})
+	if err != nil {
+		t.Fatalf("outer resource not registered: %v", err)
+	}
+	if outer.ValidArgsFunction == nil {
+		t.Fatal("an intermediate resource must complete its own hidden children")
+	}
+	nested, _ := outer.ValidArgsFunction(outer, nil, "")
+	if !hasCompletion(nested, "inner") {
+		t.Fatalf("nested completion lost the inner resource: %v", nested)
+	}
+}
+
+// hasCompletion reports whether name appears as a completion candidate; Cobra
+// candidates carry a tab-separated description.
+func hasCompletion(comps []string, name string) bool {
+	for _, c := range comps {
+		if c == name || strings.HasPrefix(c, name+"\t") {
+			return true
+		}
+	}
+	return false
+}

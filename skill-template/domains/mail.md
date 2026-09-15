@@ -444,7 +444,7 @@ lark-cli schema mail.<resource>.<method>
 # 例如：lark-cli schema mail.user_mailbox.messages.modify_message
 ```
 
-> **⚠️ 注意**：① 必须精确到 method 级别，禁止查 resource 级别（如 `lark-cli schema mail.user_mailbox.messages`，输出 78K）。② schema 路径用 `.` 分隔（`mail.user_mailbox.messages.modify_message`），但 CLI 命令在 resource 和 method 之间用**空格**（`lark-cli mail user_mailbox.messages modify_message`），不要混淆。
+> **⚠️ 注意**：schema 路径用 `.` 分隔（`mail.user_mailbox.messages.modify_message`），但 CLI 命令在 resource 和 method 之间用**空格**（`lark-cli mail user_mailbox.messages modify_message`），不要混淆。
 
 schema 输出是 JSON，包含两个关键部分：
 

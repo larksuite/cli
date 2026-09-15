@@ -6,12 +6,14 @@ package service
 import (
 	"fmt"
 	"io/fs"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/schema"
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/spf13/cobra"
 )
@@ -81,26 +83,31 @@ func (r *HelpRenderer) PrepareDomainHelp(cmd *cobra.Command) bool {
 	if src, _ := cmdmeta.SourceOf(cmd); src != cmdmeta.SourceService && cmdmeta.Domain(cmd) == "" {
 		return false
 	}
-	if !cmd.HasAvailableSubCommands() {
+	// The API surface is counted from the flattened listing, not from the visible
+	// children: the resource commands are hidden, so a child-based check would
+	// find no API side at all — it would drop the routing line below, and for a
+	// domain whose only children are API resources it would skip this rendering
+	// altogether, leaving that domain's methods unlisted anywhere.
+	flat := flattenedAPIMethods(cmd)
+
+	if !cmd.HasAvailableSubCommands() && len(flat) == 0 {
 		return false
 	}
 
-	hasShortcuts, hasResources := false, false
+	hasShortcuts := false
 	for _, c := range cmd.Commands() {
 		if c.Hidden || c.Name() == "help" || c.Name() == "completion" {
 			continue
 		}
 		if strings.HasPrefix(c.Name(), "+") {
 			hasShortcuts = true
-		} else {
-			hasResources = true
 		}
 	}
 
 	var b strings.Builder
 	b.WriteString(captureHelpBase(cmd, domainBaseAnnotation))
-	if hasShortcuts && hasResources { // routing only matters when both styles exist
-		b.WriteString("\n\nPrefer a +-prefixed shortcut when one matches your task; otherwise use the raw API resource below.")
+	if hasShortcuts && len(flat) > 0 { // routing only matters when both styles exist
+		b.WriteString("\n\nPrefer a +-prefixed shortcut when one matches your task; otherwise use the raw API method below.")
 	}
 	b.WriteString("\n\nRisk levels (read | write | high-risk-write) appear in each command's --help; high-risk-write requires --yes, only after the user confirms.")
 	canonicalSkills := []string{"lark-" + cmd.Name()}
@@ -108,8 +115,90 @@ func (r *HelpRenderer) PrepareDomainHelp(cmd *cobra.Command) bool {
 		canonicalSkills = declared
 	}
 	writeDomainSkills(&b, canonicalSkills, r.skillContent(), r.skillReferences())
+	if len(flat) > 0 {
+		b.WriteString("\n\nAPI methods (append --help for params")
+		if hasShortcuts {
+			// cobra's help template renders Long before UsageString, so this
+			// listing physically precedes the +shortcut rows in Available
+			// Commands — the reverse of the preference stated above. The pointer
+			// is positional only: the "prefer a shortcut" judgement is made once
+			// on the boundary line, and restating it here would dilute it.
+			// Omitted when the domain has no shortcuts (nothing to point at).
+			b.WriteString("; +shortcuts are listed under Available Commands below")
+		}
+		b.WriteString("):\n")
+		b.WriteString(strings.Join(flat, "\n"))
+	}
 	cmd.Long = b.String()
 	return true
+}
+
+// flattenedAPIMethods renders one line per visible Meta API method under the
+// domain: "  <resource> <method>  <first-sentence description>". The resource
+// intermediate commands are hidden from the listing (they stay invocable), so
+// this flattened block is the domain help's whole Meta API surface — a reader
+// picks a full command path in one hop instead of stopping at a resource row
+// that names no methods. Descriptions run through the same first-sentence and
+// sanitize pipeline as the schema method index, so both surfaces render one
+// method identically.
+//
+// Each row is the command's own path segments joined by spaces — the exact form
+// that runs. An earlier revision listed the dotted form and asked the reader to
+// convert it, which readers (agents especially) do not do: they copy the row
+// verbatim and get unknown_subcommand. Note that a segment may itself contain
+// dots (a flat resource like "chat.members" is one command), so the executable
+// form is not derivable from the dotted string by any single substitution —
+// which is exactly why it is rendered here rather than explained.
+func flattenedAPIMethods(domainCmd *cobra.Command) []string {
+	// sortKey is the dotted path, so a resource's methods stay grouped together
+	// regardless of how the executable form spaces them.
+	type row struct{ sortKey, exec, desc string }
+	var rows []row
+	var walk func(c *cobra.Command, path []string)
+	walk = func(c *cobra.Command, path []string) {
+		for _, ch := range c.Commands() {
+			name := ch.Name()
+			if strings.HasPrefix(name, "+") || name == "help" || name == "completion" {
+				continue
+			}
+			segs := append(append([]string{}, path...), name)
+			if ch.Annotations[schemaPathAnnotation] != "" { // a method leaf
+				// A hidden method leaf is one a policy layer took away, and it
+				// still carries method-schema-path: strict mode swaps in a stub
+				// that copies every annotation off the original
+				// (cmd/prune.go::strictModeStubFrom) and cmdpolicy hides its deny
+				// stub in place (internal/cmdpolicy/apply.go::installDenyStub).
+				// Listing on the annotation alone would advertise a path that
+				// rejects even --help. The check sits on this branch rather than
+				// at the top of the loop because resource groups are hidden by
+				// design (service.go) — skipping every hidden child would drop
+				// the whole API surface.
+				if !ch.Hidden {
+					rows = append(rows, row{
+						sortKey: strings.Join(segs, "."),
+						exec:    strings.Join(segs, " "),
+						desc:    schema.SanitizeIndexDesc(schema.FirstSentence(ch.Short)),
+					})
+				}
+				continue
+			}
+			walk(ch, segs) // a (hidden) resource group
+		}
+	}
+	walk(domainCmd, nil)
+	sort.Slice(rows, func(i, j int) bool { return rows[i].sortKey < rows[j].sortKey })
+
+	width := 0
+	for _, r := range rows {
+		if len(r.exec) > width { // paths are ASCII; byte length == display width
+			width = len(r.exec)
+		}
+	}
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, fmt.Sprintf("  %-*s  %s", width, r.exec, r.desc))
+	}
+	return out
 }
 
 // PrepareMethodHelp rebuilds a generated method command's Long with the agent
@@ -142,6 +231,12 @@ func (r *HelpRenderer) PrepareMethodHelp(cmd *cobra.Command) bool {
 		skills = a.Skills
 	}
 
+	// The body skeleton is self-contained, so it stays regardless of whether
+	// the schema command survives projection. The pointer below is a reference
+	// to that command and is emitted only while it remains referenceable.
+	if body := ann[bodyHelpAnnotation]; body != "" {
+		b.WriteString("\n\n" + strings.TrimRight(body, "\n"))
+	}
 	if r == nil || r.CanReferenceSchema == nil || r.CanReferenceSchema() {
 		fmt.Fprintf(&b, "\n\nFull parameter schema:\n  lark-cli schema %s", schemaPath)
 	}
@@ -230,9 +325,12 @@ func captureHelpBase(cmd *cobra.Command, key string) string {
 // methodLong is the build-time Long (description + schema pointer +
 // params-only addendum). Agent guidance is added lazily by PrepareMethodHelp,
 // so command construction never parses the overlay.
-func methodLong(description, schemaPath, paramsOnly string) string {
+func methodLong(description, schemaPath, paramsOnly, body string) string {
 	var b strings.Builder
 	b.WriteString(description)
+	if body != "" {
+		b.WriteString("\n\n" + strings.TrimRight(body, "\n"))
+	}
 	fmt.Fprintf(&b, "\n\nFull parameter schema:\n  lark-cli schema %s", schemaPath)
 	b.WriteString(paramsOnly)
 	return b.String()
@@ -243,13 +341,14 @@ func methodLong(description, schemaPath, paramsOnly string) string {
 const (
 	schemaPathAnnotation   = "method-schema-path"
 	paramsOnlyAnnotation   = "method-params-only"
+	bodyHelpAnnotation     = "method-body-help"
 	domainBaseAnnotation   = "affordance-domain-base"
 	shortcutBaseAnnotation = "affordance-shortcut-base"
 )
 
 // setMethodHelpData records the coordinates PrepareMethodHelp needs (storing a
 // few strings is the only build-time cost; the overlay stays untouched).
-func setMethodHelpData(cmd *cobra.Command, service, methodID, schemaPath, paramsOnly string) {
+func setMethodHelpData(cmd *cobra.Command, service, methodID, schemaPath, paramsOnly, body string) {
 	if cmd.Annotations == nil {
 		cmd.Annotations = map[string]string{}
 	}
@@ -257,6 +356,9 @@ func setMethodHelpData(cmd *cobra.Command, service, methodID, schemaPath, params
 	cmd.Annotations[schemaPathAnnotation] = schemaPath
 	if paramsOnly != "" {
 		cmd.Annotations[paramsOnlyAnnotation] = paramsOnly
+	}
+	if body != "" {
+		cmd.Annotations[bodyHelpAnnotation] = body
 	}
 }
 

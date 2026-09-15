@@ -278,12 +278,13 @@ lark-cli im +messages-send --chat-id oc_xxx --text "hello" --dry-run
 
 ### Schema 自省
 
-使用 schema 查看任意 API 方法的参数、请求体、响应结构、支持身份和 scopes：
+使用 schema 查看任意 API 方法的参数、请求体、响应结构、支持身份和 scopes。输出按给出的路径深度分层，每一层的体积都控制在可直接阅读的范围：
 
 ```bash
-lark-cli schema
-lark-cli schema calendar.events.instance_view
-lark-cli schema im.messages.delete
+lark-cli schema                                    # 服务索引 —— 有哪些服务
+lark-cli schema calendar                           # 该服务的方法索引 —— 每个方法一行
+lark-cli schema calendar.events.instance_view      # 单个方法的完整契约
+lark-cli schema im.messages.delete -q '.inputSchema.required'   # --jq / -q 可作用于以上三种形态
 ```
 
 ## 安全与风险提示（使用前必读）

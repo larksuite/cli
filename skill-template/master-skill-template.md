@@ -24,7 +24,8 @@ metadata:
 
 ```bash
 lark-cli <service> <resource> <method> [flags]  # 调用 原生 API
-lark-cli schema <service>.<resource>.<method>   # 调用 原生 API 前必须先查看参数结构
+lark-cli <service> <resource> <method> --help  # 请求体骨架与字段说明，调用前先看这个
+lark-cli schema <service>.<resource>.<method>   # 完整契约：深层嵌套结构、outputSchema
 lark-cli <service> --help                       # 列出可用资源和命令
 lark-cli --help                                 # 探索更多能力
 ```

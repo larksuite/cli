@@ -25,6 +25,7 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/update"
 	"github.com/larksuite/cli/shortcuts"
@@ -256,6 +257,118 @@ func TestIntegration_StrictModeBot_ProfileOverride_HidesCommandsInHelp(t *testin
 	if !strings.Contains(stdout.String(), "+search") {
 		t.Fatalf("vc --help should keep +search in bot mode, got:\n%s", stdout.String())
 	}
+}
+
+// The flattened API listing in domain help walks the command tree itself, so
+// cobra's hiding of the strict-mode stubs never reaches it. A stub copies the
+// original's method-schema-path annotation (cmd/prune.go::strictModeStubFrom),
+// so selecting rows on that annotation alone would advertise methods that reject
+// even --help, and would leave the domain help at odds with `schema <domain>`,
+// which filters the same methods out. Both surfaces answer "what can I call
+// here" and must answer it identically.
+func TestIntegration_StrictModeBot_DomainHelpListingMatchesSchema(t *testing.T) {
+	f, _, _ := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
+	// Both surfaces under comparison read the build-selected catalog, so the
+	// fixture selects one explicitly and asserts against that same catalog.
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.APICatalog = snapshot.Catalog()
+	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
+
+	im := findCmd(rootCmd, "im")
+	if im == nil {
+		t.Fatal("im domain not registered")
+	}
+	if !(&service.HelpRenderer{}).PrepareDomainHelp(im) {
+		t.Fatal("PrepareDomainHelp returned false for the im domain")
+	}
+
+	listed := listedAPIMethodPaths(t, im.Long)
+	if len(listed) == 0 {
+		t.Fatal("im domain help listed no API methods")
+	}
+	hidden := hiddenMethodPaths(im)
+	if len(hidden) == 0 {
+		t.Fatal("bot mode hid no im method, so this fixture cannot detect the leak")
+	}
+	for _, path := range listed {
+		if hidden[path] {
+			t.Errorf("domain help lists %q, which strict mode hid", path)
+		}
+	}
+
+	catalog := f.APICatalog
+	target, err := catalog.Resolve([]string{"im"})
+	if err != nil {
+		t.Fatalf("APICatalog.Resolve(im) error = %v", err)
+	}
+	mode := f.ResolveStrictMode(context.Background())
+	refs := catalog.MethodRefs(target, registry.FilterForStrictMode(mode))
+	if len(listed) != len(refs) {
+		t.Errorf("im help lists %d methods, schema im lists %d; the two surfaces must agree",
+			len(listed), len(refs))
+	}
+}
+
+// listedAPIMethodPaths returns the method paths of the "API methods (…):" block
+// of a rendered domain Long, in the listing's own executable form (path segments
+// separated by single spaces). The block runs to the end of Long.
+//
+// A row is "  <path><padding>  <description>", and a path segment may itself
+// contain a dot ("chat.members") but never two consecutive spaces, so the first
+// double-space is the field separator. Splitting on single whitespace would
+// silently truncate every path to its resource segment.
+func listedAPIMethodPaths(t *testing.T, long string) []string {
+	t.Helper()
+	lines := strings.Split(long, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "API methods (") {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatalf("no API methods listing in domain help:\n%s", long)
+	}
+	var paths []string
+	for _, line := range lines[start:] {
+		row := strings.TrimSpace(line)
+		if row == "" {
+			continue
+		}
+		paths = append(paths, strings.TrimSpace(strings.SplitN(row, "  ", 2)[0]))
+	}
+	return paths
+}
+
+// hiddenMethodPaths collects the method leaves a policy layer hid, keyed the same
+// way listedAPIMethodPaths reports them (path segments joined by spaces) so the
+// two are directly comparable. It walks the tree the way the listing does. The
+// annotation key is service.schemaPathAnnotation, unexported there.
+func hiddenMethodPaths(domain *cobra.Command) map[string]bool {
+	hidden := map[string]bool{}
+	var walk func(c *cobra.Command, path []string)
+	walk = func(c *cobra.Command, path []string) {
+		for _, ch := range c.Commands() {
+			name := ch.Name()
+			if strings.HasPrefix(name, "+") || name == "help" || name == "completion" {
+				continue
+			}
+			segs := append(append([]string{}, path...), name)
+			if ch.Annotations["method-schema-path"] != "" {
+				if ch.Hidden {
+					hidden[strings.Join(segs, " ")] = true
+				}
+				continue
+			}
+			walk(ch, segs)
+		}
+	}
+	walk(domain, nil)
+	return hidden
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_DirectAuthLoginReturnsEnvelope(t *testing.T) {

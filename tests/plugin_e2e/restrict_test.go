@@ -188,11 +188,21 @@ func TestConcealedForkProjectsRetainedSchemaCatalog(t *testing.T) {
 	if broad.exit != 0 || !gjson.Valid(broad.stdout) {
 		t.Fatalf("broad schema exit=%d stdout=%s stderr=%s", broad.exit, broad.stdout, broad.stderr)
 	}
-	if strings.Contains(broad.stdout, "mail user_mailbox.messages get") || strings.Contains(broad.stdout, "Get Email Details") {
-		t.Errorf("broad schema exposed concealed mail method: %s", broad.stdout)
+	// The bare form renders the service index, so concealment shows up here as
+	// an absent service rather than an absent method row: a service whose every
+	// method is concealed has nothing left to reach and drops out entirely.
+	names := make(map[string]bool)
+	for _, svc := range gjson.Get(broad.stdout, "services").Array() {
+		names[svc.Get("name").String()] = true
 	}
-	if !strings.Contains(broad.stdout, "im chats get") {
-		t.Errorf("broad schema lost visible im method: %s", broad.stdout)
+	if names["mail"] {
+		t.Errorf("broad schema exposed the concealed mail service: %s", broad.stdout)
+	}
+	if strings.Contains(broad.stdout, "Get Email Details") {
+		t.Errorf("broad schema exposed concealed mail metadata: %s", broad.stdout)
+	}
+	if !names["im"] {
+		t.Errorf("broad schema lost the visible im service: %s", broad.stdout)
 	}
 
 	visible := run(t, bin, "schema", "im.chats.get")

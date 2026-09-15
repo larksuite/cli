@@ -87,9 +87,12 @@ Shortcut 是对常用操作的高级封装（`lark-cli wiki +<verb> [flags]`）�
 ## API Resources
 
 ```bash
-lark-cli schema wiki.<resource>.<method>   # 调用原生 API 前必须先查看 --data / --params 参数结构，不要猜测字段格式
+lark-cli wiki <resource> <method> --help  # 请求体骨架与字段说明，调用前先看这个
+lark-cli schema wiki.<resource>.<method>   # 完整契约：深层嵌套结构、outputSchema
 lark-cli wiki <resource> <method> [flags]  # 调用 API
 ```
+
+> **重要**：使用原生 API 时，先看 method `--help` —— 它内嵌了 `--data` 的请求体骨架与字段说明。只有深层嵌套结构，或需要完整契约（含 `outputSchema`）时才查 `schema`。两者都不要猜测字段格式。
 
 ### spaces
 

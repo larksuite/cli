@@ -41,8 +41,14 @@ func NewCmdConfigPlugins(f *cmdutil.Factory) *cobra.Command {
 
 func newCmdConfigPluginsShow(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "show",
-		Short: "List successfully installed plugins, their rules, and registered hooks",
+		Use: "show",
+		// Same reason as the parent group, and the same treatment config policy
+		// show already gets: hiding only the group keeps the leaf eligible for
+		// surfaces that walk the tree rather than read --help (did-you-mean
+		// candidates, for one), which is exactly the AI-agent context the group
+		// is hidden from.
+		Hidden: true,
+		Short:  "List successfully installed plugins, their rules, and registered hooks",
 		Long: `Print every plugin that committed during bootstrap, including:
 
   - name / version / capabilities (FailurePolicy, Restricts, RequiredCLIVersion)

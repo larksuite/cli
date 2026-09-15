@@ -105,10 +105,13 @@ func fieldsOf(byName map[string]Field, keep func(Field) bool) []Field {
 }
 
 // Resource groups methods (and may nest sub-resources). Name is the parent key.
+// Description is optional: metadata that omits it leaves the zero value, and
+// callers fall back to whatever they rendered before the field existed.
 type Resource struct {
-	Name      string              `json:"-"`
-	Methods   map[string]Method   `json:"methods"`
-	Resources map[string]Resource `json:"resources"`
+	Name        string              `json:"-"`
+	Description string              `json:"description,omitempty"`
+	Methods     map[string]Method   `json:"methods"`
+	Resources   map[string]Resource `json:"resources"`
 }
 
 // MethodList returns the resource's methods, name-injected and sorted by name.

@@ -164,11 +164,12 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 ## API Resources
 
 ```bash
-lark-cli schema drive.<resource>.<method>   # 调用 API 前必须先查看参数结构
+lark-cli drive <resource> <method> --help  # 请求体骨架与字段说明，调用前先看这个
+lark-cli schema drive.<resource>.<method>   # 完整契约：深层嵌套结构、outputSchema
 lark-cli drive <resource> <method> [flags] # 调用 API
 ```
 
-> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
+> **重要**：使用原生 API 时，先看 method `--help` —— 它内嵌了 `--data` 的请求体骨架与字段说明。只有深层嵌套结构，或需要完整契约（含 `outputSchema`）时才查 `schema`。两者都不要猜测字段格式。
 >
 > **高频原生命令：** 读取 Drive 文件夹清单时使用 `drive files list`，使用前先读 [`references/lark-drive-files-list.md`](references/lark-drive-files-list.md)，按模板通过 `--params` 传参并手动处理分页；不要把 `--page-all` 输出直接交给 JSON 解析脚本。
 

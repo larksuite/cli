@@ -277,12 +277,13 @@ lark-cli im +messages-send --chat-id oc_xxx --text "hello" --dry-run
 
 ### Schema Introspection
 
-Use schema to inspect any API method's parameters, request body, response structure, supported identities, and scopes:
+Use schema to inspect any API method's parameters, request body, response structure, supported identities, and scopes. Output is layered by how much of the path you give, so each step stays small enough to read:
 
 ```bash
-lark-cli schema
-lark-cli schema calendar.events.instance_view
-lark-cli schema im.messages.delete
+lark-cli schema                                    # service index — which services exist
+lark-cli schema calendar                           # that service's method index — one line per method
+lark-cli schema calendar.events.instance_view      # one method's full contract
+lark-cli schema im.messages.delete -q '.inputSchema.required'   # --jq / -q filters any of the three
 ```
 
 ## Security & Risk Warnings (Read Before Use)

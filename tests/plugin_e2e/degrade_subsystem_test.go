@@ -37,7 +37,8 @@ func TestPluginForkUsesCommittedCatalog(t *testing.T) {
 	if res.exit != 0 {
 		t.Fatalf("exit=%d want 0; stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
 	}
-	if !strings.Contains(res.stdout, `"name": "im`) {
+	// A service target renders that service's method index.
+	if !strings.Contains(res.stdout, `"service": "im"`) {
 		t.Errorf("schema output does not contain the committed im service: %s", res.stdout)
 	}
 }
