@@ -4,14 +4,19 @@
 package auth
 
 import (
+	"context"
 	"errors"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/zalando/go-keyring"
 )
 
@@ -31,6 +36,17 @@ func mustGetStoredToken(t testing.TB, appID, userOpenID string) *StoredUAToken {
 		t.Fatalf("GetStoredToken() error = %v", err)
 	}
 	return stored
+}
+
+func newAuthDPoPStore(t *testing.T) (*dpop.KeyStore, *dpop.Key) {
+	t.Helper()
+	signer := newAuthDPoPTestSigner()
+	store := dpop.NewKeyStoreWithSigner(deviceFlowMetadata{}, signer)
+	key, err := store.EnsureContext(context.Background(), "stored-user-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store, key
 }
 
 func TestGetStoredTokenDistinguishesMissingFromCorrupt(t *testing.T) {
@@ -239,5 +255,69 @@ func TestSetStoredTokenReplacesCorruptEntry(t *testing.T) {
 	got := mustGetStoredToken(t, appID, userOpenID)
 	if got == nil || got.AccessToken != "fresh-access" {
 		t.Fatalf("stored token after re-login = %#v, want fresh token", got)
+	}
+}
+
+func TestStoredDPoPTokenRestoresExactBindingAndFailsClosed(t *testing.T) {
+	setupStoredTokenTest(t)
+	store, key := newAuthDPoPStore(t)
+	key.Clock().RestoreState(dpop.ClockState{OffsetMillis: 90_000, SyncedAtMillis: 1_700_000_000_000})
+	if err := store.SaveContext(context.Background(), key); err != nil {
+		t.Fatal(err)
+	}
+	jkt, err := key.Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := &StoredUAToken{
+		AppId:                "cli-dpop",
+		UserOpenId:           "ou-dpop",
+		AccessToken:          "access-dpop",
+		RefreshToken:         "refresh-dpop",
+		ExpiresAt:            time.Now().Add(time.Hour).UnixMilli(),
+		RefreshExpiresAt:     time.Now().Add(24 * time.Hour).UnixMilli(),
+		TokenType:            StoredTokenTypeDPoP,
+		DPoPKeyID:            key.ID(),
+		DPoPJKT:              jkt,
+		DPoPKeySecurityLevel: string(key.SecurityLevel()),
+		ClockOffsetMs:        -120_000,
+		ClockSyncedAtMs:      1_700_000_100_000,
+	}
+	if err := SetStoredToken(token); err != nil {
+		t.Fatal(err)
+	}
+	result, err := GetValidAccessToken(context.Background(), http.DefaultClient, UATCallOptions{
+		AppId: token.AppId, UserOpenId: token.UserOpenId, DPoPMode: core.DPoPModeRequired, DPoPKeyStore: store,
+	})
+	if err != nil || result == nil || result.AccessToken != token.AccessToken || result.DPoP == nil ||
+		result.DPoP.Key().Clock().State() != (dpop.ClockState{OffsetMillis: token.ClockOffsetMs, SyncedAtMillis: token.ClockSyncedAtMs}) {
+		t.Fatalf("restored token = (%+v, %v)", result, err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		mutate  func(*StoredUAToken)
+		subtype errs.Subtype
+	}{
+		{name: "bearer forbidden", mutate: func(t *StoredUAToken) {
+			t.TokenType, t.DPoPKeyID, t.DPoPJKT = StoredTokenTypeBearer, "", ""
+		}, subtype: errs.SubtypeDPoPRequired},
+		{name: "missing key id", mutate: func(t *StoredUAToken) { t.DPoPKeyID = "" }, subtype: errs.SubtypeDPoPKeyMissing},
+		{name: "wrong thumbprint", mutate: func(t *StoredUAToken) { t.DPoPJKT = "wrong" }, subtype: errs.SubtypeDPoPBindingMismatch},
+		{name: "wrong protection level", mutate: func(t *StoredUAToken) {
+			t.DPoPKeySecurityLevel = string(keysigner.SecurityLevelL1)
+		}, subtype: errs.SubtypeDPoPBindingMismatch},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			changed := *token
+			tc.mutate(&changed)
+			result, err := accessTokenResultFromStored(context.Background(), &changed, UATCallOptions{
+				DPoPMode: core.DPoPModeRequired, DPoPKeyStore: store,
+			})
+			problem, ok := errs.ProblemOf(err)
+			if result != nil || !ok || problem.Subtype != tc.subtype || problem.Hint == "" {
+				t.Fatalf("accessTokenResultFromStored() = (%+v, %v), want %s", result, err, tc.subtype)
+			}
+		})
 	}
 }
