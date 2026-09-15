@@ -41,7 +41,7 @@ lark-cli mindnotes nodes create \
 # 更新已有节点
 lark-cli mindnotes nodes create \
   --mindnote-id "<mindnote_token>" \
-  --data '{"client_token":"<client_token>","nodes":[{"node_id":"node_existing123","texts":[{"element_type":"text","text":{"content":"更新后的节点内容"}}],"highlight":"blue","finish":true}]}'
+  --data '{"client_token":"<client_token>","nodes":[{"node_id":"node_existing_id","texts":[{"element_type":"text","text":{"content":"更新后的节点内容"}}],"highlight":"blue","finish":true}]}'
 ```
 
 ## 参数
@@ -94,7 +94,7 @@ lark-cli docs +media-upload --file ./image.png --parent-type mindnote_image --pa
 # 再把 token 写进节点
 lark-cli mindnotes nodes create \
   --mindnote-id "<mindnote_token>" \
-  --data '{"client_token":"<client_token>","nodes":[{"node_id":"node_existing123","images":[{"token":"canonical_token"}]}]}'
+  --data '{"client_token":"<client_token>","nodes":[{"node_id":"node_existing_id","images":[{"token":"canonical_token"}]}]}'
 ```
 
 参数说明：

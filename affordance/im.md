@@ -516,7 +516,7 @@ Use this raw method only for a reaction created by the calling identity.
 
 **Delete one reaction record**
 ```bash
-lark-cli im reactions delete --params '{"message_id":"om_xxx","reaction_id":"ZCaCIjUBVVWSrm5L-3ZTw_xxx"}'
+lark-cli im reactions delete --params '{"message_id":"om_xxx","reaction_id":"<REACTION_ID>"}'
 ```
 
 ### Skills

@@ -25,7 +25,7 @@ lark-cli calendar +join-event --token <token> --as bot
 | 链接类 | 分享链接 / 二维码 | 链接 `{{domain}}/calendar/share?token=<token>` 里的 `token` |
 | 卡片类 | 分享卡片 / RSVP 卡片 | 从 IM 日程分享卡片或 RSVP 卡片消息解析出的日程分享 token |
 
-- **分享链接**：直接取 URL query 里的 `token` 值传入；无需解析日程字段。例如 `{{domain}}/calendar/share?token=29f762bdmsbd82ce9` → `--token 29f762bdmsbd82ce9`。
+- **分享链接**：直接取 URL query 里的 `token` 值传入；无需解析日程字段。例如 `{{domain}}/calendar/share?token=xxxxxxxxxxxxxxxxx` → `--token xxxxxxxxxxxxxxxxx`。
 - **二维码**：先用 OCR/扫码解析成分享链接，再取其中的 `token`——CLI 不承接二维码图像，只承接解析后的链接 token。
 - **卡片**：token 落在卡片消息 content（分享卡片 `SHARE_CALENDAR_EVENT`、RSVP 卡片 `GENERAL_CALENDER`）；RSVP 卡片被转发后退化为分享卡片，同样可加入。
 
