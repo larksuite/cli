@@ -216,7 +216,7 @@ func TestBuildMeetingJoinBody_TrimsCallIDWhitespace(t *testing.T) {
 func TestMeetingJoin_Validate_MissingNumber(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	// cobra MarkFlagRequired should reject missing --meeting-number
-	err := mountAndRun(t, VCMeetingJoin, []string{"+meeting-join", "--as", "user"}, f, nil)
+	err := mountAndRun(t, VCMeetingJoin, []string{"+meeting-join", "--as", "bot"}, f, nil)
 	if err == nil {
 		t.Fatal("expected error when --meeting-number is missing")
 	}
@@ -266,18 +266,17 @@ func TestMeetingJoin_Validate_Valid(t *testing.T) {
 	}
 }
 
-func TestMeetingJoin_Validate_StartRequiresBot(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
-
-	err := mountAndRun(t, VCMeetingJoin, []string{
-		"+meeting-join", "--as", "user",
-		"--meeting-number", "123456789",
-		"--action", "start",
-		"--dry-run",
-	}, f, nil)
-
-	if err == nil || !strings.Contains(err.Error(), "--action start requires --as bot") {
-		t.Fatalf("start action error = %v", err)
+func TestMeetingJoinAndLeave_BotOnly(t *testing.T) {
+	for _, shortcut := range []struct {
+		name      string
+		authTypes []string
+	}{
+		{name: "+meeting-join", authTypes: VCMeetingJoin.AuthTypes},
+		{name: "+meeting-leave", authTypes: VCMeetingLeave.AuthTypes},
+	} {
+		if len(shortcut.authTypes) != 1 || shortcut.authTypes[0] != "bot" {
+			t.Errorf("%s AuthTypes = %v, want [bot]", shortcut.name, shortcut.authTypes)
+		}
 	}
 }
 
@@ -289,7 +288,7 @@ func TestMeetingJoin_DryRun(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, VCMeetingJoin, []string{
 		"+meeting-join", "--meeting-number", "123456789", "--password", "pw123",
-		"--dry-run", "--as", "user",
+		"--dry-run", "--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -434,7 +433,7 @@ func TestMeetingJoin_Execute_Success(t *testing.T) {
 
 	err := mountAndRun(t, VCMeetingJoin, []string{
 		"+meeting-join", "--meeting-number", "123456789",
-		"--format", "json", "--as", "user",
+		"--format", "json", "--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -489,7 +488,7 @@ func TestMeetingJoin_Execute_WithPassword_CapturesBody(t *testing.T) {
 
 	err := mountAndRun(t, VCMeetingJoin, []string{
 		"+meeting-join", "--meeting-number", "987654321", "--password", "s3cret",
-		"--format", "json", "--as", "user",
+		"--format", "json", "--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -529,7 +528,7 @@ func TestMeetingJoin_Execute_PrettyOutput(t *testing.T) {
 
 	err := mountAndRun(t, VCMeetingJoin, []string{
 		"+meeting-join", "--meeting-number", "123456789",
-		"--format", "pretty", "--as", "user",
+		"--format", "pretty", "--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -556,7 +555,7 @@ func TestMeetingJoin_Execute_PrettyOutput_NoMeetingInfo(t *testing.T) {
 
 	err := mountAndRun(t, VCMeetingJoin, []string{
 		"+meeting-join", "--meeting-number", "123456789",
-		"--format", "pretty", "--as", "user",
+		"--format", "pretty", "--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -580,7 +579,7 @@ func TestMeetingLeave_Execute_PrettyOutput(t *testing.T) {
 
 	err := mountAndRun(t, VCMeetingLeave, []string{
 		"+meeting-leave", "--meeting-id", "69999999",
-		"--format", "pretty", "--as", "user",
+		"--format", "pretty", "--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -602,7 +601,7 @@ func TestMeetingJoin_Execute_APIError(t *testing.T) {
 
 	err := mountAndRun(t, VCMeetingJoin, []string{
 		"+meeting-join", "--meeting-number", "123456789",
-		"--as", "user",
+		"--as", "bot",
 	}, f, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("expected error for API failure")
@@ -618,7 +617,7 @@ func TestMeetingJoin_Execute_APIError(t *testing.T) {
 
 func TestMeetingLeave_Validate_MissingID(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
-	err := mountAndRun(t, VCMeetingLeave, []string{"+meeting-leave", "--as", "user"}, f, nil)
+	err := mountAndRun(t, VCMeetingLeave, []string{"+meeting-leave", "--as", "bot"}, f, nil)
 	if err == nil {
 		t.Fatal("expected error when --meeting-id is missing")
 	}
@@ -661,7 +660,7 @@ func TestMeetingLeave_DryRun(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, VCMeetingLeave, []string{
 		"+meeting-leave", "--meeting-id", "69999999",
-		"--dry-run", "--as", "user",
+		"--dry-run", "--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -694,7 +693,7 @@ func TestMeetingLeave_Execute_Success(t *testing.T) {
 
 	err := mountAndRun(t, VCMeetingLeave, []string{
 		"+meeting-leave", "--meeting-id", "69999999",
-		"--format", "json", "--as", "user",
+		"--format", "json", "--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -725,7 +724,7 @@ func TestMeetingLeave_Execute_TrimsMeetingID(t *testing.T) {
 
 	err := mountAndRun(t, VCMeetingLeave, []string{
 		"+meeting-leave", "--meeting-id", "  69999999  ",
-		"--format", "json", "--as", "user",
+		"--format", "json", "--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -750,7 +749,7 @@ func TestMeetingLeave_Execute_APIError(t *testing.T) {
 	})
 
 	err := mountAndRun(t, VCMeetingLeave, []string{
-		"+meeting-leave", "--meeting-id", "69999999", "--as", "user",
+		"+meeting-leave", "--meeting-id", "69999999", "--as", "bot",
 	}, f, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("expected error for API failure")
