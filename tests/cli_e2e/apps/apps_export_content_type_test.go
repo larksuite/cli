@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,13 @@ func TestAppsExportContentTypeE2E(t *testing.T) {
 			{"absent", ""},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
+				if tc.contentType == "" {
+					// Guard the fixture itself: if the gateway ever labels this
+					// response, the case silently stops testing an absent
+					// Content-Type and starts testing whatever was inferred.
+					assertGatewayOmitsContentType(t, exportArchiveBody)
+				}
+
 				out, result := runExport(t, tc.contentType, exportArchiveBody)
 
 				result.AssertExitCode(t, 0)
@@ -99,6 +107,41 @@ func TestAppsExportContentTypeE2E(t *testing.T) {
 			})
 		}
 	})
+}
+
+// assertGatewayOmitsContentType proves the gateway really sends no Content-Type
+// for the empty-type case.
+//
+// net/http sniffs the body when the header is unset, and this archive's PK magic
+// infers application/zip — a type the old whitelist accepted. Without this check
+// the "absent" case would pass against the very bug it is meant to catch.
+func assertGatewayOmitsContentType(t *testing.T, body []byte) {
+	t.Helper()
+
+	proxyAddr, caPath := startExportGateway(t, "", body)
+
+	pemBytes, err := os.ReadFile(caPath)
+	require.NoError(t, err)
+	pool := x509.NewCertPool()
+	require.True(t, pool.AppendCertsFromPEM(pemBytes))
+
+	proxyURL, err := url.Parse("http://" + proxyAddr)
+	require.NoError(t, err)
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy:           http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{RootCAs: pool},
+		},
+	}
+
+	resp, err := client.Get("https://open.feishu.cn/open-apis/spark/v1/apps/export")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	_, present := resp.Header["Content-Type"]
+	require.False(t, present,
+		"gateway must omit Content-Type; got %q", resp.Header.Get("Content-Type"))
 }
 
 // runExport invokes `apps +export` against a local gateway that answers with the
@@ -165,6 +208,11 @@ func startExportGateway(t *testing.T, contentType string, body []byte) (string, 
 		}
 		if contentType != "" {
 			w.Header().Set("Content-Type", contentType)
+		} else {
+			// A nil value suppresses net/http's body sniffing, which would
+			// otherwise infer application/zip from the archive magic and turn
+			// the "absent" case into a type the old whitelist already accepted.
+			w.Header()["Content-Type"] = nil
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(body)
