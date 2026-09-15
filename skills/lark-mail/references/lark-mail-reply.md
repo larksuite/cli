@@ -81,6 +81,7 @@ lark-cli mail +reply --message-id <邮件ID> --body '<p>测试</p>' --dry-run
 | `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到回复正文与引用块之间。运行 `mail +signature` 查看可用签名。与 `--no-signature` 互斥 |
 | `--no-signature` | 否 | 跳过默认签名自动追加。与 `--signature-id` 互斥，同时使用时返回参数校验错误（退出码 2） |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
+| `--send-separately <bool>` | 否 | 分别发送：`true` 为每个收件人单独发送一封；`false` 显式取消。两个显式值都会随草稿保存（`false` 不会丢失）。省略时新建草稿按普通发送。非法值在写草稿/发送前被拒绝（退出码 2）。语义详见 [`+send` 的「分别发送」说明](lark-mail-send.md) |
 | `--event-summary <text>` | 否 | 日程标题。设置此参数即在邮件中嵌入日程邀请。需同时设置 `--event-start` 和 `--event-end` |
 | `--event-start <time>` | 条件必填 | 日程开始时间（ISO 8601） |
 | `--event-end <time>` | 条件必填 | 日程结束时间（ISO 8601） |

@@ -58,6 +58,7 @@ var MailDraftCreate = common.Shortcut{
 		signatureFlag,
 		noSignatureFlag,
 		priorityFlag,
+		sendSeparatelyFlag,
 		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
 		showLintDetailsFlag,
 	},
@@ -116,7 +117,10 @@ var MailDraftCreate = common.Shortcut{
 		if err := validateComposeInlineAndAttachments(runtime.FileIO(), attach, inline, runtime.Bool("plain-text"), body); err != nil {
 			return err
 		}
-		return validatePriorityFlag(runtime)
+		if err := validatePriorityFlag(runtime); err != nil {
+			return err
+		}
+		return validateSendSeparatelyFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		priority, err := parsePriority(runtime.Str("priority"))
@@ -373,6 +377,16 @@ func buildRawEMLForDraftCreate(
 		return "", lintApplied, lintBlocked, smallErr
 	}
 	bld = applyPriority(bld, priority)
+	// --send-separately is read here (rather than threaded through the
+	// signature) so existing callers of buildRawEMLForDraftCreate are
+	// unaffected; Validate already rejected invalid values.
+	if ss := runtime.Str("send-separately"); ss != "" {
+		ssValue, ssErr := parseSendSeparately(ss)
+		if ssErr != nil {
+			return "", lintApplied, lintBlocked, ssErr
+		}
+		bld = applySendSeparately(bld, ssValue)
+	}
 	if calData := buildCalendarBody(runtime, senderEmail, input.To, input.CC); calData != nil {
 		bld = bld.CalendarBody(calData)
 	}
