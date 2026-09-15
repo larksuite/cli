@@ -70,9 +70,9 @@ func jsonResp(code int, body string) *http.Response {
 // t.Setenv(LARKSUITE_CLI_CONFIG_DIR, t.TempDir()) so any incidental config
 // touch lands in a temp dir rather than the developer's real config.
 //
-// The returned buffer is the Factory's stderr. runProbe never writes to
-// stderr (it propagates a typed error or stays silent), so every test asserts
-// this buffer stays empty as an invariant.
+// The returned buffer is the Factory's stderr. runProbe stays silent unless a
+// successful OAuth TAT response carries status_message, which is an advisory
+// that must remain visible to the caller.
 func fakeFactory(t *testing.T, rt http.RoundTripper) (*cmdutil.Factory, *bytes.Buffer) {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -208,6 +208,28 @@ func TestRunProbe_TATSuccess_ProbeFails_Silent(t *testing.T) {
 	assertSilent(t, err, errBuf)
 }
 
+func TestRunProbe_TATSuccess_ProbePolicyError_Propagates(t *testing.T) {
+	const message = "Access denied by security policy"
+	rt := &fakeRT{
+		probeHandler: func(req *http.Request) (*http.Response, error) {
+			return nil, errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "%s", message).WithCode(21001)
+		},
+	}
+	f, errBuf := fakeFactory(t, rt)
+
+	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(err, &policyErr) {
+		t.Fatalf("runProbe() error = %T (%v), want *errs.SecurityPolicyError", err, err)
+	}
+	if policyErr.Subtype != errs.SubtypeAccessDenied || policyErr.Code != 21001 || policyErr.Message != message {
+		t.Fatalf("policy error = %#v, want access_denied/21001 with message %q", policyErr.Problem, message)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("runProbe must leave rendering to the root dispatcher, stderr = %q", errBuf.String())
+	}
+}
+
 func TestRunProbe_TATSuccess_ProbeOK_Silent(t *testing.T) {
 	rt := &fakeRT{}
 	f, errBuf := fakeFactory(t, rt)
@@ -219,10 +241,16 @@ func TestRunProbe_TATSuccess_ProbeOK_Silent(t *testing.T) {
 }
 
 func TestRunProbe_ProbeRequestShape(t *testing.T) {
-	rt := &fakeRT{}
-	f, _ := fakeFactory(t, rt)
+	const statusMessage = "Some scopes were silently trimmed"
+	rt := &fakeRT{tatHandler: func(req *http.Request) (*http.Response, error) {
+		return jsonResp(http.StatusOK, `{"code":0,"access_token":"t-ok","status_message":"Some scopes were silently trimmed"}`), nil
+	}}
+	f, errBuf := fakeFactory(t, rt)
 	if err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := errBuf.String(); got != statusMessage+"\n" {
+		t.Fatalf("stderr = %q, want status_message", got)
 	}
 
 	if rt.probeReq == nil {
