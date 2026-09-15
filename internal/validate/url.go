@@ -153,7 +153,11 @@ func NewDownloadHTTPClient(base *http.Client, opts DownloadHTTPClientOptions) *h
 			return fmt.Errorf("only https URLs are supported")
 		}
 		if err := ValidateDownloadSourceURL(req.Context(), req.URL.String()); err != nil {
-			return fmt.Errorf("blocked redirect target: %w", err)
+			return errs.NewSecurityPolicyError(
+				errs.SubtypeAccessDenied,
+				"blocked redirect target: %v",
+				err,
+			).WithCause(err)
 		}
 		return nil
 	}
