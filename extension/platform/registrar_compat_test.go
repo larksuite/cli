@@ -61,3 +61,33 @@ func TestBuiltPlugin_embeddedSkillsRequiresOptionalInterface(t *testing.T) {
 		t.Errorf("SkillsOverlay must reach the opted-in host, got %+v", host.got)
 	}
 }
+
+// allowPathsRegistrarFake opts into the optional AllowPaths extension.
+type allowPathsRegistrarFake struct {
+	legacyRegistrarFake
+	got []string
+}
+
+func (f *allowPathsRegistrarFake) AllowPaths(roots ...string) { f.got = append(f.got, roots...) }
+
+var _ AllowPathsRegistrar = (*allowPathsRegistrarFake)(nil)
+
+// A plugin that declared AllowPaths fails closed against a host whose
+// registrar lacks the optional extension, and succeeds against one that has
+// it. The legacy fake above still compiles untouched, which is the whole
+// point of adding the surface as an extension interface.
+func TestBuiltPlugin_allowPathsRequiresOptionalInterface(t *testing.T) {
+	p := NewPlugin("acme", "1.0").AllowPaths("/data/exports").MustBuild()
+
+	if err := p.Install(legacyRegistrarFake{}); err == nil {
+		t.Error("Install must fail closed when the host cannot honour AllowPaths")
+	}
+
+	host := &allowPathsRegistrarFake{}
+	if err := p.Install(host); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if len(host.got) != 1 || host.got[0] != "/data/exports" {
+		t.Errorf("declared roots must reach the opted-in host, got %v", host.got)
+	}
+}

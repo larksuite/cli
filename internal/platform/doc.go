@@ -7,6 +7,9 @@
 //   - a populated internal/hook.Registry (Observer / Wrapper / Lifecycle)
 //   - a list of cmdpolicy.PluginRule contributions (one per plugin that
 //     called r.Restrict)
+//   - a list of skillpolicy.PluginSkill and localfileio.PluginAllowRoots
+//     contributions (one per plugin that called r.EmbeddedSkills or
+//     r.AllowPaths)
 //
 // Two key invariants:
 //
@@ -27,5 +30,7 @@
 //
 //   - a *hook.Registry ready to install on the command tree
 //   - a []cmdpolicy.PluginRule for the pruning resolver
+//   - a []skillpolicy.PluginSkill for the skill resolver and a
+//     []localfileio.PluginAllowRoots for the path policy
 //   - an error when a FailClosed plugin failed
 package internalplatform

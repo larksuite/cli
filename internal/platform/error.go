@@ -58,6 +58,14 @@ const (
 	// compose -- EmbeddedSkills() called twice, a Remove naming a skill absent
 	// from the base, or an Overlay entry missing SKILL.md.
 	ReasonInvalidSkillsOverlay = "invalid_skills_overlay"
+	// ReasonInvalidAllowPaths flags an AllowPaths declaration the path policy
+	// cannot honour -- AllowPaths() called with no roots, a blank or relative
+	// root, a root declared twice, or a root inside the built-in denylist.
+	ReasonInvalidAllowPaths = "invalid_allow_paths"
+	// ReasonMultipleAllowPaths flags two or more DISTINCT plugins each
+	// declaring allow paths. The union would widen both, so only one plugin
+	// may own the path policy (mirrors ReasonMultipleRestricts).
+	ReasonMultipleAllowPaths = "multiple_allow_paths_plugins"
 	// ReasonMultipleSkillsOverlays flags two or more plugins each contributing
 	// a SkillsOverlay; only one may own skill content (mirrors
 	// ReasonMultipleRestricts).

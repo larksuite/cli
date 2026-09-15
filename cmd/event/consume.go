@@ -68,7 +68,7 @@ Use 'event schema <EventKey>' for parameter details.`,
 	cmd.Flags().StringArrayVarP(&o.params, "param", "p", nil, "Key=value parameter (repeatable)")
 	cmd.Flags().StringVar(&o.jqExpr, "jq", "", "JQ expression to filter output")
 	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress routine and per-event stderr output, including ready/exit markers and drop diagnostics. This can hide event loss; omit --quiet when integrity matters")
-	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (within the allowed roots: cwd, /tmp, ~/files; denylisted system/credential paths are rejected)")
+	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (within the allowed roots, e.g. cwd, /tmp, ~/files; denylisted system/credential paths are rejected)")
 	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop. Bounded runs ignore stdin EOF.")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "Decide and preview the consume (identity, preconditions, side effects) without performing any of them, then exit")
 	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout'). Bounded runs ignore stdin EOF.")
@@ -410,8 +410,8 @@ func preflightEventTypes(pf *preflightCtx) error {
 		WithHint("subscribe these %s by scanning: %s", noun, url)
 }
 
-// sanitizeOutputDir defers to the built-in path policy (SafeOutputPath):
-// allowed roots are cwd, /tmp, and ~/files; the denylist wins over all.
+// sanitizeOutputDir defers to the built-in path policy (SafeOutputPath); the
+// denylist wins over all.
 func sanitizeOutputDir(dir string) (string, error) {
 	safe, err := validate.SafeOutputPath(dir)
 	if err != nil {

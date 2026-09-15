@@ -110,6 +110,25 @@ are absent.
 Keep the executable available as `lark-cli` on `PATH`: command-linked
 guidance invokes that canonical name.
 
+### Widen local file access
+
+`--file` / `--output` accept only paths inside a built-in allowlist (the working
+directory, `/tmp`, `~/files`, a few agent-sandbox directories); a built-in denylist
+of system and credential directories always wins, and no flag, environment
+variable, or config file can add a root. A distribution declares extra roots in
+its plugin:
+
+```go
+platform.NewPlugin("acme-fs", "1.0.0").
+    AllowPaths("/data/exports", "~/Downloads/acme").
+    MustBuild()
+```
+
+Roots are absolute or `~/`-relative below the account home (never the home
+itself or `$HOME`), need not exist, may not lie inside a deny root (`invalid_allow_paths`), and only one
+plugin per binary may declare them (`multiple_allow_paths_plugins`).
+`AllowPaths` implies `FailClosed`; `config plugins show` lists it as `allow_paths`.
+
 ## What you can hook
 
 | Hook                       | Fires                              | Can block?                       |
@@ -119,6 +138,7 @@ guidance invokes that canonical name.
 | `On(Startup/Shutdown)`     | Process lifecycle                  | N/A                              |
 | `Restrict(Rule)`           | Bootstrap-time, ≥1 per plugin      | Denies whole subtrees            |
 | `EmbeddedSkills(SkillsOverlay)` | Bootstrap-time, ≤1 per plugin | Build-integrity (fail-closed) |
+| `AllowPaths(roots...)`     | Bootstrap-time, one owner per binary | Widens local file access (fail-closed) |
 
 ### Plugin lifecycle
 
@@ -215,6 +235,11 @@ observers still fire so audit plugins see the rejected dispatch.
   each skill's owning FS are snapshotted during CLI build; files inside an
   owned skill directory remain live. Both `Base` and `Overlay` must
   contain only valid skill directories with `SKILL.md`.
+- `AllowPaths()` widens the `--file` / `--output` allowlist by absolute or `~/`
+  roots. It implies `FailClosed`, only ONE plugin per binary may declare it
+  (`multiple_allow_paths_plugins`), a root inside the built-in denylist is
+  rejected at startup (`invalid_allow_paths`), and the denylist still wins at
+  runtime: even `AllowPaths("/")` cannot reach `~/.ssh`.
 - A command denied by a Rule is hidden from normal command discovery and
   returns `validation/failed_precondition` with its policy source, rule, and
   reason code in the recovery hint. This is the established `Restrict`
@@ -279,7 +304,7 @@ precise cause.
 | `plugin_name_panic`         | `Plugin.Name()` panicked                                                       | No — always aborts     |
 | `duplicate_plugin_name`     | Two plugins return the same `Name()`                                           | No — always aborts     |
 | `capabilities_panic`        | `Plugin.Capabilities()` panicked                                               | Yes                    |
-| `invalid_capability`        | `Capabilities` malformed: bad version/policy, or `EmbeddedSkills` contributed under `FailOpen` | No — always aborts |
+| `invalid_capability`        | `Capabilities` malformed: bad version/policy, or `EmbeddedSkills` / `AllowPaths` contributed under `FailOpen` | No — always aborts |
 | `capability_unmet`          | Current CLI version doesn't satisfy `RequiredCLIVersion`                       | Yes                    |
 | `restricts_mismatch`        | `Restricts=true` without `FailClosed`, or `Restricts` flag inconsistent w/ Install | No — always aborts |
 | `invalid_hook_name`         | Hook name contains `.` or doesn't match the plugin namespace                   | Yes                    |
@@ -289,6 +314,8 @@ precise cause.
 | `multiple_restrict_plugins` | Two or more DISTINCT plugins each contributed Restrict (one plugin may contribute several rules) | Yes  |
 | `invalid_skills_overlay`        | Registration fault (`nil` / duplicate call), or invalid selection/content/reference remap | Registration honours policy; composition always aborts |
 | `multiple_skills_overlay_plugins` | Two or more DISTINCT plugins each contributed a `SkillsOverlay` (only one may own skill content)  | No — always aborts (dispatch guard) |
+| `invalid_allow_paths`       | `AllowPaths()` root missing, blank, relative, duplicate, or inside the denylist | Registration honours policy; resolution always aborts (dispatch guard) |
+| `multiple_allow_paths_plugins` | Two or more DISTINCT plugins each declared allow paths (only one may own the path policy) | No — always aborts (dispatch guard) |
 | `install_failed`            | `Plugin.Install` returned a non-nil error                                      | Yes                    |
 | `install_panic`             | `Plugin.Install` panicked                                                      | Yes                    |
 

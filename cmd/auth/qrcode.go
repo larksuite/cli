@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/skip2/go-qrcode"
 	"github.com/spf13/cobra"
@@ -41,7 +42,7 @@ func NewCmdAuthQRCode(f *cmdutil.Factory, runF func(*QRCodeOptions) error) *cobr
 
 This command is designed for AI agents to generate QR codes for OAuth authorization URLs.
 
-For PNG output, the --output flag is required to specify the output file path (must be within the allowed roots (cwd, /tmp, ~/files)).
+For PNG output, the --output flag is required to specify the output file path (must be within an allowed root, e.g. cwd, /tmp, ~/files).
 For ASCII output, the result is printed to stdout with fixed size.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -56,7 +57,7 @@ For ASCII output, the result is printed to stdout with fixed size.`,
 
 	cmd.Flags().IntVar(&opts.Size, "size", 256, "Size of the QR code image in pixels (default: 256, for PNG mode only)")
 	cmd.Flags().BoolVar(&opts.ASCII, "ascii", false, "Output ASCII QR code to stdout")
-	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "Output file path for PNG image (within the allowed roots: cwd, /tmp, ~/files; required for non-ASCII mode)")
+	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "Output file path for PNG image (within the allowed roots, e.g. cwd, /tmp, ~/files; required for non-ASCII mode)")
 
 	return cmd
 }
@@ -126,6 +127,13 @@ func generateImageQRCode(url string, size int, outputPath string) error {
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to encode QR code: %v", err).WithCause(err)
 	}
 
+	// The policy approved the location; the directory it names may not exist
+	// yet, since an agent routinely picks a fresh sub-directory under an
+	// allowed root. Create it the way FileIO.Save does, so the caller gets the
+	// QR code rather than an internal error about a missing directory.
+	if err := vfs.MkdirAll(filepath.Dir(outputPath), 0o700); err != nil {
+		return errs.NewInternalError(errs.SubtypeSDKError, "failed to create the directory for %s: %v", outputPath, err).WithCause(err)
+	}
 	if err := localfileio.AtomicWrite(outputPath, png, outputFileMode(outputPath)); err != nil {
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to write QR code to %s: %v", outputPath, err).WithCause(err)
 	}

@@ -42,9 +42,10 @@ func rejectMultiplyLinkedTarget(flagName, raw, resolved string) error {
 
 // SafeInputPath validates an upload/read source path for --file flags.
 // The baseline invariant asserted by drive sync, upload flags, and the CI
-// quality gates is "reject everything outside the built-in allowlist"
-// (cwd, /tmp, ~/files) — see safePath. Out-of-tree content still reaches
-// flags via stdin ("-").
+// quality gates is "reject everything outside the allowlist" (cwd, /tmp,
+// ~/files, the agent state directories, and any roots a compiled-in plugin
+// declared) — see safePath. Out-of-tree content still reaches flags via
+// stdin ("-").
 func SafeInputPath(path string) (string, error) {
 	return safePath(path, "--file")
 }
@@ -140,10 +141,11 @@ func SafeEnvDirPath(path, envName string) (string, error) {
 }
 
 // safePath is the shared implementation for SafeOutputPath and SafeInputPath.
-// A path is accepted when its real location falls inside the built-in
-// allowlist (cwd, /tmp, ~/files) and outside the built-in denylist; deny wins
-// over allow, cwd included. Both lists are compiled in (policy.go), which
-// also documents the two bounded environment inputs that remain.
+// A path is accepted when its real location falls inside the allowlist (the
+// built-in roots in policy.go plus any roots a compiled-in plugin declared,
+// see declared.go) and outside the built-in denylist; deny wins over allow,
+// cwd and declared roots included. Both lists are fixed by the binary;
+// policy.go documents the two bounded environment inputs that remain.
 func safePath(raw, flagName string) (string, error) {
 	isOutputFlag := flagName == "--output"
 	if err := charcheck.RejectControlChars(raw, flagName); err != nil {

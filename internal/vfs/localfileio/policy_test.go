@@ -438,3 +438,55 @@ func TestPolicy_HomeCredentialFilesAreDenied(t *testing.T) {
 		t.Errorf("an ordinary name in the home directory should not be denied, got: %v", err)
 	}
 }
+
+// TestPolicy_AgentStateRootsFollowTrustedHome pins the agent sandbox state
+// directories as allow roots derived exactly like ~/files: from the account's
+// home, under their own spelling, on every platform.
+func TestPolicy_AgentStateRootsFollowTrustedHome(t *testing.T) {
+	home, err := trustedHome()
+	if err != nil {
+		t.Skipf("no trusted home: %v", err)
+	}
+	roots := allowRoots(t.TempDir())
+	for _, name := range agentStateDirNames {
+		want := filepath.Join(home, name)
+		found := false
+		for _, e := range roots {
+			if e.literal == want && e.label == "~/"+name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("allow roots lack %q labelled %q", want, "~/"+name)
+		}
+	}
+}
+
+// TestSafePath_AllowsAgentStateRootsWithoutTouchingDisk mirrors the ~/files
+// test on every platform: a target under an agent state directory is accepted
+// by both tiers, spelled absolutely or with the "~/" shorthand, whether or not
+// the directory exists, and validation creates nothing.
+func TestSafePath_AllowsAgentStateRootsWithoutTouchingDisk(t *testing.T) {
+	home, err := trustedHome()
+	if err != nil {
+		t.Skipf("no trusted home: %v", err)
+	}
+	if home == "/root" {
+		t.Skip("the home directory is the /root deny root; deny wins there, as it does for ~/files")
+	}
+	for _, name := range agentStateDirNames {
+		absolute := filepath.Join(home, name, "safepath-test-nonexistent", "report.xlsx")
+		shorthand := "~/" + name + "/safepath-test-nonexistent/report.xlsx"
+		for _, target := range []string{absolute, shorthand} {
+			if _, err := SafeOutputPath(target); err != nil {
+				t.Fatalf("SafeOutputPath(%q) error = %v, want nil", target, err)
+			}
+			if _, err := SafeInputPath(target); err != nil {
+				t.Fatalf("SafeInputPath(%q) error = %v, want nil", target, err)
+			}
+		}
+		if _, statErr := os.Stat(filepath.Dir(absolute)); !os.IsNotExist(statErr) {
+			t.Errorf("validation created the target directory under ~/%s, stat err = %v", name, statErr)
+		}
+	}
+}

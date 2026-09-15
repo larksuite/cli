@@ -13,13 +13,16 @@ import (
 	"github.com/larksuite/cli/internal/hook"
 	internalplatform "github.com/larksuite/cli/internal/platform"
 	"github.com/larksuite/cli/internal/skillpolicy"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 // installFatalGuard wires a fail-closed guard at every cobra dispatch
-// path on rootCmd. Used by the three abort-side fatal paths:
+// path on rootCmd. Used by the abort-side fatal paths:
 //
 //   - FailClosed plugin install failure  (installPluginInstallErrorGuard)
 //   - Plugin Restrict conflict           (installPluginConflictGuard)
+//   - Plugin SkillsOverlay failure       (installPluginSkillErrorGuard)
+//   - Plugin AllowPaths failure          (installPluginAllowPathsErrorGuard)
 //   - Startup lifecycle handler failure  (installPluginLifecycleErrorGuard)
 //
 // **Why we walk the tree rather than set PersistentPreRunE on root**:
@@ -144,6 +147,26 @@ func installPluginSkillErrorGuard(rootCmd *cobra.Command, err error) {
 			return typed.WithHint("the wrapper's embedded base skill tree is invalid; fix the content passed to cmd.SetEmbeddedSkillContent (reason_code %s)", reasonCode)
 		}
 		return typed.WithHint("skill customization is broken (reason_code %s); fix the plugin's EmbeddedSkills configuration or remove the conflicting plugin", reasonCode)
+	}
+	installFatalGuard(rootCmd, makeErr)
+}
+
+// installPluginAllowPathsErrorGuard surfaces an AllowPaths declaration the
+// path policy cannot honour (invalid_allow_paths) or a two-owner conflict
+// (multiple_allow_paths_plugins) before any command runs. The reader is
+// usually the agent driving the binary, so each hint states that no command
+// runs, who fixes it, and that retrying cannot help.
+func installPluginAllowPathsErrorGuard(rootCmd *cobra.Command, err error) {
+	makeErr := func() error {
+		typed := errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", err.Error()).WithCause(err)
+		if errors.Is(err, localfileio.ErrMultipleAllowPathsOwners) {
+			return typed.WithHint("two compiled-in plugins declare allow paths and only one may (reason_code %s); "+
+				"no command runs until the binary is rebuilt with one; do not retry, report to the binary's owner",
+				internalplatform.ReasonMultipleAllowPaths)
+		}
+		return typed.WithHint("a compiled-in plugin declares an allow path the CLI cannot honour (reason_code %s); "+
+			"no command runs until it is fixed and the binary rebuilt; do not retry, report to the binary's owner",
+			internalplatform.ReasonInvalidAllowPaths)
 	}
 	installFatalGuard(rootCmd, makeErr)
 }

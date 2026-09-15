@@ -40,6 +40,7 @@ import (
 	"github.com/larksuite/cli/internal/skillpolicy"
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/surface"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -546,11 +547,12 @@ func assembleInternal(
 	}
 
 	var (
-		installResult *internalplatform.InstallResult
-		pluginRules   []cmdpolicy.PluginRule
-		pluginSkills  []skillpolicy.PluginSkill
-		hookRegistry  *hook.Registry
-		denied        map[string]cmdpolicy.Denial
+		installResult    *internalplatform.InstallResult
+		pluginRules      []cmdpolicy.PluginRule
+		pluginSkills     []skillpolicy.PluginSkill
+		pluginAllowPaths []localfileio.PluginAllowRoots
+		hookRegistry     *hook.Registry
+		denied           map[string]cmdpolicy.Denial
 	)
 
 	if !cfg.skipPlugins {
@@ -563,6 +565,7 @@ func assembleInternal(
 		if installResult != nil {
 			pluginRules = installResult.PluginRules
 			pluginSkills = installResult.PluginSkills
+			pluginAllowPaths = installResult.PluginAllowPaths
 			hookRegistry = installResult.Registry
 		}
 
@@ -597,6 +600,16 @@ func assembleInternal(
 	f.SkillContent = skillResolution.Content
 	runtime.skillReferences = skillResolution.References
 	f.SkillReferences = skillResolution.References
+
+	// Install plugin-declared allow paths for the same reason and at the same
+	// point: a declared file-access grant the policy cannot honour must fail
+	// the build here, not surface later as a path rejection in every file
+	// command. A build without plugins clears any earlier declaration, so a
+	// host that builds more than once per process always runs the latest one.
+	if err := localfileio.ApplyDeclaredAllowRoots(pluginAllowPaths); err != nil {
+		installPluginAllowPathsErrorGuard(rootCmd, err)
+		return finalizeFailedBuild(runtime, rootCmd)
+	}
 
 	// Global flags and their environment equivalents belong to the same
 	// distribution capability. Flag tokens are rejected by applyPluginFlagGate;

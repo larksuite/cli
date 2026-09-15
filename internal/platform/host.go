@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/skillpolicy"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 // PluginInfo is the metadata of a successfully-installed plugin,
@@ -26,14 +27,16 @@ type PluginInfo struct {
 
 // InstallResult is the output of InstallAll. Registry is ready for
 // hook.Install; PluginRules feeds into cmdpolicy.Resolve as the
-// "plugin contribution" half of the resolver input. Plugins lists
-// every plugin that committed successfully (FailOpen-skipped plugins
-// are absent), for downstream diagnostics.
+// "plugin contribution" half of the resolver input; PluginAllowPaths feeds
+// into localfileio.ApplyDeclaredAllowRoots. Plugins lists every plugin that
+// committed successfully (FailOpen-skipped plugins are absent), for
+// downstream diagnostics.
 type InstallResult struct {
-	Registry     *hook.Registry
-	PluginRules  []cmdpolicy.PluginRule
-	PluginSkills []skillpolicy.PluginSkill
-	Plugins      []PluginInfo
+	Registry         *hook.Registry
+	PluginRules      []cmdpolicy.PluginRule
+	PluginSkills     []skillpolicy.PluginSkill
+	PluginAllowPaths []localfileio.PluginAllowRoots
+	Plugins          []PluginInfo
 }
 
 // InstallAll runs every registered plugin through the staging
@@ -73,8 +76,8 @@ func InstallAll(plugins []platform.Plugin, errOut io.Writer) (*InstallResult, er
 		if err := installOne(name, p, result); err != nil {
 			// Some errors must abort regardless of FailurePolicy
 			// because they imply the plugin's FailurePolicy itself
-			// cannot be trusted (e.g. a Restrict or EmbeddedSkills
-			// contribution was paired with FailOpen).
+			// cannot be trusted (e.g. a Restrict, EmbeddedSkills, or
+			// AllowPaths contribution was paired with FailOpen).
 			if isUntrustedConfigError(err) {
 				return nil, err
 			}
@@ -95,8 +98,8 @@ func InstallAll(plugins []platform.Plugin, errOut io.Writer) (*InstallResult, er
 // isUntrustedConfigError flags errors where the plugin's declared
 // FailurePolicy is itself part of the misconfiguration. For these the
 // host MUST abort unconditionally; honouring a FailOpen declaration on
-// a misconfigured Restrict/EmbeddedSkills plugin would defeat the whole point
-// of the consistency check.
+// a misconfigured Restrict/EmbeddedSkills/AllowPaths plugin would defeat the
+// whole point of the consistency check.
 func isUntrustedConfigError(err error) bool {
 	var pi *PluginInstallError
 	if !errors.As(err, &pi) {
@@ -180,6 +183,9 @@ func installOne(name string, p platform.Plugin, result *InstallResult) error {
 	if staging.overlaySet && caps.FailurePolicy != platform.FailClosed {
 		return staging.failOpenSkillsError()
 	}
+	if staging.allowPathsSet && caps.FailurePolicy != platform.FailClosed {
+		return staging.failOpenAllowPathsError()
+	}
 	if installErr != nil {
 		// Don't double-wrap typed PluginInstallError -- safeCallInstall
 		// already produces install_panic for recovered panics, and a
@@ -221,6 +227,12 @@ func installOne(name string, p platform.Plugin, result *InstallResult) error {
 		result.PluginSkills = append(result.PluginSkills, skillpolicy.PluginSkill{
 			PluginName:    name,
 			SkillsOverlay: staging.skillsOverlay,
+		})
+	}
+	if len(staging.allowPaths) > 0 {
+		result.PluginAllowPaths = append(result.PluginAllowPaths, localfileio.PluginAllowRoots{
+			PluginName: name,
+			Roots:      staging.allowPaths,
 		})
 	}
 

@@ -33,6 +33,10 @@ type PluginEntry struct {
 	// nil when the plugin did not customize embedded skills.
 	EmbeddedSkills *SkillsOverlayView `json:"embedded_skills,omitempty"`
 
+	// AllowPaths lists the plugin's AllowPaths contribution as declared;
+	// empty when the plugin did not widen the path allowlist.
+	AllowPaths []string `json:"allow_paths,omitempty"`
+
 	Observers  []HookEntry
 	Wrappers   []HookEntry
 	Lifecycles []HookEntry
@@ -94,6 +98,14 @@ type SkillsInventorySource struct {
 	View       SkillsOverlayView
 }
 
+// AllowPathsInventorySource pairs a plugin name with the allow roots it
+// declared, as written. Kept as plain strings, mirroring RuleInventorySource,
+// so the inventory does not depend on the path policy package.
+type AllowPathsInventorySource struct {
+	PluginName string
+	Roots      []string
+}
+
 // Inventory is the full snapshot.
 type Inventory struct {
 	Plugins []PluginEntry
@@ -123,12 +135,13 @@ type RuleInventorySource struct {
 
 // BuildInventory assembles an Inventory from the parts produced by
 // InstallAll: the plugin metadata list, the hook registry (may be nil
-// when no hooks were registered), and the plugin rules.
+// when no hooks were registered), the plugin rules, the skill overlays, and
+// the declared allow paths.
 //
 // Hooks are attributed to plugins by the namespaced name convention:
 // each entry's Name starts with "<plugin>.", and we group by the
 // leading segment up to the first dot.
-func BuildInventory(plugins []PluginInventorySource, registry *hook.Registry, rules []RuleInventorySource, skills []SkillsInventorySource) *Inventory {
+func BuildInventory(plugins []PluginInventorySource, registry *hook.Registry, rules []RuleInventorySource, skills []SkillsInventorySource, allowPaths []AllowPathsInventorySource) *Inventory {
 	byPlugin := make(map[string]*PluginEntry, len(plugins))
 	out := &Inventory{Plugins: make([]PluginEntry, 0, len(plugins))}
 	for _, p := range plugins {
@@ -189,6 +202,12 @@ func BuildInventory(plugins []PluginInventorySource, registry *hook.Registry, ru
 			v.Allow = append([]string(nil), sk.View.Allow...)
 			v.Remove = append([]string(nil), sk.View.Remove...)
 			entry.EmbeddedSkills = &v
+		}
+	}
+
+	for _, ap := range allowPaths {
+		if entry := byPlugin[ap.PluginName]; entry != nil {
+			entry.AllowPaths = append(entry.AllowPaths, ap.Roots...)
 		}
 	}
 	return out
@@ -298,6 +317,7 @@ func cloneInventory(in *Inventory) *Inventory {
 			sv.Remove = append([]string(nil), p.EmbeddedSkills.Remove...)
 			entry.EmbeddedSkills = &sv
 		}
+		entry.AllowPaths = append([]string(nil), p.AllowPaths...)
 		entry.Observers = append([]HookEntry(nil), p.Observers...)
 		entry.Wrappers = append([]HookEntry(nil), p.Wrappers...)
 		entry.Lifecycles = append([]HookEntry(nil), p.Lifecycles...)

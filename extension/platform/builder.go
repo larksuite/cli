@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Builder is the ergonomic constructor for Plugin. Use it from init():
@@ -31,6 +32,8 @@ import (
 //   - EmbeddedSkills ↔ FailClosed consistency (declaring distribution
 //     assets is a build-integrity commitment; falling back to host defaults
 //     is never allowed)
+//   - AllowPaths ↔ FailClosed consistency (a declared file-access grant that
+//     silently vanished would turn every file command into a path rejection)
 //   - Rule validation via ValidateRule analogues (delegated to
 //     internal/cmdpolicy at install time; Builder only fast-fails
 //     blatantly bad input)
@@ -42,6 +45,7 @@ type Builder struct {
 	actions       []func(Registrar)
 	rules         []*Rule
 	skillsOverlay *SkillsOverlay
+	allowPaths    []string
 
 	hookNames map[string]bool
 	errs      []error
@@ -72,16 +76,16 @@ func (b *Builder) RequireCLI(constraint string) *Builder {
 }
 
 // FailOpen sets Capabilities.FailurePolicy = FailOpen. Default when
-// neither FailOpen nor FailClosed is called and neither Restrict nor
-// EmbeddedSkills is used. Build rejects a final FailOpen state after either
-// safety-sensitive contribution.
+// neither FailOpen nor FailClosed is called and none of Restrict,
+// EmbeddedSkills, or AllowPaths is used. Build rejects a final FailOpen state
+// after any of those safety-sensitive contributions.
 func (b *Builder) FailOpen() *Builder {
 	b.caps.FailurePolicy = FailOpen
 	return b
 }
 
 // FailClosed sets Capabilities.FailurePolicy = FailClosed. Implicit when
-// Restrict() or EmbeddedSkills() is called.
+// Restrict(), EmbeddedSkills(), or AllowPaths() is called.
 func (b *Builder) FailClosed() *Builder {
 	b.caps.FailurePolicy = FailClosed
 	return b
@@ -176,6 +180,30 @@ func (b *Builder) EmbeddedSkills(spec *SkillsOverlay) *Builder {
 	return b
 }
 
+// AllowPaths widens the --file / --output allowlist by the given roots
+// (absolute or "~/"-relative; the host validates shape and denylist at
+// bootstrap, the Builder only rejects no roots or a blank root). Calls
+// accumulate. It implies FailClosed like Restrict and EmbeddedSkills; a later
+// FailOpen is rejected by Build. Only one plugin per binary may declare
+// allow paths (reason_code multiple_allow_paths_plugins).
+func (b *Builder) AllowPaths(roots ...string) *Builder {
+	if len(roots) == 0 {
+		b.errs = append(b.errs, errors.New("AllowPaths(): at least one root is required"))
+		return b
+	}
+	for _, root := range roots {
+		if strings.TrimSpace(root) == "" {
+			b.errs = append(b.errs, errors.New("AllowPaths(): a root must not be blank"))
+			return b
+		}
+	}
+	b.caps.FailurePolicy = FailClosed
+	// Defensive clone: append copies the strings into the builder's own
+	// backing array, so a caller mutating its slice afterward changes nothing.
+	b.allowPaths = append(b.allowPaths, roots...)
+	return b
+}
+
 // cloneSkillsOverlay snapshots the caller's spec so a later mutation of the
 // same *SkillsOverlay cannot alter the staged copy. Selection and remap slices
 // are copied; Overlay/Base are fs.FS handles retained by reference (an fs.FS is
@@ -203,6 +231,10 @@ func (b *Builder) Build() (Plugin, error) {
 		b.errs = append(b.errs, errors.New(
 			"EmbeddedSkills() requires FailClosed; do not call FailOpen() after EmbeddedSkills()"))
 	}
+	if len(b.allowPaths) > 0 && b.caps.FailurePolicy == FailOpen {
+		b.errs = append(b.errs, errors.New(
+			"AllowPaths() requires FailClosed; do not call FailOpen() after AllowPaths()"))
+	}
 	if len(b.errs) > 0 {
 		return nil, errors.Join(b.errs...)
 	}
@@ -213,6 +245,7 @@ func (b *Builder) Build() (Plugin, error) {
 		actions:       b.actions,
 		rules:         b.rules,
 		skillsOverlay: b.skillsOverlay,
+		allowPaths:    b.allowPaths,
 	}, nil
 }
 
@@ -257,6 +290,7 @@ type builtPlugin struct {
 	actions       []func(Registrar)
 	rules         []*Rule
 	skillsOverlay *SkillsOverlay
+	allowPaths    []string
 }
 
 func (p *builtPlugin) Name() string               { return p.name }
@@ -274,6 +308,15 @@ func (p *builtPlugin) Install(r Registrar) error {
 			return errors.New("host registrar does not support EmbeddedSkills")
 		}
 		sr.EmbeddedSkills(p.skillsOverlay)
+	}
+	if len(p.allowPaths) > 0 {
+		ar, ok := r.(AllowPathsRegistrar)
+		if !ok {
+			// Fail closed: a declared file-access grant must never be silently
+			// dropped by a host that cannot honour it.
+			return errors.New("host registrar does not support AllowPaths")
+		}
+		ar.AllowPaths(p.allowPaths...)
 	}
 	for _, action := range p.actions {
 		action(r)

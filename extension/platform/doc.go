@@ -10,6 +10,7 @@
 //
 //   - Plugin         - the interface every plugin implements (Name / Version / Capabilities / Install)
 //   - Registrar      - what Install receives; the four registration verbs (Observe / Wrap / On / Restrict)
+//   - EmbeddedSkillsRegistrar / AllowPathsRegistrar - optional host extensions a Registrar may also implement
 //   - Capabilities   - declared up front: FailurePolicy (FailOpen | FailClosed) and Restricts
 //   - Register       - process-wide entry point; plugins call this from init()
 //
@@ -32,9 +33,15 @@
 //     gives a comparable rank for the read < write < high-risk-write ordering
 //   - CommandDeniedError - structured error returned to denied callers
 //
+// Distribution surface (bootstrap-time declarations, single owner each):
+//
+//   - SkillsOverlay     - customizes the embedded skill tree (Builder.EmbeddedSkills / EmbeddedSkillsRegistrar)
+//   - AllowPaths        - widens the local file allowlist behind --file / --output by
+//     absolute or ~/ roots; the built-in denylist still wins (Builder.AllowPaths / AllowPathsRegistrar)
+//
 // Stability: every exported symbol here is part of the contract. Interfaces
 // never gain methods; new host capability surfaces arrive as optional
-// extension interfaces (see EmbeddedSkillsRegistrar). Internal
+// extension interfaces (see EmbeddedSkillsRegistrar, AllowPathsRegistrar). Internal
 // orchestration (staging, validation, RunE wrapping, denial guard) lives
 // under internal/platform, internal/hook and internal/cmdpolicy and is not
 // importable by third parties.

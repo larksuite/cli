@@ -21,6 +21,8 @@ type recorder struct {
 	rules         []*platform.Rule // every rule, in Restrict order
 	skillsOverlay *platform.SkillsOverlay
 	skillCalls    int
+	allowPaths    []string
+	allowCalls    int
 }
 
 func (r *recorder) Observe(platform.When, string, platform.Selector, platform.Observer) {
@@ -35,6 +37,10 @@ func (r *recorder) Restrict(rule *platform.Rule) {
 func (r *recorder) EmbeddedSkills(spec *platform.SkillsOverlay) {
 	r.skillsOverlay = spec
 	r.skillCalls++
+}
+func (r *recorder) AllowPaths(roots ...string) {
+	r.allowPaths = append(r.allowPaths, roots...)
+	r.allowCalls++
 }
 
 // Restrict must snapshot each rule: a caller that reuses and mutates the

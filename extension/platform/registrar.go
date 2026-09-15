@@ -57,3 +57,19 @@ type EmbeddedSkillsRegistrar interface {
 	// embedded skill content (see SkillsOverlay).
 	EmbeddedSkills(spec *SkillsOverlay)
 }
+
+// AllowPathsRegistrar is the optional host extension that widens the strict
+// path tier (the validation behind --file and --output) by extra local roots.
+// Like EmbeddedSkillsRegistrar it is not part of Registrar (stability
+// contract); a Builder-built plugin type-asserts for it and fails closed when
+// the host lacks it, so a declared grant is never silently dropped.
+//
+// Roots are absolute or "~/"-relative below the account's home (never the
+// home itself or $HOME), need not exist, and may not lie inside the denylist,
+// which still wins at runtime. Only one plugin per binary may declare them;
+// declaring implies FailClosed.
+type AllowPathsRegistrar interface {
+	// AllowPaths widens the strict path tier's allowlist by the given roots.
+	// The same plugin may call it more than once; roots accumulate.
+	AllowPaths(roots ...string)
+}

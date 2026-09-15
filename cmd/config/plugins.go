@@ -88,6 +88,9 @@ func runConfigPluginsShow(f *cmdutil.Factory) error {
 		if p.EmbeddedSkills != nil {
 			entry["embedded_skills"] = p.EmbeddedSkills
 		}
+		if len(p.AllowPaths) > 0 {
+			entry["allow_paths"] = p.AllowPaths
+		}
 		entry["hooks"] = map[string]any{
 			"observers": p.Observers,
 			"wrappers":  p.Wrappers,

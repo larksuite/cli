@@ -251,6 +251,37 @@ func TestRunQRCode_PNGWritesFile(t *testing.T) {
 	}
 }
 
+// An allowed root is routinely combined with a sub-directory that does not
+// exist yet; the write must create it, as FileIO.Save does, instead of failing
+// with an internal error after the policy already approved the path.
+func TestRunQRCode_CreatesMissingOutputDirectory(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	tmpDir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { os.Chdir(oldWd) })
+
+	target := filepath.Join("exports", "nested", "qr.png")
+	err := runQRCode(&QRCodeOptions{
+		URL:     "https://example.com",
+		Size:    256,
+		Output:  target,
+		Factory: f,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("output file not created in the new directory: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Error("output file is empty")
+	}
+}
+
 func TestRunQRCode_ASCIIOutputsToStdout(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
 

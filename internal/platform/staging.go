@@ -48,6 +48,13 @@ type stagingRegistrar struct {
 	skillsOverlay *platform.SkillsOverlay
 	overlaySet    bool
 
+	// allowPaths holds the staged AllowPaths contributions, captured for the
+	// host to feed into the path policy later. allowPathsSet records that the
+	// call happened (even with no roots) so the FailClosed consistency check
+	// can detect it.
+	allowPaths    []string
+	allowPathsSet bool
+
 	// seenHookNames detects duplicate hookName within this plugin's
 	// Install call.
 	seenHookNames map[string]bool
@@ -171,6 +178,19 @@ func (r *stagingRegistrar) EmbeddedSkills(spec *platform.SkillsOverlay) {
 	r.skillsOverlay = &cp
 }
 
+func (r *stagingRegistrar) AllowPaths(roots ...string) {
+	r.allowPathsSet = true
+	if len(roots) == 0 {
+		r.bufferErr(ReasonInvalidAllowPaths, "AllowPaths() called with no roots")
+		return
+	}
+	// Defensive clone: append copies the strings into the staging slice, so a
+	// plugin mutating its own slice after Install returns changes nothing.
+	// Shape and denylist validation happen when the bootstrap resolves the
+	// declaration (localfileio.ApplyDeclaredAllowRoots); staging only records.
+	r.allowPaths = append(r.allowPaths, roots...)
+}
+
 // --- helpers ---
 
 func (r *stagingRegistrar) namespaced(name string) string {
@@ -211,17 +231,22 @@ func (r *stagingRegistrar) bufferErr(reasonCode, message string) {
 //   - Restricts declared but Install did not call r.Restrict -> abort
 //   - Restricts NOT declared but Install did call r.Restrict -> abort
 //   - EmbeddedSkills contributed under FailOpen -> abort unconditionally
+//   - AllowPaths contributed under FailOpen -> abort unconditionally
 //
 // Returns the first PluginInstallError encountered (callers can use
 // errors.As to inspect it). Nil means staging is clean.
 func (r *stagingRegistrar) validateSelf(caps platform.Capabilities) error {
-	// Check this before ordinary registration faults. Once a plugin has
-	// successfully staged distribution assets, FailOpen is itself an invalid
-	// capability declaration: skipping the plugin would silently fall back to
-	// host skills. A later duplicate/bad registration must not downgrade that
-	// build-integrity violation into an ordinary fail-open staging error.
+	// Check these before ordinary registration faults. Once a plugin has
+	// successfully staged distribution assets or a file-access grant, FailOpen
+	// is itself an invalid capability declaration: skipping the plugin would
+	// silently fall back to host skills, or turn every file command into a
+	// path rejection. A later duplicate/bad registration must not downgrade
+	// that build-integrity violation into an ordinary fail-open staging error.
 	if r.overlaySet && caps.FailurePolicy != platform.FailClosed {
 		return r.failOpenSkillsError()
+	}
+	if r.allowPathsSet && caps.FailurePolicy != platform.FailClosed {
+		return r.failOpenAllowPathsError()
 	}
 	if len(r.stagingErrs) > 0 {
 		first := r.stagingErrs[0]
@@ -253,6 +278,14 @@ func (r *stagingRegistrar) failOpenSkillsError() error {
 		PluginName: r.pluginName,
 		ReasonCode: ReasonInvalidCapability,
 		Reason:     "Install contributed EmbeddedSkills but FailurePolicy=FailOpen; EmbeddedSkills requires FailClosed",
+	}
+}
+
+func (r *stagingRegistrar) failOpenAllowPathsError() error {
+	return &PluginInstallError{
+		PluginName: r.pluginName,
+		ReasonCode: ReasonInvalidCapability,
+		Reason:     "Install contributed AllowPaths but FailurePolicy=FailOpen; AllowPaths requires FailClosed",
 	}
 }
 

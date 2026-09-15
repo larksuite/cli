@@ -19,20 +19,33 @@ import (
 )
 
 // Built-in path access policy. Both lists are compiled into the binary; no
-// flag and no config file names a root. Two environment inputs remain, and
-// each is bounded: LARKSUITE_CLI_CONFIG_DIR only contributes a deny root, and
-// $HOME decides where ~/files points on a system whose account database
-// cannot name this uid's home (see trustedHome). Deny always wins over allow,
-// the cwd root included.
+// flag, environment variable, or config file names a root. The allowlist can
+// be widened only by a plugin compiled into the same binary through
+// platform.AllowPaths (see declared.go), so the effective policy is still
+// fixed by the binary. Two environment inputs remain, and each is bounded:
+// LARKSUITE_CLI_CONFIG_DIR only contributes a deny root, and $HOME decides
+// where ~/files points on a system whose account database cannot name this
+// uid's home (see trustedHome). Deny always wins over allow, the cwd root and
+// every declared root included.
 
-// allowRootsLabel names the allowlist in rejection messages. The lists are
-// public documentation, so the error message is allowed (and expected) to
-// spell them out.
+// allowRootsLabel names the effective allowlist in rejection messages as one
+// comma-separated list of spellings the CLI accepts as input: cwd, the
+// built-in roots by their labels, then any roots a plugin declared, as the
+// plugin wrote them. The reader is an agent paying for every token of every
+// failed call, so the list carries nothing but the roots: no prose around
+// them, and no plugin attribution, which is operator information that lives
+// in `config plugins show`. "cwd" is the spelling the flag help texts use.
 func allowRootsLabel() string {
-	if runtime.GOOS == "windows" {
-		return `the current working directory, the account's temp directory, or the "files" directory in the account's home`
+	names := []string{"cwd"}
+	for _, e := range fixedAllowRoots() {
+		names = append(names, e.label)
 	}
-	return "the current working directory, /tmp, or ~/files"
+	if d := declaredAllowRoots.Load(); d != nil {
+		for _, e := range *d {
+			names = append(names, e.label)
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 // policyEntry is one list root in both its literal and realpath forms. Deny
@@ -145,12 +158,20 @@ func passwdHome() (string, bool) {
 	return "", false
 }
 
-// allowRoots returns the built-in allowlist for cwd. Only the cwd entry is
-// per-call; the fixed roots are resolved once per process (fixedAllowRoots),
-// which both pins them against later filesystem changes and keeps batch
-// commands from re-resolving every root for every file.
+// allowRoots returns the effective allowlist for cwd: the working directory,
+// the built-in roots, then any roots a compiled-in plugin declared. Only the
+// cwd entry is per-call; the fixed roots are resolved once per process
+// (fixedAllowRoots), which both pins them against later filesystem changes and
+// keeps batch commands from re-resolving every root for every file, and the
+// declared roots are resolved once at bootstrap (ApplyDeclaredAllowRoots).
+// The slice literal forces a fresh backing array, so neither cached slice is
+// ever appended to in place.
 func allowRoots(cwd string) []policyEntry {
-	return append([]policyEntry{newPolicyEntry("the current working directory", cwd)}, fixedAllowRoots()...)
+	roots := append([]policyEntry{newPolicyEntry("the current working directory", cwd)}, fixedAllowRoots()...)
+	if d := declaredAllowRoots.Load(); d != nil {
+		roots = append(roots, *d...)
+	}
+	return roots
 }
 
 var fixedAllowRoots = sync.OnceValue(func() []policyEntry {
@@ -171,10 +192,29 @@ var fixedAllowRoots = sync.OnceValue(func() []policyEntry {
 	// /root/files would make the rule conditional; dropping /root from the
 	// denylist would expose the rest of root's home.
 	if home, err := trustedHome(); err == nil {
+		// Labels are spelled "~/name" on every platform: safePath expands a
+		// leading "~/" against this same home (absolutize), so the label is a
+		// spelling the CLI accepts verbatim, which is what an agent reading a
+		// rejection needs. Describing the location instead ("the files
+		// directory in the account's home") would leave it a translation to do.
 		roots = append(roots, newPolicyEntry("~/files", filepath.Join(home, "files")))
+		for _, name := range agentStateDirNames {
+			roots = append(roots, newPolicyEntry("~/"+name, filepath.Join(home, name)))
+		}
 	}
 	return roots
 })
+
+// agentStateDirNames lists the directories, directly under the account's
+// home, in which agent sandboxes keep the state their agents exchange with
+// the CLI. They are derived exactly like ~/files: from trustedHome, never from
+// $HOME, so an invocation that controls the environment cannot move them, and
+// on Windows they resolve under the account's profile directory, which
+// os/user reads from the process token rather than from any variable. They
+// share ~/files' one limit as well: when the home directory is itself a deny
+// root (running as root, where it is /root), deny wins and the roots are
+// unavailable.
+var agentStateDirNames = []string{".doubao", ".super_doubao", "Doubao"}
 
 // tmpRoot is the temporary-directory allow root: literal /tmp on Unix-like
 // systems (macOS resolves it to /private/tmp via realpath). Windows has no
@@ -197,9 +237,12 @@ func tmpRoot() string {
 	return ""
 }
 
+// tmpRootLabel spells the temp allow root the way the CLI accepts it as input.
+// On Windows the root is derived under the account's home (tmpRoot) and "~/"
+// expands there too, so the label names that path rather than describing it.
 func tmpRootLabel() string {
 	if runtime.GOOS == "windows" {
-		return "the account's temp directory"
+		return "~/AppData/Local/Temp"
 	}
 	return "/tmp"
 }
@@ -332,9 +375,16 @@ func checkAllow(flagName, raw, resolved, cwd string) error {
 	if _, ok := matchByFileIdentity(resolved, roots); ok {
 		return nil
 	}
-	return fmt.Errorf("%s %q is outside the built-in allowlist; allowed roots are %s "+
-		"(hint: save under one of the allowed roots; flags that support stdin can read an out-of-tree file via '-')",
-		flagName, raw, allowRootsLabel())
+	// The message carries the roots and nothing else; "save under an allowed
+	// root" is what the list already says, and an agent pays for every extra
+	// sentence on every failed call. The one alternative the list does not
+	// imply is that an input can arrive on stdin, so only inputs mention it.
+	hint := ""
+	if flagName != "--output" {
+		hint = " (or pass '-' to read from stdin where the flag supports it)"
+	}
+	return fmt.Errorf("%s %q is outside the built-in allowlist; allowed roots: %s%s",
+		flagName, raw, allowRootsLabel(), hint)
 }
 
 // matchResolved reports whether the fully resolved input path falls under the

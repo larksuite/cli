@@ -174,7 +174,14 @@ func recordInventory(installResult *internalplatform.InstallResult) {
 			},
 		})
 	}
-	internalplatform.SetActiveInventory(internalplatform.BuildInventory(pluginSrcs, installResult.Registry, ruleSrcs, skillSrcs))
+	pathSrcs := make([]internalplatform.AllowPathsInventorySource, 0, len(installResult.PluginAllowPaths))
+	for _, ap := range installResult.PluginAllowPaths {
+		pathSrcs = append(pathSrcs, internalplatform.AllowPathsInventorySource{
+			PluginName: ap.PluginName,
+			Roots:      ap.Roots,
+		})
+	}
+	internalplatform.SetActiveInventory(internalplatform.BuildInventory(pluginSrcs, installResult.Registry, ruleSrcs, skillSrcs, pathSrcs))
 }
 
 // wireHooks installs Observer/Wrapper hooks onto every runnable command

@@ -36,7 +36,7 @@ func TestBuildInventory_groupsByPluginName(t *testing.T) {
 		{PluginName: "a", RuleName: "a-rule", Allow: []string{"docs/**"}, MaxRisk: "read"},
 	}
 
-	inv := internalplatform.BuildInventory(plugins, r, rules, nil)
+	inv := internalplatform.BuildInventory(plugins, r, rules, nil, nil)
 
 	if got := len(inv.Plugins); got != 2 {
 		t.Fatalf("Plugins len = %d, want 2", got)
@@ -89,7 +89,7 @@ func TestBuildInventory_multipleRulesPerPlugin(t *testing.T) {
 		{PluginName: "a", RuleName: "im-rw", Allow: []string{"im/**"}, MaxRisk: "write"},
 	}
 
-	inv := internalplatform.BuildInventory(plugins, nil, rules, nil)
+	inv := internalplatform.BuildInventory(plugins, nil, rules, nil, nil)
 	a := findPlugin(inv, "a")
 	if a == nil {
 		t.Fatalf("missing entry a")
@@ -103,7 +103,7 @@ func TestBuildInventory_multipleRulesPerPlugin(t *testing.T) {
 }
 
 func TestBuildInventory_empty(t *testing.T) {
-	inv := internalplatform.BuildInventory(nil, nil, nil, nil)
+	inv := internalplatform.BuildInventory(nil, nil, nil, nil, nil)
 	if got := len(inv.Plugins); got != 0 {
 		t.Errorf("Plugins len = %d, want 0", got)
 	}
@@ -122,7 +122,7 @@ func TestBuildInventory_populatesAndClonesEmbeddedSkills(t *testing.T) {
 		}},
 	}
 
-	inv := internalplatform.BuildInventory(plugins, nil, nil, skills)
+	inv := internalplatform.BuildInventory(plugins, nil, nil, skills, nil)
 	entry := findPlugin(inv, "acme")
 	if entry == nil || entry.EmbeddedSkills == nil {
 		t.Fatalf("acme entry missing EmbeddedSkills: %+v", entry)
@@ -149,4 +149,32 @@ func findPlugin(inv *internalplatform.Inventory, name string) *internalplatform.
 		}
 	}
 	return nil
+}
+
+// A non-nil AllowPathsInventorySource must surface on the owning plugin's
+// entry as the declared roots, and BuildInventory must clone the slice so a
+// later mutation of the source cannot corrupt the recorded view.
+func TestBuildInventory_populatesAndClonesAllowPaths(t *testing.T) {
+	plugins := []internalplatform.PluginInventorySource{{Name: "acme", Version: "1.0"}}
+	roots := []string{"/data/exports", "~/Downloads/acme"}
+	paths := []internalplatform.AllowPathsInventorySource{{PluginName: "acme", Roots: roots}}
+
+	inv := internalplatform.BuildInventory(plugins, nil, nil, nil, paths)
+	entry := findPlugin(inv, "acme")
+	if entry == nil || len(entry.AllowPaths) != 2 {
+		t.Fatalf("acme entry missing AllowPaths: %+v", entry)
+	}
+	if entry.AllowPaths[0] != "/data/exports" || entry.AllowPaths[1] != "~/Downloads/acme" {
+		t.Errorf("AllowPaths = %v, want the declared roots in order", entry.AllowPaths)
+	}
+
+	roots[0] = "MUTATED"
+	if entry.AllowPaths[0] != "/data/exports" {
+		t.Errorf("AllowPaths not cloned; source mutation leaked: %v", entry.AllowPaths)
+	}
+
+	// A plugin that declared nothing must not carry the field.
+	if other := findPlugin(internalplatform.BuildInventory(plugins, nil, nil, nil, nil), "acme"); len(other.AllowPaths) != 0 {
+		t.Errorf("AllowPaths = %v for a plugin without a declaration, want empty", other.AllowPaths)
+	}
 }
