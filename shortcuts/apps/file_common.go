@@ -120,6 +120,31 @@ func appFileQuotaPath(appID string) string {
 	return fmt.Sprintf("%s/apps/%s/storage/file_quota", apiBasePath, validate.EncodePathSegment(appID))
 }
 
+// requireFileAppID resolves --app-id for the file commands, which address an app
+// by its real id only.
+//
+// The prefix check is here rather than in requireAppID because the two are not
+// interchangeable across the domain: +export and +get accept an app id or a meta
+// token in the same argument and let the server tell them apart, so a blanket
+// prefix rule would break them (see the note in validateExportFlags). Storage has
+// no such dual form — it answers a non-app_ id with "Invalid app_id format".
+//
+// Catching it locally is not just a saved round trip. The server's older answer
+// for this input was "user need admin or developer permission", which sent people
+// to request access they already had; validateRealAppID's message names the real
+// problem and its hint carries the command that turns a meta_token or page token
+// into the app_id, which is the one thing the caller actually needs.
+func requireFileAppID(raw string) (string, error) {
+	appID, err := requireAppID(raw)
+	if err != nil {
+		return "", err
+	}
+	if err := validateRealAppID(appID); err != nil {
+		return "", err
+	}
+	return appID, nil
+}
+
 // requireFilePath trims --path and rejects blank, returning a uniform validation error.
 func requireFilePath(raw string) (string, error) {
 	p := strings.TrimSpace(raw)

@@ -44,6 +44,15 @@ var sparkCodeMeta = map[int]CodeMeta{
 	400000055: {Category: errs.CategoryAPI, Subtype: errs.SubtypeQuotaExceeded},              // tenant file storage quota exceeded
 	400002467: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied}, // app administrator or developer required
 	500002761: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied}, // app administrator or developer required, pre-4xx renumber
+
+	// The storage permission chain used to answer three different states with the
+	// single "user need admin or developer permission" above: no role, app not
+	// found, and an argument that was never an app id. Only the first is a
+	// permission problem, so the other two now carry their own codes and must not
+	// be classified as authorization — an agent that reads permission_denied goes
+	// off to request access, which cannot resolve either of them.
+	400000008: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},               // app not found (matches 400000034's not-found arm)
+	400000009: {Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument}, // app_id malformed: a meta token / page token was passed
 }
 
 func init() { mergeCodeMeta(sparkCodeMeta, "spark") }

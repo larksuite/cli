@@ -32,7 +32,7 @@ var AppsFileQuotaGet = common.Shortcut{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		_, err := requireAppID(rctx.Str("app-id"))
+		_, err := requireFileAppID(rctx.Str("app-id"))
 		return err
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {

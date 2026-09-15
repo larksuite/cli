@@ -43,7 +43,7 @@ var AppsFileUpload = common.Shortcut{
 		{Name: "file", Desc: "local file to upload (file_name = basename)", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+		if _, err := requireFileAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
 		return rctx.ValidateLocalFileFlag("file", fileUploadMaxBytes)

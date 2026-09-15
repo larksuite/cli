@@ -45,6 +45,13 @@ func TestLookupCodeMetaSparkRoleCodes(t *testing.T) {
 		{400000055, errs.CategoryAPI, errs.SubtypeQuotaExceeded},
 		{400002467, errs.CategoryAuthorization, errs.SubtypePermissionDenied},
 		{500002761, errs.CategoryAuthorization, errs.SubtypePermissionDenied},
+
+		// Split out of 400002467, which used to answer "no role", "app not found"
+		// and "that was never an app id" alike. Neither of these may classify as
+		// authorization: permission_denied sends a caller off to request access
+		// that would not resolve either state.
+		{400000008, errs.CategoryAPI, errs.SubtypeNotFound},
+		{400000009, errs.CategoryValidation, errs.SubtypeInvalidArgument},
 	}
 
 	for _, tt := range tests {

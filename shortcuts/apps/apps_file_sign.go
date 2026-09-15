@@ -37,7 +37,7 @@ var AppsFileSign = common.Shortcut{
 		{Name: "expires-in", Type: "int", Default: "86400", Desc: "link validity in seconds (max 2592000 = 30d)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+		if _, err := requireFileAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
 		if _, err := requireFilePath(rctx.Str("path")); err != nil {

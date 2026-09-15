@@ -32,7 +32,7 @@ var AppsFileGet = common.Shortcut{
 		{Name: "path", Desc: "remote file path", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+		if _, err := requireFileAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
 		_, err := requireFilePath(rctx.Str("path"))
