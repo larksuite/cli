@@ -89,6 +89,38 @@ func TestMailMessagesDryRunMentionsBatchGetChunkingAndMerge(t *testing.T) {
 	}
 }
 
+func TestMailMessageExecuteIncludesReplyToMessageID(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	messageID := validMessageIDForTest("reply-child")
+	replyToMessageID := validMessageIDForTest("reply-parent")
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/messages/" + messageID,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"message": map[string]interface{}{
+					"message_id":          messageID,
+					"reply_to_message_id": replyToMessageID,
+					"subject":             "reply",
+				},
+			},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailMessage, []string{
+		"+message", "--message-id", messageID, "--html=false",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("message returned error: %v", err)
+	}
+
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if got := data["reply_to_message_id"]; got != replyToMessageID {
+		t.Fatalf("reply_to_message_id = %v, want %s", got, replyToMessageID)
+	}
+}
+
 func TestMailTriageTableHintRoutesSingleAndMultipleReads(t *testing.T) {
 	f, stdout, stderr, reg := mailShortcutTestFactory(t)
 	registerTriageReadHintStubs(reg)
