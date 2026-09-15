@@ -7,7 +7,9 @@ import "github.com/larksuite/cli/errs"
 
 var baseCodeMeta = map[int]CodeMeta{
 	// Base write-path errors.
-	1254291: {Category: errs.CategoryAPI, Subtype: errs.SubtypeConflict, Retryable: true},
+	1254291:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeConflict, Retryable: true},
+	800004006: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},
+	800004045: {Category: errs.CategoryAPI, Subtype: errs.SubtypeFeatureNotAvailable},
 
 	// Copy Table domain errors (technical design chapter 18.2).
 	800020304: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied},
