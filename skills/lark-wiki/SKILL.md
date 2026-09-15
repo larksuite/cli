@@ -22,6 +22,12 @@ metadata:
 
 知识空间和节点都是用户的个人资源，**策略上应优先显式使用 `--as user`**（CLI 的 `--as` 默认值为 `auto`，不带 `--as` 时常被解析成 `bot`，列出的是应用所属空间而非用户的）。仅当用户明确要求“应用 / bot 视角”时才用 `--as bot`（仍受上面的成员管理硬限制约束）。
 
+### 个人空间与“我的文档库”发现限制
+
+`wiki spaces list` 目前可能只返回 `space_type: team`，即使使用 `--as user` 也可能不列出 `person`（个人知识库）和 `my_library`（我的文档库）。这不是调用方没有权限的充分证据，也不要因为列表为空就重复翻页或改用 bot 身份。
+
+当用户已经给出 `my_library` 时，优先用 `lark-cli wiki spaces get --params '{"space_id":"my_library"}' --as user` 直接获取个人文档库。只有用户已经给出 Wiki URL/token 时，才优先用 `wiki spaces get_node` 解析 space_id。目标个人空间未知时，再用 `lark-cli drive +search --query "<关键词>" --as user --format json` 定位内容；从结果读取 `origin_space_id`，再用 `lark-cli wiki +node-list --space-id "<origin_space_id>" --as user --format json` 查询节点。
+
 ## 快速决策
 
 - 用户要**按特定主题 / 关键词 / 内容线索查找资料并收集到知识库节点或新建知识库节点下**，必须先阅读 [`../lark-drive/references/lark-drive-workflow.md`](../lark-drive/references/lark-drive-workflow.md)，再按其中 `Workflow Registry` 进入 [`topic_move_collector`](../lark-drive/references/lark-drive-workflow-topic-move-collector.md) workflow。该 workflow 使用 Drive 全量搜索召回，再按 Wiki 目标解析、确认和移动；不要只用 Wiki 节点列表做局部遍历。
