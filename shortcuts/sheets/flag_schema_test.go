@@ -115,6 +115,44 @@ func TestPrintFlagSchema_ChartUpdateIsRecursivePartial(t *testing.T) {
 	}
 }
 
+func TestFlagSchemas_ChartGradientsValidateStructure(t *testing.T) {
+	t.Parallel()
+
+	paths := []string{
+		"properties.snapshot.style.backgroundGradient",
+		"properties.snapshot.style.border.gradient",
+		"properties.snapshot.style.region.backgroundGradient",
+		"properties.snapshot.plotArea.axes.items.domainGradient",
+	}
+	for _, command := range []string{"+chart-create", "+chart-update"} {
+		command := command
+		for _, path := range paths {
+			path := path
+			t.Run(command+"/"+path, func(t *testing.T) {
+				t.Parallel()
+				raw, err := printFlagSchemaFor(command)(path)
+				if err != nil {
+					t.Fatalf("print %s %s: %v", command, path, err)
+				}
+				var schema schemaProperty
+				if err := json.Unmarshal(raw, &schema); err != nil {
+					t.Fatalf("schema is not JSON: %v\n%s", err, raw)
+				}
+				valid := parseValue(t, `{"type":"linear","stops":[{"offset":0,"color":"rgb(0,0,0)"},{"offset":1,"color":"rgb(255,255,255)"}]}`)
+				if err := validateAgainstSchema(valid, &schema, path); err != nil {
+					t.Fatalf("valid gradient rejected: %v", err)
+				}
+				tooFewStops := parseValue(t, `{"type":"linear","stops":[{"offset":0,"color":"rgb(0,0,0)"}]}`)
+				if err := validateAgainstSchema(tooFewStops, &schema, path); err == nil {
+					t.Fatal("gradient with one stop must be rejected")
+				} else if !strings.Contains(err.Error(), "minimum is 2") {
+					t.Fatalf("want minItems error, got: %v", err)
+				}
+			})
+		}
+	}
+}
+
 // TestPrintFlagSchema_UnknownFlagListsAvailable confirms the error
 // message tells the caller which flags exist for the shortcut.
 func TestPrintFlagSchema_UnknownFlagListsAvailable(t *testing.T) {

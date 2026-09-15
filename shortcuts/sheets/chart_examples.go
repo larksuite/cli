@@ -44,7 +44,7 @@ var chartExampleTemplates = map[string]string{
         "aggregate": false,
         "showNegativeSize": false,
         "opacityGradientStyle": "linear",
-        "idLabel": {"visible": true}
+        "idLabel": {"bold": true}
       }}
     }},
     "data": {
