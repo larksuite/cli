@@ -45,33 +45,33 @@ func parseTimeRangeMillis(input string) (string, string, error) {
 	}
 
 	var startMillis, endMillis string
-	var startSecInt, endSecInt int64
+	var startMs, endMs int64
 	var hasStart, hasEnd bool
 	if startInput != "" {
-		startSec, err := parseTimeFlagSec(startInput, "start")
+		start, err := parseTimeFlagMillis(startInput, "start")
 		if err != nil {
 			return "", "", err
 		}
-		startSecInt, err = strconv.ParseInt(startSec, 10, 64)
+		startMs, err = strconv.ParseInt(start, 10, 64)
 		if err != nil {
 			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start timestamp: %v", err)
 		}
 		hasStart = true
-		startMillis = startSec + "000"
+		startMillis = start
 	}
 	if endInput != "" {
-		endSec, err := parseTimeFlagSec(endInput, "end")
+		end, err := parseTimeFlagMillis(endInput, "end")
 		if err != nil {
 			return "", "", err
 		}
-		endSecInt, err = strconv.ParseInt(endSec, 10, 64)
+		endMs, err = strconv.ParseInt(end, 10, 64)
 		if err != nil {
 			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end timestamp: %v", err)
 		}
 		hasEnd = true
-		endMillis = endSec + "000"
+		endMillis = end
 	}
-	if hasStart && hasEnd && startSecInt > endSecInt {
+	if hasStart && hasEnd && startMs > endMs {
 		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "start time must be earlier than or equal to end time")
 	}
 	return startMillis, endMillis, nil
@@ -90,33 +90,33 @@ func parseTimeRangeRFC3339(input string) (string, string, error) {
 	}
 
 	var startTime, endTime string
-	var startSecInt, endSecInt int64
+	var startMs, endMs int64
 	var hasStart, hasEnd bool
 	if startInput != "" {
-		startSec, err := parseTimeFlagSec(startInput, "start")
+		start, err := parseTimeFlagMillis(startInput, "start")
 		if err != nil {
 			return "", "", err
 		}
-		startSecInt, err = strconv.ParseInt(startSec, 10, 64)
+		startMs, err = strconv.ParseInt(start, 10, 64)
 		if err != nil {
 			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start timestamp: %v", err)
 		}
 		hasStart = true
-		startTime = time.Unix(startSecInt, 0).Local().Format(time.RFC3339)
+		startTime = time.UnixMilli(startMs).Local().Format(time.RFC3339Nano)
 	}
 	if endInput != "" {
-		endSec, err := parseTimeFlagSec(endInput, "end")
+		end, err := parseTimeFlagMillis(endInput, "end")
 		if err != nil {
 			return "", "", err
 		}
-		endSecInt, err = strconv.ParseInt(endSec, 10, 64)
+		endMs, err = strconv.ParseInt(end, 10, 64)
 		if err != nil {
 			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end timestamp: %v", err)
 		}
 		hasEnd = true
-		endTime = time.Unix(endSecInt, 0).Local().Format(time.RFC3339)
+		endTime = time.UnixMilli(endMs).Local().Format(time.RFC3339Nano)
 	}
-	if hasStart && hasEnd && startSecInt > endSecInt {
+	if hasStart && hasEnd && startMs > endMs {
 		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "start time must be earlier than or equal to end time")
 	}
 	return startTime, endTime, nil
