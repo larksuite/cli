@@ -235,6 +235,11 @@ func TestAppsExport_StreamsNonJSONArchive(t *testing.T) {
 		{"binary octet-stream", "binary/octet-stream"},
 		{"force-download", "application/force-download"},
 		{"absent", ""},
+		// The JSON token appears in the header but the media type is not JSON.
+		// A substring match would refuse these archives as error envelopes.
+		{"json-prefixed subtype", "application/jsonfoo"},
+		{"text json-prefixed subtype", "text/jsonfoo"},
+		{"json inside a parameter", `application/octet-stream; note="application/json"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := chdirTemp(t)

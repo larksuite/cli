@@ -15,7 +15,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/charcheck"
-	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -309,21 +308,27 @@ func rejectExportErrorEnvelope(rctx *common.RuntimeContext, resp *http.Response)
 // cover: a gateway may label the error envelope application/problem+json
 // (RFC 9457) or a vendor type like application/vnd.lark.error+json.
 //
+// The media type is parsed and matched exactly rather than by substring. The
+// shared helper's strings.Contains would classify a genuine archive as JSON
+// whenever the token appears anywhere in the header — application/jsonfoo, or a
+// parameter such as application/octet-stream; note="application/json" — and the
+// archive would then be refused as an error envelope. That is the same
+// mislabelling failure this file just removed, mirrored.
+//
 // Only the envelope check needs this, so it stays local rather than widening the
 // shared helper, whose other callers are outside this change. Broadening the
 // match cannot resurrect the whitelist bug this file just fixed — no archive
 // format carries a "+json" suffix, so no real zip is caught by it.
 func isExportJSONContentType(ct string) bool {
-	if client.IsJSONContentType(ct) {
-		return true
-	}
 	mediaType, _, err := mime.ParseMediaType(ct)
 	if err != nil {
 		// An unparseable Content-Type is not a credible JSON envelope label;
 		// leave it to stream as the archive.
 		return false
 	}
-	return strings.HasSuffix(mediaType, "+json")
+	return mediaType == "application/json" ||
+		mediaType == "text/json" ||
+		strings.HasSuffix(mediaType, "+json")
 }
 
 // exportAppNotPublishedCode is the business code the gateway returns (as an
