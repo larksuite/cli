@@ -2,9 +2,17 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Launcher shipped as scripts/run.js of the internal package. The package
-// carries one prebuilt binary per platform under bin/, so nothing is
-// downloaded at install time; this picks the right one and hands over.
+// Launcher shipped as scripts/run.js of the internal package and of the
+// merge-request preview package. Nothing is downloaded at install time; this
+// finds the prebuilt binary for the host and hands over. It looks in two
+// places, in this order:
+//
+// - bin/lark-cli-<goos>-<goarch> inside this package. The preview package
+//   ships every binary it was built for this way, because it is installed
+//   from a tarball and cannot depend on published packages.
+// - bin/lark-cli in the platform package <this package>-<goos>-<goarch>,
+//   which the released package names as an optionalDependency restricted by
+//   os/cpu, so npm installs exactly the one for the host.
 //
 // `lark-cli update` is handled here instead of by the binary. The binary is
 // the unmodified public build, whose updater knows only the public
@@ -22,6 +30,9 @@ const https = require("https");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
+// Node's process.platform / process.arch to GoReleaser's GOOS / GOARCH. The
+// packer imports these to derive the platform packages' os/cpu fields, so the
+// two ends of the install agree on what a platform is called.
 const PLATFORMS = { darwin: "darwin", linux: "linux", win32: "windows" };
 const ARCHES = { x64: "amd64", arm64: "arm64", riscv64: "riscv64" };
 const SKILLS_SOURCE = "https://open.feishu.cn/lark-cli/skills/regular";
@@ -30,15 +41,84 @@ const FETCH_TIMEOUT_MS = 15000;
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 const SKILLS_TIMEOUT_MS = 5 * 60 * 1000;
 
-/**
- * File name of the binary for a platform, or null when the package has no
- * build for it.
- */
-function binaryName(platform = process.platform, arch = process.arch) {
+/** GoReleaser's <goos>-<goarch> key for a platform, or null when there is no build for it. */
+function platformKey(platform = process.platform, arch = process.arch) {
   const goos = PLATFORMS[platform];
   const goarch = ARCHES[arch];
   if (!goos || !goarch) return null;
+  return `${goos}-${goarch}`;
+}
+
+/** File name of the binary inside a platform package: bin/lark-cli, .exe on Windows. */
+function platformBinaryFile(goos) {
+  return `lark-cli${goos === "windows" ? ".exe" : ""}`;
+}
+
+/** File name of a binary bundled under bin/ next to others: lark-cli-<goos>-<goarch>[.exe]. */
+function bundledBinaryFile(goos, goarch) {
   return `lark-cli-${goos}-${goarch}${goos === "windows" ? ".exe" : ""}`;
+}
+
+/**
+ * File name of the bundled binary for a platform, or null when the package
+ * has no build for it.
+ */
+function binaryName(platform = process.platform, arch = process.arch) {
+  const key = platformKey(platform, arch);
+  return key && bundledBinaryFile(PLATFORMS[platform], ARCHES[arch]);
+}
+
+/** Name of the platform package that carries the binary for <pkgName> on a platform. */
+function platformPackageName(pkgName, platform = process.platform, arch = process.arch) {
+  const key = platformKey(platform, arch);
+  return key ? `${pkgName}-${key}` : null;
+}
+
+/**
+ * Path of the binary to run: the bundled one when the package carries it,
+ * otherwise the one in the installed platform package. Null when neither is
+ * present, with `reason` saying which was looked for.
+ *
+ * The platform package must be this package's version. npm guarantees that
+ * on the normal path, because the optionalDependency is pinned exactly; but
+ * optional means npm may skip it (--omit=optional, an .npmrc `omit`, a fetch
+ * failure), and a platform package added by hand afterwards is its own
+ * global root that later launcher upgrades do not carry along. Running it
+ * anyway would make `--version` report the binary's version while `update`
+ * compares the launcher's, so a mismatch is an error naming the fix.
+ */
+function resolveBinary(pkg, packageDir, platform = process.platform, arch = process.arch) {
+  const bundled = binaryName(platform, arch);
+  if (!bundled) return { binary: null, reason: `${pkg.name} has no build for ${platform}-${arch}` };
+  const bundledPath = path.join(packageDir, "bin", bundled);
+  if (fs.existsSync(bundledPath)) return { binary: bundledPath };
+
+  const platformPackage = platformPackageName(pkg.name, platform, arch);
+  let manifestPath;
+  try {
+    manifestPath = require.resolve(`${platformPackage}/package.json`, { paths: [packageDir] });
+  } catch (_) {
+    manifestPath = null;
+  }
+  const registry = pkg.publishConfig && pkg.publishConfig.registry;
+  // Only a package that declares platform packages can be told to install
+  // one; a preview build bundles its binaries and has no such package.
+  const expectsPlatformPackage = Boolean(pkg.optionalDependencies && pkg.optionalDependencies[platformPackage]);
+  const hint = expectsPlatformPackage && registry
+    ? `\nIt is installed with the package as an optional dependency; if the install skipped optional dependencies, run:\n  npm install -g ${platformPackage}@${pkg.version} --registry ${registry}`
+    : "";
+
+  if (manifestPath) {
+    const installed = JSON.parse(fs.readFileSync(manifestPath, "utf8")).version;
+    if (installed !== pkg.version) {
+      return { binary: null, reason: `${pkg.name}@${pkg.version} needs ${platformPackage}@${pkg.version}, but ${installed} is installed.${hint}` };
+    }
+    const inPackage = path.join(path.dirname(manifestPath), "bin", platformBinaryFile(PLATFORMS[platform]));
+    if (fs.existsSync(inPackage)) return { binary: inPackage };
+  }
+
+  const looked = expectsPlatformPackage ? `neither bin/${bundled} nor the platform package ${platformPackage} is installed` : `bin/${bundled} is not in the package`;
+  return { binary: null, reason: `${pkg.name} has no binary for ${platform}-${arch}: ${looked}.${hint}` };
 }
 
 /** Orders X.Y.Z and X.Y.Z-<pre> versions; a prerelease sorts before its release. */
@@ -209,10 +289,9 @@ function main() {
     return;
   }
 
-  const name = binaryName();
-  const binary = name && path.join(packageDir, "bin", name);
-  if (!binary || !fs.existsSync(binary)) {
-    console.error(`${pkg.name} has no binary for ${process.platform}-${process.arch}`);
+  const { binary, reason } = resolveBinary(pkg, packageDir);
+  if (!binary) {
+    console.error(reason);
     process.exit(1);
   }
 
@@ -229,6 +308,6 @@ function main() {
   process.exit(result.status === null ? 1 : result.status);
 }
 
-module.exports = { binaryName, compareVersions, isPnpmInstall, leavePreviewHint, parseUpdateArgs, update };
+module.exports = { ARCHES, PLATFORMS, binaryName, bundledBinaryFile, compareVersions, isPnpmInstall, leavePreviewHint, parseUpdateArgs, platformBinaryFile, platformKey, platformPackageName, resolveBinary, update };
 
 if (require.main === module) main();

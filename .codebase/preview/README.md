@@ -21,9 +21,13 @@ instead.
 
 ## What a preview is, and is not
 
-The layout is the internal release package's, reused through `stageTree` in
+The layout is the bundled one staged by `stageTree` in
 `../release/build-registry-package.js`: binaries under `bin/`, the same
-launcher and postinstall. Four things differ.
+launcher and postinstall. The released package no longer ships this way — it
+splits the binaries into one platform package per `<goos>-<goarch>` that the
+launcher resolves as an optional dependency — but a preview is installed from
+a tarball and cannot depend on published packages, so it keeps every binary
+inside and prunes after install. Four more things differ.
 
 **The binaries come from `go build`, not GoReleaser.** A preview needs two
 platforms and neither a changelog nor checksums. Add platforms in

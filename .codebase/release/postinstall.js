@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Shipped as scripts/postinstall.js of the internal package. The package
-// carries a binary for every platform; this removes the ones this machine
-// cannot run so a global install does not keep seven copies. Best effort only:
-// a failure here must never fail the install, the launcher only needs its own
-// binary to be present.
+// Shipped as scripts/postinstall.js of the merge-request preview package,
+// which carries a binary for every platform it was built for under bin/. This
+// removes the ones this machine cannot run so a global install does not keep
+// the copies. The released launcher package has no bin/ and does not ship
+// this: its binary arrives as a platform package npm already selected. Best
+// effort only: a failure here must never fail the install, the launcher only
+// needs its own binary to be present.
 
 const fs = require("fs");
 const path = require("path");

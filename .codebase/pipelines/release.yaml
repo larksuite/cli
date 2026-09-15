@@ -30,9 +30,14 @@
 #   previous internal package; an unsigned CLI started from a terminal is not
 #   Gatekeeper-checked, but this is a gap against the public release, not
 #   parity, and no job pretends otherwise.
-# - The binaries travel inside the npm package (bin/) instead of being
-#   downloaded at install time, so installs need no GitHub access and can never
-#   pick up the public build. .codebase/release/run.js is the launcher.
+# - The binaries travel through the registry instead of being downloaded at
+#   install time, so installs need no GitHub access and can never pick up the
+#   public build. They ship as one platform package per binary
+#   (<package>-<goos>-<goarch>, restricted by os/cpu) that the launcher
+#   package names as optionalDependencies, so npm installs exactly one binary
+#   and a cold install costs about 14 MB, not the whole matrix.
+#   .codebase/release/run.js is the launcher. publish sends the platform
+#   packages first and the launcher last.
 # - The binaries are the unchanged public build; their self-update path knows
 #   only the public package, so the launcher implements `lark-cli update`
 #   itself against the internal registry (npm installs only) and syncs the
@@ -137,9 +142,10 @@ jobs:
         inputs:
           name: release-candidate
           path: ./
-      # `npm install -g` of the tarball, postinstall included, into a scratch
-      # prefix; the installed CLI must report the candidate version, keep only
-      # this platform's binary and route `lark-cli update` through the launcher.
+      # `npm install -g` of the launcher tarball together with this platform's
+      # package tarball into a scratch prefix; the installed CLI must report the
+      # candidate version, have exactly this platform's binary and route
+      # `lark-cli update` through the launcher.
       - name: Install the candidate and run it
         commands:
           - bash .codebase/release/verify.sh release-candidate
@@ -172,7 +178,8 @@ jobs:
           - 'if [ -z "${BNPM_AUTH_TOKEN:-}" ]; then echo "BNPM_AUTH_TOKEN did not reach this job; configure it under Pipelines -> Variables and push a new tag."; exit 1; fi'
           - echo "publish token present"
       # Re-verifies the tag against the candidate's source commit, then applies
-      # the publication policy and publishes the verified tarball as-is.
+      # the publication policy to every package of the candidate and publishes
+      # the verified tarballs as-is, platform packages first.
       - name: Publish the verified candidate
         commands:
           - bash .codebase/release/publish.sh release-candidate

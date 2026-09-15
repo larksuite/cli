@@ -7,7 +7,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { derivePackageJson, selectBinaries, stagePackage } = require("./build-registry-package.js");
+const { deriveLauncherPackageJson, derivePlatformPackageJson, selectBinaries, stagePackages, stageTree } = require("./build-registry-package.js");
 
 const BASE = {
   name: "@larksuite/cli",
@@ -23,33 +23,63 @@ const BASE = {
   dependencies: { "@clack/prompts": "^1.2.0" },
 };
 const TARGET = { name: "@example/larksuite-cli", registry: "https://registry.example" };
+const LINUX = { goos: "linux", goarch: "amd64", target: "lark-cli-linux-amd64" };
+const WINDOWS = { goos: "windows", goarch: "arm64", target: "lark-cli-windows-arm64.exe" };
 
-describe("derivePackageJson", () => {
-  it("builds the internal package from the public one", () => {
-    const pkg = derivePackageJson(BASE, TARGET);
+describe("deriveLauncherPackageJson", () => {
+  it("builds the launcher package from the public one, depending optionally on every platform package", () => {
+    const pkg = deriveLauncherPackageJson(BASE, { ...TARGET, binaries: [LINUX, WINDOWS] });
     assert.deepEqual(pkg, {
       name: "@example/larksuite-cli",
       version: "1.2.3",
       description: "The official CLI",
       bin: { "lark-cli": "scripts/run.js" },
-      scripts: { postinstall: "node scripts/postinstall.js" },
       os: BASE.os,
       cpu: BASE.cpu,
       engines: BASE.engines,
       license: "MIT",
       publishConfig: { registry: "https://registry.example" },
-      files: ["bin/", "scripts/run.js", "scripts/postinstall.js", "CHANGELOG.md"],
+      optionalDependencies: {
+        "@example/larksuite-cli-linux-amd64": "1.2.3",
+        "@example/larksuite-cli-windows-arm64": "1.2.3",
+      },
+      files: ["scripts/run.js", "CHANGELOG.md"],
     });
+    assert.equal(pkg.scripts, undefined, "no postinstall: nothing to prune");
   });
 
   it("strips a trailing slash from the registry", () => {
-    assert.equal(derivePackageJson(BASE, { ...TARGET, registry: "https://registry.example/" }).publishConfig.registry, "https://registry.example");
+    assert.equal(deriveLauncherPackageJson(BASE, { ...TARGET, registry: "https://registry.example/", binaries: [LINUX] }).publishConfig.registry, "https://registry.example");
   });
 
-  it("rejects an unscoped name, a non-https registry and an incomplete source", () => {
-    assert.throws(() => derivePackageJson(BASE, { name: "lark cli", registry: TARGET.registry }), /scoped npm name/);
-    assert.throws(() => derivePackageJson(BASE, { name: TARGET.name, registry: "http://registry.example" }), /https/);
-    assert.throws(() => derivePackageJson({ ...BASE, version: undefined }, TARGET), /lacks version/);
+  it("rejects an unscoped name, a non-https registry, an incomplete source and no platforms", () => {
+    assert.throws(() => deriveLauncherPackageJson(BASE, { name: "lark cli", registry: TARGET.registry, binaries: [LINUX] }), /scoped npm name/);
+    assert.throws(() => deriveLauncherPackageJson(BASE, { ...TARGET, registry: "http://registry.example", binaries: [LINUX] }), /https/);
+    assert.throws(() => deriveLauncherPackageJson({ ...BASE, version: undefined }, { ...TARGET, binaries: [LINUX] }), /lacks version/);
+    assert.throws(() => deriveLauncherPackageJson(BASE, { ...TARGET, binaries: [] }), /at least one platform/);
+  });
+});
+
+describe("derivePlatformPackageJson", () => {
+  it("restricts the package to its platform in npm's terms and gives it no bin", () => {
+    const pkg = derivePlatformPackageJson(BASE, { ...TARGET, binary: WINDOWS });
+    assert.deepEqual(pkg, {
+      name: "@example/larksuite-cli-windows-arm64",
+      version: "1.2.3",
+      description: "The official CLI (windows/arm64 binary for @example/larksuite-cli)",
+      os: ["win32"],
+      cpu: ["arm64"],
+      engines: BASE.engines,
+      license: "MIT",
+      publishConfig: { registry: "https://registry.example" },
+      files: ["bin/"],
+    });
+    assert.deepEqual(derivePlatformPackageJson(BASE, { ...TARGET, binary: LINUX }).os, ["linux"]);
+    assert.deepEqual(derivePlatformPackageJson(BASE, { ...TARGET, binary: LINUX }).cpu, ["x64"]);
+  });
+
+  it("refuses a platform the launcher cannot name", () => {
+    assert.throws(() => derivePlatformPackageJson(BASE, { ...TARGET, binary: { goos: "freebsd", goarch: "amd64" } }), /no npm os\/cpu name for freebsd\/amd64/);
   });
 });
 
@@ -83,33 +113,74 @@ function makeRepo(artifacts, { skipBinary } = {}) {
     fs.writeFileSync(path.join(root, a.path), `bytes of ${a.path}`);
   }
   fs.writeFileSync(path.join(dist, "artifacts.json"), JSON.stringify(artifacts));
-  return { root, dist, out: path.join(root, "release-candidate", "package") };
+  return { root, dist, out: path.join(root, "release-candidate", "stage") };
 }
 
-describe("stagePackage", () => {
-  it("assembles bin/, the launcher, postinstall and the root files", () => {
-    const { root, dist, out } = makeRepo(ARTIFACTS);
-    const staged = stagePackage({ repoRoot: root, distDir: dist, stageDir: out, ...TARGET });
+const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 
-    assert.deepEqual(staged.binaries, ["lark-cli-linux-amd64", "lark-cli-windows-arm64.exe"]);
-    assert.equal(fs.readFileSync(path.join(out, "bin", "lark-cli-linux-amd64"), "utf8"), "bytes of dist/lark-cli_linux_amd64_v1/lark-cli");
+describe("stagePackages", () => {
+  it("stages one tree per platform and the launcher last", () => {
+    const { root, dist, out } = makeRepo(ARTIFACTS);
+    const staged = stagePackages({ repoRoot: root, distDir: dist, stageRoot: out, ...TARGET });
+
+    assert.deepEqual(
+      staged.map((t) => t.packageJson.name),
+      ["@example/larksuite-cli-linux-amd64", "@example/larksuite-cli-windows-arm64", "@example/larksuite-cli"],
+      "platform packages first, launcher last"
+    );
+    assert.deepEqual(staged.map((t) => t.kind), ["platform", "platform", "launcher"], "each tree says what it is");
+
+    const linux = path.join(out, "linux-amd64");
+    assert.equal(fs.readFileSync(path.join(linux, "bin", "lark-cli"), "utf8"), "bytes of dist/lark-cli_linux_amd64_v1/lark-cli");
     if (process.platform !== "win32") {
-      assert.equal(fs.statSync(path.join(out, "bin", "lark-cli-linux-amd64")).mode & 0o111, 0o111, "binaries are executable");
+      assert.equal(fs.statSync(path.join(linux, "bin", "lark-cli")).mode & 0o111, 0o111, "binaries are executable");
     }
-    assert.equal(fs.readFileSync(path.join(out, "scripts", "run.js"), "utf8"), fs.readFileSync(path.join(__dirname, "run.js"), "utf8"));
-    assert.equal(fs.readFileSync(path.join(out, "scripts", "postinstall.js"), "utf8"), fs.readFileSync(path.join(__dirname, "postinstall.js"), "utf8"));
-    for (const f of ["CHANGELOG.md", "LICENSE", "README.md"]) assert.ok(fs.existsSync(path.join(out, f)), `${f} staged`);
-    assert.equal(JSON.parse(fs.readFileSync(path.join(out, "package.json"), "utf8")).name, TARGET.name);
+    assert.ok(fs.existsSync(path.join(linux, "LICENSE")), "platform package carries the license");
+    assert.deepEqual(fs.readdirSync(linux).sort(), ["LICENSE", "bin", "package.json"], "nothing else travels with a binary");
+    assert.equal(readJson(path.join(linux, "package.json")).name, "@example/larksuite-cli-linux-amd64");
+
+    assert.ok(fs.existsSync(path.join(out, "windows-arm64", "bin", "lark-cli.exe")), "windows binary keeps its extension");
+
+    const launcher = path.join(out, "launcher");
+    assert.equal(fs.readFileSync(path.join(launcher, "scripts", "run.js"), "utf8"), fs.readFileSync(path.join(__dirname, "run.js"), "utf8"));
+    assert.ok(!fs.existsSync(path.join(launcher, "bin")), "the launcher ships no binary");
+    assert.ok(!fs.existsSync(path.join(launcher, "scripts", "postinstall.js")), "the launcher ships no postinstall");
+    for (const f of ["CHANGELOG.md", "LICENSE", "README.md"]) assert.ok(fs.existsSync(path.join(launcher, f)), `${f} staged`);
+    const launcherJson = readJson(path.join(launcher, "package.json"));
+    assert.equal(launcherJson.name, TARGET.name);
+    assert.deepEqual(Object.keys(launcherJson.optionalDependencies), ["@example/larksuite-cli-linux-amd64", "@example/larksuite-cli-windows-arm64"]);
   });
 
   it("fails when artifacts.json lists a binary that is missing", () => {
     const { root, dist, out } = makeRepo(ARTIFACTS, { skipBinary: "dist/lark-cli_windows_arm64_v8.0/lark-cli.exe" });
-    assert.throws(() => stagePackage({ repoRoot: root, distDir: dist, stageDir: out, ...TARGET }), /windows_arm64.*missing/);
+    assert.throws(() => stagePackages({ repoRoot: root, distDir: dist, stageRoot: out, ...TARGET }), /windows_arm64.*missing/);
   });
 
   it("fails without artifacts.json", () => {
     const { root, dist, out } = makeRepo(ARTIFACTS);
     fs.rmSync(path.join(dist, "artifacts.json"));
-    assert.throws(() => stagePackage({ repoRoot: root, distDir: dist, stageDir: out, ...TARGET }), /artifacts\.json/);
+    assert.throws(() => stagePackages({ repoRoot: root, distDir: dist, stageRoot: out, ...TARGET }), /artifacts\.json/);
+  });
+});
+
+// The preview package still bundles its binaries; this is the layout it
+// stages through.
+describe("stageTree", () => {
+  it("assembles bin/, the launcher, postinstall and the root files", () => {
+    const { root, out } = makeRepo(ARTIFACTS);
+    const binaries = selectBinaries(ARTIFACTS).map((b) => ({ ...b, source: path.join(root, b.path) }));
+    const staged = stageTree({ repoRoot: root, stageDir: out, binaries, packageJson: { name: "@example/preview", version: "1.2.3-x.g1" } });
+
+    assert.deepEqual(staged.binaries, ["lark-cli-linux-amd64", "lark-cli-windows-arm64.exe"]);
+    assert.equal(fs.readFileSync(path.join(out, "bin", "lark-cli-linux-amd64"), "utf8"), "bytes of dist/lark-cli_linux_amd64_v1/lark-cli");
+    assert.equal(fs.readFileSync(path.join(out, "scripts", "postinstall.js"), "utf8"), fs.readFileSync(path.join(__dirname, "postinstall.js"), "utf8"));
+    for (const f of ["CHANGELOG.md", "LICENSE", "README.md"]) assert.ok(fs.existsSync(path.join(out, f)), `${f} staged`);
+    assert.equal(readJson(path.join(out, "package.json")).name, "@example/preview");
+  });
+
+  it("fails when a binary is missing", () => {
+    const { root, out } = makeRepo(ARTIFACTS, { skipBinary: "dist/lark-cli_windows_arm64_v8.0/lark-cli.exe" });
+    const binaries = selectBinaries(ARTIFACTS).map((b) => ({ ...b, source: path.join(root, b.path) }));
+    assert.throws(() => stageTree({ repoRoot: root, stageDir: out, binaries, packageJson: {} }), /windows-arm64.*missing/);
   });
 });

@@ -84,7 +84,10 @@ case "$1 $2" in
       echo "npm error code E404" >&2; echo "npm error 404 No match found for version" >&2; exit 1
     fi
     if [[ "$3" == "dist.integrity" ]]; then echo "\"${STUB_INTEGRITY}\""; exit 0; fi
-    if [[ "$3" == dist-tags.* ]]; then [[ -n "${STUB_CURRENT:-}" ]] && echo "\"${STUB_CURRENT}\""; exit 0; fi
+    if [[ "$3" == dist-tags.* ]]; then
+      if [[ "${STUB_PACKAGE_MISSING:-}" == 1 ]]; then echo "npm error code E404" >&2; echo "npm error 404 Not Found - GET .../$2" >&2; exit 1; fi
+      [[ -n "${STUB_CURRENT:-}" ]] && echo "\"${STUB_CURRENT}\""; exit 0
+    fi
     echo "stub npm: unexpected view $*" >&2; exit 2
     ;;
   "publish "*|"dist-tag add") exit 0 ;;
@@ -102,12 +105,19 @@ registry_version() { bash .codebase/release/registry-version.sh @byted/larksuite
 if STUB_VIEW_ERROR=1 registry_version >/dev/null 2>&1; then fail "registry probe: auth failure was read as an answer"; fi
 
 # --- publish decisions against the beta candidate built from main HEAD ---
+# The candidate is the launcher plus two platform packages; every package
+# goes through the same policy, platform packages first.
 integrity="sha512-candidate"
 write_candidate() {
   rm -rf release-candidate && mkdir release-candidate
   printf 'tarball' > release-candidate/byted-larksuite-cli-1.2.4-beta.1.tgz
+  printf 'linux' > release-candidate/byted-larksuite-cli-linux-amd64-1.2.4-beta.1.tgz
+  printf 'darwin' > release-candidate/byted-larksuite-cli-darwin-arm64-1.2.4-beta.1.tgz
   cat > release-candidate/manifest.json <<JSON
-{"name":"@byted/larksuite-cli","version":"1.2.4-beta.1","registry":"https://bnpm.byted.org","filename":"byted-larksuite-cli-1.2.4-beta.1.tgz","integrity":"$integrity","tag":"v1.2.4-beta.1","source_sha":"$1","channel":"beta"}
+{"name":"@byted/larksuite-cli","version":"1.2.4-beta.1","registry":"https://bnpm.byted.org","filename":"byted-larksuite-cli-1.2.4-beta.1.tgz","integrity":"$integrity","tag":"v1.2.4-beta.1","source_sha":"$1","channel":"beta",
+ "platform_packages":[
+  {"name":"@byted/larksuite-cli-darwin-arm64","goos":"darwin","goarch":"arm64","filename":"byted-larksuite-cli-darwin-arm64-1.2.4-beta.1.tgz","integrity":"$integrity"},
+  {"name":"@byted/larksuite-cli-linux-amd64","goos":"linux","goarch":"amd64","filename":"byted-larksuite-cli-linux-amd64-1.2.4-beta.1.tgz","integrity":"$integrity"}]}
 JSON
 }
 publish() { bash .codebase/release/publish.sh release-candidate; }
@@ -116,15 +126,35 @@ head_sha="$(git rev-parse HEAD)"
 # missing version, beta channel older -> published as beta, then integrity confirmed
 write_candidate "$head_sha"; : > "$NPM_STUB_LOG"
 BNPM_AUTH_TOKEN=secret-token STUB_EXISTS=0 STUB_CURRENT=1.2.3 STUB_INTEGRITY="$integrity" publish >/dev/null || fail "publish of a missing beta version failed"
-grep -Fxq "publish ./release-candidate/byted-larksuite-cli-1.2.4-beta.1.tgz --registry https://bnpm.byted.org --tag beta" "$NPM_STUB_LOG" || fail "expected npm publish with --tag beta, got: $(cat "$NPM_STUB_LOG")"
-grep -q "dist-tags.beta" "$NPM_STUB_LOG" || fail "publish did not consult the beta dist-tag"
+published="$(grep '^publish ' "$NPM_STUB_LOG")"
+expected_publish="publish ./release-candidate/byted-larksuite-cli-darwin-arm64-1.2.4-beta.1.tgz --registry https://bnpm.byted.org --tag beta
+publish ./release-candidate/byted-larksuite-cli-linux-amd64-1.2.4-beta.1.tgz --registry https://bnpm.byted.org --tag beta
+publish ./release-candidate/byted-larksuite-cli-1.2.4-beta.1.tgz --registry https://bnpm.byted.org --tag beta"
+[[ "$published" == "$expected_publish" ]] || fail "expected every package published with --tag beta, platform packages first, got: $(cat "$NPM_STUB_LOG")"
+grep -q "view @byted/larksuite-cli-linux-amd64 dist-tags.beta" "$NPM_STUB_LOG" || fail "publish did not consult the beta dist-tag of a platform package"
+grep -q "view @byted/larksuite-cli dist-tags.beta" "$NPM_STUB_LOG" || fail "publish did not consult the beta dist-tag of the launcher"
 grep -q "^dist-tag add" "$NPM_STUB_LOG" && fail "publish must not also move the dist-tag by hand"
 
 # existing identical version, channel behind -> dist-tag advanced, no publish
 write_candidate "$head_sha"; : > "$NPM_STUB_LOG"
 BNPM_AUTH_TOKEN=secret-token STUB_EXISTS=1 STUB_CURRENT=1.2.3 STUB_INTEGRITY="$integrity" publish >/dev/null || fail "advancing the dist-tag failed"
-grep -Fxq "dist-tag add @byted/larksuite-cli@1.2.4-beta.1 beta --registry https://bnpm.byted.org" "$NPM_STUB_LOG" || fail "expected dist-tag add, got: $(cat "$NPM_STUB_LOG")"
+for pkg in @byted/larksuite-cli-darwin-arm64 @byted/larksuite-cli-linux-amd64 @byted/larksuite-cli; do
+  grep -Fxq "dist-tag add ${pkg}@1.2.4-beta.1 beta --registry https://bnpm.byted.org" "$NPM_STUB_LOG" || fail "expected dist-tag add for ${pkg}, got: $(cat "$NPM_STUB_LOG")"
+done
 grep -q "^publish " "$NPM_STUB_LOG" && fail "an identical existing version must not be published again"
+
+# package not on the registry at all: the dist-tag probe answers 404 -> an empty channel,
+# first publication of every package
+write_candidate "$head_sha"; : > "$NPM_STUB_LOG"
+BNPM_AUTH_TOKEN=secret-token STUB_EXISTS=0 STUB_PACKAGE_MISSING=1 STUB_INTEGRITY="$integrity" publish >/dev/null || fail "first publication of a new package failed"
+[[ "$(grep -c '^publish ' "$NPM_STUB_LOG")" == 3 ]] || fail "first publication must publish every package, got: $(cat "$NPM_STUB_LOG")"
+
+# existing version but the dist-tag probe answers 404 -> transient error, refused; reading it
+# as an empty channel would let advance-tag move the channel backwards
+write_candidate "$head_sha"; : > "$NPM_STUB_LOG"
+if err="$(BNPM_AUTH_TOKEN=secret-token STUB_EXISTS=1 STUB_PACKAGE_MISSING=1 STUB_INTEGRITY="$integrity" publish 2>&1)"; then fail "a 404 dist-tag probe for an existing version was accepted"; fi
+[[ "$err" == *"Could not determine the beta dist-tag"* ]] || fail "existing version + 404 dist-tag: unexpected error: $err"
+grep -Eq "^(publish |dist-tag add)" "$NPM_STUB_LOG" && fail "a 404 dist-tag probe for an existing version must not touch the registry"
 
 # existing version with different bytes -> refused, nothing sent
 write_candidate "$head_sha"; : > "$NPM_STUB_LOG"
@@ -148,8 +178,21 @@ if env -u BNPM_AUTH_TOKEN STUB_EXISTS=0 STUB_CURRENT=1.2.3 publish >/dev/null 2>
 
 # a candidate built for another distribution is refused
 write_candidate "$head_sha"; : > "$NPM_STUB_LOG"
-sed -i.bak 's#@byted/larksuite-cli#@other/lark-cli#' release-candidate/manifest.json
+sed -i.bak 's#"name":"@byted/larksuite-cli"#"name":"@other/lark-cli"#' release-candidate/manifest.json
 if BNPM_AUTH_TOKEN=secret-token STUB_EXISTS=0 STUB_CURRENT=1.2.3 publish >/dev/null 2>&1; then fail "a candidate for another package was accepted"; fi
 [[ ! -s "$NPM_STUB_LOG" ]] || fail "a foreign candidate must be refused before any registry call"
+
+# a platform package not named after the launcher is refused
+write_candidate "$head_sha"; : > "$NPM_STUB_LOG"
+sed -i.bak 's#"name":"@byted/larksuite-cli-linux-amd64"#"name":"@byted/other-linux-amd64"#' release-candidate/manifest.json
+if err="$(BNPM_AUTH_TOKEN=secret-token STUB_EXISTS=0 STUB_CURRENT=1.2.3 publish 2>&1)"; then fail "a stray platform package was accepted"; fi
+[[ "$err" == *"not named after @byted/larksuite-cli"* ]] || fail "stray platform package: unexpected error: $err"
+[[ ! -s "$NPM_STUB_LOG" ]] || fail "a stray platform package must be refused before any registry call"
+
+# a platform tarball missing from the candidate is refused
+write_candidate "$head_sha"; : > "$NPM_STUB_LOG"
+rm release-candidate/byted-larksuite-cli-linux-amd64-1.2.4-beta.1.tgz
+if BNPM_AUTH_TOKEN=secret-token STUB_EXISTS=0 STUB_CURRENT=1.2.3 publish >/dev/null 2>&1; then fail "a candidate missing a platform tarball was accepted"; fi
+[[ ! -s "$NPM_STUB_LOG" ]] || fail "a missing tarball must be refused before any registry call"
 
 echo "internal release scripts tests passed"

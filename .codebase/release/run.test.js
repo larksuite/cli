@@ -9,23 +9,35 @@ const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 
-const { binaryName, compareVersions, isPnpmInstall, leavePreviewHint, parseUpdateArgs } = require("./run.js");
+const { binaryName, compareVersions, isPnpmInstall, leavePreviewHint, parseUpdateArgs, platformPackageName, resolveBinary } = require("./run.js");
 const { prune } = require("./postinstall.js");
 
 const POSIX = process.platform !== "win32";
 const NAME = "@example/larksuite-cli";
 
+const FAKE_BINARY = '#!/bin/sh\necho "args:$*"\necho "notifier:$LARKSUITE_CLI_NO_UPDATE_NOTIFIER"\nexit 3\n';
+
 // A package tree as npm would lay it out, with this platform's binary replaced
 // by a shell script that reports what it received, plus fake npm / npx /
-// lark-cli commands on PATH that record their calls.
-function makePackage({ version = "1.0.93", registry = "https://registry.example", root = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-")), packageJson } = {}) {
+// lark-cli commands on PATH that record their calls. By default the binary
+// is bundled under bin/ as the preview package ships it; `layout: "platform"`
+// puts it in a sibling platform package instead, as the released package
+// installs it.
+function makePackage({ version = "1.0.93", registry = "https://registry.example", root = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-")), packageJson, layout = "bundled" } = {}) {
   const pkgDir = path.join(root, "node_modules", ...NAME.split("/"));
   fs.mkdirSync(path.join(pkgDir, "scripts"), { recursive: true });
   fs.mkdirSync(path.join(pkgDir, "bin"));
   for (const f of ["run.js", "postinstall.js"]) fs.copyFileSync(path.join(__dirname, f), path.join(pkgDir, "scripts", f));
   fs.writeFileSync(path.join(pkgDir, "package.json"), JSON.stringify(packageJson || { name: NAME, version, publishConfig: { registry } }));
-  fs.writeFileSync(path.join(pkgDir, "bin", binaryName()), '#!/bin/sh\necho "args:$*"\necho "notifier:$LARKSUITE_CLI_NO_UPDATE_NOTIFIER"\nexit 3\n', { mode: 0o755 });
-  fs.writeFileSync(path.join(pkgDir, "bin", "lark-cli-windows-arm64.exe"), "other platform");
+  if (layout === "platform") {
+    const platformDir = path.join(root, "node_modules", ...platformPackageName(NAME).split("/"));
+    fs.mkdirSync(path.join(platformDir, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(platformDir, "package.json"), JSON.stringify({ name: platformPackageName(NAME), version }));
+    fs.writeFileSync(path.join(platformDir, "bin", "lark-cli"), FAKE_BINARY, { mode: 0o755 });
+  } else {
+    fs.writeFileSync(path.join(pkgDir, "bin", binaryName()), FAKE_BINARY, { mode: 0o755 });
+    fs.writeFileSync(path.join(pkgDir, "bin", "lark-cli-windows-arm64.exe"), "other platform");
+  }
 
   const fakeBin = path.join(root, "fakebin");
   fs.mkdirSync(fakeBin);
@@ -88,6 +100,67 @@ describe("binaryName", () => {
   });
 });
 
+describe("platformPackageName", () => {
+  it("derives the platform package from the launcher package name", () => {
+    assert.equal(platformPackageName("@example/larksuite-cli", "darwin", "arm64"), "@example/larksuite-cli-darwin-arm64");
+    assert.equal(platformPackageName("@example/larksuite-cli", "win32", "x64"), "@example/larksuite-cli-windows-amd64");
+    assert.equal(platformPackageName("@example/larksuite-cli", "freebsd", "x64"), null);
+  });
+});
+
+describe("resolveBinary", () => {
+  const pkg = {
+    name: NAME,
+    version: "1.0.93",
+    publishConfig: { registry: "https://registry.example" },
+    optionalDependencies: { [platformPackageName(NAME)]: "1.0.93" },
+  };
+
+  it("prefers a bundled binary", () => {
+    const { pkgDir } = makePackage();
+    assert.equal(resolveBinary(pkg, pkgDir).binary, path.join(pkgDir, "bin", binaryName()));
+  });
+
+  it("falls back to the installed platform package", () => {
+    const { root, pkgDir } = makePackage({ layout: "platform" });
+    // require.resolve returns the real path; macOS puts tmpdir behind a symlink.
+    assert.equal(fs.realpathSync(resolveBinary(pkg, pkgDir).binary), fs.realpathSync(path.join(root, "node_modules", ...platformPackageName(NAME).split("/"), "bin", "lark-cli")));
+  });
+
+  it("names both places it looked and the install command when neither has the binary", () => {
+    const { pkgDir } = makePackage({ layout: "platform" });
+    fs.rmSync(path.join(pkgDir, "..", path.basename(platformPackageName(NAME))), { recursive: true });
+    const { binary, reason } = resolveBinary(pkg, pkgDir);
+    assert.equal(binary, null);
+    assert.match(reason, new RegExp(`bin/${binaryName()}`));
+    assert.match(reason, new RegExp(`npm install -g ${platformPackageName(NAME)}@1.0.93 --registry https://registry.example`));
+  });
+
+  it("refuses a platform package of another version and names the install command", () => {
+    const { root, pkgDir } = makePackage({ layout: "platform" });
+    const manifest = path.join(root, "node_modules", ...platformPackageName(NAME).split("/"), "package.json");
+    fs.writeFileSync(manifest, JSON.stringify({ name: platformPackageName(NAME), version: "1.0.92" }));
+    const { binary, reason } = resolveBinary(pkg, pkgDir);
+    assert.equal(binary, null);
+    assert.match(reason, /needs @example\/larksuite-cli-.*@1\.0\.93, but 1\.0\.92 is installed/);
+    assert.match(reason, new RegExp(`npm install -g ${platformPackageName(NAME)}@1.0.93`));
+  });
+
+  it("does not tell a preview build, which declares no platform packages, to install one", () => {
+    const { pkgDir } = makePackage();
+    fs.rmSync(path.join(pkgDir, "bin", binaryName()));
+    const preview = { name: NAME, version: "1.0.93-mr7.gabc1234", larkPreview: {} };
+    const { reason } = resolveBinary(preview, pkgDir);
+    assert.match(reason, /is not in the package/);
+    assert.doesNotMatch(reason, /npm install|platform package/);
+  });
+
+  it("says so when there is no build for the platform at all", () => {
+    const { pkgDir } = makePackage();
+    assert.match(resolveBinary(pkg, pkgDir, "freebsd", "x64").reason, /no build for freebsd-x64/);
+  });
+});
+
 describe("compareVersions", () => {
   it("orders releases and prereleases like npm does", () => {
     assert.equal(compareVersions("1.0.93", "1.0.94"), -1);
@@ -127,12 +200,19 @@ describe("run.js launcher", { skip: !POSIX && "shell-script stand-ins need a POS
     assert.match(launch(makePackage(), [], { LARKSUITE_CLI_NO_UPDATE_NOTIFIER: "" }).stdout, /^notifier:$/m);
   });
 
+  it("runs the binary from the platform package when none is bundled", () => {
+    const result = launch(makePackage({ layout: "platform" }), ["whoami"]);
+    assert.equal(result.status, 3);
+    assert.match(result.stdout, /^args:whoami$/m);
+  });
+
   it("fails clearly when the package has no binary for the host", () => {
-    const pkg = makePackage();
+    const pkg = makePackage({ packageJson: { name: NAME, version: "1.0.93", publishConfig: { registry: "https://registry.example" }, optionalDependencies: { [platformPackageName(NAME)]: "1.0.93" } } });
     fs.rmSync(path.join(pkg.pkgDir, "bin", binaryName()));
     const result = launch(pkg, ["--version"]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /has no binary for/);
+    assert.match(result.stderr, /npm install -g @example\/larksuite-cli-.*@1\.0\.93 --registry https:\/\/registry\.example/);
   });
 });
 

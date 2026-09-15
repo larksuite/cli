@@ -13,11 +13,11 @@ The public counterpart is `.github/workflows/release.yml`.
 | `config.env` | Package name, registry and Go toolchain pin. The only place these are spelled out. |
 | `source.sh` | Tag equals the package version (public `scripts/release-preflight.js`, unchanged) and the tagged commit is in `origin/main` — stable **and** beta. Re-run by every stage. |
 | `build.sh` | The unchanged public GoReleaser build, a toolchain check of every binary, then packaging. |
-| `build-registry-package.js` | Derives the internal `package.json` from the public one and ships every GoReleaser binary under `bin/`. |
-| `run.js` | Launcher shipped as the package's `scripts/run.js`: runs `bin/lark-cli-<os>-<arch>`, implements `lark-cli update` against the internal registry, silences the public update notifiers. |
-| `postinstall.js` | Best-effort: deletes the binaries for other platforms after install. |
-| `verify.sh` | `npm install -g` of the tarball into a scratch prefix; the CLI must report the candidate version, keep one binary, and route `update` through the launcher. |
-| `publish.sh` | Publication policy from the public `scripts/release-publish-policy.js`, then `npm publish` of the verified tarball. |
+| `build-registry-package.js` | Derives the internal `package.json` files from the public one: the launcher package plus one platform package per GoReleaser binary. |
+| `run.js` | Launcher shipped as the package's `scripts/run.js`: runs the binary from the installed platform package (or from `bin/` when bundled, as in a preview), implements `lark-cli update` against the internal registry, silences the public update notifiers. |
+| `postinstall.js` | Preview package only: best-effort deletion of the bundled binaries for other platforms after install. |
+| `verify.sh` | `npm install -g` of the launcher tarball with this platform's package tarball into a scratch prefix; the CLI must report the candidate version, have exactly one binary, and route `update` through the launcher. |
+| `publish.sh` | Publication policy from the public `scripts/release-publish-policy.js` applied to every package, then `npm publish` of the verified tarballs, platform packages first. |
 | `registry-version.sh` | Tells "version exists" from "version missing" from "could not tell" on the registry. |
 | `*.test.*` | Contract test of the pipeline, behavioural tests of the scripts against a real git repository and a stub `npm`, launcher tests. Run by the internal CI's `script_test` job. |
 
@@ -26,6 +26,52 @@ internal is the package it ships in, the registry it is published to, and the
 launcher in front of the binary. Versions and channels are the public ones:
 `vX.Y.Z-beta.N` publishes under the `beta` dist-tag, `vX.Y.Z` under `latest`,
 and the package version is the source `package.json` version.
+
+## Package layout
+
+One release is eight packages at the same version:
+
+| Package | Contents | Installed when |
+| --- | --- | --- |
+| `@byted/larksuite-cli` | `scripts/run.js` (the launcher), `CHANGELOG.md`, `LICENSE`, `README.md`; no binary. Names every platform package below as an `optionalDependency` pinned to its own version. | always |
+| `@byted/larksuite-cli-<goos>-<goarch>` | `bin/lark-cli` (or `lark-cli.exe`) for one platform, `os`/`cpu` restricted to it. Seven of them: `darwin`/`linux`/`windows` × `amd64`/`arm64`, plus `linux-riscv64`. | only on a matching host |
+
+npm resolves the optional dependencies, keeps the one whose `os`/`cpu` match
+the host, and skips the rest without downloading them. A cold `npm install -g`
+therefore fetches the launcher (tens of KB) and one binary (about 14 MB
+compressed) rather than every platform, and needs no postinstall to prune. The
+launcher finds the binary by resolving `<its own name>-<goos>-<goarch>` from
+its install location, which also works when the two packages are installed
+from tarballs side by side, as `verify.sh` does before anything is published.
+
+This is the layout esbuild, swc and Biome use for the same problem. The
+platform packages have no `bin` field: the launcher owns the `lark-cli`
+command, and two links to the same name would fight.
+
+### Installing without npm
+
+A platform package is a plain tarball with the binary at `package/bin/lark-cli`,
+so an environment without Node — a cold-started sandbox, a container image —
+can take it straight from the registry:
+
+```bash
+version=1.0.95   # or: curl -fsSL https://bnpm.byted.org/@byted/larksuite-cli/latest | jq -r .version
+curl -fsSL "https://bnpm.byted.org/@byted/larksuite-cli-linux-amd64/-/larksuite-cli-linux-amd64-${version}.tgz" \
+  | tar -xz --strip-components=2 -C /usr/local/bin package/bin/lark-cli
+# The public binary's own updater and update notices point at @larksuite/cli
+# on npmjs.org; the launcher normally switches them off. Do it here instead.
+export LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1
+export LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1
+lark-cli --version
+```
+
+The binary is the public build and runs on its own, but there is no launcher
+in front of it: **do not run `lark-cli update` on such an install.** That
+command is the binary's own updater, which knows only `@larksuite/cli` on
+npmjs.org and would install the public build over this one (or fail without
+npm). Upgrading is fetching the next version's tarball the same way. The two
+variables above silence the update and skills notices that would otherwise
+point at the public release; set them in the image or profile.
 
 ## One-time setup (before the first tag)
 
@@ -87,8 +133,8 @@ artifact lives a week and nothing else in the run has to be repeated.
 | preflight | Tag/version mismatch, commit not in main, version already published | Fix the source and tag a new version. |
 | build | Proxy, metadata or toolchain download failure | Re-run the job. A code or configuration failure needs a new version. |
 | verify_install | The candidate does not install or reports the wrong version | The build is wrong; fix and tag a new version. Nothing was published. |
-| publish | Network or registry error | Re-run the job: an already published identical tarball only has its dist-tag advanced, a channel that moved ahead is left alone. |
-| publish | "different package integrity" | The registry holds other bytes under this version. Ship a new version. |
+| publish | Network or registry error | Re-run the job: every already published identical tarball only has its dist-tag advanced, a channel that moved ahead is left alone, and the packages not yet published are published. Platform packages go first, so a launcher on the registry always has its platform packages there too. |
+| publish | "different package integrity" | The registry holds other bytes under this version for the named package. Ship a new version. |
 
 A published version is never overwritten or unpublished; a fix is the next
 version. A tag whose run failed before `publish` can be deleted and re-created
@@ -124,10 +170,19 @@ a dirty tree.
   earlier hand-built `@byted/lark-cli@1.0.42-byted.1`. A CLI started from a
   terminal is not Gatekeeper-checked, but this is not parity with the public
   release.
-- **Package size.** Seven binaries make the tarball roughly 100 MB; the
-  largest package published so far is 44 MB. bnpm's limit is not documented,
-  so the first publish is the test. If it is refused, split the package per
-  platform.
+- **Optional dependencies are optional.** An install run with
+  `--omit=optional` (or `--no-optional`) gets the launcher without a binary.
+  The launcher then names the platform package and the `npm install -g`
+  command that adds it; it does not download anything itself. A platform
+  package added that way is its own global root and is not replaced when the
+  launcher is next upgraded under the same setting, so the launcher refuses
+  to run a platform package whose version is not its own and names the
+  install command again, rather than reporting one version from `--version`
+  and another from `update`.
+- **Eight publishes per release.** The registry sees eight packages instead
+  of one; `preflight` only checks the launcher for "already published", and
+  `publish` reconciles each package independently, so a partial run is
+  completed by re-running the job rather than tagging again.
 - **Concurrency.** Codebase has no concurrency groups. Two release tags
   pushed at once could race on the dist-tag; the publish policy re-reads the
   channel right before publishing, which narrows but does not close the window.
