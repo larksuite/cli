@@ -224,6 +224,30 @@ function extractZipWindows(archivePath, destDir) {
   }
 }
 
+// Stage in the destination directory so rename is an atomic same-filesystem
+// replacement. If copy/chmod fails—or the process is interrupted before the
+// rename—the existing binary remains untouched instead of becoming partial.
+function replaceBinaryAtomically(source, destination) {
+  const stat = fs.statSync(source);
+  if (!stat.isFile() || stat.size === 0) {
+    throw new Error(`Extracted binary is empty or not a regular file: ${source}`);
+  }
+
+  const staged = path.join(
+    path.dirname(destination),
+    `.${path.basename(destination)}.${process.pid}.${crypto
+      .randomBytes(6)
+      .toString("hex")}.tmp`
+  );
+  try {
+    fs.copyFileSync(source, staged, fs.constants.COPYFILE_EXCL);
+    fs.chmodSync(staged, 0o755);
+    fs.renameSync(staged, destination);
+  } finally {
+    fs.rmSync(staged, { force: true });
+  }
+}
+
 function install() {
   const mirrorUrls = getMirrorUrls(process.env);
   const downloadUrls = [GITHUB_URL, ...mirrorUrls];
@@ -265,8 +289,7 @@ function install() {
     const binaryName = NAME + (isWindows ? ".exe" : "");
     const extractedBinary = path.join(tmpDir, binaryName);
 
-    fs.copyFileSync(extractedBinary, dest);
-    fs.chmodSync(dest, 0o755);
+    replaceBinaryAtomically(extractedBinary, dest);
     console.log(`${NAME} v${VERSION} installed successfully`);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -361,4 +384,13 @@ if (require.main === module) {
   }
 }
 
-module.exports = { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls, resolveReleaseAsset, curlSupportsSslRevokeBestEffort, isCurlVersionSupported };
+module.exports = {
+  getExpectedChecksum,
+  verifyChecksum,
+  assertAllowedHost,
+  resolveMirrorUrls,
+  resolveReleaseAsset,
+  curlSupportsSslRevokeBestEffort,
+  isCurlVersionSupported,
+  replaceBinaryAtomically,
+};
