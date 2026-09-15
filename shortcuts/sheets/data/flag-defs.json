@@ -3438,6 +3438,13 @@
         "desc": "Filter to a single chart reference_id"
       },
       {
+        "name": "only-thumbnail",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Return only the chart thumbnail image (sized to match the chart in the sheet) instead of the chart snapshot config"
+      },
+      {
         "name": "dry-run",
         "kind": "system",
         "type": "bool",
