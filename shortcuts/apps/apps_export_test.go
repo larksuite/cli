@@ -181,6 +181,46 @@ func TestAppsExport_AnnotatesNotPublishedEnvelope(t *testing.T) {
 	}
 }
 
+// TestAppsExport_RejectsStructuredSuffixJSONEnvelope covers the "+json"
+// structured suffix (RFC 6839): client.IsJSONContentType matches only the exact
+// application/json and text/json strings, so an envelope labelled
+// application/problem+json (RFC 9457) or a vendor type would otherwise slip past
+// the gate and be written to the caller's .zip. The envelope must still reach the
+// classifier and keep its typed error.
+func TestAppsExport_RejectsStructuredSuffixJSONEnvelope(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		contentType string
+	}{
+		{"problem+json", "application/problem+json"},
+		{"vendor json", "application/vnd.lark.error+json"},
+		{"problem+json with charset", "application/problem+json; charset=utf-8"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := chdirTemp(t)
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			reg.Register(archiveStub("app_x", 200,
+				[]byte(`{"code":40901,"msg":"app not published"}`), tc.contentType, ""))
+
+			err := runAppsShortcut(t, AppsExport,
+				[]string{"+export", "--app-id", "app_x", "--output", "src.zip", "--as", "user"}, factory, stdout)
+			if err == nil {
+				t.Fatalf("execute err = nil, want the %s envelope surfaced as an error", tc.contentType)
+			}
+			var apiErr *errs.APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("err = %T %v, want *errs.APIError carrying the envelope code", err, err)
+			}
+			if apiErr.Code != 40901 {
+				t.Errorf("code = %d, want 40901 from the envelope", apiErr.Code)
+			}
+			if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
+				t.Errorf("src.zip was written; a %s error envelope must never become a product", tc.contentType)
+			}
+		})
+	}
+}
+
 // TestAppsExport_StreamsNonJSONArchive documents the loosened gate: only a JSON
 // Content-Type is treated as the gateway's HTTP-200 error envelope, so a real
 // archive served under any other type — a non-standard binary label a gateway or

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strings"
 
@@ -277,7 +278,7 @@ func classifyExportErr(err error) error {
 // type.
 func rejectExportErrorEnvelope(rctx *common.RuntimeContext, resp *http.Response) error {
 	contentType := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type")))
-	if !client.IsJSONContentType(contentType) {
+	if !isExportJSONContentType(contentType) {
 		return nil
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxExportEnvelopeBytes))
@@ -301,6 +302,28 @@ func rejectExportErrorEnvelope(rctx *common.RuntimeContext, resp *http.Response)
 	}
 	return errs.NewInternalError(errs.SubtypeInvalidResponse,
 		"export returned a JSON body instead of an archive")
+}
+
+// isExportJSONContentType reports whether ct is a JSON media type, including the
+// structured "+json" suffix (RFC 6839) that client.IsJSONContentType does not
+// cover: a gateway may label the error envelope application/problem+json
+// (RFC 9457) or a vendor type like application/vnd.lark.error+json.
+//
+// Only the envelope check needs this, so it stays local rather than widening the
+// shared helper, whose other callers are outside this change. Broadening the
+// match cannot resurrect the whitelist bug this file just fixed — no archive
+// format carries a "+json" suffix, so no real zip is caught by it.
+func isExportJSONContentType(ct string) bool {
+	if client.IsJSONContentType(ct) {
+		return true
+	}
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		// An unparseable Content-Type is not a credible JSON envelope label;
+		// leave it to stream as the archive.
+		return false
+	}
+	return strings.HasSuffix(mediaType, "+json")
 }
 
 // exportAppNotPublishedCode is the business code the gateway returns (as an
