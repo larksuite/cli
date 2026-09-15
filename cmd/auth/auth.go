@@ -66,6 +66,7 @@ func newCmdAuth(f *cmdutil.Factory, projector *recovery.Projector, registered []
 	cmd.AddCommand(newCmdAuthList(f, nil, projector))
 	cmd.AddCommand(newCmdAuthCheck(f, nil, projector))
 	cmd.AddCommand(NewCmdAuthQRCode(f, nil))
+	cmd.AddCommand(NewCmdAuthSetToken(f, nil))
 	return cmd
 }
 
