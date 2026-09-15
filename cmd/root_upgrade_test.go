@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -154,7 +155,7 @@ func TestOfferRootUpgradeDoesNotReadCacheWhenUpdateIsConcealed(t *testing.T) {
 	t.Cleanup(func() { checkRootCachedUpdate = oldCheck })
 
 	cacheReads := 0
-	checkRootCachedUpdate = func(string) *update.UpdateInfo {
+	checkRootCachedUpdate = func(context.Context, string) *update.UpdateInfo {
 		cacheReads++
 		return &update.UpdateInfo{Current: "1.0.0", Latest: "2.0.0"}
 	}
