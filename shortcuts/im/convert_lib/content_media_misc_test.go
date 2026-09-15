@@ -95,6 +95,88 @@ func TestFormatMessageItem(t *testing.T) {
 	}
 }
 
+func TestFormatMessageItemProjectsSyncToChatInfo(t *testing.T) {
+	info := map[string]interface{}{
+		"type":               float64(1),
+		"thread_id":          "omt_origin",
+		"related_message_id": "om_source",
+		"future_field":       "ignored",
+	}
+	got := FormatMessageItem(map[string]interface{}{
+		"message_id":        "om_current",
+		"msg_type":          "text",
+		"sync_to_chat_info": info,
+	}, nil)
+	if got["synced_from_thread_reply"] != "om_source" {
+		t.Fatalf("synced_from_thread_reply = %#v, want om_source", got["synced_from_thread_reply"])
+	}
+	if got["synced_from_thread"] != "omt_origin" {
+		t.Fatalf("synced_from_thread = %#v, want omt_origin", got["synced_from_thread"])
+	}
+	if _, ok := got["synced_to_chat_message"]; ok {
+		t.Fatalf("synced_to_chat_message = %#v, want omitted on the chat copy", got["synced_to_chat_message"])
+	}
+	if _, ok := got["sync_to_chat_info"]; ok {
+		t.Fatalf("nested sync_to_chat_info leaked into output: %#v", got["sync_to_chat_info"])
+	}
+}
+
+func TestFormatMessageItemProjectsSyncToChatInfoOnThreadReply(t *testing.T) {
+	got := FormatMessageItem(map[string]interface{}{
+		"message_id": "om_reply",
+		"msg_type":   "text",
+		"sync_to_chat_info": map[string]interface{}{
+			"type":               float64(2),
+			"related_message_id": "om_copy",
+		},
+	}, nil)
+	if got["synced_to_chat_message"] != "om_copy" {
+		t.Fatalf("synced_to_chat_message = %#v, want om_copy", got["synced_to_chat_message"])
+	}
+	for _, key := range []string{"synced_from_thread_reply", "synced_from_thread"} {
+		if _, ok := got[key]; ok {
+			t.Fatalf("%s = %#v, want omitted on the thread reply", key, got[key])
+		}
+	}
+}
+
+func TestFormatMessageItemOmitsUnusableSyncToChatInfo(t *testing.T) {
+	tests := []struct {
+		name string
+		info interface{}
+	}{
+		{name: "empty object", info: map[string]interface{}{}},
+		{name: "wrong known field type", info: map[string]interface{}{"type": "1", "related_message_id": "om_source"}},
+		{name: "unsupported type", info: map[string]interface{}{"type": float64(3), "related_message_id": "om_source"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatMessageItem(map[string]interface{}{
+				"message_id":        "om_current",
+				"msg_type":          "text",
+				"sync_to_chat_info": tt.info,
+			}, nil)
+			for _, key := range syncToChatOutputKeys {
+				if _, ok := got[key]; ok {
+					t.Fatalf("FormatMessageItem() retained unusable relation via %s: %#v", key, got[key])
+				}
+			}
+			if got["message_id"] != "om_current" {
+				t.Fatalf("FormatMessageItem() dropped containing message: %#v", got)
+			}
+		})
+	}
+}
+
+func TestFormatMessageItemOmitsMissingSyncToChatInfo(t *testing.T) {
+	got := FormatMessageItem(map[string]interface{}{"message_id": "om_legacy", "msg_type": "text"}, nil)
+	for _, key := range syncToChatOutputKeys {
+		if _, ok := got[key]; ok {
+			t.Fatalf("%s = %#v, want omitted", key, got[key])
+		}
+	}
+}
+
 func TestFormatMessageItem_UpdateTime_Present(t *testing.T) {
 	raw := map[string]interface{}{
 		"msg_type":    "text",
