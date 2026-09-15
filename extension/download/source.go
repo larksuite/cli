@@ -30,7 +30,8 @@ func ImmutableSource(transport Transport) Source {
 	return Source{transport: transport, representation: Immutable}
 }
 
-// MutableSource requires a strong ETag before combining responses.
+// MutableSource requires a strong ETag before combining responses or splicing
+// a response onto an existing local prefix.
 func MutableSource(transport Transport) Source {
 	return Source{transport: transport, representation: Mutable}
 }
@@ -43,8 +44,12 @@ type representationSession struct {
 	hasValidator bool
 }
 
-func newRepresentationSession(source Source, first contentRange, header http.Header) *representationSession {
+func newRepresentationSession(source Source, first contentRange, header http.Header, expectedValidator string) *representationSession {
 	validator, hasValidator := strongETag(header)
+	if expectedValidator != "" {
+		validator = expectedValidator
+		hasValidator = true
+	}
 	return &representationSession{
 		transport:    source.transport,
 		contract:     source.representation,
