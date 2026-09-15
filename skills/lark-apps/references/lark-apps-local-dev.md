@@ -7,7 +7,8 @@
 新建还是修改已有，由上方入口（SKILL.md「选择开发路径」）判定；进到本地流程后按分支走：
 
 - **新建**：从 `+create` 开始走下面的端到端流程。
-- **已有应用**（本地还没有源码）：跳过 `+create`，先按下方「存量应用入口」拿 `app_id`，再 `+init`（或 `+git-credential-init` + `git clone`）把它拉到本地，然后照常开发。
+- **已有应用，本地还没有源码**：跳过 `+create`，先按下方「存量应用入口」拿 `app_id`，再 `+init`（或 `+git-credential-init` + `git clone`）把它拉到本地，然后照常开发。
+- **已有应用，本地已经有项目目录**（用户自己 clone 的、或上次会话留下的）：不要 `+create`、也不要另起新目录，先做下方「接管已有仓库前先核对事实」，再按「改完代码后部署上线」继续。
 
 ## 端到端流程（新建应用）
 
@@ -93,7 +94,70 @@ lark-cli apps +release-create --app-id app_xxx
 
 `+init` 是推荐便捷入口；想逐步手动控制时，先 `+git-credential-init` 拿 `repository_url`，再用原生 `git clone` / `git checkout sprint/default`。
 
-**`+init` 完成后必须执行**：`cat <project-path>/.agents/skills/plugin-guide/SKILL.md`，读取仓库插件指引。该文件包含插件目录、实例配置规则和调用代码生成方式——不读就无法正确集成插件能力。文件不存在则跳过。
+**`+init` 完成后必须执行**（前提是已按下方「`+init` 耗时、超时与成功门禁」确认成功）：先 `ls <project-path>/.agents/skills/` 看有哪些项目 guide；`coding-guide/SKILL.md` 是项目编码规范，写任何代码前先读；`cat <project-path>/.agents/skills/plugin-guide/SKILL.md` 读取仓库插件指引，该文件包含插件目录、实例配置规则和调用代码生成方式——不读就无法正确集成插件能力。其余 guide 按任务读取。目录或文件不存在则跳过（html 与部分 frontend 脚手架不带这套 guide）。
+
+## `+init` 耗时、超时与成功门禁
+
+`+init` 是长耗时命令，内部依次做：签发 Git 凭证 → `git clone` → 切到 `sprint/default` → 生成项目代码（含拉取模板与安装依赖）→ 提交并推送 → 拉取本地环境变量。"生成项目代码"占绝大部分时间且完全依赖网络；命令没有内部超时，耗时上限由网络决定。
+
+实测参考（macOS、公司内网、npm 缓存已预热）：full_stack 新建约 40-50 秒，frontend 约 20 秒，html 约 10 秒，已有 full_stack 应用全新 clone 约 50 秒；冷 npm 缓存（需下载约 160 MB 模板与依赖）实测约 100 秒，外网或弱网环境会再明显拉长。下文「执行方式」要求的 10 分钟，是按冷缓存耗时留出数倍余量的保守值。
+
+### 执行方式
+
+- `+init` 单独一次调用，不与其他命令串在同一条 shell 里；给它的工具超时至少 **10 分钟**（html 至少 5 分钟）。
+- 工具超时上限达不到 10 分钟时，改为后台执行并把 stdout/stderr 重定向到文件，然后在**同一轮里主动轮询**：每 15-30 秒 `sleep` 后检查进程是否退出、输出文件里有没有 envelope，直到拿到结果再继续。不要把等待交给宿主的"后台任务完成通知"然后结束回合——无头运行或没有这种机制的 agent 不会再被唤醒；会话结束后那个初始化进程既可能被连带终止，也可能变成无人看管的孤儿进程继续往目录写文件并提交推送（见「中断后的处置顺序」），两种结果都拿不到 envelope。进程仍在运行就继续等；"生成项目代码"阶段不会打印细粒度进度，stderr 长时间没有新行不等于卡死。
+- 同一目录、同一 app 同时只允许一次 `+init`。上一次被中断后不要立刻重跑，先按下方「中断后的处置顺序」确认没有残留进程。
+- stderr 的 `→` 进度行是正常输出，结果只看 stdout 的 JSON envelope。
+
+### 成功判定
+
+只有同时满足以下三点才算成功：退出码为 0；stdout 是 `ok: true` 的 JSON envelope；`data.scaffold` 为 `init`（新建空仓库）、`upgrade`（仓库已有代码）或 `already_initialized`。新建应用时 `committed` 与 `pushed` 应同为 `true`。
+
+没有拿到完整 envelope（超时被 kill、只看到进度行、进程被中断）一律按**未完成**处理，不是"可能成功了"。
+
+### 成功前禁止
+
+门禁未通过时，不要：写业务代码或手工创建脚手架文件；执行 `npm install` / `npm run dev`；`git add` / `git commit` / `git push`；`+release-create`；改用 `+git-credential-init` + `git clone` 的手动路径替代——新建应用的仓库只有一个 seed README，手动 clone 拿不到脚手架和 `.spark/meta.json`，后续开发与发布都会失去平台契约。
+
+### 通过后还要自己补的一步
+
+`+init` 的职责是把远端应用绑定到本地目录（凭证、clone、工作分支、平台元数据、平台受控文件、首次提交推送、环境变量），**装依赖和起服务都不在它的职责内**：空仓库路径下脚手架会顺手装一次且失败也不报错，已有仓库路径则完全不装。
+
+所以 full_stack / frontend 在开始开发前确认 `node_modules/` 存在且非空，缺失就自己 `npm install`，不要为此重跑 `+init`——已有仓库上重跑会触发平台文件同步并产生一次提交推送，代价远大于装依赖，而且它本来也不会帮你装。html 无此步。
+
+envelope 返回 `already_initialized`（常见于仓库是手动 `git clone` 来的）时尤其要确认这一步，因为那条路径不会走脚手架。
+
+### 中断后的处置顺序
+
+工具超时、进程被 kill、只看到进度行而没有 envelope 时，**先查进程再动目录**：
+
+1. `pgrep -fl <app_id>` 看有没有还在跑的 `lark-cli` / `npm` / Node 脚手架进程（排除你自己包着 app_id 的 shell）。外层 shell 被 kill 不代表它们停了，它们会继续跑几分钟并最终提交推送。
+2. 有进程在跑：每 15-30 秒查一次，**最多再等 5 分钟**，期间不要碰目录。它自己退出后目录往往是完整的，不必重跑。
+3. 超过 5 分钟仍在跑，或需要重跑：先清进程再动目录，否则残留进程会继续往同一路径写文件、抢着提交推送。
+
+```bash
+pkill -P <pid>; kill <pid>   # 对每个 pid：先杀子进程再杀它自己
+pgrep -fl <app_id>           # 必须为空，仍有残留就重复上一行
+```
+
+4. 再看目录：没有 `.spark/meta.json`，或有 meta 但工作树不干净、`git log` 没有初始化提交，都算半成品，删除**本次新建的**目录后重跑。只删本次新建的目录，不动用户原有目录。
+5. 重跑最多 2 次；仍失败就报告 app_id、`--dir`、退出码和 `error.hint`。
+
+### 失败与中断的处置
+
+| 现象 | 判定 | 动作 |
+|---|---|---|
+| 工具超时 / 进程被 kill / 没有 envelope；或重跑报 `--dir` 已存在且非空 | 未完成，目录里是上次的残留 | 按上面「中断后的处置顺序」执行：先查进程、等待或清理，再判定目录、删除本次新建的目录后重跑。不要把代码写进这个目录。 |
+| 本轮刚建的目录却返回 `scaffold=already_initialized` | 疑似半成品被短路 | 按上面「通过后还要自己补的一步」确认依赖，仓库本身完整就继续开发；目录明显是半成品才删掉重跑。 |
+| 退出非 0，错误含 `git push failed` | 脚手架已提交、未推送 | 不要重跑 `+init`（会被短路）。先看 `error.message` 里的 git 输出：non-fast-forward（远端有新提交）→ `git pull --rebase origin sprint/default` 后 `git push origin sprint/default`；认证失败 → 先 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 再 push。然后按核对清单继续。 |
+| 退出 0 但 `env_pulled=false` 且有 `env_pull_error` | 初始化成功、环境变量未拉到 | 不阻塞开发；启动前执行 `+env-pull`。 |
+| `failed_precondition`：`git` 或 `npx`（随 Node.js 安装）不在 PATH | 环境缺失 | 安装后重跑原命令，不改走其他路径。 |
+| 未登录、缺 scope（`missing_scope`）、凭证签发失败 | 认证问题 | 按 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 处理后重跑原命令。`+init` 是 write 风险、没有确认门禁，不会返回 exit 10。 |
+| `--dir` 报 `.spark/meta.json` 缺 `app_id` 或不可读 | 上次 `+init` 中断的残留 | 按「中断后的处置顺序」先查进程，再删除**本次新建的**目录重跑；这也是命令 hint 给的方向。 |
+| `--dir` 校验错误：软链、非目录、已属于另一个 app | 目录选择错误 | 换目录；绝不删用户目录来腾位置。 |
+| 生成项目代码阶段报错（网络、镜像源、模板或依赖拉取失败） | 外部工具失败 | 检查网络后删目录重跑一次；不要自己拼脚手架。 |
+
+任何一种失败都不要在未初始化的目录里继续写代码；停止时把 app_id、`--dir`、退出码、`error.hint` 和目录残留状态一起报告，等用户决定。
 
 ## Trigger guide 的项目边界
 
@@ -120,14 +184,15 @@ lark-cli apps +release-create --app-id app_xxx
 
 - 代码读写走原生 `git`；CLI 负责凭证、初始化、发布和数据库调试。不存在 `apps +pull` / `apps +push` / `apps code +read` 这类代码读写 shortcut，不要臆造。
 - 工作环境没有 `git` 时，先引导安装 Git（macOS 可用 `xcode-select --install` 或 `brew install git`；Linux 按发行版包管理器安装），安装后重试原 `+init` / git 命令；不要因此改走其他发布链路。
-- `+init` 会编排 `+git-credential-init`、`git clone`、切到 `sprint/default`、运行脚手架，并在有变更时提交/推送。
+- `+init` 会编排 `+git-credential-init`、`git clone`、切到 `sprint/default`、运行脚手架，并在有变更时提交/推送。 它是长耗时、无内部超时的命令，成功与否只看 stdout envelope，退出 0 也不代表依赖已装好；执行方式、超时和核对见「`+init` 耗时、超时与成功门禁」。
 - `+init --dir` 选目录：用户已预授权或表达"不要询问"（见 SKILL.md「预授权判定」）→ 按应用名派生 `./<app-name>` 直接传 `--dir`、不停问；否则先问用户用哪个目录再传。目标已存在/非空时回问换目录。
 - `sprint/default` 是工作分支；`main` 是发布态快照，由 `+release-create` 成功后服务端 fast-forward 推进；服务端护栏禁直推 `main`、拒 force-push、要求 `sprint/default` fast-forward。
 - 已拉到本地后，pull/push/diff/log 都用原生 git；云端 `sprint/default` 比本地新时，先 `git pull --rebase origin sprint/default`，解决冲突后再 push 和 publish。
 - `git clone` / `git pull` / `git push` 如果报认证失败、401/403、credential helper 缺失或 token 过期，优先重新执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 更新本地 Git 凭证，然后重试原 git 命令；刷新凭证也失败时，停止并向用户报告错误，不要换路；不要手动复制 token、不要把 token 拼进 remote URL。
 - 环境变量由脚手架在本地启动时处理；需要手动刷新时用 `+env-pull`。
+- full_stack / frontend 本地只用仓库的 `npm run dev` 启动（它会自动拉取本地环境变量，见 [`lark-apps-env-pull.md`](lark-apps-env-pull.md)），不要绕过它直接起子进程或直连后端端口——那样会丢掉运行时注入的用户身份，表现为未登录、接口 401 或首页 404。具体机制见项目 `.agents/skills/` 下的 coding-guide。
 - 资源型文件（图片、字体、音视频等）不要直接引用本地路径，也不要提交到 git 仓库或以 base64 内联到代码中。先通过 `lark-cli apps +file-upload --app-id <app_id> --file <local_path>` 上传到应用文件存储，拿到返回的远端 URL 后在代码中引用该 URL。详情读 [`lark-apps-file.md`](lark-apps-file.md)。上传返回的链接按 app 隔离，不同应用必须各自重新上传，不能跨应用复用同一链接。
-- DB 调试用 `+db-table-list` / `+db-table-get` / `+db-execute`；不要裸连数据库或自行拼连接串。
+- DB 调试用 `+db-table-list` / `+db-table-get` / `+db-execute`；不要裸连数据库或自行拼连接串。改了表结构或写了数据之后，用 `+db-table-get` 或只读 SELECT 独立回读一次；页面提示成功、接口返回 200 都不能代替回读。
 - DB 分 `dev` / `online`；使用 `--environment dev|online`，不要使用旧的 `--env`。只有确认应用已开启多环境时才引导 `--environment dev`；单环境应用省略 `--environment`（服务端选 online）或显式传 `--environment online`。在 dev 写入不能证明线上 handler 已验证。dev 的库结构变更要上线时，仍按应用发布链路走 `+release-create`，不要另造“数据库发布”步骤。
 - 存量单库应用需要 dev/online 多环境时，用 `+db-env-create --environment dev`。这是不可逆 high-risk 操作。
 - 只从 `+list` 看到 `is_published=true`，不能证明本地刚推送的代码已经部署；必须有本轮 `+release-get finished`。
@@ -141,6 +206,26 @@ lark-cli apps +list --keyword "应用名"
 ```
 
 拿到 `app_id` 后再 `+init` 或 `+git-credential-init`。
+
+### 接管已有仓库前先核对事实
+
+进入一个已存在的本地项目目录（用户自己 clone 的、或上次会话留下的）改代码之前，先把下面几项看一遍，再决定怎么动：
+
+1. `git status --porcelain`：有用户未提交或未跟踪的文件时，先摘要给用户并问怎么处理；不要为了"干净"自动 `git stash`、`git checkout -- .` 或覆盖这些改动。
+2. `git fetch origin` 后比较 `git rev-parse HEAD`、`origin/sprint/default`、`origin/main`：`origin/sprint/default` 领先本地，说明云端会话或其他协作者推过代码，先 `git log HEAD..origin/sprint/default --oneline` 看清是谁改了什么，再 `git pull --rebase origin sprint/default`；本地领先，说明有未推送的提交，发布前必须先 push；`origin/main` 是最近一次发布成功的快照，它与 `origin/sprint/default` 的差就是"已开发、未上线"的部分。
+3. `lark-cli apps +release-list --app-id <app_id> --status finished --page-size 1 --as user` 取最近一次**成功**发布的 `release_id`，再 `lark-cli apps +release-get --app-id <app_id> --release-id <release_id> --as user` 读它的 `commit_id`，和 `origin/main` 对照，确认线上跑的是哪个 commit；`commit_id` 未返回时只说明「线上版本未能确认」，不要猜。
+4. `.spark/meta.json` 的 `app_id` 与用户指认的应用一致；不一致说明目录属于另一个 app，停下确认，不要在里面继续。
+
+核对出分歧（用户有改动、远端领先、release 与分支对不上）时先报告再动手。沿用原应用的 app_id、数据、访问范围和发布历史；只有用户明确要求独立 Demo、重建或对照实验时才新建应用。
+
+## 与云端会话并存
+
+同一个 app 可以同时被本地开发和云端会话（[`lark-apps-cloud-dev.md`](lark-apps-cloud-dev.md)）修改：云端的改动由云端自己提交到该应用的远端仓库，你的 push 也进同一个远端，而 lark-cli 不提供任何互斥或冲突提示，改动何时到达远端只能以 `git fetch` 的结果为准。同一时段只让一方写代码：
+
+- 本地开发期间不要对同一个 app 发起 `+chat`；用户要切到云端生成时，先把本地改动 commit 并 push，再开始云端轮次。
+- 云端有轮次在跑（`+session-get` 的 `is_streaming=true` 或 `latest_turn.status=running`）时不要 push；等它 `completed` 后 `git fetch origin`，用 `git log HEAD..origin/sprint/default --oneline` 看清云端改了什么，再 `git pull --rebase origin sprint/default`。
+- 不确定云端有没有在改：`+session-list --app-id <app_id>` 找活跃会话，再用 `+session-get` 看状态；`git fetch` 后远端出现你没见过的提交，也一律按云端改动处理，不要覆盖。
+- 云端 turn `completed` 只说明那一轮生成结束；它的改动是否已经到 `origin/sprint/default`，以 `git fetch` 后看到的远端提交为准，不要假设。发布仍按「改完代码后部署上线」走。
 
 ## 何时不用
 
