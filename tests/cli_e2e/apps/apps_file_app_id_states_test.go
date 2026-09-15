@@ -104,3 +104,41 @@ func TestAppsFileAppIDNotFoundLive(t *testing.T) {
 	ok.AssertExitCode(t, 0)
 	ok.AssertStdoutStatus(t, true)
 }
+
+// TestAppsFileNoPermissionLive pins the one state that is genuinely a permission
+// problem, and must stay one.
+//
+// It is the mirror of the case above. Splitting "app not found" out of the shared
+// permission error is only correct if the real permission failure keeps reporting
+// as permission_denied / exit 3 — an over-correction that swept this into
+// not_found would tell a caller the app does not exist when it does, and would
+// hide the fact that access can actually be requested.
+//
+// Gated on its own fixture because it needs something the other cases do not: an
+// app that exists in the tenant and that the calling identity has no role on.
+func TestAppsFileNoPermissionLive(t *testing.T) {
+	if strings.TrimSpace(os.Getenv("LARKSUITE_CLI_CONFIG_DIR")) == "" {
+		t.Skip("FIXTURE: Set LARKSUITE_CLI_CONFIG_DIR to an isolated live-test config")
+	}
+	appID := strings.TrimSpace(os.Getenv("LARK_CLI_E2E_APPS_NO_PERMISSION_APP_ID"))
+	if appID == "" {
+		t.Skip("FIXTURE: Set LARK_CLI_E2E_APPS_NO_PERMISSION_APP_ID to an existing app the caller has no role on")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"apps", "+file-list", "--app-id", appID},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, 0, result.ExitCode, "an app without a role must not list files:\n%s", result.Stdout)
+
+	assert.Equal(t, "authorization", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
+	assert.Equal(t, "permission_denied", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
+	// Distinguishing this from the absent-app case is the whole point of the
+	// split, so assert they did not converge again.
+	assert.NotEqual(t, "not_found", gjson.Get(result.Stderr, "error.subtype").String(),
+		"a real permission failure must not be reported as a missing app:\n%s", result.Stderr)
+}
