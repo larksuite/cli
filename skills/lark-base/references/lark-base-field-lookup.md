@@ -12,15 +12,17 @@ When using `+field-update`, also pass `--yes`: field update is a high-risk `PUT`
 
 **Use Formula fields by default for cross-table references and aggregations.** Only use Lookup fields when the user explicitly requests a Lookup field. Formula is a strict superset of Lookup — anything Lookup can do, Formula can do with a single expression.
 
+An explicitly requested Lookup remains `type: "lookup"` during creation and repair; changing it to Formula requires the user's agreement to that type change.
+
 ## Usage
 
 When creating a lookup field, the Agent should:
 
-1. Get all table names: `lark-cli base +table-list --base-token <base>` — returns `items[].table_name`
+1. Locate the destination and source tables with `lark-cli base +table-list --base-token <base>` — returns `data.tables`.
 2. Get table structure: `lark-cli base +table-get --base-token <base> --table-id <table>` — returns `fields[]`
 3. If the lookup references other tables, also get those tables' structures
-4. Determine the four elements: from (source table), select (source field), where (filter), aggregate (aggregation)
-5. Construct the Lookup field JSON and submit it to create or update the field
+4. Determine the four elements: from (source table), select (source field), where (filter), aggregate (aggregation). Bind the requested counting or measurement object using the [aggregate rules](#section-4-aggregate-rules) before choosing `select` and `aggregate`.
+5. Construct the Lookup field JSON and submit it to the destination table. Create dependencies first.
 
 **Key constraints**:
 
@@ -71,7 +73,7 @@ Lookup and Link serve **different purposes**. Creating a Lookup does NOT require
 | Dimension | Link | Lookup | Formula |
 |-----------|------|--------|---------|
 | Purpose | Establish record relationships (read-write) | Pull and aggregate data from another table (read-only) | Compute values from expressions (read-only) |
-| When to use | "link" / "associate" / "bind" two tables | "look up" / "reference" / "aggregate" / "count" from another table | Calculations, text manipulation, conditional logic |
+| When to use | "link" / "associate" / "bind" two tables | Explicitly requested Lookup fields | Computed values, including cross-table references and aggregation, when no field type is specified |
 
 **Common mistake**: Creating a Link field just to create a Lookup. If two tables share a matching text/number field, Lookup can match directly — no Link required.
 
@@ -80,11 +82,10 @@ Lookup and Link serve **different purposes**. Creating a Lookup does NOT require
 ```
 What does the user need?
 ├─ "Link"/"associate"/"bind" records between tables → Link
-├─ "Look up"/"reference"/"aggregate"/"count" from another table → Lookup
+├─ Explicitly requests a Lookup field → Lookup
 │   ├─ Needs aggregation (sum/count/average)? → Lookup + aggregate
-│   └─ Just reference a value? → Lookup (aggregate = null)
-├─ Calculations/text manipulation within current table → Formula
-└─ Access linked record's field → Prefer Lookup (more intuitive), or Formula chain access
+│   └─ Just reference values? → Lookup (aggregate = raw_value)
+└─ Computed values without a specified field type → Formula (see the Formula guide)
 ```
 
 ---
@@ -106,11 +107,13 @@ filter condition:
 **With a Link field (most common)**: The match is between the **Link field** and the **target table's primary field**.
 
 ```
-Link is in the source table   → source.linkField matches current.primaryField
-Link is in the current table  → source.primaryField matches current.linkField
+Link is in the source table   → source.linkField intersects current.primaryField
+Link is in the current table  → source.primaryField intersects current.linkField
 ```
 
 **Without a Link field**: Two tables share a field with the same meaning — match directly.
+
+For membership in a linked relationship, use `intersects`: a row linked to multiple entities belongs to each. Use `==` only when the entire sets must match, not because current samples contain one link. The matching pair is independent of `select`; plain text-key equality remains exact.
 
 ### Where condition structure
 
@@ -220,11 +223,11 @@ When using `{ "type": "field_ref", "field": "..." }`, values from both sides are
 
 | Aggregate | Common user phrasing | Select field should be | Result type |
 |-----------|---------------------|----------------------|-------------|
-| `sum` | "total" / "sum" / "cumulative amount" | `number` field (e.g., amount) | Number |
+| `sum` | "sum of quantities/amounts" / "cumulative amount" | The numeric measure being summed | Number |
 | `average` | "average" / "mean" | `number` field | Number |
 | `max` | "maximum" / "latest" / "most recent" | `number` / `datetime` field | Same as source |
 | `min` | "minimum" / "earliest" | `number` / `datetime` field | Same as source |
-| `counta` | "count" / "how many" / "total number" | Any field | Number |
+| `counta` | "count non-blank values" | The field whose values are counted | Number |
 | `unique_counta` | "count distinct" / "how many different" | Field to deduplicate | Number |
 | `unique` | "list distinct" / "which ones" / "show different" | Field to display | List |
 | `raw_value` | "list all" / "show all values" (default) | Field to display | List |
@@ -234,6 +237,9 @@ When using `{ "type": "field_ref", "field": "..." }`, values from both sides are
 **Important**:
 - Enum values are **snake_case lowercase**: `sum` not `Sum`, `average` not `Average`
 - **Count is `counta`, NOT `count`** — this is the most common enum mistake
+- `counta` counts non-blank selected values. For occurrences of a named field, select that field. For record counts, prefer a non-blank single-valued schema field such as `auto_number` over optional display text; populated samples alone do not establish that guarantee. Repeated non-blank values still count separately.
+- Resolve the unit before aggregating: records, distinct entities/dates, or summed units. A “total” or “days” label alone does not choose `counta`, `unique_counta` or `sum`; clarify material ambiguity.
+- Use `unique_counta` only for distinct values, and `unique` only for a requested deduplicated list. Ordinary value retrieval uses `raw_value`, preserving repeated values.
 
 ---
 
@@ -273,7 +279,7 @@ How to handle multiple matching records?
 ├─ Sum → sum
 ├─ Average → average
 ├─ Maximum / minimum → max / min
-├─ Count records → counta
+├─ Count non-blank selected values → counta
 └─ Count distinct → unique_counta
 ```
 
@@ -287,11 +293,13 @@ How to handle multiple matching records?
 
 **Scenario**: "Count artworks per exhibition", "Sum order amounts per project"
 
+The count example uses an `auto_number` field to count records even when their display names are blank.
+
 When the source table has a Link pointing to the current table:
 
 ```
 Exhibition table: ExhibitionName (primaryField) ← current table
-Artwork table: ArtworkName (primaryField), ← source table (Link is here)
+Artwork table: ArtworkID (auto_number, primaryField), ← source table (Link is here)
                   Exhibition (Link → Exhibition table)
 ```
 
@@ -300,7 +308,7 @@ Artwork table: ArtworkName (primaryField), ← source table (Link is here)
   "type": "lookup",
   "name": "Artwork Count",
   "from": "Artwork table",
-  "select": "ArtworkName",
+  "select": "ArtworkID",
   "aggregate": "counta",
   "where": {
     "logic": "and",
@@ -416,10 +424,10 @@ Combine row-level matching with fixed-value filtering using `logic: "and"`:
 
 ```json
 // Wrong: no where, every row pulls all records
-{ "type": "lookup", "name": "Artwork Count", "from": "Artwork table", "select": "ArtworkName", "aggregate": "counta" }
+{ "type": "lookup", "name": "Artwork Count", "from": "Artwork table", "select": "ArtworkID", "aggregate": "counta" }
 
 // Correct: where with Link relationship
-{ "type": "lookup", "name": "Artwork Count", "from": "Artwork table", "select": "ArtworkName", "aggregate": "counta",
+{ "type": "lookup", "name": "Artwork Count", "from": "Artwork table", "select": "ArtworkID", "aggregate": "counta",
   "where": { "logic": "and", "conditions": [
     ["Exhibition", "intersects", { "type": "field_ref", "field": "ExhibitionName" }]
   ]}}
@@ -471,7 +479,7 @@ Combine row-level matching with fixed-value filtering using `logic: "and"`:
 
 ### Mistake 6: Confusing Lookup with Link
 
-The user says "aggregate order amounts" — use Lookup, not Link. Link establishes relationships; Lookup retrieves and aggregates data.
+Link establishes editable record relationships. For computed aggregation, use Formula by default or Lookup when explicitly requested; a new Link is not a prerequisite.
 
 ### Mistake 7: Using object format instead of tuple for conditions
 

@@ -21,7 +21,7 @@ var BaseRecordGet = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		{Name: "record-id", Type: "string_array", Desc: "record ID (repeatable)"},
-		recordProjectionFieldFlag("field ID or name to project; repeat to keep only needed columns"),
+		recordProjectionFieldFlag("field ID or name to project; repeat to keep only needed columns; one field per occurrence; commas are not split"),
 		recordProjectionAliasFlag("fields"),
 		recordProjectionAliasFlag("field-names"),
 		{Name: "json", Desc: `JSON object with record_id_list, e.g. {"record_id_list":["rec_xxx"]}`},
