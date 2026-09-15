@@ -91,7 +91,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -193,7 +194,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet/get"
@@ -230,7 +232,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -311,7 +314,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -349,7 +353,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -428,7 +433,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet-sheet-filter/get"
@@ -498,7 +504,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -614,7 +621,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "read",

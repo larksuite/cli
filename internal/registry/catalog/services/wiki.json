@@ -160,7 +160,8 @@
             "wiki:space:write_only"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -392,7 +393,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space/get"
@@ -674,7 +676,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space/get_node"
@@ -836,7 +839,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space/list"
@@ -963,7 +967,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1110,7 +1115,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1227,7 +1233,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=wiki&resource=space.member&version=v2"
@@ -1493,7 +1500,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1812,7 +1820,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2077,7 +2086,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space-node/list"

@@ -214,7 +214,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -259,7 +260,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -469,7 +471,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/list"
@@ -563,7 +566,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -804,7 +808,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "read",
@@ -974,7 +979,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1250,7 +1256,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file-comment/list"
@@ -1353,7 +1360,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1673,7 +1681,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1777,7 +1786,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -2019,7 +2029,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file-comment-reply/list"
@@ -2207,7 +2218,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2367,7 +2379,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=auth&project=drive&resource=permission.member&version=v1"
@@ -2790,7 +2803,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -2961,7 +2975,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -3189,7 +3204,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/permission-public/get"
@@ -3530,7 +3546,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -3845,7 +3862,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "read",
@@ -3874,7 +3892,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -3898,7 +3917,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "write",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=subscription&project=drive&resource=user&version=v1"
@@ -3930,7 +3950,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=subscription_status&project=drive&resource=user&version=v1"
@@ -4073,7 +4094,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file-statistics/get"
@@ -4242,7 +4264,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=drive&resource=file.view_record&version=v1"
@@ -4315,7 +4338,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -4481,7 +4505,8 @@
             "drive:quota_detail:read_one"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=drive&resource=quota_detail&version=v2"

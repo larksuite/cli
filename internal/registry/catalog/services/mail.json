@@ -139,7 +139,8 @@
             "mail:user_mailbox:readonly"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "write",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=search&project=mail&resource=multi_entity&version=v1"
@@ -221,7 +222,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=accessible_mailboxes&project=mail&resource=user_mailbox&version=v1"
@@ -261,7 +263,8 @@
             "mail:user_mailbox:readonly"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=profile&project=mail&resource=user_mailbox&version=v1"
@@ -464,7 +467,8 @@
             "mail:user_mailbox.message:readonly"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "write",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=search&project=mail&resource=user_mailbox&version=v1"
@@ -502,7 +506,8 @@
             "mail:user_mailbox.message:send"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -731,7 +736,8 @@
             "mail:user_mailbox.message:modify"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -766,7 +772,8 @@
             "mail:user_mailbox.message:modify"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1006,7 +1013,8 @@
             "mail:user_mailbox.message:readonly"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=mail&resource=user_mailbox.draft&version=v1"
@@ -1076,7 +1084,8 @@
             "mail:user_mailbox.message:readonly"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.draft&version=v1"
@@ -1173,7 +1182,8 @@
             "mail:user_mailbox.message:send"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1410,7 +1420,8 @@
             "mail:user_mailbox.message:modify"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1660,7 +1671,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1696,7 +1708,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1809,7 +1822,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=mail&resource=user_mailbox.folder&version=v1"
@@ -1935,7 +1949,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.folder&version=v1"
@@ -1984,7 +1999,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2080,7 +2096,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2116,7 +2133,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -2193,7 +2211,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=mail&resource=user_mailbox.label&version=v1"
@@ -2260,7 +2279,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.label&version=v1"
@@ -2357,7 +2377,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2509,7 +2530,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2545,7 +2567,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -2683,7 +2706,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.mail_contact&version=v1"
@@ -2762,7 +2786,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2853,7 +2878,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=download_url&project=mail&resource=user_mailbox.message.attachment&version=v1"
@@ -3389,7 +3415,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "write",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_get&project=mail&resource=user_mailbox.message&version=v1",
@@ -3445,7 +3472,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -3480,7 +3508,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -3998,7 +4027,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=mail&resource=user_mailbox.message&version=v1",
@@ -4087,7 +4117,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.message&version=v1"
@@ -4140,7 +4171,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -4264,7 +4296,8 @@
             "mail:user_mailbox.message:readonly"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=send_status&project=mail&resource=user_mailbox.message&version=v1"
@@ -4299,7 +4332,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -4706,7 +4740,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -4742,7 +4777,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -4856,7 +4892,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.rule&version=v1"
@@ -4891,7 +4928,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -5216,7 +5254,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -5439,7 +5478,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get_recall_detail&project=mail&resource=user_mailbox.sent_message&version=v1"
@@ -5538,7 +5578,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -5627,7 +5668,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=send_as&project=mail&resource=user_mailbox.setting&version=v1"
@@ -5712,7 +5754,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=download_url&project=mail&resource=user_mailbox.template.attachment&version=v1"
@@ -6051,7 +6094,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -6087,7 +6131,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -6287,7 +6332,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=mail&resource=user_mailbox.template&version=v1"
@@ -6342,7 +6388,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.template&version=v1"
@@ -6685,7 +6732,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -6740,7 +6788,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -6775,7 +6824,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -7053,7 +7103,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=mail&resource=user_mailbox.thread&version=v1"
@@ -7150,7 +7201,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.thread&version=v1"
@@ -7203,7 +7255,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -7239,7 +7292,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",

@@ -1122,8 +1122,9 @@
             "task:task:writeonly"
           ],
           "accessTokens": [
+            "user",
             "tenant",
-            "user"
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1801,8 +1802,9 @@
             "task:task:write"
           ],
           "accessTokens": [
+            "user",
             "tenant",
-            "user"
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=task&resource=task&version=v2"
@@ -3346,8 +3348,9 @@
             "task:task:write"
           ],
           "accessTokens": [
+            "user",
             "tenant",
-            "user"
+            "agent"
           ],
           "danger": true,
           "risk": "write",

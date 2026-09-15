@@ -240,7 +240,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -269,7 +270,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -461,7 +463,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/get"
@@ -691,7 +694,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/list"
@@ -941,7 +945,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1179,7 +1184,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/primary"
@@ -1397,7 +1403,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/search"
@@ -1555,7 +1562,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2032,7 +2040,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2404,7 +2413,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event-attendee/list"
@@ -3667,7 +3677,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -3726,7 +3737,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -4578,7 +4590,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/get"
@@ -5229,7 +5242,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=instance_view&project=calendar&resource=calendar.event&version=v4"
@@ -6498,7 +6512,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -6701,7 +6716,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "read",
@@ -6747,7 +6763,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "read",
@@ -6908,7 +6925,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/freebusy/list"

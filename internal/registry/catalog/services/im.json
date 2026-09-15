@@ -708,7 +708,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1131,7 +1132,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/get"
@@ -1208,7 +1210,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1555,7 +1558,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1614,7 +1618,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=bots&project=im&resource=chat.members&version=v1"
@@ -1730,7 +1735,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -1812,7 +1818,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1957,7 +1964,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-members/get"
@@ -2037,7 +2045,8 @@
             "im:chat.user_setting:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "read",
@@ -2107,7 +2116,8 @@
             "im:chat.user_setting:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2197,7 +2207,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2283,7 +2294,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2408,7 +2420,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-moderation/get"
@@ -2486,7 +2499,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2518,7 +2532,8 @@
             "im:chat.nickname:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2556,7 +2571,8 @@
             "im:chat.nickname:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=im&resource=chat.nickname&version=v1"
@@ -2591,7 +2607,8 @@
             "im:chat.nickname:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2715,7 +2732,8 @@
             "im:chat.membership_application:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -2901,7 +2919,8 @@
             "im:chat.membership_application:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=im&resource=chat.membership_application&version=v1"
@@ -2934,7 +2953,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -3318,7 +3338,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -3697,7 +3718,9 @@
             "im:message"
           ],
           "accessTokens": [
-            "tenant"
+            "user",
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -3735,7 +3758,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -3796,7 +3820,8 @@
             "im:message:readonly"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "read",
@@ -3916,7 +3941,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/read_users"
@@ -4329,7 +4355,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "read",
@@ -4441,7 +4468,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -4545,7 +4573,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -4708,7 +4737,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/list"
@@ -5095,7 +5125,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -5353,7 +5384,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=folder&project=im&resource=file&version=v1"
@@ -5425,7 +5457,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -5455,7 +5488,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -5567,7 +5601,8 @@
           ],
           "accessTokens": [
             "tenant",
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/pin/list"
@@ -5661,7 +5696,8 @@
             "im:feed_group_v1:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -5818,7 +5854,8 @@
             "im:feed_group_v1:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "read",
@@ -5909,7 +5946,8 @@
             "im:feed_group_v1:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -5994,7 +6032,8 @@
             "im:feed_group_v1:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -6021,7 +6060,8 @@
             "im:feed_group_v1:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -6107,7 +6147,8 @@
             "im:feed_group_v1:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
