@@ -119,40 +119,36 @@ lark-cli apps +release-create --app-id app_xxx
 
 门禁未通过时，不要：写业务代码或手工创建脚手架文件；执行 `npm install` / `npm run dev`；`git add` / `git commit` / `git push`；`+release-create`；改用 `+git-credential-init` + `git clone` 的手动路径替代——新建应用的仓库只有一个 seed README，手动 clone 拿不到脚手架和 `.spark/meta.json`，后续开发与发布都会失去平台契约。
 
-### 通过后、写代码前核对
+### 通过后还要自己补的一步
 
-`+init` 的职责是把远端应用绑定到本地目录（凭证、clone、工作分支、平台元数据、平台受控文件、首次提交推送、环境变量），**装依赖和起服务都不在它的职责内**：空仓库路径下脚手架会顺手装一次且失败也不报错，已有仓库路径则完全不装。所以 envelope 报成功只代表仓库已绑定，下面这些要自己核对：
+`+init` 的职责是把远端应用绑定到本地目录（凭证、clone、工作分支、平台元数据、平台受控文件、首次提交推送、环境变量），**装依赖和起服务都不在它的职责内**：空仓库路径下脚手架会顺手装一次且失败也不报错，已有仓库路径则完全不装。
 
-1. `<dir>/.spark/meta.json` 存在，且 `app_id` 与目标应用一致。
-2. `git log --oneline -3` 能看到初始化提交；`git status --porcelain` 为空；`git rev-parse HEAD` 与 `git rev-parse origin/sprint/default` 一致。
-3. full_stack / frontend：`node_modules/` 存在且非空，缺失就**自己 `npm install`**，不要为此重跑 `+init`——已有仓库上重跑会触发平台文件同步并产生一次提交推送，代价远大于装依赖，而且它本来也不会帮你装。html 无此步。
-4. full_stack / frontend：`.env.local` 存在。缺失或 envelope 里 `env_pulled=false` 时先执行 `lark-cli apps +env-pull --app-id <app_id> --project-path <dir>`；html 应用 `env_pull_skipped=true` 是正常的。
-5. 按上文「`+init` 完成后必须执行」读取项目 guide。
+所以 full_stack / frontend 在开始开发前确认 `node_modules/` 存在且非空，缺失就自己 `npm install`，不要为此重跑 `+init`——已有仓库上重跑会触发平台文件同步并产生一次提交推送，代价远大于装依赖，而且它本来也不会帮你装。html 无此步。
+
+envelope 返回 `already_initialized`（常见于仓库是手动 `git clone` 来的）时尤其要确认这一步，因为那条路径不会走脚手架。
 
 ### 中断后的处置顺序
 
-工具超时、进程被 kill、只看到进度行而没有 envelope，都按这个顺序处理，先查进程再动目录：
+工具超时、进程被 kill、只看到进度行而没有 envelope 时，**先查进程再动目录**：
 
-1. `pgrep -fl <app_id>` 列出仍在运行的进程，只认命令行里是 `lark-cli`、`npm` 或 Node 脚手架的那些，排除你自己包着 app_id 的 shell。外层 shell 或启动 shim 被 kill 不代表真正的 CLI 和依赖安装停了，它们会继续运行几分钟并最终提交推送。
-2. 有进程在跑：每 15-30 秒查一次，最多再等 5 分钟，期间不要碰目录。它自己退出后按「通过后、写代码前核对」逐项判定，全过即视为成功，不必重跑。
-3. 超过 5 分钟仍在跑，或核对不过需要重跑：**必须先清进程再动目录**。残留进程会继续往同一路径写文件、抢着提交推送，把新一次初始化污染成半成品，所以 `pgrep` 不为空时不允许删目录或重跑：
+1. `pgrep -fl <app_id>` 看有没有还在跑的 `lark-cli` / `npm` / Node 脚手架进程（排除你自己包着 app_id 的 shell）。外层 shell 被 kill 不代表它们停了，它们会继续跑几分钟并最终提交推送。
+2. 有进程在跑：每 15-30 秒查一次，**最多再等 5 分钟**，期间不要碰目录。它自己退出后目录往往是完整的，不必重跑。
+3. 超过 5 分钟仍在跑，或需要重跑：先清进程再动目录，否则残留进程会继续往同一路径写文件、抢着提交推送。
 
 ```bash
-# 对步骤 1 认定的每个 pid：先杀它拉起的子进程，再杀它自己
-pkill -P <pid>; kill <pid>
-# 必须确认输出为空，仍有残留就对残留 pid 重复上一行
-pgrep -fl <app_id>
+pkill -P <pid>; kill <pid>   # 对每个 pid：先杀子进程再杀它自己
+pgrep -fl <app_id>           # 必须为空，仍有残留就重复上一行
 ```
 
-4. 再看目录：没有 `.spark/meta.json`（最常见，脚手架未写完），或有 meta 但 `git status` 不干净、`git log` 没有初始化提交，都算半成品，删除**本次 `+init` 新建的**目录后重跑。只删本次新建的目录，不动用户原有目录。
-5. 重跑最多 2 次；仍失败就停止，报告 app_id、`--dir`、退出码、`error.hint` 和目录残留状态。
+4. 再看目录：没有 `.spark/meta.json`，或有 meta 但工作树不干净、`git log` 没有初始化提交，都算半成品，删除**本次新建的**目录后重跑。只删本次新建的目录，不动用户原有目录。
+5. 重跑最多 2 次；仍失败就报告 app_id、`--dir`、退出码和 `error.hint`。
 
 ### 失败与中断的处置
 
 | 现象 | 判定 | 动作 |
 |---|---|---|
 | 工具超时 / 进程被 kill / 没有 envelope；或重跑报 `--dir` 已存在且非空 | 未完成，目录里是上次的残留 | 按上面「中断后的处置顺序」执行：先查进程、等待或清理，再判定目录、删除本次新建的目录后重跑。不要把代码写进这个目录。 |
-| 本轮刚建的目录却返回 `scaffold=already_initialized` | 疑似半成品被短路 | 按「通过后、写代码前核对」逐项核对，有一项不过就删目录重跑。 |
+| 本轮刚建的目录却返回 `scaffold=already_initialized` | 疑似半成品被短路 | 按上面「通过后还要自己补的一步」确认依赖，仓库本身完整就继续开发；目录明显是半成品才删掉重跑。 |
 | 退出非 0，错误含 `git push failed` | 脚手架已提交、未推送 | 不要重跑 `+init`（会被短路）。先看 `error.message` 里的 git 输出：non-fast-forward（远端有新提交）→ `git pull --rebase origin sprint/default` 后 `git push origin sprint/default`；认证失败 → 先 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 再 push。然后按核对清单继续。 |
 | 退出 0 但 `env_pulled=false` 且有 `env_pull_error` | 初始化成功、环境变量未拉到 | 不阻塞开发；启动前执行 `+env-pull`。 |
 | `failed_precondition`：`git` 或 `npx`（随 Node.js 安装）不在 PATH | 环境缺失 | 安装后重跑原命令，不改走其他路径。 |
@@ -177,10 +173,10 @@ pgrep -fl <app_id>
 
 > `+release-create` 部署的是远端 `sprint/default` 上**已 push** 的代码，不是你本地工作区——未 commit / 未 push 的改动不会进入这次发布。所以发布前务必先把本次改动提交并推送。
 
-1. 先按项目 `package.json` 里的脚本跑一遍 type:check / lint / build（脚本名以项目为准；html 应用没有构建步骤则跳过），失败先修：`+release-create` 在远端对同一份代码构建，本地过不了的代码推上去大概率也会 `failed`。然后 `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
+1. `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
 2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push；遇 Git 认证失败 / 401 / 403 / credential helper 缺失 / token 过期：先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令；刷新凭证也失败时，停止并向用户报告错误，不要换路）。
 3. `lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default` 发起部署上线，记下返回的 `release_id`。
-4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 后，若返回 `commit_id`，与你 push 的那个 `git rev-parse HEAD` 比对；不一致说明这次发布的不是你刚推的版本（常见于云端会话或其他协作者在你之后又推了提交），要如实报告，不能把 `online_url` 说成本次改动已上线；未返回 `commit_id` 时不对「线上是哪个版本」下结论。`finished` 成功时，若返回 `online_url`，可直接使用；未返回时不要编造链接。交付线上访问链接给他人前，注意 `online_url` 默认仅创建者可见，需先告知当前仅本人可见、按需用 `+access-scope-set` 放开可见范围；放开后用 `+access-scope-get` 回读确认，交付前让目标用户实际打开一次——发布成功和目标用户能打开是两个独立的验收项。无需再调 `+list`；`failed` 时若返回非空 `error_logs`，据此给出失败原因；否则只报告 `release_id` 和当前 status，不要编造原因（`+list` 仅作独立查询入口）。
+4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 成功时，若返回 `online_url`，可直接使用；未返回时不要编造链接。交付线上访问链接给他人前，注意 `online_url` 默认仅创建者可见，需先告知当前仅本人可见、按需用 `+access-scope-set` 放开可见范围。无需再调 `+list`；`failed` 时若返回非空 `error_logs`，据此给出失败原因；否则只报告 `release_id` 和当前 status，不要编造原因（`+list` 仅作独立查询入口）。
 
 用户只要求启用已有 trigger 时，转到 [automation SOP 的「仅启用已有 disabled trigger」路径](lark-apps-automation.md#仅启用已有-disabled-trigger)；不得因 enable 反向修改 handler、commit/push 或 release。
 
@@ -200,7 +196,6 @@ pgrep -fl <app_id>
 - DB 分 `dev` / `online`；使用 `--environment dev|online`，不要使用旧的 `--env`。只有确认应用已开启多环境时才引导 `--environment dev`；单环境应用省略 `--environment`（服务端选 online）或显式传 `--environment online`。在 dev 写入不能证明线上 handler 已验证。dev 的库结构变更要上线时，仍按应用发布链路走 `+release-create`，不要另造“数据库发布”步骤。
 - 存量单库应用需要 dev/online 多环境时，用 `+db-env-create --environment dev`。这是不可逆 high-risk 操作。
 - 只从 `+list` 看到 `is_published=true`，不能证明本地刚推送的代码已经部署；必须有本轮 `+release-get finished`。
-- 发布 `finished` 但线上行为回退或报错时，先用 `+release-list` 记下上一次 `finished` 的 `release_id` 与 `commit_id`，连同当前现象报告用户。回退也是一次 `+release-create`，属高影响动作，未经用户确认不要自动发起。
 
 ## 存量应用入口
 
@@ -231,19 +226,6 @@ lark-cli apps +list --keyword "应用名"
 - 云端有轮次在跑（`+session-get` 的 `is_streaming=true` 或 `latest_turn.status=running`）时不要 push；等它 `completed` 后 `git fetch origin`，用 `git log HEAD..origin/sprint/default --oneline` 看清云端改了什么，再 `git pull --rebase origin sprint/default`。
 - 不确定云端有没有在改：`+session-list --app-id <app_id>` 找活跃会话，再用 `+session-get` 看状态；`git fetch` 后远端出现你没见过的提交，也一律按云端改动处理，不要覆盖。
 - 云端 turn `completed` 只说明那一轮生成结束；它的改动是否已经到 `origin/sprint/default`，以 `git fetch` 后看到的远端提交为准，不要假设。发布仍按「改完代码后部署上线」走。
-
-## 交付口径
-
-回复用户时按实际拿到的证据说状态，不要把前一档说成后一档：
-
-| 状态 | 证据 |
-|---|---|
-| 本地完成 | 目标行为在本地 `npm run dev` 下验证过（html 应用以打开本地产物页面为准），项目 type:check / build 通过 |
-| 已推开发分支 | `git rev-parse HEAD` 与 `origin/sprint/default` 一致 |
-| 已发布 | 本轮 `release_id` 的 `+release-get` 返回 `finished`；若它返回了 `commit_id`，等于你 push 的提交 |
-| 可交付使用 | `online_url` 已实际打开验证；`+access-scope-get` 回读的可见范围覆盖目标用户 |
-
-最终回复至少给出：app_id、本次 commit、`release_id` 与状态、`online_url`、当前可见范围、还没验证的项和已知风险。commit、push、云端 turn `completed`、页面 toast 都不能替代"已发布"或"可交付"的证据。
 
 ## 何时不用
 
