@@ -127,13 +127,14 @@ func appFileQuotaPath(appID string) string {
 // interchangeable across the domain: +export and +get accept an app id or a meta
 // token in the same argument and let the server tell them apart, so a blanket
 // prefix rule would break them (see the note in validateExportFlags). Storage has
-// no such dual form — it answers a non-app_ id with "Invalid app_id format".
+// no such dual form, so rejecting the shape up front loses nothing.
 //
-// Catching it locally is not just a saved round trip. The server's older answer
-// for this input was "user need admin or developer permission", which sent people
-// to request access they already had; validateRealAppID's message names the real
-// problem and its hint carries the command that turns a meta_token or page token
-// into the app_id, which is the one thing the caller actually needs.
+// This is the only layer that can name the mistake. Storage reports a malformed
+// app id as "app not found" — true, but it points at verifying an id the caller
+// never had, when what they are holding is a meta token or a page token.
+// validateRealAppID says which argument is wrong and its hint carries the command
+// that converts the token into an app id, so the fix is in front of them rather
+// than a round trip away.
 func requireFileAppID(raw string) (string, error) {
 	appID, err := requireAppID(raw)
 	if err != nil {
