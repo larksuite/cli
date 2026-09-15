@@ -24,7 +24,7 @@ import (
 // office/native split fans out to.
 //
 // The wiki rows carry an office-shaped node_token on purpose. A preview cannot
-// know what a wiki node resolves to — that needs the get_node call a dry-run
+// know what a wiki node resolves to — that needs the node_by_token call a dry-run
 // must not make — so it must not read the office/native split out of the
 // node_token it happens to be holding. Those rows show the same token as a
 // /wiki/ URL and as a raw spreadsheet token and expect different answers, which

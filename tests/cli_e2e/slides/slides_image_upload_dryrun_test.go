@@ -61,7 +61,7 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 		wantParentNode string
 		wantParentType string
 		// uploadStep is the index of the upload_all call in data.api. A wiki ref
-		// plans get_node first, so its upload is not the leading step.
+		// plans node_by_token first, so its upload is not the leading step.
 		uploadStep string
 	}{
 		{
@@ -179,7 +179,7 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 
 			out := result.Stdout
 			// The upload precedes the page XML that references its file_token,
-			// and follows the get_node that names the deck to upload into.
+			// and follows the node_by_token call that names the deck to upload into.
 			require.Equal(t, "POST", clie2e.DryRunGet(out, "api."+tt.uploadStep+".method").String(),
 				"data.api.%s must be the drive upload; stdout:\n%s", tt.uploadStep, out)
 			require.Equal(t, "/open-apis/drive/v1/medias/upload_all",

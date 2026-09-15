@@ -17,7 +17,67 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
+
+func TestRecordReadsNDJSONPreserveButtonAndUnknownColumns(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		method   string
+		path     string
+		args     []string
+	}{
+		{"list", BaseRecordList, "GET", "/records?", []string{"--limit", "1"}},
+		{"search", BaseRecordSearch, "POST", "/records/search", []string{"--keyword", "Alice", "--search-field", "Name", "--limit", "1"}},
+		{"get", BaseRecordGet, "POST", "/records/batch_get", []string{"--record-id", "rec_1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			withBaseWorkingDir(t, dir)
+			factory, stdout, registry := newExecuteFactory(t)
+			registry.Register(&httpmock.Stub{
+				Method: tc.method, URL: tc.path,
+				Body: map[string]any{"code": 0, "data": map[string]any{
+					"timezone":        "UTC",
+					"fields":          []any{"Name", "Button", "Score", "Future"},
+					"field_id_list":   []any{"fld_name", "fld_button", "fld_score", "fld_future"},
+					"field_type_list": []any{"text", "button", "number", "future_type"},
+					"record_id_list":  []any{"rec_1"},
+					"data":            []any{[]any{"Alice", nil, 42, map[string]any{"items": []any{false, nil}}}},
+					"has_more":        false,
+				}},
+			})
+			args := append([]string{"+record-" + tc.name, "--base-token", "app_x", "--table-id", "tbl_x", "--output", "buttons.ndjson"}, tc.args...)
+			if err := runShortcut(t, tc.shortcut, args, factory, stdout); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join(dir, "buttons.ndjson"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var row map[string]any
+			if err := json.Unmarshal(data, &row); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(row, map[string]any{"record_id": "rec_1", "Name": "Alice", "Button": nil, "Score": float64(42), "Future": map[string]any{"items": []any{false, nil}}}) {
+				t.Fatalf("row = %#v", row)
+			}
+			var manifest map[string]any
+			if err := json.Unmarshal(stdout.Bytes(), &manifest); err != nil {
+				t.Fatal(err)
+			}
+			button := manifest["columns"].(map[string]any)["Button"].(map[string]any)
+			if button["field_type"] != "button" || button["physical_type"] != "null" {
+				t.Fatalf("button column = %#v", button)
+			}
+			future := manifest["columns"].(map[string]any)["Future"].(map[string]any)
+			if future["field_type"] != "not_support" || future["physical_type"] != "json" {
+				t.Fatalf("future column = %#v", future)
+			}
+		})
+	}
+}
 
 func TestRecordListNDJSONOutputInfersFormatAndNormalizesValues(t *testing.T) {
 	dir := t.TempDir()

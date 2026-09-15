@@ -134,7 +134,7 @@ func mustJSONArray(t *testing.T, pages ...string) string {
 }
 
 // uploadStepBody finds the planned upload_all call and returns its body. Wiki
-// refs put a get_node step first, so the upload is not at a fixed index.
+// refs put a node_by_token step first, so the upload is not at a fixed index.
 func uploadStepBody(t *testing.T, steps []map[string]interface{}) map[string]interface{} {
 	t.Helper()
 

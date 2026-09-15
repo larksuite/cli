@@ -28,7 +28,7 @@ lark-cli slides +add-slide --as user \
   --slide @cover.xml \
   --before-slide-id "$SID"
 
-# wiki 链接（CLI 自动 wiki.spaces.get_node 解析，并校验 obj_type=slides）
+# wiki 链接（CLI 自动通过 node_by_token 接口解析，并校验 obj_type=slides）
 lark-cli slides +add-slide --as user \
   --presentation "https://xxx.feishu.cn/wiki/wikcnXXXXXX" \
   --slide @page3.xml

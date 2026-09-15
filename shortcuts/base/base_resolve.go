@@ -17,6 +17,7 @@ import (
 const (
 	baseURLResolveHintGeneric = "Provide a /base/, /app/, /wiki/, or /record/ URL, or use base +title-resolve --title if you only know the Base title."
 	baseTitleResolveHint      = "choose one candidate, then use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
+	baseWikiNodeByTokenPath   = "/open-apis/wiki/v2/spaces/node_by_token"
 	nextStepBaseBlockList     = "use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepRecordList        = "use +record-list to list records in the resolved table"
 	nextStepBaseApp           = "use +app-get with app_token; there is no +app-list, so list apps in a workspace with +workspace-entity-list --type baseapp"
@@ -74,11 +75,11 @@ var BaseURLResolve = common.Shortcut{
 			selectedBlockID := strings.TrimSpace(parsed.Query().Get("table"))
 			if selectedBlockID == "" {
 				return dry.
-					GET("/open-apis/wiki/v2/spaces/get_node").
+					GET(baseWikiNodeByTokenPath).
 					Params(map[string]interface{}{"token": firstPathSegmentAfter(parsed.Path, "/wiki/")})
 			}
 			dry.Desc("2-step: resolve the Wiki node to a Base, then identify the selected Base block")
-			dry.GET("/open-apis/wiki/v2/spaces/get_node").
+			dry.GET(baseWikiNodeByTokenPath).
 				Desc("[1] Resolve the Wiki node to its underlying Base").
 				Params(map[string]interface{}{"token": firstPathSegmentAfter(parsed.Path, "/wiki/")})
 			dry.POST("/open-apis/base/v3/bases/:base_token/blocks/list").
@@ -320,32 +321,55 @@ func applyResolvedTableSelection(out map[string]interface{}, selection baseURLSe
 	}
 }
 
+type baseWikiNode struct {
+	ObjType  string
+	ObjToken string
+	Title    string
+}
+
 func resolveWikiBaseURL(runtime *common.RuntimeContext, u *url.URL) (map[string]interface{}, error) {
 	token := firstPathSegmentAfter(u.Path, "/wiki/")
-	data, err := runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node", map[string]interface{}{"token": token}, nil)
+	data, err := runtime.CallAPITyped("GET", baseWikiNodeByTokenPath, map[string]interface{}{"token": token}, nil)
 	if err != nil {
-		return nil, err
+		return nil, baseWikiNodeLookupProblem(err)
 	}
-	node := common.GetMap(data, "node")
-	objType := strings.TrimSpace(common.GetString(node, "obj_type"))
-	if objType != "bitable" {
+	nodeData := common.GetMap(data, "node")
+	node := baseWikiNode{
+		ObjType:  strings.TrimSpace(common.GetString(nodeData, "obj_type")),
+		ObjToken: strings.TrimSpace(common.GetString(nodeData, "obj_token")),
+		Title:    common.GetString(nodeData, "title"),
+	}
+	if node.ObjType != "bitable" {
 		return nil, resolveValidationError(
-			fmt.Sprintf("This Wiki URL resolves to %s, not Base.", valueOrUnknown(objType)),
+			fmt.Sprintf("This Wiki URL resolves to %s, not Base.", valueOrUnknown(node.ObjType)),
 			"Use the corresponding skill for that resource, or provide a Base URL.",
 		)
 	}
-	baseToken := strings.TrimSpace(common.GetString(node, "obj_token"))
-	if baseToken == "" {
+	if node.ObjToken == "" {
 		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node response is missing obj_token")
 	}
 	return map[string]interface{}{
 		"input_type":      "wiki_url",
 		"resource_type":   "bitable",
 		"wiki_node_token": token,
-		"base_token":      baseToken,
-		"title":           common.GetString(node, "title"),
+		"base_token":      node.ObjToken,
+		"title":           node.Title,
 		"hint":            resolveHint("", nil),
 	}, nil
+}
+
+func baseWikiNodeLookupProblem(err error) error {
+	if problem, ok := errs.ProblemOf(err); ok {
+		switch problem.Code {
+		case 131012:
+			problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+		case 131013, 131016:
+			problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+		case 131014:
+			problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+		}
+	}
+	return err
 }
 
 func resolveRecordShareURL(runtime *common.RuntimeContext, u *url.URL) (map[string]interface{}, error) {

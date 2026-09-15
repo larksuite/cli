@@ -15,7 +15,7 @@ lark-cli slides +media-upload --as user \
   --file ./chart.png \
   --presentation "https://xxx.feishu.cn/slides/slidesXXXXXXXXXXXXXXXXXXXXXX"
 
-# 传 wiki URL（CLI 自动 wiki.spaces.get_node 解析为真实 token，校验 obj_type=slides）
+# 传 wiki URL（CLI 自动通过 node_by_token 接口解析真实 token，校验 obj_type=slides）
 lark-cli slides +media-upload --as user \
   --file ./pic.png \
   --presentation "https://xxx.feishu.cn/wiki/wikcnXXXXXX"

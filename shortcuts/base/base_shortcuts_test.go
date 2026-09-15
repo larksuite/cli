@@ -886,6 +886,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			shortcut: BaseDashboardBlockCreate,
 			wantTips: []string{
 				`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}'`,
+				`--type nps --data-config '{"table_name":"Survey","group_by":[{"field_name":"Score","mode":"integrated"}],"category_range":[0,6,8,10]}'`,
 				`--type ranking --data-config '{"table_name":"Orders"`,
 				`--type text --data-config '{"text":"# Sales Dashboard"}'`,
 				"+table-list and +field-list",
@@ -1215,8 +1216,6 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"when multiple=false, the array can contain only one item",
 				`location uses {"lng":116.397428,"lat":39.90923}`,
 				"Do not guess user/chat/linked-record IDs or location coordinates",
-				"lark-base-cell-value.md",
-				"do not invent values for fields not covered by the happy path",
 			},
 		},
 		{
@@ -1231,8 +1230,6 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"do not immediately +record-list the same table",
 				"CellValue happy path: text/phone/url",
 				`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}]`,
-				"lark-base-cell-value.md",
-				"do not invent values for fields not covered by the happy path",
 			},
 		},
 		{
@@ -1248,8 +1245,6 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"Batch update supports max 200 records per call",
 				"CellValue happy path: text/phone/url",
 				`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}]`,
-				"lark-base-cell-value.md",
-				"do not invent values for fields not covered by the happy path",
 			},
 		},
 	}

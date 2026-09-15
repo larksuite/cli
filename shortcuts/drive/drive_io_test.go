@@ -2003,31 +2003,36 @@ func TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted(t *testing.T) {
 
 	data := decodeDriveEnvelope(t, stdout)
 	apis, _ := data["api"].([]interface{})
-	if len(apis) != 3 {
-		t.Fatalf("api count = %d, want 3\nstdout=%s", len(apis), stdout.String())
+	if len(apis) != 4 {
+		t.Fatalf("api count = %d, want 4\nstdout=%s", len(apis), stdout.String())
 	}
-	first, _ := apis[0].(map[string]interface{})
-	if first["method"] != "GET" || first["url"] != "/open-apis/drive/v1/permissions/file_dryrun/members/auth" {
+	lookup, _ := apis[0].(map[string]interface{})
+	params, _ := lookup["params"].(map[string]interface{})
+	if lookup["method"] != "GET" || lookup["url"] != driveQueryByTokenPath || params["token"] != "file_dryrun" {
+		t.Fatalf("first request must resolve the original token: %#v", lookup)
+	}
+	first, _ := apis[1].(map[string]interface{})
+	if first["method"] != "GET" || first["url"] != "/open-apis/drive/v1/permissions/resolved_file_token/members/auth" {
 		t.Fatalf("first api = %#v, want export permission auth", first)
 	}
 	firstParams, _ := first["params"].(map[string]interface{})
 	if firstParams["type"] != "file" || firstParams["action"] != "export" {
 		t.Fatalf("first params = %#v, want type=file action=export", firstParams)
 	}
-	second, _ := apis[1].(map[string]interface{})
+	second, _ := apis[2].(map[string]interface{})
 	if second["method"] != "POST" || second["url"] != "/open-apis/drive/v1/metas/batch_query" {
 		t.Fatalf("second api = %#v, want metadata batch_query", second)
 	}
-	third, _ := apis[2].(map[string]interface{})
-	if third["method"] != "GET" || third["url"] != "/open-apis/drive/v1/files/file_dryrun/download" {
+	third, _ := apis[3].(map[string]interface{})
+	if third["method"] != "GET" || third["url"] != "/open-apis/drive/v1/files/resolved_file_token/download" {
 		t.Fatalf("third api = %#v, want file download", third)
 	}
-	if third["desc"] != "[3] Download file bytes; Content-Disposition filename wins over metadata title when present" {
-		t.Fatalf("third desc = %#v, want metadata-aware step 3", third["desc"])
+	if third["desc"] != "[4] Download file bytes; Content-Disposition filename wins over metadata title when present" {
+		t.Fatalf("third desc = %#v, want metadata-aware step 4", third["desc"])
 	}
 }
 
-// TestDriveDownloadDryRunExplicitOutputSkipsMetadata verifies explicit output avoids metadata lookup.
+// TestDriveDownloadDryRunExplicitOutputSkipsMetadata verifies explicit output skips title lookup after resolving the entity.
 func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -2044,19 +2049,24 @@ func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
 
 	data := decodeDriveEnvelope(t, stdout)
 	apis, _ := data["api"].([]interface{})
-	if len(apis) != 2 {
-		t.Fatalf("api count = %d, want 2\nstdout=%s", len(apis), stdout.String())
+	if len(apis) != 3 {
+		t.Fatalf("api count = %d, want 3\nstdout=%s", len(apis), stdout.String())
 	}
-	first, _ := apis[0].(map[string]interface{})
-	if first["method"] != "GET" || first["url"] != "/open-apis/drive/v1/permissions/file_dryrun/members/auth" {
+	lookup, _ := apis[0].(map[string]interface{})
+	params, _ := lookup["params"].(map[string]interface{})
+	if lookup["method"] != "GET" || lookup["url"] != driveQueryByTokenPath || params["token"] != "file_dryrun" {
+		t.Fatalf("first request must resolve the original token: %#v", lookup)
+	}
+	first, _ := apis[1].(map[string]interface{})
+	if first["method"] != "GET" || first["url"] != "/open-apis/drive/v1/permissions/resolved_file_token/members/auth" {
 		t.Fatalf("first api = %#v, want export permission auth", first)
 	}
-	second, _ := apis[1].(map[string]interface{})
-	if second["method"] != "GET" || second["url"] != "/open-apis/drive/v1/files/file_dryrun/download" {
+	second, _ := apis[2].(map[string]interface{})
+	if second["method"] != "GET" || second["url"] != "/open-apis/drive/v1/files/resolved_file_token/download" {
 		t.Fatalf("second api = %#v, want file download", second)
 	}
-	if second["desc"] != "[2] Download file bytes to the explicit output path" {
-		t.Fatalf("api desc = %#v, want explicit-output step 2", second["desc"])
+	if second["desc"] != "[3] Download file bytes to the explicit output path" {
+		t.Fatalf("api desc = %#v, want explicit-output step 3", second["desc"])
 	}
 	if data["output"] != "report.bin" {
 		t.Fatalf("output = %#v, want report.bin", data["output"])
