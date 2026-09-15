@@ -170,6 +170,15 @@ func TestWithAppsHint_SubcodeTable(t *testing.T) {
 			hintHas:  "one-time",
 		},
 		{
+			// Wording taken from the wire: dataloom sends this one in English with
+			// no interpolation, so the entry only has to replace the hint.
+			name:     "publish blocked by release approval",
+			message:  "k_dl_4000052：database publish approval is configured for this tenant; publish the database from the app release pipeline instead",
+			category: errs.CategoryAPI,
+			subtype:  errs.SubtypeFeatureNotAvailable,
+			hintHas:  "+release-create",
+		},
+		{
 			// Non-date column, to pin that the entry is type-agnostic.
 			name:     "import type mismatch (integer)",
 			message:  "k_dl_4000012：Row 1, column 'qty': value '不是数字' is not a valid integer",

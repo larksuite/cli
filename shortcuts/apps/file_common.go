@@ -120,6 +120,32 @@ func appFileQuotaPath(appID string) string {
 	return fmt.Sprintf("%s/apps/%s/storage/file_quota", apiBasePath, validate.EncodePathSegment(appID))
 }
 
+// requireFileAppID resolves --app-id for the file commands, which address an app
+// by its real id only.
+//
+// The prefix check is here rather than in requireAppID because the two are not
+// interchangeable across the domain: +export and +get accept an app id or a meta
+// token in the same argument and let the server tell them apart, so a blanket
+// prefix rule would break them (see the note in validateExportFlags). Storage has
+// no such dual form, so rejecting the shape up front loses nothing.
+//
+// This is the only layer that can name the mistake. Storage reports a malformed
+// app id as "app not found" — true, but it points at verifying an id the caller
+// never had, when what they are holding is a meta token or a page token.
+// validateRealAppID says which argument is wrong and its hint carries the command
+// that converts the token into an app id, so the fix is in front of them rather
+// than a round trip away.
+func requireFileAppID(raw string) (string, error) {
+	appID, err := requireAppID(raw)
+	if err != nil {
+		return "", err
+	}
+	if err := validateRealAppID(appID); err != nil {
+		return "", err
+	}
+	return appID, nil
+}
+
 // requireFilePath trims --path and rejects blank, returning a uniform validation error.
 func requireFilePath(raw string) (string, error) {
 	p := strings.TrimSpace(raw)

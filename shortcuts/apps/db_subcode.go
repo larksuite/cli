@@ -148,6 +148,28 @@ var dbSubcodeTable = map[string]dbSubcodeMeta{
 		Hint:     "this app already has dev and online branches; splitting is a one-time operation. Inspect the dev branch with `lark-cli apps +db-table-list --app-id <app_id> --environment dev`.",
 		Message:  "multi-env is already initialized for this app",
 	},
+
+	// +db-env-migrate on an app whose tenant routes Miaoda app releases through
+	// publish approval. Publishing the database straight from the CLI would skip
+	// that approval, so the server refuses it. Only a real publish is refused —
+	// +db-env-diff previews the same changes normally, which is why the hint can
+	// still point at it.
+	//
+	// FeatureNotAvailable / exit 1, matching how collaborator management reports
+	// "this belongs in Miaoda, not the CLI" (see apps_member_common.go). The caller
+	// is not missing a permission that could be granted, and no flag, environment
+	// or app id makes the CLI path succeed while the approval is configured: exit 2
+	// would tell an agent to fix the request and retry, exit 3 would send it to
+	// re-authenticate, and both walk it through attempts that cannot work. The fix
+	// is a different surface, so the failure has to read as "not via this channel".
+	"k_dl_4000052": {
+		Category: errs.CategoryAPI,
+		Subtype:  errs.SubtypeFeatureNotAvailable,
+		Hint: "this app requires approval to release. Release it through the app release flow instead — " +
+			"`lark-cli apps +release-create --app-id <app_id>` or the web console; " +
+			"`+db-env-diff` still previews the pending changes.",
+		Message: "publishing the database requires release approval in this tenant",
+	},
 }
 
 // dbSubcodePrefix is the marker dataloom stamps on the message ahead of its
