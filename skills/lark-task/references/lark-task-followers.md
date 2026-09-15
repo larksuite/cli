@@ -1,6 +1,6 @@
 # task +followers
 
-> **Prerequisites:** Please read `../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
+> **Prerequisites:** Please read `../../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 
 Manage task followers. Add or remove followers from an existing task.
 

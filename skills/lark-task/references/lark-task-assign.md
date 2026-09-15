@@ -1,6 +1,6 @@
 # task +assign
 
-> **Prerequisites:** Please read `../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
+> **Prerequisites:** Please read `../../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 
 Assign or remove members (assignees) from a task.
 
