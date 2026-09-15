@@ -204,7 +204,7 @@ func (ab *authBridge) handleLogin(w http.ResponseWriter, _ *http.Request, body [
 		len(strings.Fields(scope)), req.Domains, clientID)
 
 	authResp, err := larkauth.RequestDeviceAuthorization(
-		ab.httpCl, ab.appID, ab.appSecret, ab.brand, scope, io.Discard,
+		context.Background(), ab.httpCl, larkauth.ClientAuth{AppID: ab.appID, AppSecret: ab.appSecret}, ab.brand, scope, io.Discard,
 	)
 	if err != nil {
 		jsonError(w, http.StatusBadGateway, "device authorization failed: "+err.Error())
@@ -255,7 +255,7 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 	}()
 
 	result := larkauth.PollDeviceToken(
-		ctx, ab.httpCl, ab.appID, ab.appSecret, ab.brand,
+		ctx, ab.httpCl, larkauth.ClientAuth{AppID: ab.appID, AppSecret: ab.appSecret}, ab.brand,
 		req.DeviceCode, 5, 600, io.Discard,
 	)
 
@@ -391,7 +391,7 @@ func (ab *authBridge) handleStatus(w http.ResponseWriter, _ *http.Request, body 
 // resolveUserTokenByClient resolves a UAT for a specific client environment.
 // Returns an error if the client has no user mapping — the user must
 // run the login flow first. No fallback to other users' tokens.
-func (ab *authBridge) resolveUserTokenByClient(clientName string) (string, error) {
+func (ab *authBridge) resolveUserTokenByClient(ctx context.Context, clientName string) (string, error) {
 	ab.mu.Lock()
 	openID := ab.userMap[clientName]
 	ab.mu.Unlock()
@@ -409,7 +409,7 @@ func (ab *authBridge) resolveUserTokenByClient(clientName string) (string, error
 		AppSecret:  ab.appSecret,
 		Domain:     ab.brand,
 	}
-	token, err := larkauth.GetValidAccessToken(ab.httpCl, opts)
+	token, err := larkauth.GetValidAccessToken(ctx, ab.httpCl, opts)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve token for user %s: %v", openID, err)
 	}
