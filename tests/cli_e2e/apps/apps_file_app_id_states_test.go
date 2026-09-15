@@ -23,6 +23,12 @@ import (
 // request is built, so requiring a token here would gate a check that never
 // touches the network.
 func TestAppsFileAppIDStatesDryRun(t *testing.T) {
+	// Stub credentials in a throwaway config dir. Without them the run stops at
+	// the config gate before Validate is ever reached, which is what happens on a
+	// machine that has never been configured — the check under test would then be
+	// asserted against a "not configured" envelope.
+	setAppsDryRunEnv(t)
+
 	// One identifier per shape people actually paste in: a meta token, a token
 	// lifted out of a /page/<token>/ link, and a bare numeric id.
 	for _, badID := range []string{"mtk_1234567890abcdef", "doccnAbCdEfGhIjKlMnOpQr", "7685678125455560209"} {
@@ -43,12 +49,12 @@ func TestAppsFileAppIDStatesDryRun(t *testing.T) {
 				// came back as a permission failure, which reads as "go ask for
 				// access" and cannot resolve a mistyped identifier.
 				assert.Equal(t, 2, result.ExitCode, "stderr:\n%s", result.Stderr)
-				assert.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
-				assert.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
-				assert.Equal(t, "--app-id", gjson.Get(result.Stderr, "error.param").String(), "stderr:\n%s", result.Stderr)
+				assert.Equal(t, "validation", errEnvelopeField(result, "error.type"), "stderr:\n%s", result.Stderr)
+				assert.Equal(t, "invalid_argument", errEnvelopeField(result, "error.subtype"), "stderr:\n%s", result.Stderr)
+				assert.Equal(t, "--app-id", errEnvelopeField(result, "error.param"), "stderr:\n%s", result.Stderr)
 				// The hint has to carry the way out, otherwise the caller is left
 				// holding a token with nothing to do about it.
-				assert.Contains(t, gjson.Get(result.Stderr, "error.hint").String(), "+get",
+				assert.Contains(t, errEnvelopeField(result, "error.hint"), "+get",
 					"hint must name the command that resolves the token:\n%s", result.Stderr)
 			})
 		}
@@ -141,4 +147,15 @@ func TestAppsFileNoPermissionLive(t *testing.T) {
 	// split, so assert they did not converge again.
 	assert.NotEqual(t, "not_found", gjson.Get(result.Stderr, "error.subtype").String(),
 		"a real permission failure must not be reported as a missing app:\n%s", result.Stderr)
+}
+
+// errEnvelopeField reads one field out of a failure envelope, stdout first and
+// stderr second. The repo convention is that domains differ on which stream
+// carries it (see validateErrorMessage), so pinning a single stream would couple
+// these assertions to runner-internal routing rather than to the contract.
+func errEnvelopeField(r *clie2e.Result, path string) string {
+	if v := gjson.Get(r.Stdout, path).String(); v != "" {
+		return v
+	}
+	return gjson.Get(r.Stderr, path).String()
 }
