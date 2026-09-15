@@ -1,8 +1,8 @@
-# slides +replace-slide（块级替换 / 插入）
+# slides +replace-slide（块级替换 / 插入 / 字符串替换）
 
-对指定 slide 做块级替换或插入。编辑已有 PPT 的主路径——`slide_id` 不变、页序不动、只影响被指定的块。
+对指定 slide 做块级替换、插入，或整页字符串级替换。编辑已有 PPT 的主路径——`slide_id` 不变、页序不动。
 
-> **编写 `--parts` 时只使用标准 action 和字段**：`block_replace` 使用 `block_id` + `replacement`，`block_insert` 使用 `insertion`（可选 `insert_before_block_id`）。不要根据其他 API 或自然语言猜 action、字段名；具体结构以本文表格为准。
+> **编写 `--parts` 时只使用标准 action 和字段**：`block_replace` 使用 `block_id` + `replacement`，`block_insert` 使用 `insertion`（可选 `insert_before_block_id`），`str_replace` 使用 `pattern` + `replacement`（可选 `is_multiple`）。不要根据其他 API 或自然语言猜 action、字段名；具体结构以本文表格为准。
 
 相比直接调 `xml_presentation.slide.replace`，这个 shortcut 的四个额外价值：
 
@@ -25,6 +25,13 @@ lark-cli slides +replace-slide --as user \
   --presentation slidesXXXXXXXXXXXXXXXXXXXXXX \
   --slide-id pfG \
   --parts '[{"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>新标题</p></content></shape>"}]'
+
+# str_replace：整页 XML 上的字符串级替换（改一个属性，不用重写整块）
+# pattern 必须与最新 slide.get 读回的序列化 XML 逐字一致
+lark-cli slides +replace-slide --as user \
+  --presentation slidesXXXXXXXXXXXXXXXXXXXXXX \
+  --slide-id pfG \
+  --parts '[{"action":"str_replace","pattern":"width=\"560\"","replacement":"width=\"600\""}]'
 
 # 大 --parts 走文件或 stdin（auto-gen 命令不支持 @file，但 shortcut 支持）
 lark-cli slides +replace-slide --as user \
@@ -54,7 +61,7 @@ lark-cli slides +replace-slide --as user \
 
 ## parts 元素结构
 
-> **限制**：最多 200 条；`block_replace` 和 `block_insert` 可以在同一批次混用。**其他 action（含 `str_replace`）CLI 会直接报错拒绝**。
+> **限制**：最多 200 条；`block_replace`、`block_insert`、`str_replace` 可以在同一批次混用。
 
 每条 part 按 `action` 取不同字段：
 
@@ -73,6 +80,15 @@ lark-cli slides +replace-slide --as user \
 | `action` | 是 | `"block_insert"` |
 | `insertion` | 是 | 要插入的 XML 片段 |
 | `insert_before_block_id` | 否 | 插到这个块之前；省略（不提供此字段）则追加到页末 |
+
+### action = `str_replace`
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `action` | 是 | `"str_replace"` |
+| `pattern` | 是 | 要查找的字符串，非空；须与最新 `slide.get` 读回的 XML 逐字一致 |
+| `replacement` | 是 | 替换字符串，允许空串（空串 = 删除匹配） |
+| `is_multiple` | 否 | `true` 替换所有匹配；省略只替换**第一处** |
 
 ### 错误字段名（CLI 直接拒绝）
 
@@ -220,6 +236,16 @@ lark-cli slides +replace-slide --as user \
   ]'
 ```
 
+### 微调一个属性 / 一个词（str_replace）
+
+只改块内某个属性/词、且原文能从最新读取里精确定位又唯一时用 `str_replace`；要动整块结构、或原文不唯一/不确定时用 `block_replace`。
+
+```bash
+lark-cli slides +replace-slide --as user \
+  --presentation "$PID" --slide-id "$SID" \
+  --parts '[{"action":"str_replace","pattern":"width=\"560\"","replacement":"width=\"600\""}]'
+```
+
 ### 乐观锁
 
 ```bash
@@ -241,7 +267,6 @@ lark-cli slides +replace-slide --as user \
 | 3350001 + hint "block_id not found" | `parts[i].block_id` 在当前页不存在 | 重新 `slide.get` 拿最新 XML，按里面的 short ID 再填 |
 | 3350002 not found | `--revision-id` 传了不存在的版本号（超过当前 revision） | 用 `-1` 或用 `slide.get` 拿到的有效 `revision_id` |
 | `--parts invalid JSON` | JSON 本身不完整，或被 shell 引号/转义破坏 | 将数组写入 `parts.json` 后传 `--parts @parts.json`，或通过 stdin 传给 `--parts -` |
-| `--parts[i] action "str_replace" is not supported` | CLI 不暴露 `str_replace` | 把替换需求改写成 `block_replace` / `block_insert` |
 | `--parts[i] action "page_replace" / "slide_replace" means whole-page replacement` | 把整页更新意图传给了块级 shortcut | 改用 [`slides +update-slide`](lark-slides-update-slide.md) 整页原地写回 |
 | `--parts contains N items, exceeds maximum of 200` | 一次提交 parts 太多 | 拆多次调用 |
 | `--parts[i] unknown field "xml"; did you mean "replacement"?` | XML 塞进了未支持的字段名（如 `xml` / `new_xml` / `data`） | 使用标准字段：`block_replace` 用 `replacement`，`block_insert` 用 `insertion` |
