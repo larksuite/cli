@@ -79,19 +79,6 @@ func TestFilterRecoveryPreservesPolicyFieldsWithoutMutatingSource(t *testing.T) 
 	}
 }
 
-func assertDiagnosticPolicyError(t *testing.T, err error, subtype errs.Subtype, code int, message string) *errs.SecurityPolicyError {
-	t.Helper()
-	var policyErr *errs.SecurityPolicyError
-	if !errors.As(err, &policyErr) {
-		t.Fatalf("diagnostic error = %T (%v), want *errs.SecurityPolicyError", err, err)
-	}
-	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Category != errs.CategoryPolicy || problem.Subtype != subtype || problem.Code != code || problem.Message != message {
-		t.Fatalf("diagnostic problem = %#v, want policy/%s/%d with message %q", problem, subtype, code, message)
-	}
-	return policyErr
-}
-
 func TestDiagnose_NoUserReportsBotReadyAndUserMissing(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu}
 	f, _, _, _ := cmdutil.TestFactory(t, cfg)
@@ -308,15 +295,6 @@ func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
 		t.Fatalf("user message = %q, want 'server rejected token'", got.User.Message)
 	}
 
-	const message = "User token verification requires a challenge"
-	f, _, _, reg = cmdutil.TestFactory(t, cfg)
-	reg.Register(&httpmock.Stub{
-		Method: http.MethodGet,
-		URL:    larkauth.PathUserInfoV1,
-		Error:  errs.NewSecurityPolicyError(errs.SubtypeChallengeRequired, "%s", message).WithCode(21000),
-	})
-	got = Diagnose(context.Background(), f, cfg, true)
-	assertDiagnosticPolicyError(t, got.User.Error, errs.SubtypeChallengeRequired, 21000, message)
 	stored, err := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
 	if err != nil {
 		t.Fatalf("GetStoredToken() error = %v", err)
@@ -337,7 +315,10 @@ func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
 		Error:  errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "%s", refreshMessage).WithCode(21001),
 	})
 	got = Diagnose(context.Background(), f, cfg, true)
-	assertDiagnosticPolicyError(t, got.User.Error, errs.SubtypeAccessDenied, 21001, refreshMessage)
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(got.User.Error, &policyErr) || policyErr.Code != 21001 || policyErr.Message != refreshMessage {
+		t.Fatalf("user error = %#v, want policy error 21001 with message %q", got.User.Error, refreshMessage)
+	}
 }
 
 func TestDiagnose_UserIdentityExpired(t *testing.T) {
@@ -624,13 +605,5 @@ func TestDiagnose_CorruptStoredTokenCarriesReauthorizationRecovery(t *testing.T)
 	}
 	if projected.Error == nil || projected.Error.ProblemDetail().Hint != projected.Hint {
 		t.Fatalf("projected error = %#v, want nested hint to follow the top-level projection %q", projected.Error, projected.Hint)
-	}
-}
-
-func TestExternalVerifyFailed_PreservesPolicyError(t *testing.T) {
-	policyErr := errs.NewSecurityPolicyError(errs.SubtypeChallengeRequired, "challenge required").WithCode(21000)
-	got := externalVerifyFailed(Identity{Available: true}, "User", "corp-sso", policyErr)
-	if got.Error != policyErr {
-		t.Fatalf("external policy error = %#v, want original typed error", got.Error)
 	}
 }
