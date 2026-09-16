@@ -794,7 +794,14 @@ func TestNewDocCoverHTTPClientGuardsLegacyDialTLS(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	base := &http.Transport{DialTLS: func(_, _ string) (net.Conn, error) {
-		return tls.Dial("tcp", server.Listener.Addr().String(), &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // local TLS server verifies the connection guard.
+		conn, err := tls.Dial("tcp", server.Listener.Addr().String(), &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // local TLS server verifies the connection guard.
+		if err != nil {
+			return nil, err
+		}
+		return docCoverRemoteAddrConn{
+			Conn: conn,
+			addr: &net.TCPAddr{IP: net.ParseIP("127.0.0.6"), Port: 443},
+		}, nil
 	}}
 	client := newDocCoverHTTPClient(&http.Client{Transport: base})
 	req, err := http.NewRequest(http.MethodGet, "https://public.example/cover.png", nil)

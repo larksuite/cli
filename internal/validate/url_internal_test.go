@@ -202,7 +202,7 @@ func TestProxiedDownloadRejectsRestrictedResolvedTarget(t *testing.T) {
 	}
 
 	lookupIP := func(context.Context, string, string) ([]net.IP, error) {
-		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+		return []net.IP{net.ParseIP("127.0.0.6")}, nil
 	}
 	transport, ok := newDownloadTransportLeafWithResolver(
 		&http.Transport{Proxy: http.ProxyURL(proxyURL)},
@@ -392,7 +392,7 @@ func TestDirectDownloadLegacyDialTLSClosesRestrictedConnection(t *testing.T) {
 	t.Cleanup(func() { serverConn.Close() })
 	conn := &trackedDownloadConn{
 		Conn:       clientConn,
-		remoteAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 443},
+		remoteAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.6"), Port: 443},
 	}
 	rebuilt, ok := newDownloadTransportLeaf(&http.Transport{
 		DialTLS: func(string, string) (net.Conn, error) {

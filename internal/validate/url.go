@@ -117,7 +117,10 @@ func resolveDownloadHost(ctx context.Context, rawHost string, lookupIP downloadL
 		return nil, fmt.Errorf("failed to resolve host")
 	}
 	for _, ip := range ips {
-		if isRestrictedDownloadIP(ip) {
+		// INTERNAL-ONLY, do not cherry-pick upstream: see url_egress.go.
+		// Literal-IP hosts returned above, so only resolved addresses reach
+		// here and the sandbox-proxy exemption cannot widen anything else.
+		if isRestrictedDownloadIP(ip) && !isSandboxProxyIP(ip) {
 			return nil, fmt.Errorf("local/internal host is not allowed")
 		}
 	}
@@ -385,7 +388,8 @@ func pinDownloadRequestTargetToIP(req *http.Request, targetIP net.IP) (*http.Req
 	if req == nil || req.URL == nil {
 		return nil, fmt.Errorf("download request URL is missing")
 	}
-	if targetIP == nil || isRestrictedDownloadIP(targetIP) {
+	// INTERNAL-ONLY, do not cherry-pick upstream: see url_egress.go.
+	if targetIP == nil || (isRestrictedDownloadIP(targetIP) && !isSandboxProxyIP(targetIP)) {
 		return nil, fmt.Errorf("blocked download target: local/internal host is not allowed")
 	}
 
@@ -560,7 +564,8 @@ func validateConnRemoteIP(conn net.Conn) error {
 	if ip == nil {
 		return fmt.Errorf("invalid remote IP")
 	}
-	if isRestrictedDownloadIP(ip) {
+	// INTERNAL-ONLY, do not cherry-pick upstream: see url_egress.go.
+	if isRestrictedDownloadIP(ip) && !isSandboxProxyIP(ip) {
 		return fmt.Errorf("local/internal host is not allowed")
 	}
 	return nil

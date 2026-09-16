@@ -24,6 +24,13 @@ type opaqueRoundTripper struct {
 	called bool
 }
 
+type remoteAddrConn struct {
+	net.Conn
+	remoteAddr net.Addr
+}
+
+func (c remoteAddrConn) RemoteAddr() net.Addr { return c.remoteAddr }
+
 func (t *opaqueRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	t.called = true
 	return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody, Request: req}, nil
@@ -174,7 +181,11 @@ func TestNewDownloadHTTPClientGuardsLegacyDialTLS(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	base := &http.Transport{DialTLS: func(_, _ string) (net.Conn, error) {
-		return tls.Dial("tcp", server.Listener.Addr().String(), &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // local TLS server verifies the connection guard.
+		conn, err := tls.Dial("tcp", server.Listener.Addr().String(), &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // local TLS server verifies the connection guard.
+		if err != nil {
+			return nil, err
+		}
+		return remoteAddrConn{Conn: conn, remoteAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.6"), Port: 443}}, nil
 	}}
 	download := validate.NewDownloadHTTPClient(&http.Client{Transport: base}, validate.DownloadHTTPClientOptions{AllowHTTP: true})
 	req, err := http.NewRequest(http.MethodGet, "https://public.example/file", nil)
