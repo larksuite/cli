@@ -8,7 +8,7 @@
 
 - **新建**：从 `+create` 开始走下面的端到端流程。
 - **已有应用，本地还没有源码**：跳过 `+create`，先按下方「存量应用入口」拿 `app_id`，再 `+init`（或 `+git-credential-init` + `git clone`）把它拉到本地，然后照常开发。
-- **已有应用，本地已经有项目目录**（用户自己 clone 的、或上次会话留下的）：不要 `+create`、也不要另起新目录，先 `git status` 看有没有用户未提交的改动（有就先报告，不要 stash 或覆盖），再按「改完代码后部署上线」继续。
+- **已有应用，本地已经有项目目录**（用户自己 clone 的、或上次会话留下的）：不要 `+create`、也不要另起新目录，直接按「改完代码后部署上线」继续。
 
 ## 端到端流程（新建应用）
 
@@ -119,29 +119,22 @@ lark-cli apps +release-create --app-id app_xxx
 
 门禁未通过时，不要：写业务代码或手工创建脚手架文件；执行 `npm install` / `npm run dev`；`git add` / `git commit` / `git push`；`+release-create`；改用 `+git-credential-init` + `git clone` 的手动路径替代——新建应用的仓库只有一个 seed README，手动 clone 拿不到脚手架和 `.spark/meta.json`，后续开发与发布都会失去平台契约。
 
-### 通过后还要自己补的一步
+### 装依赖不在 `+init` 职责内
 
-`+init` 的职责是把远端应用绑定到本地目录（凭证、clone、工作分支、平台元数据、平台受控文件、首次提交推送、环境变量），**装依赖和起服务都不在它的职责内**：空仓库路径下脚手架会顺手装一次且失败也不报错，已有仓库路径则完全不装。
+`+init` 负责的是把远端应用绑定到本地目录：凭证、clone、工作分支、平台元数据、平台受控文件、首次提交推送、环境变量。装依赖和起服务都不在里面——空仓库路径下脚手架会顺手装一次且失败也不报错，已有仓库路径（含 `already_initialized`，常见于仓库是手动 `git clone` 来的）完全不装。
 
-所以 full_stack / frontend 在开始开发前确认 `node_modules/` 存在且非空，缺失就自己 `npm install`，不要为此重跑 `+init`——已有仓库上重跑会触发平台文件同步并产生一次提交推送，代价远大于装依赖，而且它本来也不会帮你装。html 无此步。
+所以 envelope 报成功不代表 `node_modules` 就绪；full_stack / frontend 缺依赖时自己 `npm install`，不要为此重跑 `+init`——已有仓库上重跑会触发平台文件同步并产生一次提交推送，代价远大于装依赖，而且它本来也不会帮你装。
 
-envelope 返回 `already_initialized`（常见于仓库是手动 `git clone` 来的）时尤其要确认这一步，因为那条路径不会走脚手架。
+### 失败与中断怎么判
 
-### 失败与中断的处置
-
-| 现象 | 判定 | 动作 |
+| 现象 | 原因 | 动作 |
 |---|---|---|
-| 工具超时 / 进程被 kill / 没有 envelope；或重跑报 `--dir` 已存在且非空 | 未完成，目录里是上次的残留 | 删除**本次 `+init` 新建的**目录后重跑，最多 2 次。只删本次新建的目录，不动用户原有目录，也不要把代码写进去。 |
-| 本轮刚建的目录却返回 `scaffold=already_initialized` | 疑似半成品被短路 | 按上面「通过后还要自己补的一步」确认依赖，仓库本身完整就继续开发；目录明显是半成品才删掉重跑。 |
-| 退出非 0，错误含 `git push failed` | 脚手架已提交、未推送 | 不要重跑 `+init`（会被短路）。先看 `error.message` 里的 git 输出：non-fast-forward（远端有新提交）→ `git pull --rebase origin sprint/default` 后 `git push origin sprint/default`；认证失败 → 先 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 再 push。然后按核对清单继续。 |
-| 退出 0 但 `env_pulled=false` 且有 `env_pull_error` | 初始化成功、环境变量未拉到 | 不阻塞开发；启动前执行 `+env-pull`。 |
+| 工具超时 / 没有 envelope / 重跑报 `--dir` 已存在且非空 | 上次被中断，目录是半成品 | 删除**本次 `+init` 新建的**目录后重跑，最多 2 次。只删本次新建的目录，不动用户原有目录。 |
+| 退出非 0，错误含 `git push failed` | 脚手架已提交、未推送 | 不要重跑 `+init`（会短路成 `already_initialized`）。按 `error.message` 里的 git 输出分流：non-fast-forward → `git pull --rebase origin sprint/default` 后重推；认证失败 → 先 `+git-credential-init` 再重推。 |
+| 退出 0 但 `env_pulled=false` 且有 `env_pull_error` | 初始化成功、环境变量没拉到 | 不阻塞开发；启动前执行 `+env-pull`。 |
 | `failed_precondition`：`git` 或 `npx`（随 Node.js 安装）不在 PATH | 环境缺失 | 安装后重跑原命令，不改走其他路径。 |
-| 未登录、缺 scope（`missing_scope`）、凭证签发失败 | 认证问题 | 按 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 处理后重跑原命令。`+init` 是 write 风险、没有确认门禁，不会返回 exit 10。 |
-| `--dir` 报 `.spark/meta.json` 缺 `app_id` 或不可读 | 上次 `+init` 中断的残留 | 按「中断后的处置顺序」先查进程，再删除**本次新建的**目录重跑；这也是命令 hint 给的方向。 |
-| `--dir` 校验错误：软链、非目录、已属于另一个 app | 目录选择错误 | 换目录；绝不删用户目录来腾位置。 |
-| 生成项目代码阶段报错（网络、镜像源、模板或依赖拉取失败） | 外部工具失败 | 检查网络后删目录重跑一次；不要自己拼脚手架。 |
-
-任何一种失败都不要在未初始化的目录里继续写代码；停止时把 app_id、`--dir`、退出码、`error.hint` 和目录残留状态一起报告，等用户决定。
+| 未登录、缺 scope（`missing_scope`）、凭证签发失败 | 认证问题 | 按 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 处理后重跑。`+init` 是 write 风险、没有确认门禁，不会返回 exit 10。 |
+| `--dir` 已属于另一个 app，或 `.spark/meta.json` 缺 `app_id` | 目录选择错误或上次残留 | 前者换目录，后者删除本次新建的目录重跑；两种情况都不要删用户原有目录。 |
 
 ## Trigger guide 的项目边界
 
@@ -158,7 +151,7 @@ envelope 返回 `already_initialized`（常见于仓库是手动 `git clone` 来
 > `+release-create` 部署的是远端 `sprint/default` 上**已 push** 的代码，不是你本地工作区——未 commit / 未 push 的改动不会进入这次发布。所以发布前务必先把本次改动提交并推送。
 
 1. `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
-2. `git push origin sprint/default` 把工作分支推到云端。同一个应用的云端会话和其他协作者也写这条分支，**push 前先 `git fetch origin` 看远端有没有新提交**（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push；遇 Git 认证失败 / 401 / 403 / credential helper 缺失 / token 过期：先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令；刷新凭证也失败时，停止并向用户报告错误，不要换路）。
+2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push；遇 Git 认证失败 / 401 / 403 / credential helper 缺失 / token 过期：先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令；刷新凭证也失败时，停止并向用户报告错误，不要换路）。
 3. `lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default` 发起部署上线，记下返回的 `release_id`。
 4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 成功时，若返回 `online_url`，可直接使用；未返回时不要编造链接。交付线上访问链接给他人前，注意 `online_url` 默认仅创建者可见，需先告知当前仅本人可见、按需用 `+access-scope-set` 放开可见范围。无需再调 `+list`；`failed` 时若返回非空 `error_logs`，据此给出失败原因；否则只报告 `release_id` 和当前 status，不要编造原因（`+list` 仅作独立查询入口）。
 
