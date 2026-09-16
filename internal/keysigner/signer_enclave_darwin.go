@@ -286,9 +286,8 @@ func secureEnclavePublicKey(key uintptr) (*ecdsa.PublicKey, error) {
 	return P256PublicKey(parsed)
 }
 
-// Preserve the native code and its namespace; only documented OSStatus values
-// permit fallback. Permission, entitlement, interaction, and unknown failures
-// remain errors, even if another CFError domain happens to reuse the same code.
+// Preserve the native code and its namespace. Missing entitlements make this
+// backend unavailable; unrelated CFError domains do not permit fallback.
 type secureEnclaveError struct {
 	operation string
 	code      int
@@ -306,7 +305,7 @@ func (e *secureEnclaveError) Is(target error) bool {
 	switch e.code {
 	case -25300:
 		return target == ErrKeyNotFound
-	case -4, -25291:
+	case -4, -25291, -34018:
 		return target == ErrUnavailable
 	default:
 		return false
