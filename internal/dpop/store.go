@@ -282,21 +282,21 @@ func (s *KeyStore) EnsureContext(ctx context.Context, id string) (*Key, error) {
 	var key *Key
 	err := withKeyStoreLockContext(ctx, func() error {
 		var err error
-		key, err = s.ensureContext(ctx, id)
+		key, err = s.ensureContext(ctx, id, s.signers)
 		return err
 	})
 	return key, err
 }
 
 // ensureContext requires the store lock.
-func (s *KeyStore) ensureContext(ctx context.Context, id string) (*Key, error) {
+func (s *KeyStore) ensureContext(ctx context.Context, id string, signers []keysigner.Signer) (*Key, error) {
 	if metadata, found, err := s.readMetadata(id); err != nil {
 		return nil, err
 	} else if found {
 		return s.loadFromMetadata(ctx, id, metadata)
 	}
 	ref := keysigner.KeyRef{Label: id, Algorithm: keysigner.AlgES256}
-	signer, public, err := keysigner.EnsureKeyWithFallback(ctx, s.signers, ref)
+	signer, public, err := keysigner.EnsureKeyWithFallback(ctx, signers, ref)
 	if err != nil {
 		return nil, fmt.Errorf("create DPoP key: %w", err)
 	}
@@ -321,6 +321,7 @@ func (s *KeyStore) ensureContext(ctx context.Context, id string) (*Key, error) {
 // so a missing bound key requires re-authorization instead of silent rebinding.
 // Created is true only when the caller owns a new key and must delete it if the
 // token issuance transaction does not commit.
+// The identifier is a namespace: each backend uses its own stable key within it.
 func (s *KeyStore) PrepareReplaceableContext(ctx context.Context, id string) (*Key, bool, error) {
 	if s == nil || s.keychain == nil || len(s.signers) == 0 {
 		return nil, false, keysigner.ErrUnavailable
@@ -331,32 +332,35 @@ func (s *KeyStore) PrepareReplaceableContext(ctx context.Context, id string) (*K
 	var key *Key
 	var created bool
 	err := withKeyStoreLockContext(ctx, func() error {
-		var err error
-		key, err = s.ensureContext(ctx, id)
-		if err == nil {
-			_, found, metadataErr := s.readMetadata(id)
-			if metadataErr != nil {
-				key = nil
-				return metadataErr
+		var unavailable []error
+		for _, signer := range s.signers {
+			keyID := id + "-" + signer.Name()
+			var err error
+			key, err = s.ensureContext(ctx, keyID, []keysigner.Signer{signer})
+			if errors.Is(err, ErrKeyNotFound) {
+				cleanupCtx := ctx
+				if cleanupCtx == nil {
+					cleanupCtx = context.Background()
+				} else {
+					cleanupCtx = context.WithoutCancel(cleanupCtx)
+				}
+				if deleteErr := s.deleteContext(cleanupCtx, keyID); deleteErr != nil {
+					return errors.Join(err, deleteErr)
+				}
+				key, err = s.ensureContext(ctx, keyID, []keysigner.Signer{signer})
 			}
+			if errors.Is(err, keysigner.ErrUnavailable) {
+				unavailable = append(unavailable, err)
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			_, found, err := s.readMetadata(keyID)
 			created = !found
-			return nil
-		}
-		if !errors.Is(err, ErrKeyNotFound) {
 			return err
 		}
-		cleanupCtx := ctx
-		if cleanupCtx == nil {
-			cleanupCtx = context.Background()
-		} else {
-			cleanupCtx = context.WithoutCancel(cleanupCtx)
-		}
-		if deleteErr := s.deleteContext(cleanupCtx, id); deleteErr != nil {
-			return errors.Join(err, deleteErr)
-		}
-		key, err = s.ensureContext(ctx, id)
-		created = err == nil
-		return err
+		return errors.Join(append([]error{keysigner.ErrUnavailable}, unavailable...)...)
 	})
 	return key, created, err
 }

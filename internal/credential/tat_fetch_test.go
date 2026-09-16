@@ -169,7 +169,7 @@ func TestFetchTATDPoPPolicyAndKeyLifetime(t *testing.T) {
 				heartbeatCalls != 1 || tokenCalls != tc.wantTokenCalls {
 				t.Fatalf("fetchTAT() = (%+v, %v), heartbeat=%d token=%d", token, err, heartbeatCalls, tokenCalls)
 			}
-			keyID := tatDPoPKeyID(core.BrandFeishu, "cli-dpop")
+			keyID := tatDPoPKeyID(core.BrandFeishu, "cli-dpop") + "-" + keysigner.SoftwareSignerName
 			_, loadErr := store.LoadContext(context.Background(), keyID)
 			if tc.wantDPoP && loadErr != nil {
 				t.Fatalf("committed DPoP key was not retained: %v", loadErr)
@@ -561,7 +561,7 @@ func TestFetchTATRepeatedProofFallback(t *testing.T) {
 						if proof != "" {
 							t.Fatal("Bearer fallback carried proof")
 						}
-						if _, err := store.LoadContext(ctx, tatDPoPKeyID(core.BrandFeishu, "fallback")); !errors.Is(err, dpop.ErrKeyNotFound) {
+						if _, err := store.LoadContext(ctx, tatDPoPKeyID(core.BrandFeishu, "fallback")+"-"+keysigner.SoftwareSignerName); !errors.Is(err, dpop.ErrKeyNotFound) {
 							t.Fatalf("key not rolled back before fallback: %v", err)
 						}
 					} else {
