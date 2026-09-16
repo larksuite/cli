@@ -15,11 +15,14 @@ from lark_sheet_read_cli import (
     emit_error,
     emit_success,
     envelope_data,
+    is_grid_sheet,
     resolve_target_sheets,
     run_sheets,
     sheet_identifier,
     sheet_locator,
+    sheet_resource_type,
     sheet_title,
+    visible_grid_selection,
 )
 
 ACTION = "inspect_workbook"
@@ -31,6 +34,7 @@ def _sheet_summary(sheet: dict[str, Any]) -> dict[str, Any]:
         "sheet_id": sheet_identifier(sheet),
         "title": sheet_title(sheet),
         "index": sheet.get("index"),
+        "resource_type": sheet_resource_type(sheet),
         "row_count": sheet.get("row_count"),
         "column_count": sheet.get("column_count"),
         "is_hidden": sheet.get("is_hidden"),
@@ -78,29 +82,53 @@ def inspect_workbook(args) -> tuple[dict[str, Any], list[str]]:
     # An explicit selector must resolve: without require_one a typo'd
     # --sheet-id/--sheet-name silently yields sheet_count 0, which reads as
     # "empty workbook" instead of a locator error.
+    selection = visible_grid_selection(workbook, sheet_id=args.sheet_id, sheet_name=args.sheet_name)
+    all_sheets = resolve_target_sheets(workbook)
     target_sheets = resolve_target_sheets(
         workbook,
         sheet_id=args.sheet_id,
         sheet_name=args.sheet_name,
         require_one=bool(args.sheet_id or args.sheet_name),
     )
+    preview_targets = target_sheets
+    if not args.sheet_id and not args.sheet_name:
+        # is_hidden 缺失不等于隐藏：预览只是只读预检，除显式 is_hidden=true 外一律纳入，
+        # 否则旧 payload 会静默退化成「只有 summary、零预览」。写入侧的保守可见性判定
+        # 仍由 selection 负责（visibility_unknown 在那里照样排除）。
+        preview_targets = [sheet for sheet in all_sheets if is_grid_sheet(sheet) and sheet.get("is_hidden") is not True]
     if args.max_sheets < 1:
         raise LarkCliError("--max-sheets must be at least 1")
-    inspect_count = len(target_sheets)
-    if not args.sheet_id and not args.sheet_name:
-        inspect_count = min(len(target_sheets), args.max_sheets)
-        if inspect_count < len(target_sheets):
+    inspect_count = min(len(preview_targets), args.max_sheets)
+    if inspect_count < len(preview_targets):
+        warnings.append(
+            f"layout and preview skipped for {len(preview_targets) - inspect_count} visible grid sheets; "
+            "pass --sheet-id or --sheet-name to inspect one"
+        )
+    if not preview_targets and all_sheets:
+        if any(is_grid_sheet(sheet) for sheet in all_sheets):
             warnings.append(
-                f"layout and preview skipped for {len(target_sheets) - inspect_count} sheets; "
-                f"pass --sheet-id or --sheet-name to inspect one"
+                "no previewable grid sheet: every grid sheet is explicitly hidden; "
+                "pass --sheet-id or --sheet-name to inspect one anyway"
             )
+        else:
+            # 非网格子表在 visible_grid_selection 里会被显式拒绝，别提示「带 selector 重跑」
+            # ——照做必然拿到 "is not a grid sheet"，恢复动作等于死路。
+            warnings.append(
+                "no grid sheet in this workbook: every sheet is non-grid; "
+                "read it through the matching product API instead of the grid read/write path"
+            )
+    # 按对象身份而非 sheet_id 圈定预览集合：payload 缺 sheet_id 时 sheet_identifier 全为
+    # 空串，用 id 集合会把所有子表折叠成同一个 key，--max-sheets 直接失效（照样逐表发
+    # +sheet-info / +csv-get）。all_sheets 与 preview_targets 取自同一份 workbook，元素是
+    # 同一批 dict 实例，id() 比较安全。
+    preview_marks = {id(sheet) for sheet in preview_targets[:inspect_count]}
 
     profiles = []
-    for position, sheet in enumerate(target_sheets):
+    for sheet in all_sheets:
         sid = sheet_identifier(sheet)
         title = sheet_title(sheet)
         profile = _sheet_summary(sheet)
-        if position >= inspect_count:
+        if id(sheet) not in preview_marks:
             profiles.append(profile)
             continue
         locator = sheet_locator(sheet)
@@ -165,7 +193,7 @@ def inspect_workbook(args) -> tuple[dict[str, Any], list[str]]:
             }
         )
 
-    return {"sheet_count": len(target_sheets), "sheets": profiles}, warnings
+    return {"sheet_count": len(all_sheets), "sheets": profiles, "selection": selection}, warnings
 
 
 def main() -> None:

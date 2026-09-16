@@ -1,7 +1,7 @@
 
 # drive +status
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 按 **精确 SHA-256**（默认）或 **快速 modified_time**（`--quick`）比较本地目录与飞书云空间（云盘/云存储）文件夹，输出四类差异：
 

@@ -1,6 +1,6 @@
 # markdown +fetch
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 读取 Drive 中原生 Markdown 文件的内容；也支持把内容保存到本地。
 

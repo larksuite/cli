@@ -53,6 +53,22 @@ func TestApplyWorkbookOutputPath(t *testing.T) {
 	}
 }
 
+// Which is why the two directory-valued spellings stay on +workbook-export
+// alone. Every other --output-path in the domain is strictly a file path and
+// implements none of the splitting above, so as a domain alias "--outdir
+// ./exports" on a read command wrote a file literally named "exports".
+func TestOutdirIsNotADomainAlias(t *testing.T) {
+	t.Parallel()
+	for _, alias := range []string{"outdir", "output-dir"} {
+		if target, listed := domainFlagAliases[alias]; listed {
+			t.Errorf("--%s must not be a domain alias (it resolved to --%s); only +workbook-export reads it as a directory", alias, target)
+		}
+		if commandFlagAliases["+workbook-export"][alias] != "output-path" {
+			t.Errorf("+workbook-export must keep --%s as its own alias", alias)
+		}
+	}
+}
+
 // TestWorkbookExport_ExecuteExportOnly covers the no-download path: without
 // --output-path, +workbook-export delegates to the shared drive export core
 // with OutputDir="" so it creates + polls the export task and returns the ready

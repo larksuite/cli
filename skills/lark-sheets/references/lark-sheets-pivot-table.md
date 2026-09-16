@@ -30,13 +30,14 @@
 | "各部门男女人数" | 部门 | 姓名（`"count"`） | 性别 |
 
 **常见配置错误（必须注意）**：
+- **值字段类型与聚合器匹配**：`sum/average/median/product/stdDev/stdDevp/var/varp` 只用于数值列；数字个数用 `countNums`，非空记录数用 `count`。mixed 列先保留原值并新增清洗结果/失败标记，记录总数、成功、失败、空值和统计分母，再对清洗后的数值列聚合。
 - **数据源范围必须精确**：透视表的数据源范围必须包含表头行，且精确覆盖全部数据行列。范围过大（包含空行/空列）或过小（遗漏数据列）都会导致透视表结果错误
 - **行列字段选择要匹配用户意图**：用户说"按商品统计金额"→ 行字段=商品，值字段=金额（`summarize_by: "sum"`）。不要把行列字段搞反
 - **聚合类型要匹配**：用户说"统计数量"→ `summarize_by: "count"`；"统计总额"→ `"sum"`；"统计平均"→ `"average"`。完整合法值：`sum` / `count` / `average` / `max` / `min` / `product` / `countNums` / `stdDev` / `stdDevp` / `var` / `varp` / `distinct` / `median`。按用户意图选聚合方式，不要拿 `count` 顶替 `sum`
 - **`--properties` 还原生支持**：计算字段 `calculated_fields[].summarize_by ∈ {sum, custom}`、重复行标签 `repeat_row_labels: true`——别因速查表没列就判"不支持"绕路
 - **参数长度限制**：如果透视表配置 JSON 过长（数据源范围跨越大量行列），可能导致工具调用失败。此时应先确认数据范围的精确边界，避免传入过大的 range
 - **落点不能覆盖任何已有数据（不只是 `--source` 范围）**：透视表创建后会向右下**展开**，展开区域哪怕只盖到一个已有单元格（即便已避开源数据），也会报「目标位置不能与数据源重叠」并产生 `#REF!`。创建前无法精确预知展开尺寸，故**强烈优先默认策略**（不传 `--target-sheet-id/-name` 与 `--target-position`/`--range`，后端自动新建空白子表），零覆盖风险；非要落到已有子表，必须挑一片足够大的纯空白区
-- **创建后必须校验（用 `info` 读取展开后的真实占用区域）**：创建后调用 `+pivot-list` 读 `info.error_state` 与 `info.content_range`/`page_range`——`error_state` 非 `None`（如 `Cover` 盖到其它内容 / `Shrink` 展不开）说明落点冲突，应删除后重建到空白区；`content_range`/`page_range` 是展开后**实际占用区域**，可用 `+csv-get` 抽查其边缘外有没有盖掉原有数据，确认结构正确
+- **创建后轮询并校验**：调用 `+pivot-list --sheet-id/--sheet-name <落点表> --pivot-table-id <id>`。`Loading` / `ServiceCalcLoading` 是瞬态，继续轮询到 `info.loaded=true` 且 `error_state=None`；`Cover` / `Shrink` 等终态错误再删除重建。随后用 `info.content_range/page_range` 回读展开区，确认非空、尺寸、总计位置和用户点名的指标。
 
 ## Shortcuts
 
@@ -64,11 +65,11 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--properties` | string + File + Stdin（复合 JSON） | required | JSON：{"rows":[...],"columns":[...],"values":[...],"filters":[...],"show_row_grand_total":true,"show_col_grand_total":true}（数据源走 --source，不要再放进 properties.source） |
-| `--target-position` | string | optional | 透视表落点子表内的起始 cell（A1 格式，如 `A1`），映射到顶层 `target_position`，默认 `A1`（值为 A1 时不下发）。它与 `--range` 都表达落点但落在不同 wire 字段，避免两者同时给冲突值 |
+| `--target-position` | string | optional | 透视表落点子表内的起始 cell（A1 格式，如 `A1`），默认 `A1`（值为 A1 时不下发）。它与 `--range` 落在同一 wire 字段 `properties.range`，给非默认值时优先于 `--range`；两者同时给非默认值会被拒绝，只传其一 |
 | `--target-sheet-id` | string | xor | 透视表落点目标子表的 reference_id（与 `--target-sheet-name` 互斥，优先于 --target-sheet-name；都不传时自动新建一张子表放置透视表——推荐）。与数据源 sheet 区分：数据源 sheet 写在 --source 的 A1 引用里（带 sheet 前缀，形如 `'Sheet1'!A1:D100`）。 |
 | `--target-sheet-name` | string | xor | 透视表落点目标子表的名称（与 `--target-sheet-id` 互斥；都不传时自动新建一张子表放置透视表——推荐）。与数据源 sheet 区分：数据源 sheet 写在 --source 的 A1 引用里（带 sheet 前缀，形如 `'Sheet1'!A1:D100`）。 |
 | `--source` | string | required | 透视表源数据区域（A1 表示法，格式 `'SheetName'!StartCell:EndCell`，如 `'Sheet1'!A1:D100`） |
-| `--range` | string | optional | 透视表左上角放置位置（A1 单值，如 `F1`，仅 create 生效），映射到 `properties.range`；省略时放在落点子表（默认新建子表）的左上角。它与 `--target-position` 都表达落点但落在不同 wire 字段，避免两者同时给冲突值 |
+| `--range` | string | optional | 透视表左上角放置位置（A1 单值，如 `F1`，仅 create 生效），映射到 `properties.range`；省略时放在落点子表（默认新建子表）的左上角。它与 `--target-position` 落在同一 wire 字段，两者同时给非默认值会被拒绝，只传其一 |
 
 ### `+pivot-update`
 
@@ -114,7 +115,7 @@ _创建/更新的透视表属性_
 
 公共四件套：所有 shortcut 顶部排列 `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`，其中 `--sheet-id` / `--sheet-name` 在 `+pivot-update` / `+pivot-delete` / `+pivot-list` 上是公共四件套语义（定位透视表所在 sheet，XOR 必传一个）。
 
-**`+pivot-create` 例外**：placement 选择器用 `--target-sheet-id` / `--target-sheet-name`（XOR，两个都不传时后端自动新建子表存放产物，强烈推荐，绝不碰源数据）。数据源 sheet 写在 `--source` 的 `'SheetName'!Range` 里，不靠 sheet 选择器 flag。
+**`+pivot-create` 例外**：placement 选择器用 `--target-sheet-id` / `--target-sheet-name`（至多一个、都可省略；省略时后端自动新建子表，推荐）。数据源 sheet 写在 `--source` 的 `'SheetName'!Range` 里。
 
 ### `+pivot-list`
 
@@ -124,7 +125,7 @@ lark-cli sheets +pivot-list --url "..." --sheet-id "$SID"
 
 > **返回值含 `info`（展开后的占用区域与状态）**：每个透视表对象除 `position` / `snapshot` 外，还返回 `info`，标明它在 sheet 上的平铺区域与状态——`info.page_range`（筛选/分页区 A1）、`info.content_range`（主体数据区 A1）、`info.span_range`（空表合并区 A1）、`info.error_state`（错误状态，如 `None`/`Cover`/`Shrink`/`Loading`）、`info.is_empty` / `info.is_hidden`、`info.row`/`info.col`（锚点）等。
 > **用途 1（判断改值还是改配置）**：当用户描述某个单元格要改动时，先 `+pivot-list` 拿到 `info`，判断该单元格是否落在 `page_range` / `content_range` 内——**落在区域内 = 属于透视表，应走 `+pivot-update` 改配置**（透视表单元格不能直接 `+cells-set` 改值）；**落在区域外 = 普通单元格，正常 `+cells-set` 改值**。
-> **用途 2（创建后校验覆盖）**：建完透视表用 `info.error_state` 判断有没有冲突（非 `None` 即落点/展开区与已有数据重叠或展不开），用 `info.content_range`/`page_range` 拿到展开后真实占用区域再核对是否盖到原有数据。
+> **用途 2（创建后校验覆盖）**：建完后轮询 `info.loaded/error_state`；`Loading` / `ServiceCalcLoading` 继续等待，`Cover` / `Shrink` 等终态错误才表示冲突。成功后用 `content_range/page_range` 核对真实占用区域与原数据边界。
 
 ### `+pivot-create`
 
@@ -133,13 +134,12 @@ lark-cli sheets +pivot-list --url "..." --sheet-id "$SID"
 > **先理清 `+pivot-create` 上 4 个位置类入参（语义不同，别混）**：
 > - `--source`（**必填**）：**源数据**区域，须自带 `Sheet!` 前缀（如 `'Sheet1'!A1:D100`，sheet 名按 A1 标准单引号包裹）。源 sheet 的名字在 `--source` 字符串里，**不**通过单独 flag 传。
 > - `--target-sheet-id` / `--target-sheet-name`：**透视表的落点 sheet**（即产物放哪张子表）。两个互斥（最多传一个），都不传时后端自动新建子表存放产物（强烈推荐）。
-> - `--target-position`（可选，A1 表示法，默认 `A1`）：落点 sheet 内的起始 cell，映射到顶层 `target_position`。
-> - `--range`（可选，A1 单值，仅 create 生效）：跟 `--target-position` 表达同一意图但映射到 `properties.range`，**两者不要同时给**。
+> - `--target-position`（可选，默认 `A1`）与 `--range`（可选）都映射到 `properties.range`，表达同一落点；不要同时给两个非默认值。
 >
 > **落点 3 种策略（互斥，选其一）**：
 > 1. **默认（强烈推荐）**：`--target-sheet-id` / `--target-sheet-name` / `--target-position` / `--range` **全都不传** → 服务端**自动新建子表**存放产物，绝不碰任何已有数据。
 > 2. **放进指定的已有子表**：传 `--target-sheet-id <落点子表 id>`（或 `--target-sheet-name`），可选 `--target-position <子表内起点 cell>`。⚠️ **若落点子表就是源数据所在的 sheet**，必须配 `--target-position` 或 `--range` 指向源数据范围**之外**的位置，否则产物默认从 A1 起会盖在源数据上。
-> 3. **`--range`**：跟策略 2 等价（同样需要 `--target-sheet-id` / `--target-sheet-name` 指定落点子表，不然落到自动新建子表），只是用 `properties.range` 那条 wire 路径表达位置。同样的覆盖风险，同样需要避开源数据范围。
+> 3. **`--range`**：跟策略 2 等价（同样需要 `--target-sheet-id` / `--target-sheet-name` 指定落点子表，不然落到自动新建子表），只是改用 `--range` 表达同一落点（与 `--target-position` 同一 wire 字段）。同样的覆盖风险，同样需要避开源数据范围。
 >
 > 一般用策略 1（默认新建子表）即可，零覆盖风险，无需任何 `--target-*` / `--range` flag。
 
@@ -155,7 +155,7 @@ lark-cli sheets +pivot-create --url "..." \
 
 ### `+pivot-update`
 
-> 不允许改 `--source` / `--range`（透视表创建后位置/数据源固定）；只能用 `--properties` 改 rows / columns / values / filters 等。先 `+pivot-list --pivot-table-id <id>` 回读再 patch，避免漏字段。
+> 不允许改落点 range；更新配置前先 `+pivot-list --sheet-id/--sheet-name <落点表> --pivot-table-id <id>` 回读完整 snapshot，再 patch rows / columns / values / filters。需要切换数据源时，可在 `--properties` 中提供新的 `source`。
 
 ### `+pivot-delete`
 
@@ -165,8 +165,8 @@ lark-cli sheets +pivot-delete --url "..." --sheet-id "$SHEET_ID" --pivot-table-i
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：`--url` / `--spreadsheet-token` XOR 必填；`+pivot-{update,delete,list}` 的 `--sheet-id` / `--sheet-name` XOR 必填一个；`+pivot-create` 例外（用 `--target-sheet-id` / `--target-sheet-name` 表达落点，两个都可空时触发 backend auto-create 子表，两个都给则报 mutually exclusive）；`+pivot-create` 的 `--source` 必填且必须含表头行；`--properties` 中 `rows` / `columns` / `values` 至少非空之一；`+pivot-delete` 强制 `--yes` 或 `--dry-run`。
-- `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 pivot 请求模板"+ 预估输出尺寸（行数 × 列数）。
-- `Execute`：写后不自动回读；如需确认，自行调用 `+pivot-list --pivot-table-id <id>` 并用 `+csv-get` 抽样读透视产物核对输出尺寸 + 总计行位置。
+- `Validate`：`--url` / `--spreadsheet-token` XOR 必填；update/delete/list 的 `--sheet-id` / `--sheet-name` XOR 必填；create 的 target selector 至多一个、可都省略；`--source` 与合法 `--properties` 必填；delete 强制 `--yes` 或 `--dry-run`。schema 校验类型与枚举，但允许创建空壳配置，业务完整性须靠创建后 list/data 验证。
+- `DryRun`：输出将发送的 pivot 请求模板和本地 placement_warning；不联网、不预估实际展开尺寸。
+- `Execute`：写后不自动回读；create/update 后必须按落点 sheet + pivot id 轮询 `+pivot-list` 到 loaded，核 error_state/content_range 与数据；delete 后 list 确认目标不存在。
 
-> ⚠️ pivot 输出包含总计 / 小计行；后续 chart 引用 pivot 时，`snapshot.data.refs` 必须排除这些行（见 `lark-sheets-chart` 的「⚠️ chart 数据源引用 pivot 时必须排除总计行」段）。
+> ⚠️ pivot 输出包含总计 / 小计行；后续 chart 引用 pivot 时，`snapshot.data.refs` 必须排除这些行（见 `references/lark-sheets-chart.md` 的「⚠️ chart 数据源引用 pivot 时必须排除总计行」段）。

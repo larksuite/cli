@@ -58,7 +58,7 @@ lark-cli slides +create --title "项目汇报" --slide @./slide-01.xml --dry-run
 > [!IMPORTANT]
 > 不带页面参数时，`slides +create` 只创建空白演示文稿。创建后用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加 slide 内容。
 >
-> 带了页面时，CLI 先创建空白演示文稿，再逐页调用 slide 创建接口添加页面。如果某一页添加失败，CLI 会停止并报错，已创建的演示文稿和已添加的页面会保留。
+> 带了页面时，CLI 先创建空白演示文稿，再逐页添加页面。如果某一页添加失败，CLI 会停止并报错，已创建的演示文稿和已添加的页面会保留。
 >
 > 如果演示文稿是**以应用身份（bot）创建**的，如 `lark-cli slides +create --as bot`，CLI 会**尝试为当前 CLI 用户自动授予该演示文稿的 `full_access`（可管理权限）**。
 >
@@ -114,7 +114,7 @@ lark-cli slides +create --title "项目汇报" --slide @./slide-01.xml --dry-run
 ]
 ```
 
-数组元素是页面 XML 原文。包装成 API 所需的 `{"slide": {"content": …}}` 并逐页调用由 CLI 完成。
+数组元素是页面 XML 原文；请求封装和逐页提交由 `+create` 完成。
 
 > [!WARNING]
 > `--slides '[...]'` 的风险点主要在 shell 参数传递，而不是单纯页数。即使只有 1 页，只要 XML 足够复杂，也建议改用 `--slide @page-01.xml` 逐页传文件。
@@ -142,7 +142,7 @@ lark-cli slides +create --as user --title "图测试" --slide @./slide-01.xml
 - 路径相对于**当前工作目录**（CWD）解析；**必须是 CWD 内的相对路径**（如 `./pic.png`、`./assets/x.png`）
 - 同一份图被多次引用时**只上传一次**（按路径去重）
 - `src` 不以 `@` 开头的会原样保留，但**只允许写 `slides +media-upload` 拿到的 `file_token`**；**禁止写 http(s) 外链 URL**：飞书 slides 渲染端不会代理外链图片，外链 src 通常显示破图。要用网图必须先下载到 CWD 内、再走上传流程
-- 单张图片最大 20 MB（slides upload API 不支持分片上传）
+- 单张图片最大 20 MB（媒体上传不支持分片）
 - 校验阶段就会检查所有占位符文件存在及大小；缺文件或超限直接报错，不会创建空白 PPT 占位
 - 创空白 PPT → 上传所有图 → 替换 token → 逐页创建 slide，按这个顺序执行
 

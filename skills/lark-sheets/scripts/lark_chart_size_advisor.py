@@ -272,7 +272,8 @@ def profile_matrix(
     return {
         "categories": nonempty_categories,
         "series_names": series_names,
-        "values": [number for value in first_values if (number := _numeric(value)) is not None],
+        # 海象运算符要 3.8，CI 的解释器是 3.7：先映射再滤空，语义等价。
+        "values": [n for n in (_numeric(v) for v in first_values) if n is not None],
         "dim2_indexes": selected,
     }
 

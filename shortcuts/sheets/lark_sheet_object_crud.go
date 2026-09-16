@@ -142,7 +142,7 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str(spec.sheetIDFlagOnCreate()))
 			sheetName := strings.TrimSpace(runtime.Str(spec.sheetNameFlagOnCreate()))
 			_, err = objectCreateInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -164,6 +164,23 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			sheetID := strings.TrimSpace(runtime.Str(spec.sheetIDFlagOnCreate()))
 			sheetName := strings.TrimSpace(runtime.Str(spec.sheetNameFlagOnCreate()))
+			// Validate defers a missing selector to here, so here is where it
+			// gets answered; this factory reads its own flag names, which is
+			// why it cannot go through resolveSheetSelectorExec.
+			//
+			// Except where an absent selector is the point. Pivot's contract is
+			// that omitting the target makes the BACKEND create a fresh sheet
+			// for the result, which is the zero-overwrite path its own tips
+			// recommend. Resolving it here would fill in the sole sheet -- the
+			// one holding the source data -- and land the pivot on top of it,
+			// or, in a workbook with several sheets, demand a selector the
+			// command does not require.
+			if !(spec.allowEmptySheetSelectorOnCreate && sheetID == "" && sheetName == "") {
+				sheetID, sheetName, err = resolveOmittedSheetSelector(ctx, runtime, token, sheetID, sheetName)
+				if err != nil {
+					return err
+				}
+			}
 			input, err := objectCreateInput(runtime, token, sheetID, sheetName, spec)
 			if err != nil {
 				return err
@@ -238,7 +255,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 			sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 			_, err = objectUpdateInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -251,7 +268,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -361,7 +378,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 			sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 			_, err = objectDeleteInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -374,7 +391,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -892,7 +909,7 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 			// uploadedImageToken="": Validate never uploads; floatImageProperties
 			// still validates the --image path and the source XOR.
 			_, err = floatImageWriteInput(runtime, token, sheetID, sheetName, op, withIDFlag, "")
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			ref, _ := parseSpreadsheetRef(runtime)
@@ -917,7 +934,7 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -1061,7 +1078,7 @@ var FilterCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -1133,7 +1150,7 @@ var FilterUpdate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+filter-update"),
-	Validate:    validateViaInput(filterUpdateInput),
+	Validate:    validateFilterViaInput(filterUpdateInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -1145,8 +1162,11 @@ var FilterUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
+			return err
+		}
+		if sheetID, sheetName, err = resolveFilterSheetID(ctx, runtime, token, sheetID, sheetName); err != nil {
 			return err
 		}
 		input, err := filterUpdateInput(runtime, token, sheetID, sheetName)
@@ -1162,12 +1182,75 @@ var FilterUpdate = common.Shortcut{
 	},
 }
 
+// filterSheetIDReason is shared by the two filter builders and by the deferral
+// that recognises their error, so the three cannot drift apart.
+const filterSheetIDReason = "filter_id must equal sheet_id; a --sheet-name is traded for it on a real standalone run, " +
+	"but a preview and a +batch-update sub-op both perform no lookup — pass --sheet-id there"
+
+// deferFilterSheetIDLookup drops the id requirement in the one place it can be
+// settled later: a standalone real run, where Execute trades the name for the
+// id (resolveFilterSheetID) before the builder is called again. A preview has
+// no lookup, and a +batch-update sub-op is validated through the builder
+// directly with no execute step of its own, so both keep the error.
+func deferFilterSheetIDLookup(runtime *common.RuntimeContext, err error) error {
+	if err == nil || runtime.Bool("dry-run") {
+		return err
+	}
+	if strings.TrimSpace(runtime.Str("sheet-name")) == "" {
+		return err
+	}
+	if p, ok := errs.ProblemOf(err); !ok || !strings.Contains(p.Message, filterSheetIDReason) {
+		return err
+	}
+	return nil
+}
+
+// validateFilterViaInput is validateViaInput plus that deferral.
+func validateFilterViaInput(
+	build func(fv flagView, token, sheetID, sheetName string) (map[string]interface{}, error),
+) func(ctx context.Context, runtime *common.RuntimeContext) error {
+	inner := validateViaInput(build)
+	return func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return deferFilterSheetIDLookup(runtime, inner(ctx, runtime))
+	}
+}
+
+// resolveFilterSheetID settles the one thing +filter-update / +filter-delete
+// need and the selector resolver does not hand them: the sub-sheet's id, which
+// the filter tool uses as the filter_id. The resolver answers an omitted
+// selector with the sole sheet's NAME, and an explicit --sheet-name is a name
+// too, so both arrive here needing the same translation the old error told the
+// caller to perform by hand ("call +workbook-info first"). Doing it here is
+// what that sentence was describing.
+func resolveFilterSheetID(ctx context.Context, runtime *common.RuntimeContext, token, sheetID, sheetName string) (string, string, error) {
+	if sheetID != "" || sheetName == "" {
+		return sheetID, sheetName, nil
+	}
+	// This lookup is a READ on a write command, exactly like the one in
+	// resolveOmittedSheetSelector -- and it is the path that resolver does NOT
+	// cover, since an explicit --sheet-name makes it return before its own
+	// check. The conditional scope is declared either way, but declaring it
+	// does not enforce it, so without this a least-privilege token reaches a
+	// 403 from inside get_workbook_structure.
+	if err := runtime.EnsureScopes([]string{sheetsStructureReadScope}); err != nil {
+		return "", "", err
+	}
+	resolved, _, err := lookupSheetIndex(ctx, runtime, token, "", sheetName)
+	if err != nil {
+		return "", "", err
+	}
+	// The name is dropped along with the trade: the two selectors are mutually
+	// exclusive, and keeping both would fail the very check the id was fetched
+	// to satisfy.
+	return resolved, "", nil
+}
+
 func filterUpdateInput(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
 		return nil, err
 	}
 	if sheetID == "" {
-		return nil, sheetsValidationForFlag("sheet-id", "+filter-update requires --sheet-id (filter_id must equal sheet_id; --sheet-name needs a network lookup unavailable here — call +workbook-info first or pass --sheet-id directly)")
+		return nil, sheetsValidationForFlag("sheet-id", "+filter-update requires --sheet-id ("+filterSheetIDReason+")")
 	}
 	if strings.TrimSpace(runtime.Str("range")) == "" {
 		return nil, sheetsValidationForFlag("range", "--range is required")
@@ -1201,7 +1284,7 @@ var FilterDelete = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+filter-delete"),
-	Validate:    validateViaInput(filterDeleteInput),
+	Validate:    validateFilterViaInput(filterDeleteInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -1213,8 +1296,11 @@ var FilterDelete = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
+			return err
+		}
+		if sheetID, sheetName, err = resolveFilterSheetID(ctx, runtime, token, sheetID, sheetName); err != nil {
 			return err
 		}
 		input, err := filterDeleteInput(runtime, token, sheetID, sheetName)
@@ -1241,7 +1327,7 @@ func filterDeleteInput(runtime flagView, token, sheetID, sheetName string) (map[
 		return nil, err
 	}
 	if sheetID == "" {
-		return nil, sheetsValidationForFlag("sheet-id", "+filter-delete requires --sheet-id (filter_id must equal sheet_id; --sheet-name needs a network lookup unavailable here — call +workbook-info first or pass --sheet-id directly)")
+		return nil, sheetsValidationForFlag("sheet-id", "+filter-delete requires --sheet-id ("+filterSheetIDReason+")")
 	}
 	input := map[string]interface{}{
 		"excel_id":  token,
@@ -1271,6 +1357,15 @@ var condFormatCompareTypes = []string{
 	"beginsWith", "endsWith", "containsText", "notContains", "is",
 }
 
+// condFormatCompareTypeSpellings are the keys a comparison arrives under when
+// it is not spelled compare_type. Every spreadsheet UI and API in this space
+// names the slot differently (Excel's "criteria", the OpenAPI's "operator",
+// plain "condition"), and the entry that carries one is otherwise complete.
+// Order matters only for an entry that carries two of them, which no reading
+// resolves anyway; the first wins and the rest reach the schema.
+// 09-04..07: 2852 rejections said an attrs entry was missing compare_type.
+var condFormatCompareTypeSpellings = []string{"operator", "comparison", "compare", "criteria", "condition"}
+
 // condFormatCompareAliases maps the symbol and abbreviation forms onto the
 // enum. Squashed keys (letters and digits only) are handled by the generic
 // separator-insensitive match instead, so this table carries only spellings
@@ -1296,6 +1391,16 @@ var condFormatCompareAliases = map[string]string{
 	"ne":       "notEqual",
 	"neq":      "notEqual",
 	"contains": "containsText",
+	// The bare comparative, with "than" dropped. gt / ge / >= already resolve,
+	// so refusing the spelled-out form of the same comparison is arbitrary;
+	// "greater" can only mean greaterThan, since greaterThanOrEqual is the one
+	// that has to say so.
+	//
+	// "above" / "below" are deliberately NOT here: aboveAverage is a rule_type
+	// in this same schema, so a caller writing "above" may mean that rule
+	// rather than a comparison, and the did-you-mean is the honest answer.
+	"greater": "greaterThan",
+	"less":    "lessThan",
 }
 
 // condFormatShapeKeys are the keys that identify an attrs entry as belonging
@@ -1359,6 +1464,10 @@ func normalizeCondFormatStyle(style map[string]interface{}) {
 			delete(style, field)
 		}
 	}
+	// Before the flat-word loop: that loop reads style["font"] as a string,
+	// so an object or list value there reads as empty and the flat word
+	// replaces it outright, dropping whatever the composite asked for.
+	normalizeCondFormatFontValue(style)
 	for _, field := range sortedKeys(style) {
 		word, isFontWord := condFormatFontWords[field]
 		if !isFontWord {
@@ -1418,12 +1527,101 @@ func normalizeCondFormatStyle(style map[string]interface{}) {
 	}
 }
 
+// normalizeCondFormatFontValue folds the `font` slot onto its enum. The schema
+// spells the two effects as one string ("bold", "italic", "bold italic"),
+// while every font vocabulary the caller arrives from spells them as flags or
+// as a list, and neither order nor separator is fixed in what they write.
+// Recognized effects are collected and re-emitted in the enum's own order;
+// anything else in the slot is left for the schema to reject rather than
+// dropped. 09-04..07: 972 rejections on the object form alone.
+func normalizeCondFormatFontValue(style map[string]interface{}) {
+	raw, present := style["font"]
+	if !present {
+		return
+	}
+	var bold, italic bool
+	switch v := raw.(type) {
+	case map[string]interface{}:
+		for key, val := range v {
+			on, readable := val.(bool)
+			if !readable {
+				return // a member this fold cannot read at all
+			}
+			effect := condFormatFontWords[strings.ToLower(key)]
+			if effect == "" {
+				// An effect this enum has no room for (underline, size). Fold
+				// nothing: replacing the object would drop it in silence,
+				// while leaving it lets the schema report the type with the
+				// member still visible in the payload.
+				return
+			}
+			if !on {
+				continue
+			}
+			switch effect {
+			case "bold":
+				bold = true
+			case "italic":
+				italic = true
+			}
+		}
+		if !bold && !italic {
+			return // nothing asked for; the schema names the type mismatch
+		}
+	case []interface{}:
+		for _, item := range v {
+			word, isStr := item.(string)
+			if !isStr {
+				return
+			}
+			switch strings.ToLower(strings.TrimSpace(word)) {
+			case "bold":
+				bold = true
+			case "italic":
+				italic = true
+			default:
+				return
+			}
+		}
+		if !bold && !italic {
+			return
+		}
+	case string:
+		fields := strings.FieldsFunc(strings.ToLower(v), func(r rune) bool {
+			return r == ' ' || r == ',' || r == '+' || r == '|' || r == '\t'
+		})
+		if len(fields) == 0 {
+			return
+		}
+		for _, word := range fields {
+			switch word {
+			case "bold":
+				bold = true
+			case "italic":
+				italic = true
+			default:
+				return // an unrecognized word: leave the value as written
+			}
+		}
+	default:
+		return
+	}
+	switch {
+	case bold && italic:
+		style["font"] = condFormatFontBoth
+	case bold:
+		style["font"] = "bold"
+	case italic:
+		style["font"] = "italic"
+	}
+}
+
 // normalizeCondFormatProperties rewrites the unambiguous --properties habits
 // in place: attrs written as a single object instead of a one-entry list, a
 // comparison spelled as `operator` / in symbol form under a rule whose
 // contract is {compare_type, value|text}, and cell-style vocabulary in the
 // rule's style block.
-func normalizeCondFormatProperties(v interface{}) interface{} {
+func normalizeCondFormatProperties(_ flagView, v interface{}) interface{} {
 	props, ok := v.(map[string]interface{})
 	if !ok {
 		return v
@@ -1453,13 +1651,28 @@ func normalizeCondFormatProperties(v interface{}) interface{} {
 // normalizeCondFormatAttrEntry applies the operator rename and the
 // compare_type value canonicalization to one attrs entry.
 func normalizeCondFormatAttrEntry(entry map[string]interface{}) {
-	if _, taken := entry["compare_type"]; !taken {
-		_, hasValue := entry["value"]
-		_, hasText := entry["text"]
-		op, hasOperator := entry["operator"]
-		if hasOperator && (hasValue || hasText) && !condFormatEntryHasShapeKey(entry) {
-			entry["compare_type"] = op
-			delete(entry, "operator")
+	if _, taken := entry["compare_type"]; !taken && !condFormatEntryHasShapeKey(entry) {
+		for _, spelling := range condFormatCompareTypeSpellings {
+			raw, present := entry[spelling]
+			if !present {
+				continue
+			}
+			// Dispatch on the VALUE, not the key: `operator` is the
+			// timePeriod rule's own slot and holds words like "yesterday"
+			// there, so only a value this enum recognizes moves. That also
+			// makes the other spellings safe to add — a `condition` holding
+			// an object or a period word stays where it is.
+			word, isStr := raw.(string)
+			if !isStr {
+				continue
+			}
+			if !slices.Contains(condFormatCompareTypes, strings.TrimSpace(word)) &&
+				canonicalCondFormatCompareType(word) == "" {
+				continue
+			}
+			entry["compare_type"] = raw
+			delete(entry, spelling)
+			break
 		}
 	}
 	val, isStr := entry["compare_type"].(string)

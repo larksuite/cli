@@ -130,6 +130,20 @@ func TestCatalogSnapshotPinsReviewedSemantics(t *testing.T) {
 	}
 }
 
+func TestCatalogSnapshotIMChatCreateUsesTenantToken(t *testing.T) {
+	doc := loadShardDoc(t, "im")
+	method := doc["resources"].(map[string]any)["chats"].(map[string]any)["methods"].(map[string]any)["create"].(map[string]any)
+
+	tokens := method["accessTokens"].([]any)
+	if len(tokens) != 1 || tokens[0] != "tenant" {
+		t.Fatalf("im chats.create accessTokens = %v, want [tenant]", tokens)
+	}
+	description := method["description"].(string)
+	if !strings.Contains(description, "`bot` only (`tenant_access_token`)") || strings.Contains(description, "supports `user`") {
+		t.Fatalf("im chats.create description = %q, want bot-only identity guidance", description)
+	}
+}
+
 // TestCatalogSnapshotEntityIDsCarryNoIdentityTypeCondition guards the twelve
 // OKR entity-ID parameters: a cycle, objective or key result ID is not typed by
 // user_id_type or department_id_type. The real user_id parameter keeps its

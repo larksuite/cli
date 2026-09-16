@@ -2,7 +2,7 @@
 
 If the user query only specifies a task name (e.g., "Complete task Lobster No. 1"), use this command to list and search for the task by its summary.
 
-> **Prerequisites:** Please read `../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
+> **Prerequisites:** Please read `../../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 > 
 > **⚠️ Note:** This API must be called with a user identity. **Do NOT use an app identity, otherwise the call will fail.**
 >

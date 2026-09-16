@@ -10,6 +10,10 @@
 
 不可逆的影响必须先在回复中告知用户，得到确认再执行。
 
+## 合并安全契约（按模块 / 分组展示）
+
+合并前先读目标列的完整连续区域；只有同值且连续、且非左上角单元格没有值 / 公式 / 批注 / 数据验证或需保留的独立样式时，才可合并。空值、值变化、上级模块变化或上述有效内容立即断组。先读取既有 merges，禁止与现有合并区交叠或跨组扩张；执行前记录每组 `range + 左上角原文`，从下往上或一次批量提交。完成后用 `+sheet-info --include merges` 核范围，并用 `+cells-get` 确认左上角文本未丢、组外边界未合并。
+
 ## 使用场景
 
 读写。管理子表结构与布局。本 reference 覆盖 9 个 shortcut（按用途分两类）：
@@ -39,7 +43,7 @@
 **常见配置错误（必须注意）**：
 - **插入列直接用字母**：`+dim-insert` 的 `--position` 在列场景直接传字母（如 `C`），不要把列字母换算成 0-based 索引
 - **插入后引用偏移**：插入行/列后，原有数据的行号 / 列字母会发生偏移。如果插入后还需要对原有区域执行写入操作，必须重新计算偏移后的位置
-- **删除行列前先确认范围**：删除操作不可逆，执行前应确认 `--range` 精确无误。可先用 `+csv-get` 读取目标区域验证内容（`+csv-get` / `+cells-get` 见 `lark-sheets-read-data`）
+- **删除行列前先确认范围**：删除操作不可逆，执行前应确认 `--range` 精确无误。可先用 `+csv-get` 读取目标区域验证内容（`+csv-get` / `+cells-get` 见 `references/lark-sheets-read-data.md`）
 - **"在 D 列左侧新增一列"的正确写法**：`--position D --count 1`（新列插在 D 列之前）；要继承左侧列样式加 `--inherit-style before`。不要把 `--inherit-style after` 当成“插到 D 列右侧”，它不是插入方向参数。
 - **`+dim-move` 同维度约束**：`--source-range` 是行区间时 `--target` 必须是行号（数字），是列区间时 `--target` 必须是列字母——不可一行一列混用
 - **插入列后必须检查多行表头合并区域**：很多表格有 2-3 行的合并表头。插入列后，原有的合并区域不会自动扩展到新列。必须先用 `+sheet-info --include merges` 读取合并区域，插入后将跨越插入位置的合并区域重新设置（用 `+cells-{merge|unmerge}`），否则新列的表头会是空的、格式不连续
@@ -196,7 +200,7 @@ lark-cli sheets +dim-move --url "..." --sheet-id "$SID" --source-range "C:F" --t
 
 ### `+rows-resize` / `+cols-resize`
 
-> ⚠️ 这两条 shortcut 来自 `lark-sheets-range-operations` 的 `+rows-resize / +cols-resize` tool（分组在"工作表"是为了发现性）。详细参数和示例在 `lark-sheets-range-operations.md`。
+> ⚠️ 这两条 shortcut 来自 `references/lark-sheets-range-operations.md` 的 `+rows-resize / +cols-resize` tool（分组在"工作表"是为了发现性）。详细参数和示例在 `references/lark-sheets-range-operations.md`。
 >
 > 常规写法：行高走 `--range` + `--height <px>`、列宽走 `--range` + `--width <px>`，无需再传 `--type`（等价于 `--type pixel`）；多行 / 多列不同尺寸用 map 形态 `--heights` / `--widths`（如 `--widths '{"A":100,"C:E":120}'`）一次调用完成，不要拆多次调用或走 `+batch-update`。`--type standard` / `--type auto` 用于非像素模式，不能与像素 flag 同给。`+cols-resize.--type` 不接受 `auto`（列宽不支持自动适应）。⚠️ 单位是像素（不是 Excel 字符单位 / 磅）。
 
@@ -218,6 +222,6 @@ lark-cli sheets +dim-freeze --url "..." --sheet-id "$SID" --rows 0 --cols 2
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`--range` / `--source-range` 必须是合法 A1 闭区间（行用数字、列用字母，不可混用）；`+dim-insert` 的 `--count` > 0；`+dim-freeze` 至少给 `--rows` / `--cols` 之一；`+dim-move` 的 `--target` 必须与 `--source-range` 同维度（行 vs 列）；`+dim-delete` 强制 `--yes` 或 `--dry-run`，`--range` 与 `--ranges` 二选一、`--ranges` 各区间同维度且不可重叠（≤100 个）；`+rows-resize` / `+cols-resize` 的统一形态（`--range` + `--height`/`--width` 或 `--type`）与 map 形态（`--heights`/`--widths`）二选一、不可混用；详见 `lark-sheets-range-operations.md`。
+- `Validate`：XOR 公共四件套；`--range` / `--source-range` 必须是合法 A1 闭区间（行用数字、列用字母，不可混用）；`+dim-insert` 的 `--count` > 0；`+dim-freeze` 至少给 `--rows` / `--cols` 之一；`+dim-move` 的 `--target` 必须与 `--source-range` 同维度（行 vs 列）；`+dim-delete` 强制 `--yes` 或 `--dry-run`，`--range` 与 `--ranges` 二选一、`--ranges` 各区间同维度且不可重叠（≤100 个）；`+rows-resize` / `+cols-resize` 的统一形态（`--range` + `--height`/`--width` 或 `--type`）与 map 形态（`--heights`/`--widths`）二选一、不可混用；详见 `references/lark-sheets-range-operations.md`。
 - `DryRun`：写操作输出"将要 PATCH 的目标范围 + 目标参数"。
-- `Execute`：写后不自动回读；如需确认，自行调用 `+sheet-info --include row_heights,col_widths,hidden_rows,hidden_cols,groups,frozen` 查看受影响的范围。
+- `Execute`：写后必须调用 `+sheet-info --include row_heights,col_widths,hidden_rows,hidden_cols,groups,frozen,merges`，按本次结构动作核对受影响范围。

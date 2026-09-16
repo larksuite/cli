@@ -39,9 +39,9 @@
     {
       "name": "im",
       "file": "services/im.json",
-      "revision": 18,
-      "size": 258092,
-      "sha256": "d4e52d6dbba5a7801daeee51cae17e2a82428b99fe2ad4c2ff3b7129d8751c5b"
+      "revision": 19,
+      "size": 258061,
+      "sha256": "c0646036b4ddbb9f73633e61dceec5246a57e49f8bdd77dc5c78bc9f77582e7c"
     },
     {
       "name": "mail",

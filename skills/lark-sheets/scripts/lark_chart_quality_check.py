@@ -23,7 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from typing import Any
+from typing import Any, Dict, Tuple
 
 from lark_sheet_read_cli import (
     LarkCliError,
@@ -43,9 +43,11 @@ MAX_CELL_READ_SIZE = 2_000
 MAX_SOURCE_SAMPLE_POINTS = 50
 
 
-CellBounds = tuple[int, int, int, int]
-CellCache = dict[tuple[str, str, str, bool], dict[str, Any]]
-SeriesProfile = dict[str, Any]
+# 类型别名是运行期求值的，__future__ annotations 豁免不了它们；
+# 内置泛型下标要 3.9，CI 的解释器是 3.7，只能走 typing 里的等价物。
+CellBounds = Tuple[int, int, int, int]
+CellCache = Dict[Tuple[str, str, str, bool], Dict[str, Any]]
+SeriesProfile = Dict[str, Any]
 
 
 def _parse_a1_bounds(cell_range: str) -> CellBounds:
@@ -465,6 +467,20 @@ def _typed_cell(
             continue
         return value, "unknown"
     return value, "string" if numeric_string_count == 1 else "ambiguous_string"
+
+
+def _numeric_source_format_reason(
+    value: Any,
+    raw_type: str,
+    number_format: Any,
+) -> tuple[str, bool]:
+    if not _looks_numeric(str(value or "")):
+        return "", False
+    if str(number_format or "").strip() == "@":
+        return "numeric_value_uses_text_format", False
+    if raw_type == "string":
+        return "numeric_value_stored_as_text", False
+    return "", raw_type in {"ambiguous_string", "unknown"}
 
 
 def _chart_snapshot(chart: dict[str, Any]) -> dict[str, Any]:
@@ -1041,28 +1057,28 @@ def _numeric_source_issues(
                 if isinstance(cell, dict) and isinstance(cell.get("cell_styles"), dict)
                 else None
             )
-            reason = ""
-            if _looks_numeric(str(value or "")):
-                if str(number_format or "").strip() == "@":
-                    reason = "numeric_value_uses_text_format"
-                elif raw_type == "string":
-                    reason = "numeric_value_stored_as_text"
-                elif raw_type in {"ambiguous_string", "unknown"}:
-                    type_unverifiable_dimensions.add(dimension[0])
-            if reason:
-                dimension_index, role = dimension
-                key = (
-                    dimension_index,
-                    role,
-                    source_sheet,
-                    source_range,
-                    checked_range,
-                    reason,
-                )
-                issue_counts[key] = issue_counts.get(key, 0) + 1
-                samples = issue_groups.setdefault(key, [])
-                if len(samples) < sample_limit:
-                    samples.append(f"{index_to_column(column_index)}{row_number}")
+            reason, type_unverifiable = _numeric_source_format_reason(
+                value,
+                raw_type,
+                number_format,
+            )
+            if type_unverifiable:
+                type_unverifiable_dimensions.add(dimension[0])
+            if not reason:
+                continue
+            dimension_index, role = dimension
+            key = (
+                dimension_index,
+                role,
+                source_sheet,
+                source_range,
+                checked_range,
+                reason,
+            )
+            issue_counts[key] = issue_counts.get(key, 0) + 1
+            samples = issue_groups.setdefault(key, [])
+            if len(samples) < sample_limit:
+                samples.append(f"{index_to_column(column_index)}{row_number}")
 
         if truncated:
             continue

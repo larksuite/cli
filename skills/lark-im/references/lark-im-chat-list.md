@@ -1,6 +1,6 @@
 # im +chat-list
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
 List chats the current user (or bot, with `--as bot`) is a member of. **Not a search API — there is no `--query` parameter; the call always returns the full member list, paginated.** For keyword-based lookup (e.g. find a group by name or by member), use [`+chat-search`](lark-im-chat-search.md) instead.
 

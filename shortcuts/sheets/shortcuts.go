@@ -38,8 +38,41 @@ func Shortcuts() []common.Shortcut {
 		// flags inlined, enum vocabulary normalization) ride the existing
 		// PostMount composition, so no other domain's behavior shifts.
 		all[i].PostMount = withFlagErgonomics(all[i].PostMount)
+		all[i] = withOmittedSelectorReadScope(all[i])
 	}
 	return all
+}
+
+// withOmittedSelectorReadScope declares the read scope the omitted-selector
+// path needs. resolveOmittedSheetSelector answers a missing --sheet-name by
+// asking get_workbook_structure, which is a READ on commands that otherwise
+// declare only the write scope -- so a least-privilege token passes pre-flight
+// and then fails inside the lookup.
+//
+// Derived from the shortcut's own flags rather than written out per command:
+// the set is exactly "has a sheet selector to omit", and a hand-kept list
+// would drift the moment a command gains or loses one. Conditional, because
+// only the calls that actually omit the selector ever perform the read.
+func withOmittedSelectorReadScope(sc common.Shortcut) common.Shortcut {
+	if selectorMustBeExplicit[sc.Command] || !hasSheetSelectorFlag(sc.Flags) {
+		return sc
+	}
+	for _, existing := range append(sc.DeclaredScopesForIdentity("user"), sc.DeclaredScopesForIdentity("bot")...) {
+		if existing == sheetsStructureReadScope {
+			return sc
+		}
+	}
+	sc.ConditionalScopes = append(append([]string(nil), sc.ConditionalScopes...), sheetsStructureReadScope)
+	return sc
+}
+
+func hasSheetSelectorFlag(flags []common.Flag) bool {
+	for _, f := range flags {
+		if f.Name == "sheet-name" || f.Name == "sheet-id" {
+			return true
+		}
+	}
+	return false
 }
 
 func withSpreadsheetTokenAlias(flags []common.Flag) []common.Flag {

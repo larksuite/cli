@@ -150,6 +150,9 @@ func TestBuildMinutesSearchParams(t *testing.T) {
 	if body["query"] != "budget" {
 		t.Fatalf("body.query = %v, want budget", body["query"])
 	}
+	if got, _ := body["sorter"].(string); got != "create_time_desc" {
+		t.Fatalf("body.sorter = %q, want create_time_desc", got)
+	}
 	filter, _ := body["filter"].(map[string]interface{})
 	if filter == nil {
 		t.Fatalf("body.filter = nil, want filter object")

@@ -134,7 +134,7 @@ func TestNormalizeChartHexColors_Arrays(t *testing.T) {
 		"colorMode":        "auto",
 		"title":            []interface{}{"4472C4"},
 	}
-	raw, err := json.Marshal(normalizeChartHexColors(in))
+	raw, err := json.Marshal(normalizeChartHexColors(nil, in))
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}

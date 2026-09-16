@@ -43,8 +43,7 @@ var SheetInfo = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		_, _, err := resolveSheetSelector(runtime)
-		return err
+		return validateSheetSelectorPreflight(runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
@@ -56,7 +55,7 @@ var SheetInfo = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -158,7 +157,7 @@ var DimInsert = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -301,7 +300,7 @@ var DimDelete = common.Shortcut{
 				return err
 			}
 			_, err = dimDeleteRangesOps(runtime, token, sheetID, sheetName)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		}
 		return validateDimRangeOp("delete")(ctx, runtime)
 	},
@@ -323,7 +322,7 @@ var DimDelete = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -437,7 +436,7 @@ func validateDimRangeOp(op string) func(ctx context.Context, runtime *common.Run
 		sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 		sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 		_, err = dimRangeOpInput(runtime, token, sheetID, sheetName, op)
-		return err
+		return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 	}
 }
 
@@ -451,7 +450,7 @@ func validateDimGroupOp(op string) func(ctx context.Context, runtime *common.Run
 		sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 		sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 		_, err = dimGroupInput(runtime, token, sheetID, sheetName, op)
-		return err
+		return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 	}
 }
 
@@ -508,7 +507,7 @@ var DimFreeze = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -731,7 +730,7 @@ func newDimRangeOpShortcut(command, desc, op, risk string) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -775,7 +774,7 @@ func newDimGroupShortcut(command, desc, op string) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -927,7 +926,7 @@ var DimMove = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
+		if err := validateSheetSelectorPreflight(runtime); err != nil {
 			return err
 		}
 		_, err := buildDimMovePlan(runtime)
@@ -946,7 +945,7 @@ var DimMove = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}

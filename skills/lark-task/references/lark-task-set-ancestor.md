@@ -1,6 +1,6 @@
 # task +set-ancestor
 
-> **Prerequisites:** Please read `../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
+> **Prerequisites:** Please read `../../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 
 Set a parent task for a task, or clear the parent to make it independent.
 

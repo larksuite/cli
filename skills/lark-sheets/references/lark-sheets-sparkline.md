@@ -91,7 +91,7 @@ _创建/更新/部分删除的迷你图属性_
 # 列出整张子表的所有迷你图组
 lark-cli sheets +sparkline-list --url "..." --sheet-id "$SID"
 
-# 钉到单组：返回该组每一项的 sparkline_id（update / partial-delete 必需）
+# 钉到单组：返回该组每一项的 sparkline_id（update 必需）
 lark-cli sheets +sparkline-list --url "..." --sheet-id "$SID" --group-id "grpA"
 ```
 
@@ -147,4 +147,4 @@ lark-cli sheets +sparkline-delete --url "..." --sheet-id "$SID" --group-id "grpA
   - `--properties`（仅 `+sparkline-create` / `+sparkline-update`）顶层只接 `config`（同组共享样式）和 `sparklines`（迷你图项数组）；`+sparkline-create` 要求每个 `sparklines[i]` 含 `position` 与 `source`（或 `source_range`，二选一）。
   - `+sparkline-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 sparkline group 请求模板"。
-- `Execute`：写后不自动回读；如需确认，自行调用 `+sparkline-list --group-id <id>` 查看 `config` / `sparklines`。
+- `Execute`：create/update 后必须调用 `+sparkline-list --group-id <id>` 核对 config、项目数量、source 与 position；delete 后 list 确认目标组不存在。

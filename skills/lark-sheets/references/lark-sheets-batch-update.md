@@ -5,19 +5,19 @@
 `+batch-update` 把多次写入打包成单次请求，但每个子操作仍应按编辑类任务的范围和回读建议处理：
 
 1. **目标 range 应落在用户授权范围内**：除用户明示要修改的区域外，子操作避免扩张到无关单元格 / 列 / Sheet。规划 range 时先确认每个子操作的边界。
-2. **批次完成后建议回读校验**：整个 `+batch-update` 执行成功后，用 `+csv-get` 或 `+cells-get` 抽样回读受影响区域，至少校验 3-5 个代表性单元格（首 / 中 / 末），与本地脚本预先计算的预期值对照。
+2. **批次完成后按子操作验证**：单元格写入/清除→`+cells-get`/`+csv-get`；对象 CRUD→对应 `+*-list`；sheet CRUD→`+workbook-info`；尺寸/隐藏/冻结/分组/合并→`+sheet-info`；网格线显隐这类没有回读接口的状态按子操作返回确认即可。至少覆盖首、中、末和用户点名项，不能只做统一 cells 抽样。
 3. **预期条数前置断言**：涉及"批量填充 N 行"或"对 M 个区域分别写入"时，建议先把 N、M 硬编码进代码，回读后比较实际与预期；不一致就优先再发一轮 `+batch-update` 补齐，补不齐则在交付说明里列出缺口。
 4. **三条工具硬约束**：`--yes` 必带（high-risk-write，不带退出码 10）；单次 ≤100 条 operations，超出按批拆分；`+cells-batch-set-style` / `+cells-batch-clear` 等批量类 shortcut 不可嵌入 operations（它们本身就是批量原子操作，直接顶层调用）。
 
-若本次 `+batch-update` 的任一子操作写入了公式、复制了公式模板、或导入了含公式的数据块，回读校验之外可继续执行 `+formula-verify` 做诊断。`+batch-update` 只保证"写入动作按序执行了"，不保证整批公式运行结果 zero-error。
+若本次 `+batch-update` 的任一子操作写入了公式、复制了公式模板、或导入了含公式的数据块，回读之外必须对本次公式范围逐段执行 `+formula-verify --exit-on-error`；`partial` 拆分续扫，全部分段 `status='success'` 后才完成。`+batch-update` 只保证写入动作按序执行，不保证公式运行结果 zero-error。AI 公式改走 `+formula-verify --ai-only`，按 `references/lark-sheets-formula-verify.md` 的全区间一次异步状态检查规则交付（`failed` / `unsupported` 先修，只剩 pending 可交付并说明后台仍在计算）。
 
 ## 使用场景
 
 写入。把**跨类型、有顺序依赖**的多个写入操作合并为一次请求按序执行（如插列 → 写表头 → 回填数据）。注意：不支持嵌套 `+batch-update`。
 
-**先分流再动手（按操作组合选入口）**：美化收尾（样式 / 合并 / 行高列宽 / 冻结的任意组合）→ 一次 `+styles-put`（声明式规格，见 `lark-sheets-styles-put`），不要拼 `--operations` 子操作数组；**同一个写操作**打多个区域 → 用该命令自身的复数形态（`+cells-set --writes` / `+cells-batch-clear` / `+dim-delete --ranges` / resize 的 map 形态等）；只有跨类型、有顺序依赖的操作链才用本命令。
+**先分流再动手（按操作组合选入口）**：美化收尾（样式 / 合并 / 行高列宽 / 冻结的任意组合）→ 一次 `+styles-put`（声明式规格，见 `references/lark-sheets-styles-put.md`），不要拼 `--operations` 子操作数组；**同一个写操作**打多个区域 → 用该命令自身的复数形态（`+cells-set --writes` / `+cells-batch-clear` / `+dim-delete --ranges` / resize 的 map 形态等）；只有跨类型、有顺序依赖的操作链才用本命令。
 
-**⚠️ 何时优先使用 `+batch-update`**：
+**⚠️ 优先使用 `+batch-update` 的场景**：
 - 需要先插入行列再写入数据时（`+dim-{insert|delete|hide|unhide|freeze|group|ungroup}` + `+cells-set`）
 - 需要对多个区域执行**不同类型**的写入操作时（如 `+cells-set` + `+cells-clear` 组合）。同一个写操作打多区域用该命令自身的复数形态、多区域 merge 用 `+styles-put` 的 `cell_merges`、大范围 unmerge 直接单次调用——均见上方分流，不进本命令
 
@@ -25,16 +25,16 @@
 
 **不可放进 `--operations` 的写 shortcut**（`shortcut` 枚举不含它们，强行写入会被校验拒）：`+cells-set-image`（需本地上传图片）、`+styles-put` / `+dropdown-update` / `+dropdown-delete` / `+cells-batch-clear`（自身已是批量入口，不可再嵌套）、`+dim-move`。这些操作需在 `+batch-update` 之外单独调用。
 
-**行高列宽批量不走这里**：多行 / 多列不同尺寸用 `+styles-put` 的 `row_sizes` / `col_sizes`（可与样式同批），或 `+rows-resize --heights` / `+cols-resize --widths` 的 map 形态（见 `lark-sheets-range-operations`）；map 形态不可作为 `--operations` 子操作嵌入（子操作里仍可用单区间形态 `range` + `height`/`width`）。
+**行高列宽批量不走这里**：多行 / 多列不同尺寸用 `+styles-put` 的 `row_sizes` / `col_sizes`（可与样式同批），或 `+rows-resize --heights` / `+cols-resize --widths` 的 map 形态（见 `references/lark-sheets-range-operations.md`）；map 形态不可作为 `--operations` 子操作嵌入（子操作里仍可用单区间形态 `range` + `height`/`width`）。
 
 **执行语义（fail-fast；失败后哪些已生效取决于批次构成）**：默认首个失败的子操作即中断剩余操作。此前的子操作**是否已落盘不统一**：纯单元格 / 行列结构类写入在提交前只累计在内存，失败时整体不落盘（等效回滚）；而图表 / 透视表等对象类子操作执行时会**先把此前累计的写入提交落盘再创建对象**——批次含这类子操作时，失败前完成的部分（含其之前的普通写入）已实际生效、无法回滚。因此失败后**不要假设"全部回滚"或"全部保留"**：先看返回 `results` 里各子操作的状态，再回读现状（行列数 / 目标格 / `+chart-list` 等对象清单）确认已生效集合，只补发未生效部分——盲目整批重发会重复应用已生效操作（如插行 / 建图），盲目只发失败尾可能写到未生效的旧结构上。传 `--continue-on-error` 则遇失败仍继续执行剩余操作，已成功部分保留（返回 "N succeeded, M failed"）。
 
-**公式相关批处理的建议诊断**：
-- 写前：先读 `lark-sheets-formula-translation`，把公式改写成飞书可执行语义。
+**公式相关批处理的完成流程**：
+- 写前：先读 `references/lark-sheets-formula-translation.md`，把公式改写成飞书可执行语义。
 - 写时：用 `+batch-update` 一次性完成插行/写公式/复制模板等成套动作。
-- 写后：抽样回读之外，可继续跑 `lark-sheets-formula-verify` 做一次诊断。
+- 写后：回读关键公式，并对本次公式范围逐段运行 `+formula-verify --exit-on-error`，全部 success 后完成；AI 公式改用 `+formula-verify --ai-only`，按 `references/lark-sheets-formula-verify.md` 的全区间一次异步状态检查规则交付。
 
-**`+dropdown-update` 的选项模式（`--options` / `--source-range` 二选一）+ 配色规则**（更新会重写完整验证规则；需要保留已有配色时先回读并透传 `--colors`）见 [`lark-sheets-write-cells`](./lark-sheets-write-cells.md) 的「Dropdown 选项 + 配色」节，本文不重复。`+dropdown-delete` 不涉及这些 flag。
+**`+dropdown-update` 的选项模式（`--options` / `--source-range` 二选一）+ 配色规则**（更新会重写完整验证规则；需要保留已有配色时先回读并透传 `--colors`）见 [`references/lark-sheets-write-cells.md`](lark-sheets-write-cells.md) 的「Dropdown 选项 + 配色」节，本文不重复。`+dropdown-delete` 不涉及这些 flag。
 
 ## Shortcuts
 
@@ -221,4 +221,4 @@ lark-cli sheets +cells-batch-clear --url "..." \
 
 - `Validate`：`+batch-update` 的 `--operations` 必须合法 JSON，且为非空数组；逐个子操作 `shortcut` / `input` 字段必填校验，input 键必须在该 shortcut 的 flag 词汇表内（未知键报错并提示最近似键与完整键契约）；**校验错误聚合上报**——所有子操作的首错一次性返回，全部修完再重发一次即可；**禁止嵌套 `+batch-update`**。`+cells-batch-clear` 的 `--ranges` 必须 JSON 数组、每项带 sheet 前缀，`high-risk-write` 强制 `--yes` 或 `--dry-run`（`--scope` 默认 `content`）。
 - `DryRun`：按顺序输出每个子操作的目标 API + 请求 body 模板，不发起调用。
-- `Execute`：按声明顺序串行执行；默认 fail-fast——任一子操作失败即中断剩余操作。失败后哪些子操作已生效**见上方「执行语义」**（取决于批次构成，不做统一假设），按报错中的子操作状态回读确认后再补发。
+- `Execute`：按声明顺序串行执行；默认 fail-fast。失败时已成功子操作不回滚，先按子操作类型回读现状，只重发失败起的剩余子集；成功时也完成上述分流验证。

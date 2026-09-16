@@ -57,8 +57,11 @@ func TestTablePut_StylesFieldPrescriptions(t *testing.T) {
 		want       []string
 		notSuggest []string // must NOT appear as a did-you-mean
 	}{
-		{"bold", `"bold":true`, []string{`font_weight:"bold"`}, nil},
-		{"font_bold", `"font_bold":true`, []string{`font_weight:"bold"`}, []string{"font_color"}},
+		// bold / font_bold themselves normalize now (cellStyleValueAliases);
+		// what still prescribes is a value neither vocabulary spells, where
+		// the field is recognizable but the caller's intent is not.
+		{"bold with an unreadable value", `"bold":"sort of"`, []string{`font_weight:"bold"`}, nil},
+		{"font_bold with an unreadable value", `"font_bold":"very"`, []string{`font_weight:"bold"`}, []string{"font_color"}},
 		{"text_align", `"text_align":"center"`, []string{"horizontal_alignment"}, nil},
 		{"nested font", `"font":{"bold":true,"size":18}`, []string{"flat font_*", `font_weight:"bold"`}, []string{"font_line"}},
 		{"near-typo still suggests", `"font_colour":"#FFF"`, []string{`did you mean "font_color"`}, nil},
@@ -141,20 +144,39 @@ func TestCellsSet_BorderAllAndMisNestedBorder(t *testing.T) {
 		}
 	})
 
-	t.Run("mis-nested border_styles intercepted", func(t *testing.T) {
+	// border_styles one level too deep is the same object under the same name
+	// in the same cell; only its depth is wrong, so it is lifted rather than
+	// described back to the caller.
+	t.Run("mis-nested border_styles is lifted", func(t *testing.T) {
 		t.Parallel()
 		sc := shortcutFromRegistry(t, "+cells-set")
-		_, _, err := runShortcutCapturingErr(t, sc, []string{
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
 			"--url", testURL,
 			"--sheet-name", "s",
 			"--range", "A1",
 			"--cells", `[[{"value":"x","cell_styles":{"font_weight":"bold","border_styles":{"top":{"style":"solid"}}}}]]`,
 			"--dry-run",
 		})
-		ve := requireValidation(t, err, "cell_styles.border_styles is not valid")
-		if !strings.Contains(ve.Message, "sibling of cell_styles") {
-			t.Errorf("message should prescribe moving it up one level, got %q", ve.Message)
+		if err != nil {
+			t.Fatalf("mis-nested border_styles should lift and pass, got: %v", err)
 		}
+		if !strings.Contains(stdout, `"border_styles"`) || !strings.Contains(stdout, `"font_weight"`) {
+			t.Errorf("both the lifted border and the sibling style should survive, got %q", stdout)
+		}
+	})
+
+	// Two borders for one cell is the one shape no reading resolves.
+	t.Run("border_styles on both levels conflicts", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A1",
+			"--cells", `[[{"value":"x","border_styles":{"top":{"style":"solid"}},"cell_styles":{"border_styles":{"all":{"style":"dashed"}}}}]]`,
+			"--dry-run",
+		})
+		requireValidation(t, err, "both on the cell and inside cell_styles")
 	})
 }
 
@@ -377,7 +399,7 @@ func TestStylesFieldTypesValidated(t *testing.T) {
 					"name":        "s",
 					"cell_styles": []interface{}{mustJSONMap(t, `{"range":"A1",`+tc.field+`}`)},
 				}},
-			}), testToken)
+			}), testToken, nil)
 			requireValidation(t, err, tc.want)
 		})
 	}
@@ -389,7 +411,7 @@ func TestStylesFieldTypesValidated(t *testing.T) {
 				"name":        "s",
 				"cell_styles": []interface{}{mustJSONMap(t, `{"range":"A1","font_weight":"bold","font_size":12,"background_color":"#FFFFFF"}`)},
 			}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error for well-typed styles: %v", err)
 		}
@@ -409,7 +431,7 @@ func TestAggregatedStyleErrorsCarryTypedParam(t *testing.T) {
 				mustJSONMap(t, `{"range":"B1"}`),
 			},
 		}},
-	}), testToken)
+	}), testToken, nil)
 	ve := requireValidation(t, err, "has 2 issues")
 	if ve.Param != "--styles" {
 		t.Errorf("Param = %q, want --styles", ve.Param)
@@ -503,7 +525,7 @@ func TestFreezeAllZeroUnfreeze(t *testing.T) {
 				"name":   "s",
 				"freeze": map[string]interface{}{"rows": float64(0), "cols": float64(0)},
 			}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -544,7 +566,7 @@ func TestSingleIssueStillAttributesFlag(t *testing.T) {
 			"name":        "s",
 			"cell_styles": []interface{}{mustJSONMap(t, `{"range":"A1","font_weight":true}`)},
 		}},
-	}), testToken)
+	}), testToken, nil)
 	ve := requireValidation(t, err, "font_weight must be a string")
 	if ve.Param != "--styles" {
 		t.Errorf("Param = %q, want --styles even for a single issue", ve.Param)
@@ -581,13 +603,13 @@ func TestAggregatedIssuesKeepPrescriptions(t *testing.T) {
 		// the SAME defect collapse instead — pinned below.)
 		_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
 			"--url", testURL,
-			"--writes", `[{"range":"A1","cells":[[{"value":1}]]},{"sheet_name":"S","range":"A1:A1","cells":[[{"value":2},{"value":3}]]}]`,
+			"--writes", `[{"range":"A1","cells":[[{"value":1}]]},{"sheet_name":"S","range":"A1:A1","cells":[]}]`,
 		})
 		ve := requireValidation(t, err, "--writes has 2 issues")
 		if !strings.Contains(ve.Message, "+workbook-info") {
 			t.Errorf("the first issue's Hint prescription should be inlined, got %q", ve.Message)
 		}
-		if !strings.Contains(ve.Message, `--range "A1:A1" spans`) {
+		if !strings.Contains(ve.Message, "+cells-clear") {
 			t.Errorf("the second issue should be rendered too, got %q", ve.Message)
 		}
 		if ve.Param != "--writes" {

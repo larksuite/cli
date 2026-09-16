@@ -1,7 +1,7 @@
 
 # drive +upload
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 上传本地文件到飞书云空间（云盘/云存储）。目标位置可以是 Drive 文件夹，也可以是 wiki 节点。
 

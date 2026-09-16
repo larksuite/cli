@@ -1,6 +1,6 @@
 # im +messages-edit
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
 Edit an already-sent message's content. **Bot identity only** — the edit API does not accept user tokens. Only messages the bot sent can be edited.
 

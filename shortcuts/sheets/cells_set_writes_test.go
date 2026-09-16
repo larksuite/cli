@@ -116,11 +116,40 @@ func TestCellsSetWrites(t *testing.T) {
 		requireValidation(t, err, "conflicting values")
 	})
 
-	t.Run("top-level sheet selector rejected with prescription", func(t *testing.T) {
+	t.Run("top-level sheet selector fills items that name no sheet", func(t *testing.T) {
 		t.Parallel()
-		_, _, err := writes(`[{"sheet_name":"S1","range":"A1","cells":[[{"value":"x"}]]}]`,
-			"--sheet-name", "S1")
-		requireValidation(t, err, "put sheet_name (or sheet_id) inside each writes item")
+		stdout, _, err := writes(`[{"range":"A1","cells":[[{"value":"x"}]]}]`,
+			"--sheet-name", "Top")
+		if err != nil {
+			t.Fatalf("a top-level selector must fill an item that carries none, got: %v", err)
+		}
+		if got := firstWriteOpInput(t, stdout)["sheet_name"]; got != "Top" {
+			t.Errorf("sheet_name = %v, want Top", got)
+		}
+	})
+
+	t.Run("item selector wins over the top-level one", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := writes(`[{"sheet_name":"Item","range":"A1","cells":[[{"value":"x"}]]}]`,
+			"--sheet-name", "Top")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := firstWriteOpInput(t, stdout)["sheet_name"]; got != "Item" {
+			t.Errorf("sheet_name = %v, want Item (the item is the closer source)", got)
+		}
+	})
+
+	t.Run("a sheet-prefixed range still wins over the top-level selector", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := writes(`[{"range":"Prefixed!A1","cells":[[{"value":"x"}]]}]`,
+			"--sheet-name", "Top")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := firstWriteOpInput(t, stdout)["sheet_name"]; got != "Prefixed" {
+			t.Errorf("sheet_name = %v, want Prefixed", got)
+		}
 	})
 
 	t.Run("writes and range are mutually exclusive", func(t *testing.T) {
@@ -133,9 +162,9 @@ func TestCellsSetWrites(t *testing.T) {
 	t.Run("per-item errors aggregate", func(t *testing.T) {
 		t.Parallel()
 		// Both items pass the --writes schema (range+cells present) but fail
-		// deeper: item 0 a matrix mismatch, item 1 a missing sheet selector.
+		// deeper: item 0 an empty payload, item 1 a missing sheet selector.
 		_, _, err := writes(`[
-			{"sheet_name":"S1","range":"A1:A1","cells":[[{"value":"x"},{"value":"z"}]]},
+			{"sheet_name":"S1","range":"A1:A1","cells":[]},
 			{"range":"C1","cells":[[{"value":"y"}]]}
 		]`)
 		ve := requireValidation(t, err, "--writes has 2 issues")
@@ -239,10 +268,12 @@ func TestCellsSetWrites(t *testing.T) {
 	})
 }
 
-// TestCellsSet_RangeNarrowedToPayload pins the narrowing: a payload that fits
-// inside the stated range is written at the same anchor, sized to itself,
-// and the difference is reported rather than silently applied.
-func TestCellsSet_RangeNarrowedToPayload(t *testing.T) {
+// TestCellsSet_RangeSizedFromPayload pins what a stated range may be reshaped
+// into. A payload that fits INSIDE the stated rectangle is written at the same
+// anchor, sized to itself, and the difference reported. A payload that does
+// not fit is refused rather than widened -- see
+// TestCellsSet_ExplicitRectangleIsNotWidened.
+func TestCellsSet_RangeSizedFromPayload(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -252,6 +283,9 @@ func TestCellsSet_RangeNarrowedToPayload(t *testing.T) {
 		{"a title against the range it will occupy once merged", "A1:D1", "A1:A1", `[[{"value":"标题"}]]`},
 		{"a block smaller on both axes", "A1:D4", "A1:B2", `[[{"value":1},{"value":2}],[{"value":3},{"value":4}]]`},
 		{"an exact fit is untouched", "A1:B1", "A1:B1", `[[{"value":1},{"value":2}]]`},
+		// A bare top-left states no extent, so the payload supplies it.
+		{"a bare anchor takes the payload's extent", "A1", "A1:B1", `[[{"value":1},{"value":2}]]`},
+		{"a bare anchor away from the origin", "B2", "B2:D4", `[[{"value":1},{"value":2},{"value":3}],[{"value":4},{"value":5},{"value":6}],[{"value":7},{"value":8},{"value":9}]]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -268,13 +302,70 @@ func TestCellsSet_RangeNarrowedToPayload(t *testing.T) {
 		})
 	}
 
-	t.Run("a payload with nowhere to go is still rejected", func(t *testing.T) {
+	t.Run("the note names the shipped range and why it moved", func(t *testing.T) {
 		t.Parallel()
-		// Growing the range would write over cells nobody named.
+		// The shipped extent differing from the stated one is only acceptable
+		// while it is stated out loud; the note is that record.
+		for _, tc := range []struct{ name, stated, cells, want string }{
+			{"narrowed", "A1:D1", `[[{"value":1}]]`, "narrowed to \"A1:A1\""},
+			{"anchor expanded", "A1", `[[{"value":1},{"value":2}]]`, "top-left anchor"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				_, note, err := fitCellsRange(mustCellsPayload(t, tc.cells), tc.stated)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if !strings.Contains(note, tc.want) {
+					t.Errorf("note = %q, want it to contain %q", note, tc.want)
+				}
+			})
+		}
+	})
+
+	// A rectangle states a boundary. Writing past it would touch cells the
+	// call never names, with overwrite on by default, and a warning returned
+	// after the write cannot undo that -- so it is refused, and the error
+	// carries both ways to say what was meant.
+	t.Run("an explicit rectangle is refused, not widened", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct{ name, stated, cells, wantFit, wantAnchor string }{
+			{"one column past the end", "A1:A1", `[[{"value":1},{"value":2}]]`, `"A1:B1"`, `"A1"`},
+			{"larger on both axes", "B2:C3", `[[{"value":1},{"value":2},{"value":3}],[{"value":4},{"value":5},{"value":6}],[{"value":7},{"value":8},{"value":9}]]`, `"B2:D4"`, `"B2"`},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
+					"--url", testURL, "--sheet-name", "s", "--range", tc.stated,
+					"--cells", tc.cells, "--dry-run",
+				})
+				ve := requireValidation(t, err, "reach past the range onto cells the call does not name")
+				for _, want := range []string{tc.wantFit, tc.wantAnchor} {
+					if !strings.Contains(ve.Hint, want) {
+						t.Errorf("hint should offer %s, got %q", want, ve.Hint)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("a range naming another sheet than the selector is rejected", func(t *testing.T) {
+		t.Parallel()
 		_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
-			"--url", testURL, "--sheet-name", "s", "--range", "A1:A1",
+			"--url", testURL, "--sheet-name", "s", "--range", "Other!A1:B2",
 			"--cells", `[[{"value":1},{"value":2}]]`, "--dry-run",
 		})
-		requireValidation(t, err, `--range "A1:A1" spans`)
+		requireValidation(t, err, `names sheet "Other" while the selector names "s"`)
 	})
+}
+
+// mustCellsPayload decodes a --cells literal into the []interface{} the
+// sizing helpers take.
+func mustCellsPayload(t *testing.T, cells string) []interface{} {
+	t.Helper()
+	var out []interface{}
+	if err := json.Unmarshal([]byte(cells), &out); err != nil {
+		t.Fatalf("bad test payload %q: %v", cells, err)
+	}
+	return out
 }

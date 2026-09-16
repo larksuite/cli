@@ -1,6 +1,6 @@
 # im +messages-resources-download
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
 Download an image or file attached to a message. Use the `message_id` and resource key returned by a message-reading command; do not guess or combine identifiers from different messages.
 

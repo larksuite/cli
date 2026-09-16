@@ -12,7 +12,7 @@
 
 飞书表格的"颜色标记"语义 = 条件格式规则 ≠ 静态背景色。如果用 `+cells-set` 写静态，源数据变化时颜色不会跟着变（典型反例：用户要求"过期单元格标红"时，模型用静态填充——日期变化后单元格颜色不再准确反映过期状态）。
 
-**判断标准**：交付后 `+cond-format-list` 必须能返回该规则；否则视为违规。
+**判断标准**：交付后 `+cond-format-list` 必须能返回该规则，否则条件格式未生效。
 
 **大数据量首选**：当数据量 > 1000 行时，条件格式是首选——它由飞书自身渲染，比"本地脚本逐行计算 + `+cells-set` 写静态背景色"更高效、更稳（颜色还能随源数据自动联动）。
 
@@ -47,7 +47,7 @@
 
 **正确做法（两步走）**：
 
-Step 1 的 `+cells-set` 及 `--copy-to-range` 等 flag 以 `lark-sheets-write-cells` 为准。
+Step 1 的 `+cells-set` 及 `--copy-to-range` 等 flag 以 `references/lark-sheets-write-cells.md` 为准。
 
 ```
 Step 1: `+cells-set` 在新列写判断公式（形成"是/否"或布尔辅助列）
@@ -209,10 +209,10 @@ lark-cli sheets +cells-get --url "..." --sheet-id "$SID" \
 lark-cli sheets +cond-format-delete --url "..." --sheet-id "$SID" --rule-id "$RULE_ID" --yes
 ```
 
-> 一次只删一个 `--rule-id`。要删**多个**条件格式时，先 `+cond-format-list` 拿到各 `rule-id`，再用 `+batch-update` 把多个 `+cond-format-delete` 合并为单次批量提交（fail-fast，失败处置见 `lark-sheets-batch-update`），不要逐个调用。
+> 一次只删一个 `--rule-id`。要删**多个**条件格式时，先 `+cond-format-list` 拿到各 `rule-id`，再用 `+batch-update` 把多个 `+cond-format-delete` 合并为单次批量提交（fail-fast，失败处置见 `references/lark-sheets-batch-update.md`），不要逐个调用。
 
 ### Validate / DryRun / Execute 约束
 
 - `Validate`：XOR 公共四件套；`--rule-type` / `--ranges` 必填；`--properties` 必须能解析为合法 JSON；按 `--rule-type` 检查必填子字段（`cellIs` 需 `attrs.operator` + `attrs.value`、`expression` 需 `attrs.formula`、`colorScale` 需 `min/mid/max` 配色等）；`+cond-format-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 conditional_format 请求模板"。
-- `Execute`：写后不自动回读；必须自行调用 `+cond-format-list --rule-id <id>` 比对规则 / 范围 / 样式，并用 `+cond-format-result-get --range <哨兵范围>` 验证实际计算后的单元格样式。
+- `Execute`：写后不自动回读；create/update 后必须调用 `+cond-format-list --rule-id <id>` 比对规则 / 范围 / 样式，并用 `+cond-format-result-get --range <2–3 个哨兵格>` 核对实际生效的单元格样式；delete 后 list 确认目标 id 不存在。

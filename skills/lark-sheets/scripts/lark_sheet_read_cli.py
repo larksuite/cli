@@ -160,6 +160,59 @@ def extract_sheets(workbook_data: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def sheet_resource_type(sheet: dict[str, Any]) -> str:
+    return str(sheet.get("resource_type") or "")
+
+
+def is_grid_sheet(sheet: dict[str, Any]) -> bool:
+    resource_type = sheet_resource_type(sheet)
+    if resource_type == "sheet":
+        return True
+    # Legacy responses may omit resource_type but still include grid dimensions.
+    return not resource_type and sheet.get("row_count") is not None and sheet.get("column_count") is not None
+
+
+def visible_grid_selection(
+    workbook_data: dict[str, Any],
+    *,
+    sheet_id: str | None = None,
+    sheet_name: str | None = None,
+) -> dict[str, Any]:
+    """Resolve explicit targets or publish a safe default-selection decision.
+
+    Unspecified targets are never selected by index: only visible ordinary grids
+    participate, and multiple candidates remain ambiguous for the caller to match
+    by task wording or ask the user.
+    """
+    sheets = extract_sheets(workbook_data)
+    specified = {"sheet_id": sheet_id, "sheet_name": sheet_name}
+    if sheet_id or sheet_name:
+        matches = resolve_target_sheets(workbook_data, sheet_id=sheet_id, sheet_name=sheet_name, require_one=True)
+        sheet = matches[0]
+        if not is_grid_sheet(sheet):
+            raise LarkCliError(f"Sheet {sheet_title(sheet) or sheet_identifier(sheet)} is not a grid sheet; use the matching product API")
+        warnings = ["explicit_hidden_sheet"] if sheet.get("is_hidden") is True else []
+        return {"policy": "visible_grid_v1", "specified": specified, "selected": _selection_sheet(sheet), "candidates": [_selection_sheet(sheet)], "excluded": [], "ambiguous": False, "warnings": warnings, "next_action": "use selected sheet_id for grid read/write"}
+
+    candidates, excluded = [], []
+    for sheet in sheets:
+        if not is_grid_sheet(sheet):
+            excluded.append({**_selection_sheet(sheet), "reason": "non_grid"})
+        elif sheet.get("is_hidden") is True:
+            excluded.append({**_selection_sheet(sheet), "reason": "hidden"})
+        elif sheet.get("is_hidden") is not False:
+            excluded.append({**_selection_sheet(sheet), "reason": "visibility_unknown"})
+        else:
+            candidates.append(_selection_sheet(sheet))
+    candidates.sort(key=lambda item: item.get("index") if isinstance(item.get("index"), int) else 10**9)
+    selected = candidates[0] if len(candidates) == 1 else None
+    return {"policy": "visible_grid_v1", "specified": specified, "selected": selected, "candidates": candidates, "excluded": excluded, "ambiguous": len(candidates) > 1, "warnings": [], "next_action": "use selected sheet_id for grid read/write" if selected else "match task wording/title/header; do not choose by index"}
+
+
+def _selection_sheet(sheet: dict[str, Any]) -> dict[str, Any]:
+    return {"sheet_id": sheet_identifier(sheet), "title": sheet_title(sheet), "index": sheet.get("index"), "resource_type": sheet_resource_type(sheet) or "legacy_grid", "is_hidden": sheet.get("is_hidden"), "row_count": sheet.get("row_count"), "column_count": sheet.get("column_count")}
+
+
 def resolve_target_sheets(
     workbook_data: dict[str, Any],
     *,

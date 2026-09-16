@@ -1,7 +1,7 @@
 
 # mail +watch
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 实时监听新邮件事件（`mail.user_mailbox.event.message_received_v1`）。
 

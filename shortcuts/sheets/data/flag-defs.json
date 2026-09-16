@@ -57,7 +57,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Only verify AI formulas (=AI(prompt, [range])), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously: use this flag with --range as the first post-write sample check, not cells-get polling; if the sample has no explicit failed/unsupported state, delivery may proceed with pending formulas while telling the user that computation continues in the background."
+        "desc": "Only verify AI formulas (=AI(prompt, [range])), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously: after writing, let --range cover the entire written range (this flag is read-only and cheap, so do not sample), and do not poll results with +cells-get; the delivery criterion is ai_formula_failed_count == 0; ai_formula_total is neither narrowed by --range nor a count of the AI formulas just written, so it cannot be compared against an expected count. Once the criterion holds, delivery may proceed with pending formulas while telling the user that computation continues in the background."
       }
     ]
   },
@@ -651,7 +651,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Typed table payload as JSON (same shape as `+table-put`): top-level `{\"sheets\":[...]}`, with each array item a sub-sheet `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}` — `name` and the outer `sheets` envelope are both required. Agents typically use `df_to_sheet(df, name)` from `scripts/sheets_df.py` to pack each DataFrame into one item, then wrap the list in `{\"sheets\":[...]}`. Mutually exclusive with --values. Creates the workbook, then writes typed type-faithful data (dates land as real dates, numbers keep precision).",
+        "desc": "Typed table payload as JSON (same shape as `+table-put`): top-level `{\"sheets\":[...]}`, with each array item a sub-sheet `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}` — `name` and the outer `sheets` envelope are both required. Agents typically use `df_to_sheet(df, name)` from `scripts/lark_sheets_df.py` to pack each DataFrame into one item, then wrap the list in `{\"sheets\":[...]}`. Mutually exclusive with --values. Creates the workbook, then writes typed type-faithful data (dates land as real dates, numbers keep precision).",
         "input": [
           "file",
           "stdin"
@@ -1780,14 +1780,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two); not accepted with `--writes` (each writes item carries its own sheet selector)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two); with `--writes` it is the default sheet for items that carry no selector of their own"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two); not accepted with `--writes` (each writes item carries its own sheet selector)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two); with `--writes` it is the default sheet for items that carry no selector of their own"
       },
       {
         "name": "range",
@@ -1797,11 +1797,19 @@
         "desc": "Write range (A1 notation). XOR with `--writes` (single region: --range+--cells; multiple regions: --writes)"
       },
       {
+        "name": "start-cell",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "alias for --range (parity with +csv-put, which anchors with --start-cell); a range value starts from its top-left cell",
+        "hidden": true
+      },
+      {
         "name": "cells",
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "JSON 2D array `[[{cell},...],...]`, dimensions must match `--range`; each cell may carry `value` / `formula` / `multiple_values` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image). To write selected values into a multi-select dropdown cell, use `multiple_values:[{\"value\":...}]`; do not join multiple options with commas into one `value`. Run `--print-schema` for full fields",
+        "desc": "JSON 2D array `[[{cell},...],...]`; a bare `--range A1` (or `--start-cell`) is the top-left ANCHOR and this array supplies the extent; a `--range` that states a rectangle (`A1:B2`) BOUNDS the write — a smaller array narrows it, and a larger one is refused rather than written past the range. Each cell may carry `value` / `formula` / `multiple_values` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image). To write selected values into a multi-select dropdown cell, use `multiple_values:[{\"value\":...}]`; do not join multiple options with commas into one `value`. Run `--print-schema` for full fields",
         "input": [
           "file",
           "stdin"
@@ -1812,7 +1820,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Multi-region write as a JSON array (up to 100 items), each `{sheet_name|sheet_id, range, cells}` — the sheet selector LIVES IN EACH ITEM (same convention as +batch-update sub-ops and +styles-put items; the top-level --sheet-name is rejected). cells has the same shape as `--cells` (2D array; per-cell cell_styles/border_styles allowed). The whole array goes out as ONE batched request (fail-fast; read back to confirm what applied before resending), cross-sheet supported; typical use: fixing formulas scattered across ranges/sheets — do not assemble a +batch-update operations array for this. XOR with `--range`+`--cells`; range-level uniform styling stays with +styles-put afterwards",
+        "desc": "Multi-region write as a JSON array (up to 100 items), each `{sheet_name|sheet_id, range, cells}` — an item going to another sheet carries its own sheet selector (same convention as +batch-update sub-ops and +styles-put items); an item without one falls back to the top-level --sheet-name / --sheet-id. cells has the same shape as `--cells` (2D array; per-cell cell_styles/border_styles allowed). The whole array goes out as ONE batched request (fail-fast; read back to confirm what applied before resending), cross-sheet supported; typical use: fixing formulas scattered across ranges/sheets — do not assemble a +batch-update operations array for this. XOR with `--range`+`--cells`; range-level uniform styling stays with +styles-put afterwards",
         "input": [
           "file",
           "stdin"
@@ -2262,7 +2270,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Typed table payload (pandas-DataFrame-shaped) as JSON: top-level `{\"sheets\":[...]}`, with each array item a sub-sheet `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}` — `name` and the outer `sheets` envelope are both required. Agents typically use `df_to_sheet(df, name)` from `scripts/sheets_df.py` to pack each DataFrame into one item, then wrap the list in `{\"sheets\":[...]}`. `dtypes` values are pandas dtype strings (`int64`, `float64`, `Int64`, `bool`, `boolean`, `datetime64[ns]`, `object`, ...); the writer maps them to internal string/number/date/bool — omit `dtypes` and a column writes as text (good for raw CSV-shaped data). `formats[col]` is an Excel number_format string (e.g. `#,##0.00`, `0.0%`, `yyyy-mm`); when absent, date columns default to `yyyy-mm-dd` and string columns to text format (`@`).",
+        "desc": "Typed table payload (pandas-DataFrame-shaped) as JSON: top-level `{\"sheets\":[...]}`, with each array item a sub-sheet `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}` — `name` and the outer `sheets` envelope are both required. Agents typically use `df_to_sheet(df, name)` from `scripts/lark_sheets_df.py` to pack each DataFrame into one item, then wrap the list in `{\"sheets\":[...]}`. `dtypes` values are pandas dtype strings (`int64`, `float64`, `Int64`, `bool`, `boolean`, `datetime64[ns]`, `object`, ...); the writer maps them to internal string/number/date/bool — omit `dtypes` and a column writes as text (good for raw CSV-shaped data). `formats[col]` is an Excel number_format string (e.g. `#,##0.00`, `0.0%`, `yyyy-mm`); when absent, date columns default to `yyyy-mm-dd` and string columns to text format (`@`).",
         "input": [
           "file",
           "stdin"
@@ -4450,7 +4458,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Top-left cell within the target sub-sheet (A1 notation, e.g. `A1`); maps to the top-level `target_position`, default `A1` (not sent when the value is A1). It and `--range` both express placement but map to different wire fields — avoid passing conflicting values for both.",
+        "desc": "Top-left cell within the target sub-sheet (A1 notation, e.g. `A1`), default `A1` (not sent when the value is A1). It lands on the same wire field as `--range` (`properties.range`) and takes precedence when non-default; passing a non-default value for both is rejected — pass only one.",
         "default": "A1"
       },
       {
@@ -4479,7 +4487,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Pivot table top-left placement (single A1 value, e.g. `F1`; create only), maps to `properties.range`; placed at the top-left of the target sub-sheet (a newly created one by default) when omitted. It and `--target-position` both express placement but map to different wire fields — avoid passing conflicting values for both."
+        "desc": "Pivot table top-left placement (single A1 value, e.g. `F1`; create only), maps to `properties.range`; placed at the top-left of the target sub-sheet (a newly created one by default) when omitted. It lands on the same wire field as `--target-position`; passing a non-default value for both is rejected — pass only one."
       },
       {
         "name": "dry-run",
