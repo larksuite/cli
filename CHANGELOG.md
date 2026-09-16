@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.96] - 2026-09-16
+
+### Features
+
+- **base**: support dashboard NPS config (#2562)
+- **apps**: add +export to download an app's source code as a zip (#2594)
+- **sheets**: accept the parameter spellings two reflow windows say callers write (#2710)
+- **slides**: consolidate xml-get skill docs (#2662)
+
+### Bug Fixes
+
+- 优化工作流记录相关触发器的 Skill，消除歧义和语义错误 (#2670)
+- **minutes**: enforce deterministic search ordering (#2714)
+- **base**: repair skill references and clarify view creation (#2725)
+- restrict chat creation to tenant token (#2728)
+- **skills**: use GUIDE.md for nested suite guides (#2634)
+- **vc**: restrict meeting join and leave to bot (#2570)
+- **apps**: only treat a JSON body as export's error envelope, stream any other type (#2731)
+
+### Documentation
+
+- **base**: add view selection and lifecycle reference (#2729)
+
+### Tests
+
+- **base**: fix NPS workflow rating fixture (#2730)
+
 ## [v1.0.95] - 2026-09-10
 
 ### Features
@@ -2150,6 +2177,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.96]: https://github.com/larksuite/cli/releases/tag/v1.0.96
 [v1.0.95]: https://github.com/larksuite/cli/releases/tag/v1.0.95
 [v1.0.94]: https://github.com/larksuite/cli/releases/tag/v1.0.94
 [v1.0.93]: https://github.com/larksuite/cli/releases/tag/v1.0.93
