@@ -206,8 +206,8 @@ func TestSecureEnclaveLifecycleAndNativeFailures(t *testing.T) {
 	wrongToken = false
 	findStatus = -34018
 	beforeCreates := creates
-	if _, err := signer.EnsureKey(ctx, ref); err == nil || errors.Is(err, ErrUnavailable) || creates != beforeCreates {
-		t.Fatalf("entitlement failure permitted fallback or replacement: %v", err)
+	if _, err := signer.EnsureKey(ctx, ref); !errors.Is(err, ErrUnavailable) || creates != beforeCreates {
+		t.Fatalf("entitlement failure must permit fallback without replacing the key: %v", err)
 	}
 	findStatus = 0
 	found, badPublic = false, true
@@ -234,10 +234,12 @@ func TestSecureEnclaveLifecycleAndNativeFailures(t *testing.T) {
 	}
 	foreignDomain := cfStringCreate(0, cstr("enclave-error.example"), cfStringEncodingUTF8)
 	defer cfRelease(foreignDomain)
-	if err := secureEnclaveCFError("fixture", cfErrorCreate(0, foreignDomain, -4, 0)); errors.Is(err, ErrUnavailable) {
-		t.Fatal("unrelated CFError domain permitted fallback")
-	}
-	if err := secureEnclaveCFError("fixture", cfErrorCreate(0, kCFErrorDomainOSStatus, -4, 0)); !errors.Is(err, ErrUnavailable) {
-		t.Fatalf("known OSStatus did not permit fallback: %v", err)
+	for _, code := range []int{-4, -34018} {
+		if err := secureEnclaveCFError("fixture", cfErrorCreate(0, foreignDomain, code, 0)); errors.Is(err, ErrUnavailable) {
+			t.Fatal("unrelated CFError domain permitted fallback")
+		}
+		if err := secureEnclaveCFError("fixture", cfErrorCreate(0, kCFErrorDomainOSStatus, code, 0)); !errors.Is(err, ErrUnavailable) {
+			t.Fatalf("known OSStatus did not permit fallback: %v", err)
+		}
 	}
 }

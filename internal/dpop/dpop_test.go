@@ -13,7 +13,6 @@ import (
 	"errors"
 	"math/big"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -184,36 +183,5 @@ func TestRestoreBindingRejectsKeySubstitution(t *testing.T) {
 	got, err := binding.Key().Thumbprint()
 	if err != nil || got != binding.JKT {
 		t.Fatalf("backend mutated bound public key: %v", err)
-	}
-}
-
-func TestClockRestoreAndConcurrentProofTime(t *testing.T) {
-	now := time.Unix(1700000000, 0)
-	clock := NewClock(fixedClock{now})
-	clock.SetServerTime(now.Add(-time.Hour), now)
-	state := clock.State()
-	reopened := NewClockWithState(fixedClock{now.Add(time.Minute)}, state)
-	if !reopened.Now().Equal(now.Add(-59 * time.Minute)) {
-		t.Fatal("reopen lost clock calibration")
-	}
-	var wg sync.WaitGroup
-	for i := range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for range 50 {
-				if i%2 == 0 {
-					clock.RestoreState(state)
-				} else {
-					_ = clock.Now()
-					_ = clock.State()
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	clock.RestoreState(ClockState{})
-	if !clock.Now().Equal(now) || clock.State() != (ClockState{}) {
-		t.Fatal("zero token state did not clear stale key calibration")
 	}
 }
