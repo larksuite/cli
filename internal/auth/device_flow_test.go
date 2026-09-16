@@ -358,6 +358,7 @@ func (s deviceFlowMetadata) Remove(_, account string) error { delete(s, account)
 type authDPoPTestSigner struct {
 	keys      map[string]*ecdsa.PrivateKey
 	ensureErr func(keysigner.KeyRef) error
+	deleteErr error
 }
 
 func newAuthDPoPTestSigner() *authDPoPTestSigner {
@@ -413,6 +414,9 @@ func (s *authDPoPTestSigner) Sign(ctx context.Context, ref keysigner.KeyRef, inp
 	return signature, keysigner.AlgES256, nil
 }
 func (s *authDPoPTestSigner) DeleteKey(ctx context.Context, ref keysigner.KeyRef) error {
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -523,6 +527,91 @@ func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
 			}
 			if len(signer.keys) != wantKeys {
 				t.Fatalf("retained keys = %d, want %d", len(signer.keys), wantKeys)
+			}
+		})
+	}
+}
+
+func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		mode       core.DPoPMode
+		responses  []string
+		cancel     bool
+		wantBearer bool
+		wantError  bool
+	}{
+		{"preferred", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof", "Bearer"}, false, true, false},
+		{"without Date", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof", "Bearer"}, false, true, false},
+		{"required", core.DPoPModeRequired, []string{"invalid_dpop_proof", "invalid_dpop_proof"}, false, false, true},
+		{"recovered", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "DPoP"}, false, false, false},
+		{"pending resets count", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "authorization_pending", "invalid_dpop_proof", "invalid_dpop_proof", "DPoP"}, false, false, false},
+		{"cleanup failed", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof"}, false, false, true},
+		{"malformed resets count", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "malformed", "invalid_dpop_proof", "invalid_dpop_proof", "DPoP"}, false, false, false},
+		{"canceled", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof"}, true, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			signer := newAuthDPoPTestSigner()
+			store := dpop.NewKeyStoreWithSigner(deviceFlowMetadata{}, signer)
+			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+			defer cancel()
+			calls := 0
+			proofs := map[string]bool{}
+			client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				body := fmt.Sprintf(`{"data":{"now":"%d"}}`, time.Now().Unix())
+				if req.URL.Path == core.OAuthTokenV3Path {
+					if calls >= len(tc.responses) {
+						t.Fatal("unexpected extra token request")
+					}
+					response := tc.responses[calls]
+					calls++
+					proof := req.Header.Get(dpop.ProofHeader)
+					if response == "Bearer" {
+						if proof != "" || len(signer.keys) != 0 {
+							t.Fatal("fallback retained proof or uncommitted key")
+						}
+					} else {
+						if proof == "" || proofs[proof] {
+							t.Fatal("missing or reused proof")
+						}
+						proofs[proof] = true
+					}
+					body = `{"error":"` + response + `","code":1106072}`
+					if response == "Bearer" || response == "DPoP" {
+						body = `{"access_token":"token","token_type":"` + response + `"}`
+					}
+					if response == "malformed" {
+						body = "{"
+					}
+					if tc.name == "cleanup failed" && calls == 3 {
+						signer.deleteErr = errors.New("cleanup denied")
+					}
+					if tc.cancel && calls == len(tc.responses) {
+						cancel()
+					}
+				}
+				if tc.name == "without Date" {
+					body = strings.ReplaceAll(body, `,"code":1106072`, "")
+				}
+				resp := refreshHTTPResponse(req, body)
+				if tc.name != "without Date" {
+					resp.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+				}
+				return resp, nil
+			})}
+			result, err := pollDeviceTokenWithKeyStore(ctx, client, "app", "secret", core.BrandFeishu, "device", 1, 22, nil, tc.mode, store)
+			if err != nil {
+				t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
+			}
+			if calls != len(tc.responses) || result.OK == tc.wantError {
+				t.Fatalf("calls=%d result=%+v", calls, result)
+			}
+			if tc.name == "cleanup failed" && (result.Error != "dpop_key_cleanup_failed" || !errors.Is(result.Err, signer.deleteErr)) {
+				t.Fatalf("cleanup cause lost: %+v", result)
+			}
+			if !tc.wantError && (result.Token == nil || (result.Token.DPoP == nil) != tc.wantBearer) {
+				t.Fatalf("unexpected token: %+v", result.Token)
 			}
 		})
 	}

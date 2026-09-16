@@ -276,6 +276,9 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	if token.StatusMessage != "" && p.errOut != nil {
 		fmt.Fprintf(p.errOut, "[lark-cli] tat-client: %s\n", token.StatusMessage)
 	}
+	if token.proofFallback && p.errOut != nil {
+		fmt.Fprintln(p.errOut, "[lark-cli] [WARN] three consecutive invalid_dpop_proof responses; new tenant token issued as Bearer")
+	}
 	lifetime := time.Duration(token.ExpiresIn) * time.Second
 	if lifetime <= 0 {
 		return nil, 0, fmt.Errorf("TAT response has invalid expires_in %d", token.ExpiresIn)

@@ -26,7 +26,8 @@ Environment and extension credentials keep their existing Bearer behavior, and
 the sandbox side of an auth sidecar delegates DPoP to the trusted sidecar.
 
 disabled issues new local credentials as Bearer. preferred tries DPoP first and
-may fall back before the token request when no supported signer exists. required
+may fall back on local preparation failures before the token exchange, or after
+three consecutive invalid_dpop_proof responses during new token issuance. required
 requires DPoP and fails closed. Existing DPoP tokens always keep their original
 key regardless of the configured mode.`,
 		Args: cobra.MaximumNArgs(1),

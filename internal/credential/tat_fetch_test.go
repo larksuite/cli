@@ -207,7 +207,7 @@ func TestRequestTATRecoversClockOnceAndRejectsBindingDowngrade(t *testing.T) {
 		}, nil
 	})}
 	token, err := requestTAT(context.Background(), client, core.BrandFeishu,
-		"cli-dpop", "secret", key, store, false)
+		"cli-dpop", "secret", key, store, false, 0)
 	if err != nil || token == nil || token.DPoP == nil || len(proofs) != 2 ||
 		proofs[0] == "" || proofs[0] == proofs[1] || key.Clock().State().SyncedAtMillis == 0 {
 		t.Fatalf("clock recovery = (%+v, %v), proofs=%d state=%+v", token, err, len(proofs), key.Clock().State())
@@ -229,7 +229,7 @@ func TestRequestTATRecoversClockOnceAndRejectsBindingDowngrade(t *testing.T) {
 					Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 			})}
 			token, err := requestTAT(context.Background(), client, core.BrandFeishu,
-				"cli-dpop", "secret", tc.key, store, false)
+				"cli-dpop", "secret", tc.key, store, false, 0)
 			problem, ok := errs.ProblemOf(err)
 			if token != nil || !ok || problem.Subtype != tc.subtype {
 				t.Fatalf("requestTAT() = (%+v, %v), want %s", token, err, tc.subtype)
@@ -524,4 +524,75 @@ func (r *urlRewriteRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	req2.Header = req.Header
 	return http.DefaultTransport.RoundTrip(req2)
+}
+
+func TestFetchTATRepeatedProofFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		mode       core.DPoPMode
+		responses  []string
+		cancel     bool
+		wantBearer bool
+		wantError  bool
+	}{
+		{"preferred", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof", "Bearer"}, false, true, false},
+		{"without Date", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof", "Bearer"}, false, true, false},
+		{"required", core.DPoPModeRequired, []string{"invalid_dpop_proof", "invalid_dpop_proof"}, false, false, true},
+		{"recovered", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "DPoP"}, false, false, false},
+		{"other rejection", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_client"}, false, false, true},
+		{"canceled", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof"}, true, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newTATDPoPStore(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			calls := 0
+			proofs := map[string]bool{}
+			client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				body := `{"data":{"now":"` + strconv.FormatInt(time.Now().Unix(), 10) + `"}}`
+				if req.URL.Path == core.OAuthTokenV3Path {
+					if calls >= len(tc.responses) {
+						t.Fatal("unexpected extra token request")
+					}
+					response := tc.responses[calls]
+					calls++
+					proof := req.Header.Get(dpop.ProofHeader)
+					if response == "Bearer" {
+						if proof != "" {
+							t.Fatal("Bearer fallback carried proof")
+						}
+						if _, err := store.LoadContext(ctx, tatDPoPKeyID(core.BrandFeishu, "fallback")); !errors.Is(err, dpop.ErrKeyNotFound) {
+							t.Fatalf("key not rolled back before fallback: %v", err)
+						}
+					} else {
+						if proof == "" || proofs[proof] {
+							t.Fatal("missing or reused proof")
+						}
+						proofs[proof] = true
+					}
+					body = `{"error":"` + response + `","code":1106072}`
+					if response == "Bearer" || response == "DPoP" {
+						body = `{"access_token":"token","expires_in":7200,"token_type":"` + response + `"}`
+					}
+					if tc.cancel && calls == len(tc.responses) {
+						cancel()
+					}
+				}
+				header := http.Header{}
+				if tc.name != "without Date" {
+					header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+				} else {
+					body = strings.ReplaceAll(body, `,"code":1106072`, "")
+				}
+				return &http.Response{StatusCode: 200, Header: header, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+			})}
+			token, err := fetchTAT(ctx, client, core.BrandFeishu, "fallback", "secret", tc.mode, store)
+			if calls != len(tc.responses) || (err != nil) != tc.wantError {
+				t.Fatalf("calls=%d token=%+v err=%v", calls, token, err)
+			}
+			if !tc.wantError && (token == nil || (token.DPoP == nil) != tc.wantBearer || token.proofFallback != tc.wantBearer) {
+				t.Fatalf("unexpected token: %+v", token)
+			}
+		})
+	}
 }
