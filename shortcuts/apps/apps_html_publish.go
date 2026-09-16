@@ -331,21 +331,9 @@ func runHTMLPublishTOS(ctx context.Context, rctx *common.RuntimeContext, spec ap
 	if err != nil {
 		return nil, err
 	}
-	kvs, _ := preData["kvs"].([]interface{})
-	if len(kvs) == 0 {
+	kvm := parsePreReleaseKVs(preData)
+	if len(kvm) == 0 {
 		return nil, appsSubprocessEnvelopeError("pre_release returned no kvs")
-	}
-	kvm := make(map[string]string, len(kvs))
-	for _, item := range kvs {
-		kv, _ := item.(map[string]interface{})
-		if kv == nil {
-			continue
-		}
-		k, _ := kv["key"].(string)
-		v, _ := kv["value"].(string)
-		if k != "" {
-			kvm[k] = v
-		}
 	}
 	uploadURL := kvm["upload_url"]
 	tosPath := kvm["tos_path"]

@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -54,6 +56,61 @@ func newStatusRuntimeContext(t *testing.T, appID, releaseID string) (*common.Run
 
 	rctx := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, core.AsUser)
 	return rctx, stdoutBuf, reg
+}
+
+func TestAppsReleaseGet_SyncsSparkAppURL(t *testing.T) {
+	// A finished poll observed from the app's own project root writes the
+	// url into spark.json's app section (the deploy chain owns that state,
+	// and +deploy returns before an async release finishes).
+	root := chdirSparkProjectRoot(t, `{"stack":"s","app":{"id":"app_x"}}`)
+	rctx, _, reg := newStatusRuntimeContext(t, "app_x", "7")
+	stubReleaseGet(reg, "app_x", "7", map[string]interface{}{
+		"release_id": "7", "status": "finished",
+		"online_url": "https://x/app/app_x",
+	})
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	b, _ := os.ReadFile(filepath.Join(root, sparkJSONRelPath))
+	var doc map[string]interface{}
+	_ = json.Unmarshal(b, &doc)
+	app, _ := doc["app"].(map[string]interface{})
+	if app == nil || app["online_url"] != "https://x/app/app_x" {
+		t.Errorf("app.online_url must be synced, got %v", doc["app"])
+	}
+}
+
+func TestAppsReleaseGet_NoSparkJSONSkipsSync(t *testing.T) {
+	// No spark.json in the working directory (e.g. polling an html app's
+	// release): the sync is skipped silently and nothing is created.
+	root := chdirSparkProjectRoot(t, "")
+	rctx, _, reg := newStatusRuntimeContext(t, "app_x", "8")
+	stubReleaseGet(reg, "app_x", "8", map[string]interface{}{
+		"release_id": "8", "status": "finished",
+		"online_url": "https://x/app/app_x",
+	})
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, sparkJSONRelPath)); !os.IsNotExist(err) {
+		t.Error("sync must not create a spark.json where none exists")
+	}
+}
+
+func TestAppsReleaseGet_MismatchedAppIDSkipsSync(t *testing.T) {
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_other"}}`)
+	rctx, _, reg := newStatusRuntimeContext(t, "app_x", "9")
+	stubReleaseGet(reg, "app_x", "9", map[string]interface{}{
+		"release_id": "9", "status": "finished",
+		"online_url": "https://x/app/app_x",
+	})
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	b, _ := os.ReadFile(filepath.Join(root, sparkJSONRelPath))
+	if strings.Contains(string(b), "https://x/app/app_x") {
+		t.Errorf("mismatched app id must not be synced: %s", b)
+	}
 }
 
 func TestAppsReleaseGetExecute_Success(t *testing.T) {
@@ -363,5 +420,49 @@ func TestAppsReleaseGetJSONOnlineURLPassthrough(t *testing.T) {
 	}
 	if env.Data["online_url"] != "https://example.feishu.cn/spark/faas/app_x" {
 		t.Errorf("JSON must passthrough online_url, got: %v", env.Data["online_url"])
+	}
+}
+
+func TestReleaseGetDoesNotSyncBeforeFinish(t *testing.T) {
+	cases := []struct {
+		name string
+		body map[string]interface{}
+	}{
+		{"publishing release", map[string]interface{}{"release_id": "rel_1", "status": "publishing"}},
+		{"finished without url", map[string]interface{}{"release_id": "rel_1", "status": "finished"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			seed := `{"app":{"id":"app_x"}}`
+			if err := os.WriteFile(filepath.Join(dir, "spark.json"), []byte(seed), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			orig, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chdir(dir); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(orig) })
+
+			rctx, _, reg := newStatusRuntimeContext(t, "app_x", "rel_1")
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/spark/v1/apps/app_x/releases/rel_1",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "",
+					"data": map[string]interface{}{"release": tc.body},
+				},
+			})
+			if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
+				t.Fatalf("unexpected: %v", err)
+			}
+			b, _ := os.ReadFile(filepath.Join(dir, "spark.json"))
+			if string(b) != seed {
+				t.Errorf("spark.json must stay untouched before a finished release with a url, got %s", b)
+			}
+		})
 	}
 }

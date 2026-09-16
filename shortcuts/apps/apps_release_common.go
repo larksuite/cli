@@ -18,6 +18,25 @@ const (
 	releaseListPath   = apiBasePath + "/apps/%s/releases"
 )
 
+// parsePreReleaseKVs flattens a pre_release response's kvs array into a
+// key->value map. Entries without a string key are skipped.
+func parsePreReleaseKVs(data map[string]interface{}) map[string]string {
+	kvs, _ := data["kvs"].([]interface{})
+	kvm := make(map[string]string, len(kvs))
+	for _, item := range kvs {
+		kv, _ := item.(map[string]interface{})
+		if kv == nil {
+			continue
+		}
+		k, _ := kv["key"].(string)
+		v, _ := kv["value"].(string)
+		if k != "" {
+			kvm[k] = v
+		}
+	}
+	return kvm
+}
+
 // writeReleaseErrorLogTable renders a release's error_logs (a slice of
 // {step, error_log} maps from the gateway) as a two-column step/error_log
 // table via output.PrintTable. Used by +release-get to render a failed

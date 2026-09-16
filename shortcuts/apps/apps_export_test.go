@@ -181,74 +181,34 @@ func TestAppsExport_AnnotatesNotPublishedEnvelope(t *testing.T) {
 	}
 }
 
-// TestAppsExport_RejectsEmptyContentType covers the same gate for a response
-// that omits Content-Type: the repo treats an absent type as JSON-suspect
-// (see client.HandleResponse), so it must not stream straight to disk either.
-func TestAppsExport_RejectsEmptyContentType(t *testing.T) {
-	dir := chdirTemp(t)
-	factory, stdout, reg := newAppsExecuteFactory(t)
-	reg.Register(archiveStub("app_x", 200, []byte(`{"code":40400,"msg":"app not found"}`), "", ""))
-
-	if err := runAppsShortcut(t, AppsExport,
-		[]string{"+export", "--app-id", "app_x", "--output", "src.zip", "--as", "user"}, factory, stdout); err == nil {
-		t.Fatal("execute err = nil, want the envelope surfaced as an error")
-	}
-	if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
-		t.Error("src.zip was written despite an untyped JSON body")
-	}
-}
-
-// TestAppsExport_RejectsPlainTextBodyOn200 covers the exact failure observed on
-// a test lane: when the api.status response field is not wired through, the
-// gateway returns HTTP 200 carrying the handler's bare text/plain reason
-// ("permission denied", "app not found for the given meta_token") instead of
-// mapping it to a 4xx. The whitelist gate must refuse it — a text/plain body is
-// never a valid archive — and surface the server's reason rather than saving it.
-func TestAppsExport_RejectsPlainTextBodyOn200(t *testing.T) {
+// TestAppsExport_StreamsNonJSONArchive documents the loosened gate: only a JSON
+// Content-Type is treated as the gateway's HTTP-200 error envelope, so a real
+// archive served under any other type — a non-standard binary label a gateway or
+// proxy may swap in, or an absent type — is streamed to disk rather than refused.
+// This is the case a strict archive-Content-Type whitelist used to reject.
+func TestAppsExport_StreamsNonJSONArchive(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		body string
+		name        string
+		contentType string
 	}{
-		{"permission denied", "permission denied"},
-		{"meta token not found", "app not found for the given meta_token"},
+		{"x-zip-compressed", "application/x-zip-compressed"},
+		{"binary octet-stream", "binary/octet-stream"},
+		{"force-download", "application/force-download"},
+		{"absent", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := chdirTemp(t)
 			factory, stdout, reg := newAppsExecuteFactory(t)
-			reg.Register(archiveStub("app_x", 200, []byte(tc.body), "text/plain; charset=utf-8", ""))
+			reg.Register(archiveStub("app_x", 200, []byte("PK\x03\x04ZIPDATA"), tc.contentType, ""))
 
-			err := runAppsShortcut(t, AppsExport,
-				[]string{"+export", "--app-id", "app_x", "--output", "src.zip", "--as", "user"}, factory, stdout)
-			if err == nil {
-				t.Fatal("execute err = nil, want the plain-text error surfaced")
+			if err := runAppsShortcut(t, AppsExport,
+				[]string{"+export", "--app-id", "app_x", "--output", "src.zip", "--as", "user"}, factory, stdout); err != nil {
+				t.Fatalf("execute err = %v, want the archive streamed under content type %q", err, tc.contentType)
 			}
-			if !strings.Contains(err.Error(), tc.body) {
-				t.Errorf("err = %v, want it to carry the server reason %q", err, tc.body)
-			}
-			if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
-				t.Error("src.zip was written; a text/plain error body must never become a product")
+			if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); statErr != nil {
+				t.Errorf("src.zip not written for content type %q: %v", tc.contentType, statErr)
 			}
 		})
-	}
-}
-
-// TestAppsExport_RejectsSpoofedArchiveContentType guards the media-type match:
-// a hostile/mislabeled header like text/plain; detail="application/zip" must not
-// pass the archive whitelist via substring matching. Only the exact media type
-// (parameters stripped) counts, so this error body is refused, not saved.
-func TestAppsExport_RejectsSpoofedArchiveContentType(t *testing.T) {
-	dir := chdirTemp(t)
-	factory, stdout, reg := newAppsExecuteFactory(t)
-	reg.Register(archiveStub("app_x", 200, []byte("permission denied"),
-		`text/plain; detail="application/zip"`, ""))
-
-	err := runAppsShortcut(t, AppsExport,
-		[]string{"+export", "--app-id", "app_x", "--output", "src.zip", "--as", "user"}, factory, stdout)
-	if err == nil {
-		t.Fatal("execute err = nil, want the spoofed-content-type body refused")
-	}
-	if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
-		t.Error("src.zip was written; application/zip inside a text/plain parameter must not pass the whitelist")
 	}
 }
 

@@ -1,0 +1,152 @@
+{
+  "single": {
+    "files": [
+      {
+        "path": "index.html",
+        "base64": "PGh0bWw+aGk8L2h0bWw+"
+      }
+    ],
+    "hash": "beb6d42e2e372ff35ff73af2a4bd53d0e440f07180b89ea67136a92c8f80a8ba"
+  },
+  "plain_multi": {
+    "files": [
+      {
+        "path": "index.html",
+        "base64": "PGgxPmE8L2gxPg=="
+      },
+      {
+        "path": "style.css",
+        "base64": "LmF7fQ=="
+      },
+      {
+        "path": "logo.png",
+        "base64": "AQIDBAU="
+      }
+    ],
+    "hash": "66268bacc5325854af045ab046c3462cbfa76a6d54726c45d1e67afa7e98851d"
+  },
+  "html_entities": {
+    "files": [
+      {
+        "path": "index.html",
+        "base64": "eA=="
+      },
+      {
+        "path": "a<b>&c.css",
+        "base64": "LmF7fQ=="
+      }
+    ],
+    "hash": "621f773ee0e854a4f04e71c5b80ed3fbb6d617b9880c2bc71e4f40fed6d79428"
+  },
+  "utf16_vs_utf8": {
+    "files": [
+      {
+        "path": "index.html",
+        "base64": "eA=="
+      },
+      {
+        "path": "🍎.css",
+        "base64": "LmF7fQ=="
+      },
+      {
+        "path": ".css",
+        "base64": "LmJ7fQ=="
+      }
+    ],
+    "hash": "3edd11821e276a273fc19c970707b1fc825efef1e3fe24a9d0becc9d098c2c8d"
+  },
+  "cjk": {
+    "files": [
+      {
+        "path": "index.html",
+        "base64": "eA=="
+      },
+      {
+        "path": "中文/样式.css",
+        "base64": "LmF7fQ=="
+      },
+      {
+        "path": "日本語.js",
+        "base64": "YQ=="
+      }
+    ],
+    "hash": "2d29622c9512a1274ab21fc3f6e829ffc8c9a38e7857112cf58932c6e33cc544"
+  },
+  "ext_edges": {
+    "files": [
+      {
+        "path": "index.html",
+        "base64": "eA=="
+      },
+      {
+        "path": "A.CSS",
+        "base64": "LmF7fQ=="
+      },
+      {
+        "path": "dir.css/file",
+        "base64": "cmF3"
+      },
+      {
+        "path": "LICENSE",
+        "base64": "dHh0"
+      },
+      {
+        "path": ".js",
+        "base64": "YQ=="
+      }
+    ],
+    "hash": "f9e9893e94881420d828cb3be11bf643e65084a2933d1bec37f2e7935c69f4bc"
+  },
+  "renamed_entry": {
+    "files": [
+      {
+        "path": "index.html",
+        "base64": "ZW50cnk="
+      },
+      {
+        "path": "a.css",
+        "base64": "LmF7fQ=="
+      }
+    ],
+    "hash": "81c7a7b44b12d7136cfae73cebd8c5cdea42927d464400aeea06f9c0d9daf15f"
+  },
+  "binary_only_size": {
+    "files": [
+      {
+        "path": "index.html",
+        "base64": "eA=="
+      },
+      {
+        "path": "font.woff2",
+        "base64": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcH"
+      }
+    ],
+    "hash": "8cd6c32547af0e2338fc3a6766fc9b4df55b06ae6b3254bccf2cccbde53650dd"
+  },
+  "escapes": {
+    "files": [
+      {
+        "path": "index.html",
+        "base64": "eA=="
+      },
+      {
+        "path": "q\"uote\\back\tTAB.css",
+        "base64": "LmF7fQ=="
+      }
+    ],
+    "hash": "afff4721c131ac171f058f2618e8500b89633a16b796d09a59d815dc76b4a7c3"
+  },
+  "line_separator": {
+    "files": [
+      {
+        "path": "index.html",
+        "base64": "eA=="
+      },
+      {
+        "path": "a b.css",
+        "base64": "LmF7fQ=="
+      }
+    ],
+    "hash": "cc1e75a1d99e82625b91ea48ae753f7a0a034f2036f85ad8f52ec3ae96a6ffc6"
+  }
+}
