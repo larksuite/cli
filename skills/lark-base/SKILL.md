@@ -225,6 +225,8 @@ Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主�
 
 **管理 Dashboard 分享：** 使用 `+dashboard-share-get` / `+dashboard-share-update` 管理启停、访问范围和返回源 Base 入口；更新前先读取现状，每次只修改一个字段，显式 `false` 会被保留。
 
+**定时推送 Dashboard 截图：** 使用 `+dashboard-push-create` 创建并启用一个 `TimerTrigger → LarkMessageAction` Workflow。执行前先读 [Workflow](references/lark-base-workflow.md) 的“仪表盘截图自动推送”章节：服务端必须支持 Dashboard image 段；`--send-at` 按 Base 时区解释；`--repeat` 当前仅支持 `NO_REPEAT` / `DAILY`；`--receiver` 可重复传入 `ou_` 个人或 `oc_` 群组 ID。截图使用 Base owner 身份渲染，创建前必须确认 owner 可访问仪表盘且接收方可见相应数据。本期 `--content-mode` 只接受 `image`，不得用通用 Workflow 绕过该限制添加 AI 仪表盘总结。若创建成功但启用结果未确认，按回执先 `+workflow-get`，不要再次创建。
+
 容器内部的图表、指标卡和文本等组件在 Dashboard API 中也称为 Block，但不属于 Base Block 树。内部 Block 分为三条操作路径：
 
 1. **读取配置：** `+dashboard-block-list` / `+dashboard-block-get` 读取组件类型、布局和 `data_config`；文本组件的正文也属于配置。
