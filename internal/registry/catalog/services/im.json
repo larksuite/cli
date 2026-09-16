@@ -707,7 +707,8 @@
             "im:chat:create_by_user"
           ],
           "accessTokens": [
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",

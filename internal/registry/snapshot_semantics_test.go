@@ -134,9 +134,23 @@ func TestCatalogSnapshotIMChatCreateUsesTenantToken(t *testing.T) {
 	doc := loadShardDoc(t, "im")
 	method := doc["resources"].(map[string]any)["chats"].(map[string]any)["methods"].(map[string]any)["create"].(map[string]any)
 
+	// Internal policy: follow the OpenAPI metadata, which still lists agent for
+	// chats.create. Upstream narrowed this to exactly [tenant] as a temporary
+	// compatibility patch; only the removal of user is adopted here.
 	tokens := method["accessTokens"].([]any)
-	if len(tokens) != 1 || tokens[0] != "tenant" {
-		t.Fatalf("im chats.create accessTokens = %v, want [tenant]", tokens)
+	hasTenant, hasAgent, hasUser := false, false, false
+	for _, tok := range tokens {
+		switch tok {
+		case "tenant":
+			hasTenant = true
+		case "agent":
+			hasAgent = true
+		case "user":
+			hasUser = true
+		}
+	}
+	if !hasTenant || !hasAgent || hasUser {
+		t.Fatalf("im chats.create accessTokens = %v, want tenant and agent without user", tokens)
 	}
 	description := method["description"].(string)
 	if !strings.Contains(description, "`bot` only (`tenant_access_token`)") || strings.Contains(description, "supports `user`") {
