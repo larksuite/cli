@@ -36,6 +36,15 @@
 # last line of defence, and now that every job verifies the merge result it
 # should stay quiet.
 #
+# `types: [ branch ]` on the push trigger is not decoration. On GitHub,
+# `on.push.branches` never matches a tag ref, so the public CI does not run
+# when a release tag is pushed. Codebase's `push` trigger listens to branch
+# and tag pushes alike and `branches` only filters branch names, so without
+# `types` every `v*` tag ran this whole pipeline again — E2E Live included —
+# next to the Release pipeline that the tag is meant to start (v1.0.95 on
+# 2026-09-16 produced two such runs). Release stays on release.yaml, which
+# selects `types: [ tag ]`.
+#
 # Every job merges the target branch before it does anything else.
 # actions/checkout checks out CI_HEAD_SHA, the source branch tip, so without
 # that step a merge request is verified against a tree that has never met the
@@ -98,6 +107,7 @@ trigger:
     types: [ create, push ]
   push:
     branches: [ main ]
+    types: [ branch ]
   manual: {}
 
 jobs:
