@@ -144,12 +144,13 @@ func RequestDeviceAuthorization(ctx context.Context, httpClient *http.Client, ap
 
 // PollDeviceToken polls the token endpoint until authorization completes or times out.
 func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *DeviceFlowResult {
-	return pollDeviceToken(ctx, httpClient, appId, appSecret, brand, deviceCode, interval, expiresIn, errOut, nil, nil)
+	return pollDeviceToken(ctx, httpClient, appId, appSecret, brand, deviceCode, interval, expiresIn, errOut, nil, nil, false)
 }
 
 // PollDeviceTokenWithMode applies the local three-state DPoP policy. Preferred
 // mode may fall back for local key preparation or clock synchronization errors,
-// but only before polling sends a Token Endpoint request and while not canceled.
+// before polling sends a Token Endpoint request, or after three consecutive
+// invalid_dpop_proof responses. Cancellation never permits fallback.
 func PollDeviceTokenWithMode(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, mode core.DPoPMode) *DeviceFlowResult {
 	return pollDeviceTokenWithKeyStore(ctx, httpClient, appId, appSecret, brand, deviceCode,
 		interval, expiresIn, errOut, mode, dpop.NewKeyStore(nil))
@@ -177,7 +178,7 @@ func pollDeviceTokenWithKeyStore(ctx context.Context, httpClient *http.Client, a
 		result = &DeviceFlowResult{OK: false, Error: "dpop_key_generation_failed", Message: "failed to generate DPoP key", Err: errs.NewAuthenticationError(
 			errs.SubtypeDPoPProofFailed, "failed to generate DPoP key: %v", err).WithCause(err)}
 	} else {
-		result = pollDeviceToken(ctx, httpClient, appId, appSecret, brand, deviceCode, interval, expiresIn, errOut, key, &requestSent)
+		result = pollDeviceToken(ctx, httpClient, appId, appSecret, brand, deviceCode, interval, expiresIn, errOut, key, &requestSent, mode == core.DPoPModePreferred)
 		if !result.OK || result.Token == nil || result.Token.DPoP == nil {
 			if cleanupErr := keyStore.DeleteKeyContext(context.WithoutCancel(ctx), key); cleanupErr != nil {
 				result = &DeviceFlowResult{
@@ -192,7 +193,11 @@ func pollDeviceTokenWithKeyStore(ctx context.Context, httpClient *http.Client, a
 			}
 		}
 	}
-	if mode == core.DPoPModePreferred && !requestSent && ctx.Err() == nil && deviceFlowFallbackAllowed(result) {
+	if mode == core.DPoPModePreferred && ctx.Err() == nil && ((!requestSent && deviceFlowFallbackAllowed(result)) ||
+		(result.Error != "dpop_key_cleanup_failed" && errors.Is(result.Err, dpop.ErrRepeatedInvalidProof))) {
+		if errors.Is(result.Err, dpop.ErrRepeatedInvalidProof) && errOut != nil {
+			fmt.Fprintln(errOut, "[lark-cli] [WARN] three consecutive invalid_dpop_proof responses; retrying new token issuance as Bearer")
+		}
 		return PollDeviceToken(ctx, httpClient, appId, appSecret, brand, deviceCode, interval, expiresIn, errOut)
 	}
 	return result
@@ -218,7 +223,7 @@ func deviceFlowFallbackAllowed(result *DeviceFlowResult) bool {
 	return ok && problem.Subtype == errs.SubtypeDPoPClockSyncFailed
 }
 
-func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, proofKey *dpop.Key, requestSent *bool) *DeviceFlowResult {
+func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, proofKey *dpop.Key, requestSent *bool, allowProofFallback bool) *DeviceFlowResult {
 	if errOut == nil {
 		errOut = io.Discard
 	}
@@ -234,6 +239,7 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
 	currentInterval := interval
 	attempts := 0
+	invalidProofs := 0
 	clockRecoveryUsed := false
 	skipActiveClockSync := false
 
@@ -288,6 +294,7 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 		resp, err := httpClient.Do(req)
 		localReceiveTime := time.Now()
 		if err != nil {
+			invalidProofs = 0
 			if ctx.Err() != nil {
 				return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Polling was cancelled"}
 			}
@@ -300,6 +307,7 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
+			invalidProofs = 0
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] device-flow: poll read error: %v\n", err)
 			currentInterval = minInt(currentInterval+1, maxPollInterval)
 			continue
@@ -307,11 +315,35 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 
 		var data map[string]interface{}
 		if err := json.Unmarshal(body, &data); err != nil {
+			invalidProofs = 0
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] device-flow: poll parse error: %v\n", err)
 			currentInterval = minInt(currentInterval+1, maxPollInterval)
 			continue
 		}
 
+		// Project the response fields used by the issuance fallback policy.
+		var rejection struct {
+			Error string `json:"error"`
+			Code  int    `json:"code"`
+		}
+		if proofKey != nil && allowProofFallback && json.Unmarshal(body, &rejection) == nil &&
+			rejection.Error == dpop.InvalidProofOAuthError {
+			invalidProofs++
+			if invalidProofs == 3 {
+				return &DeviceFlowResult{Error: "invalid_dpop_proof", Err: errs.NewAuthenticationError(
+					errs.SubtypeDPoPTokenRejected, "Token Endpoint rejected three consecutive DPoP proofs").
+					WithCode(rejection.Code).WithCause(dpop.ErrRepeatedInvalidProof)}
+			}
+			if !clockRecoveryUsed {
+				if serverTime, dateErr := http.ParseTime(resp.Header.Get("Date")); dateErr == nil {
+					proofKey.Clock().SetServerTime(serverTime, localReceiveTime)
+					clockRecoveryUsed = true
+				}
+			}
+			skipActiveClockSync = true
+			continue
+		}
+		invalidProofs = 0
 		errStr := getStr(data, "error")
 		code := getInt(data, "code", 0)
 		if proofKey != nil && dpop.IsClockRecoverySignal(code, errStr) {

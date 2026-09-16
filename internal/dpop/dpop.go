@@ -39,6 +39,10 @@ const (
 // response description, token, proof, and key material.
 var ErrInvalidProofResponse = errors.New("token endpoint returned invalid_dpop_proof")
 
+// ErrRepeatedInvalidProof marks three consecutive explicit proof rejections during
+// new token issuance. Callers own the preferred-mode fallback and key rollback.
+var ErrRepeatedInvalidProof = errors.New("token endpoint rejected three consecutive DPoP proofs")
+
 // IsClockRecoverySignal reports whether a Token Endpoint response carries the
 // complete server signal that permits a one-time DPoP clock correction. The
 // OAuth error comparison is deliberately exact.
