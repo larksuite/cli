@@ -8,7 +8,7 @@
 
 - **新建**：从 `+create` 开始走下面的端到端流程。
 - **已有应用，本地还没有源码**：跳过 `+create`，先按下方「存量应用入口」拿 `app_id`，再 `+init`（或 `+git-credential-init` + `git clone`）把它拉到本地，然后照常开发。
-- **已有应用，本地已经有项目目录**（用户自己 clone 的、或上次会话留下的）：不要 `+create`、也不要另起新目录，先做下方「接管已有仓库前先核对事实」，再按「改完代码后部署上线」继续。
+- **已有应用，本地已经有项目目录**（用户自己 clone 的、或上次会话留下的）：不要 `+create`、也不要另起新目录，先 `git status` 看有没有用户未提交的改动（有就先报告，不要 stash 或覆盖），再按「改完代码后部署上线」继续。
 
 ## 端到端流程（新建应用）
 
@@ -105,8 +105,8 @@ lark-cli apps +release-create --app-id app_xxx
 ### 执行方式
 
 - `+init` 单独一次调用，不与其他命令串在同一条 shell 里；给它的工具超时至少 **10 分钟**（html 至少 5 分钟）。
-- 工具超时上限达不到 10 分钟时，改为后台执行并把 stdout/stderr 重定向到文件，然后在**同一轮里主动轮询**：每 15-30 秒 `sleep` 后检查进程是否退出、输出文件里有没有 envelope，直到拿到结果再继续。不要把等待交给宿主的"后台任务完成通知"然后结束回合——无头运行或没有这种机制的 agent 不会再被唤醒；会话结束后那个初始化进程既可能被连带终止，也可能变成无人看管的孤儿进程继续往目录写文件并提交推送（见「中断后的处置顺序」），两种结果都拿不到 envelope。进程仍在运行就继续等；"生成项目代码"阶段不会打印细粒度进度，stderr 长时间没有新行不等于卡死。
-- 同一目录、同一 app 同时只允许一次 `+init`。上一次被中断后不要立刻重跑，先按下方「中断后的处置顺序」确认没有残留进程。
+- 工具超时上限达不到 10 分钟时，改为后台执行并把 stdout/stderr 重定向到文件，然后在**同一轮里主动轮询**：每 15-30 秒 `sleep` 后检查进程是否退出、输出文件里有没有 envelope，直到拿到结果再继续。不要把等待交给宿主的"后台任务完成通知"然后结束回合——无头运行或没有这种机制的 agent 不会再被唤醒；会话结束后那个初始化进程既可能被连带终止，也可能变成无人看管的孤儿进程继续往目录写文件并提交推送，两种结果都拿不到 envelope。进程仍在运行就继续等；"生成项目代码"阶段不会打印细粒度进度，stderr 长时间没有新行不等于卡死。
+- 同一目录、同一 app 同时只允许一次 `+init`。上一次被中断后，删掉本次新建的目录再重跑，不要在残留目录上叠加。
 - stderr 的 `→` 进度行是正常输出，结果只看 stdout 的 JSON envelope。
 
 ### 成功判定
@@ -127,27 +127,11 @@ lark-cli apps +release-create --app-id app_xxx
 
 envelope 返回 `already_initialized`（常见于仓库是手动 `git clone` 来的）时尤其要确认这一步，因为那条路径不会走脚手架。
 
-### 中断后的处置顺序
-
-工具超时、进程被 kill、只看到进度行而没有 envelope 时，**先查进程再动目录**：
-
-1. `pgrep -fl <app_id>` 看有没有还在跑的 `lark-cli` / `npm` / Node 脚手架进程（排除你自己包着 app_id 的 shell）。外层 shell 被 kill 不代表它们停了，它们会继续跑几分钟并最终提交推送。
-2. 有进程在跑：每 15-30 秒查一次，**最多再等 5 分钟**，期间不要碰目录。它自己退出后目录往往是完整的，不必重跑。
-3. 超过 5 分钟仍在跑，或需要重跑：先清进程再动目录，否则残留进程会继续往同一路径写文件、抢着提交推送。
-
-```bash
-pkill -P <pid>; kill <pid>   # 对每个 pid：先杀子进程再杀它自己
-pgrep -fl <app_id>           # 必须为空，仍有残留就重复上一行
-```
-
-4. 再看目录：没有 `.spark/meta.json`，或有 meta 但工作树不干净、`git log` 没有初始化提交，都算半成品，删除**本次新建的**目录后重跑。只删本次新建的目录，不动用户原有目录。
-5. 重跑最多 2 次；仍失败就报告 app_id、`--dir`、退出码和 `error.hint`。
-
 ### 失败与中断的处置
 
 | 现象 | 判定 | 动作 |
 |---|---|---|
-| 工具超时 / 进程被 kill / 没有 envelope；或重跑报 `--dir` 已存在且非空 | 未完成，目录里是上次的残留 | 按上面「中断后的处置顺序」执行：先查进程、等待或清理，再判定目录、删除本次新建的目录后重跑。不要把代码写进这个目录。 |
+| 工具超时 / 进程被 kill / 没有 envelope；或重跑报 `--dir` 已存在且非空 | 未完成，目录里是上次的残留 | 删除**本次 `+init` 新建的**目录后重跑，最多 2 次。只删本次新建的目录，不动用户原有目录，也不要把代码写进去。 |
 | 本轮刚建的目录却返回 `scaffold=already_initialized` | 疑似半成品被短路 | 按上面「通过后还要自己补的一步」确认依赖，仓库本身完整就继续开发；目录明显是半成品才删掉重跑。 |
 | 退出非 0，错误含 `git push failed` | 脚手架已提交、未推送 | 不要重跑 `+init`（会被短路）。先看 `error.message` 里的 git 输出：non-fast-forward（远端有新提交）→ `git pull --rebase origin sprint/default` 后 `git push origin sprint/default`；认证失败 → 先 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 再 push。然后按核对清单继续。 |
 | 退出 0 但 `env_pulled=false` 且有 `env_pull_error` | 初始化成功、环境变量未拉到 | 不阻塞开发；启动前执行 `+env-pull`。 |
@@ -174,7 +158,7 @@ pgrep -fl <app_id>           # 必须为空，仍有残留就重复上一行
 > `+release-create` 部署的是远端 `sprint/default` 上**已 push** 的代码，不是你本地工作区——未 commit / 未 push 的改动不会进入这次发布。所以发布前务必先把本次改动提交并推送。
 
 1. `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
-2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push；遇 Git 认证失败 / 401 / 403 / credential helper 缺失 / token 过期：先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令；刷新凭证也失败时，停止并向用户报告错误，不要换路）。
+2. `git push origin sprint/default` 把工作分支推到云端。同一个应用的云端会话和其他协作者也写这条分支，**push 前先 `git fetch origin` 看远端有没有新提交**（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push；遇 Git 认证失败 / 401 / 403 / credential helper 缺失 / token 过期：先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令；刷新凭证也失败时，停止并向用户报告错误，不要换路）。
 3. `lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default` 发起部署上线，记下返回的 `release_id`。
 4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 成功时，若返回 `online_url`，可直接使用；未返回时不要编造链接。交付线上访问链接给他人前，注意 `online_url` 默认仅创建者可见，需先告知当前仅本人可见、按需用 `+access-scope-set` 放开可见范围。无需再调 `+list`；`failed` 时若返回非空 `error_logs`，据此给出失败原因；否则只报告 `release_id` 和当前 status，不要编造原因（`+list` 仅作独立查询入口）。
 
@@ -206,26 +190,6 @@ lark-cli apps +list --keyword "应用名"
 ```
 
 拿到 `app_id` 后再 `+init` 或 `+git-credential-init`。
-
-### 接管已有仓库前先核对事实
-
-进入一个已存在的本地项目目录（用户自己 clone 的、或上次会话留下的）改代码之前，先把下面几项看一遍，再决定怎么动：
-
-1. `git status --porcelain`：有用户未提交或未跟踪的文件时，先摘要给用户并问怎么处理；不要为了"干净"自动 `git stash`、`git checkout -- .` 或覆盖这些改动。
-2. `git fetch origin` 后比较 `git rev-parse HEAD`、`origin/sprint/default`、`origin/main`：`origin/sprint/default` 领先本地，说明云端会话或其他协作者推过代码，先 `git log HEAD..origin/sprint/default --oneline` 看清是谁改了什么，再 `git pull --rebase origin sprint/default`；本地领先，说明有未推送的提交，发布前必须先 push；`origin/main` 是最近一次发布成功的快照，它与 `origin/sprint/default` 的差就是"已开发、未上线"的部分。
-3. `lark-cli apps +release-list --app-id <app_id> --status finished --page-size 1 --as user` 取最近一次**成功**发布的 `release_id`，再 `lark-cli apps +release-get --app-id <app_id> --release-id <release_id> --as user` 读它的 `commit_id`，和 `origin/main` 对照，确认线上跑的是哪个 commit；`commit_id` 未返回时只说明「线上版本未能确认」，不要猜。
-4. `.spark/meta.json` 的 `app_id` 与用户指认的应用一致；不一致说明目录属于另一个 app，停下确认，不要在里面继续。
-
-核对出分歧（用户有改动、远端领先、release 与分支对不上）时先报告再动手。沿用原应用的 app_id、数据、访问范围和发布历史；只有用户明确要求独立 Demo、重建或对照实验时才新建应用。
-
-## 与云端会话并存
-
-同一个 app 可以同时被本地开发和云端会话（[`lark-apps-cloud-dev.md`](lark-apps-cloud-dev.md)）修改：云端的改动由云端自己提交到该应用的远端仓库，你的 push 也进同一个远端，而 lark-cli 不提供任何互斥或冲突提示，改动何时到达远端只能以 `git fetch` 的结果为准。同一时段只让一方写代码：
-
-- 本地开发期间不要对同一个 app 发起 `+chat`；用户要切到云端生成时，先把本地改动 commit 并 push，再开始云端轮次。
-- 云端有轮次在跑（`+session-get` 的 `is_streaming=true` 或 `latest_turn.status=running`）时不要 push；等它 `completed` 后 `git fetch origin`，用 `git log HEAD..origin/sprint/default --oneline` 看清云端改了什么，再 `git pull --rebase origin sprint/default`。
-- 不确定云端有没有在改：`+session-list --app-id <app_id>` 找活跃会话，再用 `+session-get` 看状态；`git fetch` 后远端出现你没见过的提交，也一律按云端改动处理，不要覆盖。
-- 云端 turn `completed` 只说明那一轮生成结束；它的改动是否已经到 `origin/sprint/default`，以 `git fetch` 后看到的远端提交为准，不要假设。发布仍按「改完代码后部署上线」走。
 
 ## 何时不用
 
