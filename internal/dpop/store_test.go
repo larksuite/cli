@@ -153,9 +153,9 @@ func TestKeyStoreCommitsRestoresAndDeletesExactBinding(t *testing.T) {
 	}
 	stronger := newTestStoreSigner("new-stronger", keysigner.SecurityLevelL1)
 	reopened := newKeyStoreWithSigners(kc, []keysigner.Signer{stronger, signer})
-	loaded, created, err := reopened.PrepareReplaceableContext(ctx, key.ID())
-	if err != nil || created {
-		t.Fatalf("reopen = %v, %v", created, err)
+	loaded, err := reopened.LoadContext(ctx, key.ID())
+	if err != nil {
+		t.Fatalf("reopen = %v", err)
 	}
 	if loaded.Provider() != "original" || loaded.SecurityLevel() != keysigner.SecurityLevelL2 || loaded.Clock().State() != state {
 		t.Fatal("reopen changed persisted binding or clock")
@@ -322,7 +322,7 @@ func TestKeyStoreOnlyReplaceableKeysRecoverFromMissingPrivateKey(t *testing.T) {
 	kc := &testMetadataStore{values: map[string]string{}}
 	signer := newTestStoreSigner("selected", keysigner.SecurityLevelL2)
 	store := NewKeyStoreWithSigner(kc, signer)
-	key, err := store.EnsureContext(ctx, "tenant-key")
+	key, _, err := store.PrepareReplaceableContext(ctx, "tenant-key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,13 +334,63 @@ func TestKeyStoreOnlyReplaceableKeysRecoverFromMissingPrivateKey(t *testing.T) {
 	if _, err := store.EnsureContext(ctx, key.ID()); !errors.Is(err, ErrKeyNotFound) {
 		t.Fatalf("existing key was recreated: %v", err)
 	}
-	replaced, created, err := store.PrepareReplaceableContext(ctx, key.ID())
+	replaced, created, err := store.PrepareReplaceableContext(ctx, "tenant-key")
 	if err != nil || !created {
 		t.Fatalf("replace missing tenant key: %v, %v", created, err)
 	}
 	newJKT, _ := replaced.Thumbprint()
 	if newJKT == oldJKT || len(kc.values) != 0 {
 		t.Fatal("replacement reused stale metadata or committed prematurely")
+	}
+}
+
+func TestReplaceableKeysAreIsolatedByBackend(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	ctx := context.Background()
+	kc := &testMetadataStore{values: map[string]string{}}
+	first := newTestStoreSigner("hardware", keysigner.SecurityLevelL1)
+	second := newTestStoreSigner("software", keysigner.SecurityLevelL2)
+	softwareStore := NewKeyStoreWithSigner(kc, second)
+	softwareKey, created, err := softwareStore.PrepareReplaceableContext(ctx, "tenant")
+	if err != nil || !created || softwareKey.ID() != "tenant-software" {
+		t.Fatalf("software prepare = %v, %v, %v", softwareKey, created, err)
+	}
+	if err := softwareStore.Save(softwareKey); err != nil {
+		t.Fatal(err)
+	}
+	store := newKeyStoreWithSigners(kc, []keysigner.Signer{first, second})
+	hardwareKey, created, err := store.PrepareReplaceableContext(ctx, "tenant")
+	if err != nil || !created || hardwareKey.ID() != "tenant-hardware" || hardwareKey.Provider() != first.Name() {
+		t.Fatalf("hardware prepare = %v, %v, %v", hardwareKey, created, err)
+	}
+	if err := store.Save(hardwareKey); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []*Key{hardwareKey, softwareKey} {
+		if _, err := key.SignProofContext(ctx, "GET", "https://example.test/resource"); err != nil {
+			t.Fatalf("backend switch broke existing token key: %v", err)
+		}
+	}
+	for _, cause := range []error{keysigner.ErrUnavailable, errors.New("access denied")} {
+		first.publicErr = cause
+		key, created, err := store.PrepareReplaceableContext(ctx, "tenant")
+		if errors.Is(cause, keysigner.ErrUnavailable) {
+			if err != nil || created || key.ID() != softwareKey.ID() {
+				t.Fatalf("backend fallback = %v, %v, %v", key, created, err)
+			}
+			want, _ := softwareKey.Thumbprint()
+			got, _ := key.Thumbprint()
+			if want != got {
+				t.Fatal("backend fallback replaced its stored key")
+			}
+		} else if !errors.Is(err, cause) {
+			t.Fatalf("hard error triggered fallback: %v", err)
+		}
+	}
+	first.publicErr = nil
+	key, created, err := store.PrepareReplaceableContext(ctx, "tenant")
+	if err != nil || created || key.ID() != hardwareKey.ID() || len(kc.values) != 2 {
+		t.Fatalf("return to hardware = %v, %v, %v", key, created, err)
 	}
 }
 
