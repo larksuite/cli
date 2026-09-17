@@ -37,6 +37,17 @@ MAX_CHART_HEIGHT = 720
 MAX_ASPECT_RATIO = 2.6
 COMBO_SERIES_TYPES = {"column", "line", "area", "scatter"}
 COMBO_SERIES_Y_AXES = {"left", "right"}
+DATA_LABEL_MODES = {
+    "none",
+    "value",
+    "category",
+    "percentage",
+    "value_category",
+    "value_percentage",
+    "category_percentage",
+    "value_category_percentage",
+    "series",
+}
 
 
 def display_units(value: Any) -> int:
@@ -143,6 +154,28 @@ def effective_series_y_axes(
     return normalized
 
 
+def effective_series_data_labels(
+    chart_type: str,
+    series_count: int,
+    data_labels: str = "none",
+    series_data_labels: list[str] | None = None,
+) -> list[str]:
+    global_mode = str(data_labels or "none").strip().lower()
+    if series_data_labels is None:
+        return [global_mode] * series_count
+    if str(chart_type).lower() != "combo":
+        raise ValueError("series_data_labels is only valid for combo charts")
+    if global_mode not in {"", "none"}:
+        raise ValueError("series_data_labels and data_labels are mutually exclusive")
+    normalized = [str(value).strip().lower() for value in series_data_labels]
+    if len(normalized) != series_count:
+        raise ValueError("series_data_labels length must match series_names")
+    invalid = [value for value in normalized if value not in DATA_LABEL_MODES]
+    if invalid:
+        raise ValueError(f"unsupported series data labels: {invalid[0]}")
+    return normalized
+
+
 def recommend_chart_size(
     *,
     chart_type: str,
@@ -155,6 +188,7 @@ def recommend_chart_size(
     aggregate_categories: bool = True,
     series_types: list[str] | None = None,
     series_y_axes: list[str] | None = None,
+    series_data_labels: list[str] | None = None,
 ) -> dict[str, Any]:
     chart_type = str(chart_type).lower()
     if chart_type not in SUPPORTED_CHART_TYPES:
@@ -175,13 +209,22 @@ def recommend_chart_size(
         series_count,
         series_y_axes,
     )
+    normalized_series_data_labels = effective_series_data_labels(
+        chart_type,
+        series_count,
+        data_labels,
+        series_data_labels,
+    )
     column_series_count = sum(value == "column" for value in normalized_series_types)
     line_like_series_count = series_count - column_series_count
+    labeled_series_count = sum(
+        value not in {"", "none"} for value in normalized_series_data_labels
+    )
     label_units = [display_units(value) for value in category_text]
     max_units = max(label_units, default=0)
     p75_units = _percentile(label_units, 0.75)
     max_lines = max((len(value.splitlines()) for value in category_text), default=1)
-    labels_enabled = str(data_labels or "").lower() not in {"", "none"}
+    labels_enabled = labeled_series_count > 0
     minimum = minimum_chart_size(chart_type)
     width = float(minimum["width"])
     height = float(minimum["height"])
@@ -229,7 +272,7 @@ def recommend_chart_size(
         if chart_type == "combo" and line_like_series_count > 1:
             slot += min(12, 4 * (line_like_series_count - 1))
         if labels_enabled:
-            slot += min(24, 4 * series_count)
+            slot += min(24, 4 * labeled_series_count)
         width = max(width, reserve + category_count * slot)
         if p75_units > 12:
             height += 40
@@ -277,6 +320,8 @@ def recommend_chart_size(
             "series_count": series_count,
             "series_types": normalized_series_types,
             "series_y_axes": normalized_series_y_axes,
+            "series_data_labels": normalized_series_data_labels,
+            "labeled_series_count": labeled_series_count,
             "column_series_count": column_series_count,
             "max_category_display_units": max_units,
             "p75_category_display_units": p75_units,

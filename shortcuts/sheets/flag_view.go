@@ -344,6 +344,14 @@ func (m *mapFlagView) normalizeAndValidateEnums() error {
 		if !ok {
 			return fmt.Errorf("--%s must be a string, got %s", df.Name, jsonTypeName(raw)) //nolint:forbidigo // intermediate error; batch dispatcher adds typed operations context
 		}
+		// color-palette: fold legacy wire values to friendly names before
+		// enum validation (standalone path does this via Normalize hook).
+		if df.Name == "color-palette" {
+			if friendly, ok := wireToFriendlyChartPalette(value); ok {
+				m.raw[rawKey] = friendly
+				value = friendly
+			}
+		}
 		if value == "" || slices.Contains(df.Enum, value) {
 			continue
 		}

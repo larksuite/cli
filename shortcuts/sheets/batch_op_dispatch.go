@@ -338,10 +338,6 @@ func isReservedSubOpKey(userKey string) bool {
 // read input under these names, so rejecting them is safe.
 var wrappedSubOpInputKeys = []string{"cell_styles", "cell_merges", "styles"}
 
-var hiddenCompatibilitySubOpFlags = map[string][]string{
-	"+chart-config-update": {"last-point-label"},
-}
-
 // subOpKeyVocabulary returns the set of hyphen-canonical flag names a sub-op
 // input may carry for `sc`: every non-system flag in flag-defs except the
 // spreadsheet locators (reserved for the batch top level). Nil when the
@@ -358,9 +354,6 @@ func subOpKeyVocabulary(sc string) map[string]bool {
 			continue
 		}
 		vocab[df.Name] = true
-	}
-	for _, name := range hiddenCompatibilitySubOpFlags[sc] {
-		vocab[name] = true
 	}
 	return vocab
 }
