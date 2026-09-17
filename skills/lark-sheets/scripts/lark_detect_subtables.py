@@ -450,6 +450,8 @@ def detect_subtables(args) -> tuple[dict[str, Any], list[str]]:
             flags={
                 "range": scan_range,
                 "max_chars": args.max_chars,
+                # 建网格要按字面行号定位，显式要回 annotated_csv
+                "include_row_prefix": True,
                 "skip_hidden": True if args.skip_hidden else None,
             },
             timeout=args.timeout,
@@ -504,6 +506,7 @@ def detect_subtables(args) -> tuple[dict[str, Any], list[str]]:
                     flags={
                         "range": anchor,
                         "max_chars": 1024,
+                        "include_row_prefix": True,
                         "skip_hidden": True if args.skip_hidden else None,
                     },
                     timeout=args.timeout,

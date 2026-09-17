@@ -103,11 +103,14 @@ func TestMaxCharsInput_ExplicitZero(t *testing.T) {
 		}
 	})
 
-	t.Run("--output-path still raises it to the offload limit", func(t *testing.T) {
+	t.Run("--output-path does not change the cap", func(t *testing.T) {
 		t.Parallel()
-		input := cellsGetToolInput(t, []string{"--max-chars", "0", "--output-path", "./o.json"})
-		if got := input["max_chars"]; got != float64(outputPathReadLimit) {
-			t.Errorf("max_chars = %v, want %d", got, outputPathReadLimit)
+		// The coupling this used to assert is what made `> file` read like an
+		// equivalent of --output-path; the flag now only picks a destination.
+		withPath := cellsGetToolInput(t, []string{"--max-chars", "0", "--output-path", "./o.json"})
+		without := cellsGetToolInput(t, []string{"--max-chars", "0"})
+		if withPath["max_chars"] != without["max_chars"] {
+			t.Errorf("--output-path changed the cap: %v vs %v", withPath["max_chars"], without["max_chars"])
 		}
 	})
 
@@ -128,6 +131,10 @@ func cellsGetToolInput(t *testing.T, extra []string) map[string]interface{} {
 
 // TestEmitReadResult_ReceiptStatesCompleteness drives a real --output-path read
 // end to end and checks the stdout receipt against the payload written to disk.
+//
+// Runs with an explicit --max-chars, which is what a truncated payload means
+// now: without a cap the read is completed across batches and a clip it cannot
+// follow is a failure, not a receipt (see TestCellsGet_UnfollowableClipFails).
 //
 // The receipt is the ONLY completeness signal a caller gets on this path — the
 // data went to a file, stdout carries just the summary — and the skill docs
@@ -181,7 +188,7 @@ func TestEmitReadResult_ReceiptStatesCompleteness(t *testing.T) {
 			}
 			stdout, err := runShortcutWithStubs(t, CellsGet, []string{
 				"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2",
-				"--output-path", "out.json", "--as", "user",
+				"--output-path", "out.json", "--as", "user", "--max-chars", "25000",
 			}, stub)
 			if err != nil {
 				t.Fatalf("read failed: %v", err)
@@ -191,11 +198,14 @@ func TestEmitReadResult_ReceiptStatesCompleteness(t *testing.T) {
 				t.Errorf("complete = %v, want %v (receipt=%v)", got, tc.wantComplete, receipt)
 			}
 			if !tc.wantComplete {
-				if receipt["truncated"] != true {
-					t.Errorf("an incomplete receipt must also set truncated:true, got %v", receipt)
+				// complete:false carries the fact; note carries what to do
+				// about it. A separate truncated flag would be the same fact
+				// under a second name.
+				if _, dup := receipt["truncated"]; dup {
+					t.Errorf("truncated duplicates complete:false; it should be gone: %v", receipt)
 				}
-				if w, _ := receipt["truncation_warning"].(string); w == "" {
-					t.Error("an incomplete receipt must carry a truncation_warning telling the caller what to do")
+				if n, _ := receipt["note"].(string); n == "" {
+					t.Error("an incomplete receipt must carry a note telling the caller what to do")
 				}
 			} else if _, has := receipt["truncated"]; has {
 				t.Errorf("a complete receipt must not carry a truncation marker, got %v", receipt)

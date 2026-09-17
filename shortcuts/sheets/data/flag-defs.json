@@ -1351,15 +1351,15 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (the cap auto-raises to a bounded 20M chars — the read path is not streaming, this cap is the memory guard; pass an explicit --max-chars for more); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more. Passing 0 means \"no cap of my own\" and resolves to the same ceiling as leaving the flag alone (500000, or the offload limit with --output-path) — never down to the tool's smaller omitted-value fallback.",
-        "default": "500000"
+        "desc": "Max output chars per call. **Omit it to read everything** — the CLI fetches in 1000000-char batches internally and concatenates, so the result is always complete. **Passing a value is an explicit request to truncate**: only that much is returned, along with `has_more`, which is how you sample a sheet or bound what enters the context (e.g. 25000). Passing 0 is the same as omitting it.",
+        "default": "1000000"
       },
       {
         "name": "output-path",
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Omit it to print to stdout as usual."
+        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a confirmation (`output_path`, byte count, `complete`). The read itself is already complete by default (the CLI paginates and concatenates internally); this flag only picks the destination and no longer affects the char cap. When a result exceeds the stdout threshold it is written to a file even without this flag — the path is in the receipt."
       },
       {
         "name": "skip-hidden",
@@ -1467,23 +1467,23 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (the cap auto-raises to a bounded 20M chars — the read path is not streaming, this cap is the memory guard; pass an explicit --max-chars for more); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more. Passing 0 means \"no cap of my own\" and resolves to the same ceiling as leaving the flag alone (500000, or the offload limit with --output-path) — never down to the tool's smaller omitted-value fallback.",
-        "default": "500000"
+        "desc": "Max output chars per call. **Omit it to read everything** — the CLI fetches in 1000000-char batches internally and concatenates, so the result is always complete. **Passing a value is an explicit request to truncate**: only that much is returned, along with `has_more`, which is how you sample a sheet or bound what enters the context (e.g. 25000). Passing 0 is the same as omitting it.",
+        "default": "1000000"
       },
       {
         "name": "output-path",
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Note the file is the data payload as JSON — on +csv-get too, where the CSV text sits in a field inside it — not a ready-to-use .csv; redirect stdout instead if you want a bare CSV file. Omit it to print to stdout as usual."
+        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a confirmation (`output_path`, byte count, `complete`). The read itself is already complete by default (the CLI paginates and concatenates internally); this flag only picks the destination and no longer affects the char cap. When a result exceeds the stdout threshold it is written to a file even without this flag — the path is in the receipt. The file holds the data payload as JSON (the CSV text is one field inside it), not a ready-to-use .csv file."
       },
       {
         "name": "include-row-prefix",
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Whether to prefix each row with `[row=N]`; default `true`",
-        "default": "true"
+        "desc": "Additionally emit `annotated_csv` with `[row=N]` line prefixes; default `false`. The primary `csv` payload is always plain RFC4180 CSV that feeds csv.reader directly; derive row numbers from the first row of `actual_range` plus the row's ordinal, or read `row_indices` when rows are not contiguous (e.g. under `--skip-hidden`). Turn it on only to address rows by literal number without computing them — it roughly doubles the response size.",
+        "default": "false"
       },
       {
         "name": "skip-hidden",
@@ -1544,15 +1544,15 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). The underlying tool truncates at ~50000 even when unset, so this is sent explicitly to raise it; for a full untruncated read use --output-path (cap auto-raises to a bounded 20M chars; explicit --max-chars overrides). Passing 0 means \"no cap of my own\" and resolves to the same ceiling as leaving the flag alone (500000, or the offload limit with --output-path) — never down to the tool's smaller omitted-value fallback.",
-        "default": "500000"
+        "desc": "Max output chars per call. **Omit it to read everything** — the CLI fetches in 1000000-char batches internally and concatenates, so the result is always complete. **Passing a value is an explicit request to truncate**: only that much is returned, along with `has_more`, which is how you sample a sheet or bound what enters the context (e.g. 25000). Passing 0 is the same as omitting it.",
+        "default": "1000000"
       },
       {
         "name": "output-path",
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Omit it to print to stdout as usual."
+        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a confirmation (`output_path`, byte count, `complete`). The read itself is already complete by default (the CLI paginates and concatenates internally); this flag only picks the destination and no longer affects the char cap. When a result exceeds the stdout threshold it is written to a file even without this flag — the path is in the receipt."
       },
       {
         "name": "no-header",

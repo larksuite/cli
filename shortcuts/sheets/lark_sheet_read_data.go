@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -65,7 +66,23 @@ var CellsGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		out, err := callTool(ctx, runtime, token, ToolKindRead, "get_cell_ranges", cellsGetInput(runtime, token, sheetID, sheetName))
+		input := cellsGetInput(runtime, token, sheetID, sheetName)
+		var out interface{}
+		if autoPaginate(runtime) {
+			// Same contract as +csv-get: no explicit --max-chars means the
+			// read is completed here or it fails.
+			out, err = fetchAllCellRanges(ctx, runtime, token, input)
+			// A range too large to finish is not a failure the caller can
+			// retry its way out of — say what to run instead, at the point
+			// they hit it.
+			var tooLarge *readTooLargeError
+			if errors.As(err, &tooLarge) {
+				return common.ValidationErrorf("%s. %s",
+					tooLarge.Error(), tableGetAlternatives(sheetName, sheetID))
+			}
+		} else {
+			out, err = callTool(ctx, runtime, token, ToolKindRead, "get_cell_ranges", input)
+		}
 		if err != nil {
 			return err
 		}
@@ -165,12 +182,20 @@ var CsvGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		out, err := callTool(ctx, runtime, token, ToolKindRead, "get_range_as_csv", csvGetInput(runtime, token, sheetID, sheetName))
+		var out interface{}
+		if autoPaginate(runtime) {
+			// No explicit --max-chars: the read is completed here, across as
+			// many backend calls as it takes, or it fails.
+			out, err = readCsvComplete(ctx, runtime, token, sheetID, sheetName)
+		} else {
+			out, err = callTool(ctx, runtime, token, ToolKindRead, "get_range_as_csv", csvGetInput(runtime, token, sheetID, sheetName))
+		}
 		if err != nil {
 			return err
 		}
+		out = addPlainCsvField(out)
 		if !runtime.Bool("include-row-prefix") {
-			out = stripRowPrefixFromCsvOutput(out)
+			out = dropAnnotatedCsv(out)
 		}
 		return emitReadResult(runtime, out)
 	},
@@ -205,27 +230,83 @@ func csvGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName strin
 	return input
 }
 
-// stripRowPrefixFromCsvOutput removes "[row=N]" line prefixes from the tool's
-// annotated_csv field. Operates client-side because the tool only emits the
-// annotated form.
-func stripRowPrefixFromCsvOutput(out interface{}) interface{} {
+// dropAnnotatedCsv removes the prefixed copy of the data, leaving the plain
+// csv field as the single payload.
+//
+// The two fields carry the same rows twice — on a real column read that is
+// ~530K chars duplicated per batch — and the prefixed form is the one callers
+// then have to strip before parsing. It is kept only when asked for via
+// --include-row-prefix, for callers addressing rows by literal number.
+//
+// The tool's warning_message tells the reader to take row numbers from
+// annotated_csv's prefixes. With that field gone the instruction points at
+// something absent, so the equivalent instruction for the plain payload is
+// substituted in place; if the upstream wording changes and no longer matches,
+// the message is left untouched rather than mangled.
+func dropAnnotatedCsv(out interface{}) interface{} {
 	m, ok := out.(map[string]interface{})
 	if !ok {
 		return out
 	}
-	csv, ok := m["annotated_csv"].(string)
+	delete(m, "annotated_csv")
+	if w, ok := m["warning_message"].(string); ok {
+		if fixed := strings.ReplaceAll(w,
+			"annotated_csv 中每行开头的 [row=N] 前缀（N 即为实际表格行号）",
+			"row_indices（与 csv 的数据行一一对应，即实际表格行号）"); fixed != w {
+			m["warning_message"] = fixed
+		}
+	}
+	return m
+}
+
+// addPlainCsvField publishes the read as plain RFC4180 CSV under "csv",
+// alongside the annotated form.
+//
+// The tool only emits annotated_csv, whose "[row=N] " line prefixes have to
+// be stripped before the text can be parsed — and eval traces show every
+// caller writing that stripper by hand, as a regex, at the point where the
+// data is about to be counted. That regex is where rows get dropped, and the
+// prefix also collides with cell content that legitimately starts with
+// "[row=". A shortcut named +csv-get returning no csv field is the reason
+// callers reach for data["csv"] and get a KeyError; this supplies it.
+//
+// Row numbers survive without the prefix: the first row of actual_range plus
+// the row's ordinal, or row_indices when rows are not contiguous (skip-hidden,
+// filter views).
+func addPlainCsvField(out interface{}) interface{} {
+	m, ok := out.(map[string]interface{})
 	if !ok {
 		return out
 	}
-	lines := strings.Split(csv, "\n")
-	for i, line := range lines {
-		if idx := strings.Index(line, "]"); idx >= 0 && strings.HasPrefix(line, "[row=") {
-			rest := line[idx+1:]
-			lines[i] = strings.TrimPrefix(rest, ",")
-		}
+	annotated, ok := m["annotated_csv"].(string)
+	if !ok {
+		return out
 	}
-	m["annotated_csv"] = strings.Join(lines, "\n")
+	lines := strings.Split(annotated, "\n")
+	plain := make([]string, len(lines))
+	for i, line := range lines {
+		plain[i] = stripRowPrefix(line)
+	}
+	m["csv"] = strings.Join(plain, "\n")
 	return m
+}
+
+// stripRowPrefix removes one leading "[row=N] " marker from a line, leaving
+// lines that carry no marker (continuation lines of a multi-line cell) alone.
+//
+// Only the single space the tool puts after the marker is removed. A comma
+// there belongs to the data: "[row=1] ,b,c" is a row whose first column is
+// empty, and trimming that comma would shift every column one to the left
+// while leaving the row looking well-formed.
+func stripRowPrefix(line string) string {
+	if !strings.HasPrefix(line, "[row=") {
+		return line
+	}
+	idx := strings.Index(line, "]")
+	if idx < 0 {
+		return line
+	}
+	return strings.TrimPrefix(line[idx+1:], " ")
 }
 
 // a1EndRow extracts the ending row number from an A1 range, e.g. "A1:N51" → 51,

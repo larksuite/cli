@@ -65,10 +65,11 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
-			// --output-path alone raises the cap to the bounded file-offload
-			// default — NOT the unbounded sentinel; the read path is not
-			// streaming, so the cap is the OOM guard.
-			name:     "+cells-get output-path uses bounded offload cap",
+			// --output-path picks a destination and nothing else. It used to
+			// raise the cap, which is what made `> file` look equivalent to
+			// it — the redirect got the un-raised cap and read a fraction of
+			// the sheet. The per-batch cap is now the same either way.
+			name:     "+cells-get output-path does not change the cap",
 			sc:       CellsGet,
 			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--output-path", "out.json"},
 			toolName: "get_cell_ranges",
@@ -76,7 +77,7 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 				"excel_id":  testToken,
 				"sheet_id":  testSheetID,
 				"ranges":    []interface{}{"A1:B2"},
-				"max_chars": float64(outputPathReadLimit),
+				"max_chars": float64(perBatchReadChars),
 			},
 		},
 		{
@@ -246,22 +247,55 @@ func TestInfoTypeFromInclude(t *testing.T) {
 	}
 }
 
-// TestCsvGet_StripRowPrefix verifies the client-side post-process for
-// --include-row-prefix=false.
-func TestCsvGet_StripRowPrefix(t *testing.T) {
+// TestCsvGet_DropsAnnotatedCsvByDefault pins the default payload: one plain
+// CSV field, not two copies of the same rows.
+//
+// The prefixed copy roughly doubles the response (~530K chars per batch on a
+// real column read) and is the form callers then strip by hand before parsing.
+func TestCsvGet_DropsAnnotatedCsvByDefault(t *testing.T) {
 	t.Parallel()
 	in := map[string]interface{}{
 		"annotated_csv": "[row=1] a,b,c\n[row=2] d,e,f",
 		"other":         "untouched",
 	}
-	out := stripRowPrefixFromCsvOutput(in).(map[string]interface{})
-	csv := out["annotated_csv"].(string)
-	if csv != " a,b,c\n d,e,f" {
-		t.Errorf("annotated_csv = %q, want stripped prefix", csv)
+	out := dropAnnotatedCsv(addPlainCsvField(in)).(map[string]interface{})
+	if _, present := out["annotated_csv"]; present {
+		t.Error("annotated_csv must be gone unless --include-row-prefix asked for it")
+	}
+	if csv := out["csv"].(string); csv != "a,b,c\nd,e,f" {
+		t.Errorf("csv = %q, want the rows without prefixes", csv)
 	}
 	if out["other"] != "untouched" {
 		t.Errorf("other field corrupted: %v", out["other"])
 	}
+}
+
+// The tool's warning_message instructs the reader to take row numbers from
+// annotated_csv's prefixes. Dropping that field without rewriting the
+// instruction points the caller at something that is not in the payload.
+func TestDropAnnotatedCsv_RewritesRowNumberGuidance(t *testing.T) {
+	t.Parallel()
+	t.Run("matching guidance is redirected to row_indices", func(t *testing.T) {
+		t.Parallel()
+		out := dropAnnotatedCsv(map[string]interface{}{
+			"warning_message": "①定位行号：必须直接读取 annotated_csv 中每行开头的 [row=N] 前缀（N 即为实际表格行号），不要自己数行。",
+		}).(map[string]interface{})
+		w := out["warning_message"].(string)
+		if strings.Contains(w, "annotated_csv") {
+			t.Errorf("guidance still points at the dropped field: %q", w)
+		}
+		if !strings.Contains(w, "row_indices") {
+			t.Errorf("guidance should name the field that is present: %q", w)
+		}
+	})
+	t.Run("unrecognized wording is left intact", func(t *testing.T) {
+		t.Parallel()
+		const other = "some other upstream warning"
+		out := dropAnnotatedCsv(map[string]interface{}{"warning_message": other}).(map[string]interface{})
+		if out["warning_message"] != other {
+			t.Errorf("unmatched message was rewritten: %q", out["warning_message"])
+		}
+	})
 }
 
 // TestCellsGet_MultiAreaRange pins the split: get_cell_ranges already takes a

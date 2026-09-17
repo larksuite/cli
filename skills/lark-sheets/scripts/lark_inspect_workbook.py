@@ -164,7 +164,12 @@ def inspect_workbook(args) -> tuple[dict[str, Any], list[str]]:
                     url=args.url,
                     spreadsheet_token=args.spreadsheet_token,
                     **locator,
-                    flags={"range": preview_range, "max_chars": args.max_chars},
+                    flags={
+                        "range": preview_range,
+                        "max_chars": args.max_chars,
+                        # 预览按字面行号呈现，显式要回 annotated_csv
+                        "include_row_prefix": True,
+                    },
                     timeout=args.timeout,
                 )
             )

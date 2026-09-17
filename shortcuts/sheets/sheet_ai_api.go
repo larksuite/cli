@@ -186,7 +186,10 @@ func a1RangeFromZeroBased(r1, c1, r2, c2 string) (string, bool) {
 // correctly and succeeded when the agent reissued it by hand.
 const (
 	readRetryAttempts = 3
-	readRetryBackoff  = 400 * time.Millisecond
+	// 1s, then 2s. The failures this answers are backend timeouts that take
+	// ~15s to surface (900015214), so a sub-second pause reissues into the
+	// same congestion it is meant to wait out.
+	readRetryBackoff = 1 * time.Second
 )
 
 // callToolWithTransientRetry reissues a READ tool call that failed for a
@@ -250,7 +253,11 @@ func isTransientToolFailure(err error) bool {
 		return true
 	}
 	msg := strings.ToLower(p.Message)
-	for _, phrase := range []string{"server time out error", "data not ready"} {
+	// "ai tool timeout while running" / "... while queued" are codes
+	// 900015214 / 900015215 — the same class as "server time out error",
+	// answered by the same reissue, and observed taking out every read in a
+	// session until the caller changed approach.
+	for _, phrase := range []string{"server time out error", "data not ready", "ai tool timeout"} {
 		if strings.Contains(msg, phrase) {
 			return true
 		}

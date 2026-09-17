@@ -91,7 +91,44 @@ def run_sheets(
         raise LarkCliError(json.dumps(envelope, ensure_ascii=False), cmd=cmd)
     if not isinstance(envelope, dict):
         raise LarkCliError("lark-cli returned a non-object JSON payload", cmd=cmd)
-    return envelope
+    return _resolve_offload(envelope, cmd)
+
+
+def _resolve_offload(envelope: dict[str, Any], cmd: list[str]) -> dict[str, Any]:
+    """Load the payload back when the CLI wrote it to a file instead of stdout.
+
+    Reads over an internal size threshold come back as a receipt
+    (``output_path`` + ``complete``) rather than the data, so a caller that
+    reads ``data`` directly would silently get a receipt where it expected
+    cells. Resolving it here keeps every caller working on one shape; doing it
+    per call site means each new one starts out broken.
+    """
+    data = envelope.get("data")
+    if not isinstance(data, dict):
+        return envelope
+    path = data.get("output_path")
+    if not isinstance(path, str) or not path:
+        return envelope
+
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LarkCliError(
+            f"lark-cli wrote the result to {path}, which could not be read back: {exc}",
+            cmd=cmd,
+        ) from exc
+    if not isinstance(payload, dict):
+        raise LarkCliError(f"{path} does not hold a JSON object", cmd=cmd)
+
+    # Keep the receipt's own fields (complete / rows_total / batches) beside the
+    # data: `complete` is the read-everything verdict and callers check it.
+    merged = dict(payload)
+    for key in ("complete", "rows_total", "batches", "bytes_written", "note"):
+        if key in data and key not in merged:
+            merged[key] = data[key]
+    merged["output_path"] = path
+    return {**envelope, "data": merged}
 
 
 def envelope_data(envelope: dict[str, Any]) -> dict[str, Any]:

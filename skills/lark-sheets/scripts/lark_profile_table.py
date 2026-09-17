@@ -540,6 +540,8 @@ def profile_table(args) -> tuple[dict[str, Any], list[str]]:
             flags={
                 "range": args.range,
                 "max_chars": args.max_chars,
+                # 建网格要按字面行号定位，显式要回 annotated_csv
+                "include_row_prefix": True,
                 "skip_hidden": True if args.skip_hidden else None,
             },
             timeout=args.timeout,

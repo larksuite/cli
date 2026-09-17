@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1936,12 +1937,24 @@ var TableGet = common.Shortcut{
 		// allowed 30× the cap. Track what previous sheets consumed and hand the
 		// remainder to the next one; when it runs out, stop and name the sheets
 		// left unread instead of silently returning a short workbook.
-		budget := maxCharsBudget(runtime)
-		var unread []string
+		// The cross-sheet budget exists to stop one cap being spent N times
+		// over. It only applies when a cap was asked for: under the default
+		// complete read every sheet is read in full, so there is nothing to
+		// ration and no sheet may be left unread.
+		budget := 0
+		if !autoPaginate(runtime) {
+			budget = maxCharsBudget(runtime)
+		}
+		var unread, oversized, oversizedNames []string
+		// Accumulated incrementally: weighing the whole slice after each sheet
+		// re-serialises every sheet read so far, so a 10-sheet workbook pays
+		// for 55 sheets of marshalling — and a guard meant to bound memory
+		// would be the thing allocating it.
+		accumulated := 0
 		for i, t := range targets {
 			remaining := 0
 			if budget > 0 {
-				remaining = budget - consumedChars(sheets)
+				remaining = budget - accumulated
 				if remaining <= 0 {
 					for _, rest := range targets[i:] {
 						unread = append(unread, rest.name)
@@ -1951,15 +1964,65 @@ var TableGet = common.Shortcut{
 			}
 			spec, err := readSheetAsSpec(ctx, runtime, token, t, userRange, noHeader, remaining)
 			if err != nil {
+				var tooLarge *readTooLargeError
+				if errors.As(err, &tooLarge) {
+					reason := fmt.Sprintf("sheet %q: %s. %s",
+						t.name, tooLarge.Error(), tableGetAlternatives(t.name, t.id))
+					// Only skip when there are other sheets to return: with a
+					// single target, reporting "unread" inside ok:true would
+					// hide the refusal behind a success.
+					if len(targets) > 1 {
+						unread = append(unread, t.name)
+						oversizedNames = append(oversizedNames, t.name)
+						oversized = append(oversized, reason)
+						continue
+					}
+					return common.ValidationErrorf("%s", reason)
+				}
 				return err
 			}
 			sheets = append(sheets, spec)
+			accumulated += consumedChars([]interface{}{spec})
+			// Each sheet can be within limits while the workbook is not:
+			// without a char budget in play (the default complete read), this
+			// is the only thing standing between a many-sheet workbook and
+			// the OOM reaper.
+			if accumulated > maxAccumulatedBytes {
+				return accumulationError(accumulated, strings.Join(namesOf(sheets), ", "))
+			}
 		}
 		payload := map[string]interface{}{"sheets": sheets}
+		// Stated as a field so an inline result carries the same verdict a
+		// receipt does: a workbook with a skipped sheet is not a complete
+		// read, whatever ok says.
+		payload["complete"] = len(unread) == 0
 		if len(unread) > 0 {
+			// Two distinct reasons a sheet can be missing, and the caller acts
+			// on them differently: a spent char budget is answered by raising
+			// --max-chars, an oversized sheet is not (it is past what this
+			// shortcut reads at all). Say which applies rather than defaulting
+			// to the budget wording — with no budget in play that printed
+			// "the 0-char read budget was exhausted".
+			var reasons []string
+			if len(oversized) > 0 {
+				reasons = append(reasons, strings.Join(oversized, "; "))
+			}
+			if budget > 0 {
+				var spent []string
+				for _, name := range unread {
+					if !slices.Contains(oversizedNames, name) {
+						spent = append(spent, name)
+					}
+				}
+				if len(spent) > 0 {
+					reasons = append(reasons, fmt.Sprintf(
+						"the %d-char read budget was exhausted before %d sheet(s) were read (%s); re-run per sheet with --sheet-name, or raise --max-chars",
+						budget, len(spent), strings.Join(spent, ", ")))
+				}
+			}
 			payload["truncated"] = true
 			payload["unread_sheets"] = unread
-			payload["truncation_warning"] = fmt.Sprintf("the %d-char read budget was exhausted before %d sheet(s) were read (%s); re-run per sheet with --sheet-name, or raise --max-chars", budget, len(unread), strings.Join(unread, ", "))
+			payload["truncation_warning"] = strings.Join(reasons, " ")
 		}
 		return emitReadResult(runtime, payload)
 	},
@@ -2122,7 +2185,15 @@ func readSheetAsSpec(ctx context.Context, runtime *common.RuntimeContext, token 
 		input["max_chars"] = n
 	}
 	sheetSelectorForToolInput(input, t.id, t.name)
-	out, err := callTool(ctx, runtime, token, ToolKindRead, "get_cell_ranges", input)
+	var out interface{}
+	var err error
+	if autoPaginate(runtime) {
+		// Same contract as the other reads: each sheet is read to completion
+		// across as many batches as it takes, or the command fails.
+		out, err = fetchAllCellRanges(ctx, runtime, token, input)
+	} else {
+		out, err = callTool(ctx, runtime, token, ToolKindRead, "get_cell_ranges", input)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -2255,9 +2326,15 @@ func sheetCurrentRegion(ctx context.Context, runtime *common.RuntimeContext, tok
 	if t.rowCount > 0 && t.colCount > 0 {
 		anchor = "A1:" + columnIndexToLetter(t.colCount-1) + strconv.Itoa(t.rowCount)
 	}
-	input := map[string]interface{}{"excel_id": token, "range": anchor, "max_rows": unboundedReadLimit}
-	if n, ok := maxCharsInput(runtime); ok {
-		input["max_chars"] = n
+	// Ask for almost no data: the probe reads one metadata field, and the
+	// backend reports current_region for the requested range no matter how
+	// little of it comes back. Sending the read's own cap instead made a
+	// full-grid anchor pull megabytes to learn one string — and then fail,
+	// because pulling a whole large sheet through one call is exactly what
+	// gets truncated.
+	input := map[string]interface{}{
+		"excel_id": token, "range": anchor,
+		"max_rows": unboundedReadLimit, "max_chars": usedRangeProbeChars,
 	}
 	sheetSelectorForToolInput(input, t.id, t.name)
 	out, err := callTool(ctx, runtime, token, ToolKindRead, "get_range_as_csv", input)
@@ -2270,13 +2347,60 @@ func sheetCurrentRegion(ctx context.Context, runtime *common.RuntimeContext, tok
 	}
 	region, _ := m["current_region"].(string)
 	if region == "" {
-		region, _ = m["actual_range"].(string)
+		// Fall back only to a range that actually spans rows: the probe's own
+		// actual_range is a zero-row form (A1:V0) by design, and handing that
+		// down as the read range would read nothing.
+		if actual, _ := m["actual_range"].(string); a1EndRow(actual) > 0 {
+			region = actual
+		}
 	}
-	if truncationFlagSet(m) {
-		return "", common.ValidationErrorf("used-range probe was truncated at %q; narrow --range or raise --max-chars before running +table-get", region)
-	}
+	// No truncation check: the probe is deliberately truncated, and
+	// current_region describes the requested range rather than what was
+	// returned, so it stays correct.
 	return region, nil
 }
+
+// namesOf lists the sheets read so far, so a size failure says how far it got.
+func namesOf(sheets []interface{}) []string {
+	names := make([]string, 0, len(sheets))
+	for _, s := range sheets {
+		if m, ok := s.(map[string]interface{}); ok {
+			if n, ok := m["name"].(string); ok {
+				names = append(names, n)
+			}
+		}
+	}
+	return names
+}
+
+// tableGetAlternatives names the ways forward when a sheet is too large to
+// read through this command, as commands that run as printed.
+//
+// A refusal that only states a limit moves the dead end earlier without
+// helping. xlsx leads: cell types and number formats survive, which is what
+// this command's dtypes/formats carry while CSV flattens everything to text,
+// and it is the smaller artifact besides (1.6MB vs 10.4MB on the sheet that
+// triggers this, xlsx being compressed). Eval traces show a model finding the
+// export route only after repeated backend timeouts forced it off +csv-get —
+// it belongs here rather than in a document the caller may never open.
+func tableGetAlternatives(sheetName, sheetID string) string {
+	selector := fmt.Sprintf("--sheet-id %q", sheetID)
+	if sheetID == "" {
+		selector = fmt.Sprintf("--sheet-name %q", sheetName)
+	}
+	return fmt.Sprintf(
+		"Three ways on: (1) have the server export it — `+workbook-export --output-path ./book.xlsx` keeps cell "+
+			"types and number formats (the closest match to this command's output, and the whole workbook in one "+
+			"file), or add `--file-extension csv %s` for one sheet's values as text; (2) read the values in this "+
+			"session — `+csv-get %s`, which returns the same cells without the per-cell object around each one; "+
+			"(3) stay on +table-get for part of the sheet by passing --range.",
+		selector, selector)
+}
+
+// usedRangeProbeChars is the payload budget for the used-range probe. Not
+// zero, which the tool reads as "apply your own default" rather than "send
+// nothing".
+const usedRangeProbeChars = 64
 
 // extractCellGrid pulls ranges[0].cells out of a get_cell_ranges response into a
 // 2D grid of cell objects (each carrying value + cell_styles).
