@@ -35,7 +35,7 @@ lark-cli vc +meeting-events --as <same_identity> --meeting-id <meeting_id> --pag
 - 默认用 pretty 理解时间线；需要精确结构化字段、文档上下文或转发到 IM 时使用 JSON。
 - 不要用会中事件代替已结束会议的参会人快照或会后复盘。
 
-事件类型、分页、五分钟窗口和错误码见 [`lark-vc-meeting-events`](../references/lark-vc-meeting-events.md)。
+事件类型、分页、会后产物替代路径和错误码见 [`lark-vc-meeting-events`](../references/lark-vc-meeting-events.md)。
 
 ## 读取共享内容和文档上下文
 
