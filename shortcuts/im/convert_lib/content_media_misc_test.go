@@ -56,6 +56,14 @@ func TestConvertBodyContent(t *testing.T) {
 	}
 }
 
+func TestConvertBodyContentGeneralCalendarOpenEventID(t *testing.T) {
+	ctx := &ConvertContext{RawContent: `{"summary":"All Hands","open_calendar_id":null,"open_event_id":"evt_2"}`}
+	want := "<calendar open_event_id=\"evt_2\">\nAll Hands\n</calendar>"
+	if got := ConvertBodyContent("general_calendar", ctx); got != want {
+		t.Fatalf("ConvertBodyContent(general_calendar) = %q, want %q", got, want)
+	}
+}
+
 func TestFormatMessageItem(t *testing.T) {
 	raw := map[string]interface{}{
 		"msg_type":    "text",
