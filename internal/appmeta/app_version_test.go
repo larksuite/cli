@@ -74,6 +74,29 @@ func TestFetchCurrentPublished_SelectsLatestPublished(t *testing.T) {
 	}
 }
 
+func TestFetchCurrentPublished_MissingTokenTypesTreatedAsTenantCapable(t *testing.T) {
+	c := &testutil.StubAPIClient{Body: `{"code":0,"data":{"items":[
+    {"version_id":"oav_published","version":"1.0.18","status":1,"publish_time":"1776684746",
+     "event_infos":[{"event_type":"im.chat.member.user.added_v1"}],
+     "scopes":[
+       {"scope":"im:chat.members:read"},
+       {"scope":"contact:user:readonly","token_types":["user"]},
+       {"scope":"im:message","token_types":[]}
+     ]}
+  ]}}`}
+
+	v, err := FetchCurrentPublished(context.Background(), c, "cli_test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v == nil {
+		t.Fatal("expected a version, got nil")
+	}
+	if len(v.TenantScopes) != 1 || v.TenantScopes[0] != "im:chat.members:read" {
+		t.Fatalf("TenantScopes = %v, want only im:chat.members:read (missing token_types)", v.TenantScopes)
+	}
+}
+
 func TestFetchCurrentPublished_PathContainsQuery(t *testing.T) {
 	c := &testutil.StubAPIClient{Body: respFourVersions}
 	_, _ = FetchCurrentPublished(context.Background(), c, "cli_x")

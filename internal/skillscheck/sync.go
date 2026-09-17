@@ -500,6 +500,7 @@ func finishSync(opts SyncOptions, layout Layout, plan SyncPlan, action, warning 
 	}
 	state := SkillsState{
 		Version:               opts.Version,
+		SourceIdentity:        OfficialSourceIdentity,
 		Layout:                layout,
 		OfficialSkills:        plan.OfficialSkills,
 		OfficialSkillsUnknown: officialUnknown,
