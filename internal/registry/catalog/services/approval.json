@@ -342,6 +342,359 @@
         }
       }
     },
+    "comments": {
+      "methods": {
+        "list": {
+          "id": "comments.list",
+          "path": "instances/{instance_id}/comments/query",
+          "httpMethod": "GET",
+          "description": "获取审批实例评论",
+          "parameters": {
+            "instance_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "审批实例 Code（或租户自定义审批实例 ID）",
+              "example": "6A123516-FB88-470D-A428-9AF58B71B3C0"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "返回结果中用户字段的 ID 类型；不填默认 open_id",
+              "default": "",
+              "example": "user_id",
+              "options": [
+                {
+                  "value": "open_id",
+                  "description": "open_id(ou_开头)"
+                },
+                {
+                  "value": "user_id",
+                  "description": "user_id(字符串)"
+                },
+                {
+                  "value": "union_id",
+                  "description": "union_id(on_开头)"
+                }
+              ],
+              "enumName": "ListInstanceCommentUserIDType"
+            }
+          },
+          "parameterOrder": [
+            "instance_id"
+          ],
+          "responseBody": {
+            "comments": {
+              "type": "array",
+              "description": "审批实例评论树，包含评论及其回复",
+              "required": true,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "评论 ID",
+                  "required": true,
+                  "example": "7081516627711524883"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "评论内容",
+                  "required": true,
+                  "example": "{\\\"text\\\":\\\"x@某某来自小程序的评论，这是一条回复\\\"}"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "评论创建时间，毫秒时间戳。",
+                  "required": true,
+                  "example": "1648801211000"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "评论更新时间，毫秒时间戳。",
+                  "required": true,
+                  "example": "1648801211000"
+                },
+                "is_delete": {
+                  "type": "integer",
+                  "description": "是否删除。可能值有：;;- 0：未删除;- 1：已删除",
+                  "required": true,
+                  "example": "1"
+                },
+                "replies": {
+                  "type": "array",
+                  "description": "评论的回复数据",
+                  "required": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "评论 ID",
+                      "required": true,
+                      "example": "7081516611634741268"
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "评论内容",
+                      "required": true,
+                      "example": "{\\\"text\\\":\\\"x@某某来自小程序的评论，这是一条回复\\\"}"
+                    },
+                    "create_time": {
+                      "type": "string",
+                      "description": "评论创建时间，毫秒时间戳。",
+                      "required": false,
+                      "example": "1648803677000"
+                    },
+                    "update_time": {
+                      "type": "string",
+                      "description": "评论更新时间，毫秒时间戳。",
+                      "required": false,
+                      "example": "1648803677000"
+                    },
+                    "is_delete": {
+                      "type": "integer",
+                      "description": "是否删除。可能值有：;;- 0：未删除;- 1：已删除",
+                      "required": true,
+                      "example": "0"
+                    },
+                    "at_info_list": {
+                      "type": "array",
+                      "description": "评论中艾特人信息",
+                      "required": false
+                    },
+                    "commentator": {
+                      "type": "string",
+                      "description": "评论创建人",
+                      "required": true,
+                      "example": "893g4c45",
+                      "annotations": [
+                        "open:x_user_id"
+                      ]
+                    },
+                    "extra": {
+                      "type": "string",
+                      "description": "附加字段",
+                      "required": false,
+                      "example": "{\\\"a\\\":\\\"a\\\"}"
+                    }
+                  }
+                },
+                "at_info_list": {
+                  "type": "array",
+                  "description": "评论中艾特人信息",
+                  "required": false,
+                  "properties": {
+                    "user_id": {
+                      "type": "string",
+                      "description": "被艾特人的 ID，ID 类型与查询参数 user_id_type 取值一致。",
+                      "required": true,
+                      "example": "579fd9c4",
+                      "annotations": [
+                        "open:x_user_id"
+                      ]
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "被艾特人的姓名",
+                      "required": true,
+                      "example": "张敏"
+                    },
+                    "offset": {
+                      "type": "string",
+                      "description": "被艾特人在评论中的位置，从 0 开始。用于偏移覆盖。例如：;;- 取值为 0 时的效果：@username 示例文本;- 取值为 2 时的效果：示例 @username 文本;- 取值为 4 时的效果：示例文本 @username; ;**注意**：该参数生效方式是覆盖生效，因此你需要先通过 content 参数设置用户名称的文本内容，然后再通过该参数将实际生效的@效果覆盖到用户名称的文本内容上。",
+                      "required": true,
+                      "example": "0"
+                    }
+                  }
+                },
+                "commentator": {
+                  "type": "string",
+                  "description": "评论创建人",
+                  "required": true,
+                  "example": "893g4c45",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "extra": {
+                  "type": "string",
+                  "description": "附加字段",
+                  "required": false,
+                  "example": "{\\\"a\\\":\\\"a\\\"}"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "approval:instance:read"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=query&project=approval&resource=instance.comment&version=v4"
+        },
+        "create": {
+          "id": "comments.create",
+          "path": "instances/{instance_id}/comments/write",
+          "httpMethod": "POST",
+          "description": "创建、回复或编辑审批实例评论",
+          "parameters": {
+            "instance_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "审批实例 Code（或租户自定义审批实例 ID）",
+              "example": "6A123516-FB88-470D-A428-9AF58B71B3C0"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "评论相关用户字段的 ID 类型，不用于指定操作人；不填默认 open_id",
+              "default": "",
+              "example": "user_id",
+              "options": [
+                {
+                  "value": "open_id",
+                  "description": "open_id(ou_开头)"
+                },
+                {
+                  "value": "user_id",
+                  "description": "user_id(字符串)"
+                },
+                {
+                  "value": "union_id",
+                  "description": "union_id(on_开头)"
+                }
+              ],
+              "enumName": "CreateInstanceCommentUserIDType"
+            }
+          },
+          "parameterOrder": [
+            "instance_id"
+          ],
+          "requestBody": {
+            "content": {
+              "type": "string",
+              "description": "评论内容，JSON 格式，传入时需要压缩转义为字符串。以下示例值未转义，你可参考请求体示例中的示例 content 进行编辑。;;**JSON 内参数说明**：;;- text：string 类型，评论文本内容。;;**注意**：;- 如需 @用户，则需要在该参数内设置用户名的文本，例如 `@username`，同时通过 at_info_list 参数实现 @ 效果。",
+              "required": false,
+              "example": "{\\\"text\\\":\\\"@username艾特展示\\\"}"
+            },
+            "at_info_list": {
+              "type": "array",
+              "description": "评论中艾特人信息",
+              "required": false,
+              "properties": {
+                "user_id": {
+                  "type": "string",
+                  "description": "被艾特人的 ID，ID 类型与查询参数 user_id_type 取值一致。",
+                  "required": true,
+                  "example": "579fd9c4",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "description": "被艾特人的姓名",
+                  "required": true,
+                  "example": "张敏"
+                },
+                "offset": {
+                  "type": "string",
+                  "description": "被艾特人在评论中的位置，从 0 开始。用于偏移覆盖。例如：;;- 取值为 0 时的效果：@username 示例文本;- 取值为 2 时的效果：示例 @username 文本;- 取值为 4 时的效果：示例文本 @username; ;**注意**：该参数生效方式是覆盖生效，因此你需要先通过 content 参数设置用户名称的文本内容，然后再通过该参数将实际生效的@效果覆盖到用户名称的文本内容上。",
+                  "required": true,
+                  "example": "0"
+                }
+              }
+            },
+            "parent_comment_id": {
+              "type": "string",
+              "description": "父评论 ID，如果是回复评论，需要传入该值。",
+              "required": false,
+              "example": "7081516627711524883"
+            },
+            "comment_id": {
+              "type": "string",
+              "description": "评论 ID。如果需要编辑、删除一条评论，则需要将该评论的 ID 传入当前参数。",
+              "required": false,
+              "example": "7081516627711524883"
+            },
+            "disable_bot": {
+              "type": "boolean",
+              "description": "是否不启用 Bot，取值为 true 时只同步数据，不触发 Bot。;;**说明**：飞书审批中自定义审批填写 false，其他情况填写 true。",
+              "required": false,
+              "example": "false"
+            },
+            "extra": {
+              "type": "string",
+              "description": "附加字段，JSON 格式，传入时需要压缩转义为字符串。",
+              "required": false,
+              "example": "{\\\"a\\\":\\\"a\\\"}"
+            }
+          },
+          "responseBody": {
+            "comment_id": {
+              "type": "string",
+              "description": "创建、回复或编辑成功后的评论 ID",
+              "required": true,
+              "example": "7081516627711606803"
+            }
+          },
+          "scopes": [
+            "approval:instance:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=write&project=approval&resource=instance.comment&version=v4"
+        },
+        "delete": {
+          "id": "comments.delete",
+          "path": "instances/{instance_id}/comments/{comment_id}/mark_deleted",
+          "httpMethod": "DELETE",
+          "description": "删除指定审批实例评论或回复",
+          "parameters": {
+            "instance_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "审批实例 Code（或租户自定义审批实例 ID）",
+              "example": "6A123516-FB88-470D-A428-9AF58B71B3C0"
+            },
+            "comment_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "评论或回复 ID",
+              "example": "7081516627711606803"
+            }
+          },
+          "parameterOrder": [
+            "instance_id",
+            "comment_id"
+          ],
+          "responseBody": {
+            "comment_id": {
+              "type": "string",
+              "description": "被删除的评论或回复 ID",
+              "required": false,
+              "example": "7081516627711606803"
+            }
+          },
+          "scopes": [
+            "approval:instance:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=mark_deleted&project=approval&resource=instance.comment&version=v4"
+        }
+      }
+    },
     "instances": {
       "methods": {
         "get": {

@@ -4,9 +4,9 @@
     {
       "name": "approval",
       "file": "services/approval.json",
-      "revision": 13,
-      "size": 80775,
-      "sha256": "500958af9733907fe9a494727a6a7f4a7680509b2ed6bb0dbad474be0ebcd47d"
+      "revision": 14,
+      "size": 95287,
+      "sha256": "ab57763088830faaf74d58235811ecee318c0033a75926726777224d49be19c3"
     },
     {
       "name": "attendance",
