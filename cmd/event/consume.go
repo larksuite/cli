@@ -285,6 +285,12 @@ func applyDecision(opts consume.Options, decision *appconsume.Decision, prepare 
 
 // resolveIdentity resolves the session identity and enforces keyDef.AuthTypes as a whitelist.
 func resolveIdentity(cmd *cobra.Command, f *cmdutil.Factory, keyDef *eventlib.KeyDefinition) (core.Identity, error) {
+	// Event delivery for an Agent Employee is not wired up yet. Refusing here,
+	// before the long-lived connection is opened, keeps the profile from
+	// silently receiving events as the application instead of as the Agent.
+	if err := f.RequireHumanCredential(cmd.Context(), "event consume"); err != nil {
+		return "", err
+	}
 	flagAs := core.Identity(cmd.Flag("as").Value.String())
 	identity := f.ResolveAs(cmd.Context(), cmd, flagAs)
 	if len(keyDef.AuthTypes) > 0 {

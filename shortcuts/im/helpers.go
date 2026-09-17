@@ -1487,7 +1487,10 @@ func checkFlagRequiredScopes(ctx context.Context, rt *common.RuntimeContext, req
 	if len(required) == 0 {
 		return nil
 	}
-	result, err := rt.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(rt.As(), rt.Config.AppID))
+	meta, err := rt.Factory.Credential.ResolveScopeMetadata(ctx, credential.AccessSpec{
+		Identity: rt.As(),
+		AppID:    rt.Config.AppID,
+	})
 	if err != nil {
 		return recovery.Attach(
 			errs.NewAuthenticationError(errs.SubtypeTokenMissing,
@@ -1495,16 +1498,19 @@ func checkFlagRequiredScopes(ctx context.Context, rt *common.RuntimeContext, req
 			recovery.UserAuthorization(required...),
 		)
 	}
-	if result == nil || result.Scopes == "" {
-		fmt.Fprintf(rt.IO().ErrOut,
-			"warning: cannot verify required scope(s) because token scope metadata is unavailable; API may fail if missing: %s\n",
-			strings.Join(required, " "))
+	if !meta.Available {
+		// A credential that carries no scopes at all leaves nothing to verify;
+		// warning about that on every command would train the user to ignore the
+		// warning that matters — that scope facts could not be read.
+		if !meta.NotApplicable {
+			fmt.Fprintf(rt.IO().ErrOut,
+				"warning: cannot verify required scope(s) because token scope metadata is unavailable; API may fail if missing: %s\n",
+				strings.Join(required, " "))
+		}
 		return nil
 	}
-	if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
-		return errs.NewPermissionError(errs.SubtypeMissingScope, "missing required scope(s): %s", strings.Join(missing, ", ")).
-			WithMissingScopes(missing...).
-			WithIdentity(string(rt.As()))
+	if missing := auth.MissingScopes(meta.Scopes, required); len(missing) > 0 {
+		return common.MissingScopeError(rt.Config, rt.As(), missing)
 	}
 	return nil
 }

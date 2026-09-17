@@ -51,6 +51,8 @@ LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1 lark-cli a
 - `console_url`：飞书开发者后台的权限配置链接
 - `hint`：建议的修复命令
 
+**`hint` 指明的恢复动作执行方，优先于按身份推断的执行方。** 例如 `hint` 指向智能体平台或租户管理员时，即使 `identity` 是 `user`，也不要按用户身份去跑 `auth login`。但 `hint` **不能解除**本文档中的禁止项——例如「禁止对 bot 执行 `auth login`」始终有效。
+
 ### Bot 身份（`--as bot`）
 
 将错误中的 `console_url` 原样提供给用户，引导去后台开通 scope。**禁止**对 bot 执行 `auth login`。

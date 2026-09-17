@@ -30,6 +30,9 @@ func NewCmdAuthScopes(f *cmdutil.Factory, runF func(*ScopesOptions) error) *cobr
 		Use:   "scopes",
 		Short: "Query scopes enabled for the app",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireInteractiveAuthProfile(cmd.Context(), f, "auth scopes"); err != nil {
+				return err
+			}
 			opts.Ctx = cmd.Context()
 			if opts.JSON {
 				opts.Format = "json"

@@ -241,6 +241,12 @@ func wrapSaveConfigError(err error) error {
 // saveAsProfile appends or updates a named profile in the config.
 // If a profile with the same name exists, it updates it; otherwise appends.
 // When updating, cleans up old keychain secrets if AppId changed.
+//
+// The Agent Employee binding goes with the old app too. It records which
+// principal the old app's credentials were verified to belong to, so it says
+// nothing about the new app; carried over, the profile would claim one Agent's
+// principal while holding another app's credentials, and every command would
+// fail as if the platform had rebound the Agent.
 func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, profileName, appId string, secret core.SecretInput, brand core.LarkBrand, lang string) error {
 	multi := existing
 	if multi == nil {
@@ -254,7 +260,11 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 			for _, user := range multi.Apps[idx].Users {
 				auth.RemoveStoredToken(multi.Apps[idx].AppId, user.UserOpenId)
 			}
+			_ = auth.RemoveStoredAAT(kc, multi.Apps[idx].AppId)
 			multi.Apps[idx].Users = []core.AppUser{}
+			multi.Apps[idx].CredentialKind = ""
+			multi.Apps[idx].PrincipalOpenID = ""
+			multi.Apps[idx].AgentScope = ""
 		}
 		multi.Apps[idx].AppId = appId
 		multi.Apps[idx].AppSecret = secret
@@ -384,19 +394,13 @@ func configInitRun(opts *ConfigInitOptions) error {
 	// Mode 1: Non-interactive
 	if opts.AppID != "" && opts.appSecret != "" {
 		brand := parseBrand(opts.Brand)
-		secret, err := core.ForStorage(opts.AppID, core.PlainSecret(opts.appSecret), f.Keychain)
-		if err != nil {
-			return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
-		}
-		if err := saveInitConfig(opts.ProfileName, existing, f, opts.AppID, secret, brand, opts.Lang); err != nil {
-			return wrapSaveConfigError(err)
+		if err := persistInspectedInit(opts.Ctx, f, opts.ProfileName, existing,
+			opts.AppID, opts.appSecret, brand, opts.Lang); err != nil {
+			return err
 		}
 		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
 		printLangPreferenceConfirmation(opts)
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": opts.AppID, "appSecret": "****", "brand": brand})
-		if err := runProbe(opts.Ctx, f, opts.AppID, opts.appSecret, brand); err != nil {
-			return err
-		}
 		return nil
 	}
 
@@ -452,7 +456,12 @@ func configInitRun(opts *ConfigInitOptions) error {
 
 		existing, _ := core.LoadMultiAppConfig()
 
-		if result.AppSecret != "" {
+		if result.AppSecret != "" && result.Mode == "existing" {
+			if err := persistInspectedInit(opts.Ctx, f, opts.ProfileName, existing,
+				result.AppID, result.AppSecret, result.Brand, opts.Lang); err != nil {
+				return err
+			}
+		} else if result.AppSecret != "" {
 			// New secret provided (either from "create" or "existing" with input)
 			secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
 			if err != nil {
@@ -475,7 +484,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 			output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.ConfigSaved, result.AppID))
 		}
 		printLangPreferenceConfirmation(opts)
-		if result.AppSecret != "" {
+		if result.AppSecret != "" && result.Mode != "existing" {
 			if err := runProbe(opts.Ctx, f, result.AppID, result.AppSecret, result.Brand); err != nil {
 				return err
 			}
@@ -559,19 +568,24 @@ func configInitRun(opts *ConfigInitOptions) error {
 			WithParam("--app-id")
 	}
 
-	storedSecret, err := core.ForStorage(resolvedAppId, resolvedSecret, f.Keychain)
-	if err != nil {
-		return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
-	}
-	if err := saveInitConfig(opts.ProfileName, existing, f, resolvedAppId, storedSecret, parseBrand(resolvedBrand), opts.Lang); err != nil {
-		return wrapSaveConfigError(err)
-	}
-	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
-	printLangPreferenceConfirmation(opts)
 	if appSecretInput != "" {
-		if err := runProbe(opts.Ctx, f, resolvedAppId, appSecretInput, parseBrand(resolvedBrand)); err != nil {
+		if err := persistInspectedInit(opts.Ctx, f, opts.ProfileName, existing,
+			resolvedAppId, appSecretInput, parseBrand(resolvedBrand), opts.Lang); err != nil {
+			return err
+		}
+	} else {
+		// Blank secret means "keep what is configured", so the profile must be
+		// edited in place. Rebuilding it from the prompt answers would drop
+		// every fact the prompts never ask about — including the Agent Employee
+		// binding, whose loss turns the profile into an unclassified app whose
+		// automatic identity is bot, and whose app credentials then mint an
+		// Agent token that travels as a tenant token.
+		if err := wrapUpdateExistingProfileErr(updateExistingProfileWithoutSecret(
+			existing, opts.ProfileName, resolvedAppId, parseBrand(resolvedBrand), opts.Lang)); err != nil {
 			return err
 		}
 	}
+	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
+	printLangPreferenceConfirmation(opts)
 	return nil
 }

@@ -860,6 +860,31 @@ func TestValidateDriveTaskResultScopesDriveScenariosRequireDriveScope(t *testing
 	}
 }
 
+// TestValidateDriveTaskResultScopesAgentEmployeeRoutesToAgentPlatform pins that
+// this shortcut's own scope check routes an Agent Employee through errclass:
+// the hint names the Agent platform, never `auth login`.
+func TestValidateDriveTaskResultScopesAgentEmployeeRoutesToAgentPlatform(t *testing.T) {
+	t.Parallel()
+
+	runtime := newDriveTaskResultRuntimeWithScopes(t, core.AsUser, "wiki:space:read")
+	runtime.Config.CredentialKind = core.CredentialAAT
+
+	err := validateDriveTaskResultScopes(context.Background(), runtime, "import")
+	if err == nil {
+		t.Fatal("expected a missing-scope error")
+	}
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	if strings.Contains(permErr.Hint, "auth login") {
+		t.Fatalf("Agent Employee hint must not mention auth login, got: %s", permErr.Hint)
+	}
+	if !strings.Contains(permErr.Hint, "Agent platform") {
+		t.Fatalf("hint should point at the Agent platform, got: %s", permErr.Hint)
+	}
+}
+
 func TestParseWikiMoveTaskQueryStatusFallbackTaskIDAndNode(t *testing.T) {
 	t.Parallel()
 

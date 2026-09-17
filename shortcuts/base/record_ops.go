@@ -592,7 +592,7 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 		return err
 	}
 	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_get"), nil, recordGetBatchBody(selection))
-	data, err := handleBaseAPIResult(result, err, "batch get records")
+	data, err := handleBaseAPIResult(runtime, result, err, "batch get records")
 	if err != nil {
 		return err
 	}
@@ -662,7 +662,7 @@ func executeRecordBatchCreate(runtime *common.RuntimeContext) error {
 		return err
 	}
 	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_create"), nil, body)
-	data, err := handleBaseAPIResult(result, err, "batch create records")
+	data, err := handleBaseAPIResult(runtime, result, err, "batch create records")
 	if err != nil {
 		return err
 	}
@@ -677,7 +677,7 @@ func executeRecordBatchUpdate(runtime *common.RuntimeContext) error {
 		return err
 	}
 	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_update"), nil, body)
-	data, err := handleBaseAPIResult(result, err, "batch update records")
+	data, err := handleBaseAPIResult(runtime, result, err, "batch update records")
 	if err != nil {
 		return err
 	}
@@ -693,7 +693,7 @@ func executeRecordDelete(runtime *common.RuntimeContext) error {
 	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_delete"), nil, map[string]interface{}{
 		"record_id_list": selection.recordIDs,
 	})
-	data, err := handleBaseAPIResult(result, err, "batch delete records")
+	data, err := handleBaseAPIResult(runtime, result, err, "batch delete records")
 	if err != nil {
 		return err
 	}

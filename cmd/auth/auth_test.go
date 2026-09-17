@@ -523,15 +523,16 @@ func newFactoryWithExternalProvider(t *testing.T) *cmdutil.Factory {
 func TestAuthBlockedByExternalProvider(t *testing.T) {
 	f := newFactoryWithExternalProvider(t)
 
+	// Only the commands that drive an interactive human authorization flow are
+	// blocked. Read-only reporting stays available: those are exactly the
+	// commands a user needs when credentials come from somewhere unusual.
 	tests := []struct {
 		name string
 		args []string
 	}{
 		{"login", []string{"login"}},
 		{"logout", []string{"logout"}},
-		{"status", []string{"status"}},
 		{"check", []string{"check", "--scope", "calendar:read"}}, // --scope is required
-		{"list", []string{"list"}},
 		{"scopes", []string{"scopes"}},
 	}
 
@@ -553,6 +554,26 @@ func TestAuthBlockedByExternalProvider(t *testing.T) {
 			}
 			if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
 				t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
+			}
+		})
+	}
+}
+
+// TestAuthReportingSurvivesExternalProvider pins that read-only reporting is not
+// taken down along with interactive authorization. A user whose credentials come
+// from an external source still needs to be able to ask what identity they have.
+func TestAuthReportingSurvivesExternalProvider(t *testing.T) {
+	for _, name := range []string{"status", "list"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFactoryWithExternalProvider(t)
+			cmd := NewCmdAuth(f)
+			cmd.SilenceErrors = true
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs([]string{name})
+
+			err := cmd.Execute()
+			if gotCode := output.ExitCodeOf(err); gotCode == output.ExitValidation {
+				t.Errorf("%s must not be rejected as unsupported, got %v", name, err)
 			}
 		})
 	}

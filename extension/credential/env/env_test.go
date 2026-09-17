@@ -448,3 +448,146 @@ func TestStoredTATSourceValidatesSelectorAndAppID(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveAccount_AgentTokenClassifiesAccount(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliAgentAccessToken, "aat_test")
+
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acct.CredentialKind != credential.CredentialAAT {
+		t.Errorf("CredentialKind = %q, want aat", acct.CredentialKind)
+	}
+	if !acct.SupportedIdentities.UserOnly() {
+		t.Errorf("SupportedIdentities = %d, want user-only", acct.SupportedIdentities)
+	}
+	if acct.DefaultAs != credential.IdentityUser {
+		t.Errorf("DefaultAs = %q, want user", acct.DefaultAs)
+	}
+	if acct.OpenID != "" {
+		t.Errorf("OpenID = %q, want empty", acct.OpenID)
+	}
+	if acct.AppSecret != credential.NoAppSecret {
+		t.Errorf("AppSecret = %q, want NoAppSecret", acct.AppSecret)
+	}
+}
+
+// TestResolveAccount_AgentTokenRefusesBotStrictMode pins that a bot-only strict
+// mode is refused up front, naming the setting rather than the credential.
+func TestResolveAccount_AgentTokenRefusesBotStrictMode(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliAgentAccessToken, "aat_test")
+	t.Setenv(envvars.CliStrictMode, "bot")
+
+	_, err := (&Provider{}).ResolveAccount(context.Background())
+	var blockErr *credential.BlockError
+	if !errors.As(err, &blockErr) {
+		t.Fatalf("error = %T %v, want BlockError", err, err)
+	}
+	if !strings.Contains(err.Error(), envvars.CliStrictMode) {
+		t.Fatalf("error = %v, want mention of %s", err, envvars.CliStrictMode)
+	}
+}
+
+// TestResolveAccount_AgentTokenToleratesBotDefault pins that a bot default is
+// tolerated: the inferred user-only support already routes commands to user.
+func TestResolveAccount_AgentTokenToleratesBotDefault(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliAgentAccessToken, "aat_test")
+	t.Setenv(envvars.CliDefaultAs, "bot")
+
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("a bot default must not be refused, got %v", err)
+	}
+	if !acct.SupportedIdentities.UserOnly() {
+		t.Fatalf("SupportedIdentities = %d, want user-only so the bot default is overridden",
+			acct.SupportedIdentities)
+	}
+	if acct.CredentialKind != credential.CredentialAAT {
+		t.Fatalf("CredentialKind = %q, want aat", acct.CredentialKind)
+	}
+}
+
+func TestResolveAccess_AgentToken(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliAgentAccessToken, "aat_test")
+
+	access, err := (&Provider{}).ResolveAccess(context.Background(),
+		credential.AccessSpec{Identity: credential.IdentityUser, AppID: "cli_test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if access == nil {
+		t.Fatal("expected an access, got nil")
+	}
+	if access.Value != "aat_test" || access.Kind != credential.CredentialAAT {
+		t.Fatalf("access = %+v", access)
+	}
+	if access.OpenID != "" {
+		t.Errorf("OpenID = %q, want empty", access.OpenID)
+	}
+	if !access.ExpiresAt.IsZero() {
+		t.Errorf("ExpiresAt = %v, want zero", access.ExpiresAt)
+	}
+}
+
+// TestResolveAccess_AgentTokenNotApplicable pins that a nil answer leaves the
+// token path untouched when no Agent Employee credential applies.
+func TestResolveAccess_AgentTokenNotApplicable(t *testing.T) {
+	t.Run("no agent token", func(t *testing.T) {
+		t.Setenv(envvars.CliAppID, "cli_test")
+		t.Setenv(envvars.CliUserAccessToken, "u-tok")
+		access, err := (&Provider{}).ResolveAccess(context.Background(),
+			credential.AccessSpec{Identity: credential.IdentityUser, AppID: "cli_test"})
+		if err != nil || access != nil {
+			t.Fatalf("access = %+v, err = %v; want nil, nil", access, err)
+		}
+	})
+	t.Run("foreign app id", func(t *testing.T) {
+		t.Setenv(envvars.CliAppID, "cli_test")
+		t.Setenv(envvars.CliAgentAccessToken, "aat_test")
+		access, err := (&Provider{}).ResolveAccess(context.Background(),
+			credential.AccessSpec{Identity: credential.IdentityUser, AppID: "cli_other"})
+		if err != nil || access != nil {
+			t.Fatalf("access = %+v, err = %v; want nil, nil", access, err)
+		}
+	})
+}
+
+// TestResolveAccount_AgentTokenConflictsWithOtherIdentities pins that an
+// injected Agent token cannot share the environment with a user or tenant one.
+// The account would be classified from one variable while access resolution
+// hands back the other, and the contract check would surface that disagreement
+// as an internal error on every single command — a configuration mistake
+// reported as a CLI defect, with no hint about which variable to remove.
+func TestResolveAccount_AgentTokenConflictsWithOtherIdentities(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		other     string
+		wantNamed string
+	}{
+		{"with a user token", envvars.CliUserAccessToken, envvars.CliUserAccessToken},
+		{"with a tenant token", envvars.CliTenantAccessToken, envvars.CliTenantAccessToken},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(envvars.CliAppID, "cli_test")
+			t.Setenv(envvars.CliAgentAccessToken, "agent-token")
+			t.Setenv(tt.other, "other-token")
+
+			_, err := (&Provider{}).ResolveAccount(context.Background())
+			var blockErr *credential.BlockError
+			if !errors.As(err, &blockErr) {
+				t.Fatalf("expected BlockError, got %T: %v", err, err)
+			}
+			if !strings.Contains(blockErr.Reason, tt.wantNamed) {
+				t.Errorf("the reason must name the conflicting variable, got: %s", blockErr.Reason)
+			}
+			if !strings.Contains(blockErr.Reason, envvars.CliAgentAccessToken) {
+				t.Errorf("the reason must name the Agent variable, got: %s", blockErr.Reason)
+			}
+		})
+	}
+}

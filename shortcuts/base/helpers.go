@@ -507,17 +507,17 @@ func baseHTTPStatusErrorFromInvalidResponse(resp *larkcore.ApiResp, classified e
 
 func baseV3Call(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
 	result, err := baseV3Raw(runtime, method, path, params, data)
-	return handleBaseAPIResult(result, err, "API call failed")
+	return handleBaseAPIResult(runtime, result, err, "API call failed")
 }
 
 func baseV3CallContext(ctx context.Context, runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
 	result, err := baseV3RawContext(ctx, runtime, method, path, params, data)
-	return handleBaseAPIResult(result, err, "API call failed")
+	return handleBaseAPIResult(runtime, result, err, "API call failed")
 }
 
 func baseV3CallAny(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (interface{}, error) {
 	result, err := baseV3Raw(runtime, method, path, params, data)
-	return handleBaseAPIResultAny(result, err, "API call failed")
+	return handleBaseAPIResultAny(runtime, result, err, "API call failed")
 }
 
 func toInt(v interface{}) int {

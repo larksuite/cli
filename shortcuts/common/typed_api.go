@@ -61,7 +61,12 @@ func CallHostedAPI(ctx context.Context, command typedRuntimeContext, method, api
 
 func typedClassifyContext(command typedRuntimeContext) errclass.ClassifyContext {
 	config := command.Config()
-	classify := errclass.ClassifyContext{Brand: string(config.Brand), AppID: config.AppID, Identity: string(command.Identity())}
+	classify := errclass.ClassifyContext{
+		Brand:          string(config.Brand),
+		AppID:          config.AppID,
+		Identity:       string(command.Identity()),
+		CredentialKind: string(config.CredentialKind),
+	}
 	if provider, ok := command.(interface{ typedCommandPath() string }); ok {
 		classify.LarkCmd = provider.typedCommandPath()
 	}

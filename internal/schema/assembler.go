@@ -188,13 +188,15 @@ func buildOutputSchema(m meta.Method) *OutputSchema {
 	return &OutputSchema{Type: "object", Properties: propsOf(m.Response())}
 }
 
-// buildMeta produces the _meta extension namespace.
-func buildMeta(m meta.Method) *Meta {
+// buildMeta produces the _meta extension namespace. agentPrincipal selects
+// whose view access_tokens reports: an Agent Employee reaches agent-marked
+// methods on the user identity, a human principal does not.
+func buildMeta(m meta.Method, agentPrincipal bool) *Meta {
 	out := &Meta{
 		EnvelopeVersion: "1.0",
 		RequiredScopes:  []string{}, // never nil for stable JSON
 		Scopes:          m.Scopes,
-		AccessTokens:    m.Identities(),
+		AccessTokens:    m.IdentitiesFor(agentPrincipal),
 		Danger:          m.Danger,
 	}
 	if a, ok := m.ParsedAffordance(); ok {
@@ -217,23 +219,28 @@ func buildMeta(m meta.Method) *Meta {
 // EnvelopeOf renders the MCP envelope for one method ref — the ref-based entry
 // callers use, since apicatalog.MethodRef is the metadata navigation currency.
 // guidance is the build's affordance resolver (nil renders no CLI overlay).
-func EnvelopeOf(guidance *affordance.Resolver, ref apicatalog.MethodRef) Envelope {
+// agentPrincipal says whether the envelope is rendered for an Agent Employee,
+// which decides what access_tokens reports for agent-marked methods.
+func EnvelopeOf(guidance *affordance.Resolver, ref apicatalog.MethodRef, agentPrincipal bool) Envelope {
 	m := ref.Method
 	// The affordance overlay lives in the CLI, not the metadata; look it up
 	// lazily here (it takes precedence over any affordance the metadata carries).
 	if raw, ok := guidance.For(ref.Service.Name, m.ID); ok {
 		m.Affordance = raw
 	}
-	return assemble(ref.Service.Name, ref.ResourcePath, m)
+	return assemble(ref.Service.Name, ref.ResourcePath, m, agentPrincipal)
 }
 
 // Envelopes renders the given method refs into envelopes, sorted by name. The
 // caller supplies the refs (from apicatalog navigation), so this package owns
 // only rendering — never metadata source selection or traversal.
-func Envelopes(guidance *affordance.Resolver, refs []apicatalog.MethodRef) []Envelope {
-	var out []Envelope
+//
+// The result is a non-nil slice so an empty listing marshals to [] rather than
+// null, which callers parsing an array would choke on.
+func Envelopes(guidance *affordance.Resolver, refs []apicatalog.MethodRef, agentPrincipal bool) []Envelope {
+	out := make([]Envelope, 0, len(refs))
 	for _, ref := range refs {
-		out = append(out, EnvelopeOf(guidance, ref))
+		out = append(out, EnvelopeOf(guidance, ref, agentPrincipal))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -241,7 +248,7 @@ func Envelopes(guidance *affordance.Resolver, refs []apicatalog.MethodRef) []Env
 
 // assemble builds the envelope from a method's navigation context. The method
 // name comes from m.Name, injected by the typed accessors.
-func assemble(serviceName string, resourcePath []string, m meta.Method) Envelope {
+func assemble(serviceName string, resourcePath []string, m meta.Method, agentPrincipal bool) Envelope {
 	name := serviceName
 	for _, r := range resourcePath {
 		name += " " + r
@@ -253,6 +260,6 @@ func assemble(serviceName string, resourcePath []string, m meta.Method) Envelope
 		Description:  normalizeDesc(m.Description),
 		InputSchema:  buildInputSchema(m),
 		OutputSchema: buildOutputSchema(m),
-		Meta:         buildMeta(m),
+		Meta:         buildMeta(m, agentPrincipal),
 	}
 }

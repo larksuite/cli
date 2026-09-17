@@ -55,17 +55,29 @@ func bestScope(scopes []string, priorities map[string]int) string {
 }
 
 // FilterForStrictMode returns a method filter enforcing the strict-mode forced
-// identity, or nil when strict mode is inactive (no filtering). The
-// token/identity vocabulary (meta.TokenForIdentity) and the "no accessTokens =
-// permissive" predicate (meta.Method.SupportsToken) both live in meta, so this
-// only composes them — schema completion/render and service commands never
-// re-derive identity semantics.
+// identity, or nil when strict mode is inactive (no filtering). It is
+// token-side (meta.Method.SupportsToken): strict mode is a policy a human
+// profile chooses, and the forced identity's token is what the method has to
+// accept. An Agent Employee never reaches this filter — strict mode is off for
+// it (Factory.ResolveStrictMode) and FilterForAgentPrincipal decides instead —
+// so an agent-only method is correctly absent under user strict mode.
 func FilterForStrictMode(mode core.StrictMode) apicatalog.MethodFilter {
 	if !mode.IsActive() {
 		return nil
 	}
 	token := meta.TokenForIdentity(string(mode.ForcedIdentity()))
 	return func(m meta.Method) bool { return m.SupportsToken(token) }
+}
+
+// FilterForAgentPrincipal returns a filter keeping only agent-callable methods,
+// or nil when no filtering applies (not an AAT profile, or the gate is off).
+// gateEnabled is passed in because internal/cmdutil already imports this
+// package, so reading it here would cycle.
+func FilterForAgentPrincipal(kind core.CredentialKind, gateEnabled bool) apicatalog.MethodFilter {
+	if kind != core.CredentialAAT || !gateEnabled {
+		return nil
+	}
+	return func(m meta.Method) bool { return m.SupportsAgent() }
 }
 
 // CollectScopesForProjects collects the effective scopes for each API method in

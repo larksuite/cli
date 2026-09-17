@@ -6,14 +6,19 @@ package credential
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keychain"
 )
 
 type mockExtProvider struct {
@@ -514,5 +519,163 @@ func TestActiveExtensionProviderName_SkipsNilProvider(t *testing.T) {
 	}
 	if name != "" {
 		t.Errorf("got %q, want empty string", name)
+	}
+}
+
+// agentFixture describes one Agent Employee profile shape: the verified
+// principal, the keychain record, and the config.json snapshot.
+type agentFixture struct {
+	principalOpenID string
+	// keychainOpenID overrides the seeded record's principal; empty means principalOpenID.
+	keychainOpenID string
+	keychainScope  string
+	configScope    string
+	// onHTTP fires when the HTTP client factory is invoked; scope resolution must never reach it.
+	onHTTP func()
+	// warnOut is the token provider's stderr stream; defaults to io.Discard.
+	warnOut io.Writer
+}
+
+// newAgentCredentialProvider builds a CredentialProvider bound to the Agent
+// Employee profile f describes, with a fake keychain seeded from it.
+func newAgentCredentialProvider(t *testing.T, f agentFixture) *CredentialProvider {
+	t.Helper()
+	// Empty config dir: only the mocked Account below can resolve.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	kc := newCredentialMemoryKeychain()
+	keychainOpenID := f.keychainOpenID
+	if keychainOpenID == "" {
+		keychainOpenID = f.principalOpenID
+	}
+	// Seeded expired on purpose: a path that mints instead of peeking would reach for HTTP.
+	stored := &auth.StoredAAToken{
+		AppID:       "cli_a",
+		UserOpenID:  keychainOpenID,
+		AccessToken: "tok",
+		GrantedAt:   time.Now().Add(-2 * time.Hour).UnixMilli(),
+		ExpiresAt:   time.Now().Add(-time.Hour).UnixMilli(),
+		Scope:       f.keychainScope,
+	}
+	data, err := json.Marshal(stored)
+	if err != nil {
+		t.Fatalf("marshal stored AAT: %v", err)
+	}
+	if err := kc.Set(keychain.LarkCliService, auth.AATAccountKey("cli_a"), string(data)); err != nil {
+		t.Fatalf("seed keychain: %v", err)
+	}
+
+	httpClient := func() (*http.Client, error) {
+		if f.onHTTP != nil {
+			f.onHTTP()
+		}
+		return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			t.Fatalf("unexpected HTTP call to %s", req.URL)
+			return nil, nil
+		})}, nil
+	}
+
+	warnOut := f.warnOut
+	if warnOut == nil {
+		warnOut = io.Discard
+	}
+	defaultAcct := NewDefaultAccountProvider(func() keychain.KeychainAccess { return kc }, "", core.ProfileFromConfig)
+	defaultToken := NewDefaultTokenProvider(defaultAcct, httpClient, warnOut)
+
+	acct := &Account{
+		AppID:           "cli_a",
+		CredentialKind:  core.CredentialAAT,
+		PrincipalOpenID: f.principalOpenID,
+		AgentScope:      f.configScope,
+	}
+	return NewCredentialProvider(nil, &mockDefaultAcct{account: acct}, defaultToken, httpClient)
+}
+
+// TestResolveScopeMetadataForAgentPrefersKeychain pins that the keychain scope wins over the bind-time snapshot.
+func TestResolveScopeMetadataForAgentPrefersKeychain(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_SCOPE_PRECHECK", "on")
+	p := newAgentCredentialProvider(t, agentFixture{
+		principalOpenID: "ou_x",
+		keychainScope:   "docs:doc",
+		configScope:     "bitable:app",
+	})
+	got, err := p.ResolveScopeMetadata(context.Background(),
+		AccessSpec{Identity: core.AsUser, AppID: "cli_a"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got.Available || got.Scopes != "docs:doc" {
+		t.Errorf("got %+v, want the keychain scope to win", got)
+	}
+}
+
+// TestResolveScopeMetadataForAgentFallsBackToConfigSnapshot pins the fallback when the keychain record has no scope.
+func TestResolveScopeMetadataForAgentFallsBackToConfigSnapshot(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_SCOPE_PRECHECK", "on")
+	p := newAgentCredentialProvider(t, agentFixture{
+		principalOpenID: "ou_x",
+		keychainScope:   "", // legacy record, or written before the Scope field
+		configScope:     "bitable:app",
+	})
+	got, err := p.ResolveScopeMetadata(context.Background(),
+		AccessSpec{Identity: core.AsUser, AppID: "cli_a"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got.Available || got.Scopes != "bitable:app" {
+		t.Errorf("got %+v, want the config snapshot", got)
+	}
+}
+
+// TestResolveScopeMetadataForAgentSkipsWhenNoFacts pins that no scope fact
+// anywhere reads as "nothing to compare against", not as a failure.
+func TestResolveScopeMetadataForAgentSkipsWhenNoFacts(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_SCOPE_PRECHECK", "on")
+	p := newAgentCredentialProvider(t, agentFixture{principalOpenID: "ou_x"})
+	got, err := p.ResolveScopeMetadata(context.Background(),
+		AccessSpec{Identity: core.AsUser, AppID: "cli_a"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Available || !got.NotApplicable {
+		t.Errorf("got %+v, want Available=false NotApplicable=true", got)
+	}
+}
+
+// TestResolveScopeMetadataForAgentMakesNoNetworkCall guards the --dry-run
+// constraint: scope resolution reads cached facts and never mints or renews.
+func TestResolveScopeMetadataForAgentMakesNoNetworkCall(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_SCOPE_PRECHECK", "on")
+	var calls int32
+	p := newAgentCredentialProvider(t, agentFixture{
+		principalOpenID: "ou_x",
+		keychainScope:   "docs:doc",
+		onHTTP:          func() { atomic.AddInt32(&calls, 1) },
+	})
+	if _, err := p.ResolveScopeMetadata(context.Background(),
+		AccessSpec{Identity: core.AsUser, AppID: "cli_a"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n := atomic.LoadInt32(&calls); n != 0 {
+		t.Errorf("made %d HTTP call(s); scope metadata resolution must stay side-effect free", n)
+	}
+}
+
+// TestResolveScopeMetadataForAgentRejectsPrincipalMismatch pins that a record for another principal is ignored.
+func TestResolveScopeMetadataForAgentRejectsPrincipalMismatch(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_SCOPE_PRECHECK", "on")
+	p := newAgentCredentialProvider(t, agentFixture{
+		principalOpenID: "ou_x",
+		keychainOpenID:  "ou_other",
+		keychainScope:   "docs:doc",
+		configScope:     "bitable:app",
+	})
+	got, err := p.ResolveScopeMetadata(context.Background(),
+		AccessSpec{Identity: core.AsUser, AppID: "cli_a"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Scopes != "bitable:app" {
+		t.Errorf("got %+v, want the keychain record for a different principal to be ignored", got)
 	}
 }

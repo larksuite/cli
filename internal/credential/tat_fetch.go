@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
@@ -21,9 +22,20 @@ import (
 type tatResponse struct {
 	Code             int    `json:"code"`
 	AccessToken      string `json:"access_token"`
+	ExpiresIn        int64  `json:"expires_in"`
+	TokenType        string `json:"token_type"` // fixed by Bearer
+	Scope            string `json:"scope"`
 	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description"`
 	Msg              string `json:"msg"`
+}
+
+type ClientCredentialsToken struct {
+	Token     string
+	GrantedAt time.Time
+	ExpiresAt time.Time
+	// Scope is the space-separated grant reported by the token endpoint.
+	Scope string
 }
 
 // FetchTAT performs a single HTTP POST to mint a tenant access token via the
@@ -44,6 +56,15 @@ type tatResponse struct {
 //
 // The caller owns the context timeout.
 func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (string, error) {
+	token, err := FetchClientCredentialsToken(ctx, httpClient, brand, appID, appSecret)
+	if err != nil {
+		return "", err
+	}
+	return token.Token, nil
+}
+
+// FetchClientCredentialsToken performs the shared OAuth v3 client_credentials request
+func FetchClientCredentialsToken(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (*ClientCredentialsToken, error) {
 	ep := core.ResolveEndpoints(brand)
 	endpoint := ep.Accounts + core.OAuthTokenV3Path
 
@@ -54,19 +75,19 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("failed to read TAT response: %w", err)
+		return nil, fmt.Errorf("failed to read TAT response: %w", err)
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
 		var rateLimitErr *errs.APIError
@@ -95,18 +116,28 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		} else {
 			rateLimitErr.Hint = "use exponential backoff with jitter when retrying"
 		}
-		return "", rateLimitErr
+		return nil, rateLimitErr
 	}
 
 	var result tatResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		// An unparseable body is ambiguous (covers non-JSON error pages and
 		// truncated payloads); stay untyped so probe callers treat it as noise.
-		return "", fmt.Errorf("failed to parse TAT response (HTTP %d): %w", resp.StatusCode, err)
+		return nil, fmt.Errorf("failed to parse TAT response (HTTP %d): %w", resp.StatusCode, err)
 	}
 
 	if result.Code == 0 && result.AccessToken != "" {
-		return result.AccessToken, nil
+		grantedAt := time.Now().UTC()
+		expiresAt := time.Time{}
+		if result.ExpiresIn > 0 {
+			expiresAt = grantedAt.Add(time.Duration(result.ExpiresIn) * time.Second)
+		}
+		return &ClientCredentialsToken{
+			Token:     result.AccessToken,
+			GrantedAt: grantedAt,
+			ExpiresAt: expiresAt,
+			Scope:     result.Scope,
+		}, nil
 	}
 
 	// Transient/server-side failures stay untyped so probe callers stay silent and
@@ -117,13 +148,13 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	if resp.StatusCode >= 500 ||
 		result.Error == "server_error" || result.Error == "temporarily_unavailable" ||
 		result.Error == "slow_down" {
-		return "", fmt.Errorf("TAT endpoint transient failure (HTTP %d, code=%d, error=%q): %s",
+		return nil, fmt.Errorf("TAT endpoint transient failure (HTTP %d, code=%d, error=%q): %s",
 			resp.StatusCode, result.Code, result.Error, result.ErrorDescription)
 	}
 
 	// A 2xx with neither token nor error is a malformed success — ambiguous, untyped.
 	if result.Code == 0 && result.Error == "" {
-		return "", fmt.Errorf("TAT response missing access_token (HTTP %d)", resp.StatusCode)
+		return nil, fmt.Errorf("TAT response missing access_token (HTTP %d)", resp.StatusCode)
 	}
 
 	// Prefer the OAuth error_description; fall back to the legacy Lark `msg` so a
@@ -133,7 +164,7 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	if desc == "" {
 		desc = result.Msg
 	}
-	return "", classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+	return nil, classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
 }
 
 func tatRetryAfterSeconds(header http.Header) int {

@@ -69,6 +69,9 @@ send the verification URL (or QR code) to the user as your final message, end th
 run --device-code in a later step after the user confirms authorization. Use 'lark-cli auth qrcode'
 to generate QR codes (supports ASCII and PNG formats).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireInteractiveAuthProfile(cmd.Context(), f, "auth login"); err != nil {
+				return err
+			}
 			if mode := f.ResolveStrictMode(cmd.Context()); mode == core.StrictModeBot {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument,
 					"strict mode is %q, user login is disabled in this profile", mode).

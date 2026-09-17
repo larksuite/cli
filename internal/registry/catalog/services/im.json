@@ -5695,8 +5695,7 @@
             "im:feed_group_v1:write"
           ],
           "accessTokens": [
-            "user",
-            "agent"
+            "user"
           ],
           "danger": true,
           "risk": "write",
@@ -5853,8 +5852,7 @@
             "im:feed_group_v1:read"
           ],
           "accessTokens": [
-            "user",
-            "agent"
+            "user"
           ],
           "danger": true,
           "risk": "read",
@@ -5945,8 +5943,7 @@
             "im:feed_group_v1:write"
           ],
           "accessTokens": [
-            "user",
-            "agent"
+            "user"
           ],
           "danger": true,
           "risk": "write",
@@ -6031,8 +6028,7 @@
             "im:feed_group_v1:write"
           ],
           "accessTokens": [
-            "user",
-            "agent"
+            "user"
           ],
           "danger": true,
           "risk": "write",
@@ -6059,8 +6055,7 @@
             "im:feed_group_v1:write"
           ],
           "accessTokens": [
-            "user",
-            "agent"
+            "user"
           ],
           "danger": true,
           "risk": "write",
@@ -6146,8 +6141,7 @@
             "im:feed_group_v1:write"
           ],
           "accessTokens": [
-            "user",
-            "agent"
+            "user"
           ],
           "danger": true,
           "risk": "write",

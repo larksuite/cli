@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -43,6 +44,129 @@ func pruneIncompatible(parent *cobra.Command, mode core.StrictMode) {
 		parent.RemoveCommand(toRemove...)
 		parent.AddCommand(toAdd...)
 	}
+}
+
+// pruneForAgentPrincipal withholds commands the shipped verdict denies to an
+// Agent Employee. It is the principal-kind counterpart to pruneForStrictMode
+// and deliberately mirrors its shape, so the two can later collapse into one
+// pass over a shared visibility filter.
+//
+// The caller decides that the profile is an Agent Employee; this pass only
+// reads the verdict each command carries. Unrecorded commands carry no
+// annotation and are kept, matching Factory.CheckShortcutPrincipal, where an
+// unknown verdict dispatches.
+//
+// Both passes share pruneEmpty, and both rely on running before
+// installUnknownSubcommandGuard: pruneEmpty tells a group from a leaf by the
+// absence of a RunE, and the guard gives every pure group one.
+func pruneForAgentPrincipal(root *cobra.Command) {
+	pruneDeniedForAgent(root)
+	pruneEmpty(root)
+}
+
+func pruneDeniedForAgent(parent *cobra.Command) {
+	var toRemove []*cobra.Command
+	var toAdd []*cobra.Command
+	for _, child := range parent.Commands() {
+		if cmdutil.GetAgentSupport(child).Denies() {
+			toRemove = append(toRemove, child)
+			toAdd = append(toAdd, agentPrincipalStubFrom(child))
+			continue
+		}
+		pruneDeniedForAgent(child)
+	}
+	if len(toRemove) > 0 {
+		parent.RemoveCommand(toRemove...)
+		parent.AddCommand(toAdd...)
+	}
+}
+
+// agentPrincipalStubFrom mirrors strictModeStubFrom, with two differences that
+// matter to whoever reads the refusal.
+//
+// The recovery hint names no command. Strict mode can point at `config
+// strict-mode` because the user chose that policy and can leave it; an Agent
+// Employee cannot change the credential it carries, so sending it to a config
+// command would send it somewhere that cannot help. It gets the same advice the
+// run-time refusal gives instead, picking between the two wordings the same way
+// CheckAgentEligibility does.
+//
+// The denial layer is agent_principal rather than strict_mode, so an observer
+// reading detail.layer can tell a policy the profile picked from a boundary
+// that came with its credential.
+func agentPrincipalStubFrom(child *cobra.Command) *cobra.Command {
+	stubMessage := cmdutil.AgentRefusalMessage(cmdpolicy.CanonicalPath(child))
+	// Only the reason is decided here -- from the markers the mount left on the
+	// command -- and cmdutil turns it into the same sentence and advice the
+	// run-time gate would have given.
+	eligibilityHint := agentRefusalReasonFor(child).Hint()
+	denial := cmdpolicy.Denial{
+		Layer:        cmdpolicy.LayerAgentPrincipal,
+		PolicySource: "agent-support",
+		ReasonCode:   "agent_not_supported",
+		Reason:       stubMessage,
+	}
+	// Preserve the original annotations and help text so audit / compliance
+	// observers can still see what was withheld, then stamp the denial on top.
+	annotations := make(map[string]string, len(child.Annotations)+2)
+	for k, v := range child.Annotations {
+		annotations[k] = v
+	}
+	annotations[cmdpolicy.AnnotationDenialLayer] = cmdpolicy.LayerAgentPrincipal
+	annotations[cmdpolicy.AnnotationDenialSource] = "agent-support"
+
+	// Args + PersistentPreRunE overrides mirror strictModeStubFrom; see the
+	// reasoning there.
+	return &cobra.Command{
+		Use:                child.Use,
+		Aliases:            append([]string(nil), child.Aliases...),
+		Short:              child.Short,
+		Long:               child.Long,
+		Hidden:             true,
+		DisableFlagParsing: true,
+		Args:               cobra.ArbitraryArgs,
+		Annotations:        annotations,
+		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
+			c.SilenceUsage = true
+			return nil
+		},
+		RunE: func(c *cobra.Command, _ []string) error {
+			cd := cmdpolicy.CommandDeniedFromDenial(cmdpolicy.CanonicalPath(c), denial)
+			hint := recovery.Join("; ",
+				recovery.Text(fmt.Sprintf("denied by %s policy (reason_code %s)", cd.Layer, cd.ReasonCode)),
+				recovery.Text(eligibilityHint),
+			)
+			return recovery.Annotate(
+				errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", stubMessage).
+					WithHint("%s", hint.String()).
+					WithCause(cd),
+				hint,
+			)
+		},
+	}
+}
+
+// agentRefusalReasonFor says why a command is being withheld, reading the
+// markers its mount left behind: a shortcut is judged by its recorded verdict,
+// which no capability grant can change; a generated method by whether its
+// service carries any agent marker at all. The mapping lives here because only
+// the tree build can see those markers -- the wording it selects does not.
+func agentRefusalReasonFor(cmd *cobra.Command) cmdutil.AgentRefusalReason {
+	switch {
+	case isShortcutCommand(cmd):
+		return cmdutil.AgentRefusedShortcutVerdict
+	case cmdutil.AgentServiceAnnotated(cmd):
+		return cmdutil.AgentRefusedUnmarkedMethod
+	default:
+		return cmdutil.AgentRefusedUnmarkedService
+	}
+}
+
+// isShortcutCommand reports whether the command was mounted as a shortcut, by
+// the source marker the mount stamps on it.
+func isShortcutCommand(cmd *cobra.Command) bool {
+	source, ok := cmdmeta.SourceOf(cmd)
+	return ok && source == cmdmeta.SourceShortcut
 }
 
 func strictModeStubFrom(child *cobra.Command, mode core.StrictMode) *cobra.Command {

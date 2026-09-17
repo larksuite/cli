@@ -23,6 +23,17 @@ import (
 	shortcutcommon "github.com/larksuite/cli/shortcuts/common"
 )
 
+// requireInteractiveAuthProfile gates the commands that drive an interactive
+// human authorization flow. Both conditions it checks are local: a credential
+// source that owns authorization elsewhere, and a profile whose principal is an
+// Agent Employee rather than a person.
+func requireInteractiveAuthProfile(ctx context.Context, f *cmdutil.Factory, command string) error {
+	if err := f.RequireBuiltinCredentialProvider(ctx, command); err != nil {
+		return err
+	}
+	return f.RequireHumanCredential(ctx, command)
+}
+
 // NewCmdAuth creates the auth command with subcommands.
 func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 	return newCmdAuth(f, nil, shortcuts.AllShortcuts())
@@ -51,10 +62,11 @@ func newCmdAuth(f *cmdutil.Factory, projector *recovery.Projector, registered []
 			// PersistentPreRun[E] found walking up the chain, so the root-level
 			// SilenceUsage=true would be skipped without this line.
 			cmd.SilenceUsage = true
-			// cmd.Name() returns the subcommand name (e.g. "login"), not "auth".
-			// Pass "auth" as a literal so the error message reads
-			// `"auth" is not supported: ...`
-			return f.RequireBuiltinCredentialProvider(cmd.Context(), "auth")
+			// Credential-source and profile gating lives on the subcommands that
+			// actually need it. Blocking here instead would also take down
+			// `auth status` and `auth list`, which are read-only and remain
+			// useful precisely when credentials come from somewhere unusual.
+			return nil
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)

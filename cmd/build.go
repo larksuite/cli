@@ -537,14 +537,27 @@ func assembleInternal(
 
 	classifyRootCommands(rootCmd)
 
+	if mode := f.ResolveStrictMode(ctx); mode.IsActive() && !cfg.skipStrictMode {
+		pruneForStrictMode(rootCmd, mode)
+	}
+	// Withholding what an Agent Employee cannot run belongs here for the same
+	// reason strict mode does: help, completion and any other consumer reads
+	// the tree, and the run-time gate cannot reach them. It shares
+	// skipStrictMode because both are identity boundaries the manifest export
+	// has to see past; the run-time gate stays either way, so skipping this
+	// hides nothing that could then be executed.
+	if !cfg.skipStrictMode && f.IsAgentPrincipal(ctx) {
+		pruneForAgentPrincipal(rootCmd)
+	}
+
+	// The guard runs after both prune passes on purpose. It gives every pure
+	// group a RunE, and pruneEmpty tells a group from a leaf by the absence of
+	// one; installed first, it would make every emptied service look like a
+	// runnable command and leave it advertised in help with nothing inside.
 	installUnknownSubcommandGuard(rootCmd)
 	// Bare `lark-cli` in an interactive terminal offers an interactive upgrade
 	// before printing help; non-bare invocations and non-TTY are unaffected.
 	installRootUpgradePrompt(f, rootCmd, runtime.recovery)
-
-	if mode := f.ResolveStrictMode(ctx); mode.IsActive() && !cfg.skipStrictMode {
-		pruneForStrictMode(rootCmd, mode)
-	}
 
 	var (
 		installResult    *internalplatform.InstallResult

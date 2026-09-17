@@ -13,7 +13,21 @@ const (
 	// is "policy" — the package name "cmdpolicy" matches it. This
 	// replaces the older "pruning" label.
 	LayerPolicy = "policy"
+	// LayerAgentPrincipal labels a command withheld from an Agent Employee
+	// because the shipped verdict denies it. It is distinct from
+	// LayerStrictMode: strict mode is a policy the profile chose and can
+	// leave, while this one follows from the credential the profile carries
+	// and no local setting can lift it.
+	LayerAgentPrincipal = "agent_principal"
 )
+
+// CredentialHardLayer reports whether a layer denies on grounds the user layer
+// may neither relax nor relabel. Both such layers are decided from the active
+// credential before any rule runs, so a yaml or plugin rule matching the same
+// path must leave the stub alone.
+func CredentialHardLayer(layer string) bool {
+	return layer == LayerStrictMode || layer == LayerAgentPrincipal
+}
 
 // Denial is the merged record for a single rejected command path. It
 // is distinct from the user-layer-only Decision type: Denial only

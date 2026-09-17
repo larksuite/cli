@@ -7,13 +7,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/errclass"
 )
+
+// newScopeTestFactory returns a Factory whose credential resolution always
+// reports grantedScopes, whatever identity or app is asked about.
+func newScopeTestFactory(t *testing.T, grantedScopes string) *cmdutil.Factory {
+	t.Helper()
+	return &cmdutil.Factory{
+		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{
+			result: &credential.TokenResult{Token: "t", Scopes: grantedScopes},
+		}, nil),
+	}
+}
 
 type scopeCheckTokenResolver struct {
 	result *credential.TokenResult
@@ -166,5 +179,91 @@ func TestCheckShortcutScopes_IgnoresNonContextTokenErrors(t *testing.T) {
 	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{AppID: "app-1"}, []string{"im:message:read"})
 	if err != nil {
 		t.Fatalf("checkShortcutScopes() error = %v, want nil", err)
+	}
+}
+
+func TestCheckShortcutScopesCarriesCredentialKindForAgent(t *testing.T) {
+	cfg := &core.CliConfig{
+		AppID:          "cli_test",
+		Brand:          core.BrandFeishu,
+		CredentialKind: core.CredentialAAT,
+	}
+	f := newScopeTestFactory(t, "docs:doc")
+
+	err := checkShortcutScopes(f, context.Background(), core.AsUser, cfg, []string{"docs:doc:readonly"})
+	if err == nil {
+		t.Fatal("expected a missing-scope error")
+	}
+
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("want *errs.PermissionError, got %T", err)
+	}
+	if permErr.Subtype != errs.SubtypeMissingScope {
+		t.Errorf("subtype = %q, want %q", permErr.Subtype, errs.SubtypeMissingScope)
+	}
+	if strings.Contains(permErr.Hint, "auth login") {
+		t.Errorf("Agent Employee hint must not mention auth login, got: %s", permErr.Hint)
+	}
+	if !strings.Contains(permErr.Hint, "Agent platform") {
+		t.Errorf("hint should point at the Agent platform, got: %s", permErr.Hint)
+	}
+	if !strings.Contains(permErr.Hint, "docs:doc:readonly") {
+		t.Errorf("hint should name the missing scope, got: %s", permErr.Hint)
+	}
+}
+
+func TestCheckShortcutScopesKeepsUserRecoveryForUAT(t *testing.T) {
+	cfg := &core.CliConfig{
+		AppID:          "cli_test",
+		Brand:          core.BrandFeishu,
+		CredentialKind: core.CredentialUAT,
+	}
+	f := newScopeTestFactory(t, "docs:doc")
+
+	err := checkShortcutScopes(f, context.Background(), core.AsUser, cfg, []string{"docs:doc:readonly"})
+	if err == nil {
+		t.Fatal("expected a missing-scope error")
+	}
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("want *errs.PermissionError, got %T", err)
+	}
+	// Hint is filled by the root presenter; render the recorded facts the way it does.
+	if permErr.Hint != "" {
+		t.Errorf("checkShortcutScopes must leave Hint for the root presenter to fill in, got: %s", permErr.Hint)
+	}
+	rendered := errclass.PermissionRecovery(permErr.MissingScopes, permErr.Identity, permErr.Subtype, permErr.ConsoleURL).String()
+	if !strings.Contains(rendered, "auth login") {
+		t.Errorf("UAT facts must still recover to auth login once presented, got: %s", rendered)
+	}
+	// Message too: a hint-only assertion would miss a rewrite.
+	if permErr.Message != "missing required scope(s): docs:doc:readonly" {
+		t.Errorf("UAT message must stay byte-identical, got: %s", permErr.Message)
+	}
+}
+
+func TestCheckShortcutScopesKeepsBotEnvelopeWithoutConsoleLink(t *testing.T) {
+	cfg := &core.CliConfig{
+		AppID:          "cli_test",
+		Brand:          core.BrandFeishu,
+		CredentialKind: core.CredentialTAT,
+	}
+	f := newScopeTestFactory(t, "im:chat")
+
+	err := checkShortcutScopes(f, context.Background(), core.AsBot, cfg, []string{"im:message:send_as_bot"})
+	if err == nil {
+		t.Fatal("expected a missing-scope error")
+	}
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("want *errs.PermissionError, got %T", err)
+	}
+	// errclass would add a console link on this lane.
+	if permErr.ConsoleURL != "" {
+		t.Errorf("ConsoleURL must stay empty on the shortcut bot lane, got: %s", permErr.ConsoleURL)
+	}
+	if strings.Contains(permErr.Hint, "scope-apply") {
+		t.Errorf("bot hint must not gain a console deep link, got: %s", permErr.Hint)
 	}
 }

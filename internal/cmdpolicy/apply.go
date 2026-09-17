@@ -152,17 +152,17 @@ func IsPluginPolicySource(source string) bool {
 // strict-mode early-return so callers can compute an accurate "commands
 // modified" count.
 func installDenyStub(cmd *cobra.Command, path string, d Denial) bool {
-	// strict-mode wins over user-layer pruning. If the command was
-	// already replaced by a strict-mode stub (cmd/prune.go::strictModeStubFrom
-	// writes layer=strict_mode), do NOT overwrite -- the user-layer
-	// rule cannot relax or relabel a credential-hard boundary.
+	// A credential-hard layer wins over user-layer pruning. If the command was
+	// already replaced by such a stub (cmd/prune.go::strictModeStubFrom writes
+	// layer=strict_mode, agentPrincipalStubFrom writes layer=agent_principal),
+	// do NOT overwrite -- the user-layer rule cannot relax or relabel it.
 	//
 	// Behaviour without this guard (pre-fix): a user yaml rule matching
 	// a strict-mode stub's path would replace the RunE with the pruning
 	// denyStub, hiding the original strict-mode error message AND
 	// re-labelling detail.layer from "strict_mode" to "policy".
 	if cmd.Annotations != nil &&
-		cmd.Annotations[AnnotationDenialLayer] == LayerStrictMode {
+		CredentialHardLayer(cmd.Annotations[AnnotationDenialLayer]) {
 		return false
 	}
 	cmd.Hidden = true

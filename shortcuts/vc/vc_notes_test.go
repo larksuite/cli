@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -381,6 +382,34 @@ func TestNotes_BatchLimit(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "too many IDs") {
 		t.Errorf("expected 'too many IDs' error, got: %v", err)
+	}
+}
+
+// TestNotes_Validate_AgentEmployeeMissingScopeRoutesToAgentPlatform pins that
+// this shortcut's own scope check routes an Agent Employee through errclass.
+// The granted scope covers the static declaration but not the meeting-ids branch.
+func TestNotes_Validate_AgentEmployeeMissingScopeRoutesToAgentPlatform(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.CredentialKind = core.CredentialAAT
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+	f.Credential = credential.NewCredentialProvider(nil, nil, &recordingScopedTokenResolver{
+		scopes: "vc:note:read",
+	}, nil)
+
+	err := mountAndRun(t, VCNotes, []string{"+notes", "--meeting-ids", "m001", "--as", "user"}, f, nil)
+	if err == nil {
+		t.Fatal("expected missing_scope error, got nil")
+	}
+
+	var pe *errs.PermissionError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	if strings.Contains(pe.Hint, "auth login") {
+		t.Fatalf("Agent Employee hint must not mention auth login, got: %s", pe.Hint)
+	}
+	if !strings.Contains(pe.Hint, "Agent platform") {
+		t.Fatalf("hint should point at the Agent platform, got: %s", pe.Hint)
 	}
 }
 

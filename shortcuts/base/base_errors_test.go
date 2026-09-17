@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestErrorDetailHelpers(t *testing.T) {
@@ -25,7 +27,7 @@ func TestErrorDetailHelpers(t *testing.T) {
 }
 
 func TestHandleBaseAPIResultErrorPaths(t *testing.T) {
-	if _, err := handleBaseAPIResultAny(nil, assertErr{}, "list fields"); err == nil || !strings.Contains(err.Error(), "list fields") {
+	if _, err := handleBaseAPIResultAny(nil, nil, assertErr{}, "list fields"); err == nil || !strings.Contains(err.Error(), "list fields") {
 		t.Fatalf("err=%v", err)
 	}
 	result := map[string]interface{}{
@@ -35,7 +37,7 @@ func TestHandleBaseAPIResultErrorPaths(t *testing.T) {
 			"error": map[string]interface{}{"message": "invalid filter", "hint": "check field name"},
 		},
 	}
-	if _, err := handleBaseAPIResultAny(result, nil, "set filter"); err == nil || !strings.Contains(err.Error(), "invalid filter") {
+	if _, err := handleBaseAPIResultAny(nil, result, nil, "set filter"); err == nil || !strings.Contains(err.Error(), "invalid filter") {
 		t.Fatalf("err=%v", err)
 	} else {
 		p, ok := errs.ProblemOf(err)
@@ -46,7 +48,7 @@ func TestHandleBaseAPIResultErrorPaths(t *testing.T) {
 			t.Fatalf("hint=%q", p.Hint)
 		}
 	}
-	if _, err := handleBaseAPIResult(result, nil, "set filter"); err == nil {
+	if _, err := handleBaseAPIResult(nil, result, nil, "set filter"); err == nil {
 		t.Fatalf("expected error")
 	}
 }
@@ -74,7 +76,7 @@ func TestHandleBaseAPIResultPromotesBaseErrorFields(t *testing.T) {
 		},
 	}
 
-	_, err := handleBaseAPIResultAny(result, nil, "API call failed")
+	_, err := handleBaseAPIResultAny(nil, result, nil, "API call failed")
 	p, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got %T %v", err, err)
@@ -105,7 +107,7 @@ func TestHandleBaseAPIResultClassifiesKnownPermissionCode(t *testing.T) {
 		},
 	}
 
-	_, err := handleBaseAPIResultAny(result, nil, "API call failed")
+	_, err := handleBaseAPIResultAny(nil, result, nil, "API call failed")
 	p, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got %T %v", err, err)
@@ -126,7 +128,7 @@ func TestAttachBaseResponseLogIDFromHeader(t *testing.T) {
 	}
 	attachBaseErrorLogID(result, "20260508170000000000000000000000")
 
-	_, err := handleBaseAPIResultAny(result, nil, "API call failed")
+	_, err := handleBaseAPIResultAny(nil, result, nil, "API call failed")
 	p, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got %T %v", err, err)
@@ -139,7 +141,7 @@ func TestAttachBaseResponseLogIDFromHeader(t *testing.T) {
 func TestHandleBaseAPIResultRejectsNonNumericCode(t *testing.T) {
 	for _, code := range []interface{}{"oops", map[string]interface{}{}, nil} {
 		result := map[string]interface{}{"code": code, "msg": "weird envelope"}
-		_, err := handleBaseAPIResultAny(result, nil, "list tables")
+		_, err := handleBaseAPIResultAny(nil, result, nil, "list tables")
 		p, ok := errs.ProblemOf(err)
 		if !ok {
 			t.Fatalf("code=%#v: expected typed error, got %T %v", code, err, err)
@@ -213,5 +215,43 @@ func assertProblemCode(t *testing.T, err error, code int, messageParts ...string
 		if !strings.Contains(p.Message, part) {
 			t.Fatalf("message=%q missing %q", p.Message, part)
 		}
+	}
+}
+
+// Every Base v3 shortcut is available to an Agent Employee, so an authorization
+// failure there has to route recovery to the Agent platform: an Agent Employee
+// has nobody to complete a device login, and `auth login` refuses its profile
+// outright. The human recovery must stay untouched for everyone else.
+func TestHandleBaseAPIResultRoutesRecoveryByCredentialKind(t *testing.T) {
+	envelope := func() map[string]interface{} {
+		return map[string]interface{}{"code": 99991679, "msg": "user access token invalid"}
+	}
+	runtimeFor := func(kind core.CredentialKind) *common.RuntimeContext {
+		return &common.RuntimeContext{Config: &core.CliConfig{
+			AppID:          "cli_base_agent",
+			Brand:          core.BrandFeishu,
+			CredentialKind: kind,
+		}}
+	}
+
+	_, err := handleBaseAPIResultAny(runtimeFor(core.CredentialAAT), envelope(), nil, "API call failed")
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T %v", err, err)
+	}
+	if strings.Contains(p.Hint, "auth login") {
+		t.Fatalf("Agent Employee was sent to the human device login: %q", p.Hint)
+	}
+	if !strings.Contains(p.Hint, "Agent Employee") {
+		t.Fatalf("hint does not name the Agent platform: %q", p.Hint)
+	}
+
+	_, err = handleBaseAPIResultAny(runtimeFor(""), envelope(), nil, "API call failed")
+	p, ok = errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T %v", err, err)
+	}
+	if !strings.Contains(p.Hint, "auth login") {
+		t.Fatalf("a human profile must keep the device-login recovery: %q", p.Hint)
 	}
 }

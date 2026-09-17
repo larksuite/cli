@@ -100,12 +100,26 @@ func authListRunWithRecovery(opts *ListOptions, projector *recovery.Projector) e
 		return err
 	}
 	if len(app.Users) == 0 {
+		// An Agent Employee profile has no human session by design: its principal
+		// is authorized on the Agent platform and is deliberately kept out of the
+		// user list. Pointing at auth login here would send the caller to a
+		// command that refuses this profile outright.
+		agentProfile := app.CredentialKind == core.CredentialAAT
 		if opts.JSON {
+			reason := "not_logged_in"
+			if agentProfile {
+				reason = "agent_employee_profile"
+			}
 			output.PrintJson(f.IOStreams.Out, map[string]interface{}{
 				"ok":     true,
 				"users":  []map[string]interface{}{},
-				"reason": "not_logged_in",
+				"reason": reason,
 			})
+			return nil
+		}
+		if agentProfile {
+			fmt.Fprintln(f.IOStreams.ErrOut,
+				"No human sessions. This profile runs as an Agent Employee, whose principal is managed on the Agent platform and is not listed here.")
 			return nil
 		}
 		fmt.Fprint(f.IOStreams.ErrOut, "No logged-in users.")

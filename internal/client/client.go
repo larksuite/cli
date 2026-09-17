@@ -47,12 +47,15 @@ type APIClient struct {
 	Credential *credential.CredentialProvider
 }
 
-func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (*credential.TokenResult, error) {
-	result, err := c.Credential.ResolveToken(ctx, credential.NewTokenSpec(as, c.Config.AppID))
+func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (*credential.ResolvedAccess, error) {
+	result, err := c.Credential.ResolveAccess(ctx, credential.AccessSpec{
+		Identity: as,
+		AppID:    c.Config.AppID,
+	})
 	if err != nil {
 		var unavailableErr *credential.TokenUnavailableError
 		if errors.As(err, &unavailableErr) {
-			return nil, newTokenMissingError(as, unavailableErr)
+			return nil, newTokenMissingError(as, c.credentialKind(), unavailableErr)
 		}
 		// The credential chain already emits a typed *errs.AuthenticationError
 		// for the missing-UAT case (e.g. UAT refresh returned
@@ -61,10 +64,20 @@ func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (*
 		// both preserve its authentication category and exit 3.
 		return nil, err
 	}
-	if result.Token == "" {
-		return nil, newTokenMissingError(as, nil)
+	if result.Value == "" {
+		return nil, newTokenMissingError(as, c.credentialKind(), nil)
 	}
 	return result, nil
+}
+
+// credentialKind reports how the active profile is classified, so a
+// missing-credential error can point at the right recovery instead of telling
+// an Agent Employee to run a human login flow.
+func (c *APIClient) credentialKind() core.CredentialKind {
+	if c == nil || c.Config == nil {
+		return ""
+	}
+	return c.Config.CredentialKind
 }
 
 // newTokenMissingError builds the typed *errs.AuthenticationError that
@@ -72,10 +85,16 @@ func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (*
 // requested identity. cause is the underlying credential-chain error (or nil
 // for the defensive empty-token branch) and is preserved for errors.Is /
 // errors.Unwrap traversal without being serialized on the wire.
-func newTokenMissingError(as core.Identity, cause error) error {
+func newTokenMissingError(as core.Identity, kind core.CredentialKind, cause error) error {
 	e := errs.NewAuthenticationError(errs.SubtypeTokenMissing,
 		"no access token available for %s", as).
 		WithCause(cause)
+	if kind == core.CredentialAAT {
+		// An Agent Employee has no human behind it to authorize anything, so
+		// pointing at the login flow would send the user somewhere that cannot
+		// fix this. The owner or a tenant admin has to act instead.
+		return e.WithHint("this profile runs as an Agent Employee: check that the Agent is enabled and its app credentials are current, then rerun `lark-cli config init`")
+	}
 	if as == core.AsUser {
 		return recovery.Attach(e, recovery.UserAuthorization())
 	}
@@ -138,10 +157,10 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 	}
 	if as.IsBot() {
 		req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant}
-		opts = append(opts, larkcore.WithTenantAccessToken(token.Token))
+		opts = append(opts, larkcore.WithTenantAccessToken(token.Value))
 	} else {
 		req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeUser}
-		opts = append(opts, larkcore.WithUserAccessToken(token.Token))
+		opts = append(opts, larkcore.WithUserAccessToken(token.Value))
 	}
 
 	opts = append(opts, extraOpts...)
@@ -213,7 +232,7 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	if contentType != "" {
 		httpReq.Header.Set("Content-Type", contentType)
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+token.Token)
+	httpReq.Header.Set("Authorization", "Bearer "+token.Value)
 
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
@@ -537,6 +556,7 @@ func (c *APIClient) CheckResponse(result interface{}, identity core.Identity) er
 	if c != nil && c.Config != nil {
 		cc.Brand = string(c.Config.Brand)
 		cc.AppID = c.Config.AppID
+		cc.CredentialKind = string(c.Config.CredentialKind)
 	}
 	return errclass.BuildAPIError(resultMap, cc)
 }

@@ -21,6 +21,11 @@ func TestIdentityTokenBijection(t *testing.T) {
 	if id, ok := IdentityForToken("user"); id != "user" || !ok {
 		t.Errorf("IdentityForToken(user) = %q,%v want user,true", id, ok)
 	}
+	// agent is not an identity on its own: it folds into user only for an
+	// Agent Employee principal, which is IdentitiesFor's job, not this one's.
+	if id, ok := IdentityForToken("agent"); id != "" || ok {
+		t.Errorf("IdentityForToken(agent) = %q,%v want \"\",false", id, ok)
+	}
 	if _, ok := IdentityForToken("weird"); ok {
 		t.Error("IdentityForToken(weird) ok=true, want false")
 	}
@@ -57,6 +62,72 @@ func TestMethod_SupportsToken(t *testing.T) {
 	}
 }
 
+func TestMethodSupportsAgent(t *testing.T) {
+	cases := []struct {
+		name   string
+		tokens []Token
+		want   bool
+	}{
+		{"empty is not agent-callable", nil, false},
+		{"user only", []Token{TokenUser}, false},
+		{"tenant and user", []Token{TokenTenant, TokenUser}, false},
+		{"user and agent", []Token{TokenUser, TokenAgent}, true},
+		{"agent alone", []Token{TokenAgent}, true},
+		{"tenant and agent", []Token{TokenTenant, TokenAgent}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := Method{AccessTokens: tc.tokens}
+			if got := m.SupportsAgent(); got != tc.want {
+				t.Errorf("SupportsAgent() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestIdentitiesForFoldsAgentOnlyUnderAgentPrincipal pins the one place the
+// principal enters the token vocabulary. The agent token rides the user wire,
+// so for an Agent Employee it is the user identity; for a human principal it is
+// not an identity at all, or a human profile would be told it may call an
+// endpoint the catalog reserves for agents.
+func TestIdentitiesForFoldsAgentOnlyUnderAgentPrincipal(t *testing.T) {
+	cases := []struct {
+		name      string
+		tokens    []Token
+		wantHuman []string
+		wantAgent []string
+	}{
+		{"agent only", []Token{TokenAgent}, []string{}, []string{"user"}},
+		{"tenant and agent", []Token{TokenTenant, TokenAgent}, []string{"bot"}, []string{"bot", "user"}},
+		{"user and agent", []Token{TokenUser, TokenAgent}, []string{"user"}, []string{"user"}},
+		{"tenant and user", []Token{TokenTenant, TokenUser}, []string{"bot", "user"}, []string{"bot", "user"}},
+		{"unknown only", []Token{"admin"}, []string{}, []string{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := Method{AccessTokens: tc.tokens}
+			if got := m.IdentitiesFor(false); !reflect.DeepEqual(got, tc.wantHuman) {
+				t.Errorf("IdentitiesFor(false) = %v, want %v", got, tc.wantHuman)
+			}
+			if got := m.IdentitiesFor(true); !reflect.DeepEqual(got, tc.wantAgent) {
+				t.Errorf("IdentitiesFor(true) = %v, want %v", got, tc.wantAgent)
+			}
+			if got := m.Identities(); !reflect.DeepEqual(got, tc.wantHuman) {
+				t.Errorf("Identities() = %v, want the human view %v", got, tc.wantHuman)
+			}
+		})
+	}
+	agentOnly := Method{AccessTokens: []Token{TokenAgent}}
+	if !agentOnly.RestrictsIdentity() {
+		t.Error("RestrictsIdentity() should stay true for a non-empty accessTokens")
+	}
+	// Scope collection for a human login is token-side and must not pick up
+	// agent-only methods either.
+	if agentOnly.SupportsToken(TokenUser) {
+		t.Error("agent-only method must NOT support the user token")
+	}
+}
+
 func TestMethod_Identities(t *testing.T) {
 	// tenant->bot, user stays; deduped + name-sorted (so order-independent);
 	// unrecognized dropped; absent tokens -> empty but NON-nil so the envelope
@@ -74,6 +145,9 @@ func TestMethod_Identities(t *testing.T) {
 		{"empty", []Token{}, []string{}},
 		{"nil", nil, []string{}},
 		{"unknown skipped", []Token{"user", "admin"}, []string{"user"}},
+		{"agent only is not a human identity", []Token{"agent"}, []string{}},
+		{"user and agent", []Token{"user", "agent"}, []string{"user"}},
+		{"tenant and agent", []Token{"tenant", "agent"}, []string{"bot"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

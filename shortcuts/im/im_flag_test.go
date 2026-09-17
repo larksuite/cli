@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -626,6 +627,30 @@ func TestCheckFlagRequiredScopesAllowsMissingScopeMetadata(t *testing.T) {
 	}
 	if !strings.Contains(errOut, strings.Join(flagMessageReadScopes, " ")) {
 		t.Fatalf("stderr = %q, want required scopes", errOut)
+	}
+}
+
+// TestCheckFlagRequiredScopesAgentEmployeeRoutesToAgentPlatform pins that this
+// check routes an Agent Employee through errclass: the hint names the Agent
+// platform, never `auth login`.
+func TestCheckFlagRequiredScopesAgentEmployeeRoutesToAgentPlatform(t *testing.T) {
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("checkFlagRequiredScopes should not call API")
+		return nil, nil
+	}))
+	rt.Config.CredentialKind = core.CredentialAAT
+	setRuntimeScopes(t, rt, "im:chat:read")
+
+	err := checkFlagRequiredScopes(context.Background(), rt, flagMessageReadScopes)
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("checkFlagRequiredScopes() error = %T %v, want *errs.PermissionError", err, err)
+	}
+	if strings.Contains(permErr.Hint, "auth login") {
+		t.Fatalf("Agent Employee hint must not mention auth login, got: %s", permErr.Hint)
+	}
+	if !strings.Contains(permErr.Hint, "Agent platform") {
+		t.Fatalf("hint should point at the Agent platform, got: %s", permErr.Hint)
 	}
 }
 

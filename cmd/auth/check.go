@@ -39,6 +39,9 @@ func newCmdAuthCheck(
 		Use:   "check",
 		Short: "Check if current token has specified scopes",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireInteractiveAuthProfile(cmd.Context(), f, "auth check"); err != nil {
+				return err
+			}
 			if runF != nil {
 				return runF(opts)
 			}

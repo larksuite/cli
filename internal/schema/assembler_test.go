@@ -391,7 +391,7 @@ func TestBuildMeta_FullFields(t *testing.T) {
 		"accessTokens": []interface{}{"user", "tenant"},
 		"docUrl":       "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create",
 	}
-	m := buildMeta(meta.FromMap(method))
+	m := buildMeta(meta.FromMap(method), false)
 
 	if m.EnvelopeVersion != "1.0" {
 		t.Errorf("EnvelopeVersion = %q", m.EnvelopeVersion)
@@ -428,7 +428,7 @@ func TestBuildMeta_MissingRiskDefaultsToRead(t *testing.T) {
 		"accessTokens": []interface{}{"user"},
 		// no risk field
 	}
-	m := buildMeta(meta.FromMap(method))
+	m := buildMeta(meta.FromMap(method), false)
 	if m.Risk != "read" {
 		t.Errorf("Risk = %q, want \"read\" (default for missing risk)", m.Risk)
 	}
@@ -436,7 +436,7 @@ func TestBuildMeta_MissingRiskDefaultsToRead(t *testing.T) {
 
 func TestBuildMeta_RequiredScopesPresent(t *testing.T) {
 	method := loadMethodFromCatalog(t, "mail", []string{"user_mailbox", "messages"}, "get")
-	m := buildMeta(method)
+	m := buildMeta(method, false)
 	if len(m.RequiredScopes) == 0 {
 		t.Errorf("RequiredScopes should be non-empty for mail.user_mailbox.messages.get")
 	}
@@ -486,7 +486,7 @@ func TestBuildMeta_AffordanceFromMethod(t *testing.T) {
 			"use_when": []interface{}{"trigger"},
 		},
 	}
-	m := buildMeta(meta.FromMap(method))
+	m := buildMeta(meta.FromMap(method), false)
 	if m.Affordance == nil {
 		t.Fatal("Affordance should be populated from method[\"affordance\"]")
 	}
@@ -527,7 +527,7 @@ func TestBuildMeta_MissingDocURLOmitted(t *testing.T) {
 		"risk":         "read",
 		// no docUrl
 	}
-	m := buildMeta(meta.FromMap(method))
+	m := buildMeta(meta.FromMap(method), false)
 	if m.DocURL != "" {
 		t.Errorf("DocURL = %q, want empty (will be omitempty)", m.DocURL)
 	}
@@ -558,7 +558,7 @@ func TestBuildOutputSchema_EmptyResponseBody(t *testing.T) {
 // command layer feeds Envelope.
 func synthEnvelope(serviceName string, resourcePath []string, m meta.Method) Envelope {
 	guidance := affordance.NewResolver(affordance.Source(), apicatalog.Catalog{})
-	return EnvelopeOf(guidance, apicatalog.MethodRef{Service: meta.Service{Name: serviceName}, ResourcePath: resourcePath, Method: m})
+	return EnvelopeOf(guidance, apicatalog.MethodRef{Service: meta.Service{Name: serviceName}, ResourcePath: resourcePath, Method: m}, false)
 }
 
 func TestAssembleEnvelope_ReactionsList_FullStructure(t *testing.T) {
@@ -606,7 +606,7 @@ func TestAssembleEnvelope_JSONIsStable(t *testing.T) {
 
 func TestAssembleService_Im(t *testing.T) {
 	svc, _ := testFullCatalog(t).Service("im")
-	envs := Envelopes(nil, apicatalog.ServiceMethods(svc, nil))
+	envs := Envelopes(nil, apicatalog.ServiceMethods(svc, nil), false)
 	if len(envs) == 0 {
 		t.Fatal("expected non-empty envelopes for service im")
 	}
@@ -634,7 +634,7 @@ func TestAssembleService_FilterByAccessToken(t *testing.T) {
 			}
 		}
 		return false
-	}))
+	}), false)
 	// Every envelope's _meta.access_tokens must contain "bot"
 	for _, e := range envs {
 		found := false
@@ -651,7 +651,7 @@ func TestAssembleService_FilterByAccessToken(t *testing.T) {
 }
 
 func TestAssembleAll_AtLeast193(t *testing.T) {
-	envs := Envelopes(nil, testFullCatalog(t).WalkMethods(nil))
+	envs := Envelopes(nil, testFullCatalog(t).WalkMethods(nil), false)
 	// Envelope assembly walks the committed Catalog Snapshot, so the count is
 	// stable across machines.
 	if len(envs) < 193 {
@@ -697,4 +697,15 @@ func convertProperty(fieldMap map[string]interface{}, _ string) Property {
 	var f meta.Field
 	_ = json.Unmarshal(b, &f)
 	return Convert(f)
+}
+
+// TestEnvelopesEmptyMarshalsAsArray pins that an empty listing serialises to [], not null.
+func TestEnvelopesEmptyMarshalsAsArray(t *testing.T) {
+	encoded, err := json.Marshal(Envelopes(nil, nil, false))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if got := string(encoded); got != "[]" {
+		t.Errorf("Envelopes(nil, nil, false) marshals to %s, want []", got)
+	}
 }

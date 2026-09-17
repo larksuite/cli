@@ -29,7 +29,15 @@ const (
 	StatusNeedsRefresh  = "needs_refresh"
 	StatusVerifyFailed  = "verify_failed"
 	StatusError         = "error"
+	// StatusUnavailable marks an identity the active profile can never use, as
+	// opposed to one that is merely not set up yet.
+	StatusUnavailable = "unavailable"
 )
+
+// PrincipalAgentEmployee names the subject kind behind an Agent Employee
+// credential. A human principal is left unlabelled so existing output shapes
+// are unchanged.
+const PrincipalAgentEmployee = "agent_employee"
 
 // verifyTimeout bounds each network call made during --verify so that a
 // hanging server cannot wedge `auth status --verify` or `doctor`. Mirrors
@@ -40,26 +48,35 @@ const verifyTimeout = 10 * time.Second
 type Result struct {
 	Bot  Identity `json:"bot"`
 	User Identity `json:"user"`
+	// Credential names which credential governs the active profile. Empty for
+	// profiles that predate classification, so existing output is unchanged.
+	Credential string `json:"credential,omitempty"`
+	// Principal names what kind of subject that credential belongs to.
+	Principal string `json:"principal,omitempty"`
 }
 
 // Identity is a single identity diagnostic result.
 type Identity struct {
-	Status           string        `json:"status"`
-	Available        bool          `json:"available"`
-	Verified         *bool         `json:"verified,omitempty"`
-	Message          string        `json:"message,omitempty"`
-	Hint             string        `json:"hint,omitempty"`
-	Error            *errs.Problem `json:"error,omitempty"`
-	OpenID           string        `json:"openId,omitempty"`
-	AppName          string        `json:"appName,omitempty"`
-	UserName         string        `json:"userName,omitempty"`
-	TokenStatus      string        `json:"tokenStatus,omitempty"`
-	Scope            string        `json:"scope,omitempty"`
-	ExpiresAt        string        `json:"expiresAt,omitempty"`
-	RefreshExpiresAt string        `json:"refreshExpiresAt,omitempty"`
-	GrantedAt        string        `json:"grantedAt,omitempty"`
-	recoveryTarget   recovery.Target
-	recoveryError    error
+	Status    string `json:"status"`
+	Available bool   `json:"available"`
+	Verified  *bool  `json:"verified,omitempty"`
+	// VerificationSource records how a --verify result was established. It
+	// distinguishes "this CLI checked with the server" from "an external
+	// provider said so", which are not the same assurance.
+	VerificationSource string        `json:"verificationSource,omitempty"`
+	Message            string        `json:"message,omitempty"`
+	Hint               string        `json:"hint,omitempty"`
+	Error              *errs.Problem `json:"error,omitempty"`
+	OpenID             string        `json:"openId,omitempty"`
+	AppName            string        `json:"appName,omitempty"`
+	UserName           string        `json:"userName,omitempty"`
+	TokenStatus        string        `json:"tokenStatus,omitempty"`
+	Scope              string        `json:"scope,omitempty"`
+	ExpiresAt          string        `json:"expiresAt,omitempty"`
+	RefreshExpiresAt   string        `json:"refreshExpiresAt,omitempty"`
+	GrantedAt          string        `json:"grantedAt,omitempty"`
+	recoveryTarget     recovery.Target
+	recoveryError      error
 }
 
 // withCommandRecovery binds user-facing recovery text to the command it
@@ -95,11 +112,22 @@ func FilterRecovery(result Result, projector *recovery.Projector) Result {
 	return result
 }
 
+// Inspect reports identity readiness without acquiring any credential: no
+// mint, no Introspection, no credential-storage writes. It is the entry point
+// for commands whose whole job is to describe the current state, where doing
+// otherwise would mean checking your status changes it.
+func Inspect(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) Result {
+	return Diagnose(ctx, f, cfg, false)
+}
+
 // Diagnose checks bot and user identities separately. When verify is false,
 // it only reports local readiness and skips server calls.
 func Diagnose(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, verify bool) Result {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if cfg != nil && cfg.CredentialKind == core.CredentialAAT {
+		return diagnoseAgent(ctx, f, cfg, verify)
 	}
 	// An external provider mints tokens on demand and blocks interactive auth,
 	// so the built-in keychain heuristics and "auth login" hints don't apply.
@@ -110,6 +138,150 @@ func Diagnose(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, veri
 		Bot:  diagnoseBot(ctx, f, cfg, verify),
 		User: diagnoseUser(ctx, f, cfg, verify),
 	}
+}
+
+// diagnoseAgent reports an Agent Employee profile. Two things make it different
+// from a human profile: bot is not merely unconfigured but structurally
+// unavailable, and there is no login state to report — the credential is minted
+// on demand, so a cold cache is normal rather than a problem.
+func diagnoseAgent(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, verify bool) Result {
+	// An externally served Agent Employee has no entry in the CLI-owned cache,
+	// and any entry that happens to sit under the same app id belongs to an
+	// unrelated credential. Reading it would report someone else's expiry.
+	provider := activeExternalProvider(ctx, f)
+	result := Result{
+		Credential: string(core.CredentialAAT),
+		Principal:  PrincipalAgentEmployee,
+		Bot: Identity{
+			Status:  StatusUnavailable,
+			Message: "Bot identity: unavailable (this profile's credentials belong to an Agent Employee, which has no tenant lane)",
+			Hint:    "use --as user, or configure a separate profile for bot calls",
+		},
+		User: agentUserIdentity(ctx, f, cfg, provider, verify),
+	}
+	return result
+}
+
+func agentUserIdentity(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, provider string, verify bool) Identity {
+	// Only a bound profile must name its principal; an injected credential never does.
+	if cfg.PrincipalOpenID == "" && provider == "" {
+		return withCommandRecovery(Identity{
+			Status:  StatusNotConfigured,
+			Message: "User identity: not configured (Agent Employee profile has no verified principal)",
+		}, recovery.TargetConfig, "run: lark-cli config init --help")
+	}
+
+	id := Identity{
+		Status:    StatusReady,
+		Available: true,
+		OpenID:    cfg.PrincipalOpenID,
+		Message:   "User identity: ready (Agent Employee)",
+	}
+	switch {
+	case provider != "":
+		// The credential lives in the external system, so there is no local
+		// lifetime to report and nothing here to peek at.
+		id.Message = "User identity: ready (Agent Employee, provided by " + provider + ")"
+	case f != nil && f.Keychain != nil:
+		// Reading the cache is a peek, not an acquisition: it never mints, renews
+		// or writes. Without it the command could not answer how long the
+		// credential in hand still lasts, which is the main thing a user checks
+		// status for.
+		token, status := larkauth.InspectStoredAAT(f.Keychain, cfg.AppID, cfg.PrincipalOpenID, time.Now())
+		id.TokenStatus = status
+		if token != nil {
+			id.ExpiresAt = formatMillis(token.ExpiresAt)
+			id.GrantedAt = formatMillis(token.GrantedAt)
+		}
+		switch status {
+		case larkauth.AATStatusAbsent:
+			id.Message = "User identity: ready (Agent Employee; a token will be minted on first use)"
+		case larkauth.AATStatusUnreadable:
+			// Do not promise a mint: the storage itself is the problem, and the
+			// next real call will fail on it rather than on the credential.
+			id.Message = "User identity: Agent Employee bound, but the local token cache could not be read"
+			id.Hint = "check access to the OS keychain, then retry"
+		}
+	}
+	if !verify {
+		return id
+	}
+	return verifyAgentIdentity(ctx, f, cfg, id)
+}
+
+// verifyAgentIdentity performs the one explicitly requested credential
+// resolution. This is the only diagnostic path allowed to mint or Introspect,
+// because the user asked for a live check rather than a report.
+func verifyAgentIdentity(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, id Identity) Identity {
+	if f == nil || f.Credential == nil {
+		return id
+	}
+	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
+	defer cancel()
+	access, err := f.Credential.ResolveAccess(verifyCtx, credential.AccessSpec{
+		Identity: core.AsUser,
+		AppID:    cfg.AppID,
+	})
+	if err != nil {
+		id.Status = StatusVerifyFailed
+		id.Available = false
+		id.Verified = boolPtr(false)
+		id.Message = "User identity: verification failed: " + err.Error()
+		return id
+	}
+	// Resolution answers from the CLI-owned cache when it can, and a cached
+	// token says nothing about whether the Agent behind it is still enabled.
+	// --verify is the one place the user asked for the server's answer, so a
+	// cache hit pays for one Introspection call on the token in hand. A token
+	// minted in this very resolution was introspected on the way in and is not
+	// asked about twice; a provider-managed credential has nothing local to
+	// introspect with and keeps the provider's weaker claim.
+	if access.CacheState == credential.AccessCacheHit || access.CacheState == credential.AccessCacheStale {
+		if err := introspectAgentAccess(verifyCtx, f, cfg, access); err != nil {
+			id.Status = StatusVerifyFailed
+			id.Available = false
+			id.Verified = boolPtr(false)
+			id.Message = "User identity: verification failed: " + err.Error()
+			return id
+		}
+	}
+	id.Verified = boolPtr(true)
+	id.Status = StatusReady
+	id.Available = true
+	id.OpenID = access.OpenID
+	id.VerificationSource = string(access.VerificationSource)
+	if !access.ExpiresAt.IsZero() {
+		// Render through the same helper as the cached path: the two values sit
+		// side by side in one payload, and printing one in UTC and the other in
+		// local time reads like a discrepancy that isn't there.
+		id.ExpiresAt = formatMillis(access.ExpiresAt.UnixMilli())
+	}
+	id.Message = "User identity: verified (Agent Employee)"
+	return id
+}
+
+// introspectAgentAccess asks the server about the credential actually in hand
+// and holds the answer to the same facts the mint path checks: the token must
+// still belong to an Agent Employee, and to the principal this profile is
+// bound to.
+func introspectAgentAccess(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, access *credential.ResolvedAccess) error {
+	httpClient, err := f.HttpClient()
+	if err != nil {
+		return err
+	}
+	introspection, err := credential.IntrospectAccessToken(ctx, httpClient, cfg.Brand, cfg.AppID, cfg.AppSecret, access.Value)
+	if err != nil {
+		return err
+	}
+	if !introspection.IsAgentEmployee() {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"the configured app no longer resolves to an Agent Employee")
+	}
+	if introspection.OpenID != access.OpenID {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"the Agent Employee principal changed")
+	}
+	return nil
 }
 
 // activeExternalProvider returns the active extension provider name, or "".

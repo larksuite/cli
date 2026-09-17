@@ -80,6 +80,7 @@ func profileRemoveRun(f *cmdutil.Factory, name string) error {
 	for _, user := range users {
 		larkauth.RemoveStoredToken(appId, user.UserOpenId)
 	}
+	_ = larkauth.RemoveStoredAAT(f.Keychain, appId)
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Profile %q removed", removedName))
 	return nil

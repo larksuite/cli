@@ -23,7 +23,12 @@ type ClassifyContext struct {
 	Brand    string // "feishu" | "lark" — drives console_url host
 	AppID    string // placed in console_url
 	Identity string // "user" / "bot" / "" — caller converts core.Identity at the boundary
-	LarkCmd  string // e.g. "drive +delete" — used as Action fallback on CategoryConfirmation arm
+	// CredentialKind is "uat" / "aat" / "tat" / "". It does not change which
+	// identity a call ran as; it selects who is able to resolve an
+	// authorization failure. An Agent Employee has no person behind it, so
+	// recovery that asks a user to authorize is not actionable for one.
+	CredentialKind string
+	LarkCmd        string // e.g. "drive +delete" — used as Action fallback on CategoryConfirmation arm
 }
 
 // BuildAPIError consumes a parsed Lark API response and returns a typed error.
@@ -112,7 +117,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 	case errs.CategoryAuthorization:
 		return buildPermissionError(base, resp, cc)
 	case errs.CategoryAuthentication:
-		return &errs.AuthenticationError{Problem: base}
+		return buildAuthenticationError(base, cc)
 	case errs.CategoryConfig:
 		return buildConfigError(base)
 	case errs.CategoryPolicy:
@@ -300,15 +305,48 @@ func buildPermissionError(p errs.Problem, resp map[string]any, cc ClassifyContex
 // API classifier from locally verified scope facts. Generated service
 // preflight checks use this entrypoint so subtype-specific wire fields and
 // recovery cannot drift from BuildAPIError.
-func NewMissingScopeError(brand, appID, identity string, missing []string) error {
+// It takes the whole ClassifyContext rather than a few loose strings so that a
+// caller cannot quietly omit a field the recovery routing depends on — such as
+// the credential kind, without which an Agent Employee would be told to
+// complete a login flow it has nobody to complete.
+func NewMissingScopeError(cc ClassifyContext, missing []string) error {
 	return buildPermissionErrorFromFacts(
 		errs.Problem{
 			Category: errs.CategoryAuthorization,
 			Subtype:  errs.SubtypeMissingScope,
 		},
 		missing,
-		ClassifyContext{Brand: brand, AppID: appID, Identity: identity},
+		cc,
 	)
+}
+
+// codeUserTokenUnsupported is the server's answer when a user access token is
+// not accepted for an endpoint. It is reused for two situations that call for
+// completely different fixes — a human token that really is invalid or expired,
+// and a token type the endpoint does not take at all — so which recovery it
+// earns depends on which credential was sent.
+const codeUserTokenUnsupported = 99991668
+
+// buildAuthenticationError attaches the recovery that only becomes decidable
+// once the credential kind is known.
+//
+// For an Agent Employee, "user access token not support" never means the
+// credential expired: it was minted and verified moments earlier. It means
+// either that the endpoint does not accept a user-lane credential at all — a
+// dead end for an Agent Employee, which has no tenant lane — or that this Agent
+// was never granted the capability. The message alone points at neither, so
+// without this the reader is left believing their credential is broken and
+// looking in the one place that is fine.
+//
+// A server-supplied detail is more specific than anything decided here, so it
+// is never overwritten.
+func buildAuthenticationError(base errs.Problem, cc ClassifyContext) error {
+	if base.Hint == "" &&
+		base.Code == codeUserTokenUnsupported &&
+		cc.CredentialKind == string(core.CredentialAAT) {
+		base.Hint = "this endpoint may not accept an Agent Employee credential, or this Agent has not been granted the capability: grant it on the Agent platform, and check whether the endpoint requires a tenant credential"
+	}
+	return &errs.AuthenticationError{Problem: base}
 }
 
 func buildPermissionErrorFromFacts(p errs.Problem, missing []string, cc ClassifyContext) error {
@@ -324,6 +362,9 @@ func buildPermissionErrorFromFacts(p errs.Problem, missing []string, cc Classify
 	// any server detail lifted into p.Hint (the opposite precedence from the
 	// CategoryAPI arm, where the lifted detail wins).
 	hint := permissionRecoveryHint(missing, identity, p.Subtype, consoleURL)
+	if cc.CredentialKind == string(core.CredentialAAT) {
+		hint = agentPermissionRecoveryHint(missing, p.Subtype)
+	}
 	p.Hint = hint.String()
 	permErr := &errs.PermissionError{
 		Problem:       p,
@@ -436,6 +477,27 @@ func PermissionHint(missing []string, identity string, subtype errs.Subtype, con
 // targets or distribution policy.
 func PermissionRecovery(missing []string, identity string, subtype errs.Subtype, consoleURL string) recovery.Hint {
 	return permissionRecoveryHint(missing, identity, subtype, consoleURL)
+}
+
+// agentPermissionRecoveryHint routes an authorization failure on an Agent
+// Employee profile to whoever can actually resolve it. There is no person
+// behind the credential to complete an authorization flow, so pointing at one
+// would send the caller somewhere that cannot help; the fix is always a change
+// on the Agent platform or by a tenant admin.
+func agentPermissionRecoveryHint(missing []string, subtype errs.Subtype) recovery.Hint {
+	action := "grant this Agent Employee the capability or scope it needs on the Agent platform, or ask a tenant admin to grant it"
+	switch subtype {
+	case errs.SubtypeAppUnavailable, errs.SubtypeAppDisabled:
+		action = "ask a tenant admin to enable this Agent Employee for the tenant"
+	case errs.SubtypePermissionDenied:
+		action = "give this Agent Employee access to the target resource, or ask a tenant admin to grant it"
+	case errs.SubtypeAppScopeNotApplied:
+		action = "the app developer must apply for the required scope(s), then grant them to this Agent Employee"
+	}
+	if len(missing) > 0 {
+		action += "\ncurrent command requires scope(s): " + strings.Join(missing, ", ")
+	}
+	return recovery.Join("", recovery.Text(action))
 }
 
 func botScopeRecoveryHint(consoleURL string) recovery.Hint {

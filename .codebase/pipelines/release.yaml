@@ -10,9 +10,10 @@
 # hand, and the YAML only orders them.
 #
 # What is kept from the public workflow: the tag must equal the package version
-# and point at a commit already in main (scripts/release-preflight.js, beta
-# included), the candidate is built once and every later stage re-checks that
-# the tag still points at that commit, the installed CLI is exercised before
+# and satisfy the channel's source policy — stable from main, beta from
+# anywhere (scripts/release-preflight.js, used unchanged for both), the
+# candidate is built once and every later stage re-checks that the tag still
+# points at that commit, the installed CLI is exercised before
 # anything is published, and publication follows
 # scripts/release-publish-policy.js — identical bytes are re-published as a
 # dist-tag move at most, different bytes under an existing version are refused,
@@ -78,7 +79,8 @@ jobs:
           - ln -sf /opt/node-v22.16.0-linux-x64/bin/npx /usr/local/bin/npx
           - node --version
       # Tag equals the package version, checkout is the tagged commit, and the
-      # commit is already in origin/main — for beta tags too.
+      # source policy of the channel holds: a stable commit must already be in
+      # origin/main, a beta may come from the branch it is released for.
       - name: Validate the release source
         commands:
           - bash .codebase/release/source.sh "${{Event.Ref.Name}}"

@@ -11,7 +11,7 @@ The public counterpart is `.github/workflows/release.yml`.
 | --- | --- |
 | `../pipelines/release.yaml` | Tag-triggered pipeline: preflight, build, verify_install, publish. Its header explains each departure from the public workflow. |
 | `config.env` | Package name, registry and Go toolchain pin. The only place these are spelled out. |
-| `source.sh` | Tag equals the package version (public `scripts/release-preflight.js`, unchanged) and the tagged commit is in `origin/main` — stable **and** beta. Re-run by every stage. |
+| `source.sh` | Tag equals the package version and the channel's source policy holds — both from the public `scripts/release-preflight.js`, unchanged: a **stable** tag must point at a commit in `origin/main`, a **beta** tag may be cut from a feature branch. Re-run by every stage. |
 | `build.sh` | The unchanged public GoReleaser build, a toolchain check of every binary, then packaging. |
 | `build-registry-package.js` | Derives the internal `package.json` files from the public one: the launcher package plus one platform package per GoReleaser binary. |
 | `run.js` | Launcher shipped as the package's `scripts/run.js`: runs the binary from the installed platform package (or from `bin/` when bundled, as in a preview), implements `lark-cli update` against the internal registry, silences the public update notifiers. |
@@ -105,6 +105,24 @@ point at the public release; set them in the image or profile.
    lark-cli --version
    ```
 
+## Cutting a beta from a branch
+
+A beta exists to be installed before the work lands, so `source.sh` accepts a
+beta tag on a feature branch; only stable tags must come from `main`.
+`scripts/tag-release.sh` is the public stable path and refuses any branch but
+`main`, so a branch beta is tagged by hand after the same two checks it makes:
+
+```bash
+node scripts/release-preflight.js --tag "vX.Y.Z-beta.N"   # tag == package.json == package-lock.json
+git push origin HEAD                                      # the tagged commit must be on origin
+git tag "vX.Y.Z-beta.N" && git push origin "refs/tags/vX.Y.Z-beta.N"
+```
+
+The version bump lives on the branch and must not reach `main` as it is: before
+merging, restore `main`'s version or raise it to the next release number, or
+`main` would carry a prerelease version that is older than what `latest`
+already serves.
+
 ## Installing and updating
 
 ```bash
@@ -130,7 +148,7 @@ artifact lives a week and nothing else in the run has to be repeated.
 
 | Failed job | Cause | Action |
 | --- | --- | --- |
-| preflight | Tag/version mismatch, commit not in main, version already published | Fix the source and tag a new version. |
+| preflight | Tag/version mismatch, stable commit not in main, version already published | Fix the source and tag a new version. |
 | build | Proxy, metadata or toolchain download failure | Re-run the job. A code or configuration failure needs a new version. |
 | verify_install | The candidate does not install or reports the wrong version | The build is wrong; fix and tag a new version. Nothing was published. |
 | publish | Network or registry error | Re-run the job: every already published identical tarball only has its dist-tag advanced, a channel that moved ahead is left alone, and the packages not yet published are published. Platform packages go first, so a launcher on the registry always has its platform packages there too. |

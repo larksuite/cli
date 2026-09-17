@@ -562,7 +562,7 @@ func enrichRecordShareResolveHint(runtime *common.RuntimeContext, out map[string
 func getResolveRecord(runtime *common.RuntimeContext, baseToken, tableID, recordID string) (map[string]interface{}, error) {
 	body := map[string]interface{}{"record_id_list": []string{recordID}}
 	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", baseToken, "tables", tableID, "records", "batch_get"), nil, body)
-	return handleBaseAPIResult(result, err, "batch get records")
+	return handleBaseAPIResult(runtime, result, err, "batch get records")
 }
 
 func formatResolvedRecordData(record map[string]interface{}) map[string]interface{} {

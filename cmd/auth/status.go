@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -58,6 +59,9 @@ func authStatusRun(opts *StatusOptions, projector *recovery.Projector) error {
 	if err != nil {
 		return err
 	}
+	if config == nil {
+		return core.NotConfiguredError()
+	}
 
 	defaultAs := config.DefaultAs
 	if defaultAs == "" {
@@ -75,6 +79,14 @@ func authStatusRun(opts *StatusOptions, projector *recovery.Projector) error {
 	)
 	result["identities"] = diagnostics
 	result["identity"] = effectiveIdentity(diagnostics)
+	// Only present once the profile's credential kind is classified, so the
+	// existing output shape for human and bot profiles is unchanged.
+	if diagnostics.Credential != "" {
+		result["credential"] = diagnostics.Credential
+	}
+	if diagnostics.Principal != "" {
+		result["principal"] = diagnostics.Principal
+	}
 	addEffectiveVerification(result, diagnostics)
 	addStatusNote(result, diagnostics, projector.CanReference(recovery.TargetAuthLogin))
 

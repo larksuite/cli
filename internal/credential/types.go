@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/core"
@@ -17,13 +18,17 @@ import (
 // It intentionally mirrors only the resolved fields needed by runtime auth
 // and identity selection, without exposing core.CliConfig as a dependency.
 type Account struct {
-	ProfileName         string
-	AppID               string
-	AppSecret           string
-	Brand               core.LarkBrand
-	DefaultAs           core.Identity
-	UserOpenId          string
-	UserName            string
+	ProfileName     string
+	AppID           string
+	AppSecret       string
+	Brand           core.LarkBrand
+	DefaultAs       core.Identity
+	UserOpenId      string
+	UserName        string
+	PrincipalOpenID string
+	CredentialKind  core.CredentialKind
+	// AgentScope is the bind-time grant snapshot, read only when the keychain has no live scope.
+	AgentScope          string
 	Lang                i18n.Lang
 	SupportedIdentities uint8
 }
@@ -67,6 +72,9 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 		DefaultAs:           cfg.DefaultAs,
 		UserOpenId:          cfg.UserOpenId,
 		UserName:            cfg.UserName,
+		PrincipalOpenID:     cfg.PrincipalOpenID,
+		CredentialKind:      cfg.CredentialKind,
+		AgentScope:          cfg.AgentScope,
 		Lang:                cfg.Lang,
 		SupportedIdentities: cfg.SupportedIdentities,
 	}
@@ -86,6 +94,9 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		DefaultAs:           a.DefaultAs,
 		UserOpenId:          a.UserOpenId,
 		UserName:            a.UserName,
+		PrincipalOpenID:     a.PrincipalOpenID,
+		CredentialKind:      a.CredentialKind,
+		AgentScope:          a.AgentScope,
 		Lang:                a.Lang,
 		SupportedIdentities: a.SupportedIdentities,
 	}
@@ -161,6 +172,76 @@ type MalformedTokenResultError struct {
 
 func (e *MalformedTokenResultError) Error() string {
 	return fmt.Sprintf("credential source %q returned malformed %s token: %s", e.Source, e.Type, e.Reason)
+}
+
+// AccessSpec describes what access a caller needs. Call sites declare only the
+// identity the command runs as; which credential satisfies that identity is
+// decided by the resolved account, so no call site repeats the identity-to-token
+// mapping.
+type AccessSpec struct {
+	Identity core.Identity
+	AppID    string
+}
+
+// VerificationSource records how the subject behind an Access was established.
+// It is set by the CLI, never by a provider, so a diagnostic output cannot be
+// made to claim a stronger verification than actually happened.
+type VerificationSource string
+
+const (
+	// VerificationLegacy covers UAT/TAT, whose subject is established by the
+	// pre-existing login and tenant flows rather than by Introspection.
+	VerificationLegacy VerificationSource = "legacy"
+	// VerificationLocalIntrospection means this CLI called Introspection itself.
+	VerificationLocalIntrospection VerificationSource = "local_introspection"
+	// VerificationProviderManaged means an external provider vouched for the
+	// subject. It is weaker than local Introspection and must not be reported
+	// as if it were the same thing.
+	VerificationProviderManaged VerificationSource = "provider_managed"
+)
+
+// AccessCacheState reports what the CLI-owned cache did while resolving.
+type AccessCacheState string
+
+const (
+	AccessCacheNotApplicable AccessCacheState = ""
+	AccessCacheHit           AccessCacheState = "hit"
+	AccessCacheRefreshed     AccessCacheState = "refreshed"
+	// AccessCacheStale means an early refresh failed and a still-valid cached
+	// credential was reused for this command.
+	AccessCacheStale AccessCacheState = "stale"
+)
+
+// ResolvedAccess is an Access plus the provenance the CLI controls. Providers
+// supply only the credential and its subject facts; Source, VerificationSource
+// and CacheState are filled in here so diagnostics cannot be spoofed.
+type ResolvedAccess struct {
+	Value     string
+	Kind      core.CredentialKind
+	OpenID    string
+	Scopes    string
+	ExpiresAt time.Time
+
+	Source             core.CredentialSource
+	VerificationSource VerificationSource
+	CacheState         AccessCacheState
+	// RefreshWarning carries a non-fatal renewal failure that left a still-valid
+	// credential in use. It never replaces the returned Access.
+	RefreshWarning error
+}
+
+// ScopeMetadata is the read-only scope view used by pre-checks.
+type ScopeMetadata struct {
+	Scopes string
+	// Available reports whether Scopes holds usable facts. False means "no scope
+	// facts here", which callers treat as "skip the local check and let the API
+	// decide".
+	Available bool
+	// NotApplicable says the absence is expected rather than a failure to read:
+	// no scope fact was available to compare against, or the pre-check was
+	// turned off. Without it a caller cannot tell "nothing to verify" from
+	// "could not verify", and would warn on every command.
+	NotApplicable bool
 }
 
 // TokenProvider resolves a runtime access token.

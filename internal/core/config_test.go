@@ -4,6 +4,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -56,6 +57,38 @@ func TestAppConfig_LangOmitEmpty(t *testing.T) {
 	}
 	if _, exists := raw["lang"]; exists {
 		t.Error("expected lang to be omitted when empty")
+	}
+}
+
+func TestAppConfig_AATClassificationRoundTrip(t *testing.T) {
+	app := AppConfig{
+		AppId:           "cli_agent",
+		AppSecret:       PlainSecret("secret"),
+		Brand:           BrandFeishu,
+		Users:           []AppUser{},
+		CredentialKind:  CredentialAAT,
+		PrincipalOpenID: "ou_agent",
+	}
+	data, err := json.Marshal(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got AppConfig
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.CredentialKind != CredentialAAT || got.PrincipalOpenID != "ou_agent" {
+		t.Fatalf("round trip = %#v", got)
+	}
+
+	legacy, err := json.Marshal(AppConfig{
+		AppId: "cli_legacy", AppSecret: PlainSecret("secret"), Brand: BrandFeishu, Users: []AppUser{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(legacy) == "" || bytes.Contains(legacy, []byte("credentialKind")) || bytes.Contains(legacy, []byte("principalOpenId")) {
+		t.Fatalf("legacy profile gained AAT fields: %s", legacy)
 	}
 }
 
@@ -156,6 +189,48 @@ func TestResolveConfigFromMulti_CarriesLang(t *testing.T) {
 	}
 	if cfg.Lang != "en" {
 		t.Errorf("Lang = %q, want %q", cfg.Lang, "en")
+	}
+}
+
+func TestResolveConfigFromMulti_AATUsesVerifiedPrincipalNotHumanUsers(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:           "cli_agent",
+		AppSecret:       PlainSecret("secret"),
+		Brand:           BrandFeishu,
+		CredentialKind:  CredentialAAT,
+		PrincipalOpenID: "ou_agent",
+		Users:           []AppUser{{UserOpenId: "ou_human", UserName: "Human"}},
+	}}}
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CredentialKind != CredentialAAT || cfg.PrincipalOpenID != "ou_agent" || cfg.UserOpenId != "ou_agent" {
+		t.Fatalf("resolved config = %#v", cfg)
+	}
+}
+
+// TestResolveConfigFromMulti_AATWithoutPrincipalFailsClosed pins that a profile
+// classified as an Agent Employee but missing its verified principal is refused
+// rather than resolved. Continuing without a principal would leave every later
+// check with nothing to compare a credential against, and the failure would
+// surface far from its cause.
+func TestResolveConfigFromMulti_AATWithoutPrincipalFailsClosed(t *testing.T) {
+	multi := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:          "cli_agent",
+		AppSecret:      PlainSecret("secret"),
+		Brand:          BrandFeishu,
+		Users:          []AppUser{},
+		CredentialKind: CredentialAAT,
+	}}}
+
+	_, err := ResolveConfigFromMulti(multi, nil, "", ProfileFromConfig)
+	if err == nil {
+		t.Fatal("an Agent Employee profile with no principal must not resolve")
+	}
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) || configErr.Subtype != errs.SubtypeInvalidConfig {
+		t.Fatalf("error = %T %v, want invalid_config", err, err)
 	}
 }
 

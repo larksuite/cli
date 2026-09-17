@@ -109,29 +109,66 @@ func TestRuntimeContextPresentErrorUsesResolvedShortcutDeclaredScopes(t *testing
 	}
 }
 
-func TestNewRuntimeContextUsesEffectiveBotOnlyIdentityForDeclaredScopes(t *testing.T) {
-	shortcut := &Shortcut{
-		Service:    "test",
-		Command:    "+bot-only",
-		AuthTypes:  []string{"bot"},
-		UserScopes: []string{"user:scope"},
-		BotScopes:  []string{"bot:scope"},
-		Execute:    func(context.Context, *RuntimeContext) error { return nil },
+func TestNewRuntimeContextDeclaredScopesFollowResolvedIdentity(t *testing.T) {
+	// The recovery hint built from declaredScopes must name the lane the call
+	// actually used. An Agent Employee runs a bot-only shortcut on the user
+	// lane whenever the recorded verdict allows it, and telling it to acquire
+	// a bot scope there would send it somewhere that cannot help.
+	newBotOnlyShortcut := func() *Shortcut {
+		return &Shortcut{
+			Service:    "test",
+			Command:    "+bot-only",
+			AuthTypes:  []string{"bot"},
+			UserScopes: []string{"user:scope"},
+			BotScopes:  []string{"bot:scope"},
+			Execute:    func(context.Context, *RuntimeContext) error { return nil },
+		}
 	}
-	f := newTestFactory()
-	config, err := f.Config()
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := newTestShortcutCmd(shortcut, f)
-	runtime, err := newRuntimeContext(cmd, f, shortcut, config, core.AsUser, true)
-	if err != nil {
-		t.Fatalf("newRuntimeContext() error = %v", err)
-	}
-	if runtime.As() != core.AsBot {
-		t.Fatalf("runtime.As() = %q, want bot", runtime.As())
-	}
-	if got, want := runtime.declaredScopes, []string{"bot:scope"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("declared scopes = %v, want effective bot scopes %v", got, want)
+	for _, tc := range []struct {
+		name       string
+		as         core.Identity
+		wantAs     core.Identity
+		wantScopes []string
+	}{
+		{
+			name:       "resolved user lane wins over the build-time bot-only flag",
+			as:         core.AsUser,
+			wantAs:     core.AsUser,
+			wantScopes: []string{"user:scope"},
+		},
+		{
+			name:       "resolved bot lane keeps bot scopes",
+			as:         core.AsBot,
+			wantAs:     core.AsBot,
+			wantScopes: []string{"bot:scope"},
+		},
+		{
+			// botOnly still decides when nothing was resolved, which is what
+			// keeps a caller that never ran identity resolution on the bot lane.
+			name:       "unresolved identity falls back to bot-only",
+			as:         "",
+			wantAs:     core.AsBot,
+			wantScopes: []string{"bot:scope"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shortcut := newBotOnlyShortcut()
+			f := newTestFactory()
+			config, err := f.Config()
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := newTestShortcutCmd(shortcut, f)
+			runtime, err := newRuntimeContext(cmd, f, shortcut, config, tc.as, true)
+			if err != nil {
+				t.Fatalf("newRuntimeContext() error = %v", err)
+			}
+			if runtime.As() != tc.wantAs {
+				t.Fatalf("runtime.As() = %q, want %q", runtime.As(), tc.wantAs)
+			}
+			if got := runtime.declaredScopes; !reflect.DeepEqual(got, tc.wantScopes) {
+				t.Fatalf("declared scopes = %v, want %v", got, tc.wantScopes)
+			}
+		})
 	}
 }

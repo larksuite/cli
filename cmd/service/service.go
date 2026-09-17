@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/agentsupport"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
@@ -83,6 +84,9 @@ func registerServiceWithContext(ctx context.Context, parent *cobra.Command, svc 
 	// methods keeps its bare command (svcCmd is created above regardless).
 	refs := apicatalog.ServiceMethods(svc, nil)
 
+	agentAnnotated := anyMethodSupportsAgent(refs)
+	agentPrincipal := f != nil && f.IsAgentPrincipal(ctx)
+
 	// Collect each resource's verbs up front so resourceShort can summarize a
 	// resource as its verb list from the first ensureChildCommand call.
 	verbs := map[string][]string{}
@@ -98,8 +102,19 @@ func registerServiceWithContext(ctx context.Context, parent *cobra.Command, svc 
 			path = append(path, seg)
 			resCmd = ensureChildCommand(resCmd, seg, resourceShort(seg, verbs[strings.Join(path, ".")]))
 		}
-		resCmd.AddCommand(buildMethodCommand(ctx, f, newMethodCommandSpec(ref), nil, parent.PersistentFlags()))
+		resCmd.AddCommand(buildMethodCommand(ctx, f, newMethodCommandSpec(ref, agentAnnotated, agentPrincipal), nil, parent.PersistentFlags()))
 	}
+}
+
+// anyMethodSupportsAgent reports whether any method in refs is agent-marked.
+// refs should span one service: the result drives per-service refusal wording.
+func anyMethodSupportsAgent(refs []apicatalog.MethodRef) bool {
+	for _, ref := range refs {
+		if ref.Method.SupportsAgent() {
+			return true
+		}
+	}
+	return false
 }
 
 // resourceShort summarizes a resource as its sorted verb list, or the
@@ -151,6 +166,9 @@ type ServiceMethodOptions struct {
 	Method      meta.Method
 	SchemaPath  string
 
+	// ServiceHasAgentMethod only selects the eligibility gate's refusal wording.
+	ServiceHasAgentMethod bool
+
 	// Flags
 	Params     string
 	Data       string
@@ -195,9 +213,11 @@ func NewCmdServiceMethod(f *cmdutil.Factory, svc meta.Service, m meta.Method, na
 func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, svc meta.Service, m meta.Method, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
 	m.Name = name
 	ref := apicatalog.MethodRef{Service: svc, ResourcePath: []string{resName}, Method: m}
+	agentAnnotated := anyMethodSupportsAgent(apicatalog.ServiceMethods(svc, nil))
+	agentPrincipal := f != nil && f.IsAgentPrincipal(ctx)
 	// No root in scope here; persistent-flag collisions don't apply to a
 	// standalone command, and local/standard-flag collisions are still caught.
-	return buildMethodCommand(ctx, f, newMethodCommandSpec(ref), runF, nil)
+	return buildMethodCommand(ctx, f, newMethodCommandSpec(ref, agentAnnotated, agentPrincipal), runF, nil)
 }
 
 // methodCommandSpec is the static description of one generated service method
@@ -223,6 +243,11 @@ type methodCommandSpec struct {
 	declaresBody bool
 	paginates    bool   // method accepts a page_token param (so --page-all is meaningful)
 	serviceName  string // owning service name (e.g. "approval"), for the lazy affordance lookup
+
+	// serviceHasAgentMethod only selects the eligibility gate's refusal wording.
+	// It is per-service so incremental platform annotation of one service does
+	// not change the wording for the rest of the catalog.
+	serviceHasAgentMethod bool
 }
 
 // methodPaginates reports whether a method takes a page_token param, the signal
@@ -236,21 +261,25 @@ func methodPaginates(m meta.Method) bool {
 	return false
 }
 
-func newMethodCommandSpec(ref apicatalog.MethodRef) methodCommandSpec {
+// agentPrincipal selects whose identities the command declares: an Agent
+// Employee reaches agent-marked methods on the user identity, a human principal
+// does not (see meta.Method.IdentitiesFor).
+func newMethodCommandSpec(ref apicatalog.MethodRef, serviceHasAgentMethod bool, agentPrincipal bool) methodCommandSpec {
 	m := ref.Method
 	return methodCommandSpec{
-		method:       m,
-		schemaPath:   ref.SchemaPath(),
-		servicePath:  ref.Service.ServicePath,
-		serviceName:  ref.Service.Name,
-		risk:         m.Risk,
-		restricts:    m.RestrictsIdentity(),
-		identities:   m.Identities(),
-		params:       m.Params(),
-		fileFields:   detectFileFields(m),
-		acceptsBody:  methodTakesBody(m.HTTPMethod),
-		declaresBody: len(m.Data()) > 0 || len(m.Files()) > 0,
-		paginates:    methodPaginates(m),
+		method:                m,
+		schemaPath:            ref.SchemaPath(),
+		servicePath:           ref.Service.ServicePath,
+		serviceName:           ref.Service.Name,
+		risk:                  m.Risk,
+		restricts:             m.RestrictsIdentity(),
+		identities:            m.IdentitiesFor(agentPrincipal),
+		params:                m.Params(),
+		fileFields:            detectFileFields(m),
+		acceptsBody:           methodTakesBody(m.HTTPMethod),
+		declaresBody:          len(m.Data()) > 0 || len(m.Files()) > 0,
+		paginates:             methodPaginates(m),
+		serviceHasAgentMethod: serviceHasAgentMethod,
 	}
 }
 
@@ -271,11 +300,12 @@ func methodTakesBody(httpMethod string) bool {
 func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodCommandSpec, runF func(*ServiceMethodOptions) error, reserved *pflag.FlagSet) *cobra.Command {
 	m := spec.method
 	opts := &ServiceMethodOptions{
-		Factory:     f,
-		ServicePath: spec.servicePath,
-		Method:      m,
-		SchemaPath:  spec.schemaPath,
-		FileFields:  spec.fileFields,
+		Factory:               f,
+		ServicePath:           spec.servicePath,
+		Method:                m,
+		SchemaPath:            spec.schemaPath,
+		FileFields:            spec.fileFields,
+		ServiceHasAgentMethod: spec.serviceHasAgentMethod,
 	}
 	var asStr string
 
@@ -378,21 +408,52 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 	if spec.restricts {
 		cmdutil.SetSupportedIdentities(cmd, spec.identities)
 	}
+	// Record the same verdict CheckAgentEligibility reaches at dispatch, so the
+	// command-tree build can withhold what an Agent Employee cannot call and
+	// help stops advertising it. Only the denying verdict is written: an
+	// agent-marked method needs no annotation to stay available.
+	//
+	// The gate is read here rather than at prune time because it is what makes
+	// the verdict effective at all. With the gate off the run-time check passes
+	// everything, so recording a denial would hide from help exactly the
+	// commands the gate just chose to allow.
+	if !m.SupportsAgent() && cmdutil.AgentIdentityGateEnabled() {
+		cmdutil.SetAgentSupport(cmd, agentsupport.Denied)
+		cmdutil.SetAgentServiceAnnotated(cmd, spec.serviceHasAgentMethod)
+	}
 
 	return cmd
 }
 
 func serviceMethodRun(opts *ServiceMethodOptions) error {
 	f := opts.Factory
-	opts.As = f.ResolveAs(opts.Ctx, opts.Cmd, opts.As)
+	resolvedAs, err := f.ResolveIdentity(opts.Ctx, opts.Cmd, opts.As)
+	if err != nil {
+		return err
+	}
+	opts.As = resolvedAs
 
 	if err := f.CheckStrictMode(opts.Ctx, opts.As); err != nil {
 		return err
 	}
 
+	// The agent gate speaks first. A tenant-only method fails both gates for
+	// an Agent Employee, and the lane refusal would send it to a lane it does
+	// not have; the marker refusal names the thing that can actually change.
+	if err := f.CheckAgentEligibility(opts.Ctx, opts.Method.SupportsAgent(), opts.ServiceHasAgentMethod, opts.SchemaPath); err != nil {
+		return err
+	}
 	// Check if this API method supports the resolved identity.
 	if opts.Method.RestrictsIdentity() {
-		if err := f.CheckIdentity(opts.As, opts.Method.Identities()); err != nil {
+		identities := opts.Method.IdentitiesFor(f.IsAgentPrincipal(opts.Ctx))
+		if len(identities) == 0 && opts.Method.SupportsAgent() {
+			// Reserved for agents: a human principal has no identity here, and
+			// an empty "only supports:" list would say nothing about why.
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+				"%s accepts only an Agent Employee credential", opts.SchemaPath).
+				WithHint("run this command with a profile bound to an Agent Employee")
+		}
+		if err := f.CheckIdentity(opts.As, identities); err != nil {
 			return err
 		}
 	}
@@ -477,15 +538,17 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	result, err := cred.ResolveToken(ctx, credential.NewTokenSpec(identity, config.AppID))
-	if err != nil || result == nil || result.Scopes == "" {
-		return nil //nolint:nilerr // skip scope check when token resolution fails or has no scopes
+	// Ask for scope facts rather than for a credential; ResolveScopeMetadata
+	// documents what that guarantees per credential kind.
+	scopeMeta, err := cred.ResolveScopeMetadata(ctx, credential.AccessSpec{Identity: identity, AppID: config.AppID})
+	if err != nil || !scopeMeta.Available {
+		return nil //nolint:nilerr // skip scope check when no scope metadata is available
 	}
 
 	if len(method.RequiredScopes) > 0 {
 		// Strict: ALL requiredScopes must be present
-		if missing := auth.MissingScopes(result.Scopes, method.RequiredScopes); len(missing) > 0 {
-			return newPreflightMissingScopeError(string(config.Brand), config.AppID, string(identity), missing)
+		if missing := auth.MissingScopes(scopeMeta.Scopes, method.RequiredScopes); len(missing) > 0 {
+			return newPreflightMissingScopeError(config, string(identity), missing)
 		}
 		return nil
 	}
@@ -496,7 +559,7 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 
 	// Default: ANY one of the declared scopes is sufficient
 	grantedSet := make(map[string]bool)
-	for _, s := range strings.Fields(result.Scopes) {
+	for _, s := range strings.Fields(scopeMeta.Scopes) {
 		grantedSet[s] = true
 	}
 	for _, s := range method.Scopes {
@@ -505,7 +568,7 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 		}
 	}
 	recommended := registry.SelectRecommendedScopeFromStrings(method.Scopes, "user")
-	return newPreflightMissingScopeError(string(config.Brand), config.AppID, string(identity), []string{recommended})
+	return newPreflightMissingScopeError(config, string(identity), []string{recommended})
 }
 
 // newPreflightMissingScopeError constructs a PermissionError for the local
@@ -517,8 +580,15 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 // SubtypeAppScopeNotApplied (bot-perspective dev-action recovery), and this
 // pre-flight path is user-perspective SubtypeMissingScope whose recovery is
 // `lark-cli auth login --scope ...`, not a console deep-link.
-func newPreflightMissingScopeError(brand, appID, identity string, missing []string) error {
-	return errclass.NewMissingScopeError(brand, appID, identity, missing)
+func newPreflightMissingScopeError(config *core.CliConfig, identity string, missing []string) error {
+	return errclass.NewMissingScopeError(errclass.ClassifyContext{
+		Brand:    string(config.Brand),
+		AppID:    config.AppID,
+		Identity: identity,
+		// The credential kind decides who can grant a missing scope. Dropping it
+		// here would tell an Agent Employee to authorize interactively.
+		CredentialKind: string(config.CredentialKind),
+	}, missing)
 }
 
 // unusableParamValue reports whether a provided path/query parameter value

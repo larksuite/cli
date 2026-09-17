@@ -9,6 +9,8 @@ const (
 	PathDeviceAuthorization = "/oauth/v1/device_authorization"
 	// PathOAuthRevoke is the endpoint for revoking an OAuth token.
 	PathOAuthRevoke = "/oauth/v1/revoke"
+	// PathOAuthIntrospect is the endpoint for validating an OAuth token and its subject.
+	PathOAuthIntrospect = "/oauth/v1/introspect"
 	// PathAppRegistration is the endpoint for application registration.
 	PathAppRegistration = "/oauth/v1/app/registration"
 	// PathOAuthTokenV2 is the endpoint for requesting an OAuth token (v2).

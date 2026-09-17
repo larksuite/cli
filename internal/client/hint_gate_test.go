@@ -18,7 +18,7 @@ import (
 // selected by the build-local surface passed to recovery.Render.
 func TestTokenMissing_hintUsesBuildLocalSurface(t *testing.T) {
 	cause := errors.New("credential chain exhausted")
-	source := newTokenMissingError(core.AsUser, cause)
+	source := newTokenMissingError(core.AsUser, "", cause)
 	var original *errs.AuthenticationError
 	if !errors.As(source, &original) || !strings.Contains(original.Hint, "auth login") {
 		t.Fatalf("producer must keep auth login hint, got %v", source)

@@ -40,8 +40,8 @@
       "name": "im",
       "file": "services/im.json",
       "revision": 20,
-      "size": 258082,
-      "sha256": "b2bd1082f7551e1d142ef4f0209397aef7142516bf5471dc76939bbee493056e"
+      "size": 257956,
+      "sha256": "4386f7ec92509ebe65553e997edac575763cd9a492b11994622f38f1678118b8"
     },
     {
       "name": "mail",

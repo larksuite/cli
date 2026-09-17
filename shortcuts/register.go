@@ -176,6 +176,9 @@ func RegisterShortcutSnapshotForDomainsWithContext(
 	registered []common.Shortcut,
 	domains []string,
 ) {
+	// Stamp before grouping: byService holds copies, so a verdict applied any
+	// later would never reach the commands that get mounted.
+	stampAgentSupport(registered)
 	byService := make(map[string][]common.Shortcut)
 	for _, shortcut := range registered {
 		byService[shortcut.Service] = append(byService[shortcut.Service], shortcut)

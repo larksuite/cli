@@ -33,7 +33,11 @@ type whoamiResult struct {
 	Available      bool           `json:"available"`
 	TokenStatus    string         `json:"tokenStatus"`
 	OnBehalfOf     *delegatedUser `json:"onBehalfOf,omitempty"`
-	Hint           string         `json:"hint,omitempty"`
+	// Credential and Principal appear only for a profile whose credential kind
+	// has been classified, so existing output shapes are untouched.
+	Credential string `json:"credential,omitempty"`
+	Principal  string `json:"principal,omitempty"`
+	Hint       string `json:"hint,omitempty"`
 }
 
 // delegatedUser is the user a user-identity acts on behalf of.
@@ -92,7 +96,10 @@ func whoamiRun(cmd *cobra.Command, opts *Options, projector *recovery.Projector)
 	}
 	ctx := cmd.Context()
 	flagAs := core.Identity(opts.As)
-	as := f.ResolveAs(ctx, cmd, flagAs)
+	as, err := f.ResolveIdentity(ctx, cmd, flagAs)
+	if err != nil {
+		return err
+	}
 	// Validate as a real API call does (strict mode, then identity) so whoami
 	// can't preview an identity the next call would refuse.
 	if err := f.CheckStrictMode(ctx, as); err != nil {
@@ -107,8 +114,10 @@ func whoamiRun(cmd *cobra.Command, opts *Options, projector *recovery.Projector)
 		f.IdentityAutoDetected,
 		f.ResolveStrictMode(ctx).ForcedIdentity(),
 	)
+	// whoami describes; it never acquires. Inspect is the read-only entry point,
+	// so this command cannot start minting or verifying by accident.
 	diag := identitydiag.FilterRecovery(
-		identitydiag.Diagnose(ctx, f, cfg, false),
+		identitydiag.Inspect(ctx, f, cfg),
 		projector,
 	)
 	res := buildResult(cfg, as, source, diag)
@@ -148,6 +157,8 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 		DefaultAs:      string(defaultAs),
 		Identity:       string(as),
 		IdentitySource: source,
+		Credential:     diag.Credential,
+		Principal:      diag.Principal,
 	}
 	// Use the diagnosed hint as-is: it is tailored to the credential source, so
 	// it never says "auth login" when that is blocked under an external provider.
@@ -166,7 +177,10 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 		res.TokenStatus = diag.User.Status
 		// Set onBehalfOf only when a user is actually resolved; an unresolved
 		// user identity (not signed in) has no one to act on behalf of yet.
-		if diag.User.UserName != "" || diag.User.OpenID != "" {
+		// An Agent Employee is the caller itself rather than a person it acts
+		// for, so it is reported through principal instead.
+		isAgent := diag.Principal == identitydiag.PrincipalAgentEmployee
+		if !isAgent && (diag.User.UserName != "" || diag.User.OpenID != "") {
 			res.OnBehalfOf = &delegatedUser{UserName: diag.User.UserName, OpenID: diag.User.OpenID}
 		}
 		if !diag.User.Available {

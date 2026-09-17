@@ -1749,11 +1749,8 @@ func TestCleanupKeychainFromData_ValidConfig(t *testing.T) {
 	cleanupKeychainFromData(f.Keychain, configData, nil)
 }
 
-// statefulKeychain is a local in-memory KeychainAccess used only by the
-// cleanup tests below. The package-wide noopKeychain in internal/cmdutil is
-// intentionally untouched (it is pre-existing stable code) — this local mock
-// gives the cleanup tests real Set/Get roundtrip semantics without changing
-// any existing test infrastructure.
+// statefulKeychain gives config tests real in-memory Set/Get semantics without
+// changing cmdutil's pre-existing no-op keychain.
 type statefulKeychain struct{ items map[string]string }
 
 func newStatefulKeychain() *statefulKeychain {

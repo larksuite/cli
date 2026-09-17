@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -386,6 +387,34 @@ func TestConfigRemoveRun_SaveFailurePreservesExistingConfigAndSecrets(t *testing
 	if _, err := os.Stat(configPath); err != nil {
 		t.Fatalf("expected existing config file to remain, stat error = %v", err)
 	}
+}
+
+func TestConfigRemoveRun_RemovesStoredAAT(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{Apps: []core.AppConfig{{
+		AppId:           "app-agent",
+		AppSecret:       core.PlainSecret("secret"),
+		Brand:           core.BrandFeishu,
+		CredentialKind:  core.CredentialAAT,
+		PrincipalOpenID: "ou_agent",
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	kc := &recordingConfigKeychain{}
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f.Keychain = kc
+	if err := configRemoveRun(&ConfigRemoveOptions{Factory: f}); err != nil {
+		t.Fatalf("configRemoveRun() error = %v", err)
+	}
+
+	want := keychain.LarkCliService + ":" + auth.AATAccountKey("app-agent")
+	for _, removed := range kc.removed {
+		if removed == want {
+			return
+		}
+	}
+	t.Fatalf("removed entries = %#v, want %q", kc.removed, want)
 }
 
 func TestSaveAsProfile_RejectsProfileNameCollisionWithExistingAppID(t *testing.T) {

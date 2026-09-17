@@ -31,6 +31,9 @@ func NewCmdAuthLogout(f *cmdutil.Factory, runF func(*LogoutOptions) error) *cobr
 		Use:   "logout",
 		Short: "Log out (clear token)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireInteractiveAuthProfile(cmd.Context(), f, "auth logout"); err != nil {
+				return err
+			}
 			if runF != nil {
 				return runF(opts)
 			}

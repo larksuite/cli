@@ -6,6 +6,7 @@ package schema
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -92,15 +93,22 @@ func NewCmdSchemaWithVisibility(
 
 // completeSchemaPath is a thin adapter over the schema catalog's Complete.
 // It uses the same source as schema execution so completion candidates match
-// what `schema` can resolve.
+// what `schema` can resolve. It applies the same Agent Employee filter as
+// runSchemaCatalog but prints no reason: completion has no stderr channel the
+// shell protocol tolerates, so an AAT profile only sees fewer candidates.
 func completeSchemaPath(
 	f *cmdutil.Factory,
 	visibility CommandVisibility,
 ) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		mode := f.ResolveStrictMode(cmd.Context())
+		kind := credentialKindOf(f)
 		catalog := projectSchemaCatalog(f.APICatalog, visibility)
-		completions, noSpace := catalog.Complete(args, toComplete, registry.FilterForStrictMode(mode))
+		filter := combineFilters(
+			registry.FilterForStrictMode(mode),
+			registry.FilterForAgentPrincipal(kind, cmdutil.AgentIdentityGateEnabled()),
+		)
+		completions, noSpace := catalog.Complete(args, toComplete, filter)
 		directive := cobra.ShellCompDirectiveNoFileComp
 		if noSpace {
 			directive |= cobra.ShellCompDirectiveNoSpace
@@ -109,16 +117,60 @@ func completeSchemaPath(
 	}
 }
 
+// credentialKindOf reads the resolved profile's credential kind. A nil Factory,
+// a nil Config loader, or a resolution error reads as unclassified: schema opts
+// out of the auth check and must keep rendering rather than fail.
+func credentialKindOf(f *cmdutil.Factory) core.CredentialKind {
+	if f == nil || f.Config == nil {
+		return ""
+	}
+	cfg, err := f.Config()
+	if err != nil || cfg == nil {
+		return ""
+	}
+	return cfg.CredentialKind
+}
+
 func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) error {
 	out := opts.Factory.IOStreams.Out
+	errOut := opts.Factory.IOStreams.ErrOut
 	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
-	return runSchemaCatalog(out, apicatalog.ParsePath(opts.Args), mode, opts.Factory.APICatalog, opts.Factory.Affordance, visibility)
+	kind := credentialKindOf(opts.Factory)
+	return runSchemaCatalog(out, apicatalog.ParsePath(opts.Args), mode, opts.Factory.APICatalog, opts.Factory.Affordance, visibility, kind, errOut)
+}
+
+// combineFilters ANDs the non-nil filters, or returns nil when none apply. A
+// nil result rather than an always-true wrapper keeps a run with no active
+// filter identical to one that never had a filter.
+func combineFilters(filters ...apicatalog.MethodFilter) apicatalog.MethodFilter {
+	active := filters[:0:0]
+	for _, f := range filters {
+		if f != nil {
+			active = append(active, f)
+		}
+	}
+	if len(active) == 0 {
+		return nil
+	}
+	return func(m meta.Method) bool {
+		for _, f := range active {
+			if !f(m) {
+				return false
+			}
+		}
+		return true
+	}
 }
 
 // runSchemaCatalog resolves the path through the build-selected schema catalog
 // and renders the matching envelope(s). The catalog owns navigation (Resolve +
 // MethodRefs), while this adapter applies presentation visibility and chooses
 // the output shape.
+//
+// For an Agent Employee profile with the identity gate on, an empty result is
+// attributed to the missing agent marker only when the agent filter alone
+// empties the resolved target, even if strict mode would have too; the note
+// names only the subtree that was resolved.
 func runSchemaCatalog(
 	out io.Writer,
 	parts []string,
@@ -126,6 +178,8 @@ func runSchemaCatalog(
 	catalog apicatalog.Catalog,
 	guidance *affordance.Resolver,
 	visibility CommandVisibility,
+	kind core.CredentialKind,
+	errOut io.Writer,
 ) error {
 	// Test the source catalog before presentation projection. A distribution
 	// that intentionally conceals every generated method still has metadata;
@@ -143,7 +197,12 @@ func runSchemaCatalog(
 		}
 		return resolveError(err)
 	}
-	refs := catalog.MethodRefs(target, registry.FilterForStrictMode(mode))
+	agentGateEnabled := cmdutil.AgentIdentityGateEnabled()
+	filter := combineFilters(
+		registry.FilterForStrictMode(mode),
+		registry.FilterForAgentPrincipal(kind, agentGateEnabled),
+	)
+	refs := catalog.MethodRefs(target, filter)
 	// Navigation parses shards lazily; a corrupt shard must fail typed rather
 	// than silently shrink the listing.
 	if loadErr := catalog.Err(); loadErr != nil {
@@ -151,14 +210,41 @@ func runSchemaCatalog(
 	}
 	if target.Kind == apicatalog.TargetMethod {
 		if len(refs) == 0 {
+			if kind == core.CredentialAAT && agentGateEnabled && !target.Method.Method.SupportsAgent() {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"Method %s not available for an Agent Employee profile", target.Method.SchemaPath()).
+					WithHint("%s is not marked as Agent-Employee-callable in the local metadata yet", target.Method.SchemaPath())
+			}
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"Method %s not available in current identity mode", target.Method.SchemaPath()).
 				WithHint("strict mode hides methods the active account identity cannot call; it is shown for an identity (user or bot) that has the required access token")
 		}
-		output.PrintJson(out, schema.EnvelopeOf(guidance, refs[0]))
+		output.PrintJson(out, schema.EnvelopeOf(guidance, refs[0], kind == core.CredentialAAT))
 		return nil
 	}
-	output.PrintJson(out, schema.Envelopes(guidance, refs))
+	if len(refs) == 0 && kind == core.CredentialAAT && agentGateEnabled && len(catalog.MethodRefs(target, nil)) > 0 {
+		// Literal arguments on purpose: a nil filter here would repeat the unfiltered guard above.
+		agentFilterAlone := registry.FilterForAgentPrincipal(core.CredentialAAT, true)
+		if len(catalog.MethodRefs(target, agentFilterAlone)) == 0 {
+			switch target.Kind {
+			case apicatalog.TargetService:
+				fmt.Fprintf(errOut,
+					"note: no API in service %q is marked as Agent-Employee-callable in the local metadata yet, "+
+						"so nothing is listed for this profile; other services may already support one\n",
+					target.Service.Name)
+			case apicatalog.TargetResource:
+				fmt.Fprintf(errOut,
+					"note: no API in resource %q is marked as Agent-Employee-callable in the local metadata yet, "+
+						"so nothing is listed for this profile; other resources may already support one\n",
+					target.Resource.SchemaPath())
+			default:
+				fmt.Fprintln(errOut,
+					"note: no API in the local metadata is marked as Agent-Employee-callable yet, "+
+						"so nothing is listed for this profile")
+			}
+		}
+	}
+	output.PrintJson(out, schema.Envelopes(guidance, refs, kind == core.CredentialAAT))
 	return nil
 }
 

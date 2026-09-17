@@ -15,6 +15,15 @@ paths = ['''cmd/event/testdata/golden/.*''']
 regexTarget = "secret"
 regexes = ['''^[a-z0-9_]+(\.[a-z0-9_]+){2,}$''']
 
+[[rules.allowlists]]
+description = "Documentation placeholders in the Skills trees: an approval file token, a Base app token and a paging token, all copied verbatim from Lark's public API examples and none of them a credential. Allowed by value rather than through .gitleaksignore for the same reason as the app id below, with one more: agent-only-skills/ is a projection of skills/, so every refresh reintroduces these lines under a new commit."
+regexTarget = "secret"
+regexes = [
+  '''^TLLKdcpDro9ijQxA33ycNMabcef$''',
+  '''^A2f5boKjfazMzesI9zKbmugTc4T$''',
+  '''^YhljsPiGfUgnVAg9urvRFd-BvSqRLxxxx$''',
+]
+
 [[rules]]
 id = "lark-bot-app-id"
 description = "Detect Lark bot app ids"

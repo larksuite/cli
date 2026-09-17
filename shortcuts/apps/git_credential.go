@@ -320,15 +320,24 @@ func (i factoryIssuer) Issue(ctx context.Context, appID string, profile gitcred.
 		opts = append(opts, optFn)
 	}
 	resp, err := ac.DoSDKRequest(ctx, req, core.AsUser, opts...)
-	data, err := parseIssueCredentialData(resp, err, errclass.ClassifyContext{
-		Brand:    string(cfg.Brand),
-		AppID:    cfg.AppID,
-		Identity: string(core.AsUser),
-	})
+	data, err := parseIssueCredentialData(resp, err, issuerClassifyContext(cfg))
 	if err != nil {
 		return nil, err
 	}
 	return issuedFromData(appID, data)
+}
+
+// issuerClassifyContext describes the issuing request to the error classifier.
+// CredentialKind is what decides whether an authorization failure is answered
+// with the human device login or with the Agent platform; the helper runs
+// where nobody can complete the former.
+func issuerClassifyContext(cfg *core.CliConfig) errclass.ClassifyContext {
+	return errclass.ClassifyContext{
+		Brand:          string(cfg.Brand),
+		AppID:          cfg.AppID,
+		Identity:       string(core.AsUser),
+		CredentialKind: string(cfg.CredentialKind),
+	}
 }
 
 func contextWithGitCredentialHelperShortcut(ctx context.Context) context.Context {
@@ -344,6 +353,14 @@ func runGitCredentialHelper(ctx context.Context, f *cmdutil.Factory, appID, acti
 	}
 	if appID == "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, "Git credential unavailable: missing app_id; rerun lark-cli apps +git-credential-init --app-id <app_id>")
+		return nil
+	}
+	// The helper is the one apps entry point that is not a shortcut, so the
+	// verdict table never sees it. The issuing API does not accept an Agent
+	// Employee token, which is why the public +git-credential-init is denied;
+	// the hidden entry point has to say the same thing, in the helper protocol.
+	if f.IsAgentPrincipal(ctx) {
+		fmt.Fprintln(f.IOStreams.ErrOut, "Git credential unavailable: Agent Employee profiles cannot issue Git credentials; use a profile backed by a human account")
 		return nil
 	}
 	manager := newGitCredentialManager(appID, f.Keychain, factoryIssuer{f: f})

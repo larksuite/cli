@@ -61,13 +61,21 @@ git tag v9.9.9 && git push -q origin refs/tags/v9.9.9
 if err="$(source_check v9.9.9 2>&1)"; then fail "version mismatch was accepted"; fi
 [[ "$err" == *"release_preflight"* ]] || fail "version mismatch: unexpected error: $err"
 
-# beta from a branch that is not in main is refused
+# beta from a branch that is not in main is accepted: releasing a branch for
+# people to install before it lands is what the beta channel is for.
 git checkout -q -b feature
 set_version 1.2.5-beta.1
 git commit -q -am "branch beta"
 git tag v1.2.5-beta.1 && git push -q origin refs/tags/v1.2.5-beta.1
-if err="$(source_check v1.2.5-beta.1 2>&1)"; then fail "beta tag off main was accepted"; fi
-[[ "$err" == *"contained in origin/main"* ]] || fail "beta off main: unexpected error: $err"
+out="$(source_check v1.2.5-beta.1)"
+[[ "$out" == *"channel=beta"* && "$out" == *"source_sha=$(git rev-parse HEAD)"* ]] || fail "beta tag off main: unexpected output: $out"
+
+# a stable tag from that same branch is still refused
+set_version 1.2.6
+git commit -q -am "branch stable"
+git tag v1.2.6 && git push -q origin refs/tags/v1.2.6
+if err="$(source_check v1.2.6 2>&1)"; then fail "stable tag off main was accepted"; fi
+[[ "$err" == *"contained in origin/main"* ]] || fail "stable off main: unexpected error: $err"
 git checkout -q main
 
 # --- stub npm ---

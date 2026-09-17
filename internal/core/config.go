@@ -36,16 +36,28 @@ type AppUser struct {
 	UserName   string `json:"userName"`
 }
 
+// CredentialKind represents the type of credential used for API requests.
+type CredentialKind string
+
+const (
+	CredentialUAT CredentialKind = "uat"
+	CredentialAAT CredentialKind = "aat"
+	CredentialTAT CredentialKind = "tat"
+)
+
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
-	Name       string      `json:"name,omitempty"`
-	AppId      string      `json:"appId"`
-	AppSecret  SecretInput `json:"appSecret"`
-	Brand      LarkBrand   `json:"brand"`
-	Lang       i18n.Lang   `json:"lang,omitempty"`
-	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
-	StrictMode *StrictMode `json:"strictMode,omitempty"`
-	Users      []AppUser   `json:"users"`
+	Name            string         `json:"name,omitempty"`
+	AppId           string         `json:"appId"`
+	AppSecret       SecretInput    `json:"appSecret"`
+	Brand           LarkBrand      `json:"brand"`
+	Lang            i18n.Lang      `json:"lang,omitempty"`
+	DefaultAs       Identity       `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
+	StrictMode      *StrictMode    `json:"strictMode,omitempty"`
+	Users           []AppUser      `json:"users"`
+	PrincipalOpenID string         `json:"principalOpenId,omitempty"`
+	CredentialKind  CredentialKind `json:"credentialKind,omitempty"`
+	AgentScope      string         `json:"agentScope,omitempty"`
 }
 
 // ProfileName returns the display name for this app config.
@@ -179,13 +191,17 @@ func ValidateProfileName(name string) error {
 
 // CliConfig is the resolved single-app config used by downstream code.
 type CliConfig struct {
-	ProfileName         string
-	AppID               string
-	AppSecret           string
-	Brand               LarkBrand
-	DefaultAs           Identity // AsUser | AsBot | AsAuto | "" (from config file)
-	UserOpenId          string
-	UserName            string
+	ProfileName     string
+	AppID           string
+	AppSecret       string
+	Brand           LarkBrand
+	DefaultAs       Identity // AsUser | AsBot | AsAuto | "" (from config file)
+	UserOpenId      string
+	UserName        string
+	PrincipalOpenID string
+	CredentialKind  CredentialKind
+	// AgentScope is the bind-time grant snapshot; used only when no live scope is available.
+	AgentScope          string
 	Lang                i18n.Lang
 	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 }
@@ -294,12 +310,24 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
 	}
 	cfg := &CliConfig{
-		ProfileName: app.ProfileName(),
-		AppID:       app.AppId,
-		AppSecret:   secret,
-		Brand:       ParseBrand(string(app.Brand)),
-		Lang:        app.Lang,
-		DefaultAs:   app.DefaultAs,
+		ProfileName:     app.ProfileName(),
+		AppID:           app.AppId,
+		AppSecret:       secret,
+		Brand:           ParseBrand(string(app.Brand)),
+		Lang:            app.Lang,
+		DefaultAs:       app.DefaultAs,
+		PrincipalOpenID: app.PrincipalOpenID,
+		CredentialKind:  app.CredentialKind,
+		AgentScope:      app.AgentScope,
+	}
+	if app.CredentialKind == CredentialAAT {
+		if app.PrincipalOpenID == "" {
+			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+				"AAT profile %q has no verified principal open ID", app.ProfileName()).
+				WithHint("Rerun `lark-cli config init` with the Agent Employee app credentials.")
+		}
+		cfg.UserOpenId = app.PrincipalOpenID
+		return cfg, nil
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId

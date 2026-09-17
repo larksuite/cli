@@ -12,10 +12,11 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/util"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
-func handleBaseAPIResult(result interface{}, err error, action string) (map[string]interface{}, error) {
-	data, err := handleBaseAPIResultAny(result, err, action)
+func handleBaseAPIResult(runtime *common.RuntimeContext, result interface{}, err error, action string) (map[string]interface{}, error) {
+	data, err := handleBaseAPIResultAny(runtime, result, err, action)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +27,13 @@ func handleBaseAPIResult(result interface{}, err error, action string) (map[stri
 // handleBaseAPIResultAny normalizes the Base v3 {code,msg,data} envelope used
 // by shortcut APIs. Success returns data as-is; API failures become the CLI's
 // structured ErrAPI, with server-provided message/hint promoted to the top level.
-func handleBaseAPIResultAny(result interface{}, err error, action string) (interface{}, error) {
+//
+// The runtime is what the failure is classified against, and it is a parameter
+// rather than a per-call-site decision because the credential kind it carries
+// is what routes the recovery: every Base v3 shortcut is available to an Agent
+// Employee, and an Agent Employee has nobody to complete the human device login
+// an unclassified authorization failure would recommend.
+func handleBaseAPIResultAny(runtime *common.RuntimeContext, result interface{}, err error, action string) (interface{}, error) {
 	if err != nil {
 		return nil, baseAPIBoundaryError(err, action)
 	}
@@ -46,7 +53,17 @@ func handleBaseAPIResultAny(result interface{}, err error, action string) (inter
 		return resultMap["data"], nil
 	}
 
-	return nil, baseAPIErrorFromResult(resultMap, errclass.ClassifyContext{})
+	return nil, baseAPIErrorFromResult(resultMap, baseClassifyContext(runtime))
+}
+
+// baseClassifyContext describes the failing call to the error classifier. A
+// runtime without config only reaches here from tests that exercise envelope
+// normalization on its own; a real shortcut always carries one.
+func baseClassifyContext(runtime *common.RuntimeContext) errclass.ClassifyContext {
+	if runtime == nil || runtime.Config == nil {
+		return errclass.ClassifyContext{}
+	}
+	return runtime.APIClassifyContext()
 }
 
 // baseFlagErrorf marks flag-usage failures; it shares baseValidationErrorf's

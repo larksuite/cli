@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -359,7 +360,7 @@ func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.
 	}
 
 	var out bytes.Buffer
-	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, nil, visible); err != nil {
+	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, nil, visible, core.CredentialUAT, io.Discard); err != nil {
 		t.Fatalf("broad schema failed: %v", err)
 	}
 	var envelopes []map[string]interface{}
@@ -388,6 +389,8 @@ func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.
 		catalog,
 		nil,
 		visible,
+		core.CredentialUAT,
+		io.Discard,
 	)
 	if err == nil {
 		t.Fatal("concealed exact method unexpectedly resolved")
@@ -455,15 +458,404 @@ func TestSchemaSurfaceProjectionPreservesDefaultAndDeniedVisibleCatalog(t *testi
 	allVisible := func([]string) bool { return true }
 
 	var defaultOut, projectedOut bytes.Buffer
-	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil, nil); err != nil {
+	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil, nil, core.CredentialUAT, io.Discard); err != nil {
 		t.Fatalf("default schema failed: %v", err)
 	}
-	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, nil, allVisible); err != nil {
+	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, nil, allVisible, core.CredentialUAT, io.Discard); err != nil {
 		t.Fatalf("all-visible schema failed: %v", err)
 	}
 	if defaultOut.String() != projectedOut.String() {
 		t.Errorf("all-referenceable surface changed default schema output\ndefault: %s\nprojected: %s", defaultOut.String(), projectedOut.String())
 	}
+}
+
+// TestCombineFiltersNilWhenAllInputsNil pins that no active filter yields nil,
+// not an always-true wrapper, so callers keep the unfiltered code path.
+func TestCombineFiltersNilWhenAllInputsNil(t *testing.T) {
+	if f := combineFilters(nil, nil); f != nil {
+		t.Error("combineFilters(nil, nil) must be nil")
+	}
+	if f := combineFilters(); f != nil {
+		t.Error("combineFilters() with no arguments must be nil")
+	}
+}
+
+// TestCombineFiltersIsConjunction pins that present filters are ANDed and nils are skipped.
+func TestCombineFiltersIsConjunction(t *testing.T) {
+	agentOnly := func(m meta.Method) bool { return m.SupportsAgent() }
+	userOnly := func(m meta.Method) bool { return m.SupportsToken(meta.TokenUser) }
+
+	agentMethod := meta.Method{AccessTokens: []meta.Token{meta.TokenAgent}}
+	userMethod := meta.Method{AccessTokens: []meta.Token{meta.TokenUser}}
+	both := meta.Method{AccessTokens: []meta.Token{meta.TokenUser, meta.TokenAgent}}
+
+	if f := combineFilters(nil, agentOnly); !f(agentMethod) || f(userMethod) {
+		t.Error("a lone non-nil filter mixed with nil must behave like itself")
+	}
+
+	combined := combineFilters(agentOnly, userOnly)
+	if combined == nil {
+		t.Fatal("expected a combined filter")
+	}
+	if combined(agentMethod) {
+		t.Error("agent-only method should fail the user-only leg")
+	}
+	if combined(userMethod) {
+		t.Error("user-only method should fail the agent-only leg")
+	}
+	if !combined(both) {
+		t.Error("a method passing both legs must be kept")
+	}
+}
+
+// TestSchemaEmptyForAgentExplainsWhy pins the stderr note for an AAT profile
+// against a catalog with no agent-marked method; it must not reuse the strict-mode text.
+func TestSchemaEmptyForAgentExplainsWhy(t *testing.T) {
+	var out, errOut bytes.Buffer
+	runSchemaForTest(t, &out, &errOut, schemaTestOpts{
+		credentialKind: core.CredentialAAT,
+		gateEnabled:    true,
+		catalog:        catalogWithoutAgentMarkers(t),
+	})
+	if !strings.Contains(errOut.String(), "Agent-Employee-callable") {
+		t.Errorf("stderr should explain the empty result, got: %s", errOut.String())
+	}
+	if strings.Contains(errOut.String(), "strict mode") {
+		t.Errorf("must not blame strict mode, which is not on, got: %s", errOut.String())
+	}
+}
+
+// TestSchemaMethodEmptyForAgentDoesNotBlameStrictMode pins the exact-method path:
+// an unmarked method under an AAT profile is attributed to the agent filter, not strict mode.
+func TestSchemaMethodEmptyForAgentDoesNotBlameStrictMode(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_IDENTITY_GATE", "")
+
+	var out bytes.Buffer
+	err := runSchemaCatalog(&out, []string{"im", "messages", "list"}, core.StrictModeOff,
+		catalogWithoutAgentMarkers(t), nil, nil, core.CredentialAAT, io.Discard)
+	if err == nil {
+		t.Fatal("expected an error resolving an unmarked method under an AAT profile")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if strings.Contains(err.Error(), "strict mode") || strings.Contains(ve.Hint, "strict mode") {
+		t.Errorf("must not blame strict mode, which is off, got message=%q hint=%q", err.Error(), ve.Hint)
+	}
+	if !strings.Contains(ve.Hint, "Agent-Employee-callable") {
+		t.Errorf("hint should attribute the failure to the Agent Employee filter, got: %q", ve.Hint)
+	}
+	if !strings.Contains(err.Error(), "im.messages.list") {
+		t.Errorf("expected the specific method path in the error, got: %q", err.Error())
+	}
+	if out.Len() != 0 {
+		t.Errorf("a resolve failure must not write to stdout, got: %s", out.String())
+	}
+}
+
+// TestSchemaMethodStrictModeKeepsOldWording pins that when strict mode alone
+// empties an exact method, the original wording is unchanged.
+func TestSchemaMethodStrictModeKeepsOldWording(t *testing.T) {
+	var out bytes.Buffer
+	// Tenant-only methods under user strict mode empty refs without the agent filter.
+	err := runSchemaCatalog(&out, []string{"im", "messages", "list"}, core.StrictModeUser,
+		schemaSurfaceCatalog(), nil, nil, core.CredentialUAT, io.Discard)
+	if err == nil {
+		t.Fatal("expected an error: the fixture method only supports tenant, not user")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	wantMsg := "Method im.messages.list not available in current identity mode"
+	wantHint := "strict mode hides methods the active account identity cannot call; it is shown for an identity (user or bot) that has the required access token"
+	if err.Error() != wantMsg {
+		t.Errorf("message = %q, want %q", err.Error(), wantMsg)
+	}
+	if ve.Hint != wantHint {
+		t.Errorf("hint = %q, want %q", ve.Hint, wantHint)
+	}
+}
+
+// TestSchemaMethodStrictModeUserShowsAgentOnlyMethod pins that user strict
+// mode and the execution gate agree on an agent-only method: both treat it as
+// user-callable, so schema must render it rather than report "not available in
+// current identity mode" for a method the command would then execute.
+// TestSchemaMethodAgentOnlyReportsUserForAgentEmployee pins the envelope an
+// Agent Employee sees for an agent-only method: strict mode is off for it (see
+// Factory.ResolveStrictMode), the agent filter keeps the method, and
+// access_tokens reports the wire identity the agent token rides on.
+func TestSchemaMethodAgentOnlyReportsUserForAgentEmployee(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_IDENTITY_GATE", "")
+	var out bytes.Buffer
+	err := runSchemaCatalog(&out, []string{"im", "messages", "search"}, core.StrictModeOff,
+		catalogWithAgentOnlyMethod(t), nil, nil, core.CredentialAAT, io.Discard)
+	if err != nil {
+		t.Fatalf("agent-only method must be visible to an Agent Employee, got: %v", err)
+	}
+	var env map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("not valid JSON: %v\n%s", err, out.String())
+	}
+	meta, _ := env["_meta"].(map[string]interface{})
+	if got, want := meta["access_tokens"], []interface{}{"user"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("_meta.access_tokens = %v, want %v", got, want)
+	}
+}
+
+// TestSchemaMethodAgentOnlyIsNotUserCallableForHumanProfile pins the human
+// view of the same method. Under user strict mode it is not shown at all, and
+// with strict mode off it is shown with no identity a human profile can use.
+func TestSchemaMethodAgentOnlyIsNotUserCallableForHumanProfile(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_IDENTITY_GATE", "")
+
+	var out bytes.Buffer
+	err := runSchemaCatalog(&out, []string{"im", "messages", "search"}, core.StrictModeUser,
+		catalogWithAgentOnlyMethod(t), nil, nil, core.CredentialUAT, io.Discard)
+	if err == nil {
+		t.Fatal("user strict mode must not show an agent-only method to a human profile")
+	}
+	if !strings.Contains(err.Error(), "not available in current identity mode") {
+		t.Errorf("want the strict-mode wording, got: %v", err)
+	}
+
+	out.Reset()
+	if err := runSchemaCatalog(&out, []string{"im", "messages", "search"}, core.StrictModeOff,
+		catalogWithAgentOnlyMethod(t), nil, nil, core.CredentialUAT, io.Discard); err != nil {
+		t.Fatalf("with strict mode off the method is listed, got: %v", err)
+	}
+	var env map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("not valid JSON: %v\n%s", err, out.String())
+	}
+	meta, _ := env["_meta"].(map[string]interface{})
+	if got, want := meta["access_tokens"], []interface{}{}; !reflect.DeepEqual(got, want) {
+		t.Errorf("_meta.access_tokens = %v, want %v (no identity a human profile has)", got, want)
+	}
+}
+
+// TestSchemaMethodStrictModeBotHidesAgentOnlyMethod pins the other side: an
+// agent-only method is user-wire only, so bot strict mode hides it with the
+// strict-mode wording, not the agent wording.
+func TestSchemaMethodStrictModeBotHidesAgentOnlyMethod(t *testing.T) {
+	var out bytes.Buffer
+	err := runSchemaCatalog(&out, []string{"im", "messages", "search"}, core.StrictModeBot,
+		catalogWithAgentOnlyMethod(t), nil, nil, core.CredentialTAT, io.Discard)
+	if err == nil {
+		t.Fatal("expected an error: an agent-only method is not bot-callable")
+	}
+	if !strings.Contains(err.Error(), "not available in current identity mode") {
+		t.Errorf("expected the strict-mode wording, got: %q", err.Error())
+	}
+}
+
+// TestSchemaEmptyForAgentNamesTheResolvedSubtree pins that a service-scoped
+// query names that service rather than claiming the whole metadata was checked.
+func TestSchemaEmptyForAgentNamesTheResolvedSubtree(t *testing.T) {
+	var out, errOut bytes.Buffer
+	runSchemaForTest(t, &out, &errOut, schemaTestOpts{
+		credentialKind: core.CredentialAAT,
+		gateEnabled:    true,
+		parts:          []string{"im"},
+		catalog:        catalogWithoutAgentMarkers(t),
+	})
+	if !strings.Contains(errOut.String(), `service "im"`) {
+		t.Errorf("stderr should name the resolved service, got: %s", errOut.String())
+	}
+	if strings.Contains(errOut.String(), "the local metadata is marked") {
+		t.Errorf("service-scoped note must not claim the entire local metadata was checked, got: %s", errOut.String())
+	}
+}
+
+// TestSchemaEmptyForAgentNamesTheResolvedResource pins the same for a resource-scoped query.
+func TestSchemaEmptyForAgentNamesTheResolvedResource(t *testing.T) {
+	var out, errOut bytes.Buffer
+	runSchemaForTest(t, &out, &errOut, schemaTestOpts{
+		credentialKind: core.CredentialAAT,
+		gateEnabled:    true,
+		parts:          []string{"im", "messages"},
+		catalog:        catalogWithoutAgentMarkers(t),
+	})
+	if !strings.Contains(errOut.String(), `resource "im.messages"`) {
+		t.Errorf("stderr should name the resolved resource, got: %s", errOut.String())
+	}
+	if strings.Contains(errOut.String(), "the local metadata is marked") {
+		t.Errorf("resource-scoped note must not claim the entire local metadata was checked, got: %s", errOut.String())
+	}
+}
+
+// TestCredentialKindOfToleratesFactoryWithoutConfig pins that a Factory literal
+// without Config reads as unclassified instead of panicking; schema must still render.
+func TestCredentialKindOfToleratesFactoryWithoutConfig(t *testing.T) {
+	if kind := credentialKindOf(&cmdutil.Factory{}); kind != "" {
+		t.Errorf("kind = %q, want empty for a Factory with no Config loader", kind)
+	}
+}
+
+// TestSchemaNoNoteWhenStrictModeEmptiesNonAgentProfile pins that the kind check
+// in the attribution guard matters: a non-AAT listing emptied by strict mode stays silent.
+func TestSchemaNoNoteWhenStrictModeEmptiesNonAgentProfile(t *testing.T) {
+	var out, errOut bytes.Buffer
+	runSchemaForTest(t, &out, &errOut, schemaTestOpts{
+		credentialKind: core.CredentialUAT,
+		gateEnabled:    true,
+		mode:           core.StrictModeUser,
+		catalog:        schemaSurfaceCatalog(), // every fixture method is tenant-only
+	})
+	if errOut.Len() != 0 {
+		t.Errorf("a non-AAT profile emptied by strict mode must produce no extra stderr, got: %s", errOut.String())
+	}
+}
+
+// TestSchemaBroadListingSilentWhenGateOffForAAT pins that with the gate off an
+// AAT broad listing prints no note even when strict mode empties it. The
+// non-empty fixture is what makes a dropped gate conjunct visible.
+func TestSchemaBroadListingSilentWhenGateOffForAAT(t *testing.T) {
+	var out, errOut bytes.Buffer
+	runSchemaForTest(t, &out, &errOut, schemaTestOpts{
+		credentialKind: core.CredentialAAT,
+		gateEnabled:    false,
+		mode:           core.StrictModeUser,
+		catalog:        schemaSurfaceCatalog(),
+	})
+	if errOut.Len() != 0 {
+		t.Errorf("a disabled gate must produce no extra stderr for an AAT profile, got: %s", errOut.String())
+	}
+}
+
+// TestSchemaBroadListingSilentForGenuinelyEmptySubtree pins that a subtree with
+// no methods at all stays silent: there was nothing for the agent filter to exclude.
+func TestSchemaBroadListingSilentForGenuinelyEmptySubtree(t *testing.T) {
+	var out, errOut bytes.Buffer
+	runSchemaForTest(t, &out, &errOut, schemaTestOpts{
+		credentialKind: core.CredentialAAT,
+		gateEnabled:    true,
+		parts:          []string{"im", "messages"},
+		catalog:        catalogWithEmptyResource(t),
+	})
+	if errOut.Len() != 0 {
+		t.Errorf("a genuinely empty subtree must produce no extra stderr even for an AAT profile with the gate on, got: %s", errOut.String())
+	}
+}
+
+// TestSchemaMethodGateOffKeepsOldWordingForAAT pins that with the gate off an
+// unmarked exact method under an AAT profile keeps the strict-mode wording.
+func TestSchemaMethodGateOffKeepsOldWordingForAAT(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_IDENTITY_GATE", "off")
+
+	var out bytes.Buffer
+	err := runSchemaCatalog(&out, []string{"im", "messages", "list"}, core.StrictModeUser,
+		schemaSurfaceCatalog(), nil, nil, core.CredentialAAT, io.Discard)
+	if err == nil {
+		t.Fatal("expected an error: the fixture method only supports tenant, not user")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	wantMsg := "Method im.messages.list not available in current identity mode"
+	wantHint := "strict mode hides methods the active account identity cannot call; it is shown for an identity (user or bot) that has the required access token"
+	if err.Error() != wantMsg {
+		t.Errorf("message = %q, want %q", err.Error(), wantMsg)
+	}
+	if ve.Hint != wantHint {
+		t.Errorf("hint = %q, want %q", ve.Hint, wantHint)
+	}
+}
+
+// schemaTestOpts supplies the identity and gate inputs runSchemaCatalog would
+// otherwise resolve from a Factory; zero values match the previous behaviour.
+type schemaTestOpts struct {
+	credentialKind core.CredentialKind
+	gateEnabled    bool
+	catalog        apicatalog.Catalog
+	parts          []string
+	mode           core.StrictMode
+}
+
+// runSchemaForTest drives runSchemaCatalog's broad-listing path with explicit
+// kind, strict mode, and gate state (via t.Setenv, since the gate is read from
+// the environment) and asserts success.
+func runSchemaForTest(t *testing.T, out, errOut *bytes.Buffer, opts schemaTestOpts) {
+	t.Helper()
+	if opts.gateEnabled {
+		t.Setenv("LARKSUITE_CLI_AGENT_IDENTITY_GATE", "")
+	} else {
+		t.Setenv("LARKSUITE_CLI_AGENT_IDENTITY_GATE", "off")
+	}
+	if err := runSchemaCatalog(out, opts.parts, opts.mode, opts.catalog, nil, nil, opts.credentialKind, errOut); err != nil {
+		t.Fatalf("runSchemaCatalog failed: %v", err)
+	}
+}
+
+// catalogWithoutAgentMarkers returns a small catalog whose only method
+// declares no TokenAgent access, so an Agent Employee filter empties it.
+func catalogWithoutAgentMarkers(t *testing.T) apicatalog.Catalog {
+	t.Helper()
+	service := meta.ServiceFromMap(map[string]interface{}{
+		"name":        "im",
+		"version":     "v1",
+		"servicePath": "/open-apis/im/v1",
+		"resources": map[string]interface{}{
+			"messages": map[string]interface{}{
+				"methods": map[string]interface{}{
+					"list": map[string]interface{}{
+						"id":           "im.messages.list",
+						"path":         "/open-apis/im/v1/messages",
+						"httpMethod":   "GET",
+						"description":  "list messages",
+						"risk":         "read",
+						"accessTokens": []interface{}{"tenant", "user"},
+					},
+				},
+			},
+		},
+	})
+	return apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{service})
+}
+
+// catalogWithAgentOnlyMethod returns a catalog whose only method is marked
+// agent-only: accessTokens carries "agent" and no user or tenant entry.
+func catalogWithAgentOnlyMethod(t *testing.T) apicatalog.Catalog {
+	t.Helper()
+	service := meta.ServiceFromMap(map[string]interface{}{
+		"name":        "im",
+		"version":     "v1",
+		"servicePath": "/open-apis/im/v1",
+		"resources": map[string]interface{}{
+			"messages": map[string]interface{}{
+				"methods": map[string]interface{}{
+					"search": map[string]interface{}{
+						"id":           "im.messages.search",
+						"path":         "/open-apis/im/v1/messages/search",
+						"httpMethod":   "GET",
+						"description":  "search messages",
+						"risk":         "read",
+						"accessTokens": []interface{}{"agent"},
+					},
+				},
+			},
+		},
+	})
+	return apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{service})
+}
+
+// catalogWithEmptyResource returns a catalog whose only resource has no methods,
+// so it is empty under any filter including none.
+func catalogWithEmptyResource(t *testing.T) apicatalog.Catalog {
+	t.Helper()
+	service := meta.ServiceFromMap(map[string]interface{}{
+		"name":        "im",
+		"version":     "v1",
+		"servicePath": "/open-apis/im/v1",
+		"resources": map[string]interface{}{
+			"messages": map[string]interface{}{
+				"methods": map[string]interface{}{},
+			},
+		},
+	})
+	return apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{service})
 }
 
 func schemaSurfaceCatalog() apicatalog.Catalog {

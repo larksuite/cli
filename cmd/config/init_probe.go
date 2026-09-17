@@ -47,6 +47,10 @@ const probeTimeout = 3 * time.Second
 //  2. If TAT succeeded, a POST to the probe endpoint is fired. The outcome of
 //     that call (success, server error, timeout, parse failure) is always
 //     ignored — return nil regardless.
+//
+// This is the entry point for callers holding nothing but the credentials. A
+// caller that has already minted a tenant token calls postAppProbe with it
+// instead, and owes the check that what it minted is a tenant token.
 func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret string, brand core.LarkBrand) error {
 	if factory == nil {
 		return nil
@@ -73,20 +77,32 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	}
 
 	// TAT succeeded — fire the probe call. Any outcome is ignored.
+	postAppProbe(ctx, httpClient, brand, token)
+	return nil
+}
+
+// postAppProbe reports this app's CLI setup to the open platform with a token
+// the caller has already obtained. Every outcome is ignored: the call exists to
+// be counted, never to decide whether config init succeeded.
+//
+// The token must be a tenant access token. An Agent Employee app mints an Agent
+// token from the same client_credentials call, and sending that as a tenant
+// token is what the credential contract exists to prevent, so callers holding a
+// minted token must check what they minted before calling.
+func postAppProbe(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, token string) {
 	url := core.ResolveEndpoints(brand).Open + "/open-apis/application/v6/larksuite_cli_app/probe"
 	body := []byte(fmt.Sprintf(`{"from":"lark-cli/%s"}`, build.Version))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return nil
+		return
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil
+		return
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
-	return nil
 }

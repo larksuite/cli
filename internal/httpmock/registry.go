@@ -73,6 +73,12 @@ func (r *Registry) Register(s *Stub) {
 
 // RoundTrip implements http.RoundTripper.
 func (r *Registry) RoundTrip(req *http.Request) (*http.Response, error) {
+	// A real transport refuses a request whose context is already done; so
+	// does this one, or a test could never see a dead context being handed to
+	// a call that was supposed to get a fresh budget.
+	if err := req.Context().Err(); err != nil {
+		return nil, err
+	}
 	urlStr := req.URL.String()
 
 	// Read body once up-front so BodyFilter can inspect it without consuming

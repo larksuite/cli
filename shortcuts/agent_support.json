@@ -1,0 +1,1644 @@
+{
+  "version": 1,
+  "updatedAt": "2026-09-17T21:40:00+08:00",
+  "commands": {
+    "application +slash-command-create": {
+      "agentSupport": "denied"
+    },
+    "application +slash-command-delete": {
+      "agentSupport": "denied"
+    },
+    "application +slash-command-list": {
+      "agentSupport": "denied"
+    },
+    "application +slash-command-update": {
+      "agentSupport": "denied"
+    },
+    "apps +access-scope-get": {
+      "agentSupport": "denied"
+    },
+    "apps +access-scope-set": {
+      "agentSupport": "denied"
+    },
+    "apps +analytics-list": {
+      "agentSupport": "denied"
+    },
+    "apps +automation-create": {
+      "agentSupport": "denied"
+    },
+    "apps +automation-disable": {
+      "agentSupport": "denied"
+    },
+    "apps +automation-enable": {
+      "agentSupport": "denied"
+    },
+    "apps +automation-get": {
+      "agentSupport": "denied"
+    },
+    "apps +automation-list": {
+      "agentSupport": "denied"
+    },
+    "apps +automation-update": {
+      "agentSupport": "denied"
+    },
+    "apps +cache-clear": {
+      "agentSupport": "denied"
+    },
+    "apps +cache-delete": {
+      "agentSupport": "denied"
+    },
+    "apps +cache-get": {
+      "agentSupport": "denied"
+    },
+    "apps +chat": {
+      "agentSupport": "denied"
+    },
+    "apps +create": {
+      "agentSupport": "denied"
+    },
+    "apps +db-audit-disable": {
+      "agentSupport": "denied"
+    },
+    "apps +db-audit-enable": {
+      "agentSupport": "denied"
+    },
+    "apps +db-audit-list": {
+      "agentSupport": "denied"
+    },
+    "apps +db-audit-status": {
+      "agentSupport": "denied"
+    },
+    "apps +db-changelog-list": {
+      "agentSupport": "denied"
+    },
+    "apps +db-data-export": {
+      "agentSupport": "denied"
+    },
+    "apps +db-data-import": {
+      "agentSupport": "denied"
+    },
+    "apps +db-env-create": {
+      "agentSupport": "denied"
+    },
+    "apps +db-env-diff": {
+      "agentSupport": "denied"
+    },
+    "apps +db-env-migrate": {
+      "agentSupport": "denied"
+    },
+    "apps +db-execute": {
+      "agentSupport": "denied"
+    },
+    "apps +db-quota-get": {
+      "agentSupport": "denied"
+    },
+    "apps +db-recovery-apply": {
+      "agentSupport": "denied"
+    },
+    "apps +db-recovery-diff": {
+      "agentSupport": "denied"
+    },
+    "apps +db-sync-create": {
+      "agentSupport": "denied"
+    },
+    "apps +db-sync-delete": {
+      "agentSupport": "denied"
+    },
+    "apps +db-sync-disable": {
+      "agentSupport": "denied"
+    },
+    "apps +db-sync-enable": {
+      "agentSupport": "denied"
+    },
+    "apps +db-sync-get": {
+      "agentSupport": "denied"
+    },
+    "apps +db-sync-list": {
+      "agentSupport": "denied"
+    },
+    "apps +db-sync-update": {
+      "agentSupport": "denied"
+    },
+    "apps +db-table-get": {
+      "agentSupport": "denied"
+    },
+    "apps +db-table-list": {
+      "agentSupport": "denied"
+    },
+    "apps +deploy": {
+      "agentSupport": "denied"
+    },
+    "apps +env-delete": {
+      "agentSupport": "denied"
+    },
+    "apps +env-list": {
+      "agentSupport": "denied"
+    },
+    "apps +env-pull": {
+      "agentSupport": "denied"
+    },
+    "apps +env-set": {
+      "agentSupport": "denied"
+    },
+    "apps +export": {
+      "agentSupport": "denied"
+    },
+    "apps +file-delete": {
+      "agentSupport": "denied"
+    },
+    "apps +file-download": {
+      "agentSupport": "denied"
+    },
+    "apps +file-get": {
+      "agentSupport": "denied"
+    },
+    "apps +file-list": {
+      "agentSupport": "denied"
+    },
+    "apps +file-quota-get": {
+      "agentSupport": "denied"
+    },
+    "apps +file-sign": {
+      "agentSupport": "denied"
+    },
+    "apps +file-upload": {
+      "agentSupport": "denied"
+    },
+    "apps +get": {
+      "agentSupport": "denied"
+    },
+    "apps +git-credential-init": {
+      "agentSupport": "denied"
+    },
+    "apps +git-credential-list": {
+      "agentSupport": "denied"
+    },
+    "apps +git-credential-remove": {
+      "agentSupport": "denied"
+    },
+    "apps +html-publish": {
+      "agentSupport": "denied"
+    },
+    "apps +init": {
+      "agentSupport": "denied"
+    },
+    "apps +init-template": {
+      "agentSupport": "denied"
+    },
+    "apps +list": {
+      "agentSupport": "denied"
+    },
+    "apps +log-get": {
+      "agentSupport": "denied"
+    },
+    "apps +log-list": {
+      "agentSupport": "denied"
+    },
+    "apps +member-add": {
+      "agentSupport": "denied"
+    },
+    "apps +member-list": {
+      "agentSupport": "denied"
+    },
+    "apps +member-remove": {
+      "agentSupport": "denied"
+    },
+    "apps +member-settings-get": {
+      "agentSupport": "denied"
+    },
+    "apps +member-settings-set": {
+      "agentSupport": "denied"
+    },
+    "apps +member-update": {
+      "agentSupport": "denied"
+    },
+    "apps +metric-list": {
+      "agentSupport": "denied"
+    },
+    "apps +openapi-key-create": {
+      "agentSupport": "denied"
+    },
+    "apps +openapi-key-delete": {
+      "agentSupport": "denied"
+    },
+    "apps +openapi-key-disable": {
+      "agentSupport": "denied"
+    },
+    "apps +openapi-key-enable": {
+      "agentSupport": "denied"
+    },
+    "apps +openapi-key-get": {
+      "agentSupport": "denied"
+    },
+    "apps +openapi-key-list": {
+      "agentSupport": "denied"
+    },
+    "apps +openapi-key-reset": {
+      "agentSupport": "denied"
+    },
+    "apps +openapi-key-update": {
+      "agentSupport": "denied"
+    },
+    "apps +plugin-install": {
+      "agentSupport": "denied"
+    },
+    "apps +plugin-list": {
+      "agentSupport": "denied"
+    },
+    "apps +plugin-uninstall": {
+      "agentSupport": "denied"
+    },
+    "apps +release-create": {
+      "agentSupport": "denied"
+    },
+    "apps +release-get": {
+      "agentSupport": "denied"
+    },
+    "apps +release-list": {
+      "agentSupport": "denied"
+    },
+    "apps +role-create": {
+      "agentSupport": "denied"
+    },
+    "apps +role-delete": {
+      "agentSupport": "denied"
+    },
+    "apps +role-get": {
+      "agentSupport": "denied"
+    },
+    "apps +role-list": {
+      "agentSupport": "denied"
+    },
+    "apps +role-match-list": {
+      "agentSupport": "denied"
+    },
+    "apps +role-member-add": {
+      "agentSupport": "denied"
+    },
+    "apps +role-member-list": {
+      "agentSupport": "denied"
+    },
+    "apps +role-member-remove": {
+      "agentSupport": "denied"
+    },
+    "apps +role-update": {
+      "agentSupport": "denied"
+    },
+    "apps +session-create": {
+      "agentSupport": "denied"
+    },
+    "apps +session-get": {
+      "agentSupport": "denied"
+    },
+    "apps +session-list": {
+      "agentSupport": "denied"
+    },
+    "apps +session-messages-list": {
+      "agentSupport": "denied"
+    },
+    "apps +session-stop": {
+      "agentSupport": "denied"
+    },
+    "apps +trace-get": {
+      "agentSupport": "denied"
+    },
+    "apps +trace-list": {
+      "agentSupport": "denied"
+    },
+    "apps +update": {
+      "agentSupport": "denied"
+    },
+    "apps +user-id-convert": {
+      "agentSupport": "denied"
+    },
+    "base +advperm-disable": {
+      "agentSupport": "allowed"
+    },
+    "base +advperm-enable": {
+      "agentSupport": "allowed"
+    },
+    "base +app-block-create": {
+      "agentSupport": "allowed"
+    },
+    "base +app-block-get": {
+      "agentSupport": "allowed"
+    },
+    "base +app-block-get-data": {
+      "agentSupport": "allowed"
+    },
+    "base +app-block-list": {
+      "agentSupport": "allowed"
+    },
+    "base +app-block-update": {
+      "agentSupport": "allowed"
+    },
+    "base +app-create": {
+      "agentSupport": "allowed"
+    },
+    "base +app-get": {
+      "agentSupport": "allowed"
+    },
+    "base +app-page-create": {
+      "agentSupport": "allowed"
+    },
+    "base +app-page-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +app-page-get": {
+      "agentSupport": "allowed"
+    },
+    "base +app-page-list": {
+      "agentSupport": "allowed"
+    },
+    "base +app-page-update": {
+      "agentSupport": "allowed"
+    },
+    "base +base-block-create": {
+      "agentSupport": "allowed"
+    },
+    "base +base-block-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +base-block-list": {
+      "agentSupport": "allowed"
+    },
+    "base +base-block-move": {
+      "agentSupport": "allowed"
+    },
+    "base +base-block-rename": {
+      "agentSupport": "allowed"
+    },
+    "base +base-copy": {
+      "agentSupport": "allowed"
+    },
+    "base +base-create": {
+      "agentSupport": "allowed"
+    },
+    "base +base-get": {
+      "agentSupport": "allowed"
+    },
+    "base +button-rule-bind": {
+      "agentSupport": "allowed"
+    },
+    "base +button-rule-get": {
+      "agentSupport": "allowed"
+    },
+    "base +button-rule-unbind": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-arrange": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-block-create": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-block-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-block-get": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-block-get-data": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-block-list": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-block-update": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-create": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-get": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-list": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-share-get": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-share-update": {
+      "agentSupport": "allowed"
+    },
+    "base +dashboard-update": {
+      "agentSupport": "allowed"
+    },
+    "base +data-query": {
+      "agentSupport": "allowed"
+    },
+    "base +field-create": {
+      "agentSupport": "allowed"
+    },
+    "base +field-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +field-extension-get": {
+      "agentSupport": "allowed"
+    },
+    "base +field-extension-update": {
+      "agentSupport": "allowed"
+    },
+    "base +field-extension-update-cells": {
+      "agentSupport": "allowed"
+    },
+    "base +field-get": {
+      "agentSupport": "allowed"
+    },
+    "base +field-list": {
+      "agentSupport": "allowed"
+    },
+    "base +field-search-options": {
+      "agentSupport": "allowed"
+    },
+    "base +field-update": {
+      "agentSupport": "allowed"
+    },
+    "base +form-create": {
+      "agentSupport": "allowed"
+    },
+    "base +form-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +form-detail": {
+      "agentSupport": "allowed"
+    },
+    "base +form-get": {
+      "agentSupport": "allowed"
+    },
+    "base +form-list": {
+      "agentSupport": "allowed"
+    },
+    "base +form-questions-create": {
+      "agentSupport": "allowed"
+    },
+    "base +form-questions-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +form-questions-list": {
+      "agentSupport": "allowed"
+    },
+    "base +form-questions-update": {
+      "agentSupport": "allowed"
+    },
+    "base +form-share-get": {
+      "agentSupport": "allowed"
+    },
+    "base +form-share-update": {
+      "agentSupport": "allowed"
+    },
+    "base +form-submit": {
+      "agentSupport": "allowed"
+    },
+    "base +form-update": {
+      "agentSupport": "allowed"
+    },
+    "base +record-batch-create": {
+      "agentSupport": "allowed"
+    },
+    "base +record-batch-update": {
+      "agentSupport": "allowed"
+    },
+    "base +record-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +record-download-attachment": {
+      "agentSupport": "allowed"
+    },
+    "base +record-get": {
+      "agentSupport": "allowed"
+    },
+    "base +record-history-list": {
+      "agentSupport": "allowed"
+    },
+    "base +record-list": {
+      "agentSupport": "allowed"
+    },
+    "base +record-remove-attachment": {
+      "agentSupport": "allowed"
+    },
+    "base +record-search": {
+      "agentSupport": "allowed"
+    },
+    "base +record-share-link-create": {
+      "agentSupport": "allowed"
+    },
+    "base +record-upload-attachment": {
+      "agentSupport": "allowed"
+    },
+    "base +record-upsert": {
+      "agentSupport": "allowed"
+    },
+    "base +role-create": {
+      "agentSupport": "allowed"
+    },
+    "base +role-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +role-get": {
+      "agentSupport": "allowed"
+    },
+    "base +role-list": {
+      "agentSupport": "allowed"
+    },
+    "base +role-update": {
+      "agentSupport": "allowed"
+    },
+    "base +table-copy": {
+      "agentSupport": "allowed"
+    },
+    "base +table-copy-status": {
+      "agentSupport": "allowed"
+    },
+    "base +table-create": {
+      "agentSupport": "allowed"
+    },
+    "base +table-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +table-get": {
+      "agentSupport": "allowed"
+    },
+    "base +table-list": {
+      "agentSupport": "allowed"
+    },
+    "base +table-update": {
+      "agentSupport": "allowed"
+    },
+    "base +template-categories": {
+      "agentSupport": "allowed"
+    },
+    "base +template-list": {
+      "agentSupport": "allowed"
+    },
+    "base +template-search": {
+      "agentSupport": "allowed"
+    },
+    "base +title-resolve": {
+      "agentSupport": "allowed"
+    },
+    "base +url-resolve": {
+      "agentSupport": "allowed"
+    },
+    "base +view-create": {
+      "agentSupport": "allowed"
+    },
+    "base +view-delete": {
+      "agentSupport": "allowed"
+    },
+    "base +view-get": {
+      "agentSupport": "allowed"
+    },
+    "base +view-get-card": {
+      "agentSupport": "allowed"
+    },
+    "base +view-get-filter": {
+      "agentSupport": "allowed"
+    },
+    "base +view-get-group": {
+      "agentSupport": "allowed"
+    },
+    "base +view-get-sort": {
+      "agentSupport": "allowed"
+    },
+    "base +view-get-timebar": {
+      "agentSupport": "allowed"
+    },
+    "base +view-get-visible-fields": {
+      "agentSupport": "allowed"
+    },
+    "base +view-list": {
+      "agentSupport": "allowed"
+    },
+    "base +view-rename": {
+      "agentSupport": "allowed"
+    },
+    "base +view-set-card": {
+      "agentSupport": "allowed"
+    },
+    "base +view-set-filter": {
+      "agentSupport": "allowed"
+    },
+    "base +view-set-group": {
+      "agentSupport": "allowed"
+    },
+    "base +view-set-sort": {
+      "agentSupport": "allowed"
+    },
+    "base +view-set-timebar": {
+      "agentSupport": "allowed"
+    },
+    "base +view-set-visible-fields": {
+      "agentSupport": "allowed"
+    },
+    "base +workflow-create": {
+      "agentSupport": "allowed"
+    },
+    "base +workflow-disable": {
+      "agentSupport": "allowed"
+    },
+    "base +workflow-enable": {
+      "agentSupport": "allowed"
+    },
+    "base +workflow-get": {
+      "agentSupport": "allowed"
+    },
+    "base +workflow-list": {
+      "agentSupport": "allowed"
+    },
+    "base +workflow-update": {
+      "agentSupport": "allowed"
+    },
+    "base +workspace-create": {
+      "agentSupport": "allowed"
+    },
+    "base +workspace-entity-list": {
+      "agentSupport": "allowed"
+    },
+    "base +workspace-move-in": {
+      "agentSupport": "allowed"
+    },
+    "calendar +agenda": {
+      "agentSupport": "allowed"
+    },
+    "calendar +create": {
+      "agentSupport": "allowed"
+    },
+    "calendar +delete": {
+      "agentSupport": "allowed"
+    },
+    "calendar +freebusy": {
+      "agentSupport": "allowed"
+    },
+    "calendar +get": {
+      "agentSupport": "allowed"
+    },
+    "calendar +join-event": {
+      "agentSupport": "allowed"
+    },
+    "calendar +list-attendees": {
+      "agentSupport": "allowed"
+    },
+    "calendar +meeting": {
+      "agentSupport": "allowed"
+    },
+    "calendar +room-find": {
+      "agentSupport": "allowed"
+    },
+    "calendar +rsvp": {
+      "agentSupport": "allowed"
+    },
+    "calendar +search-event": {
+      "agentSupport": "allowed"
+    },
+    "calendar +suggestion": {
+      "agentSupport": "allowed"
+    },
+    "calendar +transfer": {
+      "agentSupport": "allowed"
+    },
+    "calendar +update": {
+      "agentSupport": "allowed"
+    },
+    "contact +get-user": {
+      "agentSupport": "denied"
+    },
+    "contact +search-bot": {
+      "agentSupport": "denied"
+    },
+    "contact +search-user": {
+      "agentSupport": "allowed"
+    },
+    "docs +create": {
+      "agentSupport": "allowed"
+    },
+    "docs +fetch": {
+      "agentSupport": "allowed"
+    },
+    "docs +history-list": {
+      "agentSupport": "allowed"
+    },
+    "docs +history-revert": {
+      "agentSupport": "allowed"
+    },
+    "docs +history-revert-status": {
+      "agentSupport": "allowed"
+    },
+    "docs +media-download": {
+      "agentSupport": "allowed"
+    },
+    "docs +media-insert": {
+      "agentSupport": "allowed"
+    },
+    "docs +media-preview": {
+      "agentSupport": "allowed"
+    },
+    "docs +media-upload": {
+      "agentSupport": "allowed"
+    },
+    "docs +resource-delete": {
+      "agentSupport": "allowed"
+    },
+    "docs +resource-download": {
+      "agentSupport": "allowed"
+    },
+    "docs +resource-update": {
+      "agentSupport": "allowed"
+    },
+    "docs +script": {
+      "agentSupport": "allowed"
+    },
+    "docs +search": {
+      "agentSupport": "allowed"
+    },
+    "docs +update": {
+      "agentSupport": "allowed"
+    },
+    "docs +whiteboard-update": {
+      "agentSupport": "allowed"
+    },
+    "drive +add-comment": {
+      "agentSupport": "allowed"
+    },
+    "drive +add-reply": {
+      "agentSupport": "allowed"
+    },
+    "drive +apply-permission": {
+      "agentSupport": "allowed"
+    },
+    "drive +batch-query-comments": {
+      "agentSupport": "allowed"
+    },
+    "drive +copy": {
+      "agentSupport": "allowed"
+    },
+    "drive +cover": {
+      "agentSupport": "allowed"
+    },
+    "drive +create-folder": {
+      "agentSupport": "allowed"
+    },
+    "drive +create-shortcut": {
+      "agentSupport": "allowed"
+    },
+    "drive +delete": {
+      "agentSupport": "allowed"
+    },
+    "drive +delete-reply": {
+      "agentSupport": "allowed"
+    },
+    "drive +download": {
+      "agentSupport": "allowed"
+    },
+    "drive +export": {
+      "agentSupport": "allowed"
+    },
+    "drive +export-download": {
+      "agentSupport": "allowed"
+    },
+    "drive +import": {
+      "agentSupport": "allowed"
+    },
+    "drive +inspect": {
+      "agentSupport": "allowed"
+    },
+    "drive +list-comments": {
+      "agentSupport": "allowed"
+    },
+    "drive +list-replies": {
+      "agentSupport": "allowed"
+    },
+    "drive +member-add": {
+      "agentSupport": "allowed"
+    },
+    "drive +member-list": {
+      "agentSupport": "allowed"
+    },
+    "drive +member-remove": {
+      "agentSupport": "allowed"
+    },
+    "drive +move": {
+      "agentSupport": "allowed"
+    },
+    "drive +permission-get-setting": {
+      "agentSupport": "allowed"
+    },
+    "drive +preview": {
+      "agentSupport": "allowed"
+    },
+    "drive +pull": {
+      "agentSupport": "allowed"
+    },
+    "drive +push": {
+      "agentSupport": "allowed"
+    },
+    "drive +react-reply": {
+      "agentSupport": "allowed"
+    },
+    "drive +resolve-comment": {
+      "agentSupport": "allowed"
+    },
+    "drive +restore-comment": {
+      "agentSupport": "allowed"
+    },
+    "drive +search": {
+      "agentSupport": "allowed"
+    },
+    "drive +secure-label-list": {
+      "agentSupport": "allowed"
+    },
+    "drive +secure-label-update": {
+      "agentSupport": "allowed"
+    },
+    "drive +status": {
+      "agentSupport": "allowed"
+    },
+    "drive +sync": {
+      "agentSupport": "allowed"
+    },
+    "drive +task_result": {
+      "agentSupport": "allowed"
+    },
+    "drive +update-reply": {
+      "agentSupport": "allowed"
+    },
+    "drive +update-title": {
+      "agentSupport": "allowed"
+    },
+    "drive +upload": {
+      "agentSupport": "allowed"
+    },
+    "drive +version-delete": {
+      "agentSupport": "allowed"
+    },
+    "drive +version-get": {
+      "agentSupport": "allowed"
+    },
+    "drive +version-history": {
+      "agentSupport": "allowed"
+    },
+    "drive +version-revert": {
+      "agentSupport": "allowed"
+    },
+    "event +subscribe": {
+      "agentSupport": "denied"
+    },
+    "im +chat-create": {
+      "agentSupport": "allowed"
+    },
+    "im +chat-list": {
+      "agentSupport": "allowed"
+    },
+    "im +chat-members-list": {
+      "agentSupport": "allowed"
+    },
+    "im +chat-messages-list": {
+      "agentSupport": "allowed"
+    },
+    "im +chat-search": {
+      "agentSupport": "allowed"
+    },
+    "im +chat-update": {
+      "agentSupport": "allowed"
+    },
+    "im +feed-group-list": {
+      "agentSupport": "denied"
+    },
+    "im +feed-group-list-item": {
+      "agentSupport": "denied"
+    },
+    "im +feed-group-query-item": {
+      "agentSupport": "denied"
+    },
+    "im +feed-shortcut-create": {
+      "agentSupport": "denied"
+    },
+    "im +feed-shortcut-list": {
+      "agentSupport": "denied"
+    },
+    "im +feed-shortcut-remove": {
+      "agentSupport": "denied"
+    },
+    "im +flag-cancel": {
+      "agentSupport": "allowed"
+    },
+    "im +flag-create": {
+      "agentSupport": "allowed"
+    },
+    "im +flag-list": {
+      "agentSupport": "allowed"
+    },
+    "im +message-read-users": {
+      "agentSupport": "allowed"
+    },
+    "im +messages-edit": {
+      "agentSupport": "allowed"
+    },
+    "im +messages-mget": {
+      "agentSupport": "allowed"
+    },
+    "im +messages-read-status": {
+      "agentSupport": "allowed"
+    },
+    "im +messages-reply": {
+      "agentSupport": "allowed"
+    },
+    "im +messages-resources-download": {
+      "agentSupport": "allowed"
+    },
+    "im +messages-search": {
+      "agentSupport": "allowed"
+    },
+    "im +messages-send": {
+      "agentSupport": "allowed"
+    },
+    "im +threads-messages-list": {
+      "agentSupport": "allowed"
+    },
+    "mail +decline-receipt": {
+      "agentSupport": "allowed"
+    },
+    "mail +draft-create": {
+      "agentSupport": "allowed"
+    },
+    "mail +draft-edit": {
+      "agentSupport": "allowed"
+    },
+    "mail +draft-send": {
+      "agentSupport": "allowed"
+    },
+    "mail +forward": {
+      "agentSupport": "allowed"
+    },
+    "mail +lint-html": {
+      "agentSupport": "allowed"
+    },
+    "mail +message": {
+      "agentSupport": "allowed"
+    },
+    "mail +message-modify": {
+      "agentSupport": "allowed"
+    },
+    "mail +message-trash": {
+      "agentSupport": "allowed"
+    },
+    "mail +messages": {
+      "agentSupport": "allowed"
+    },
+    "mail +reply": {
+      "agentSupport": "allowed"
+    },
+    "mail +reply-all": {
+      "agentSupport": "allowed"
+    },
+    "mail +rule-create": {
+      "agentSupport": "allowed"
+    },
+    "mail +rule-delete": {
+      "agentSupport": "allowed"
+    },
+    "mail +rule-disable": {
+      "agentSupport": "allowed"
+    },
+    "mail +rule-enable": {
+      "agentSupport": "allowed"
+    },
+    "mail +rule-get": {
+      "agentSupport": "allowed"
+    },
+    "mail +rule-list": {
+      "agentSupport": "allowed"
+    },
+    "mail +rule-reorder": {
+      "agentSupport": "allowed"
+    },
+    "mail +rule-update": {
+      "agentSupport": "allowed"
+    },
+    "mail +send": {
+      "agentSupport": "allowed"
+    },
+    "mail +send-receipt": {
+      "agentSupport": "allowed"
+    },
+    "mail +share-to-chat": {
+      "agentSupport": "allowed"
+    },
+    "mail +signature": {
+      "agentSupport": "allowed"
+    },
+    "mail +template-create": {
+      "agentSupport": "allowed"
+    },
+    "mail +template-update": {
+      "agentSupport": "allowed"
+    },
+    "mail +thread": {
+      "agentSupport": "allowed"
+    },
+    "mail +thread-modify": {
+      "agentSupport": "allowed"
+    },
+    "mail +thread-trash": {
+      "agentSupport": "allowed"
+    },
+    "mail +triage": {
+      "agentSupport": "allowed"
+    },
+    "mail +watch": {
+      "agentSupport": "denied"
+    },
+    "markdown +create": {
+      "agentSupport": "allowed"
+    },
+    "markdown +diff": {
+      "agentSupport": "allowed"
+    },
+    "markdown +fetch": {
+      "agentSupport": "allowed"
+    },
+    "markdown +overwrite": {
+      "agentSupport": "allowed"
+    },
+    "markdown +patch": {
+      "agentSupport": "allowed"
+    },
+    "minutes +apply-permission": {
+      "agentSupport": "allowed"
+    },
+    "minutes +detail": {
+      "agentSupport": "allowed"
+    },
+    "minutes +download": {
+      "agentSupport": "allowed"
+    },
+    "minutes +search": {
+      "agentSupport": "allowed"
+    },
+    "minutes +share-permission": {
+      "agentSupport": "allowed"
+    },
+    "minutes +speaker-replace": {
+      "agentSupport": "allowed"
+    },
+    "minutes +summary": {
+      "agentSupport": "allowed"
+    },
+    "minutes +todo": {
+      "agentSupport": "allowed"
+    },
+    "minutes +update": {
+      "agentSupport": "allowed"
+    },
+    "minutes +upload": {
+      "agentSupport": "allowed"
+    },
+    "minutes +word-replace": {
+      "agentSupport": "allowed"
+    },
+    "note +detail": {
+      "agentSupport": "allowed"
+    },
+    "note +transcript": {
+      "agentSupport": "allowed"
+    },
+    "okr +batch-create": {
+      "agentSupport": "denied"
+    },
+    "okr +comment-create": {
+      "agentSupport": "denied"
+    },
+    "okr +comment-delete": {
+      "agentSupport": "denied"
+    },
+    "okr +comment-detail": {
+      "agentSupport": "denied"
+    },
+    "okr +comment-get": {
+      "agentSupport": "denied"
+    },
+    "okr +comment-list": {
+      "agentSupport": "denied"
+    },
+    "okr +comment-patch": {
+      "agentSupport": "denied"
+    },
+    "okr +comment-reopen": {
+      "agentSupport": "denied"
+    },
+    "okr +comment-solve": {
+      "agentSupport": "denied"
+    },
+    "okr +create": {
+      "agentSupport": "denied"
+    },
+    "okr +cycle-detail": {
+      "agentSupport": "denied"
+    },
+    "okr +cycle-list": {
+      "agentSupport": "denied"
+    },
+    "okr +indicator-update": {
+      "agentSupport": "denied"
+    },
+    "okr +patch": {
+      "agentSupport": "denied"
+    },
+    "okr +progress-create": {
+      "agentSupport": "denied"
+    },
+    "okr +progress-delete": {
+      "agentSupport": "denied"
+    },
+    "okr +progress-get": {
+      "agentSupport": "denied"
+    },
+    "okr +progress-list": {
+      "agentSupport": "denied"
+    },
+    "okr +progress-update": {
+      "agentSupport": "denied"
+    },
+    "okr +reorder": {
+      "agentSupport": "denied"
+    },
+    "okr +upload-image": {
+      "agentSupport": "denied"
+    },
+    "okr +weight": {
+      "agentSupport": "denied"
+    },
+    "sheets +batch-chart-create": {
+      "agentSupport": "allowed"
+    },
+    "sheets +batch-chart-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +batch-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-batch-clear": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-batch-set-style": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-clear": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-get": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-merge": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-replace": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-search": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-set": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-set-image": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-set-style": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cells-unmerge": {
+      "agentSupport": "allowed"
+    },
+    "sheets +changeset-get": {
+      "agentSupport": "allowed"
+    },
+    "sheets +chart-config-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +chart-create": {
+      "agentSupport": "allowed"
+    },
+    "sheets +chart-create-basic": {
+      "agentSupport": "allowed"
+    },
+    "sheets +chart-data-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +chart-delete": {
+      "agentSupport": "allowed"
+    },
+    "sheets +chart-list": {
+      "agentSupport": "allowed"
+    },
+    "sheets +chart-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cols-resize": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cond-format-create": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cond-format-delete": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cond-format-list": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cond-format-result-get": {
+      "agentSupport": "allowed"
+    },
+    "sheets +cond-format-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +csv-get": {
+      "agentSupport": "allowed"
+    },
+    "sheets +csv-put": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dim-delete": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dim-freeze": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dim-group": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dim-hide": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dim-insert": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dim-move": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dim-ungroup": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dim-unhide": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dropdown-delete": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dropdown-get": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dropdown-set": {
+      "agentSupport": "allowed"
+    },
+    "sheets +dropdown-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +filter-create": {
+      "agentSupport": "allowed"
+    },
+    "sheets +filter-delete": {
+      "agentSupport": "allowed"
+    },
+    "sheets +filter-list": {
+      "agentSupport": "allowed"
+    },
+    "sheets +filter-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +filter-view-create": {
+      "agentSupport": "allowed"
+    },
+    "sheets +filter-view-delete": {
+      "agentSupport": "allowed"
+    },
+    "sheets +filter-view-list": {
+      "agentSupport": "allowed"
+    },
+    "sheets +filter-view-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +float-image-create": {
+      "agentSupport": "allowed"
+    },
+    "sheets +float-image-delete": {
+      "agentSupport": "allowed"
+    },
+    "sheets +float-image-list": {
+      "agentSupport": "allowed"
+    },
+    "sheets +float-image-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +formula-verify": {
+      "agentSupport": "allowed"
+    },
+    "sheets +history-list": {
+      "agentSupport": "allowed"
+    },
+    "sheets +history-revert": {
+      "agentSupport": "allowed"
+    },
+    "sheets +history-revert-status": {
+      "agentSupport": "allowed"
+    },
+    "sheets +pivot-create": {
+      "agentSupport": "allowed"
+    },
+    "sheets +pivot-delete": {
+      "agentSupport": "allowed"
+    },
+    "sheets +pivot-list": {
+      "agentSupport": "allowed"
+    },
+    "sheets +pivot-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +range-copy": {
+      "agentSupport": "allowed"
+    },
+    "sheets +range-fill": {
+      "agentSupport": "allowed"
+    },
+    "sheets +range-move": {
+      "agentSupport": "allowed"
+    },
+    "sheets +range-sort": {
+      "agentSupport": "allowed"
+    },
+    "sheets +revision-get": {
+      "agentSupport": "allowed"
+    },
+    "sheets +rows-resize": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-copy": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-create": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-delete": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-hide": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-hide-gridline": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-info": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-list": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-move": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-rename": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-set-tab-color": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-show-gridline": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sheet-unhide": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sparkline-create": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sparkline-delete": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sparkline-list": {
+      "agentSupport": "allowed"
+    },
+    "sheets +sparkline-update": {
+      "agentSupport": "allowed"
+    },
+    "sheets +styles-put": {
+      "agentSupport": "allowed"
+    },
+    "sheets +table-get": {
+      "agentSupport": "allowed"
+    },
+    "sheets +table-put": {
+      "agentSupport": "allowed"
+    },
+    "sheets +workbook-create": {
+      "agentSupport": "allowed"
+    },
+    "sheets +workbook-export": {
+      "agentSupport": "allowed"
+    },
+    "sheets +workbook-import": {
+      "agentSupport": "allowed"
+    },
+    "sheets +workbook-info": {
+      "agentSupport": "allowed"
+    },
+    "slides +add-slide": {
+      "agentSupport": "allowed"
+    },
+    "slides +create": {
+      "agentSupport": "allowed"
+    },
+    "slides +delete-slide": {
+      "agentSupport": "allowed"
+    },
+    "slides +history-list": {
+      "agentSupport": "allowed"
+    },
+    "slides +history-revert": {
+      "agentSupport": "allowed"
+    },
+    "slides +history-revert-status": {
+      "agentSupport": "allowed"
+    },
+    "slides +media-download": {
+      "agentSupport": "allowed"
+    },
+    "slides +media-upload": {
+      "agentSupport": "allowed"
+    },
+    "slides +replace-pages": {
+      "agentSupport": "allowed"
+    },
+    "slides +replace-slide": {
+      "agentSupport": "allowed"
+    },
+    "slides +screenshot": {
+      "agentSupport": "allowed"
+    },
+    "slides +update": {
+      "agentSupport": "allowed"
+    },
+    "slides +update-slide": {
+      "agentSupport": "allowed"
+    },
+    "slides +xml-get": {
+      "agentSupport": "allowed"
+    },
+    "task +assign": {
+      "agentSupport": "denied"
+    },
+    "task +comment": {
+      "agentSupport": "allowed"
+    },
+    "task +complete": {
+      "agentSupport": "allowed"
+    },
+    "task +create": {
+      "agentSupport": "allowed"
+    },
+    "task +followers": {
+      "agentSupport": "denied"
+    },
+    "task +get-my-tasks": {
+      "agentSupport": "denied"
+    },
+    "task +get-related-tasks": {
+      "agentSupport": "denied"
+    },
+    "task +reminder": {
+      "agentSupport": "denied"
+    },
+    "task +reopen": {
+      "agentSupport": "allowed"
+    },
+    "task +search": {
+      "agentSupport": "denied"
+    },
+    "task +set-ancestor": {
+      "agentSupport": "denied"
+    },
+    "task +tasklist-create": {
+      "agentSupport": "denied"
+    },
+    "task +tasklist-members": {
+      "agentSupport": "denied"
+    },
+    "task +tasklist-search": {
+      "agentSupport": "denied"
+    },
+    "task +tasklist-task-add": {
+      "agentSupport": "denied"
+    },
+    "task +update": {
+      "agentSupport": "allowed"
+    },
+    "task +upload-attachment": {
+      "agentSupport": "allowed"
+    },
+    "vc +detail": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-countdown": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-end": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-events": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-invite": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-join": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-leave": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-list-active": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-message-send": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-participant-kickout": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-participant-mute": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-participant-unmute": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-recording-start": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-recording-stop": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-screenshot": {
+      "agentSupport": "allowed"
+    },
+    "vc +notes": {
+      "agentSupport": "allowed"
+    },
+    "vc +recording": {
+      "agentSupport": "allowed"
+    },
+    "vc +search": {
+      "agentSupport": "allowed"
+    },
+    "whiteboard +export": {
+      "agentSupport": "allowed"
+    },
+    "whiteboard +query": {
+      "agentSupport": "allowed"
+    },
+    "whiteboard +update": {
+      "agentSupport": "allowed"
+    },
+    "wiki +delete-space": {
+      "agentSupport": "allowed"
+    },
+    "wiki +member-add": {
+      "agentSupport": "allowed"
+    },
+    "wiki +member-list": {
+      "agentSupport": "allowed"
+    },
+    "wiki +member-remove": {
+      "agentSupport": "allowed"
+    },
+    "wiki +move": {
+      "agentSupport": "allowed"
+    },
+    "wiki +move-to-drive": {
+      "agentSupport": "allowed"
+    },
+    "wiki +node-copy": {
+      "agentSupport": "allowed"
+    },
+    "wiki +node-create": {
+      "agentSupport": "allowed"
+    },
+    "wiki +node-delete": {
+      "agentSupport": "allowed"
+    },
+    "wiki +node-get": {
+      "agentSupport": "allowed"
+    },
+    "wiki +node-list": {
+      "agentSupport": "allowed"
+    },
+    "wiki +space-create": {
+      "agentSupport": "allowed"
+    },
+    "wiki +space-list": {
+      "agentSupport": "allowed"
+    }
+  }
+}

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -260,7 +261,10 @@ func queryTaskCheck(runtime *common.RuntimeContext, taskID string) (map[string]i
 }
 
 func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeContext, scenario string) error {
-	result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
+	meta, err := runtime.Factory.Credential.ResolveScopeMetadata(ctx, credential.AccessSpec{
+		Identity: runtime.As(),
+		AppID:    runtime.Config.AppID,
+	})
 	if err != nil {
 		// Propagate cancellation/timeout so callers stop instead of falling through
 		// to the API call. Other token errors are non-fatal here: the API call will
@@ -270,7 +274,7 @@ func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeC
 		}
 		return nil
 	}
-	if result == nil || result.Scopes == "" {
+	if !meta.Available {
 		return nil
 	}
 
@@ -282,10 +286,10 @@ func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeC
 		required = []string{"wiki:space:read"}
 	}
 
-	return requireDriveScopes(result.Scopes, required)
+	return requireDriveScopes(meta.Scopes, runtime.Config, required)
 }
 
-func requireDriveScopes(storedScopes string, required []string) error {
+func requireDriveScopes(storedScopes string, config *core.CliConfig, required []string) error {
 	if len(required) == 0 {
 		return nil
 	}
@@ -295,9 +299,8 @@ func requireDriveScopes(storedScopes string, required []string) error {
 		return nil
 	}
 
-	return errs.NewPermissionError(errs.SubtypeMissingScope,
-		"missing required scope(s): %s", strings.Join(missing, ", ")).
-		WithMissingScopes(missing...)
+	// Identity was never attached on this path; empty resolves to the "user" default.
+	return common.MissingScopeError(config, "", missing)
 }
 
 func missingDriveScopes(storedScopes string, required []string) []string {

@@ -3,7 +3,10 @@
 
 package credential
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Brand represents the Lark platform brand.
 type Brand string
@@ -53,6 +56,13 @@ type Account struct {
 	ProfileName         string
 	OpenID              string          // optional; if UAT is available, API result takes precedence
 	SupportedIdentities IdentitySupport // zero = provider did not declare; treat as no restriction
+
+	// CredentialKind declares which credential this account is governed by.
+	// Empty means the provider did not classify the account and the legacy
+	// UAT/TAT resolution applies. An account declaring CredentialAAT reuses
+	// OpenID to carry the Agent Employee principal the provider has already
+	// verified; there is no second field with the same meaning.
+	CredentialKind CredentialKind
 }
 
 // Token holds a resolved access token and optional metadata.
@@ -74,6 +84,57 @@ const (
 type TokenSpec struct {
 	Type  TokenType
 	AppID string
+}
+
+// CredentialKind identifies which credential backs a resolved Access. It is a
+// closed set: a value outside these three is a contract violation, not an
+// extension point.
+type CredentialKind string
+
+const (
+	CredentialUAT CredentialKind = "uat"
+	CredentialAAT CredentialKind = "aat"
+	CredentialTAT CredentialKind = "tat"
+)
+
+// AccessSpec describes what access a caller needs. Callers declare only the
+// identity the command runs as; which credential satisfies that identity is
+// decided by the resolved account, not by the call site.
+type AccessSpec struct {
+	Identity Identity
+	AppID    string
+}
+
+// Access is a resolved credential together with the facts a caller may rely
+// on. Kind and OpenID are checked against the account before the value is
+// used, so a provider cannot widen its own authority by mislabelling them.
+//
+// How much of that is checked depends on what the account claims. An account
+// that names its principal (OpenID on Account) is asking the CLI to hold it to
+// that identity, so every field is verified: the returned OpenID must be
+// present and match, and ExpiresAt must be set and in the future — an Agent
+// Employee credential has no refresh token, so a zero expiry is rejected as a
+// contract violation rather than read as "never expires".
+//
+// An account that names no principal has delegated the credential's lifecycle
+// to the provider. The CLI has nothing to compare against and does not invent a
+// comparison: OpenID, ExpiresAt and Scopes may all be empty, the value is used
+// as returned, and deciding when it is stale belongs to whoever issues it.
+type Access struct {
+	Value     string
+	Kind      CredentialKind
+	OpenID    string
+	Scopes    string // space-separated; empty = skip scope pre-check
+	ExpiresAt time.Time
+}
+
+// AccessProvider is the optional interface a Provider implements to return a
+// credential and its verified subject in one step. Providers that only
+// implement Provider keep working unchanged; an account declaring
+// CredentialAAT requires this interface, because the legacy Token path cannot
+// carry the subject facts an Agent Employee credential must be checked against.
+type AccessProvider interface {
+	ResolveAccess(ctx context.Context, req AccessSpec) (*Access, error)
 }
 
 // BlockError is returned by a Provider to actively reject a request

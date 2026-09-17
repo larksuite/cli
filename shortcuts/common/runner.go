@@ -61,17 +61,22 @@ type RuntimeContext struct {
 // ── Identity ──
 
 // As returns the current identity.
-// For bot-only shortcuts, always returns AsBot.
-// For dual-auth shortcuts, uses the resolved identity (respects default-as config).
+//
+// The identity the framework actually resolved wins. botOnly is a build-time
+// inference from AuthTypes and cannot see that an Agent Employee runs a
+// bot-only shortcut on the user lane, which it does whenever the recorded
+// verdict allows it; letting botOnly override would send that invocation
+// looking for a tenant token the profile cannot mint. It still decides the
+// case where nothing was resolved.
 func (ctx *RuntimeContext) As() core.Identity {
+	if ctx.resolvedAs != "" {
+		if ctx.resolvedAs.IsBot() {
+			return core.AsBot
+		}
+		return ctx.resolvedAs
+	}
 	if ctx.botOnly {
 		return core.AsBot
-	}
-	if ctx.resolvedAs.IsBot() {
-		return core.AsBot
-	}
-	if ctx.resolvedAs != "" {
-		return ctx.resolvedAs
 	}
 	return core.AsUser
 }
@@ -216,23 +221,27 @@ func (ctx *RuntimeContext) AccessToken() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return result.Token, nil
+	return result.Value, nil
 }
 
 // resolveAccessToken retains the request-scoped origin metadata needed by
-// direct HTTP paths such as MCP. Callers that only need the token value should
-// use AccessToken.
-func (ctx *RuntimeContext) resolveAccessToken() (*credential.TokenResult, error) {
-	result, err := ctx.Factory.Credential.ResolveToken(ctx.ctx, credential.NewTokenSpec(ctx.As(), ctx.Config.AppID))
+// direct HTTP paths. Callers that only need the token value should use
+// AccessToken. This is a real credential acquisition, not a pre-check, so it
+// goes through the same single resolution entry point as SDK requests.
+func (ctx *RuntimeContext) resolveAccessToken() (*credential.ResolvedAccess, error) {
+	result, err := ctx.Factory.Credential.ResolveAccess(ctx.ctx, credential.AccessSpec{
+		Identity: ctx.As(),
+		AppID:    ctx.Config.AppID,
+	})
 	if err != nil {
-		// ResolveToken classifies its own failures (config/api); pass those
+		// ResolveAccess classifies its own failures (config/api); pass those
 		// through so a typed lower-layer error is not flattened to token_invalid.
 		if _, ok := errs.ProblemOf(err); ok {
 			return nil, err
 		}
 		return nil, errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "failed to get access token: %s", err).WithCause(err)
 	}
-	if result == nil || result.Token == "" {
+	if result == nil || result.Value == "" {
 		return nil, errs.NewAuthenticationError(errs.SubtypeTokenMissing, "no access token available for %s", ctx.As())
 	}
 	return result, nil
@@ -444,10 +453,11 @@ func (ctx *RuntimeContext) APIClassifyContext() errclass.ClassifyContext {
 		larkCmd = strings.TrimPrefix(ctx.Cmd.CommandPath(), "lark ")
 	}
 	return errclass.ClassifyContext{
-		Brand:    string(ctx.Config.Brand),
-		AppID:    ctx.Config.AppID,
-		Identity: string(ctx.As()),
-		LarkCmd:  larkCmd,
+		Brand:          string(ctx.Config.Brand),
+		AppID:          ctx.Config.AppID,
+		Identity:       string(ctx.As()),
+		CredentialKind: string(ctx.Config.CredentialKind),
+		LarkCmd:        larkCmd,
 	}
 }
 
@@ -870,17 +880,21 @@ func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, pre
 // contain all scopes declared by the shortcut? Returns the missing ones.
 // If scope data is unavailable, returns nil (let the API call handle it).
 func checkScopePrereqs(f *cmdutil.Factory, ctx context.Context, appID string, identity core.Identity, required []string) ([]string, error) {
-	result, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(identity, appID))
+	// Pre-checks also run on dry-run paths, so this asks for scope facts rather
+	// than for a credential. ResolveScopeMetadata guarantees that is side-effect
+	// free for an Agent Employee profile; user and tenant profiles keep the
+	// resolution behaviour they already had.
+	meta, err := f.Credential.ResolveScopeMetadata(ctx, credential.AccessSpec{Identity: identity, AppID: appID})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
 		return nil, nil
 	}
-	if result == nil || result.Scopes == "" {
+	if !meta.Available {
 		return nil, nil
 	}
-	return auth.MissingScopes(result.Scopes, required), nil
+	return auth.MissingScopes(meta.Scopes, required), nil
 }
 
 // enhancePermissionError enriches a permission / auth error with the
@@ -985,6 +999,10 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 		"bot":  shortcut.DeclaredScopesForIdentity("bot"),
 	})
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
+	cmdutil.SetAgentSupport(cmd, shortcut.AgentSupport)
+	// No service-annotated marker: it only picks between the two wordings that
+	// blame a service's metadata, and a shortcut never reaches them -- its
+	// refusal is explained by its own verdict.
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
 	cmdutil.SetRisk(cmd, shortcut.Risk)
@@ -1173,14 +1191,19 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {
 	// Step 1: determine identity (--as > default-as > auto-detect).
 	asFlag, _ := cmd.Flags().GetString("as")
-	as := f.ResolveAs(cmd.Context(), cmd, core.Identity(asFlag))
+	as, err := f.ResolveIdentity(cmd.Context(), cmd, core.Identity(asFlag))
+	if err != nil {
+		return "", err
+	}
 
 	if err := f.CheckStrictMode(cmd.Context(), as); err != nil {
 		return "", err
 	}
 
-	// Step 2: check if this shortcut supports the resolved identity.
-	if err := f.CheckIdentity(as, s.AuthTypes); err != nil {
+	// Step 2: one gate, routed on principal kind -- the recorded verdict for an
+	// Agent Employee, the declared lane for everyone else.
+	if err := f.CheckShortcutPrincipal(cmd.Context(), as, s.AuthTypes,
+		s.AgentSupport, s.Service+" "+s.Command); err != nil {
 		return "", err
 	}
 	return as, nil
@@ -1197,6 +1220,25 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 	}
 	if len(missing) == 0 {
 		return nil
+	}
+	return MissingScopeError(config, as, missing)
+}
+
+// MissingScopeError builds the error a shortcut returns when its own scope
+// pre-check finds required scopes absent. Every producer must call through
+// here: it is the single place that picks the recovery per credential lane. An
+// Agent Employee goes through errclass, which names the Agent platform because
+// nobody can complete an interactive authorization for it; human lanes keep
+// their existing envelope, as errclass would rewrite the message and add a
+// console link.
+func MissingScopeError(config *core.CliConfig, as core.Identity, missing []string) error {
+	if config.CredentialKind == core.CredentialAAT {
+		return errclass.NewMissingScopeError(errclass.ClassifyContext{
+			Brand:          string(config.Brand),
+			AppID:          config.AppID,
+			Identity:       string(as),
+			CredentialKind: string(config.CredentialKind),
+		}, missing)
 	}
 	return errs.NewPermissionError(errs.SubtypeMissingScope,
 		"missing required scope(s): %s", strings.Join(missing, ", ")).

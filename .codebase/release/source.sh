@@ -9,11 +9,12 @@
 #
 # Every stage of the internal release re-runs this against the tag it was
 # triggered for, so a tag moved after preflight fails the stage that notices
-# instead of publishing a commit nobody validated. Two rules: the tag must
-# equal the package version (the public scripts/release-preflight.js, used
-# unchanged), and the tagged commit must already be contained in origin/main —
-# for beta tags as well as stable ones, which is stricter than the public
-# policy and enforced here.
+# instead of publishing a commit nobody validated. Two rules, both from the
+# public scripts/release-preflight.js used unchanged: the tag must equal the
+# package version, and the source policy for the channel must hold — a stable
+# tag must point at a commit already contained in origin/main, while a beta
+# tag may be cut from a feature branch, which is what a beta is for. A beta
+# cut from main is accepted with the public policy's warning on stderr.
 #
 # Usage: .codebase/release/source.sh <tag> [remote]
 set -euo pipefail
@@ -36,20 +37,29 @@ if [[ "$tag_sha" != "$head_sha" ]]; then
   exit 1
 fi
 main_sha="$(git rev-parse --verify "refs/remotes/${REMOTE}/main^{commit}")"
-if ! git merge-base --is-ancestor "$head_sha" "$main_sha"; then
-  echo "Tag ${TAG} points at ${head_sha}, which is not contained in ${REMOTE}/main. Internal releases, beta included, are cut from main." >&2
-  exit 1
+source_in_main=false
+if git merge-base --is-ancestor "$head_sha" "$main_sha"; then
+  source_in_main=true
 fi
 
 # release-preflight.js writes its JSON verdict to stdout on success and to
 # stderr (exit 1) on failure, so a bad version stops here with its hint shown.
 preflight="$(node scripts/release-preflight.js --tag "$TAG")"
 
-node - "$preflight" "$head_sha" <<'NODE'
-const [payload, sourceSha] = process.argv.slice(2);
+node - "$preflight" "$head_sha" "$main_sha" "$source_in_main" <<'NODE'
+const { validateReleaseSourcePolicy } = require("./scripts/release-preflight");
+const [payload, sourceSha, mainSha, sourceInMain] = process.argv.slice(2);
 const result = JSON.parse(payload);
 if (result?.ok !== true || !["stable", "beta"].includes(result.data?.releaseChannel)) {
   throw new Error("release preflight returned an invalid success payload");
 }
-process.stdout.write(`version=${result.data.tagVersion}\nchannel=${result.data.releaseChannel}\nsource_sha=${sourceSha}\n`);
+const channel = result.data.releaseChannel;
+const policy = validateReleaseSourcePolicy(channel, sourceSha, mainSha, sourceInMain === "true");
+if (policy.ok !== true) {
+  process.stderr.write(`${policy.error.message}. ${policy.error.hint}\n`);
+  process.exit(1);
+}
+// Warnings go to stderr: stdout is eval'd by the caller and carries facts only.
+if (policy.data.warning) process.stderr.write(`${policy.data.warning}\n`);
+process.stdout.write(`version=${result.data.tagVersion}\nchannel=${channel}\nsource_sha=${sourceSha}\n`);
 NODE

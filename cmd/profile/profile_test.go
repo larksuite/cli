@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
@@ -26,6 +27,17 @@ import (
 type failRenameFS struct {
 	vfs.OsFs
 	err error
+}
+
+type recordingProfileKeychain struct {
+	removed []string
+}
+
+func (k *recordingProfileKeychain) Get(service, account string) (string, error) { return "", nil }
+func (k *recordingProfileKeychain) Set(service, account, value string) error    { return nil }
+func (k *recordingProfileKeychain) Remove(service, account string) error {
+	k.removed = append(k.removed, service+":"+account)
+	return nil
 }
 
 func (fs *failRenameFS) Rename(oldpath, newpath string) error {
@@ -158,7 +170,10 @@ func TestProfileRemoveRun_RemovesCurrentProfileAndSwitchesToFirstRemaining(t *te
 		PreviousApp: "default",
 		Apps: []core.AppConfig{
 			{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("secret-default"), Brand: core.BrandFeishu},
-			{Name: "target", AppId: "app-target", AppSecret: core.PlainSecret("secret-target"), Brand: core.BrandLark},
+			{
+				Name: "target", AppId: "app-target", AppSecret: core.PlainSecret("secret-target"), Brand: core.BrandLark,
+				CredentialKind: core.CredentialAAT, PrincipalOpenID: "ou_agent",
+			},
 		},
 	}
 	if err := core.SaveMultiAppConfig(multi); err != nil {
@@ -166,6 +181,8 @@ func TestProfileRemoveRun_RemovesCurrentProfileAndSwitchesToFirstRemaining(t *te
 	}
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	kc := &recordingProfileKeychain{}
+	f.Keychain = kc
 	if err := profileRemoveRun(f, "target"); err != nil {
 		t.Fatalf("profileRemoveRun() error = %v", err)
 	}
@@ -183,6 +200,13 @@ func TestProfileRemoveRun_RemovesCurrentProfileAndSwitchesToFirstRemaining(t *te
 	if len(saved.Apps) != 1 || saved.Apps[0].ProfileName() != "default" {
 		t.Fatalf("remaining apps = %#v, want only default", saved.Apps)
 	}
+	wantRemoved := keychain.LarkCliService + ":" + larkauth.AATAccountKey("app-target")
+	for _, removed := range kc.removed {
+		if removed == wantRemoved {
+			return
+		}
+	}
+	t.Fatalf("removed entries = %#v, want %q", kc.removed, wantRemoved)
 }
 
 func TestProfileRemoveRun_AddRecoveryUsesBuildLocalSurface(t *testing.T) {

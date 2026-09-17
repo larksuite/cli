@@ -59,6 +59,7 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 		for _, user := range app.Users {
 			_ = auth.RemoveStoredToken(app.AppId, user.UserOpenId)
 		}
+		_ = auth.RemoveStoredAAT(f.Keychain, app.AppId)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, "Configuration removed")

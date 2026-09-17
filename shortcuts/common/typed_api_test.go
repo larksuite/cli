@@ -55,3 +55,24 @@ func TestDoHostedAPIJSONPreservesSuccessData(t *testing.T) {
 		t.Fatalf("success data = %#v", data)
 	}
 }
+
+// An Agent Employee that hits an authorization error through a typed shortcut
+// must be told to ask the Agent platform, not to run the human device login.
+// The classifier decides that from CredentialKind, so the typed path has to
+// carry it like the untyped path does.
+func TestTypedClassifyContextCarriesCredentialKind(t *testing.T) {
+	ctx := typedCommandContext{runtime: &RuntimeContext{
+		Cmd: &cobra.Command{Use: "+typed"},
+		Config: &core.CliConfig{
+			AppID:           "cli_test",
+			Brand:           core.BrandFeishu,
+			CredentialKind:  core.CredentialAAT,
+			PrincipalOpenID: "ou_agent",
+		},
+		resolvedAs: core.AsUser,
+	}}
+	classify := typedClassifyContext(ctx)
+	if classify.CredentialKind != string(core.CredentialAAT) {
+		t.Fatalf("CredentialKind = %q, want %q", classify.CredentialKind, core.CredentialAAT)
+	}
+}

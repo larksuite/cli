@@ -119,6 +119,9 @@ type DefaultTokenProvider struct {
 	tatOnce   sync.Once
 	tatResult *TokenResult
 	tatErr    error
+
+	scopeSnapshotWarnOnce    sync.Once
+	scopePrecheckOffWarnOnce sync.Once
 }
 
 func NewDefaultTokenProvider(defaultAcct *DefaultAccountProvider, httpClient func() (*http.Client, error), errOut io.Writer) *DefaultTokenProvider {
@@ -143,6 +146,12 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	if err != nil {
 		return nil, err
 	}
+	if acct.CredentialKind == core.CredentialAAT {
+		// The legacy token path has no way to carry or check an Agent Employee's
+		// verified principal, so it must never produce a credential for one.
+		// Agent Employee resolution goes through ResolveAccess instead.
+		return nil, AgentLegacyTokenError()
+	}
 	httpClient, err := p.httpClient()
 	if err != nil {
 		return nil, err
@@ -159,6 +168,43 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	return &TokenResult{Token: token, Scopes: scopes}, nil
 }
 
+// ResolveAccess handles the Agent Employee lane for the built-in credential
+// source. It reports handled=false for every other profile so the pre-existing
+// UAT/TAT resolution stays the only path those profiles ever take.
+func (p *DefaultTokenProvider) ResolveAccess(ctx context.Context, acct *Account, spec AccessSpec) (*ResolvedAccess, bool, error) {
+	if acct == nil || acct.CredentialKind != core.CredentialAAT {
+		return nil, false, nil
+	}
+	access, err := p.resolveAgentAccess(ctx, acct)
+	if err != nil {
+		return nil, false, err
+	}
+	return access, true, nil
+}
+
+// PeekAgentScope reports the scope recorded on the cached Agent Employee token
+// without minting or renewing. A record for a different principal is ignored:
+// its scope would describe an Agent this profile is not bound to.
+//
+// A profile that names no principal gets nothing rather than the cache. Its
+// credential comes from somewhere the CLI does not manage — an injected token,
+// an external provider — so a local record for the same app id is not known to
+// describe the same Agent, and answering with it would pre-check one Agent's
+// call against another Agent's permissions.
+func (p *DefaultTokenProvider) PeekAgentScope(appID, principalOpenID string) (string, bool) {
+	if principalOpenID == "" {
+		return "", false
+	}
+	stored, err := getStoredAAT(p.defaultAcct.keychain(), appID)
+	if err != nil || stored == nil {
+		return "", false
+	}
+	if stored.UserOpenID != principalOpenID {
+		return "", false
+	}
+	return stored.Scope, true
+}
+
 // resolveTAT resolves a tenant access token. The result is cached after the first
 // call via sync.Once — only the context from the first call is used.
 func (p *DefaultTokenProvider) resolveTAT(ctx context.Context) (*TokenResult, error) {
@@ -172,6 +218,9 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	acct, err := p.defaultAcct.ResolveAccount(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if acct.CredentialKind == core.CredentialAAT {
+		return nil, AgentBotIdentityError()
 	}
 	httpClient, err := p.httpClient()
 	if err != nil {

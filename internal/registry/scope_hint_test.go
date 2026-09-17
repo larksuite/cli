@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/meta"
 )
 
 func TestExtractRequiredScopes_HappyPath(t *testing.T) {
@@ -98,5 +99,30 @@ func TestSelectRecommendedScopeFromStrings_Empty(t *testing.T) {
 	}
 	if got := SelectRecommendedScopeFromStrings([]string{}, "tenant"); got != "" {
 		t.Errorf("empty slice should return empty, got %s", got)
+	}
+}
+
+func TestFilterForAgentPrincipalIsNilForNonAgent(t *testing.T) {
+	if f := FilterForAgentPrincipal(core.CredentialUAT, true); f != nil {
+		t.Error("a non-AAT profile must not be filtered")
+	}
+}
+
+func TestFilterForAgentPrincipalIsNilWhenGateOff(t *testing.T) {
+	if f := FilterForAgentPrincipal(core.CredentialAAT, false); f != nil {
+		t.Error("a disabled gate must not filter")
+	}
+}
+
+func TestFilterForAgentPrincipalKeepsMarkedMethods(t *testing.T) {
+	f := FilterForAgentPrincipal(core.CredentialAAT, true)
+	if f == nil {
+		t.Fatal("expected a filter")
+	}
+	if f(meta.Method{AccessTokens: []meta.Token{meta.TokenUser}}) {
+		t.Error("an unmarked method must be filtered out")
+	}
+	if !f(meta.Method{AccessTokens: []meta.Token{meta.TokenUser, meta.TokenAgent}}) {
+		t.Error("a marked method must be kept")
 	}
 }

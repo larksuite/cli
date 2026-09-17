@@ -15,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
@@ -172,6 +173,35 @@ func TestRecording_Validate_MissingScope(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected MissingScopes to contain 'vc:record:readonly', got %v", pe.MissingScopes)
+	}
+}
+
+// TestRecording_Validate_AgentEmployeeMissingScopeRoutesToAgentPlatform pins
+// that this shortcut's own scope check routes an Agent Employee through
+// errclass. The calendar path is used because its extra scopes escape the
+// static declaration, so the framework pre-check cannot mask it.
+func TestRecording_Validate_AgentEmployeeMissingScopeRoutesToAgentPlatform(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.CredentialKind = core.CredentialAAT
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+	f.Credential = credential.NewCredentialProvider(nil, nil, &recordingScopedTokenResolver{
+		scopes: "vc:record:readonly",
+	}, nil)
+
+	err := mountAndRun(t, VCRecording, []string{"+recording", "--calendar-event-ids", "evt001", "--as", "user"}, f, nil)
+	if err == nil {
+		t.Fatal("expected missing_scope error, got nil")
+	}
+
+	var pe *errs.PermissionError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	if strings.Contains(pe.Hint, "auth login") {
+		t.Fatalf("Agent Employee hint must not mention auth login, got: %s", pe.Hint)
+	}
+	if !strings.Contains(pe.Hint, "Agent platform") {
+		t.Fatalf("hint should point at the Agent platform, got: %s", pe.Hint)
 	}
 }
 

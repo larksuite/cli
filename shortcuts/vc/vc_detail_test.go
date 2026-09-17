@@ -11,8 +11,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -51,6 +55,42 @@ func TestDetail_Validation_BatchLimit(t *testing.T) {
 	}
 	if ve.Subtype != errs.SubtypeInvalidArgument {
 		t.Errorf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+}
+
+// TestDetail_Validate_AgentEmployeeMissingScopeRoutesToAgentPlatform pins that
+// this shortcut's own scope check routes an Agent Employee through errclass.
+// Validate is called directly so the framework pre-check cannot mask it.
+func TestDetail_Validate_AgentEmployeeMissingScopeRoutesToAgentPlatform(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.CredentialKind = core.CredentialAAT
+	f := &cmdutil.Factory{
+		Credential: credential.NewCredentialProvider(nil, nil, &recordingScopedTokenResolver{
+			scopes: "vc:meeting.meetingevent:read",
+		}, nil),
+	}
+	cmd := &cobra.Command{Use: "vc +detail"}
+	cmd.Flags().String("meeting-ids", "", "")
+	if err := cmd.Flags().Set("meeting-ids", "m001"); err != nil {
+		t.Fatal(err)
+	}
+	rt := common.TestNewRuntimeContextWithIdentity(cmd, cfg, core.AsUser)
+	rt.Factory = f
+
+	err := VCDetail.Validate(context.Background(), rt)
+	if err == nil {
+		t.Fatal("expected missing_scope error, got nil")
+	}
+
+	var pe *errs.PermissionError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	if strings.Contains(pe.Hint, "auth login") {
+		t.Fatalf("Agent Employee hint must not mention auth login, got: %s", pe.Hint)
+	}
+	if !strings.Contains(pe.Hint, "Agent platform") {
+		t.Fatalf("hint should point at the Agent platform, got: %s", pe.Hint)
 	}
 }
 

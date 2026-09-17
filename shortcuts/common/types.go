@@ -7,6 +7,8 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
+
+	"github.com/larksuite/cli/internal/agentsupport"
 )
 
 // Flag.Input source constants.
@@ -27,6 +29,23 @@ type Flag struct {
 	Enum     []string // allowed values (e.g. ["asc", "desc"]); empty means no constraint
 	Input    []string // extra input sources: File (@path), Stdin (-); empty = flag value only
 }
+
+// AgentSupport is the recorded verdict on whether an Agent Employee principal
+// may run a command. It is orthogonal to AuthTypes, which names the credential
+// lane. The type itself lives in internal/agentsupport so the command gates,
+// which cannot import this package, name the same one; these aliases keep the
+// shortcut definitions reading in their own vocabulary.
+type AgentSupport = agentsupport.Verdict
+
+const (
+	// AgentSupportUnknown is the zero value: no verdict recorded, so allow.
+	AgentSupportUnknown = agentsupport.Unknown
+	// AgentSupportAllowed means every unconditional OpenAPI dependency accepts
+	// an Agent Employee principal.
+	AgentSupportAllowed = agentsupport.Allowed
+	// AgentSupportDenied means at least one unconditional dependency does not.
+	AgentSupportDenied = agentsupport.Denied
+)
 
 // Shortcut represents a high-level CLI command.
 type Shortcut struct {
@@ -49,10 +68,14 @@ type Shortcut struct {
 
 	// Declarative fields (new framework).
 	AuthTypes []string // supported identities: "user", "bot" (default: ["user"])
-	Flags     []Flag   // flag definitions; --dry-run is auto-injected
-	HasFormat bool     // Deprecated: --format is now always injected; this field has no effect.
-	Tips      []string // optional tips shown in --help output
-	Hidden    bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
+	// AgentSupport is stamped from shortcuts/agent_support.json by
+	// stampAgentSupport; it is never set on a shortcut definition.
+	// Value type: cloneShortcut's struct copy already isolates it.
+	AgentSupport AgentSupport
+	Flags        []Flag   // flag definitions; --dry-run is auto-injected
+	HasFormat    bool     // Deprecated: --format is now always injected; this field has no effect.
+	Tips         []string // optional tips shown in --help output
+	Hidden       bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
 
 	// Business logic hooks.
 	// Normalize is the business-owned compatibility stage inside shortcut

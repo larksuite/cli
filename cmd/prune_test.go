@@ -10,6 +10,8 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
+	"github.com/larksuite/cli/internal/agentsupport"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -424,5 +426,211 @@ func TestStrictModeStub_ConfigHintUsesBuildLocalSurface(t *testing.T) {
 	}
 	if !strings.Contains(original.Hint, "config strict-mode") {
 		t.Errorf("concealed render mutated source hint: %q", original.Hint)
+	}
+}
+
+// newAgentTestTree mirrors newTestTree but annotates the shipped verdict
+// instead of the declared lane, since that is what the agent pass reads.
+// Lanes are annotated too, so the cases that assert independence from the lane
+// have something to be independent of.
+func newAgentTestTree() *cobra.Command {
+	root := &cobra.Command{Use: "root"}
+	noop := func(*cobra.Command, []string) error { return nil }
+
+	svc := &cobra.Command{Use: "im"}
+	root.AddCommand(svc)
+
+	allowed := &cobra.Command{Use: "+send", Short: "allowed", RunE: noop}
+	cmdutil.SetSupportedIdentities(allowed, []string{"user", "bot"})
+	cmdutil.SetAgentSupport(allowed, "allowed")
+	svc.AddCommand(allowed)
+
+	// allowed + bot-only lane: the combination the run-time gate now lets
+	// through, so the build pass must not withhold it either.
+	allowedBotLane := &cobra.Command{Use: "+messages-edit", Short: "allowed, bot lane", RunE: noop}
+	cmdutil.SetSupportedIdentities(allowedBotLane, []string{"bot"})
+	cmdutil.SetAgentSupport(allowedBotLane, "allowed")
+	svc.AddCommand(allowedBotLane)
+
+	denied := &cobra.Command{Use: "+feed-shortcut-create", Short: "denied", RunE: noop}
+	cmdutil.SetSupportedIdentities(denied, []string{"user"})
+	cmdutil.SetAgentSupport(denied, "denied")
+	svc.AddCommand(denied)
+
+	unknown := &cobra.Command{Use: "+legacy", Short: "no verdict", RunE: noop}
+	cmdutil.SetSupportedIdentities(unknown, []string{"user"})
+	svc.AddCommand(unknown)
+
+	// A denied leaf nested under a resource group, to cover the recursion.
+	res := &cobra.Command{Use: "messages"}
+	svc.AddCommand(res)
+	nestedDenied := &cobra.Command{Use: "subscribe", RunE: noop}
+	cmdutil.SetAgentSupport(nestedDenied, "denied")
+	res.AddCommand(nestedDenied)
+
+	return root
+}
+
+func TestPruneForAgentPrincipal(t *testing.T) {
+	root := newAgentTestTree()
+	pruneForAgentPrincipal(root)
+
+	if cmd := findCmd(root, "im", "+feed-shortcut-create"); cmd == nil || !cmd.Hidden {
+		t.Error("a denied command should be replaced by a hidden stub")
+	}
+	if cmd := findCmd(root, "im", "+send"); cmd == nil || cmd.Hidden {
+		t.Error("an allowed command should be kept visible")
+	}
+	// The whole point of the run-time change, carried into the tree: the lane
+	// no longer speaks for an Agent Employee, so a bot-only lane with an
+	// allowed verdict stays available.
+	if cmd := findCmd(root, "im", "+messages-edit"); cmd == nil || cmd.Hidden {
+		t.Error("an allowed command on a bot-only lane should be kept visible")
+	}
+	if cmd := findCmd(root, "im", "+legacy"); cmd == nil || cmd.Hidden {
+		t.Error("an unrecorded command should be kept visible, matching the run-time gate")
+	}
+	if cmd := findCmd(root, "im", "messages", "subscribe"); cmd == nil || !cmd.Hidden {
+		t.Error("a denied command nested under a group should be replaced by a hidden stub")
+	}
+}
+
+func TestPruneForAgentPrincipal_DirectDeniedCommandExplainsItself(t *testing.T) {
+	root := newAgentTestTree()
+	root.SilenceErrors = true
+	root.SilenceUsage = true
+	pruneForAgentPrincipal(root)
+	root.SetArgs([]string{"im", "+feed-shortcut-create", "--name", "x"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected the stub to refuse the command")
+	}
+	if !strings.Contains(err.Error(), "not available for an Agent Employee profile") {
+		t.Fatalf("refusal should name the reason, got: %v", err)
+	}
+	// Strict mode points at `config strict-mode`; this boundary has no such
+	// exit, so the hint must not send an agent to a config command. Read the
+	// hint off the typed error -- Error() does not carry it, which would make
+	// this check pass no matter what the hint said.
+	var vErr *errs.ValidationError
+	if !errors.As(err, &vErr) {
+		t.Fatalf("want a ValidationError, got %T: %v", err, err)
+	}
+	if vErr.Hint == "" {
+		t.Fatal("refusal carried no hint")
+	}
+	if strings.Contains(vErr.Hint, "config strict-mode") {
+		t.Fatalf("hint must not point at a config command an agent cannot use: %q", vErr.Hint)
+	}
+	var denied *platform.CommandDeniedError
+	if !errors.As(err, &denied) {
+		t.Fatalf("want a CommandDeniedError in the chain, got %T", err)
+	}
+	if denied.Layer != cmdpolicy.LayerAgentPrincipal {
+		t.Errorf("layer = %q, want %q", denied.Layer, cmdpolicy.LayerAgentPrincipal)
+	}
+}
+
+// TestPruneForAgentPrincipal_StubResistsUserPolicyRelabel pins that a user-layer
+// rule cannot overwrite this boundary, the same protection strict mode has.
+func TestPruneForAgentPrincipal_StubResistsUserPolicyRelabel(t *testing.T) {
+	root := newAgentTestTree()
+	pruneForAgentPrincipal(root)
+
+	stub := findCmd(root, "im", "+feed-shortcut-create")
+	if stub == nil {
+		t.Fatal("expected the denied command to still resolve to a stub")
+	}
+	modified := cmdpolicy.Apply(root, map[string]cmdpolicy.Denial{
+		cmdpolicy.CanonicalPath(stub): {
+			Layer:      cmdpolicy.LayerPolicy,
+			ReasonCode: "blocked_by_rule",
+			Reason:     "a user rule matched the same path",
+		},
+	})
+	if modified != 0 {
+		t.Errorf("user-layer Apply modified %d commands, want 0", modified)
+	}
+	if got := stub.Annotations[cmdpolicy.AnnotationDenialLayer]; got != cmdpolicy.LayerAgentPrincipal {
+		t.Errorf("denial layer = %q, want it left at %q", got, cmdpolicy.LayerAgentPrincipal)
+	}
+}
+
+// TestAgentPrincipalStubPicksHintByServiceAnnotation pins that the build-time
+// refusal distinguishes the two situations CheckAgentEligibility distinguishes:
+// a capability grant can plausibly unlock one and nothing local can unlock the
+// other. Getting this backwards sends an agent to go ask for a grant that will
+// never be enough, or tells it to go lobby a service team when a grant would
+// have done.
+func TestAgentPrincipalStubPicksHintByServiceAnnotation(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		use           string
+		shortcut      bool
+		annotated     bool
+		wantFragment  string
+		avoidFragment string
+	}{
+		{
+			name:          "service has agent-marked methods: point at a capability grant",
+			use:           "list",
+			annotated:     true,
+			wantFragment:  "grant this Agent Employee the capability it needs",
+			avoidFragment: "not yet marked as Agent-Employee-callable",
+		},
+		{
+			name:          "service has no agent marker at all: say no local grant helps",
+			use:           "list",
+			annotated:     false,
+			wantFragment:  "not yet marked as Agent-Employee-callable",
+			avoidFragment: "grant this Agent Employee the capability it needs",
+		},
+		{
+			// A shortcut is denied because one of the OpenAPIs it calls does
+			// not take an agent token. No grant on the Agent platform changes
+			// that, so sending the agent there is advice it cannot act on.
+			name:          "shortcut: name the dependency, not a grant",
+			use:           "+list",
+			shortcut:      true,
+			annotated:     true,
+			wantFragment:  "does not accept an Agent Employee token",
+			avoidFragment: "grant this Agent Employee the capability it needs",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := &cobra.Command{Use: "root"}
+			root.SilenceErrors = true
+			root.SilenceUsage = true
+			svc := &cobra.Command{Use: "okr"}
+			root.AddCommand(svc)
+			method := &cobra.Command{Use: tc.use, RunE: func(*cobra.Command, []string) error { return nil }}
+			cmdutil.SetAgentSupport(method, agentsupport.Denied)
+			cmdutil.SetAgentServiceAnnotated(method, tc.annotated)
+			if tc.shortcut {
+				cmdmeta.SetSource(method, cmdmeta.SourceShortcut, false)
+			}
+			svc.AddCommand(method)
+
+			pruneForAgentPrincipal(root)
+			root.SetArgs([]string{"okr", tc.use})
+			err := root.Execute()
+			if err == nil {
+				t.Fatal("expected the stub to refuse the command")
+			}
+			// The hint lives on the typed error, not in Error(); asserting
+			// against Error() would make every "must not contain" check pass
+			// for the wrong reason.
+			var vErr *errs.ValidationError
+			if !errors.As(err, &vErr) {
+				t.Fatalf("want a ValidationError, got %T: %v", err, err)
+			}
+			if !strings.Contains(vErr.Hint, tc.wantFragment) {
+				t.Errorf("hint should contain %q, got: %q", tc.wantFragment, vErr.Hint)
+			}
+			if strings.Contains(vErr.Hint, tc.avoidFragment) {
+				t.Errorf("hint should not contain %q, got: %q", tc.avoidFragment, vErr.Hint)
+			}
+		})
 	}
 }

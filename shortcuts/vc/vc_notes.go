@@ -598,13 +598,13 @@ var VCNotes = common.Shortcut{
 		default:
 			// unreachable: ExactlyOne already ensures one flag is set
 		}
-		result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
-		if err == nil && result != nil && result.Scopes != "" {
-			if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
-				return errs.NewPermissionError(errs.SubtypeMissingScope,
-					"missing required scope(s): %s", strings.Join(missing, ", ")).
-					WithMissingScopes(missing...).
-					WithIdentity(string(runtime.As()))
+		meta, err := runtime.Factory.Credential.ResolveScopeMetadata(ctx, credential.AccessSpec{
+			Identity: runtime.As(),
+			AppID:    runtime.Config.AppID,
+		})
+		if err == nil && meta.Available {
+			if missing := auth.MissingScopes(meta.Scopes, required); len(missing) > 0 {
+				return common.MissingScopeError(runtime.Config, runtime.As(), missing)
 			}
 		}
 		return nil

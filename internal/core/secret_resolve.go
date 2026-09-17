@@ -17,6 +17,10 @@ func secretAccountKey(appId string) string {
 	return secretKeyPrefix + appId
 }
 
+func AppSecretAccountKey(appID string) string {
+	return secretAccountKey(appID)
+}
+
 // ResolveSecretInput resolves a SecretInput to a plain string.
 // SecretRef objects are resolved by source (file / keychain).
 func ResolveSecretInput(s SecretInput, kc keychain.KeychainAccess) (string, error) {

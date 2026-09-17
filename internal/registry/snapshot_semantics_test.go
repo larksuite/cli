@@ -262,3 +262,53 @@ func stringAt(t testing.TB, doc any, path []string) string {
 	}
 	return s
 }
+
+// TestCatalogAnnotatesAgentCallableMethods guards the accessTokens marker the
+// Agent Employee identity gate reads. The gate is on by default and refuses any
+// method whose accessTokens omits the agent token, so a re-sync that drops the
+// markers would leave every generated command refused on an Agent Employee
+// profile — silently, with the CLI reporting a metadata gap as a permission
+// decision. Nothing else in the suite notices, because every other assertion
+// holds just as well over a catalog that never mentions an Agent.
+//
+// The floor is "some service still marks some method", not a count: the marker
+// set moves with each api_definition sync, and a service with no agent-callable
+// method at all is a legitimate verdict the refusal already explains.
+func TestCatalogAnnotatesAgentCallableMethods(t *testing.T) {
+	snap, err := OpenSnapshot()
+	if err != nil {
+		t.Fatalf("OpenSnapshot() error = %v", err)
+	}
+	catalog := snap.Catalog()
+
+	total, marked := 0, 0
+	unannotated := []string{}
+	perService := map[string]int{}
+	for _, ref := range catalog.WalkMethods(nil) {
+		total++
+		if ref.Method.SupportsAgent() {
+			marked++
+			perService[ref.Service.Name]++
+		} else if _, seen := perService[ref.Service.Name]; !seen {
+			perService[ref.Service.Name] = 0
+		}
+	}
+	if total == 0 {
+		t.Fatal("the embedded catalog carries no methods at all")
+	}
+	if marked == 0 {
+		t.Fatalf("no method in the embedded catalog is marked agent-callable: "+
+			"the identity gate would refuse all %d generated commands on an Agent "+
+			"Employee profile. Check whether the last api_definition sync dropped "+
+			"the agent accessToken.", total)
+	}
+	for name, n := range perService {
+		if n == 0 {
+			unannotated = append(unannotated, name)
+		}
+	}
+	// Reported, never failed: these services answer with the refusal that names
+	// the owning team, which is the correct outcome for metadata that has not
+	// reached them yet.
+	t.Logf("agent-callable methods: %d/%d; services with none: %v", marked, total, unannotated)
+}

@@ -4,8 +4,10 @@
 package cmdutil
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -92,6 +94,56 @@ func TestNewDefaultStoredTATReadsKeychainOnlyDuringBotTokenResolution(t *testing
 	}
 	if result == nil || result.Token != "stored-tat" || result.Source != core.CredentialSourceEnv || kc.getCalls != 1 {
 		t.Fatalf("result=%#v getCalls=%d, want stored env TAT and one read", result, kc.getCalls)
+	}
+}
+
+// TestNewDefaultCredentialAgentScopeSnapshotWarningReachesWiredStream proves the
+// snapshot notice prints through the real NewDefault wiring, where only
+// DefaultTokenProvider gets a stderr stream and CredentialProvider.warnOut is nil.
+func TestNewDefaultCredentialAgentScopeSnapshotWarningReachesWiredStream(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_SCOPE_PRECHECK", "on")
+	t.Setenv(envvars.CliAppID, "")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	multi := &core.MultiAppConfig{
+		CurrentApp: "agent",
+		Apps: []core.AppConfig{
+			{
+				Name:            "agent",
+				AppId:           "cli_a",
+				AppSecret:       core.PlainSecret("secret"),
+				Brand:           core.BrandFeishu,
+				CredentialKind:  core.CredentialAAT,
+				PrincipalOpenID: "ou_x",
+				// No AAT is cached below, so this bind-time snapshot is the fallback.
+				AgentScope: "bitable:app",
+			},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	errBuf := &bytes.Buffer{}
+	f := NewDefault(&IOStreams{Out: &bytes.Buffer{}, ErrOut: errBuf}, InvocationContext{})
+	f.Keychain = &noopKeychain{} // no cached AAT record for cli_a: forces the config.json fallback
+
+	got, err := f.Credential.ResolveScopeMetadata(context.Background(),
+		credential.AccessSpec{Identity: core.AsUser, AppID: "cli_a"})
+	if err != nil {
+		t.Fatalf("ResolveScopeMetadata() error = %v", err)
+	}
+	if !got.Available || got.Scopes != "bitable:app" {
+		t.Fatalf("ResolveScopeMetadata() = %+v, want the config.json snapshot", got)
+	}
+	const wantWarning = "falling back to the snapshot recorded at bind time"
+	if !strings.Contains(errBuf.String(), wantWarning) {
+		t.Fatalf("errOut = %q, want it to contain %q — production wiring never sets "+
+			"CredentialProvider.warnOut, so this notice must reach DefaultTokenProvider.errOut instead",
+			errBuf.String(), wantWarning)
 	}
 }
 

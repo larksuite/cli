@@ -228,7 +228,11 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 
 func apiRun(opts *APIOptions) error {
 	f := opts.Factory
-	opts.As = f.ResolveAs(opts.Ctx, opts.Cmd, opts.As)
+	resolvedAs, err := f.ResolveIdentity(opts.Ctx, opts.Cmd, opts.As)
+	if err != nil {
+		return err
+	}
+	opts.As = resolvedAs
 
 	if err := f.CheckStrictMode(opts.Ctx, opts.As); err != nil {
 		return err

@@ -46,6 +46,9 @@ For PNG output, the --output flag is required to specify the output file path (m
 For ASCII output, the result is printed to stdout with fixed size.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireInteractiveAuthProfile(cmd.Context(), f, "auth qrcode"); err != nil {
+				return err
+			}
 			opts.URL = args[0]
 			opts.Ctx = cmd.Context()
 			if runF != nil {

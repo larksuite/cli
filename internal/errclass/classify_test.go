@@ -615,7 +615,8 @@ func TestServiceShortcutEnvelopeConverge(t *testing.T) {
 	// Path B: the production constructor used by cmd/service's local
 	// preflight. ConsoleURL is intentionally NOT set on either path for
 	// SubtypeMissingScope — see the gating rationale in buildPermissionError.
-	directErr := errclass.NewMissingScopeError(brand, appID, identity, missing)
+	directErr := errclass.NewMissingScopeError(
+		errclass.ClassifyContext{Brand: brand, AppID: appID, Identity: identity}, missing)
 
 	var bufA, bufB bytes.Buffer
 	if ok := output.WriteTypedErrorEnvelope(&bufA, dispatcherErr, identity); !ok {

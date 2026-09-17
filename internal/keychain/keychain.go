@@ -27,6 +27,7 @@ const (
 	//   - AppSecret: "appsecret:<appId>"
 	//   - Stored TAT: "tat:v1:<sha256(appId)>"
 	//   - UAT:       "<appId>:<userOpenId>"
+	//   - AAT:       "<appId>:aat"
 	LarkCliService = "lark-cli"
 )
 

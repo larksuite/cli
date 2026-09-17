@@ -330,6 +330,24 @@ func TestResolveStrictMode_BothIdentities(t *testing.T) {
 	}
 }
 
+// TestResolveStrictMode_OffForAgentEmployee pins that strict mode does not
+// apply to an Agent Employee. It has exactly one lane, so a forced user
+// identity adds nothing, while the strict prune would read a shortcut's
+// declared lanes -- which say nothing about an agent token -- and withhold
+// commands the verdict allows. An injected AAT declares SupportsUser only,
+// which is exactly the shape that used to read as strict user.
+func TestResolveStrictMode_OffForAgentEmployee(t *testing.T) {
+	cfg := &core.CliConfig{
+		AppID: "a", AppSecret: "s",
+		CredentialKind: core.CredentialAAT, PrincipalOpenID: "ou_agent", UserOpenId: "ou_agent",
+		SupportedIdentities: 1, // SupportsUser
+	}
+	f, _, _, _ := TestFactory(t, cfg)
+	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeOff {
+		t.Errorf("expected off for an Agent Employee, got %q", got)
+	}
+}
+
 func TestResolveStrictMode_NilCredential(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	f.Credential = nil
