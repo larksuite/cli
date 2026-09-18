@@ -5,10 +5,12 @@ package drive
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 )
@@ -69,7 +71,7 @@ func TestDriveRestoreCommentExecuteViaWiki(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -77,6 +79,7 @@ func TestDriveRestoreCommentExecuteViaWiki(t *testing.T) {
 				"node": map[string]interface{}{
 					"obj_type":  "docx",
 					"obj_token": "docxFromWiki",
+					"node_type": "shortcut", "node_token": "wikiResource", "origin_node_token": "wikiOriginal",
 				},
 			},
 		},
@@ -128,7 +131,7 @@ func TestDriveResolveCommentExecuteWikiResolvesToBitable(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -276,7 +279,7 @@ func TestDriveResolveCommentPropagatesWikiResolveError(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 230005,
 			"msg":  "wiki node not found",
@@ -291,6 +294,14 @@ func TestDriveResolveCommentPropagatesWikiResolveError(t *testing.T) {
 	}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "wiki node not found") {
 		t.Fatalf("expected wiki resolve error to propagate, got %v", err)
+	}
+	assertDriveCommentAPIError(t, err, 230005)
+	problem, _ := errs.ProblemOf(err)
+	if problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("subtype = %q, want %q for unmapped code 230005", problem.Subtype, errs.SubtypeUnknown)
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		t.Fatalf("unexpected cause on direct API error: %v", cause)
 	}
 }
 

@@ -152,9 +152,12 @@ func TestMapNoteError_NoReadPermission(t *testing.T) {
 		Problem: errs.Problem{
 			Category: errs.CategoryAuthorization,
 			Subtype:  errs.SubtypePermissionDenied,
-			Code:     NoNoteReadPermissionCode,
-			Message:  "upstream permission denied",
-			LogID:    "log_1",
+			// Literal wire code, not the constant: feeding the constant back in
+			// would pass whatever value it holds, hiding a drift to the vc
+			// service's internal 10005.
+			Code:    121005,
+			Message: "upstream permission denied",
+			LogID:   "log_1",
 		},
 		MissingScopes: []string{"vc:note:read"},
 		Identity:      "user",
@@ -198,7 +201,7 @@ func TestMapNoteError_NormalizesNonPermissionTypedError(t *testing.T) {
 		Problem: errs.Problem{
 			Category: errs.CategoryAPI,
 			Subtype:  errs.SubtypeUnknown,
-			Code:     NoNoteReadPermissionCode,
+			Code:     121005,
 			Message:  "upstream api error",
 			LogID:    "log_2",
 		},

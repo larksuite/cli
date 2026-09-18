@@ -10,6 +10,7 @@ import (
 	"io"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -235,7 +236,7 @@ var SheetDelete = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -277,7 +278,7 @@ var SheetRename = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -316,7 +317,7 @@ var SheetMove = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
+		if err := validateSheetSelectorPreflight(runtime); err != nil {
 			return err
 		}
 		if !runtime.Changed("index") {
@@ -347,7 +348,7 @@ var SheetMove = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -423,7 +424,7 @@ var SheetCopy = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -496,7 +497,7 @@ func newSheetVisibilityShortcut(command, desc, op string) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -536,7 +537,7 @@ var SheetSetTabColor = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -656,16 +657,19 @@ var WorkbookCreate = common.Shortcut{
 			matrix, _ := buildSheetMatrix(s, headerOn(s))
 			_, col0, row0, _ := sheetAnchor(s)
 			matrix, _ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
+			if len(matrix) == 0 {
+				// Nothing to write (a column-less sheet, or header:false with
+				// no data rows): Execute skips the set_cell_range entirely, so
+				// the plan must not show one. Visual ops still run.
+				appendWorkbookCreateVisualOpsDryRun(dry, "<new-token>", "", s.Name, sheetStyles.styleFor(i))
+				continue
+			}
 			// Padding can widen / lengthen the matrix past the data, so build the
 			// range from the padded dims to match what Execute writes.
-			rng := tablePutFullRange(s, len(matrix))
-			writeCols := len(s.Columns)
-			if len(matrix) > 0 {
-				writeCols = len(matrix[0])
-				rng = fmt.Sprintf("%s%d:%s%d",
-					columnIndexToLetter(col0), row0+1,
-					columnIndexToLetter(col0+writeCols-1), row0+len(matrix))
-			}
+			writeCols := len(matrix[0])
+			rng := fmt.Sprintf("%s%d:%s%d",
+				columnIndexToLetter(col0), row0+1,
+				columnIndexToLetter(col0+writeCols-1), row0+len(matrix))
 			input := map[string]interface{}{
 				"excel_id":   "<new-token>",
 				"sheet_name": s.Name,
@@ -885,6 +889,23 @@ func buildValuesPayload(runtime flagView, sheetStyles *workbookCreateSheetStyles
 	return payload, nil
 }
 
+// decodeValuesPayload decodes one JSON value with UseNumber, so large order
+// IDs keep full precision, and rejects trailing non-whitespace after it —
+// json.Decoder accepts that silently where json.Unmarshal does not (see
+// decoderExpectEOF).
+func decodeValuesPayload(raw string) (interface{}, error) {
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.UseNumber()
+	var v interface{}
+	if err := dec.Decode(&v); err != nil {
+		return nil, err
+	}
+	if err := decoderExpectEOF(dec); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
 // parseValuesRows decodes --values (JSON 2D array, with @file/stdin already
 // resolved by the flag layer) using UseNumber so numeric cells keep full
 // precision (large order IDs survive). Empty --values yields no rows.
@@ -893,17 +914,25 @@ func parseValuesRows(runtime flagView) ([][]interface{}, error) {
 	if raw == "" {
 		return nil, nil
 	}
-	dec := json.NewDecoder(strings.NewReader(raw))
-	dec.UseNumber()
-	var v interface{}
-	if err := dec.Decode(&v); err != nil {
-		return nil, common.ValidationErrorf("--values: invalid JSON: %v", err)
+	// --values decodes here rather than through parseJSONFlag, so it takes the
+	// same loose-JSON repair — but only after a strict decode has refused the
+	// input. Probing validity up front would scan and copy the whole payload a
+	// second time on the path that needs no repair at all.
+	v, err := decodeValuesPayload(raw)
+	if err != nil {
+		repaired, ok := repairLooseJSON(raw)
+		if !ok {
+			verr := common.ValidationErrorf("--values: invalid JSON: %v", err).WithCause(err)
+			if where := jsonSyntaxContext(raw, err); where != "" {
+				verr = verr.WithHint("%s", where)
+			}
+			return nil, verr
+		}
+		if v, err = decodeValuesPayload(repaired); err != nil {
+			return nil, common.ValidationErrorf("--values: invalid JSON: %v", err).WithCause(err)
+		}
 	}
-	// Reject trailing non-whitespace after the first JSON value: see
-	// decoderExpectEOF in lark_sheet_table_io.go for the rationale.
-	if err := decoderExpectEOF(dec); err != nil {
-		return nil, common.ValidationErrorf("--values: %v", err).WithCause(err)
-	}
+
 	arr, ok := v.([]interface{})
 	if !ok {
 		return nil, common.ValidationErrorf("--values must be a JSON 2D array")
@@ -1053,13 +1082,21 @@ const (
 )
 
 func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, error) {
-	root, ok := v.(map[string]interface{})
-	if !ok {
-		return nil, common.ValidationErrorf("--styles must be a JSON object shaped as {\"styles\":[...]}")
-	}
-	rawItems, ok := root["styles"]
-	if !ok {
-		return nil, common.ValidationErrorf("--styles.styles is required")
+	// A bare list at the top level can only be the items the envelope would
+	// have held — the same reading --sheets takes of its own bare list, and
+	// the two flags travel together in one call often enough that accepting
+	// it on one and not the other is its own trap.
+	var rawItems interface{}
+	switch shaped := v.(type) {
+	case []interface{}:
+		rawItems = shaped
+	case map[string]interface{}:
+		var present bool
+		if rawItems, present = shaped["styles"]; !present {
+			return nil, common.ValidationErrorf("--styles.styles is required")
+		}
+	default:
+		return nil, common.ValidationErrorf("--styles must be the object {\"styles\":[...]} or the bare [...] item list")
 	}
 	arr, ok := rawItems.([]interface{})
 	if !ok {
@@ -1074,6 +1111,9 @@ func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, er
 		if !ok {
 			return nil, common.ValidationErrorf("--styles.styles[%d] must be an object", i)
 		}
+		// Folded here rather than in the item parser: the sheet selector is
+		// read off the item by its callers before that parser runs.
+		foldStyleItemKeys(item)
 		items[i] = item
 	}
 	return items, nil
@@ -1098,7 +1138,98 @@ func boundedStyleProblems(probs *[]error, extra []error) {
 	}
 }
 
+// styleItemKeyAliases maps the spellings a styles item's own sections arrive
+// under onto the keys this payload carries. Each one names the same section
+// under another vocabulary: the sheet selector is `name` here and sheet_name
+// everywhere else in the domain, merges and sizes are spelled by their effect
+// ("row_heights") rather than by the section, and a section written in the
+// singular is the section. 09-04..07: 3938 rejections on an item key, and the
+// three the distance ranker could already name spelled the fix in the error
+// while refusing to apply it.
+var styleItemKeyAliases = map[string]string{
+	"sheet_name":    "name",
+	"sheet":         "name",
+	"title":         "name",
+	"cell_style":    "cell_styles",
+	"merges":        "cell_merges",
+	"merge_cells":   "cell_merges",
+	"cell_merge":    "cell_merges",
+	"row_heights":   "row_sizes",
+	"row_height":    "row_sizes",
+	"row_size":      "row_sizes",
+	"col_widths":    "col_sizes",
+	"col_width":     "col_sizes",
+	"column_widths": "col_sizes",
+	"column_width":  "col_sizes",
+	"col_size":      "col_sizes",
+}
+
+// foldStyleItemKeys renames the aliases above and lifts a section written as a
+// single object into the one-entry list it can only be, in place. A rename
+// that would collide with a key the caller also spelled is skipped, leaving
+// both for the unknown-key report rather than picking one.
+func foldStyleItemKeys(item map[string]interface{}) {
+	for _, alias := range sortedKeys(styleItemKeyAliases) {
+		target := styleItemKeyAliases[alias]
+		raw, present := item[alias]
+		if !present {
+			continue
+		}
+		if _, taken := item[target]; taken {
+			continue
+		}
+		item[target] = raw
+		delete(item, alias)
+	}
+	for _, section := range styleItemRangeSections {
+		if obj, isObj := item[section].(map[string]interface{}); isObj {
+			item[section] = []interface{}{obj}
+		}
+	}
+	liftItemLevelBorderStyles(item)
+}
+
+// borderKeysInACellStyle are the spellings that already put a border on a
+// cell_styles entry. Squashed, so border_styles / borderStyles / border-type
+// all collapse onto one of these.
+var borderKeysInACellStyle = map[string]bool{
+	"borderstyles": true, "border": true, "bordertype": true,
+	"borders": true, "borderall": true,
+}
+
+// liftItemLevelBorderStyles moves a border_styles written on the styles ITEM
+// down onto its cell_styles entry. A border needs a range, and the item has
+// none of its own — the only range in reach is the entry's, so the move is
+// unambiguous exactly when there is one entry and it has no border already.
+//
+// Anything else keeps the item-level key, and with it the unknown-key error
+// and its prescription: two entries means two candidate ranges and nothing
+// here says which was meant, and an entry that already carries a border would
+// have to have one of the two silently dropped.
+func liftItemLevelBorderStyles(item map[string]interface{}) {
+	border, present := item["border_styles"]
+	if !present {
+		return
+	}
+	entries, isList := item["cell_styles"].([]interface{})
+	if !isList || len(entries) != 1 {
+		return
+	}
+	entry, isObj := entries[0].(map[string]interface{})
+	if !isObj {
+		return
+	}
+	for k := range entry {
+		if borderKeysInACellStyle[squashStyleFieldKey(k)] {
+			return
+		}
+	}
+	entry["border_styles"] = border
+	delete(item, "border_styles")
+}
+
 func parseWorkbookCreateStyleItem(item map[string]interface{}, path string, existingSheet bool) (*workbookCreateStylePayload, []error) {
+	foldStyleItemKeys(item) // idempotent; the --values path reaches here directly
 	payload := &workbookCreateStylePayload{}
 	var probs []error
 	oversized := make(map[string]bool)
@@ -1140,7 +1271,9 @@ func parseWorkbookCreateStyleItem(item map[string]interface{}, path string, exis
 			break
 		}
 		msg := fmt.Sprintf("%s has unknown key %q", path, k)
-		if match := suggest.Closest(strings.ToLower(k), workbookCreateStyleItemKeys, 1); len(match) > 0 {
+		if rx := styleItemKeyPrescriptions[squashStyleFieldKey(k)]; rx != "" {
+			msg += " — " + rx
+		} else if match := suggest.Closest(strings.ToLower(k), workbookCreateStyleItemKeys, 1); len(match) > 0 {
 			msg += fmt.Sprintf(" — did you mean %q?", match[0])
 		}
 		probs = append(probs, common.ValidationErrorf("%s", msg))
@@ -1340,17 +1473,16 @@ func joinStyleValidationErrors(probs []error) error {
 		return verr
 	}
 	const maxShown = 8
-	shown := probs
-	if len(shown) > maxShown {
-		shown = shown[:maxShown]
-	}
-	msgs := make([]string, 0, len(shown))
-	for _, e := range shown {
-		msgs = append(msgs, aggregatedIssueText(e))
-	}
+	msgs := collapseAggregatedIssues(probs)
+	distinct := len(msgs)
 	suffix := ""
-	if len(probs) > maxShown {
-		suffix = fmt.Sprintf(" (+%d more)", len(probs)-maxShown)
+	if len(msgs) > maxShown {
+		suffix = fmt.Sprintf(" (+%d more)", len(msgs)-maxShown)
+		msgs = msgs[:maxShown]
+	}
+	if distinct < len(probs) {
+		return sheetsValidationForFlag("styles", "--styles has %d issues (%d distinct): %s%s", len(probs), distinct, strings.Join(msgs, " | "), suffix).
+			WithCause(probs[0])
 	}
 	return sheetsValidationForFlag("styles", "--styles has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix).
 		WithCause(probs[0])
@@ -1528,8 +1660,31 @@ func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workb
 	if dimension == "row" {
 		typeHint = "pixel/standard/auto"
 	}
+	// size is the canonical dimension key (uniform across row_sizes and
+	// col_sizes — the array name already carries the dimension). The Excel-
+	// vocabulary alias (height on rows, width on columns) is accepted
+	// silently; the WRONG dimension's word is a targeted error, never a
+	// silent rewrite.
+	alias, wrongDim := "height", "width"
+	if dimension == "column" {
+		alias, wrongDim = "width", "height"
+	}
 	resizeType, _ := op["type"].(string)
 	resizeType = strings.TrimSpace(resizeType)
+	// "custom" is the word both Excel's UI and the Lark UI use for a
+	// hand-set dimension, and an op that carries an explicit size is asking
+	// for exactly the pixel mode. Only rewritten when a size is present:
+	// without one, "custom" states no dimension at all and the enum error is
+	// the right answer. The alias counts as a size — the two spellings are
+	// interchangeable everywhere else, so "custom" must not depend on which
+	// one the caller reached for.
+	if strings.EqualFold(resizeType, "custom") {
+		_, hasSize := op["size"]
+		if _, hasAlias := op[alias]; hasSize || hasAlias {
+			resizeType = "pixel"
+			op["type"] = resizeType
+		}
+	}
 	if resizeType != "" {
 		if dimension == "column" && resizeType == "auto" {
 			return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type auto is rows-only", path)
@@ -1539,15 +1694,6 @@ func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workb
 		default:
 			return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type %q is invalid (want %s), e.g. %s", path, resizeType, typeHint, resizeOpExample(dimension))
 		}
-	}
-	// size is the canonical dimension key (uniform across row_sizes and
-	// col_sizes — the array name already carries the dimension). The Excel-
-	// vocabulary alias (height on rows, width on columns) is accepted
-	// silently; the WRONG dimension's word is a targeted error, never a
-	// silent rewrite.
-	alias, wrongDim := "height", "width"
-	if dimension == "column" {
-		alias, wrongDim = "width", "height"
 	}
 	if _, has := op[wrongDim]; has {
 		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.%s does not apply to this array (the array name carries the dimension); use size, e.g. %s", path, wrongDim, resizeOpExample(dimension))
@@ -1662,7 +1808,7 @@ func normalizeWorkbookCreateStyleObject(in map[string]interface{}, path string) 
 				// misleads worse than silence.
 				msg := fmt.Sprintf("%s.%s is not a supported style field", path, k)
 				lower := strings.ToLower(k)
-				if rx, ok := styleFieldPrescriptions[lower]; ok {
+				if rx := styleFieldPrescriptionFor(k); rx != "" {
 					msg += " — " + rx
 				} else if match := suggest.Closest(lower, workbookCreateCellStyleFieldList, 1); len(match) > 0 && suggest.Levenshtein(lower, match[0]) <= 2 {
 					msg += fmt.Sprintf(" — did you mean %q?", match[0])
@@ -2100,6 +2246,32 @@ func workbookCreateVisualOpInput(token, sheetID, sheetName string, op workbookCr
 	}
 }
 
+// wholeAxisRangeHint answers a whole-column ("A:C") or whole-row ("2:10")
+// range where a rectangle is required, naming both ways out: bound it, or move
+// it to the sizing carrier that takes exactly this form. Returns "" for any
+// other malformed range, which keeps its own message.
+func wholeAxisRangeHint(rangeStr string) string {
+	parts := strings.SplitN(strings.TrimSpace(rangeStr), ":", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	left, right := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	if left == "" || right == "" {
+		return ""
+	}
+	isColumns := isColumnLetterKey(strings.ToUpper(left)) && isColumnLetterKey(strings.ToUpper(right))
+	_, digitsLeft := strconv.Atoi(left)
+	_, digitsRight := strconv.Atoi(right)
+	isRows := digitsLeft == nil && digitsRight == nil
+	switch {
+	case isColumns:
+		return fmt.Sprintf(`a cell style needs row bounds: give the rectangle you mean (e.g. "%s1:%s200"). The bare "%s" form is what col_sizes takes for column width`, left, right, rangeStr)
+	case isRows:
+		return fmt.Sprintf(`a cell style needs column bounds: give the rectangle you mean (e.g. "A%s:Z%s"). The bare "%s" form is what row_sizes takes for row height`, left, right, rangeStr)
+	}
+	return ""
+}
+
 func workbookCreateStyleRangeBounds(rangeStr string) (startCol, startRow, endCol, endRow int, err error) {
 	if idx := strings.Index(rangeStr, "!"); idx >= 0 {
 		rangeStr = rangeStr[idx+1:]
@@ -2119,6 +2291,14 @@ func workbookCreateStyleRangeBounds(rangeStr string) (startCol, startRow, endCol
 	startCol, startRow, ok1 := splitCellRef(parts[0])
 	endCol, endRow, ok2 := splitCellRef(parts[1])
 	if !ok1 || !ok2 {
+		// The whole-column / whole-row forms ("A:A", "1:1") are real range
+		// syntax — just not here: they are what row_sizes and col_sizes take,
+		// while a style stamp needs bounds to fill. 08-29..31 reflow: 28
+		// rejections across +styles-put and +workbook-create, and the bare
+		// "need rectangular A1:B2" left the caller guessing at the row count.
+		if hint := wholeAxisRangeHint(rangeStr); hint != "" {
+			return 0, 0, 0, 0, fmt.Errorf("unsupported range form %q — %s", rangeStr, hint) //nolint:forbidigo // intermediate error; callers wrap it into a typed validation error with flag/param context
+		}
 		return 0, 0, 0, 0, fmt.Errorf("unsupported range form %q (need rectangular A1:B2)", rangeStr) //nolint:forbidigo // intermediate error; callers wrap it into a typed validation error with flag/param context
 	}
 	if endRow < startRow || endCol < startCol {
@@ -2180,7 +2360,11 @@ var WorkbookExport = common.Shortcut{
 	HasFormat:   true,
 	Flags:       flagsFor("+workbook-export"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if _, err := resolveSpreadsheetToken(runtime); err != nil {
+		token, err := resolveSpreadsheetToken(runtime)
+		if err != nil {
+			return err
+		}
+		if err := errLocalOfficeExportUnsupported(token); err != nil {
 			return err
 		}
 		ext := runtime.Str("file-extension")
@@ -2203,17 +2387,63 @@ var WorkbookExport = common.Shortcut{
 			return err
 		}
 		// workbookExportParams resolves --url network-free (DryRun shares it); a
-		// /wiki/ URL carries a node_token that needs the get_node step only
+		// /wiki/ URL carries a node_token that needs the node_by_token step only
 		// Execute may take, so re-resolve the token here.
 		if p.Token, err = resolveSpreadsheetTokenExec(runtime); err != nil {
 			return err
 		}
-		applyWorkbookOutputPath(&p, runtime.FileIO(), runtime.Str("output-path"))
+		// Re-check after the wiki hop: Validate only saw the node_token.
+		if err := errLocalOfficeExportUnsupported(p.Token); err != nil {
+			return err
+		}
+		applyWorkbookOutputPath(&p, runtime.FileIO(), runtime.Str("output-path"),
+			flagValueCameFromAlias(runtime.Cmd, "output-path", directoryValuedExportAliases...))
 		return drive.RunExport(ctx, runtime, p)
 	},
 	Tips: []string{
 		"Polls for a bounded window; if the export is still running it returns a resume reference instead of blocking. Pass --output-path to download the file once ready (omit it to only create the export task and get the file token back).",
 	},
+}
+
+// errLocalOfficeExportUnsupported rejects an export whose target is an Office
+// workbook rather than a Lark spreadsheet (common.IsLocalOfficeToken). Drive's export
+// task only produces artifacts for native Lark documents, so these tokens fail
+// on the backend — late, after the create + poll round trips, with an opaque
+// message. Refuse up front and say why instead.
+//
+// The two token classes need different recovery, and conflating them hands the
+// caller an action they cannot take:
+//
+//   - a "local_office_" / "fake_office_" prefix is a synthetic token the client
+//     mints for a file opened from the user's own disk — the workbook is
+//     already a local file, so there is nothing to fetch;
+//   - an interleaved OFL0X token is an Office file stored in Lark (uploaded or
+//     imported, and possibly only shared with the caller). There may be no
+//     local copy at all, so the recovery is to download the stored file, or to
+//     convert it into a real Lark spreadsheet that export does support.
+func errLocalOfficeExportUnsupported(token string) error {
+	if !common.IsLocalOfficeToken(token) {
+		return nil
+	}
+	if isLocallyOpenedOfficeToken(token) {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"%s is a locally opened Office file, not a Lark spreadsheet — it cannot be exported", token).
+			WithHint("This workbook is already a file on your own disk: use that file directly, no export needed. " +
+				"To get a Lark spreadsheet you can export later, upload it first with `lark-cli sheets +workbook-import --file <path>`.")
+	}
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"%s is an Office file stored in Lark, not a Lark spreadsheet — export only produces artifacts for native Lark documents", token).
+		WithHint(fmt.Sprintf("Download the stored file as-is with `lark-cli drive +download --file-token %s`. "+
+			"If you need a Lark spreadsheet (to export it, or to edit it with the sheets commands), convert it first: "+
+			"download it, then `lark-cli sheets +workbook-import --file <path>`.", token))
+}
+
+// isLocallyOpenedOfficeToken reports whether the token is one of the synthetic
+// prefixes the client mints for a workbook opened from local disk, as opposed
+// to an Office file that lives in Lark. Both are local-office tokens to
+// common.IsLocalOfficeToken; only this class implies the caller holds the file.
+func isLocallyOpenedOfficeToken(token string) bool {
+	return strings.HasPrefix(token, common.FakeOfficeTokenPrefix) || strings.HasPrefix(token, common.LocalOfficeTokenPrefix)
 }
 
 // workbookExportParams builds the shared drive export request for
@@ -2244,9 +2474,16 @@ func workbookExportParams(runtime *common.RuntimeContext) (drive.ExportParams, e
 // download (return the ready file token only); an existing directory = download
 // into it under the server-provided name; otherwise treat it as a file path and
 // split into dir + base name.
-func applyWorkbookOutputPath(p *drive.ExportParams, fio fileio.FileIO, outputPath string) {
+func applyWorkbookOutputPath(p *drive.ExportParams, fio fileio.FileIO, outputPath string, asDirectory bool) {
 	outputPath = strings.TrimSpace(outputPath)
 	if outputPath == "" {
+		return
+	}
+	// The caller wrote --outdir / --output-dir, which states the value is a
+	// directory. Honor that regardless of what is on disk: probing would turn
+	// "the directory does not exist yet" into "write a file by that name".
+	if asDirectory {
+		p.OutputDir = outputPath
 		return
 	}
 	if info, err := fio.Stat(outputPath); err == nil && info.IsDir() {
@@ -2393,9 +2630,10 @@ var WorkbookImport = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if note := workbookImportMislabelNote(params); note != "" {
-			fmt.Fprintln(runtime.IO().ErrOut, note)
-		}
+		// The corrected extension changes what the backend was asked to build,
+		// so it rides out in the result as input_corrections rather than on
+		// stderr, where a successful import looked like a failed one.
+		params.InputCorrections = workbookImportCorrections(params)
 		return drive.RunImport(ctx, runtime, params)
 	},
 }
@@ -2479,6 +2717,23 @@ func sniffWorkbookContainer(fio fileio.FileIO, filePath string) (string, bool) {
 
 // workbookImportMislabelNote returns a user-facing note when content sniffing
 // overrode the declared extension, or "" when no correction was applied.
+// workbookImportCorrections is the machine-readable form of
+// workbookImportMislabelNote, for the executed import's result. The prose note
+// stays for the dry-run preview, which is human-facing.
+func workbookImportCorrections(params drive.ImportParams) []drive.ImportInputCorrection {
+	declared := strings.TrimPrefix(strings.ToLower(filepath.Ext(params.File)), ".")
+	if params.FileExtension == "" || params.FileExtension == declared {
+		return nil
+	}
+	return []drive.ImportInputCorrection{{
+		Field:    "file_extension",
+		Declared: declared,
+		Actual:   params.FileExtension,
+		Reason: fmt.Sprintf("%s is named .%s but its content is a .%s workbook; imported as .%s",
+			filepath.Base(params.File), declared, params.FileExtension, params.FileExtension),
+	}}
+}
+
 func workbookImportMislabelNote(params drive.ImportParams) string {
 	declared := strings.TrimPrefix(strings.ToLower(filepath.Ext(params.File)), ".")
 	if params.FileExtension == "" || params.FileExtension == declared {

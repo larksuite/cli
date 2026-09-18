@@ -63,6 +63,19 @@ func appendDocRecoveryHint(problem *errs.Problem, hint string) {
 	problem.Hint = strings.TrimSpace(problem.Hint) + "\n" + hint
 }
 
+// withDocRecoveryHint preserves an existing typed error while adding recovery
+// guidance for a server-side write that completed before a later step failed.
+func withDocRecoveryHint(err error, hint string) error {
+	if err == nil {
+		return nil
+	}
+	if problem, ok := errs.ProblemOf(err); ok {
+		appendDocRecoveryHint(problem, hint)
+		return err
+	}
+	return errs.NewInternalError(errs.SubtypeSDKError, "%s", err.Error()).WithHint(hint).WithCause(err)
+}
+
 func docMediaDownloadPermissionDeniedError() error {
 	const tokenArg = "<MEDIA_TOKEN>"
 	return errs.NewPermissionError(

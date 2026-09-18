@@ -90,6 +90,16 @@ func installPluginInstallErrorGuard(rootCmd *cobra.Command, installErr error) {
 	installFatalGuard(rootCmd, makeErr)
 }
 
+func installCommandSetErrorGuard(rootCmd *cobra.Command, compileErr error) {
+	makeErr := func() error {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"business command contribution is invalid: %s", compileErr.Error()).
+			WithHint("fix the command declarations passed to cmd.WithCommandSets before starting this distribution").
+			WithCause(compileErr)
+	}
+	installFatalGuard(rootCmd, makeErr)
+}
+
 // installPluginConflictGuard surfaces a Plugin.Restrict() configuration
 // error (single plugin invalid Rule or multiple plugins each contributing
 // Restrict). The hint separates the two failure modes by reason code:

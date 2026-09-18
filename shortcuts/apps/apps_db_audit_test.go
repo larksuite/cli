@@ -320,3 +320,82 @@ func TestAppsDBAuditList_MultiTableAllFilteredSkipsQuery(t *testing.T) {
 		t.Fatalf("expected empty + 'Skipped 2 of 2 tables':\n%s", got)
 	}
 }
+
+// ── DTS init lock contention（命令层接线）──
+
+// lockContentionBody 是服务端并发抢锁失败的响应体。
+func lockContentionBody() map[string]interface{} {
+	return map[string]interface{}{
+		"code": 500002776,
+		"msg":  dtsInitFailedSubcode + "：[EnsureDTSTask] lock already held, workspace: workspace_x, branch: dev",
+	}
+}
+
+// TestAppsDBAuditEnable_RetriesLockContention 验证重试确实接在命令上，而不只是 helper 里能跑：
+// 第一次请求撞锁、第二次成功，命令整体应当成功，用户看不到那次竞态。
+func TestAppsDBAuditEnable_RetriesLockContention(t *testing.T) {
+	shortenBackoff(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{Method: "POST", URL: dbAuditSetURL, Body: lockContentionBody()})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: dbAuditSetURL,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"status": map[string]interface{}{"table": "orders", "enabled": true, "retention": "30d"}}},
+	})
+
+	if err := runAppsShortcut(t, AppsDBAuditEnable,
+		[]string{"+db-audit-enable", "--app-id", "app_x", "--table", "orders", "--retention", "30d", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("contention should have been retried away, got err=%v", err)
+	}
+	if !strings.Contains(stdout.String(), `"enabled": true`) {
+		t.Fatalf("expected the successful retry's payload, got %s", stdout.String())
+	}
+	reg.Verify(t) // both stubs consumed → the second POST really was sent
+}
+
+// TestAppsDBAuditDisable_RetriesLockContention 关闭路径同样会刷新 DTS 订阅、撞同一把锁。
+func TestAppsDBAuditDisable_RetriesLockContention(t *testing.T) {
+	shortenBackoff(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{Method: "POST", URL: dbAuditSetURL, Body: lockContentionBody()})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: dbAuditSetURL,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"status": map[string]interface{}{"table": "orders", "enabled": false}}},
+	})
+
+	if err := runAppsShortcut(t, AppsDBAuditDisable,
+		[]string{"+db-audit-disable", "--app-id", "app_x", "--table", "orders", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("contention should have been retried away, got err=%v", err)
+	}
+	reg.Verify(t)
+}
+
+// TestAppsDBAuditEnable_LockContentionOutlastingRetries 验证重试耗尽后用户看到的形态：
+// 可重试的服务端错误 + 点明并发的文案，而不是原来的 unknown + 「检查 app-id/table」。
+func TestAppsDBAuditEnable_LockContentionOutlastingRetries(t *testing.T) {
+	shortenBackoff(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: dbAuditSetURL, Body: lockContentionBody(), Reusable: true,
+	})
+
+	err := runAppsShortcut(t, AppsDBAuditEnable,
+		[]string{"+db-audit-enable", "--app-id", "app_x", "--table", "orders", "--as", "user"},
+		factory, stdout)
+	if err == nil {
+		t.Fatal("persistent contention must still surface as an error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed error, got %T", err)
+	}
+	if p.Subtype != errs.SubtypeServerError || !p.Retryable {
+		t.Fatalf("subtype/retryable = %s/%v, want server_error/true", p.Subtype, p.Retryable)
+	}
+	if !strings.Contains(p.Hint, "concurrent") {
+		t.Fatalf("hint = %q, must name the concurrency", p.Hint)
+	}
+}

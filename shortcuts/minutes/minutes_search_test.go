@@ -150,6 +150,9 @@ func TestBuildMinutesSearchParams(t *testing.T) {
 	if body["query"] != "budget" {
 		t.Fatalf("body.query = %v, want budget", body["query"])
 	}
+	if got, _ := body["sorter"].(string); got != "create_time_desc" {
+		t.Fatalf("body.sorter = %q, want create_time_desc", got)
+	}
 	filter, _ := body["filter"].(map[string]interface{})
 	if filter == nil {
 		t.Fatalf("body.filter = nil, want filter object")
@@ -489,6 +492,20 @@ func TestMinutesSearchDryRun(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "\"owner_ids\": [") || !strings.Contains(stdout.String(), "\"ou_owner\"") {
 		t.Fatalf("dry-run should show owner_ids in filter, got: %s", stdout.String())
+	}
+}
+
+// TestMinutesSearchKeywordAliasMapsToQuery verifies --keyword is a parse-time
+// synonym of --query; agents that habitually spell it --keyword still reach the
+// same body field.
+func TestMinutesSearchKeywordAliasMapsToQuery(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, MinutesSearch, []string{"+search", "--keyword", "budget", "--dry-run", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "\"query\": \"budget\"") {
+		t.Fatalf("--keyword should map to canonical --query in body, got: %s", stdout.String())
 	}
 }
 

@@ -19,8 +19,11 @@ func TestGetLoginMsg_Zh(t *testing.T) {
 	if msg != loginMsgZh {
 		t.Error("expected zh message set")
 	}
-	if msg.SelectDomains != "选择要授权的业务域" {
-		t.Errorf("unexpected SelectDomains: %s", msg.SelectDomains)
+	if msg.OpenURL != "在浏览器中打开以下链接进行认证:\n\n" {
+		t.Errorf("unexpected OpenURL: %s", msg.OpenURL)
+	}
+	if msg.LoginSuccess != "登录成功! 用户: %s (%s)" {
+		t.Errorf("unexpected LoginSuccess: %s", msg.LoginSuccess)
 	}
 }
 
@@ -29,8 +32,8 @@ func TestGetLoginMsg_En(t *testing.T) {
 	if msg != loginMsgEn {
 		t.Error("expected en message set")
 	}
-	if msg.SelectDomains != "Select domains to authorize" {
-		t.Errorf("unexpected SelectDomains: %s", msg.SelectDomains)
+	if msg.OpenURL != "Open this URL in your browser to authenticate:\n\n" {
+		t.Errorf("unexpected OpenURL: %s", msg.OpenURL)
 	}
 }
 
@@ -74,29 +77,6 @@ func TestLoginMsg_FormatStrings(t *testing.T) {
 			t.Errorf("%s LoginSuccess has no format verb", lang)
 		}
 
-		// AuthorizedUser should contain two %s placeholders (userName, openId)
-		got = fmt.Sprintf(msg.AuthorizedUser, "testuser", "ou_123")
-		if got == msg.AuthorizedUser {
-			t.Errorf("%s AuthorizedUser has no format verb", lang)
-		}
-
-		// SummaryDomains should contain %s
-		got = fmt.Sprintf(msg.SummaryDomains, "calendar, task")
-		if got == msg.SummaryDomains {
-			t.Errorf("%s SummaryDomains has no format verb", lang)
-		}
-
-		// SummaryPerm should contain %s
-		got = fmt.Sprintf(msg.SummaryPerm, "all")
-		if got == msg.SummaryPerm {
-			t.Errorf("%s SummaryPerm has no format verb", lang)
-		}
-
-		// SummaryScopes should contain %d and %s
-		got = fmt.Sprintf(msg.SummaryScopes, 5, "a, b, c")
-		if got == msg.SummaryScopes {
-			t.Errorf("%s SummaryScopes has no format verb", lang)
-		}
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"unicode"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/registry"
 )
@@ -31,6 +32,7 @@ var imAffordanceExamples = []imAffordanceExample{
 	{method: "+chat-update", command: `lark-cli im +chat-update --chat-id oc_xxx --name "New Group Name"`, source: "lark-im/references/lark-im-chat-update.md"},
 	{method: "+message-read-users", command: "lark-cli im +message-read-users --message-id om_xxx", source: "lark-im/references/lark-im-message-read-status.md"},
 	{method: "+messages-mget", command: "lark-cli im +messages-mget --message-ids om_xxx", source: "lark-im/references/lark-im-messages-mget.md"},
+	{method: "+messages-edit", command: "lark-cli im +messages-edit --as bot --message-id om_xxx --markdown \"Updated content\" --set-attachments file_xxx", source: "lark-im/references/lark-im-messages-edit.md"},
 	{
 		method:        "+messages-read-status",
 		command:       "lark-cli im +messages-read-status --as user --message-ids om_xxx,om_yyy",
@@ -77,6 +79,7 @@ var imAffordanceExamples = []imAffordanceExample{
 	},
 }
 
+// TestIMAffordanceExamplesTraceToCurrentSkill verifies affordance examples resolve to current shortcuts.
 func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 	prev := mdSource
 	t.Cleanup(func() { SetSource(prev) })
@@ -85,14 +88,14 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 	if got, ok := DomainSkill("im"); !ok || got != "lark-im" {
 		t.Fatalf("DomainSkill(im) = (%q, %v), want (lark-im, true)", got, ok)
 	}
-	if got, want := len(imAffordanceExamples), 35; got != want {
+	if got, want := len(imAffordanceExamples), 36; got != want {
 		t.Fatalf("audited IM example count = %d, want %d", got, want)
 	}
 	affordanceSource, err := os.ReadFile("../../affordance/im.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	parsedDomain := parseDomainMD(affordanceSource, commandFormResolver("im"))
+	parsedDomain := parseDomainMD(affordanceSource, commandFormResolver(imAffordanceCatalog(t), "im"))
 	if got, want := len(parsedDomain.methods), len(imAffordanceExamples); got != want {
 		t.Fatalf("parsed IM affordance entries = %d, audited examples = %d", got, want)
 	}
@@ -104,8 +107,8 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 			shortcutCount++
 		}
 	}
-	if shortcutCount != 23 || len(imAffordanceExamples)-shortcutCount != 12 {
-		t.Fatalf("audited split = %d shortcuts / %d raw, want 23 / 12", shortcutCount, len(imAffordanceExamples)-shortcutCount)
+	if shortcutCount != 24 || len(imAffordanceExamples)-shortcutCount != 12 {
+		t.Fatalf("audited split = %d shortcuts / %d raw, want 24 / 12", shortcutCount, len(imAffordanceExamples)-shortcutCount)
 	}
 	for method := range parsedDomain.methods {
 		if !audited[method] {
@@ -226,10 +229,7 @@ func TestIMImageUploadExamplesPreserveIdentityChoice(t *testing.T) {
 }
 
 func TestIMImageUploadMetadataSupportsBothIdentities(t *testing.T) {
-	if len(registry.EmbeddedServicesTyped()) == 0 {
-		t.Skip("generated API metadata is not embedded in this bare-module test run")
-	}
-	target, err := registry.EmbeddedCatalog().Resolve([]string{"im", "images", "create"})
+	target, err := imAffordanceCatalog(t).Resolve([]string{"im", "images", "create"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestIMImageUploadMetadataSupportsBothIdentities(t *testing.T) {
 
 func parsedIMAffordance(t *testing.T, method string) meta.Affordance {
 	t.Helper()
-	raw, ok := For("im", method)
+	raw, ok := For(imAffordanceCatalog(t), "im", method)
 	if !ok {
 		t.Fatalf("For(im, %s) ok=false", method)
 	}
@@ -253,6 +253,15 @@ func parsedIMAffordance(t *testing.T, method string) meta.Affordance {
 		t.Fatalf("im %s affordance did not parse", method)
 	}
 	return a
+}
+
+func imAffordanceCatalog(t *testing.T) apicatalog.Catalog {
+	t.Helper()
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot.Catalog()
 }
 
 func containsExact(items []string, want string) bool {

@@ -16,6 +16,7 @@ import (
 const (
 	minutesUploadSupportedFormatsTip = "Supported audio formats: wav, mp3, m4a, aac, ogg, wma, amr; supported video formats: avi, wmv, mov, mp4, m4v, mpeg, ogg, flv."
 	minutesUploadLimitsTip           = "The original uploaded media must be no larger than 6GB and no longer than 6 hours."
+	minutesUploadASRQuotaNotEnough   = 2091008
 )
 
 // MinutesUpload uploads a media file token to generate a minute.
@@ -59,7 +60,7 @@ var MinutesUpload = common.Shortcut{
 
 		data, err := runtime.CallAPITyped("POST", "/open-apis/minutes/v1/minutes/upload", nil, body)
 		if err != nil {
-			return err
+			return minutesUploadError(err)
 		}
 
 		minuteURL := common.GetString(data, "minute_url")
@@ -74,6 +75,17 @@ var MinutesUpload = common.Shortcut{
 		runtime.OutFormat(outData, nil, nil)
 		return nil
 	},
+}
+
+func minutesUploadError(err error) error {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != minutesUploadASRQuotaNotEnough {
+		return err
+	}
+	p.Subtype = errs.SubtypeQuotaExceeded
+	p.Message = "ASR/AI quota not enough: cannot generate a minute from this upload."
+	p.Hint = minutesASRQuotaNotEnoughHint
+	return err
 }
 
 func extractUploadedMinuteToken(minuteURL string) string {

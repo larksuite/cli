@@ -77,10 +77,10 @@ lark-cli vc +meeting-events --as bot --meeting-id <meeting_id> --page-all --form
 
 - 默认使用 `--page-all` 拉取当前完整事件流，并保留返回的 `page_token` 供后续增量查询。
 - 回答“现在、刚刚、最新”或总结当前会议前，重新拉取最新事件；不直接复用旧快照。
-- 应用机器人必须在会中，或在会议结束后的可见宽限窗口内曾经参会；不要用任意 `meeting_id` 尝试读取。
+- 应用机器人必须当前在会中；不要用任意 `meeting_id` 尝试读取。
 - 会中事件不能替代已结束会议的参会人快照、纪要、逐字稿或录制。
 
-事件类型、分页、结束后五分钟窗口和文档上下文处理见 [`lark-vc-meeting-events`](../references/lark-vc-meeting-events.md)。
+事件类型、分页、会后产物替代路径和文档上下文处理见 [`lark-vc-meeting-events`](../references/lark-vc-meeting-events.md)。
 
 ## 发送会中文本或表情
 

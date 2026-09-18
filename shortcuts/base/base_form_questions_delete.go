@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -85,7 +86,7 @@ func buildFormQuestionsDeleteBody(runtime *common.RuntimeContext) (map[string]in
 		return nil, nil, baseValidationErrorf("--question-ids must contain at most 10 items")
 	}
 	for i, id := range questionIds {
-		if id == "" {
+		if strings.TrimSpace(id) == "" {
 			return nil, nil, baseValidationErrorf("--question-ids item %d must be a non-empty string", i+1)
 		}
 	}

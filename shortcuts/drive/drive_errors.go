@@ -138,6 +138,12 @@ func appendDriveExportRecoveryHint(err error, hint string) error {
 	return errs.NewInternalError(errs.SubtypeSDKError, "%s", err.Error()).WithHint(hint).WithCause(err)
 }
 
+// appendDriveRecoveryHint keeps new non-export recovery paths explicit without
+// renaming the established export helper and touching unrelated callers.
+func appendDriveRecoveryHint(err error, hint string) error {
+	return appendDriveExportRecoveryHint(err, hint)
+}
+
 // driveExportIsRateLimit follows the same typed-error inspection pattern as
 // driveInspectShouldRetry, but export status polling uses the signal to stop.
 // Continuing to poll after a rate-limit response only amplifies the throttling.

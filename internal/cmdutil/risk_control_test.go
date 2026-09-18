@@ -28,8 +28,8 @@ func TestResolveSDKHostSignalSource(t *testing.T) {
 	}{
 		{name: "workspace default on", config: staticWorkspaceConfig{config: &core.MultiAppConfig{}}, wantSource: true},
 		{name: "workspace opt-out", config: staticWorkspaceConfig{config: &core.MultiAppConfig{RiskControl: &disabled}}},
-		{name: "missing config", config: staticWorkspaceConfig{err: errors.New("file does not exist")}},
-		{name: "unreadable config", config: staticWorkspaceConfig{err: errors.New("permission denied")}},
+		{name: "missing config", config: staticWorkspaceConfig{err: errors.New("file does not exist")}, wantSource: true},
+		{name: "unreadable config", config: staticWorkspaceConfig{err: errors.New("permission denied")}, wantSource: true},
 		{name: "nil config value", config: staticWorkspaceConfig{}},
 		{name: "nil config source"},
 	}

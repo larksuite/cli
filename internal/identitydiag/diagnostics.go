@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -27,6 +28,7 @@ const (
 	StatusMissing       = "missing"
 	StatusNeedsRefresh  = "needs_refresh"
 	StatusVerifyFailed  = "verify_failed"
+	StatusError         = "error"
 )
 
 // verifyTimeout bounds each network call made during --verify so that a
@@ -42,20 +44,22 @@ type Result struct {
 
 // Identity is a single identity diagnostic result.
 type Identity struct {
-	Status           string `json:"status"`
-	Available        bool   `json:"available"`
-	Verified         *bool  `json:"verified,omitempty"`
-	Message          string `json:"message,omitempty"`
-	Hint             string `json:"hint,omitempty"`
-	OpenID           string `json:"openId,omitempty"`
-	AppName          string `json:"appName,omitempty"`
-	UserName         string `json:"userName,omitempty"`
-	TokenStatus      string `json:"tokenStatus,omitempty"`
-	Scope            string `json:"scope,omitempty"`
-	ExpiresAt        string `json:"expiresAt,omitempty"`
-	RefreshExpiresAt string `json:"refreshExpiresAt,omitempty"`
-	GrantedAt        string `json:"grantedAt,omitempty"`
+	Status           string        `json:"status"`
+	Available        bool          `json:"available"`
+	Verified         *bool         `json:"verified,omitempty"`
+	Message          string        `json:"message,omitempty"`
+	Hint             string        `json:"hint,omitempty"`
+	Error            *errs.Problem `json:"error,omitempty"`
+	OpenID           string        `json:"openId,omitempty"`
+	AppName          string        `json:"appName,omitempty"`
+	UserName         string        `json:"userName,omitempty"`
+	TokenStatus      string        `json:"tokenStatus,omitempty"`
+	Scope            string        `json:"scope,omitempty"`
+	ExpiresAt        string        `json:"expiresAt,omitempty"`
+	RefreshExpiresAt string        `json:"refreshExpiresAt,omitempty"`
+	GrantedAt        string        `json:"grantedAt,omitempty"`
 	recoveryTarget   recovery.Target
+	recoveryError    error
 }
 
 // withCommandRecovery binds user-facing recovery text to the command it
@@ -67,16 +71,22 @@ func withCommandRecovery(identity Identity, target recovery.Target, hint string)
 	return identity
 }
 
-// FilterRecovery returns a copy whose command-targeted hints are removed when
-// the current presenter cannot reference their semantic target. Identity
-// diagnosis itself remains unaware of plugins, policy, and distributions.
-func FilterRecovery(result Result, canReference func(recovery.Target) bool) Result {
-	if canReference == nil {
-		return result
-	}
+// FilterRecovery projects both diagnostic hint fields onto the command surface.
+func FilterRecovery(result Result, projector *recovery.Projector) Result {
 	filter := func(identity Identity) Identity {
-		if identity.recoveryTarget != "" && !canReference(identity.recoveryTarget) {
+		if identity.recoveryError != nil {
+			rendered := projector.Render(identity.recoveryError)
+			if problem, ok := errs.ProblemOf(rendered); ok {
+				cloned := *problem
+				identity.Error = &cloned
+				identity.Hint = cloned.Hint
+			}
+		}
+		if identity.recoveryTarget != "" && !projector.CanReference(identity.recoveryTarget) {
 			identity.Hint = ""
+			if identity.Error != nil {
+				identity.Error.Hint = ""
+			}
 		}
 		return identity
 	}
@@ -295,7 +305,17 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		UserName: cfg.UserName,
 		OpenID:   cfg.UserOpenId,
 	}
-	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
+	stored, err := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
+	if err != nil {
+		id.Status = StatusError
+		id.Message = "User identity: error (" + err.Error() + ")"
+		if problem, ok := errs.ProblemOf(err); ok {
+			id.Hint = problem.Hint
+			id.Error = problem
+			id.recoveryError = err
+		}
+		return id
+	}
 	if stored == nil {
 		id.Status = StatusMissing
 		id.Message = "User identity: missing (no token in keychain for " + cfg.UserOpenId + ")"
@@ -456,6 +476,8 @@ func StatusMessage(status string) string {
 		return "not configured"
 	case StatusVerifyFailed:
 		return "verify failed"
+	case StatusError:
+		return "error"
 	case StatusNeedsRefresh:
 		return "needs refresh"
 	case StatusMissing:

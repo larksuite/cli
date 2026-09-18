@@ -154,7 +154,7 @@ lark-cli docs +fetch --doc '<doc_token_or_url>' --detail with-ids
 - 如果 `quote` 是 `C3`、`A1` 这类单元格坐标，可拆出 `spreadsheet_token` / `sheet_id` 后用 `lark-sheets` 读取该单元格确认：
 
 ```bash
-lark-cli sheets +read \
+lark-cli sheets +cells-get \
   --spreadsheet-token '<spreadsheet_token>' \
   --sheet-id '<sheet_id>' \
   --range '<cell>'

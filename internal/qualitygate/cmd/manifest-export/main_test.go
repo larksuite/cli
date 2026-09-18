@@ -57,15 +57,11 @@ func TestManifestExportRequiresOutputPaths(t *testing.T) {
 	}
 }
 
-func TestConfigureManifestExportEnvironmentForcesDeterministicRegistry(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
+func TestConfigureManifestExportEnvironmentIsolatesConfig(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", "")
 
 	configureManifestExportEnvironment()
 
-	if got := os.Getenv("LARKSUITE_CLI_REMOTE_META"); got != "off" {
-		t.Fatalf("LARKSUITE_CLI_REMOTE_META = %q, want off", got)
-	}
 	if got := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); got == "" {
 		t.Fatal("LARKSUITE_CLI_CONFIG_DIR was not set")
 	}

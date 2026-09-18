@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -196,6 +197,11 @@ func TestServiceMethod_TypedFlag_OverridesNullParams(t *testing.T) {
 func TestRegisterServiceCommands_GeneratesFlagsNoPanic(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli"}
 	f := &cmdutil.Factory{}
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.APICatalog = snapshot.Catalog()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -501,15 +507,31 @@ func TestParamFlagUsage_Description(t *testing.T) {
 		fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
 			"x": map[string]interface{}{
 				"type": "string", "location": "query",
-				"description": strings.Repeat("长", 80),
+				"description": strings.Repeat("长", fieldDescBudget/2+20),
 			},
 		}}).Params()
 		usage := paramFlagUsage(fields[0])
-		if !strings.Contains(usage, "...") {
-			t.Errorf("long description should be truncated with ellipsis, got %q", usage)
+		if !strings.Contains(usage, clauseEllipsis) {
+			t.Errorf("long description should be shortened with an ellipsis, got %q", usage)
 		}
-		if strings.Contains(usage, strings.Repeat("长", 61)) {
+		if strings.Contains(usage, strings.Repeat("长", fieldDescBudget/2+1)) {
 			t.Errorf("description should not exceed the cap, got %q", usage)
+		}
+	})
+
+	t.Run("ellipsis closes the clause before the next fact", func(t *testing.T) {
+		fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+			"page_size": map[string]interface{}{
+				"type": "integer", "location": "query", "max": "100", "default": "20",
+				"description": strings.Repeat("The maximum number of items returned in one request ", fieldDescBudget/52+2),
+			},
+		}}).Params()
+		usage := paramFlagUsage(fields[0])
+		if strings.Contains(usage, clauseEllipsis+".") {
+			t.Errorf("a fitted clause must not be followed by the sentence joiner, got %q", usage)
+		}
+		if !strings.Contains(usage, clauseEllipsis+" max: 100. API default: 20") {
+			t.Errorf("structured facts must follow the fitted clause, got %q", usage)
 		}
 	})
 
@@ -557,6 +579,20 @@ func TestParamHelp_BothSurfacesRenderFieldFacts(t *testing.T) {
 		if !strings.Contains(help, fact) {
 			t.Errorf("params-only addendum missing fact %q:\n%s", fact, help)
 		}
+	}
+}
+
+func TestParamHelp_LargeIntegerBoundStaysExact(t *testing.T) {
+	f := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+		"revision_id": map[string]interface{}{
+			"type":     "integer",
+			"location": "query",
+			"max":      "9223372036854775807",
+		},
+	}}).Params()[0]
+
+	if got := formatBoundsInline(f); got != "max: 9223372036854775807" {
+		t.Fatalf("formatBoundsInline = %q, want exact MaxInt64", got)
 	}
 }
 

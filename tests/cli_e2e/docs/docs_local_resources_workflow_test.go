@@ -42,13 +42,16 @@ func testDocsLocalResourcesWorkflow(t *testing.T, defaultAs string) {
 	t.Cleanup(cancel)
 
 	workDir := t.TempDir()
+	draftDir := filepath.Join(workDir, "draft")
+	require.NoError(t, os.Mkdir(draftDir, 0o700))
 	createdSource := []byte("created source fixture\n")
 	appendedNegativeSource := []byte("appended negative source fixture\n")
 	appendedNonNumericSource := []byte("appended nonnumeric source fixture\n")
 	replacedSource := []byte("block replaced source fixture\n")
 	overwrittenSource := []byte("overwritten source fixture\n")
 	writeLocalResourceFixture(t, workDir, "created.png", hundredByEightyPNG)
-	writeLocalResourceFixture(t, workDir, "positioned.png", onePixelPNG)
+	writeLocalResourceFixture(t, draftDir, "positioned.png", onePixelPNG)
+	writeLocalResourceFixture(t, draftDir, "update.xml", []byte(`<img path="@positioned.png" caption="positioned image"/>`))
 	writeLocalResourceFixture(t, workDir, "created.txt", createdSource)
 	writeLocalResourceFixture(t, workDir, "appended.png", onePixelPNG)
 	writeLocalResourceFixture(t, workDir, "replaced.png", onePixelPNG)
@@ -80,7 +83,7 @@ func testDocsLocalResourcesWorkflow(t *testing.T, defaultAs string) {
 		args := []string{
 			"docs", "+create",
 			"--title", "lark-cli local resources " + suffix,
-			"--content", `<p>created resources</p><img path="@created.png" caption="created image" width="50"/><source path="@created.txt" name="created-report.txt" size="0"/>`,
+			"--content", fmt.Sprintf(`<p>created resources</p><img path="@%s" caption="created image" width="50"/><source path="@%s" name="created-report.txt" size="0"/>`, html.EscapeString(filepath.Join(workDir, "created.png")), html.EscapeString(filepath.Join(workDir, "created.txt"))),
 		}
 		if folderToken != "" {
 			args = append(args, "--parent-token", folderToken)
@@ -118,7 +121,7 @@ func testDocsLocalResourcesWorkflow(t *testing.T, defaultAs string) {
 				"--doc", docToken,
 				"--command", "block_insert_after",
 				"--block-id", anchorBlockID,
-				"--content", `<img path="@positioned.png" caption="positioned image"/>`,
+				"--content", "@./draft/update.xml",
 			},
 			DefaultAs: defaultAs,
 			WorkDir:   workDir,

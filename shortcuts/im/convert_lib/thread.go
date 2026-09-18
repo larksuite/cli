@@ -197,6 +197,11 @@ func ExpandThreadRepliesWithResources(runtime *common.RuntimeContext, messages [
 		}
 	}
 	mergePrefetch := PrefetchMergeForwardSubItems(runtime, allRawReplies, nameCache)
+	// Folder replies get the same treatment: a thread reply that is a folder
+	// message would otherwise trigger another serial GET per reply inside
+	// FormatMessageItem. PrefetchFolderChildren bounds the fan-out and caches
+	// XML keyed by reply message_id for the render loop below.
+	folderPrefetch := PrefetchFolderChildren(runtime, allRawReplies)
 
 	// Phase 2a: format every plan's replies sequentially. FormatMessageItem
 	// may still touch nameCache for non-merge_forward content types
@@ -214,7 +219,7 @@ func ExpandThreadRepliesWithResources(runtime *common.RuntimeContext, messages [
 		}
 		replies := make([]map[string]interface{}, 0, len(r.rawReplies))
 		for _, raw := range r.rawReplies {
-			replies = append(replies, FormatMessageItemWithMergePrefetchOpts(raw, runtime, nameCache, mergePrefetch, extractResources))
+			replies = append(replies, FormatMessageItemWithFolderPrefetchOpts(raw, runtime, nameCache, mergePrefetch, folderPrefetch, extractResources))
 		}
 		preparedReplies[i] = replies
 	}

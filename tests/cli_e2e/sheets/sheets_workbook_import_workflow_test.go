@@ -72,12 +72,12 @@ func TestSheets_WorkbookImportWorkflow(t *testing.T) {
 
 	// Sanity: the imported token resolves through the sheets read path.
 	infoResult, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args:      []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+		Args:      []string{"sheets", "+workbook-info", "--spreadsheet-token", spreadsheetToken},
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
 	infoResult.AssertExitCode(t, 0)
 	infoResult.AssertStdoutStatus(t, true)
-	assert.True(t, gjson.Get(infoResult.Stdout, "data.sheets.sheets.0.sheet_id").Exists(),
+	assert.True(t, gjson.Get(infoResult.Stdout, "data.sheets.0.sheet_id").Exists(),
 		"imported workbook should expose at least one sub-sheet; stdout:\n%s", infoResult.Stdout)
 }

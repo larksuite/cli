@@ -353,6 +353,11 @@ var CalendarRoomFind = common.Shortcut{
 		if minCapacity, maxCapacity := runtime.Int(flagMinCapacity), runtime.Int(flagMaxCapacity); minCapacity > 0 && maxCapacity > 0 && minCapacity > maxCapacity {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--min-capacity must be <= --max-capacity").WithParam("--min-capacity")
 		}
+		var tzInputs []calendarTimeInputRange
+		for _, raw := range runtime.StrArray(flagSlot) {
+			tzInputs = append(tzInputs, collectCalendarRangeInputs(flagSlot, raw)...)
+		}
+		warnCalendarTimezoneMismatch(runtime, tzInputs...)
 		return nil
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

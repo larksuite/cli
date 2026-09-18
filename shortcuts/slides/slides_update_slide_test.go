@@ -105,8 +105,9 @@ func TestUpdateSlideSendsOnePagePart(t *testing.T) {
 	if part.BlockID != "pYw" {
 		t.Fatalf("block_id = %q, want the page id pYw", part.BlockID)
 	}
-	// The caller's bytes travel through untouched apart from the injected root id,
-	// so their formatting lands in the page.
+	// The root gets the page id stamped; the caller's bytes are otherwise preserved
+	// (only a stale <note> id would be dropped, and this fixture has no <note>), so
+	// their content, formatting and visible element ids all land in the page.
 	if !strings.HasPrefix(part.Replacement, `<slide id="pYw">`) {
 		t.Fatalf("replacement root not stamped with the page id: %s", part.Replacement)
 	}
@@ -415,6 +416,71 @@ func TestUpdateSlideRevisionAndTIDTravel(t *testing.T) {
 	}
 	if query.Get("slide_id") != "pYw" {
 		t.Fatalf("slide_id = %q", query.Get("slide_id"))
+	}
+}
+
+// TestUpdateSlidePassesThroughIssues keeps the backend's lint report visible on
+// a page that was written. A finding serious enough to refuse the write comes
+// back as an error carrying the same report, so anything arriving here describes
+// a page that is already stored — dropping it would leave the caller believing
+// the deck says exactly what they wrote.
+func TestUpdateSlidePassesThroughIssues(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide/replace",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"revision_id": 9,
+			"issues":      "[issue=text_overflows_container id=v5 level=warning]",
+		}},
+	})
+
+	if err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "pYw",
+		"--content", testPageXML,
+		"--as", "user",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeShortcutData(t, stdout)
+	if issues, _ := data["issues"].(string); issues != "[issue=text_overflows_container id=v5 level=warning]" {
+		t.Fatalf("issues = %#v, want the backend report passed through verbatim", data["issues"])
+	}
+	if data["revision_id"] != float64(9) {
+		t.Fatalf("revision_id = %#v, want 9 alongside the report", data["revision_id"])
+	}
+}
+
+// TestUpdateSlideOmitsIssuesWhenAbsent keeps the key out of the output rather
+// than reporting an empty report, so a caller can test for presence.
+func TestUpdateSlideOmitsIssuesWhenAbsent(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide/replace",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"revision_id": 9}},
+	})
+
+	if err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "pYw",
+		"--content", testPageXML,
+		"--as", "user",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeShortcutData(t, stdout)
+	if _, ok := data["issues"]; ok {
+		t.Fatalf("issues should be omitted when the backend sent none: %#v", data)
 	}
 }
 

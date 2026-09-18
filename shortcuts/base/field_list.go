@@ -12,18 +12,18 @@ import (
 var BaseFieldList = common.Shortcut{
 	Service:     "base",
 	Command:     "+field-list",
-	Description: "List fields in a table",
+	Description: "List all fields in a table",
 	Risk:        "read",
 	Scopes:      []string{"base:field:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
+		{Name: "offset", Type: "int", Default: "0", Desc: "legacy pagination offset; hidden for compatibility", Hidden: true},
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "300", Desc: "legacy pagination size, range 1-300; hidden for compatibility", Hidden: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		_, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200)
+		_, err := common.ValidatePageSizeTyped(runtime, "limit", 300, 1, 300)
 		return err
 	},
 	DryRun: dryRunFieldList,

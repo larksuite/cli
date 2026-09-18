@@ -362,20 +362,10 @@ var DriveAddComment = common.Shortcut{
 			return err
 		}
 
-		if mode == commentModeLocal {
-			fmt.Fprintf(runtime.IO().ErrOut, "Using explicit block ID: %s\n", blockID)
-		}
-
 		requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
 		requestBody := buildCommentCreateV2Request(target.FileType, "", "", replyElements, nil)
 		if mode == commentModeLocal {
 			requestBody = buildCommentCreateV2Request(target.FileType, blockID, "", replyElements, nil)
-		}
-
-		if mode == commentModeLocal {
-			fmt.Fprintf(runtime.IO().ErrOut, "Creating local comment in %s\n", common.MaskToken(target.FileToken))
-		} else {
-			fmt.Fprintf(runtime.IO().ErrOut, "Creating full comment in %s\n", common.MaskToken(target.FileToken))
 		}
 
 		data, err := runtime.CallAPITyped(
@@ -497,14 +487,23 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		}, nil
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(docRef.Token))
 	data, err := runtime.CallAPITyped(
 		"GET",
-		"/open-apis/wiki/v2/spaces/get_node",
+		"/open-apis/wiki/v2/spaces/node_by_token",
 		map[string]interface{}{"token": docRef.Token},
 		nil,
 	)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok {
+			switch problem.Code {
+			case 131012:
+				problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+			case 131013, 131016:
+				problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+			case 131014:
+				problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+			}
+		}
 		return resolvedCommentTarget{}, err
 	}
 
@@ -512,7 +511,7 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	objType := common.GetString(node, "obj_type")
 	objToken := common.GetString(node, "obj_token")
 	if objType == "" || objToken == "" {
-		return resolvedCommentTarget{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data")
+		return resolvedCommentTarget{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node_by_token returned incomplete node data")
 	}
 	if objType == "slides" && mode == commentModeFull {
 		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but slide comments require --block-id <slide-block-type>!<xml-id>; --full-comment is not applicable", objType)
@@ -521,7 +520,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		if runtime.Bool("full-comment") {
 			return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --full-comment is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>", objType).WithParam("--full-comment")
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to base: %s\n", common.MaskToken(objToken))
 		return resolvedCommentTarget{
 			DocID:      objToken,
 			FileToken:  objToken,
@@ -532,7 +530,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	}
 	if objType == "sheet" {
 		// Sheet comments are handled via the sheet fast path in Execute.
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
 		return resolvedCommentTarget{
 			DocID:      objToken,
 			FileToken:  objToken,
@@ -542,7 +539,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		}, nil
 	}
 	if objType == "slides" {
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
 		return resolvedCommentTarget{
 			DocID:      objToken,
 			FileToken:  objToken,
@@ -555,7 +551,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		if err := validateFileCommentMode(mode, objType); err != nil {
 			return resolvedCommentTarget{}, err
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
 		return resolvedCommentTarget{
 			DocID:      objToken,
 			FileToken:  objToken,
@@ -571,7 +566,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but comments only support doc/docx/file/sheet/slides/base(bitable)", objType)
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
 	return resolvedCommentTarget{
 		DocID:      objToken,
 		FileToken:  objToken,
@@ -926,9 +920,6 @@ func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) e
 	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(docRef.Token))
 	requestBody := buildCommentCreateV2Request("sheet", "", "", replyElements, anchor)
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Creating sheet comment in %s (sheet=%s, col=%d, row=%d)\n",
-		common.MaskToken(docRef.Token), anchor.SheetID, anchor.Col, anchor.Row)
-
 	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
 	if err != nil {
 		return err
@@ -960,9 +951,6 @@ func executeBaseComment(runtime *common.RuntimeContext, target resolvedCommentTa
 
 	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
 	requestBody := buildBaseCommentCreateV2Request(replyElements, anchor)
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Creating base(bitable) record-local comment in %s (table=%s, record=%s, view=%s)\n",
-		common.MaskToken(target.FileToken), anchor.BlockID, anchor.BaseRecordID, anchor.BaseViewID)
 
 	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
 	if err != nil {
@@ -1009,8 +997,6 @@ func executeFileComment(runtime *common.RuntimeContext, target resolvedCommentTa
 	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
 	requestBody := buildCommentCreateV2Request("file", "", "", replyElements, nil)
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Creating file comment in %s (%s)\n", common.MaskToken(target.FileToken), extension)
-
 	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
 	if err != nil {
 		return err
@@ -1050,9 +1036,6 @@ func executeSlidesComment(runtime *common.RuntimeContext, docRef commentDocRef) 
 
 	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(docRef.Token))
 	requestBody := buildCommentCreateV2Request("slides", blockID, slideBlockType, replyElements, nil)
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Creating slide block comment in %s (block_id=%s, slide_block_type=%s)\n",
-		common.MaskToken(docRef.Token), blockID, slideBlockType)
 
 	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
 	if err != nil {

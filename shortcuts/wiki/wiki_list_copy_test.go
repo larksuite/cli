@@ -620,8 +620,8 @@ func TestRunWikiNodeCopyRetriesLockContentionThenSucceeds(t *testing.T) {
 	if common.GetString(common.GetMap(data, "node"), "node_token") != "wik_copied" {
 		t.Fatalf("data = %#v, want copied node", data)
 	}
-	if !strings.Contains(stderr.String(), "retrying (attempt 1/2)") {
-		t.Fatalf("stderr = %q, want retry progress", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no retry progress", stderr.String())
 	}
 }
 
@@ -827,8 +827,8 @@ func TestWikiNodeCopyCopiesNodeToTargetSpace(t *testing.T) {
 	if captured["title"] != "Architecture (Copy)" {
 		t.Fatalf("captured title = %v, want %q", captured["title"], "Architecture (Copy)")
 	}
-	if got := stderr.String(); !strings.Contains(got, "Copying wiki node") {
-		t.Fatalf("stderr = %q, want copy message", got)
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no copy progress", stderr.String())
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
 )
 
@@ -77,7 +78,7 @@ func TestSlidesAffordanceReferenceRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parsedDomain := parseDomainMD(affordanceSource, commandFormResolver("slides"))
+	parsedDomain := parseDomainMD(affordanceSource, commandFormResolver(apicatalog.Catalog{}, "slides"))
 	if got, want := len(parsedDomain.methods), len(slidesShortcutReferences); got != want {
 		t.Fatalf("parsed Slides affordance entries = %d, audited refs = %d", got, want)
 	}
@@ -89,7 +90,7 @@ func TestSlidesAffordanceReferenceRoutes(t *testing.T) {
 
 	for command, refs := range slidesShortcutReferences {
 		t.Run(command, func(t *testing.T) {
-			raw, ok := For("slides", command)
+			raw, ok := For(apicatalog.Catalog{}, "slides", command)
 			if !ok {
 				t.Fatalf("For(slides, %s) ok=false", command)
 			}

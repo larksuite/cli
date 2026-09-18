@@ -27,7 +27,6 @@ var BaseRecordBatchCreate = common.Shortcut{
 		"Before writing, use +field-list to confirm real writable fields; do not write system fields, formula, lookup, or attachment fields as normal CellValue.",
 		"Batch create supports max 200 records per call.",
 		"After batch-creating known helper rows, use the returned record IDs and your submitted rows; do not immediately +record-list the same table unless you need server-normalized formula/lookup values or failure diagnosis.",
-		"Use the record-batch-create guide for command limits and edge cases.",
 	}, recordCellValueHappyPathTips...),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateRecordJSON(runtime)

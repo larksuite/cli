@@ -5,10 +5,31 @@ package base
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
+
+func TestWithRecordSearchFlagModeHintPreservesWrapper(t *testing.T) {
+	inner := baseFlagErrorf("--keyword is required unless --json is used")
+	wrapper := fmt.Errorf("validating record search flags: %w", inner)
+
+	got := withRecordSearchFlagModeHint(wrapper)
+	if got != wrapper {
+		t.Fatalf("helper returned %T %v, want original wrapper", got, got)
+	}
+	if !errors.Is(got, inner) {
+		t.Fatalf("helper broke the error chain: %v", got)
+	}
+	problem, ok := errs.ProblemOf(got)
+	if !ok || problem.Hint != recordSearchFlagModeHint {
+		t.Fatalf("problem=%#v, want hint %q", problem, recordSearchFlagModeHint)
+	}
+}
 
 func TestNormalizeRecordSortValue(t *testing.T) {
 	t.Run("array", func(t *testing.T) {

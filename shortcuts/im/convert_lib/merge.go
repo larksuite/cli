@@ -83,7 +83,8 @@ func renderMergeForwardTree(ctx *ConvertContext, subItems []map[string]interface
 // PrefetchMergeForwardSubItems scans rawItems for merge_forward messages,
 // concurrently fetches each one's flat sub-message list, and returns a map
 // keyed by the merge_forward message_id. Callers thread the returned map
-// through FormatMessageItemWithMergePrefetch (or directly into a
+// through FormatMessageItemWithMergePrefetch /
+// FormatMessageItemWithFolderPrefetchOpts (or directly into a
 // ConvertContext.MergeForwardSubItems) so the per-item conversion loop can
 // reuse cached sub-trees instead of issuing its own serial GET.
 //

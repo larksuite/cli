@@ -9,12 +9,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/apicatalog"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/shortcuts"
-	shortcutcommon "github.com/larksuite/cli/shortcuts/common"
 )
 
 // presentRootError uses the same build-local presenter as shortcut result
@@ -52,7 +51,7 @@ func resolveDeclaredScopesForCurrentCommand(f *cmdutil.Factory) []string {
 	if scopes := resolveDeclaredShortcutScopes(f.CurrentCommand, identity); len(scopes) > 0 {
 		return scopes
 	}
-	return resolveDeclaredServiceMethodScopes(f.CurrentCommand, identity)
+	return resolveDeclaredServiceMethodScopes(f.APICatalog, f.CurrentCommand, identity)
 }
 
 // resolveDeclaredShortcutScopes returns the scopes declared by a mounted
@@ -61,19 +60,7 @@ func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string
 	if cmd == nil || cmd.Parent() == nil || !strings.HasPrefix(cmd.Name(), "+") {
 		return nil
 	}
-
-	service := cmd.Parent().Name()
-	for _, sc := range shortcuts.AllShortcuts() {
-		if sc.Service != service || sc.Command != cmd.Name() || !shortcutSupportsIdentity(sc, identity) {
-			continue
-		}
-		scopes := sc.DeclaredScopesForIdentity(identity)
-		if len(scopes) == 0 {
-			return nil
-		}
-		return append([]string(nil), scopes...)
-	}
-	return nil
+	return cmdmeta.DeclaredScopes(cmd, identity)
 }
 
 // resolveDeclaredServiceMethodScopes returns the scopes declared by a
@@ -83,7 +70,7 @@ func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string
 // resources instead of hard-coding a root->service->resource->method depth.
 // Non-method commands (services, resources, shortcuts) resolve to a non-method
 // target and yield no scopes.
-func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []string {
+func resolveDeclaredServiceMethodScopes(catalog apicatalog.Catalog, cmd *cobra.Command, identity string) []string {
 	if cmd == nil || strings.HasPrefix(cmd.Name(), "+") {
 		return nil
 	}
@@ -91,7 +78,7 @@ func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []s
 	if len(path) == 0 {
 		return nil
 	}
-	target, err := registry.RuntimeCatalog().Resolve(path)
+	target, err := catalog.Resolve(path)
 	if err != nil || target.Kind != apicatalog.TargetMethod {
 		return nil
 	}
@@ -108,19 +95,4 @@ func commandCatalogPath(cmd *cobra.Command) []string {
 		path = append([]string{c.Name()}, path...)
 	}
 	return path
-}
-
-// shortcutSupportsIdentity reports whether a shortcut supports the requested
-// identity, applying the default user-only behavior when AuthTypes is empty.
-func shortcutSupportsIdentity(sc shortcutcommon.Shortcut, identity string) bool {
-	authTypes := sc.AuthTypes
-	if len(authTypes) == 0 {
-		authTypes = []string{string(core.AsUser)}
-	}
-	for _, authType := range authTypes {
-		if authType == identity {
-			return true
-		}
-	}
-	return false
 }

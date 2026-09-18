@@ -22,6 +22,26 @@ const (
 	wikiMoveToDriveResultKey = "move_wiki_to_docs_result"
 )
 
+// driveTaskResultCommandContext preserves the credential context that created
+// an async task so a recovery command does not silently fall back to another
+// profile or identity.
+func driveTaskResultCommandContext(runtime *common.RuntimeContext) (prefix, identity string) {
+	prefix = "lark-cli"
+	identity = "user"
+	if runtime == nil {
+		return prefix, identity
+	}
+	if runtime.Config != nil {
+		if profile := strings.TrimSpace(runtime.Config.ProfileName); profile != "" {
+			prefix = fmt.Sprintf("lark-cli --profile %s", profile)
+		}
+	}
+	if resolved := strings.TrimSpace(string(runtime.As())); resolved != "" {
+		identity = resolved
+	}
+	return prefix, identity
+}
+
 // DriveTaskResult exposes a unified read path for the async task types produced
 // by Drive import, export, file/folder move/delete, wiki move, wiki move-to-drive,
 // and wiki delete flows.
@@ -137,8 +157,6 @@ var DriveTaskResult = common.Shortcut{
 		ticket := runtime.Str("ticket")
 		taskID := runtime.Str("task-id")
 		fileToken := runtime.Str("file-token")
-
-		fmt.Fprintf(runtime.IO().ErrOut, "Querying %s task result...\n", scenario)
 
 		var result map[string]interface{}
 		var err error

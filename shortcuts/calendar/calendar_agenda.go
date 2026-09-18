@@ -179,7 +179,14 @@ var CalendarAgenda = common.Shortcut{
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return rejectCalendarAutoBotFallback(runtime)
+		if err := rejectCalendarAutoBotFallback(runtime); err != nil {
+			return err
+		}
+		warnCalendarTimezoneMismatch(runtime,
+			calendarTimeInputRange{Flag: "start", Value: runtime.Str("start")},
+			calendarTimeInputRange{Flag: "end", Value: runtime.Str("end")},
+		)
+		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		startInt, endInt, err := parseTimeRange(runtime)

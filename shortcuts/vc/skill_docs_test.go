@@ -34,22 +34,28 @@ func readSkillDoc(t *testing.T, relPath string) string {
 	return string(data)
 }
 
-// TestVCSearchIdentityDocsMatchAuthTypes pins that `+search` stays user-only
-// in both code and the reference owned by lark-meeting. If AuthTypes ever
-// gains "bot", this test forces a deliberate documentation update instead of
-// letting the docs silently fall out of sync.
+// TestVCSearchIdentityDocsMatchAuthTypes pins the user/bot identity contract in
+// code, the command reference, and the cross-command meeting workflow.
 func TestVCSearchIdentityDocsMatchAuthTypes(t *testing.T) {
 	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
 	reference := readSkillDoc(t, "skills/lark-meeting/references/lark-vc-search.md")
+	scene := readSkillDoc(t, "skills/lark-meeting/scenes/query-meeting-and-artifacts.md")
 
-	if hasAuthType(VCSearch.AuthTypes, "bot") {
-		t.Fatalf("VCSearch.AuthTypes = %v now includes bot; update skills/lark-meeting/references/lark-vc-search.md wording (and this test) to reflect the new support instead of leaving the user-only claim below", VCSearch.AuthTypes)
+	for _, identity := range []string{"user", "bot"} {
+		if !hasAuthType(VCSearch.AuthTypes, identity) {
+			t.Errorf("VCSearch.AuthTypes = %v, want %s included", VCSearch.AuthTypes, identity)
+		}
 	}
 	if !strings.Contains(skill, "references/lark-vc-search.md") {
 		t.Error("skills/lark-meeting/SKILL.md must link to the vc +search reference")
 	}
-	if !strings.Contains(reference, "仅支持 `user` 身份") && !strings.Contains(reference, "仅 `--as user`") {
-		t.Error("lark-vc-search.md must state that +search only supports user identity (matches VCSearch.AuthTypes)")
+	for _, identity := range []string{"--as user", "--as bot"} {
+		if !strings.Contains(reference, identity) {
+			t.Errorf("lark-vc-search.md must document %s", identity)
+		}
+	}
+	if strings.Contains(scene, "`vc +search` 仅支持用户身份") {
+		t.Error("meeting artifact scene must not claim vc +search is user-only")
 	}
 }
 

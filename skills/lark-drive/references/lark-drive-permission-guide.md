@@ -39,7 +39,7 @@
 
 需要将文档权限授予当前应用（bot）自身时：
 
-1. 先执行 `lark-cli api GET /open-apis/bot/v3/info --as bot`，从返回值取 `bot.open_id`。
+1. 先执行 `lark-cli api GET /open-apis/bot/v3/info --as bot --jq '.data.open_id'`，直接取得当前应用的 `open_id`。
 2. 再调用 `lark-cli drive permission.members create`，用 `member_type=openid`、`member_id=<bot_open_id>` 授权。
 
 ```bash

@@ -6,6 +6,8 @@ package event
 import (
 	"fmt"
 	"regexp"
+
+	eventlib "github.com/larksuite/cli/internal/event"
 )
 
 // authURLPattern matches the grant-scope URL embedded in 99991672 errors; widen the host alternation when adding brands.
@@ -18,8 +20,5 @@ func describeAppMetaErr(err error) string {
 		return fmt.Sprintf("bot is missing scopes needed for app-version metadata; grant at: %s", url)
 	}
 	const maxErrLen = 200
-	if len(msg) > maxErrLen {
-		return msg[:maxErrLen] + "…"
-	}
-	return msg
+	return eventlib.TruncateDiagnostic(msg, maxErrLen, "…")
 }

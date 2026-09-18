@@ -112,6 +112,7 @@ lark-cli minutes +summary --minute-token obcnxxxxxxxxxxxxxxxxxxxx --summary @sum
 | 总结展示为原始 Markdown 文本 | — | 总结含链接、四级标题等妙记端无法渲染的语法 | 改用标题（#～###）、加粗、列表等可展示格式；接口不会因此报错 |
 | 参数无效 | — | `minute_token` 缺失或格式错误 | 检查 token 是否完整 |
 | 权限不足 | — | 缺少 `minutes:minutes:update` | 运行 `auth login --scope "minutes:minutes:update"` |
+| `error.subtype` = `quota_exceeded` | 2091008 | 该妙记生成时 ASR/AI 额度已用尽，AI 总结未完整生成，替换无法落库 | 让用户去该妙记详情页查看额度详细信息；CLI 无法补充额度，重试不会成功 |
 
 ## 相关场景
 - [生成和修改妙记](../scenes/create-and-edit-minutes.md)

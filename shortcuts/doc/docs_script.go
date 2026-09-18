@@ -33,7 +33,8 @@ const (
 	docsScriptDraftXMLFileName      = "draft.xml"
 	docsScriptDraftRandomHexLength  = 8
 	docsScriptDecisionFile          = ".presentation-decision.json"
-	docsScriptDraftTip              = "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first."
+	docsScriptDraftTip              = "Workspace created; draft XML does not exist yet. Write it directly to <cwd>/<draft_path>. Prefer workspace for new assets and reuse existing files. Prefer @relative paths within cwd and @absolute paths elsewhere, subject to file access rules. Relative resource paths try cwd first, then the source XML directory only if missing. Keep CLI calls in cwd."
+	docsScriptDecisionShellHint     = "restore the original JSON quotes; if shell quote loss made a string ambiguous, save the original JSON as UTF-8 and pass --presentation-decision \"@./decision.json\""
 	docsScriptListBlockType         = "list"
 	docsScriptAssessmentPassed      = "passed"
 	docsScriptAssessmentFailed      = "failed"
@@ -67,7 +68,7 @@ var DocsScript = common.Shortcut{
 		},
 		{
 			Name:  "content",
-			Desc:  "local XML content for parse; use @relative-file or - for stdin; mutually exclusive with --doc",
+			Desc:  "local XML content for parse; use @file-path or - for stdin; mutually exclusive with --doc",
 			Input: []string{common.File, common.Stdin},
 		},
 		{
@@ -76,7 +77,7 @@ var DocsScript = common.Shortcut{
 		},
 		{
 			Name:  "presentation-decision",
-			Desc:  "Presentation Decision JSON required by init-draft and saved as the draft profile baseline; genre_contract and adapter accept a short name, \"none\", or null; accepts inline JSON (recommended for init-draft), @relative-file, or - for stdin",
+			Desc:  "Presentation Decision JSON required by init-draft and saved as the draft profile baseline; validates word_count and visual_plan.blocks constraints; descriptive fields are optional and may be empty or null; accepts inline JSON (recommended for init-draft), @file-path, or - for stdin; direct inline input also recovers an intact outer single-quote pair or unambiguous schema fields and scalar values dequoted by Windows PowerShell 5.x",
 			Input: []string{common.File, common.Stdin},
 		},
 	},
@@ -148,18 +149,20 @@ type docsScriptPresentationVisualPlan struct {
 }
 
 type docsScriptPresentationBlockRequirement struct {
-	Type     string `json:"type"`
-	MinCount int    `json:"min_count"`
-	Purpose  string `json:"purpose"`
+	Type     *string `json:"type"`
+	MinCount *int    `json:"min_count"`
+	Purpose  string  `json:"purpose"`
 }
 
 type docsScriptDraftResult struct {
+	CWD       string `json:"cwd"`
 	Workspace string `json:"workspace"`
 	DraftPath string `json:"draft_path"`
 	Tip       string `json:"tip"`
 }
 
 type docsScriptWorkspace struct {
+	cwd    string
 	path   string
 	fileIO fileio.WorkspaceFileIO
 }
@@ -200,7 +203,7 @@ func validateDocsScript(_ context.Context, runtime *common.RuntimeContext) error
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"--presentation-decision is only supported with --command init-draft or parse").WithParam("--presentation-decision")
 		}
-		if _, err := parseDocsScriptPresentationDecision(presentationDecision); err != nil {
+		if _, _, err := parseDocsScriptPresentationDecisionFlag(runtime); err != nil {
 			return err
 		}
 	}
@@ -463,7 +466,7 @@ func docsScriptRemoteImageReason(message string, occurrence int) string {
 
 func resolveDocsScriptPresentationDecision(runtime *common.RuntimeContext) (docsScriptPresentationDecision, bool, error) {
 	if rawDecision := strings.TrimSpace(runtime.Str("presentation-decision")); rawDecision != "" {
-		decision, err := parseDocsScriptPresentationDecision(rawDecision)
+		decision, _, err := parseDocsScriptPresentationDecisionFlag(runtime)
 		return decision, err == nil, err
 	}
 	contentPath, ok := runtime.Cmd.Annotations[docsContentPathAnnotation]
@@ -486,6 +489,39 @@ func resolveDocsScriptPresentationDecision(runtime *common.RuntimeContext) (docs
 			WithCause(err)
 	}
 	return decision, true, nil
+}
+
+func parseDocsScriptPresentationDecisionFlag(runtime *common.RuntimeContext) (docsScriptPresentationDecision, string, error) {
+	raw := strings.TrimSpace(runtime.Str("presentation-decision"))
+	decision, err := parseDocsScriptPresentationDecision(raw)
+	if err == nil || runtime.InputResolvedFromSource("presentation-decision") {
+		return decision, raw, err
+	}
+
+	// Keep the original strict parse as the primary path. Recovery is limited to
+	// direct input because file and stdin sources preserve the original bytes.
+	if len(raw) >= 2 && raw[0] == '\'' && raw[len(raw)-1] == '\'' {
+		raw = strings.TrimSpace(raw[1 : len(raw)-1])
+		decision, err = parseDocsScriptPresentationDecision(raw)
+		if err == nil {
+			return decision, raw, nil
+		}
+	}
+	if docsScriptPresentationDecisionLooksShellMangled(raw) {
+		normalized, recoveryErr := recoverDocsScriptPresentationDecisionJSON(raw)
+		if recoveryErr == nil {
+			decision, err = parseDocsScriptPresentationDecision(normalized)
+			if err == nil {
+				return decision, normalized, nil
+			}
+			return docsScriptPresentationDecision{}, normalized, err
+		}
+		var validationErr *errs.ValidationError
+		if errors.As(err, &validationErr) {
+			err = validationErr.WithHint(docsScriptDecisionShellHint)
+		}
+	}
+	return docsScriptPresentationDecision{}, raw, err
 }
 
 func parseDocsScriptPresentationDecision(raw string) (docsScriptPresentationDecision, error) {
@@ -517,15 +553,9 @@ func parseDocsScriptPresentationDecision(raw string) (docsScriptPresentationDeci
 			WithParam("--presentation-decision").
 			WithCause(err)
 	}
-	for _, field := range []string{
-		"audience", "reader_task", "genre_contract", "adapter", "presentation_mode",
-		"visual_plan",
-	} {
-		if _, ok := rawFields[field]; !ok {
-			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--presentation-decision %s is required", field).
-				WithParam("--presentation-decision")
-		}
+	if rawFields == nil {
+		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--presentation-decision must be a JSON object; use {} when no constraints are set").WithParam("--presentation-decision")
 	}
 	if rawWordCountValue, hasWordCount := rawFields["word_count"]; hasWordCount {
 		if strings.TrimSpace(string(rawWordCountValue)) == "null" {
@@ -572,102 +602,54 @@ func parseDocsScriptPresentationDecision(raw string) (docsScriptPresentationDeci
 				WithParam("--presentation-decision")
 		}
 	}
-	decision.Audience = strings.TrimSpace(decision.Audience)
-	decision.ReaderTask = strings.TrimSpace(decision.ReaderTask)
-	var err error
-	decision.GenreContract, err = normalizeDocsScriptOptionalRoute("genre_contract", decision.GenreContract)
-	if err != nil {
-		return docsScriptPresentationDecision{}, err
-	}
-	decision.Adapter, err = normalizeDocsScriptOptionalRoute("adapter", decision.Adapter)
-	if err != nil {
-		return docsScriptPresentationDecision{}, err
-	}
-	decision.PresentationMode = strings.TrimSpace(decision.PresentationMode)
-	decision.VisualPlan.Reason = strings.TrimSpace(decision.VisualPlan.Reason)
-	requiredStrings := []struct {
-		field string
-		value string
-	}{
-		{"audience", decision.Audience},
-		{"reader_task", decision.ReaderTask},
-		{"presentation_mode", decision.PresentationMode},
-		{"visual_plan.reason", decision.VisualPlan.Reason},
-	}
-	for _, required := range requiredStrings {
-		if required.value == "" {
-			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--presentation-decision %s must not be empty", required.field).
-				WithParam("--presentation-decision")
-		}
-	}
-	var rawVisualPlan map[string]json.RawMessage
-	if err := json.Unmarshal(rawFields["visual_plan"], &rawVisualPlan); err != nil {
-		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--presentation-decision visual_plan must be an object containing reason and blocks").
-			WithParam("--presentation-decision").
-			WithCause(err)
-	}
-	for _, field := range []string{"reason", "blocks"} {
-		if _, ok := rawVisualPlan[field]; !ok {
-			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--presentation-decision visual_plan.%s is required", field).
-				WithParam("--presentation-decision")
-		}
-	}
-	if decision.VisualPlan.Blocks == nil {
-		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--presentation-decision visual_plan.blocks must be an array; use [] when no presentation blocks are planned").
-			WithParam("--presentation-decision")
-	}
-	switch decision.PresentationMode {
-	case "formal", "normal", "rich":
-	default:
-		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--presentation-decision presentation_mode must be formal, normal, or rich").
-			WithParam("--presentation-decision")
-	}
 	seenBlockTypes := make(map[string]struct{}, len(decision.VisualPlan.Blocks))
 	for i := range decision.VisualPlan.Blocks {
 		requirement := &decision.VisualPlan.Blocks[i]
-		requirement.Type = strings.TrimSpace(requirement.Type)
-		requirement.Purpose = strings.TrimSpace(requirement.Purpose)
-		if requirement.Type != docsScriptListBlockType && !docxparse.IsPresentationBlockType(requirement.Type) {
-			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--presentation-decision visual_plan.blocks[%d].type %q is not a presentation block type", i, requirement.Type).
-				WithParam("--presentation-decision")
+		if requirement.Type != nil {
+			blockType := strings.TrimSpace(*requirement.Type)
+			if blockType != docsScriptListBlockType && !docxparse.IsPresentationBlockType(blockType) {
+				return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"--presentation-decision visual_plan.blocks[%d].type %q is not a presentation block type", i, blockType).
+					WithParam("--presentation-decision")
+			}
+			requirement.Type = &blockType
 		}
-		if _, exists := seenBlockTypes[requirement.Type]; exists {
-			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--presentation-decision visual_plan.blocks contains duplicate type %q; combine it into one minimum", requirement.Type).
-				WithParam("--presentation-decision")
-		}
-		seenBlockTypes[requirement.Type] = struct{}{}
-		if requirement.MinCount <= 0 {
+		if requirement.MinCount != nil && *requirement.MinCount <= 0 {
 			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"--presentation-decision visual_plan.blocks[%d].min_count must be positive", i).
 				WithParam("--presentation-decision")
 		}
-		if requirement.Purpose == "" {
+		if requirement.Type == nil || requirement.MinCount == nil {
+			continue
+		}
+		if _, exists := seenBlockTypes[*requirement.Type]; exists {
 			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--presentation-decision visual_plan.blocks[%d].purpose must not be empty", i).
+				"--presentation-decision visual_plan.blocks contains duplicate type %q; combine it into one minimum", *requirement.Type).
 				WithParam("--presentation-decision")
 		}
+		seenBlockTypes[*requirement.Type] = struct{}{}
 	}
 	return decision, nil
 }
 
-func normalizeDocsScriptOptionalRoute(field string, value *string) (*string, error) {
-	if value == nil {
-		return nil, nil
+func docsScriptPresentationDecisionLooksShellMangled(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if len(raw) < 2 || raw[0] != '{' {
+		return false
 	}
-	normalized := strings.TrimSpace(*value)
-	if normalized == "" {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--presentation-decision %s must be a non-empty short name, \"none\", or null", field).
-			WithParam("--presentation-decision")
+	body := strings.TrimSpace(raw[1:])
+	if body == "" || body[0] == '}' {
+		return false
 	}
-	return &normalized, nil
+	if body[0] != '"' {
+		return true
+	}
+
+	// PowerShell can preserve object-key quotes while removing quotes from
+	// scalar values. Only classify that shape as recoverable when the schema
+	// parser can rebuild it without guessing.
+	normalized, err := recoverDocsScriptPresentationDecisionJSON(raw)
+	return err == nil && normalized != raw
 }
 
 func docsScriptPresentationDiagnostics(profile docsScriptPublicProfile, decision docsScriptPresentationDecision) []docsScriptDiagnostic {
@@ -701,18 +683,26 @@ func docsScriptPresentationDiagnostics(profile docsScriptPublicProfile, decision
 		}
 	}
 	for _, required := range decision.VisualPlan.Blocks {
-		actual := docsScriptBlockCount(profile.Blocks, required.Type)
-		if actual < required.MinCount {
+		if required.Type == nil || required.MinCount == nil {
+			continue
+		}
+		blockType, minCount := *required.Type, *required.MinCount
+		actual := docsScriptBlockCount(profile.Blocks, blockType)
+		if actual < minCount {
+			purpose := ""
+			if text := strings.TrimSpace(required.Purpose); text != "" {
+				purpose = " for " + text
+			}
 			diagnostics = append(diagnostics, docsScriptDiagnostic{
 				Severity: docsScriptDiagnosticError,
 				Code:     docsScriptCodeRequiredBlock,
 				Expected: &docsScriptDiagnosticExpectation{
-					Type:     required.Type,
-					MinCount: required.MinCount,
+					Type:     blockType,
+					MinCount: minCount,
 				},
 				Actual:    &actual,
-				Msg:       fmt.Sprintf("The draft is missing required %s block(s) for %s.", required.Type, required.Purpose),
-				Suggested: fmt.Sprintf("Add at least %d %s block(s) for %s.", required.MinCount, required.Type, required.Purpose),
+				Msg:       fmt.Sprintf("The draft is missing required %s block(s)%s.", blockType, purpose),
+				Suggested: fmt.Sprintf("Add at least %d %s block(s)%s.", minCount, blockType, purpose),
 			})
 		}
 	}
@@ -732,15 +722,19 @@ func docsScriptBlockCount(blocks []docxparse.BlockShare, blockType string) int {
 }
 
 func initDocsScriptDraft(runtime *common.RuntimeContext) error {
+	_, rawDecision, err := parseDocsScriptPresentationDecisionFlag(runtime)
+	if err != nil {
+		return err
+	}
 	workspace, err := newDocsScriptWorkspace(runtime)
 	if err != nil {
 		return err
 	}
-	rawDecision := strings.TrimSpace(runtime.Str("presentation-decision"))
 	if err := workspace.savePresentationDecision(rawDecision); err != nil {
 		return workspace.fail(common.WrapSaveErrorTyped(err))
 	}
 	runtime.Out(docsScriptDraftResult{
+		CWD:       workspace.cwd,
 		Workspace: workspace.directory(),
 		DraftPath: workspace.path,
 		Tip:       docsScriptDraftTip,
@@ -778,7 +772,17 @@ func newDocsScriptWorkspace(runtime *common.RuntimeContext) (docsScriptWorkspace
 		return docsScriptWorkspace{}, errs.NewInternalError(errs.SubtypeFileIO,
 			"resolve reserved draft XML path %s: empty result", path)
 	}
+	cwd, err := workspaceFileIO.ResolvePath(".")
+	if err != nil {
+		return docsScriptWorkspace{}, errs.NewInternalError(errs.SubtypeFileIO,
+			"resolve draft working directory: %s", err).WithCause(err)
+	}
+	if cwd == "" {
+		return docsScriptWorkspace{}, errs.NewInternalError(errs.SubtypeFileIO,
+			"resolve draft working directory: empty result")
+	}
 	return docsScriptWorkspace{
+		cwd:    cwd,
 		path:   path,
 		fileIO: workspaceFileIO,
 	}, nil

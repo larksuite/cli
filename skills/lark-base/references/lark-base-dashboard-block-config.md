@@ -17,12 +17,14 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 Dashboar
 | `funnel` | 漏斗图 |
 | `wordCloud` | 词云 |
 | `radar` | 雷达图 |
+| `ranking` | 排行榜 |
 | `statistics` | 指标卡 |
+| `nps` | NPS 图 |
 | `text` | 文本（支持 Markdown） |
 
 ## 字段类型与操作符速查（AI 决策用）
 
-> 先用 `+field-list` / `+field-get` 确认字段 `type`；本节使用当前字段接口里的 canonical 类型名：`number`、`text`、`select`、`datetime`、`checkbox`、`user`。
+> 先用 `+field-list` / `+field-get` 确认字段 `type`；本节使用当前字段接口里的 canonical 类型名：`number`、`text`、`select`、`datetime`、`checkbox`、`user`。NPS 使用的 `Rating` 是 Dashboard 服务端识别的评分字段语义，不属于当前字段操作符速查里的通用筛选类型。
 
 ```
 text: is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
@@ -43,10 +45,11 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | `table_name` | string | 关联数据表名称 |
 | `series` | `[{ "field_name": "xxx", "rollup": "SUM" }]` | 指标/Y 轴（与 `count_all` 二选一）。rollup 支持 `SUM` / `MAX` / `MIN` / `AVERAGE` |
 | `count_all` | boolean | COUNTA 聚合，统计所有记录数（与 `series` 二选一） |
-| `group_by` | `[{ "field_name": "xxx", "mode": "integrated", "sort": {...} }]` | X 轴分组维度。`mode` 必填，`sort` 可选，见下方说明 |
+| `group_by` | `[{ "field_name": "xxx", "mode": "integrated", "sort": {...} }]` | X 轴分组维度。`mode` 和 `sort` 的要求因组件类型而异，见下方说明 |
 | `filter` | object | 筛选条件 |
 | `filter.conjunction` | `"and"` / `"or"` | 筛选逻辑 |
 | `filter.conditions` | `[{ "field_name", "operator", "value" }]` | 筛选条件数组，value 类型因字段类型而异（见下方 filter 格式规则） |
+| `category_range` | `[min, detractorMax, passiveMax, max]` | NPS 三段边界，仅 `nps` 类型支持；首尾必须等于 Rating 字段量程，首尾匹配由服务端按字段元数据校验 |
 
 ### text 类型特殊结构
 
@@ -95,6 +98,18 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 只要写 `sort` 对象，就需要明确排序方向。CLI 会把 `sort.type` 为 `group` 或 `view` 且缺少 `order` 的情况规范化为 `order:"asc"`；`sort.type:"value"` 必须显式写 `order:"asc"` 或 `order:"desc"`，因为指标值排序方向会改变业务含义。
 
 如果表中行序就是业务顺序，首次创建 block 时就一次性设置 `sort:{"type":"view","order":"asc"}` 保留行序，避免创建后再二次更新排序条件。
+
+### ranking 排行榜专属契约
+
+排行榜只支持一个分组和一个指标，公开字段固定为 `table_name`、`series`/`count_all`、`group_by`、`filter`、`limit_size`：
+
+- `group_by` 必填且长度严格为 1；`mode` 仅支持 `integrated` / `enumerated`。
+- `series` 长度严格为 1，且与 `count_all:true` 二选一；`rollup` 仅支持 `SUM` / `MAX` / `MIN` / `AVERAGE`。
+- 排序只写在 `group_by[0].sort`，`type` 只能为 `value`，`order` 为 `asc` / `desc`。创建时省略排序默认按指标值降序。
+- `limit_size` 是 Top N，取值为 `1..500` 的整数，创建时省略默认 `10`。
+- 不支持顶层 `sort`、公开 `ranking` 对象或头像开关。
+
+更新 `ranking` 时，`data_config` 是顶层 patch：只传 `limit_size` 只改 Top N；只传 `group_by` 只替换唯一分组和排序；只传 `series` 或 `count_all:true` 只切换指标；只传 `filter` 只替换筛选。切换 `table_name` 时必须在同一 patch 提供新的 `group_by` 以及 `series` 或 `count_all:true`；未传 `filter` 保留原筛选，未传 `limit_size` 保留原 Top N。
 
 示例 — 柱状图按销售额降序：
 
@@ -201,6 +216,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   - 图表类型必填：`table_name`
   - text 类型必填：`text`
   - 互斥：`series` 与 `count_all` 二选一，且至少提供其一（仅图表类型）
+  - nps 类型必填：`table_name`、长度为 1 的 `group_by`；`group_by[0].mode` 可省略，省略时按 `integrated` 处理，显式传入时也只能为 `integrated`；不支持 `group_by[0].sort` 和 `series`；`count_all` 可省略，出现时只能为 `true`
   - text 类型**不支持**：`series`、`count_all`、`group_by`、`filter`
 - 长度/结构
   - `group_by` 最多 2 个；每项 `field_name` 必填
@@ -211,7 +227,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   - `group_by[].sort.type` 为 `group` 或 `view` 且缺少 `order` 时，自动补 `order:"asc"`；`value` 排序不会自动补方向
 - 本地校验（可通过 `--no-validate` 跳过）
   - `+dashboard-block-create` 默认对 `data_config` 做轻量校验；失败会聚合错误并给出修复建议
-  - `+dashboard-block-update` 不带 `--type`，所以不做按组件类型的强校验，字段由后端验证；但 `number_format` 子字段与 create 一样本地拦截（见下方 number_format 小节）
+  - `+dashboard-block-update` 不带 `--type`，所以不做按组件类型的强校验；但会对可解析的 `filter` 条件做轻量校验，包括 `conjunction`、字段引用、`operator` 和必需的 `value`，并与 create 一样拦截非法 `number_format` 子字段（见下方 number_format 小节）
   - 仅需传入合法 JSON；CLI 不会擅自改写你的业务含义
 
 ## 可复制模板
@@ -225,6 +241,8 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 - 看流程转化 → 漏斗图
 - 看多维度评分 → 雷达图
 - 显示单个指标 → 指标卡（统计数字或记录数）
+- 统计满意度评分分布 → NPS 图（一个 Rating 字段 + 可选分段）
+- 查看单维度 Top N → 排行榜
 
 最小柱状图：
 
@@ -354,6 +372,23 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 }
 ```
 
+排行榜（按销售额取 Top 10）：
+
+```json
+{
+  "table_name": "订单表",
+  "series": [{ "field_name": "金额", "rollup": "SUM" }],
+  "group_by": [{ "field_name": "负责人", "mode": "integrated", "sort": {"type":"value","order":"desc"} }],
+  "limit_size": 10
+}
+```
+
+排行榜只更新 Top N：
+
+```json
+{"limit_size": 20}
+```
+
 指标卡（统计数字）：
 
 ```json
@@ -362,6 +397,20 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   "series": [{ "field_name": "数字", "rollup": "SUM" }]
 }
 ```
+
+NPS 图（按 Rating 评分字段统计记录数）：
+
+```json
+{
+  "table_name": "问卷结果",
+  "group_by": [{ "field_name": "满意度评分", "mode": "integrated" }],
+  "category_range": [0, 6, 8, 10]
+}
+```
+
+NPS 的 `group_by[0].field_name` 必须指向 Base 的评分字段（Dashboard 内部识别为 `Rating` 语义）。调用方可通过 Base 字段详情或界面字段配置确认评分字段的最小值与最大值；CLI 只能做轻量 JSON 校验，字段类型、字段量程、`category_range` 首尾是否等于评分字段最小值和最大值由服务端按字段元数据校验。
+
+`category_range` 可省略，服务端会按 Rating 字段自身量程生成默认分段。显式传入时数组长度必须为 4，且首尾必须等于 Rating 字段最小值和最大值。
 
 指标卡（统计记录数）：
 

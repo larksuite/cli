@@ -58,7 +58,7 @@ lark-cli im +chat-members-list --chat-id <chat_id> --member-types bot
 
 机器人的 open_id 同样是 `ou_` 开头；不要传 `cli_` 开头的 app_id，那是应用 ID，不是日程参与人身份。
 
-无论哪个方向，转让都要求转出方和接收方**同租户**，且接收方能通过高管模式的协作校验。
+无论哪个方向，转让都要求转出方和接收方**同租户**。
 
 ## 重复性日程
 

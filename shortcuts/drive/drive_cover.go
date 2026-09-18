@@ -84,7 +84,6 @@ var DriveCover = common.Shortcut{
 			return wrapDriveCoverUnavailable(requestedSpec)
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Downloading cover %s for file %s\n", spec.Name, common.MaskToken(fileToken))
 		result, err := downloadDrivePreviewArtifactWithParams(ctx, runtime, fileToken, buildDriveCoverDownloadParams(version, spec), outputPath, ifExists, spec.FallbackExt)
 		if err != nil {
 			return wrapDriveCoverDownloadError(err, spec.Name)

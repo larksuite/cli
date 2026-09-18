@@ -118,7 +118,6 @@ func newDriveCommentSolvedShortcut(cfg driveCommentSolvedConfig) common.Shortcut
 				return err
 			}
 
-			fmt.Fprintf(runtime.IO().ErrOut, "%s comment %s in %s...\n", cfg.Verb, spec.CommentID, common.MaskToken(target.FileToken))
 			path := fmt.Sprintf(
 				"/open-apis/drive/v1/files/%s/comments/%s",
 				validate.EncodePathSegment(target.FileToken),
@@ -148,7 +147,7 @@ func buildDriveCommentSolvedDryRun(cfg driveCommentSolvedConfig, spec driveComme
 	if spec.Ref.Type == "wiki" {
 		return common.NewDryRunAPI().
 			Desc(fmt.Sprintf("2-step orchestration: resolve wiki -> %s comment", cfg.Action)).
-			GET("/open-apis/wiki/v2/spaces/get_node").
+			GET("/open-apis/wiki/v2/spaces/node_by_token").
 			Desc("[1] Resolve wiki node to underlying document").
 			Params(map[string]interface{}{"token": spec.Ref.Token}).
 			PATCH("/open-apis/drive/v1/files/<obj_token from step 1>/comments/:comment_id").

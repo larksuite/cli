@@ -35,7 +35,12 @@ lark-cli calendar +room-find \
 ### 2. 查询忙闲
 
 ```bash
-lark-cli calendar +freebusy --start "<start>" --end "<end>"
+# 单人 / 多人查忙：--user-id 可重复或逗号分隔；服务端已合并相邻/重叠忙碌区间
+lark-cli calendar +freebusy --start "<start>" --end "<end>" --user-id "ou_a,ou_b"
+
+# 直接求共同空闲（推荐用于「找几个人一起有空」）
+lark-cli calendar +freebusy --start "<start>" --end "<end>" \
+  --user-id "ou_a,ou_b,ou_c" --type common_free --min-duration 30m
 ```
 
 规则：
@@ -43,6 +48,7 @@ lark-cli calendar +freebusy --start "<start>" --end "<end>"
 - 参与人过多（超过 5 人）：仅查询**当前用户**及少数核心人员忙闲即可
 - 参与人含**群组**：无需展开群组成员查询忙闲
 - 如果用户是从 `+suggestion` 确认了时间块后进入本分支的，**无需再调用 `+freebusy`**
+- 找多人共同空闲：直接用 `--type common_free [--min-duration <dur>]`，让 CLI 一次算出共同空闲；不要自己再合并求交
 
 ### 3. 冲突处理
 

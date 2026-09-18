@@ -24,5 +24,13 @@ func Shortcuts() []common.Shortcut {
 		OKRWeight,
 		OKRIndicatorUpdate,
 		OKRPatch,
+		OKRCycleCommentDetail,
+		OKRListComments,
+		OKRGetComment,
+		OKRCreateComment,
+		OKRPatchComment,
+		OKRDeleteComment,
+		OKRSolveComment,
+		OKRReopenComment,
 	}
 }

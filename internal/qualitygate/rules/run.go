@@ -399,8 +399,7 @@ func referenceCommandSurface(files map[string]bool) (bool, map[string]bool) {
 		switch {
 		case file == "internal/cmdmeta/meta.go",
 			file == "cmd/service/service.go",
-			file == "internal/registry/meta_data.json",
-			file == "internal/registry/meta_data_default.json",
+			strings.HasPrefix(file, "internal/registry/catalog/"),
 			isTopLevelCommandFile(file),
 			isTopLevelShortcutCommandFile(file),
 			strings.HasPrefix(file, "shortcuts/common/"):

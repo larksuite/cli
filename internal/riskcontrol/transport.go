@@ -22,18 +22,18 @@ const (
 
 var restrictedHeaders = [...]string{HeaderProductModel, HeaderOSType, HeaderCredentialSource}
 
-// Transport is the feature's final outbound boundary. It removes caller- or
-// extension-supplied signal headers first and writes trusted values only when
-// workspace policy enables risk control and the request targets an official
-// SDK origin.
+// Transport is the final outbound metadata boundary. It removes caller- or
+// extension-supplied headers first, writes the request-scoped credential source
+// for official SDK origins, and writes host signals only when workspace policy
+// enables risk control.
 type Transport struct {
 	next   http.RoundTripper
 	source Source
 }
 
 // NewTransport creates the final SDK outbound policy boundary. A nil source
-// means workspace policy disabled risk control, so all signal injection,
-// including credential source, is disabled. Restricted headers are still
+// means workspace policy disabled host-signal collection; request-scoped
+// credential source metadata remains enabled. Restricted headers are always
 // stripped from caller- and extension-supplied requests.
 func NewTransport(next http.RoundTripper, source Source) *Transport {
 	if next == nil {
@@ -75,18 +75,18 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	stripRestrictedHeaders(req.Header)
 
-	// A nil source is the caller's disabled/unavailable policy marker. Treat it
-	// as the master gate for the complete signal set, not only device collection.
-	if t.source != nil && t.routeAllowsSignals(req) {
+	if t.routeAllowsSignals(req) {
 		if source, ok := core.CredentialSourceFromContext(req.Context()); ok {
 			req.Header.Set(HeaderCredentialSource, string(source))
 		}
-		snapshot := t.source.Snapshot()
-		if isSupportedOSType(snapshot.OSType) {
-			req.Header.Set(HeaderOSType, string(snapshot.OSType))
-		}
-		if model := normalizeDeviceModel(snapshot.ProductModel); model != "" {
-			req.Header.Set(HeaderProductModel, model)
+		if t.source != nil {
+			snapshot := t.source.Snapshot()
+			if isSupportedOSType(snapshot.OSType) {
+				req.Header.Set(HeaderOSType, string(snapshot.OSType))
+			}
+			if model := normalizeDeviceModel(snapshot.ProductModel); model != "" {
+				req.Header.Set(HeaderProductModel, model)
+			}
 		}
 	}
 	return t.next.RoundTrip(req)

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
 )
 
@@ -28,7 +29,7 @@ func TestApplicationAffordanceExamples(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.method, func(t *testing.T) {
-			raw, ok := For("application", tt.method)
+			raw, ok := For(apicatalog.Catalog{}, "application", tt.method)
 			if !ok {
 				t.Fatalf("For(application, %s) ok=false", tt.method)
 			}
@@ -82,7 +83,7 @@ func TestApplicationAffordanceDoesNotDuplicateRuntimeRecovery(t *testing.T) {
 		"+slash-command-update",
 		"+slash-command-delete",
 	} {
-		raw, ok := For("application", method)
+		raw, ok := For(apicatalog.Catalog{}, "application", method)
 		if !ok {
 			t.Fatalf("For(application, %s) ok=false", method)
 		}
@@ -96,7 +97,7 @@ func TestApplicationAffordanceDoesNotDuplicateRuntimeRecovery(t *testing.T) {
 
 func parsedApplicationAffordance(t *testing.T, method string) meta.Affordance {
 	t.Helper()
-	raw, ok := For("application", method)
+	raw, ok := For(apicatalog.Catalog{}, "application", method)
 	if !ok {
 		t.Fatalf("For(application, %s) ok=false", method)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	internalauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
@@ -76,6 +77,7 @@ func TestRootErrorPresenterUsesDeclaredScopesForCanonicalPermissionRecovery(t *t
 	agenda := &cobra.Command{Use: "+agenda"}
 	root.AddCommand(calendar)
 	calendar.AddCommand(agenda)
+	cmdmeta.SetDeclaredScopes(agenda, map[string][]string{"user": {declaredScope}})
 	f.CurrentCommand = agenda
 
 	newSource := func(t *testing.T) (error, *errs.PermissionError) {
@@ -345,9 +347,14 @@ func TestRootErrorPresenterDoesNotMutateNestedAuthenticationCause(t *testing.T) 
 
 func factoryWithDeclaredServiceScope(t *testing.T) *cmdutil.Factory {
 	t.Helper()
-	f := &cmdutil.Factory{ResolvedIdentity: core.AsUser}
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatalf("open catalog snapshot: %v", err)
+	}
+	catalog := snapshot.Catalog()
+	f := &cmdutil.Factory{APICatalog: catalog, ResolvedIdentity: core.AsUser}
 	var target registry.CommandEntry
-	for _, entry := range registry.CollectCommandScopes([]string{"calendar"}, "user") {
+	for _, entry := range registry.CollectCommandScopes(catalog, []string{"calendar"}, "user") {
 		if len(entry.Scopes) > 0 {
 			target = entry
 			break

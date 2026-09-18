@@ -29,9 +29,9 @@ func TestSheets_SheetShortcutsDryRunRejectsURLAndTokenTogether(t *testing.T) {
 		args []string
 	}{
 		{
-			name: "create-sheet",
+			name: "sheet-create",
 			args: []string{
-				"sheets", "+create-sheet",
+				"sheets", "+sheet-create",
 				"--url", "https://example.feishu.cn/sheets/shtFromURL",
 				"--spreadsheet-token", "shtTOKEN",
 				"--title", "Data",
@@ -39,9 +39,9 @@ func TestSheets_SheetShortcutsDryRunRejectsURLAndTokenTogether(t *testing.T) {
 			},
 		},
 		{
-			name: "copy-sheet",
+			name: "sheet-copy",
 			args: []string{
-				"sheets", "+copy-sheet",
+				"sheets", "+sheet-copy",
 				"--url", "https://example.feishu.cn/sheets/shtFromURL",
 				"--spreadsheet-token", "shtTOKEN",
 				"--sheet-id", "sheet1",
@@ -50,9 +50,9 @@ func TestSheets_SheetShortcutsDryRunRejectsURLAndTokenTogether(t *testing.T) {
 			},
 		},
 		{
-			name: "delete-sheet",
+			name: "sheet-delete",
 			args: []string{
-				"sheets", "+delete-sheet",
+				"sheets", "+sheet-delete",
 				"--url", "https://example.feishu.cn/sheets/shtFromURL",
 				"--spreadsheet-token", "shtTOKEN",
 				"--sheet-id", "sheet1",
@@ -60,9 +60,9 @@ func TestSheets_SheetShortcutsDryRunRejectsURLAndTokenTogether(t *testing.T) {
 			},
 		},
 		{
-			name: "update-sheet",
+			name: "sheet-rename",
 			args: []string{
-				"sheets", "+update-sheet",
+				"sheets", "+sheet-rename",
 				"--url", "https://example.feishu.cn/sheets/shtFromURL",
 				"--spreadsheet-token", "shtTOKEN",
 				"--sheet-id", "sheet1",
@@ -91,6 +91,8 @@ func TestSheets_SheetShortcutsDryRunRejectsURLAndTokenTogether(t *testing.T) {
 	}
 }
 
+// +sheet-copy is deliberately absent: an omitted --title there means "let the
+// server name the copy", so an empty one is valid input, not a rejection.
 func TestSheets_SheetShortcutsDryRunRejectsEmptyTitle(t *testing.T) {
 	setSheetsDryRunEnv(t)
 
@@ -99,28 +101,18 @@ func TestSheets_SheetShortcutsDryRunRejectsEmptyTitle(t *testing.T) {
 		args []string
 	}{
 		{
-			name: "create-sheet",
+			name: "sheet-create",
 			args: []string{
-				"sheets", "+create-sheet",
+				"sheets", "+sheet-create",
 				"--spreadsheet-token", "shtDryRun",
 				"--title", "",
 				"--dry-run",
 			},
 		},
 		{
-			name: "copy-sheet",
+			name: "sheet-rename",
 			args: []string{
-				"sheets", "+copy-sheet",
-				"--spreadsheet-token", "shtDryRun",
-				"--sheet-id", "sheet1",
-				"--title", "",
-				"--dry-run",
-			},
-		},
-		{
-			name: "update-sheet",
-			args: []string{
-				"sheets", "+update-sheet",
+				"sheets", "+sheet-rename",
 				"--spreadsheet-token", "shtDryRun",
 				"--sheet-id", "sheet1",
 				"--title", "",
@@ -141,15 +133,20 @@ func TestSheets_SheetShortcutsDryRunRejectsEmptyTitle(t *testing.T) {
 			require.NoError(t, err)
 			result.AssertExitCode(t, 2)
 			combined := result.Stdout + "\n" + result.Stderr
-			if !strings.Contains(combined, "must not be empty") {
+			if !strings.Contains(combined, "--title is required") {
 				t.Fatalf("expected empty-title error, got:\nstdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
 			}
 		})
 	}
 }
 
+// The sub-sheet lifecycle shortcuts all reach the backend through one tool
+// (modify_workbook_structure); what distinguishes them is the `operation` and
+// the fields packed beside it, which is what these dry-runs pin.
 func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 	setSheetsDryRunEnv(t)
+
+	const toolURL = "/open-apis/sheet_ai/v2/spreadsheets/shtDryRun/tools/invoke_write"
 
 	tests := []struct {
 		name    string
@@ -158,81 +155,108 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 		wantFn  func(t *testing.T, out string)
 	}{
 		{
-			name: "create-sheet",
+			name: "sheet-create",
 			args: []string{
-				"sheets", "+create-sheet",
+				"sheets", "+sheet-create",
 				"--spreadsheet-token", "shtDryRun",
 				"--title", "Data",
 				"--index", "0",
 				"--dry-run",
 			},
-			wantURL: "/open-apis/sheets/v2/spreadsheets/shtDryRun/sheets_batch_update",
+			wantURL: toolURL,
 			wantFn: func(t *testing.T, out string) {
 				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "Data", clie2e.DryRunGet(out, "api.0.body.requests.0.addSheet.properties.title").String(), "stdout:\n%s", out)
-				require.Equal(t, int64(0), clie2e.DryRunGet(out, "api.0.body.requests.0.addSheet.properties.index").Int(), "stdout:\n%s", out)
+				require.Equal(t, "create", clie2e.DryRunGet(out, "tool_input.operation").String(), "stdout:\n%s", out)
+				require.Equal(t, "Data", clie2e.DryRunGet(out, "tool_input.sheet_name").String(), "stdout:\n%s", out)
+				require.Equal(t, int64(0), clie2e.DryRunGet(out, "tool_input.target_index").Int(), "stdout:\n%s", out)
 			},
 		},
 		{
-			name: "copy-sheet",
+			name: "sheet-copy",
 			args: []string{
-				"sheets", "+copy-sheet",
+				"sheets", "+sheet-copy",
 				"--spreadsheet-token", "shtDryRun",
 				"--sheet-id", "sheet1",
 				"--title", "Copy",
 				"--index", "2",
 				"--dry-run",
 			},
-			wantURL: "/open-apis/sheets/v2/spreadsheets/shtDryRun/sheets_batch_update",
+			wantURL: toolURL,
 			wantFn: func(t *testing.T, out string) {
 				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "api.0.body.requests.0.copySheet.source.sheetId").String(), "stdout:\n%s", out)
-				require.Equal(t, "Copy", clie2e.DryRunGet(out, "api.0.body.requests.0.copySheet.destination.title").String(), "stdout:\n%s", out)
-				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.1.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "<copied_sheet_id>", clie2e.DryRunGet(out, "api.1.body.requests.0.updateSheet.properties.sheetId").String(), "stdout:\n%s", out)
-				require.Equal(t, int64(2), clie2e.DryRunGet(out, "api.1.body.requests.0.updateSheet.properties.index").Int(), "stdout:\n%s", out)
+				require.Equal(t, "duplicate", clie2e.DryRunGet(out, "tool_input.operation").String(), "stdout:\n%s", out)
+				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "tool_input.sheet_id").String(), "stdout:\n%s", out)
+				require.Equal(t, "Copy", clie2e.DryRunGet(out, "tool_input.new_name").String(), "stdout:\n%s", out)
+				require.Equal(t, int64(2), clie2e.DryRunGet(out, "tool_input.target_index").Int(), "stdout:\n%s", out)
 			},
 		},
 		{
-			name: "delete-sheet",
+			// The omitted --title path TestSheets_SheetShortcutsDryRunRejectsEmptyTitle
+			// deliberately excludes: no --title means "let the server name the
+			// copy", so new_name must be absent from the payload rather than
+			// sent empty, and the call must not be rejected.
+			name: "sheet-copy without a title",
 			args: []string{
-				"sheets", "+delete-sheet",
+				"sheets", "+sheet-copy",
 				"--spreadsheet-token", "shtDryRun",
 				"--sheet-id", "sheet1",
 				"--dry-run",
 			},
-			wantURL: "/open-apis/sheets/v2/spreadsheets/shtDryRun/sheets_batch_update",
+			wantURL: toolURL,
 			wantFn: func(t *testing.T, out string) {
-				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "api.0.body.requests.0.deleteSheet.sheetId").String(), "stdout:\n%s", out)
+				require.Equal(t, "duplicate", clie2e.DryRunGet(out, "tool_input.operation").String(), "stdout:\n%s", out)
+				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "tool_input.sheet_id").String(), "stdout:\n%s", out)
+				require.False(t, clie2e.DryRunGet(out, "tool_input.new_name").Exists(),
+					"an omitted --title must leave new_name out of the payload, not send it empty; stdout:\n%s", out)
 			},
 		},
 		{
-			name: "update-sheet",
+			name: "sheet-delete",
 			args: []string{
-				"sheets", "+update-sheet",
+				"sheets", "+sheet-delete",
+				"--spreadsheet-token", "shtDryRun",
+				"--sheet-id", "sheet1",
+				"--dry-run",
+			},
+			wantURL: toolURL,
+			wantFn: func(t *testing.T, out string) {
+				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+				require.Equal(t, "delete", clie2e.DryRunGet(out, "tool_input.operation").String(), "stdout:\n%s", out)
+				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "tool_input.sheet_id").String(), "stdout:\n%s", out)
+			},
+		},
+		{
+			name: "sheet-rename",
+			args: []string{
+				"sheets", "+sheet-rename",
 				"--spreadsheet-token", "shtDryRun",
 				"--sheet-id", "sheet1",
 				"--title", "Renamed",
-				"--hidden=false",
-				"--frozen-row-count", "2",
-				"--frozen-col-count", "1",
-				"--lock", "LOCK",
-				"--lock-info", "private",
-				"--user-ids", `["ou_1"]`,
-				"--user-id-type", "open_id",
 				"--dry-run",
 			},
-			wantURL: "/open-apis/sheets/v2/spreadsheets/shtDryRun/sheets_batch_update",
+			wantURL: toolURL,
 			wantFn: func(t *testing.T, out string) {
 				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "open_id", clie2e.DryRunGet(out, "api.0.params.user_id_type").String(), "stdout:\n%s", out)
-				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.sheetId").String(), "stdout:\n%s", out)
-				require.Equal(t, "Renamed", clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.title").String(), "stdout:\n%s", out)
-				require.Equal(t, false, clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.hidden").Bool(), "stdout:\n%s", out)
-				require.Equal(t, int64(2), clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.frozenRowCount").Int(), "stdout:\n%s", out)
-				require.Equal(t, int64(1), clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.frozenColCount").Int(), "stdout:\n%s", out)
-				require.Equal(t, "LOCK", clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.protect.lock").String(), "stdout:\n%s", out)
+				require.Equal(t, "rename", clie2e.DryRunGet(out, "tool_input.operation").String(), "stdout:\n%s", out)
+				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "tool_input.sheet_id").String(), "stdout:\n%s", out)
+				require.Equal(t, "Renamed", clie2e.DryRunGet(out, "tool_input.new_name").String(), "stdout:\n%s", out)
+			},
+		},
+		{
+			name: "sheet-move",
+			args: []string{
+				"sheets", "+sheet-move",
+				"--spreadsheet-token", "shtDryRun",
+				"--sheet-id", "sheet1",
+				"--index", "2",
+				"--dry-run",
+			},
+			wantURL: toolURL,
+			wantFn: func(t *testing.T, out string) {
+				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+				require.Equal(t, "move", clie2e.DryRunGet(out, "tool_input.operation").String(), "stdout:\n%s", out)
+				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "tool_input.sheet_id").String(), "stdout:\n%s", out)
+				require.Equal(t, int64(2), clie2e.DryRunGet(out, "tool_input.target_index").Int(), "stdout:\n%s", out)
 			},
 		},
 	}
@@ -251,6 +275,10 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 
 			out := result.Stdout
 			require.Equal(t, tt.wantURL, clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+			// Asserted for every case, not just create: the operation and its
+			// fields alone would still match if a case started selecting a
+			// different tool on the same /tools/invoke_write endpoint.
+			require.Equal(t, "modify_workbook_structure", clie2e.DryRunGet(out, "tool_name").String(), "stdout:\n%s", out)
 			tt.wantFn(t, out)
 		})
 	}

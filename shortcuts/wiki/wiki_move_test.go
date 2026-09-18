@@ -406,13 +406,13 @@ func TestWikiMoveDryRunNodeMoveIncludesResolutionSteps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal dry run: %v", err)
 	}
-	if !bytes.Contains(data, []byte(`"description":"3-step orchestration:`)) {
+	if !bytes.Contains(data, []byte(`"description":"Resolve node tokens and spaces`)) {
 		t.Fatalf("dry run missing 3-step description: %s", string(data))
 	}
-	if !bytes.Contains(data, []byte(`"target_parent_token":"wik_parent"`)) {
+	if !bytes.Contains(data, []byte(`"target_parent_token":"\u003cresolved_parent_node_token\u003e"`)) {
 		t.Fatalf("dry run missing target_parent_token body: %s", string(data))
 	}
-	if !bytes.Contains(data, []byte(`/open-apis/wiki/v2/spaces/\u003cresolved_source_space_id\u003e/nodes/wik_node/move`)) {
+	if !bytes.Contains(data, []byte(`/open-apis/wiki/v2/spaces/\u003cresolved_source_space_id\u003e/nodes/\u003cresolved_node_token\u003e/move`)) {
 		t.Fatalf("dry run missing resolved source placeholder: %s", string(data))
 	}
 }
@@ -464,12 +464,12 @@ func TestResolveWikiNodeMoveSpacesUsesSourceAndTargetLookups(t *testing.T) {
 
 	client := &fakeWikiMoveClient{
 		nodes: map[string]*wikiNodeRecord{
-			"wik_node":   {SpaceID: "space_src"},
-			"wik_parent": {SpaceID: "space_dst"},
+			"wik_node":   {SpaceID: "space_src", NodeToken: "wik_node"},
+			"wik_parent": {SpaceID: "space_dst", NodeToken: "wik_parent"},
 		},
 	}
 
-	sourceSpaceID, targetSpaceID, err := resolveWikiNodeMoveSpaces(context.Background(), client, wikiMoveSpec{
+	sourceSpaceID, targetSpaceID, err := resolveWikiNodeMoveSpaces(context.Background(), client, &wikiMoveSpec{
 		NodeToken:         "wik_node",
 		TargetParentToken: "wik_parent",
 	})
@@ -489,11 +489,12 @@ func TestResolveWikiNodeMoveSpacesRejectsTargetSpaceMismatch(t *testing.T) {
 
 	client := &fakeWikiMoveClient{
 		nodes: map[string]*wikiNodeRecord{
-			"wik_parent": {SpaceID: "space_parent"},
+			"wik_node":   {SpaceID: "space_src", NodeToken: "wik_node"},
+			"wik_parent": {SpaceID: "space_parent", NodeToken: "wik_parent"},
 		},
 	}
 
-	_, _, err := resolveWikiNodeMoveSpaces(context.Background(), client, wikiMoveSpec{
+	_, _, err := resolveWikiNodeMoveSpaces(context.Background(), client, &wikiMoveSpec{
 		NodeToken:         "wik_node",
 		SourceSpaceID:     "space_src",
 		TargetSpaceID:     "space_other",
@@ -509,8 +510,8 @@ func TestRunWikiNodeMoveReturnsResolvedMetadata(t *testing.T) {
 
 	client := &fakeWikiMoveClient{
 		nodes: map[string]*wikiNodeRecord{
-			"wik_node":   {SpaceID: "space_src"},
-			"wik_parent": {SpaceID: "space_dst"},
+			"wik_node":   {SpaceID: "space_src", NodeToken: "wik_node"},
+			"wik_parent": {SpaceID: "space_dst", NodeToken: "wik_parent"},
 		},
 		moveNode: &wikiNodeRecord{
 			SpaceID:         "space_dst",
@@ -551,6 +552,7 @@ func TestRunWikiMoveDispatchesByMode(t *testing.T) {
 	client := &fakeWikiMoveClient{
 		docsResp: &wikiMoveDocsResponse{WikiToken: "wik_ready"},
 		moveNode: &wikiNodeRecord{SpaceID: "space_dst", NodeToken: "wik_node"},
+		nodes:    map[string]*wikiNodeRecord{"wik_node": {SpaceID: "space_src", NodeToken: "wik_node"}},
 	}
 
 	nodeOut, err := runWikiMove(context.Background(), client, runtime, wikiMoveSpec{
@@ -665,8 +667,8 @@ func TestRunWikiDocsToWikiMoveAsyncReady(t *testing.T) {
 	if out["wiki_token"] != "wik_done" || out["title"] != "Roadmap" || out["status_msg"] != "success" {
 		t.Fatalf("async-ready output missing flattened fields: %#v", out)
 	}
-	if !strings.Contains(stderr.String(), "Docs-to-wiki move is async") || !strings.Contains(stderr.String(), "completed successfully") {
-		t.Fatalf("stderr = %q, want async progress logs", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no async progress logs", stderr.String())
 	}
 }
 
@@ -695,8 +697,8 @@ func TestRunWikiDocsToWikiMoveAsyncTimeoutReturnsNextCommand(t *testing.T) {
 	if out["status_msg"] != "processing" {
 		t.Fatalf("status_msg = %#v, want processing", out["status_msg"])
 	}
-	if !strings.Contains(stderr.String(), "Continue with") {
-		t.Fatalf("stderr = %q, want continuation hint", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want continuation in structured output only", stderr.String())
 	}
 }
 
@@ -725,21 +727,21 @@ func TestWikiMoveExecuteNodeShortcut(t *testing.T) {
 	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"node": map[string]interface{}{"space_id": "space_src"},
+				"node": map[string]interface{}{"space_id": "space_src", "node_token": "wik_node"},
 			},
 		},
 	})
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"node": map[string]interface{}{"space_id": "space_dst"},
+				"node": map[string]interface{}{"space_id": "space_dst", "node_token": "wik_parent"},
 			},
 		},
 	})
@@ -872,8 +874,8 @@ func TestPollWikiMoveTaskWrapsRepeatedPollFailuresWithHint(t *testing.T) {
 	if !strings.Contains(p.Hint, "retry original") || !strings.Contains(p.Hint, wikiMoveTaskResultCommand("task_123", core.AsUser)) {
 		t.Fatalf("hint = %q, want original hint and resume command", p.Hint)
 	}
-	if !strings.Contains(stderr.String(), "Wiki move status attempt 1/1 failed") {
-		t.Fatalf("stderr = %q, want poll failure log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want poll failure only in the typed error", stderr.String())
 	}
 }
 

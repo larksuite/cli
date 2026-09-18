@@ -170,6 +170,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete", "+table-copy", "+table-copy-status",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
+		"+field-extension-get", "+field-extension-update", "+field-extension-update-cells",
 		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
 		"+record-list", "+record-search", "+record-get", "+record-upsert", "+record-batch-create", "+record-batch-update", "+record-share-link-create", "+record-upload-attachment", "+record-download-attachment", "+record-remove-attachment", "+record-delete",
 		"+record-history-list",
@@ -356,6 +357,62 @@ func TestTemplateCenterShortcutContract(t *testing.T) {
 	assertInvalidArgumentValidation(t, err, "--keyword", nil, "must not be blank")
 }
 
+func TestFieldExtensionShortcutContract(t *testing.T) {
+	ctx := context.Background()
+
+	if BaseFieldExtensionGet.Risk != "read" {
+		t.Fatalf("get risk=%q, want read", BaseFieldExtensionGet.Risk)
+	}
+	if !reflect.DeepEqual(BaseFieldExtensionGet.Scopes, []string{fieldExtensionReadScope}) {
+		t.Fatalf("get scopes=%v, want [%s]", BaseFieldExtensionGet.Scopes, fieldExtensionReadScope)
+	}
+	for _, shortcut := range []common.Shortcut{BaseFieldExtensionUpdate, BaseFieldExtensionUpdateCells} {
+		if shortcut.Risk != "high-risk-write" {
+			t.Fatalf("%s risk=%q, want high-risk-write", shortcut.Command, shortcut.Risk)
+		}
+		if !reflect.DeepEqual(shortcut.AuthTypes, authTypes()) {
+			t.Fatalf("%s authTypes=%v, want %v", shortcut.Command, shortcut.AuthTypes, authTypes())
+		}
+	}
+	if !reflect.DeepEqual(BaseFieldExtensionUpdate.Scopes, []string{fieldExtensionUpdateScope}) {
+		t.Fatalf("update scopes=%v, want [%s]", BaseFieldExtensionUpdate.Scopes, fieldExtensionUpdateScope)
+	}
+	if !reflect.DeepEqual(BaseFieldExtensionUpdateCells.Scopes, []string{fieldExtensionUpdateCellsScope}) {
+		t.Fatalf("update-cells scopes=%v, want [%s]", BaseFieldExtensionUpdateCells.Scopes, fieldExtensionUpdateCellsScope)
+	}
+
+	clearRT := newBaseTestRuntime(map[string]string{"json": `{}`}, nil, nil)
+	if err := BaseFieldExtensionUpdate.Validate(ctx, clearRT); err != nil {
+		t.Fatalf("clear validation err=%v", err)
+	}
+
+	updateRT := newBaseTestRuntime(map[string]string{"json": `{"extension_id":"builtin_llm_completion","inputs":{"prompt":[{"type":"text","text":"Summarize"},{"type":"field_ref","field":"Description"}]}}`}, nil, nil)
+	if err := BaseFieldExtensionUpdate.Validate(ctx, updateRT); err != nil {
+		t.Fatalf("update validation err=%v", err)
+	}
+
+	unsupportedExtension := newBaseTestRuntime(map[string]string{"json": `{"extension_id":"builtin_summary","inputs":{"prompt":[]}}`}, nil, nil)
+	err := BaseFieldExtensionUpdate.Validate(ctx, unsupportedExtension)
+	assertInvalidArgumentValidation(t, err, "--json", nil, "builtin_llm_completion")
+
+	missingPrompt := newBaseTestRuntime(map[string]string{"json": `{"extension_id":"builtin_llm_completion","inputs":{}}`}, nil, nil)
+	err = BaseFieldExtensionUpdate.Validate(ctx, missingPrompt)
+	assertInvalidArgumentValidation(t, err, "--json", nil, "inputs.prompt")
+
+	rowWithoutRecords := newBaseTestRuntime(map[string]string{"type": "row"}, nil, nil)
+	err = BaseFieldExtensionUpdateCells.Validate(ctx, rowWithoutRecords)
+	assertInvalidArgumentValidation(t, err, "--record-id", nil, "--record-id is required")
+
+	columnWithRecords := newBaseTestRuntimeWithArrays(
+		map[string]string{"type": "column"},
+		map[string][]string{"record-id": {"rec_1"}},
+		nil,
+		nil,
+	)
+	err = BaseFieldExtensionUpdateCells.Validate(ctx, columnWithRecords)
+	assertInvalidArgumentValidation(t, err, "--record-id", nil, "--record-id is only valid")
+}
+
 func TestBaseFieldCreateHelpHidesReadGuideFlag(t *testing.T) {
 	parent := &cobra.Command{Use: "base"}
 	BaseFieldCreate.Mount(parent, &cmdutil.Factory{})
@@ -466,6 +523,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"Example with filter/sort JSON",
 				"Text equality filter",
 				"Query priority",
+				"For filter/sort-only reads, use +record-list",
 				"Use --json only when you need to pass the full search body directly",
 				"Example for analysis",
 				"prefer --format ndjson --output ./records.ndjson",
@@ -563,10 +621,8 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 		defaultVal string
 		help       string
 	}{
-		{name: "table list", shortcut: BaseTableList, flag: "limit", defaultVal: "50", help: "pagination size, range 1-100"},
 		{name: "template list", shortcut: BaseTemplateList, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
 		{name: "template search", shortcut: BaseTemplateSearch, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
-		{name: "field list", shortcut: BaseFieldList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
 		{name: "field search options", shortcut: BaseFieldSearchOptions, flag: "limit", defaultVal: "30", help: "pagination size, range 1-200"},
 		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "100", help: "maximum records to return; range 1-200, or 1-2000 for ndjson"},
 		{name: "view list", shortcut: BaseViewList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
@@ -598,6 +654,41 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 			}
 			if got := strings.Count(help, "default "+tt.defaultVal); got != 1 {
 				t.Fatalf("flag help default %s count=%d, want 1:\n%s", tt.defaultVal, got, help)
+			}
+		})
+	}
+}
+
+func TestBaseTableAndFieldListPaginationFlagsAreHiddenCompatibilityInputs(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		defaults map[string]string
+	}{
+		{name: "table list", shortcut: BaseTableList, defaults: map[string]string{"offset": "0", "limit": "300"}},
+		{name: "field list", shortcut: BaseFieldList, defaults: map[string]string{"offset": "0", "limit": "300"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "base"}
+			tt.shortcut.Mount(parent, &cmdutil.Factory{})
+			cmd := parent.Commands()[0]
+			help := cmd.Flags().FlagUsages()
+			for name, wantDefault := range tt.defaults {
+				flag := cmd.Flags().Lookup(name)
+				if flag == nil {
+					t.Fatalf("flag --%s missing", name)
+				}
+				if !flag.Hidden {
+					t.Fatalf("flag --%s should be hidden", name)
+				}
+				if flag.DefValue != wantDefault {
+					t.Fatalf("--%s default=%q, want %q", name, flag.DefValue, wantDefault)
+				}
+				if strings.Contains(help, "--"+name) {
+					t.Fatalf("hidden flag --%s leaked into help:\n%s", name, help)
+				}
 			}
 		})
 	}
@@ -795,6 +886,8 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			shortcut: BaseDashboardBlockCreate,
 			wantTips: []string{
 				`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}'`,
+				`--type nps --data-config '{"table_name":"Survey","group_by":[{"field_name":"Score","mode":"integrated"}],"category_range":[0,6,8,10]}'`,
+				`--type ranking --data-config '{"table_name":"Orders"`,
 				`--type text --data-config '{"text":"# Sales Dashboard"}'`,
 				"+table-list and +field-list",
 				"not table_id or field_id",
@@ -811,6 +904,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 				`--data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
+				`--data-config '{"limit_size":20}'`,
 				"lark-base-dashboard-block-config.md as the SSOT",
 				"do not invent data_config from natural language",
 				"Block type cannot be changed",
@@ -1122,8 +1216,6 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"when multiple=false, the array can contain only one item",
 				`location uses {"lng":116.397428,"lat":39.90923}`,
 				"Do not guess user/chat/linked-record IDs or location coordinates",
-				"lark-base-cell-value.md",
-				"do not invent values for fields not covered by the happy path",
 			},
 		},
 		{
@@ -1138,8 +1230,6 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"do not immediately +record-list the same table",
 				"CellValue happy path: text/phone/url",
 				`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}]`,
-				"lark-base-cell-value.md",
-				"do not invent values for fields not covered by the happy path",
 			},
 		},
 		{
@@ -1155,8 +1245,6 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"Batch update supports max 200 records per call",
 				"CellValue happy path: text/phone/url",
 				`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}]`,
-				"lark-base-cell-value.md",
-				"do not invent values for fields not covered by the happy path",
 			},
 		},
 	}
@@ -1322,6 +1410,24 @@ func TestBaseFormQuestionsUpdateHelpGuidesFullOverwrite(t *testing.T) {
 		if !strings.Contains(tips, want) {
 			t.Fatalf("tips missing %q:\n%s", want, tips)
 		}
+	}
+}
+
+func TestBaseViewSetVisibleFieldsHelpIncludesFormInSharedContract(t *testing.T) {
+	setTips := strings.Join(BaseViewSetVisibleFields.Tips, "\n")
+	for _, want := range []string{
+		"form",
+		"For form views, use field IDs.",
+		"JSON object",
+		"controls both visibility and order",
+		"include every field that should remain visible",
+	} {
+		if !strings.Contains(setTips, want) {
+			t.Fatalf("set-visible-fields tips missing %q:\n%s", want, setTips)
+		}
+	}
+	if strings.Contains(strings.ToLower(setTips), "only reorders that same set") {
+		t.Fatalf("set-visible-fields tips retain the obsolete Form same-set restriction:\n%s", setTips)
 	}
 }
 
@@ -1554,8 +1660,34 @@ func TestBaseRecordValidate(t *testing.T) {
 	)); err == nil || !strings.Contains(err.Error(), "sort supports at most 10 sort conditions") {
 		t.Fatalf("err=%v", err)
 	}
-	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--keyword is required unless --json is used") {
-		t.Fatalf("err=%v", err)
+	wantFlagModeHint := recordSearchFlagModeHint
+	missingKeywordCases := []struct {
+		name  string
+		flags map[string]string
+	}{
+		{name: "plain", flags: map[string]string{"base-token": "b", "table-id": "tbl_1"}},
+		{name: "filter only", flags: map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `{"logic":"and","conditions":[["Status","==","Todo"]]}`}},
+		{name: "sort only", flags: map[string]string{"base-token": "b", "table-id": "tbl_1", "sort-json": `[{"field":"Updated","desc":true}]`}},
+	}
+	for _, tt := range missingKeywordCases {
+		t.Run("record search missing keyword/"+tt.name, func(t *testing.T) {
+			err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(tt.flags, nil, nil))
+			assertInvalidArgumentValidation(t, err, "--keyword", []string{"--keyword"}, "--keyword is required unless --json is used")
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Hint != wantFlagModeHint {
+				t.Fatalf("problem=%#v, want hint %q", problem, wantFlagModeHint)
+			}
+		})
+	}
+	missingSearchFieldErr := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		nil,
+		nil,
+	))
+	assertInvalidArgumentValidation(t, missingSearchFieldErr, "--search-field", []string{"--search-field"}, "--search-field is required unless --json is used")
+	missingSearchFieldProblem, ok := errs.ProblemOf(missingSearchFieldErr)
+	if !ok || missingSearchFieldProblem.Hint != wantFlagModeHint {
+		t.Fatalf("problem=%#v, want hint %q", missingSearchFieldProblem, wantFlagModeHint)
 	}
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
@@ -1673,7 +1805,7 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 		{
 			name:     "table list",
 			shortcut: BaseTableList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 101}),
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 301}),
 			param:    "--limit",
 		},
 		{
@@ -1691,7 +1823,7 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 		{
 			name:     "field list",
 			shortcut: BaseFieldList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 201}),
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 301}),
 			param:    "--limit",
 		},
 		{

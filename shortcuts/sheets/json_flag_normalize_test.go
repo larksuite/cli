@@ -238,6 +238,54 @@ func TestCellsSet_EnvelopeAndScalarCellsAccepted(t *testing.T) {
 	})
 }
 
+// TestCellsSet_ShortRowsArePadded pins the standalone --cells path for a
+// payload whose rows stop at their last written cell. The old rejection
+// spelled the fix out ("pad short rows with {}"), which is a rewrite with one
+// reading, so it is applied rather than demanded — {} writes nothing and
+// leaves the cell as it was.
+func TestCellsSet_ShortRowsArePadded(t *testing.T) {
+	t.Parallel()
+	sc := shortcutFromRegistry(t, "+cells-set")
+
+	t.Run("a short row is filled out to the widest one", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A1:C2",
+			"--cells", `[["a","b","c"],["d"]]`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("a short row should be padded, got: %v", err)
+		}
+		if !strings.Contains(stdout, `[{\"value\":\"d\"},{},{}]`) {
+			t.Errorf("second row should be padded with empty cells, got %q", stdout)
+		}
+	})
+
+	t.Run("uniformly short rows are left alone", func(t *testing.T) {
+		t.Parallel()
+		// Nothing is ragged here: the payload is a 2x1 rectangle. Whether it
+		// fills the stated range is fitCellsRange's question, and its answer
+		// (narrow the write to what was passed) must not change because the
+		// padding pass ran first.
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A1:C2",
+			"--cells", `[["a"],["b"]]`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(stdout, `A1:A2`) {
+			t.Errorf("write should narrow to the payload's own extent, got %q", stdout)
+		}
+	})
+}
+
 // TestCellsSetStyle_BorderWeightWordInStyleNormalizes pins the reachability
 // fix for the border acceptance layer on the --border-styles flag path: the
 // eval-trace failure shape ({"style":"thin"} — 07-28 root-cause report #2,
@@ -397,9 +445,11 @@ func TestTablePut_SheetsDecodeHints(t *testing.T) {
 	t.Run("type mismatch inlines skeleton", func(t *testing.T) {
 		t.Parallel()
 		sc := shortcutFromRegistry(t, "+table-put")
+		// `data` as an object is a kind mismatch with no accepted reading —
+		// unlike object-form `columns`, which columnHeadings now decodes.
 		_, _, err := runShortcutCapturingErr(t, sc, []string{
 			"--url", testURL,
-			"--sheets", `{"sheets":[{"name":"s","columns":[{"name":"a"}],"data":[]}]}`,
+			"--sheets", `{"sheets":[{"name":"s","columns":["a"],"data":{"0":["x"]}}]}`,
 			"--dry-run",
 		})
 		ve := requireValidation(t, err, "--sheets: invalid JSON")
@@ -410,16 +460,34 @@ func TestTablePut_SheetsDecodeHints(t *testing.T) {
 		}
 	})
 
-	t.Run("bare array names the missing envelope", func(t *testing.T) {
+	t.Run("bare array is accepted as the sub-sheet list", func(t *testing.T) {
 		t.Parallel()
 		sc := shortcutFromRegistry(t, "+table-put")
-		_, _, err := runShortcutCapturingErr(t, sc, []string{
+		// The envelope is the only thing such a payload is missing, and an
+		// array at the top level can only be the list it would have held
+		// (07-28 root-cause report #4, 84 occurrences; still 10 in the
+		// 08-29..31 reflow after the error message was made explicit).
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
 			"--url", testURL,
 			"--sheets", `[{"name":"s","columns":["a"],"data":[["x"]]}]`,
 			"--dry-run",
 		})
-		// The Go unmarshal text names the internal struct, not the fix
-		// (07-28 root-cause report #4, 84 occurrences).
+		if err != nil {
+			t.Fatalf("bare sub-sheet list should be accepted, got %v", err)
+		}
+		if !strings.Contains(stdout, "set_cell_range") {
+			t.Errorf("dry-run should plan the write, got %q", stdout)
+		}
+	})
+
+	t.Run("bare scalar still names the expected shapes", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+table-put")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheets", `"just a string"`,
+			"--dry-run",
+		})
 		ve := requireValidation(t, err, `top level must be the object {"sheets":[…]}`)
 		if strings.Contains(ve.Message, "cannot unmarshal") {
 			t.Errorf("message should not leak the Go unmarshal wording, got %q", ve.Message)
@@ -464,7 +532,7 @@ func TestNormalizeChartHexColors(t *testing.T) {
 			},
 		},
 	}
-	normalizeChartHexColors(props)
+	normalizeChartHexColors(nil, props)
 	series := props["plotArea"].(map[string]interface{})["plot"].(map[string]interface{})["series"].([]interface{})
 	if got := series[0].(map[string]interface{})["bars"].(map[string]interface{})["color"]; got != "#4472C4" {
 		t.Errorf("bare hex should gain #, got %v", got)

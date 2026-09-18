@@ -4,6 +4,8 @@
 package meta
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -47,6 +49,10 @@ func coerceLiteral(canonicalType string, raw any) (any, bool) {
 			return v, true
 		case int:
 			return int64(v), true
+		case json.Number:
+			if n, err := v.Int64(); err == nil {
+				return n, true
+			}
 		}
 		return nil, false
 	case "number":
@@ -61,6 +67,10 @@ func coerceLiteral(canonicalType string, raw any) (any, bool) {
 			return float64(v), true
 		case int:
 			return float64(v), true
+		case json.Number:
+			if n, err := v.Float64(); err == nil {
+				return n, true
+			}
 		}
 		return nil, false
 	case "boolean":
@@ -186,23 +196,34 @@ func (f Field) coerce(raw any) any {
 	return nil
 }
 
-// MinBound returns the field's min constraint as a number, or nil when absent
-// or unparseable. meta_data carries min/max as strings and does not say
-// whether they bound a value or a string's length; the accessors stay equally
-// agnostic, so every renderer (envelope minimum/maximum, flag help) presents
-// the same numbers without inventing a semantic the source doesn't declare.
-func (f Field) MinBound() *float64 { return parseBound(f.Min) }
+// MinBound returns the field's min constraint as an exact JSON number, or nil
+// when absent or unparseable. meta_data carries min/max as strings and does not
+// say whether they bound a value or a string's length; the accessors stay
+// equally agnostic, so every renderer (envelope minimum/maximum, flag help)
+// presents the same number literal without inventing a semantic the source
+// doesn't declare.
+func (f Field) MinBound() *json.Number { return parseBound(f.Min) }
 
 // MaxBound returns the field's max constraint as a number, or nil when absent
 // or unparseable. See MinBound.
-func (f Field) MaxBound() *float64 { return parseBound(f.Max) }
+func (f Field) MaxBound() *json.Number { return parseBound(f.Max) }
 
-func parseBound(s string) *float64 {
+func parseBound(s string) *json.Number {
 	if s == "" {
 		return nil
 	}
-	if v, err := strconv.ParseFloat(s, 64); err == nil {
-		return &v
+	var raw json.RawMessage
+	if err := json.Unmarshal([]byte(s), &raw); err != nil {
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var value any
+	if err := dec.Decode(&value); err != nil {
+		return nil
+	}
+	if n, ok := value.(json.Number); ok {
+		return &n
 	}
 	return nil
 }

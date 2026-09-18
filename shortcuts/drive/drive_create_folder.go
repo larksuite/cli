@@ -5,7 +5,6 @@ package drive
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -65,12 +64,6 @@ var DriveCreateFolder = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := newDriveCreateFolderSpec(runtime)
-
-		target := "root folder"
-		if spec.FolderToken != "" {
-			target = "folder " + common.MaskToken(spec.FolderToken)
-		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Creating folder %q in %s...\n", spec.Name, target)
 
 		data, err := runtime.CallAPITyped(
 			"POST",

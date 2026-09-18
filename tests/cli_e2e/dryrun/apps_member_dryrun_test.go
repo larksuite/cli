@@ -5,7 +5,6 @@ package dryrun
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/larksuite/cli/cmd"
 	_ "github.com/larksuite/cli/extension/credential/env"
-	"github.com/larksuite/cli/internal/registry/registrytest"
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -22,7 +20,6 @@ import (
 
 const (
 	appsMemberHelperEnv = "LARK_CLI_APPS_MEMBER_HELPER"
-	appsMemberRootEnv   = "LARK_CLI_APPS_MEMBER_TEST_ROOT"
 )
 
 // TestAppsMemberCLIHelperProcess re-executes the current test binary as the
@@ -40,10 +37,6 @@ func TestAppsMemberCLIHelperProcess(t *testing.T) {
 		}
 	}
 	if separator < 0 {
-		os.Exit(2)
-	}
-	if err := registrytest.Seed(os.Getenv(appsMemberRootEnv)); err != nil {
-		fmt.Fprintln(os.Stderr, "seed API metadata fixture:", err)
 		os.Exit(2)
 	}
 	os.Args = append([]string{"lark-cli"}, os.Args[separator+1:]...)
@@ -64,7 +57,6 @@ func runAppsMemberCLI(t *testing.T, args ...string) *clie2e.Result {
 		DefaultAs:  "user",
 		Env: map[string]string{
 			appsMemberHelperEnv:                "1",
-			appsMemberRootEnv:                  testRoot,
 			"LARKSUITE_CLI_CONFIG_DIR":         filepath.Join(testRoot, "config"),
 			"LARKSUITE_CLI_APP_ID":             "apps_member_dryrun_client",
 			"LARKSUITE_CLI_APP_SECRET":         "apps_member_dryrun_secret",

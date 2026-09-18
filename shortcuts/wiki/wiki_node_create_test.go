@@ -449,7 +449,7 @@ func TestWikiNodeCreateDryRunUsesParentNodeWithoutMyLibraryLookup(t *testing.T) 
 	if len(got) != 2 {
 		t.Fatalf("len(dryRun.api) = %d, want 2", len(got))
 	}
-	if got[0].URL != "/open-apis/wiki/v2/spaces/get_node" {
+	if got[0].URL != "/open-apis/wiki/v2/spaces/node_by_token" {
 		t.Fatalf("first dry-run URL = %q, want parent node lookup", got[0].URL)
 	}
 	if got[1].URL != "/open-apis/wiki/v2/spaces/<resolved_space_id>/nodes" {
@@ -475,7 +475,7 @@ func TestWikiNodeCreateDryRunKeepsExplicitSpaceIDWhenParentProvided(t *testing.T
 	if len(got) != 2 {
 		t.Fatalf("len(dryRun.api) = %d, want 2", len(got))
 	}
-	if got[0].URL != "/open-apis/wiki/v2/spaces/get_node" {
+	if got[0].URL != "/open-apis/wiki/v2/spaces/node_by_token" {
 		t.Fatalf("first dry-run URL = %q, want parent node lookup", got[0].URL)
 	}
 	if got[1].URL != "/open-apis/wiki/v2/spaces/space_123/nodes" {
@@ -504,7 +504,7 @@ func TestWikiNodeCreateDryRunShowsMyLibraryLookupWhenExplicitAndParentProvided(t
 	if got[0].URL != "/open-apis/wiki/v2/spaces/my_library" {
 		t.Fatalf("first dry-run URL = %q, want my_library lookup", got[0].URL)
 	}
-	if got[1].URL != "/open-apis/wiki/v2/spaces/get_node" {
+	if got[1].URL != "/open-apis/wiki/v2/spaces/node_by_token" {
 		t.Fatalf("second dry-run URL = %q, want parent node lookup", got[1].URL)
 	}
 	if got[2].URL != "/open-apis/wiki/v2/spaces/<resolved_space_id>/nodes" {
@@ -627,8 +627,12 @@ func TestWikiNodeCreateMountedExecuteWithExplicitSpaceID(t *testing.T) {
 	if captured["title"] != "Wiki Node" {
 		t.Fatalf("captured title = %#v, want %q", captured["title"], "Wiki Node")
 	}
-	if got := stderr.String(); !strings.Contains(got, "Created wiki node in space space_123 via explicit_space_id.") {
-		t.Fatalf("stderr = %q, want completed creation message", got)
+	gotStderr := stderr.String()
+	if strings.Contains(gotStderr, "Creating wiki node") || strings.Contains(gotStderr, "Created wiki node") {
+		t.Fatalf("stderr = %q, want no creation progress", gotStderr)
+	}
+	if !strings.Contains(gotStderr, "auto-grant was skipped") {
+		t.Fatalf("stderr = %q, want actionable auto-grant warning", gotStderr)
 	}
 }
 
@@ -934,14 +938,8 @@ func TestRunWikiNodeCreateRetriesOnLockContention(t *testing.T) {
 	if execution.Node.NodeToken != "wik_created" {
 		t.Fatalf("node token = %q, want %q", execution.Node.NodeToken, "wik_created")
 	}
-	if !strings.Contains(stderr.String(), "lock contention") {
-		t.Fatalf("stderr = %q, want lock contention log", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "retrying (attempt 1/") {
-		t.Fatalf("stderr = %q, want attempt 1 log", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "retrying (attempt 2/") {
-		t.Fatalf("stderr = %q, want attempt 2 log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no retry progress", stderr.String())
 	}
 }
 
@@ -1103,11 +1101,8 @@ func TestRunWikiNodeCreateRetriesOnFirstLockThenSucceeds(t *testing.T) {
 	if execution.Node.NodeToken != "wik_created" {
 		t.Fatalf("node token = %q, want %q", execution.Node.NodeToken, "wik_created")
 	}
-	if !strings.Contains(stderr.String(), "retrying (attempt 1/") {
-		t.Fatalf("stderr = %q, want attempt 1 log", stderr.String())
-	}
-	if strings.Contains(stderr.String(), "retrying (attempt 2/") {
-		t.Fatalf("stderr = %q, should not contain attempt 2 log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no retry progress", stderr.String())
 	}
 }
 

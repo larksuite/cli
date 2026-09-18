@@ -15,11 +15,10 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
-
-const driveMetadataReadScope = "drive:drive.metadata:readonly"
 
 type driveDownloadOutputPathValidator func(string) error
 
@@ -105,36 +104,45 @@ func driveDownloadShouldFailOnMetadataTitleError(ctx context.Context, err error)
 	return false
 }
 
+func driveDownloadIsPermissionAuthScopeError(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryAuthorization {
+		return false
+	}
+	switch problem.Code {
+	case output.LarkErrAppScopeNotEnabled,
+		output.LarkErrTokenNoPermission,
+		output.LarkErrUserScopeInsufficient:
+		return true
+	default:
+		return false
+	}
+}
+
 var DriveDownload = common.Shortcut{
 	Service:     "drive",
 	Command:     "+download",
 	Description: "Download a file from Drive to local",
 	Risk:        "read",
-	Scopes:      []string{"drive:file:download", common.DrivePermissionMemberAuthScope},
-	// Metadata is only required when --output is omitted and the CLI needs the
-	// remote title as the pre-download fallback filename. The wiki scope is only
-	// required when the caller passes a wiki node (--wiki-token or a /wiki/ URL)
-	// that must be resolved to the underlying file token.
-	ConditionalScopes: []string{driveMetadataReadScope, driveWikiNodeRetrieveScope},
+	Scopes:      []string{"drive:file:download"},
+	// Entity lookup uses metadata permission best-effort. Metadata is required
+	// only for default naming; wiki permission is required only if an explicit
+	// wiki input falls back to get_node. Permission auth scope failures are also
+	// non-blocking so they do not prevent the download API call.
+	ConditionalScopes: []string{common.DrivePermissionMemberAuthScope, driveMetadataReadScope, driveWikiNodeRetrieveScope},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file-token", Desc: "Drive file token"},
-		{Name: "url", Desc: "Drive file URL, or a wiki node URL that wraps an uploaded file (resolved to the underlying file token)"},
-		{Name: "wiki-token", Desc: "wiki node token wrapping an uploaded file (resolved to the underlying file token)"},
+		{Name: "url", Desc: "Drive file URL or Wiki node URL wrapping an uploaded file"},
+		{Name: "wiki-token", Desc: "Wiki node token wrapping an uploaded file"},
 		{Name: "output", Desc: "local save path"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		source, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
+		_, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
 		if err != nil {
 			return err
 		}
-		if source.NeedsWikiResolution() {
-			if err := runtime.EnsureScopes([]string{driveWikiNodeRetrieveScope}); err != nil {
-				return err
-			}
-		}
-
 		outputPath := runtime.Str("output")
 		if outputPath == "" {
 			return runtime.EnsureScopes([]string{driveMetadataReadScope})
@@ -152,17 +160,7 @@ var DriveDownload = common.Shortcut{
 
 		outputPath := runtime.Str("output")
 		plan := common.NewDryRunAPI()
-		step := 1
-
-		fileToken := source.FileToken
-		if source.NeedsWikiResolution() {
-			plan.GET("/open-apis/wiki/v2/spaces/get_node").
-				Desc(fmt.Sprintf("[%d] Resolve wiki node to the underlying Drive file token (obj_type must be file)", step)).
-				Params(map[string]interface{}{"token": source.WikiToken})
-			plan.Set("wiki_token", source.WikiToken)
-			fileToken = "obj_token_from_wiki_node"
-			step++
-		}
+		fileToken, step := addDriveFileSourceDryRun(plan, source)
 
 		common.AddDriveFileExportPermissionDryRun(
 			plan,
@@ -200,17 +198,6 @@ var DriveDownload = common.Shortcut{
 			return err
 		}
 
-		fileToken := source.FileToken
-		var wikiResolution driveFileWikiResolution
-		if source.NeedsWikiResolution() {
-			resolvedToken, resolution, resolveErr := resolveDriveFileWikiSource(ctx, runtime, source)
-			if resolveErr != nil {
-				return resolveErr
-			}
-			fileToken = resolvedToken
-			wikiResolution = resolution
-		}
-
 		outputPath := runtime.Str("output")
 		overwrite := runtime.Bool("overwrite")
 
@@ -224,11 +211,18 @@ var DriveDownload = common.Shortcut{
 			}
 		}
 
+		fileToken, wikiResolution, err := resolveDriveFileSource(ctx, runtime, source)
+		if err != nil {
+			return err
+		}
 		allowed, err := common.CheckDriveFileExportPermission(runtime, fileToken)
 		if err != nil {
-			return withDriveDownloadRecoveryHint(err, fileToken)
-		}
-		if !allowed {
+			if driveDownloadIsPermissionAuthScopeError(err) {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: export permission check failed; continuing with download: %v\n", err)
+			} else {
+				return withDriveDownloadRecoveryHint(err, fileToken)
+			}
+		} else if !allowed {
 			return driveDownloadPermissionDeniedError()
 		}
 
@@ -247,8 +241,6 @@ var DriveDownload = common.Shortcut{
 				metadataTitle = title
 			}
 		}
-
-		fmt.Fprintf(runtime.IO().ErrOut, "Downloading: %s\n", common.MaskToken(fileToken))
 
 		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
 			HttpMethod: http.MethodGet,

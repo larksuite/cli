@@ -1,7 +1,7 @@
 
 # drive +delete
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 删除云空间（云盘/云存储）内的文件或文件夹。删除后资源会进入回收站。
 

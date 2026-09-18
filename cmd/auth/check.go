@@ -11,6 +11,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 )
@@ -74,7 +75,13 @@ func authCheckRunWithRecovery(opts *CheckOptions, projector *recovery.Projector)
 		return output.ErrBare(1)
 	}
 
-	stored := larkauth.GetStoredToken(config.AppID, config.UserOpenId)
+	stored, err := larkauth.GetStoredToken(config.AppID, config.UserOpenId)
+	if err != nil {
+		return f.PresentError(err, cmdutil.ErrorPresentationOptions{
+			Projector: projector,
+			Identity:  core.AsUser,
+		})
+	}
 	if stored == nil {
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"ok": false, "error": "no_token", "missing": required})
 		return output.ErrBare(1)

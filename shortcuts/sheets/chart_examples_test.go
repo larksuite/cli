@@ -65,6 +65,60 @@ func TestChartExampleTemplates_ValidateAgainstSchema(t *testing.T) {
 	}
 }
 
+// TestChartExampleTemplates_MeetQualityMinimumSizes keeps the ready-to-edit
+// templates aligned with the minimums enforced by lark_chart_quality_check.py.
+func TestChartExampleTemplates_MeetQualityMinimumSizes(t *testing.T) {
+	t.Parallel()
+	type size struct {
+		Width  float64 `json:"width"`
+		Height float64 `json:"height"`
+	}
+	overrides := map[string]size{
+		"bar":   {Width: 720, Height: 420},
+		"combo": {Width: 720, Height: 420},
+		"pie":   {Width: 720, Height: 440},
+	}
+	for typ, tmpl := range chartExampleTemplates {
+		t.Run(typ, func(t *testing.T) {
+			t.Parallel()
+			var properties struct {
+				Size size `json:"size"`
+			}
+			if err := json.Unmarshal([]byte(tmpl), &properties); err != nil {
+				t.Fatalf("template is not valid JSON: %v", err)
+			}
+			minimum := size{Width: 640, Height: 400}
+			if override, ok := overrides[typ]; ok {
+				minimum = override
+			}
+			if properties.Size.Width < minimum.Width || properties.Size.Height < minimum.Height {
+				t.Errorf("template size = %.0fx%.0f, minimum = %.0fx%.0f",
+					properties.Size.Width, properties.Size.Height, minimum.Width, minimum.Height)
+			}
+		})
+	}
+}
+
+func TestChartExampleTemplates_SpecialChartContracts(t *testing.T) {
+	t.Parallel()
+	tests := map[string][]string{
+		"bubble":    {`"role": "x"`, `"role": "y"`, `"role": "group"`, `"role": "size"`},
+		"waterfall": {`"firstValueAsTotal"`, `"lastValueAsSubtotal"`, `"connectorLine"`},
+		"pareto":    {`"aggregateType": "sum"`, `"index": 1`, `"index": 2`, `"percentage": true`},
+	}
+	for typ, markers := range tests {
+		tmpl, ok := chartExampleTemplates[typ]
+		if !ok {
+			t.Fatalf("missing %s template", typ)
+		}
+		for _, marker := range markers {
+			if !strings.Contains(tmpl, marker) {
+				t.Errorf("%s template missing %s", typ, marker)
+			}
+		}
+	}
+}
+
 // TestNormalizeChartHexColors_Arrays pins color normalization inside arrays:
 // the chart schema uses colorTheme / colorScale / highlight_colors, whose
 // values are LISTS of bare hex strings. Recursing without the key context
@@ -80,7 +134,7 @@ func TestNormalizeChartHexColors_Arrays(t *testing.T) {
 		"colorMode":        "auto",
 		"title":            []interface{}{"4472C4"},
 	}
-	raw, err := json.Marshal(normalizeChartHexColors(in))
+	raw, err := json.Marshal(normalizeChartHexColors(nil, in))
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}

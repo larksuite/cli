@@ -367,7 +367,7 @@ func TestPlatformGetSurfacesKeychainBlocked(t *testing.T) {
 // the blocked path used an anonymous errors.New string, so the extraHint
 // `errors.Is` check (only matched errNotInitialized) couldn't recognize it.
 //
-// Asserts the full wrapError → typed APIError hint pipeline:
+// Asserts the full wrapError → typed storage error hint pipeline:
 //   - errKeychainBlocked + errNotInitialized → hint mentions keychain-downgrade
 //   - "keychain is corrupted" (downgrade would re-read the same bad bytes) → no mention
 //   - generic errors → no mention
@@ -388,13 +388,13 @@ func TestWrapErrorHintMentionsDowngradeForRecoverableCases(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := wrapError("Get", tc.err)
-			var apiErr *errs.APIError
-			if !errors.As(err, &apiErr) {
-				t.Fatalf("wrapError returned %#v; expected *errs.APIError", err)
+			var storageErr *errs.InternalError
+			if !errors.As(err, &storageErr) {
+				t.Fatalf("wrapError returned %#v; expected *errs.InternalError", err)
 			}
-			got := strings.Contains(apiErr.Hint, "keychain-downgrade")
+			got := strings.Contains(storageErr.Hint, "keychain-downgrade")
 			if got != tc.wantHint {
-				t.Fatalf("hint mentions keychain-downgrade = %v, want %v\n  full hint: %q", got, tc.wantHint, apiErr.Hint)
+				t.Fatalf("hint mentions keychain-downgrade = %v, want %v\n  full hint: %q", got, tc.wantHint, storageErr.Hint)
 			}
 		})
 	}

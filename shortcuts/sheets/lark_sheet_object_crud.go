@@ -5,9 +5,12 @@ package sheets
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -139,7 +142,7 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str(spec.sheetIDFlagOnCreate()))
 			sheetName := strings.TrimSpace(runtime.Str(spec.sheetNameFlagOnCreate()))
 			_, err = objectCreateInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -161,6 +164,23 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			sheetID := strings.TrimSpace(runtime.Str(spec.sheetIDFlagOnCreate()))
 			sheetName := strings.TrimSpace(runtime.Str(spec.sheetNameFlagOnCreate()))
+			// Validate defers a missing selector to here, so here is where it
+			// gets answered; this factory reads its own flag names, which is
+			// why it cannot go through resolveSheetSelectorExec.
+			//
+			// Except where an absent selector is the point. Pivot's contract is
+			// that omitting the target makes the BACKEND create a fresh sheet
+			// for the result, which is the zero-overwrite path its own tips
+			// recommend. Resolving it here would fill in the sole sheet -- the
+			// one holding the source data -- and land the pivot on top of it,
+			// or, in a workbook with several sheets, demand a selector the
+			// command does not require.
+			if !(spec.allowEmptySheetSelectorOnCreate && sheetID == "" && sheetName == "") {
+				sheetID, sheetName, err = resolveOmittedSheetSelector(ctx, runtime, token, sheetID, sheetName)
+				if err != nil {
+					return err
+				}
+			}
 			input, err := objectCreateInput(runtime, token, sheetID, sheetName, spec)
 			if err != nil {
 				return err
@@ -235,7 +255,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 			sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 			_, err = objectUpdateInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -248,7 +268,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -258,12 +278,51 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			out, err := callTool(ctx, runtime, token, ToolKindWrite, spec.toolName, input)
 			if err != nil {
-				return err
+				objectID, _ := input[spec.idField].(string)
+				return annotateStaleObjectID(err, spec, objectID)
 			}
 			runtime.Out(out, nil)
 			return nil
 		},
 	}
+}
+
+// annotateStaleObjectID points a "not found" on an id-addressed update or
+// delete at the list command that reports the live ids. The backend answers
+// with the id alone ("conditional format iXGbyDwC not found"), which reads
+// like a transport problem rather than "that id belongs to a rule that no
+// longer exists". 08-29..31 reflow: 14 rejections across +cond-format-update
+// and +cond-format-delete, the two largest long-tail entries after the flag
+// renames. Any other failure passes through untouched.
+//
+// objectID gates it. "not found" alone also covers failures about the SHEET
+// selector ("sheet \"s\" not found"), where telling the caller to refresh
+// chart ids points at the one input that was right; the message has to name
+// the id this command addressed before the hint can claim it went stale.
+func annotateStaleObjectID(err error, spec objectCRUDSpec, objectID string) error {
+	objectID = strings.TrimSpace(objectID)
+	if spec.idFlag == "" || objectID == "" {
+		return err
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Hint != "" {
+		return err
+	}
+	msg := strings.ToLower(p.Message)
+	if !strings.Contains(msg, "not found") || !strings.Contains(msg, strings.ToLower(objectID)) {
+		return err
+	}
+	// A sheet or workbook that does not exist is a different missing thing,
+	// even on the rare id that appears in such a message as a substring.
+	for _, scope := range []string{"sheet", "spreadsheet", "workbook"} {
+		if strings.Contains(msg, scope+" not found") || strings.Contains(msg, scope+" \"") {
+			return err
+		}
+	}
+	p.Hint = fmt.Sprintf(
+		"list the live ids with %s-list and retry with one of those — an id from another sheet, or one whose object was replaced, does not exist here",
+		spec.commandPrefix)
+	return err
 }
 
 func objectUpdateInput(runtime flagView, token, sheetID, sheetName string, spec objectCRUDSpec) (map[string]interface{}, error) {
@@ -319,7 +378,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 			sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 			_, err = objectDeleteInput(runtime, token, sheetID, sheetName, spec)
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
@@ -332,7 +391,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -342,7 +401,8 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			out, err := callTool(ctx, runtime, token, ToolKindWrite, spec.toolName, input)
 			if err != nil {
-				return err
+				objectID, _ := input[spec.idField].(string)
+				return annotateStaleObjectID(err, spec, objectID)
 			}
 			runtime.Out(out, nil)
 			return nil
@@ -849,26 +909,20 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 			// uploadedImageToken="": Validate never uploads; floatImageProperties
 			// still validates the --image path and the source XOR.
 			_, err = floatImageWriteInput(runtime, token, sheetID, sheetName, op, withIDFlag, "")
-			return err
+			return deferMissingSheetSelector(runtime, sheetID, sheetName, err)
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-			token, _ := resolveSpreadsheetToken(runtime)
+			ref, _ := parseSpreadsheetRef(runtime)
+			token := ref.Token
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
 			input, _ := floatImageWriteInput(runtime, token, sheetID, sheetName, op, withIDFlag, "")
 			// With a local --image, Execute first uploads the file; surface that
 			// extra step in the preview (mirrors +cells-set-image's dry-run).
 			if img := strings.TrimSpace(runtime.Str("image")); img != "" {
 				manageBody, _ := buildToolBody("manage_float_image_object", input)
-				return common.NewDryRunAPI().
-					POST("/open-apis/drive/v1/medias/upload_all").
-					Desc("upload local image to drive (parent_type=" + sheetMediaParentType(token) + ")").
-					Body(map[string]interface{}{
-						"file_name":   floatImageName(runtime),
-						"parent_type": sheetMediaParentType(token),
-						"parent_node": token,
-						"size":        "<file_size>",
-						"file":        "@" + img,
-					}).
+				d := common.NewDryRunAPI()
+				appendSheetImageUploadDryRun(d, runtime, ref, img, floatImageName(runtime))
+				return d.
 					POST(toolInvokePath(token, ToolKindWrite)).
 					Desc("create float image referencing the uploaded file_token").
 					Body(manageBody)
@@ -880,7 +934,7 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 			if err != nil {
 				return err
 			}
-			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 			if err != nil {
 				return err
 			}
@@ -1024,7 +1078,7 @@ var FilterCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -1050,6 +1104,15 @@ func filterCreateInput(runtime flagView, token, sheetID, sheetName string) (map[
 	}
 	props := map[string]interface{}{
 		"range": strings.TrimSpace(runtime.Str("range")),
+		// The empty rule set, which is what a filter with no column
+		// conditions is: creating one is the documented meaning of omitting
+		// --properties, but `rules` is required at the properties root, so
+		// leaving it out failed schema validation with `required property
+		// "rules" is missing` — an error about a flag the caller deliberately
+		// did not pass, and one the flag's own description says is optional.
+		// 08-29..31 reflow: 9 +filter-create rejections. An explicit rules
+		// entry below replaces this.
+		"rules": []interface{}{},
 	}
 	if runtime.Str("properties") != "" {
 		extra, err := requireJSONObject(runtime, "properties")
@@ -1087,7 +1150,7 @@ var FilterUpdate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+filter-update"),
-	Validate:    validateViaInput(filterUpdateInput),
+	Validate:    validateFilterViaInput(filterUpdateInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -1099,8 +1162,11 @@ var FilterUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
+			return err
+		}
+		if sheetID, sheetName, err = resolveFilterSheetID(ctx, runtime, token, sheetID, sheetName); err != nil {
 			return err
 		}
 		input, err := filterUpdateInput(runtime, token, sheetID, sheetName)
@@ -1116,12 +1182,75 @@ var FilterUpdate = common.Shortcut{
 	},
 }
 
+// filterSheetIDReason is shared by the two filter builders and by the deferral
+// that recognises their error, so the three cannot drift apart.
+const filterSheetIDReason = "filter_id must equal sheet_id; a --sheet-name is traded for it on a real standalone run, " +
+	"but a preview and a +batch-update sub-op both perform no lookup — pass --sheet-id there"
+
+// deferFilterSheetIDLookup drops the id requirement in the one place it can be
+// settled later: a standalone real run, where Execute trades the name for the
+// id (resolveFilterSheetID) before the builder is called again. A preview has
+// no lookup, and a +batch-update sub-op is validated through the builder
+// directly with no execute step of its own, so both keep the error.
+func deferFilterSheetIDLookup(runtime *common.RuntimeContext, err error) error {
+	if err == nil || runtime.Bool("dry-run") {
+		return err
+	}
+	if strings.TrimSpace(runtime.Str("sheet-name")) == "" {
+		return err
+	}
+	if p, ok := errs.ProblemOf(err); !ok || !strings.Contains(p.Message, filterSheetIDReason) {
+		return err
+	}
+	return nil
+}
+
+// validateFilterViaInput is validateViaInput plus that deferral.
+func validateFilterViaInput(
+	build func(fv flagView, token, sheetID, sheetName string) (map[string]interface{}, error),
+) func(ctx context.Context, runtime *common.RuntimeContext) error {
+	inner := validateViaInput(build)
+	return func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return deferFilterSheetIDLookup(runtime, inner(ctx, runtime))
+	}
+}
+
+// resolveFilterSheetID settles the one thing +filter-update / +filter-delete
+// need and the selector resolver does not hand them: the sub-sheet's id, which
+// the filter tool uses as the filter_id. The resolver answers an omitted
+// selector with the sole sheet's NAME, and an explicit --sheet-name is a name
+// too, so both arrive here needing the same translation the old error told the
+// caller to perform by hand ("call +workbook-info first"). Doing it here is
+// what that sentence was describing.
+func resolveFilterSheetID(ctx context.Context, runtime *common.RuntimeContext, token, sheetID, sheetName string) (string, string, error) {
+	if sheetID != "" || sheetName == "" {
+		return sheetID, sheetName, nil
+	}
+	// This lookup is a READ on a write command, exactly like the one in
+	// resolveOmittedSheetSelector -- and it is the path that resolver does NOT
+	// cover, since an explicit --sheet-name makes it return before its own
+	// check. The conditional scope is declared either way, but declaring it
+	// does not enforce it, so without this a least-privilege token reaches a
+	// 403 from inside get_workbook_structure.
+	if err := runtime.EnsureScopes([]string{sheetsStructureReadScope}); err != nil {
+		return "", "", err
+	}
+	resolved, _, err := lookupSheetIndex(ctx, runtime, token, "", sheetName)
+	if err != nil {
+		return "", "", err
+	}
+	// The name is dropped along with the trade: the two selectors are mutually
+	// exclusive, and keeping both would fail the very check the id was fetched
+	// to satisfy.
+	return resolved, "", nil
+}
+
 func filterUpdateInput(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
 		return nil, err
 	}
 	if sheetID == "" {
-		return nil, sheetsValidationForFlag("sheet-id", "+filter-update requires --sheet-id (filter_id must equal sheet_id; --sheet-name needs a network lookup unavailable here — call +workbook-info first or pass --sheet-id directly)")
+		return nil, sheetsValidationForFlag("sheet-id", "+filter-update requires --sheet-id ("+filterSheetIDReason+")")
 	}
 	if strings.TrimSpace(runtime.Str("range")) == "" {
 		return nil, sheetsValidationForFlag("range", "--range is required")
@@ -1155,7 +1284,7 @@ var FilterDelete = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+filter-delete"),
-	Validate:    validateViaInput(filterDeleteInput),
+	Validate:    validateFilterViaInput(filterDeleteInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -1167,8 +1296,11 @@ var FilterDelete = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
+			return err
+		}
+		if sheetID, sheetName, err = resolveFilterSheetID(ctx, runtime, token, sheetID, sheetName); err != nil {
 			return err
 		}
 		input, err := filterDeleteInput(runtime, token, sheetID, sheetName)
@@ -1195,7 +1327,7 @@ func filterDeleteInput(runtime flagView, token, sheetID, sheetName string) (map[
 		return nil, err
 	}
 	if sheetID == "" {
-		return nil, sheetsValidationForFlag("sheet-id", "+filter-delete requires --sheet-id (filter_id must equal sheet_id; --sheet-name needs a network lookup unavailable here — call +workbook-info first or pass --sheet-id directly)")
+		return nil, sheetsValidationForFlag("sheet-id", "+filter-delete requires --sheet-id ("+filterSheetIDReason+")")
 	}
 	input := map[string]interface{}{
 		"excel_id":  token,
@@ -1204,4 +1336,447 @@ func filterDeleteInput(runtime flagView, token, sheetID, sheetName string) (map[
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	return input, nil
+}
+
+// ─── conditional-format properties acceptance ─────────────────────────
+//
+// Same contract as the style vocabulary layer (style_vocab.go): one
+// documented form, a wide acceptance layer, and only rewrites whose meaning
+// is beyond doubt. The 08-29..31 reflow put 62 of +cond-format-create's 97
+// rejections on the attrs shape, and the two recurring spellings are an
+// Excel/Google-Sheets `operator` key where this schema says `compare_type`,
+// and a comparison written in symbol or abbreviation form.
+
+// condFormatCompareTypes is the union of the compare_type enums across rule
+// types (cellIs's comparison set plus containsText's text-match set). No two
+// entries squash to the same key, so matching a caller's spelling against the
+// union identifies exactly one canonical value without knowing rule_type —
+// which is not on the payload yet when the normalizer runs.
+var condFormatCompareTypes = []string{
+	"equal", "notEqual", "greaterThan", "greaterThanOrEqual", "lessThan", "lessThanOrEqual", "between", "notBetween",
+	"beginsWith", "endsWith", "containsText", "notContains", "is",
+}
+
+// condFormatCompareTypeSpellings are the keys a comparison arrives under when
+// it is not spelled compare_type. Every spreadsheet UI and API in this space
+// names the slot differently (Excel's "criteria", the OpenAPI's "operator",
+// plain "condition"), and the entry that carries one is otherwise complete.
+// Order matters only for an entry that carries two of them, which no reading
+// resolves anyway; the first wins and the rest reach the schema.
+// 09-04..07: 2852 rejections said an attrs entry was missing compare_type.
+var condFormatCompareTypeSpellings = []string{"operator", "comparison", "compare", "criteria", "condition"}
+
+// condFormatCompareAliases maps the symbol and abbreviation forms onto the
+// enum. Squashed keys (letters and digits only) are handled by the generic
+// separator-insensitive match instead, so this table carries only spellings
+// that share no letters with their target.
+var condFormatCompareAliases = map[string]string{
+	"<":        "lessThan",
+	"<=":       "lessThanOrEqual",
+	"=<":       "lessThanOrEqual",
+	">":        "greaterThan",
+	">=":       "greaterThanOrEqual",
+	"=>":       "greaterThanOrEqual",
+	"=":        "equal",
+	"==":       "equal",
+	"!=":       "notEqual",
+	"<>":       "notEqual",
+	"lt":       "lessThan",
+	"le":       "lessThanOrEqual",
+	"lte":      "lessThanOrEqual",
+	"gt":       "greaterThan",
+	"ge":       "greaterThanOrEqual",
+	"gte":      "greaterThanOrEqual",
+	"eq":       "equal",
+	"ne":       "notEqual",
+	"neq":      "notEqual",
+	"contains": "containsText",
+	// The bare comparative, with "than" dropped. gt / ge / >= already resolve,
+	// so refusing the spelled-out form of the same comparison is arbitrary;
+	// "greater" can only mean greaterThan, since greaterThanOrEqual is the one
+	// that has to say so.
+	//
+	// "above" / "below" are deliberately NOT here: aboveAverage is a rule_type
+	// in this same schema, so a caller writing "above" may mean that rule
+	// rather than a comparison, and the did-you-mean is the honest answer.
+	"greater": "greaterThan",
+	"less":    "lessThan",
+}
+
+// condFormatShapeKeys are the keys that identify an attrs entry as belonging
+// to a rule whose own contract spells `operator` (timePeriod, iconSet,
+// aboveAverage, dataBar, colorScale). An entry carrying one of them keeps its
+// operator untouched — only the {value} / {text} shapes, whose rules require
+// compare_type, get the rename.
+var condFormatShapeKeys = []string{"time_period", "icon_type", "value_type", "color"}
+
+// condFormatStyleAliases maps this domain's own cell-style vocabulary onto the
+// narrower one a conditional-format rule takes. A model that learned
+// background_color / font_color from --styles writes them here too, and the
+// backend answers `unexpected property "background_color" is not defined` --
+// 9 of +cond-format-create's rejections in the 08-29..31 reflow. The target
+// spellings are unambiguous within this schema: it has exactly one fill slot
+// (back_color) and one text-color slot (fore_color, which its own description
+// calls 前景色/字体颜色, unlike the openpyxl fgColor that makes fore_color
+// ambiguous on the cell-style paths).
+var condFormatStyleAliases = map[string]string{
+	"background_color": "back_color",
+	"bg_color":         "back_color",
+	"fill_color":       "back_color",
+	"font_color":       "fore_color",
+	"text_color":       "fore_color",
+	"color":            "fore_color",
+}
+
+// condFormatFontWords maps the flat weight / slant vocabulary onto the single
+// `font` enum this schema uses (bold / italic / "bold italic").
+var condFormatFontWords = map[string]string{
+	"font_weight": "bold",
+	"bold":        "bold",
+	"font_style":  "italic",
+	"italic":      "italic",
+}
+
+// condFormatFontBoth is the schema's spelling for both effects at once.
+const condFormatFontBoth = "bold italic"
+
+// condFormatFontEnum reports whether a `font` value is one of the two single
+// effects. condFormatFontBoth is excluded on purpose: it already carries both,
+// so there is nothing left to fold INTO it — the caller handles it separately,
+// by dropping the redundant flat spelling.
+func condFormatFontEnum(v string) bool {
+	return v == "bold" || v == "italic"
+}
+
+// normalizeCondFormatStyle folds the cell-style spellings a caller brings from
+// --styles into the rule style's own vocabulary, in place.
+func normalizeCondFormatStyle(style map[string]interface{}) {
+	for _, field := range sortedKeys(style) {
+		target, aliased := condFormatStyleAliases[field]
+		if !aliased {
+			continue
+		}
+		if _, taken := style[target]; taken {
+			continue
+		}
+		if s, isText := style[field].(string); isText && strings.TrimSpace(s) != "" {
+			style[target] = s
+			delete(style, field)
+		}
+	}
+	// Before the flat-word loop: that loop reads style["font"] as a string,
+	// so an object or list value there reads as empty and the flat word
+	// replaces it outright, dropping whatever the composite asked for.
+	normalizeCondFormatFontValue(style)
+	for _, field := range sortedKeys(style) {
+		word, isFontWord := condFormatFontWords[field]
+		if !isFontWord {
+			continue
+		}
+		// A weight/slant word is only folded when it actually asks for the
+		// effect: font_weight:"normal" or bold:false mean "leave it alone",
+		// and this schema has no way to say that.
+		switch v := style[field].(type) {
+		case bool:
+			if !v {
+				delete(style, field)
+				continue
+			}
+		case string:
+			if !strings.EqualFold(strings.TrimSpace(v), word) {
+				continue
+			}
+		default:
+			continue
+		}
+		existing, _ := style["font"].(string)
+		switch {
+		case existing == "":
+			style["font"] = word
+		case existing == word:
+			// Already says it; the flat spelling is redundant.
+		case condFormatFontEnum(existing):
+			// The only two recognized values are bold and italic, so a
+			// different recognized one means both were asked for.
+			style["font"] = "bold italic"
+		case existing == condFormatFontBoth:
+			// Already carries both effects, so the flat spelling adds
+			// nothing — but it still has to go, or an unsupported alias
+			// rides along into the request.
+		default:
+			// Anything else under `font` is not a value this fold understands
+			// ("normal", a typo, a CSS weight). Combining it would invent an
+			// italic the caller never wrote and turn invalid input into valid
+			// input; leave it for the schema to reject and keep the flat
+			// spelling visible alongside it.
+			continue
+		}
+		delete(style, field)
+	}
+	if line, ok := style["font_line"].(string); ok {
+		if _, taken := style["text_decoration"]; !taken {
+			switch strings.ToLower(strings.TrimSpace(line)) {
+			case "underline":
+				style["text_decoration"] = "underline"
+				delete(style, "font_line")
+			case "line-through", "strikethrough":
+				style["text_decoration"] = "strikethrough"
+				delete(style, "font_line")
+			}
+		}
+	}
+}
+
+// normalizeCondFormatFontValue folds the `font` slot onto its enum. The schema
+// spells the two effects as one string ("bold", "italic", "bold italic"),
+// while every font vocabulary the caller arrives from spells them as flags or
+// as a list, and neither order nor separator is fixed in what they write.
+// Recognized effects are collected and re-emitted in the enum's own order;
+// anything else in the slot is left for the schema to reject rather than
+// dropped. 09-04..07: 972 rejections on the object form alone.
+func normalizeCondFormatFontValue(style map[string]interface{}) {
+	raw, present := style["font"]
+	if !present {
+		return
+	}
+	var bold, italic bool
+	switch v := raw.(type) {
+	case map[string]interface{}:
+		for key, val := range v {
+			on, readable := val.(bool)
+			if !readable {
+				return // a member this fold cannot read at all
+			}
+			effect := condFormatFontWords[strings.ToLower(key)]
+			if effect == "" {
+				// An effect this enum has no room for (underline, size). Fold
+				// nothing: replacing the object would drop it in silence,
+				// while leaving it lets the schema report the type with the
+				// member still visible in the payload.
+				return
+			}
+			if !on {
+				continue
+			}
+			switch effect {
+			case "bold":
+				bold = true
+			case "italic":
+				italic = true
+			}
+		}
+		if !bold && !italic {
+			return // nothing asked for; the schema names the type mismatch
+		}
+	case []interface{}:
+		for _, item := range v {
+			word, isStr := item.(string)
+			if !isStr {
+				return
+			}
+			switch strings.ToLower(strings.TrimSpace(word)) {
+			case "bold":
+				bold = true
+			case "italic":
+				italic = true
+			default:
+				return
+			}
+		}
+		if !bold && !italic {
+			return
+		}
+	case string:
+		fields := strings.FieldsFunc(strings.ToLower(v), func(r rune) bool {
+			return r == ' ' || r == ',' || r == '+' || r == '|' || r == '\t'
+		})
+		if len(fields) == 0 {
+			return
+		}
+		for _, word := range fields {
+			switch word {
+			case "bold":
+				bold = true
+			case "italic":
+				italic = true
+			default:
+				return // an unrecognized word: leave the value as written
+			}
+		}
+	default:
+		return
+	}
+	switch {
+	case bold && italic:
+		style["font"] = condFormatFontBoth
+	case bold:
+		style["font"] = "bold"
+	case italic:
+		style["font"] = "italic"
+	}
+}
+
+// normalizeCondFormatProperties rewrites the unambiguous --properties habits
+// in place: attrs written as a single object instead of a one-entry list, a
+// comparison spelled as `operator` / in symbol form under a rule whose
+// contract is {compare_type, value|text}, and cell-style vocabulary in the
+// rule's style block.
+func normalizeCondFormatProperties(_ flagView, v interface{}) interface{} {
+	props, ok := v.(map[string]interface{})
+	if !ok {
+		return v
+	}
+	if style, isMap := props["style"].(map[string]interface{}); isMap {
+		normalizeCondFormatStyle(style)
+	}
+	// attrs as a bare object: the list holds one entry per rule parameter and
+	// a single object can only be that one entry.
+	if obj, isObj := props["attrs"].(map[string]interface{}); isObj {
+		props["attrs"] = []interface{}{obj}
+	}
+	attrs, isList := props["attrs"].([]interface{})
+	if !isList {
+		return v
+	}
+	for _, raw := range attrs {
+		entry, isMap := raw.(map[string]interface{})
+		if !isMap {
+			continue
+		}
+		normalizeCondFormatAttrEntry(entry)
+	}
+	return v
+}
+
+// normalizeCondFormatAttrEntry applies the operator rename and the
+// compare_type value canonicalization to one attrs entry.
+func normalizeCondFormatAttrEntry(entry map[string]interface{}) {
+	if _, taken := entry["compare_type"]; !taken && !condFormatEntryHasShapeKey(entry) {
+		for _, spelling := range condFormatCompareTypeSpellings {
+			raw, present := entry[spelling]
+			if !present {
+				continue
+			}
+			// Dispatch on the VALUE, not the key: `operator` is the
+			// timePeriod rule's own slot and holds words like "yesterday"
+			// there, so only a value this enum recognizes moves. That also
+			// makes the other spellings safe to add — a `condition` holding
+			// an object or a period word stays where it is.
+			word, isStr := raw.(string)
+			if !isStr {
+				continue
+			}
+			if !slices.Contains(condFormatCompareTypes, strings.TrimSpace(word)) &&
+				canonicalCondFormatCompareType(word) == "" {
+				continue
+			}
+			entry["compare_type"] = raw
+			delete(entry, spelling)
+			break
+		}
+	}
+	val, isStr := entry["compare_type"].(string)
+	if !isStr {
+		return
+	}
+	if canon := canonicalCondFormatCompareType(val); canon != "" {
+		entry["compare_type"] = canon
+		val = canon
+	}
+	normalizeCondFormatCompareValue(entry, val)
+}
+
+// normalizeCondFormatCompareValue puts the comparison threshold in the string
+// form the numeric-comparison branch declares. The schema's `value` is a
+// STRING there ("100") while the dataBar / colorScale branches take a number,
+// so a numeric threshold under compare_type matched no oneOf alternative and
+// failed with the schema's blanket "does not match any of oneOf alternatives"
+// — a message that never names the quotes as the problem. Only entries that
+// carry compare_type and none of the number-valued branches' keys are
+// touched, so a real dataBar threshold keeps its numeric type.
+func normalizeCondFormatCompareValue(entry map[string]interface{}, compareType string) {
+	if condFormatEntryHasShapeKey(entry) {
+		return
+	}
+	raw, has := entry["value"]
+	if !has {
+		return
+	}
+	// between / notBetween read two thresholds out of one comma-separated
+	// string; a two-element list says exactly that and nothing else. Any
+	// other length is not a range, and joining it would hand the schema a
+	// plausible-looking string that passes the local shape check and fails
+	// at the backend instead.
+	if list, isList := raw.([]interface{}); isList {
+		if compareType != "between" && compareType != "notBetween" {
+			return
+		}
+		if len(list) != 2 {
+			return
+		}
+		parts := make([]string, 0, len(list))
+		for _, item := range list {
+			text, ok := condFormatScalarText(item)
+			if !ok {
+				return
+			}
+			parts = append(parts, text)
+		}
+		entry["value"] = strings.Join(parts, ",")
+		return
+	}
+	if text, ok := condFormatScalarText(raw); ok {
+		entry["value"] = text
+	}
+}
+
+// condFormatScalarText renders a numeric or boolean threshold as the literal
+// text the schema wants, and reports false for anything else (a string is
+// already right; an object has no single reading).
+func condFormatScalarText(raw interface{}) (string, bool) {
+	switch v := raw.(type) {
+	case json.Number:
+		return v.String(), true
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	case bool:
+		return strconv.FormatBool(v), true
+	}
+	return "", false
+}
+
+// condFormatEntryHasShapeKey reports whether the entry carries a key that
+// belongs to a rule type whose own contract spells the comparison `operator`.
+func condFormatEntryHasShapeKey(entry map[string]interface{}) bool {
+	for _, key := range condFormatShapeKeys {
+		if _, has := entry[key]; has {
+			return true
+		}
+	}
+	return false
+}
+
+// canonicalCondFormatCompareType returns the enum entry a caller's spelling
+// unambiguously means: an exact match, a separator/case-insensitive match
+// (LESS_THAN, less_than, lessthan), or a symbol / abbreviation from the alias
+// table. Returns "" when the value has no single reading, leaving the schema
+// to reject it with the enum inlined.
+func canonicalCondFormatCompareType(val string) string {
+	trimmed := strings.TrimSpace(val)
+	if trimmed == "" {
+		return ""
+	}
+	if slices.Contains(condFormatCompareTypes, trimmed) {
+		return ""
+	}
+	squashed := squashStyleFieldKey(trimmed)
+	for _, canon := range condFormatCompareTypes {
+		if squashStyleFieldKey(canon) == squashed {
+			return canon
+		}
+	}
+	if target, ok := condFormatCompareAliases[strings.ToLower(trimmed)]; ok {
+		return target
+	}
+	return ""
 }

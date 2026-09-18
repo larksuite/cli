@@ -65,8 +65,8 @@ type Property struct {
 	EnumDescriptions []string      `json:"enumDescriptions,omitempty"`
 	Default          interface{}   `json:"default,omitempty"`
 	Example          interface{}   `json:"example,omitempty"`
-	Minimum          *float64      `json:"minimum,omitempty"`
-	Maximum          *float64      `json:"maximum,omitempty"`
+	Minimum          *json.Number  `json:"minimum,omitempty"`
+	Maximum          *json.Number  `json:"maximum,omitempty"`
 	Format           string        `json:"format,omitempty"`
 	Required         []string      `json:"required,omitempty"`
 	Properties       *OrderedProps `json:"properties,omitempty"`
@@ -86,7 +86,7 @@ type Meta struct {
 }
 
 // OrderedProps is map[string]Property with preserved key order on MarshalJSON.
-// It is used wherever JSON output must reflect meta_data.json's natural field
+// It is used wherever JSON output must reflect the Catalog Snapshot's natural field
 // order rather than Go's default alphabetical map encoding.
 type OrderedProps struct {
 	Order []string

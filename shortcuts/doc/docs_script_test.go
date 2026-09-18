@@ -45,6 +45,41 @@ func TestDocsScriptDoesNotExposeRemovedCommandsOrFlags(t *testing.T) {
 	}
 }
 
+func TestDocsCreateWorkflowRetainsDraftWorkspace(t *testing.T) {
+	workflow, err := os.ReadFile("../../skills/lark-doc/references/lark-doc-create-workflow.md")
+	if err != nil {
+		t.Fatalf("read create workflow: %v", err)
+	}
+	text := string(workflow)
+	if !strings.Contains(text, "保留 Step 4 返回的 `work_dir` 及其中的创作草稿") {
+		t.Fatal("create workflow does not retain the draft workspace")
+	}
+
+	script, err := os.ReadFile("../../skills/lark-doc/references/lark-doc-script.md")
+	if err != nil {
+		t.Fatalf("read script reference: %v", err)
+	}
+	scriptText := string(script)
+	if !strings.Contains(scriptText, "保留 `workspace` 及其中的创作草稿") {
+		t.Fatal("script reference does not retain the draft workspace")
+	}
+
+	documents := []struct {
+		name    string
+		content string
+	}{
+		{name: "create workflow", content: text},
+		{name: "script reference", content: scriptText},
+	}
+	for _, document := range documents {
+		for _, forbidden := range []string{"cleanup-draft", "文件删除能力", "删除整个 `work_dir`", "精确删除 `workspace`"} {
+			if strings.Contains(document.content, forbidden) {
+				t.Fatalf("%s still instructs draft workspace cleanup %q", document.name, forbidden)
+			}
+		}
+	}
+}
+
 func TestDocsScriptPresentationDecisionFlagAcceptsFileAndStdin(t *testing.T) {
 	for _, flag := range DocsScript.Flags {
 		if flag.Name != "presentation-decision" {
@@ -53,7 +88,12 @@ func TestDocsScriptPresentationDecisionFlagAcceptsFileAndStdin(t *testing.T) {
 		if len(flag.Input) != 2 || flag.Input[0] != common.File || flag.Input[1] != common.Stdin {
 			t.Fatalf("presentation-decision Input = %#v, want file and stdin", flag.Input)
 		}
-		for _, want := range []string{"genre_contract and adapter", `"none"`, "or null"} {
+		for _, want := range []string{
+			"word_count and visual_plan.blocks",
+			"descriptive fields are optional",
+			"empty or null",
+			"unambiguous schema fields",
+		} {
 			if !strings.Contains(flag.Desc, want) {
 				t.Fatalf("presentation-decision help = %q, want it to contain %q", flag.Desc, want)
 			}
@@ -315,8 +355,8 @@ func TestDocsScriptInitDraftPersistsDecisionForAutomaticParse(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &initialized); err != nil {
 		t.Fatalf("decode init output: %v\n%s", err, stdout)
 	}
-	if len(initialized.Data) != 3 || initialized.Data["workspace"] == nil || initialized.Data["draft_path"] == nil || initialized.Data["tip"] == nil {
-		t.Fatalf("init data = %#v, want workspace, draft_path, and tip", initialized.Data)
+	if len(initialized.Data) != 4 || initialized.Data["cwd"] == nil || initialized.Data["workspace"] == nil || initialized.Data["draft_path"] == nil || initialized.Data["tip"] == nil {
+		t.Fatalf("init data = %#v, want cwd, workspace, draft_path, and tip", initialized.Data)
 	}
 	var result docsScriptDraftResult
 	rawResult, err := json.Marshal(initialized.Data)
@@ -327,6 +367,10 @@ func TestDocsScriptInitDraftPersistsDecisionForAutomaticParse(t *testing.T) {
 		t.Fatalf("decode init data: %v", err)
 	}
 	draftPath := result.DraftPath
+	cwd, err := os.Getwd()
+	if err != nil || result.CWD != cwd {
+		t.Fatalf("cwd = %q, want %q (error %v)", result.CWD, cwd, err)
+	}
 	if result.Tip != docsScriptDraftTip {
 		t.Fatalf("tip = %q, want %q", result.Tip, docsScriptDraftTip)
 	}
@@ -371,6 +415,176 @@ func TestDocsScriptInitDraftPersistsDecisionForAutomaticParse(t *testing.T) {
 	}
 	if parsed.Data.Assessment.Status != docsScriptAssessmentFailed || len(parsed.Data.Diagnostics) != 3 {
 		t.Fatalf("result = %#v, want failed assessment with persisted word-count, whiteboard, and html diagnostics", parsed.Data)
+	}
+}
+
+func TestDocsScriptInitDraftNormalizesWindowsCommandShimQuotes(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-init-draft-shell-quotes"))
+	decision := `{"audience":"普通读者","reader_task":"复现实验","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"复现实验","blocks":[]}}`
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", "'" + decision + "'",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("initialize draft with Windows command-shim quotes: %v", err)
+	}
+
+	var initialized struct {
+		Data docsScriptDraftResult `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &initialized); err != nil {
+		t.Fatalf("decode init output: %v\n%s", err, stdout)
+	}
+	savedDecision, err := os.ReadFile(filepath.Join(initialized.Data.Workspace, docsScriptDecisionFile))
+	if err != nil {
+		t.Fatalf("read saved decision: %v", err)
+	}
+	if got := string(savedDecision); got != decision {
+		t.Fatalf("saved decision = %q, want normalized JSON %q", got, decision)
+	}
+}
+
+func TestDocsScriptInitDraftRecoversPowerShellDequotedDecisionFromSchema(t *testing.T) {
+	tests := []struct {
+		name           string
+		dequoted       string
+		wantNormalized string
+	}{
+		{
+			name:           "keys and values",
+			dequoted:       `{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:normal,word_count:{min:10,max:null},visual_plan:{reason:c,blocks:[{type:img,min_count:1,purpose:d}]}}`,
+			wantNormalized: `{"audience":"a","reader_task":"b","genre_contract":null,"adapter":null,"presentation_mode":"normal","word_count":{"min":10,"max":null},"visual_plan":{"reason":"c","blocks":[{"type":"img","min_count":1,"purpose":"d"}]}}`,
+		},
+		{
+			name:           "values only",
+			dequoted:       `{"audience":a,"reader_task":b,"genre_contract":null,"adapter":null,"presentation_mode":normal,"visual_plan":{"reason":c,"blocks":[]}}`,
+			wantNormalized: `{"audience":"a","reader_task":"b","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"c","blocks":[]}}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			withDocsWorkingDir(t, workDir)
+			f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-init-draft-dequoted-json"))
+
+			err := mountAndRunDocs(t, DocsScript, []string{
+				"+script",
+				"--command", docsScriptInitDraft,
+				"--presentation-decision", test.dequoted,
+				"--as", "bot",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("initialize draft with PowerShell-dequoted JSON: %v", err)
+			}
+
+			var initialized struct {
+				Data docsScriptDraftResult `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &initialized); err != nil {
+				t.Fatalf("decode init output: %v\n%s", err, stdout)
+			}
+			savedDecision, err := os.ReadFile(filepath.Join(initialized.Data.Workspace, docsScriptDecisionFile))
+			if err != nil {
+				t.Fatalf("read saved decision: %v", err)
+			}
+			if got := string(savedDecision); got != test.wantNormalized {
+				t.Fatalf("saved decision = %q, want schema-normalized JSON %q", got, test.wantNormalized)
+			}
+		})
+	}
+}
+
+func TestDocsScriptPowerShellDequotedRecoveryUsesOriginalValidation(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-dequoted-original-validation"))
+	dequoted := `{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:decorative,visual_plan:{reason:c,blocks:[{type:img,min_count:0}]}}`
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", dequoted,
+		"--as", "bot",
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
+	if !strings.Contains(err.Error(), "visual_plan.blocks[0].min_count must be positive") {
+		t.Fatalf("error = %v, want original Presentation Decision validation", err)
+	}
+}
+
+func TestDocsScriptPresentationDecisionQuoteRecoveryUsesOriginalSchema(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-presentation-quote-schema"))
+	decision := `{"audience":"reader","reader_task":"understand","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]},"unexpected":true}`
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", "'" + decision + "'",
+		"--as", "bot",
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
+	if !strings.Contains(err.Error(), `json: unknown field "unexpected"`) {
+		t.Fatalf("error = %v, want recovered JSON to use the original strict schema", err)
+	}
+	entries, readErr := os.ReadDir(workDir)
+	if readErr != nil {
+		t.Fatalf("read work directory: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed quote recovery created files: %#v", entries)
+	}
+}
+
+func TestDocsScriptPresentationDecisionFileRemainsStrictJSON(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	if err := os.WriteFile("decision.json", []byte(`{audience:reader,reader_task:understand}`), 0o600); err != nil {
+		t.Fatalf("write decision: %v", err)
+	}
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-decision-file-strict-json"))
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", "@./decision.json",
+		"--as", "bot",
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error does not expose a typed problem: %v", err)
+	}
+	if problem.Hint != "" {
+		t.Fatalf("hint = %q, want no shell-mangling guidance for strict @file JSON", problem.Hint)
+	}
+}
+
+func TestDocsScriptPresentationDecisionFileAcceptsUTF8BOM(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	decision := `{"audience":"普通读者","reader_task":"复现实验","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"复现实验","blocks":[]}}`
+	if err := os.WriteFile("decision.json", []byte("\uFEFF"+decision), 0o600); err != nil {
+		t.Fatalf("write decision: %v", err)
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-decision-file-bom"))
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", "@./decision.json",
+		"--dry-run",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("dry-run init with BOM-prefixed decision file: %v", err)
 	}
 }
 
@@ -473,7 +687,8 @@ func TestDocsScriptPresentationDecisionListCountsULAndOL(t *testing.T) {
 		t.Fatalf("diagnostics = %#v, want ul + ol to satisfy two list blocks", diagnostics)
 	}
 
-	decision.VisualPlan.Blocks[0].MinCount = 3
+	minimum := 3
+	decision.VisualPlan.Blocks[0].MinCount = &minimum
 	diagnostics := docsScriptPresentationDiagnostics(profile, decision)
 	if len(diagnostics) != 1 || diagnostics[0].Code != docsScriptCodeRequiredBlock ||
 		diagnostics[0].Expected == nil || diagnostics[0].Expected.Type != docsScriptListBlockType ||
@@ -549,17 +764,10 @@ func TestDocsScriptRejectsInvalidPresentationDecision(t *testing.T) {
 		{name: "empty word count range", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":{"min":null,"max":null},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "non-positive word count", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":{"min":0,"max":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "reversed word count range", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":{"min":20,"max":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "missing required field", decision: `{"reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "missing adapter", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","presentation_mode":"normal","visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "empty genre contract", decision: `{"audience":"reader","reader_task":"understand","genre_contract":" ","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "empty adapter", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":" ","presentation_mode":"normal","visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "removed hard_rules field", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","hard_rules":[],"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "invalid presentation mode", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"decorative","visual_plan":{"reason":"visual","blocks":[]}}`},
-		{name: "null block plan", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":null}}`},
 		{name: "unknown block type", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"future-widget","min_count":1,"purpose":"show the result"}]}}`},
 		{name: "ordinary text block is not presentation block", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"p","min_count":2,"purpose":"fill the quota"}]}}`},
 		{name: "non-positive block minimum", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"img","min_count":0,"purpose":"show the result"}]}}`},
-		{name: "missing block purpose", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"img","min_count":1,"purpose":""}]}}`},
 		{name: "duplicate block type", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"img","min_count":1,"purpose":"one"},{"type":"img","min_count":1,"purpose":"two"}]}}`},
 		{name: "multiple values", decision: `{} {}`},
 	}
@@ -575,6 +783,30 @@ func TestDocsScriptRejectsInvalidPresentationDecision(t *testing.T) {
 			}, f, nil)
 			assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
 		})
+	}
+}
+
+func TestDocsScriptPresentationDecisionMangledInlineJSONSuggestsFileInput(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-presentation-shell-mangled"))
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", `{audience:reader,reviewer,reader_task:understand}`,
+		"--as", "bot",
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error does not expose a typed problem: %v", err)
+	}
+	if got := problem.Hint; got != docsScriptDecisionShellHint {
+		t.Fatalf("hint = %q, want %q", got, docsScriptDecisionShellHint)
+	}
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("error = %T (%v), want preserved *json.SyntaxError cause", err, err)
 	}
 }
 
@@ -608,6 +840,118 @@ func TestDocsScriptPresentationDecisionAllowsNoneOrNullRoutes(t *testing.T) {
 				t.Fatalf("Adapter nil = %v, want %v", got, test.wantAdapterNil)
 			}
 		})
+	}
+}
+
+func TestDocsScriptPresentationDecisionOptionalDescriptions(t *testing.T) {
+	for _, raw := range []string{
+		`{"visual_plan":{"blocks":[{"type":"whiteboard","min_count":1}]}}`,
+		`{"audience":"","reader_task":" ","genre_contract":"","adapter":" ","presentation_mode":"","visual_plan":{"reason":"","blocks":[{"type":"whiteboard","min_count":1,"purpose":""}]}}`,
+		`{"audience":null,"reader_task":null,"genre_contract":null,"adapter":null,"presentation_mode":null,"visual_plan":{"reason":null,"blocks":[{"type":"whiteboard","min_count":1,"purpose":null}]}}`,
+		`{"presentation_mode":"custom","word_count":{"min":2,"max":5},"visual_plan":{"blocks":[{"type":"whiteboard","min_count":1}]}}`,
+	} {
+		decision, err := parseDocsScriptPresentationDecision(raw)
+		if err != nil {
+			t.Fatalf("parse %s: %v", raw, err)
+		}
+		diagnostics := docsScriptPresentationDiagnostics(docsScriptPublicProfile{WordCount: 3}, decision)
+		if len(diagnostics) != 1 || diagnostics[0].Code != docsScriptCodeRequiredBlock || diagnostics[0].Expected.Type != "whiteboard" {
+			t.Fatalf("missing whiteboard diagnostics = %#v", diagnostics)
+		}
+		profile := docsScriptPublicProfile{WordCount: 3, Blocks: []docxparse.BlockShare{{Type: "whiteboard", Count: 1}}}
+		if got := docsScriptPresentationDiagnostics(profile, decision); len(got) != 0 {
+			t.Fatalf("satisfied constraints = %#v", got)
+		}
+	}
+}
+
+func TestDocsScriptInitDraftPreservesMinimalDecision(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-minimal-decision"))
+	raw := `{}`
+	if err := mountAndRunDocs(t, DocsScript, []string{"+script", "--command", docsScriptInitDraft, "--presentation-decision", raw}, f, stdout); err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Data docsScriptDraftResult `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(filepath.Join(result.Data.CWD, result.Data.Workspace, docsScriptDecisionFile))
+	if err != nil || string(saved) != raw {
+		t.Fatalf("saved decision = %q, %v", saved, err)
+	}
+}
+
+func TestDocsScriptOptionalBlockConstraints(t *testing.T) {
+	tests := []struct {
+		name       string
+		decision   string
+		wantStatus string
+		wantCode   string
+	}{
+		{name: "no constraints", decision: `{}`},
+		{name: "no visual plan", decision: `{"audience":"reader"}`},
+		{name: "null visual plan", decision: `{"visual_plan":null}`},
+		{name: "no blocks", decision: `{"visual_plan":{}}`},
+		{name: "reason only", decision: `{"visual_plan":{"reason":"plain text"}}`},
+		{name: "empty blocks", decision: `{"visual_plan":{"blocks":[]}}`},
+		{name: "null blocks", decision: `{"visual_plan":{"blocks":null}}`},
+		{name: "empty entry", decision: `{"visual_plan":{"blocks":[{}]}}`},
+		{name: "no type", decision: `{"visual_plan":{"blocks":[{"min_count":2}]}}`},
+		{name: "no minimum", decision: `{"visual_plan":{"blocks":[{"type":"whiteboard"}]}}`},
+		{name: "null fields", decision: `{"visual_plan":{"blocks":[{"type":null,"min_count":null}]}}`},
+		{name: "word count only", decision: `{"word_count":{"min":1,"max":5}}`},
+		{name: "word count enforced without plan", decision: `{"word_count":{"min":10,"max":null}}`, wantStatus: docsScriptAssessmentFailed, wantCode: docsScriptCodeWordCountRange},
+		{name: "complete constraint enforced", decision: `{"visual_plan":{"blocks":[{"type":"table","min_count":1}]}}`, wantStatus: docsScriptAssessmentFailed, wantCode: docsScriptCodeRequiredBlock},
+		{name: "partial entries do not hide complete constraint", decision: `{"visual_plan":{"blocks":[{}, {"type":"table"}, {"min_count":1}, {"type":"table","min_count":1}]}}`, wantStatus: docsScriptAssessmentFailed, wantCode: docsScriptCodeRequiredBlock},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("optional-block-constraints"))
+			err := mountAndRunDocs(t, DocsScript, []string{
+				"+script", "--command", docsScriptParse, "--content", `<p>plain text</p>`, "--presentation-decision", test.decision,
+			}, f, stdout)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var result struct {
+				Data docsScriptParseResult `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			wantStatus := test.wantStatus
+			if wantStatus == "" {
+				wantStatus = docsScriptAssessmentPassed
+			}
+			if result.Data.Assessment.Status != wantStatus {
+				t.Fatalf("assessment = %+v, want %s", result.Data, wantStatus)
+			}
+			if test.wantCode == "" && len(result.Data.Diagnostics) != 0 || test.wantCode != "" && (len(result.Data.Diagnostics) != 1 || result.Data.Diagnostics[0].Code != test.wantCode) {
+				t.Fatalf("diagnostics = %+v, want code %q", result.Data.Diagnostics, test.wantCode)
+			}
+		})
+	}
+}
+
+func TestDocsScriptRejectsInvalidProvidedBlockFields(t *testing.T) {
+	for _, raw := range []string{
+		`null`,
+		`{"visual_plan":"bad"}`,
+		`{"visual_plan":{"blocks":{}}}`,
+		`{"visual_plan":{"blocks":[{"type":""}]}}`,
+		`{"visual_plan":{"blocks":[{"type":"unknown"}]}}`,
+		`{"visual_plan":{"blocks":[{"type":42}]}}`,
+		`{"visual_plan":{"blocks":[{"min_count":0}]}}`,
+		`{"visual_plan":{"blocks":[{"min_count":-1}]}}`,
+		`{"visual_plan":{"blocks":[{"min_count":1.5}]}}`,
+		`{"visual_plan":{"blocks":[{"min_count":"1"}]}}`,
+	} {
+		_, err := parseDocsScriptPresentationDecision(raw)
+		assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
 	}
 }
 

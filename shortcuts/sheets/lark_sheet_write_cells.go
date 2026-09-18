@@ -6,17 +6,18 @@ package sheets
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
+	"io/fs"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/imageconfig"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -64,7 +65,7 @@ var CellsSet = common.Shortcut{
 			if err != nil {
 				return err
 			}
-			_, err = cellsSetWritesOps(runtime, token)
+			_, _, err = cellsSetWritesOps(runtime, token)
 			return err
 		}
 		return validateViaInput(cellsSetInput)(ctx, runtime)
@@ -72,7 +73,7 @@ var CellsSet = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		if runtime.Changed("writes") {
-			ops, _ := cellsSetWritesOps(runtime, token)
+			ops, _, _ := cellsSetWritesOps(runtime, token)
 			return invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
 				"excel_id":   token,
 				"operations": ops,
@@ -88,7 +89,7 @@ var CellsSet = common.Shortcut{
 			return err
 		}
 		if runtime.Changed("writes") {
-			ops, err := cellsSetWritesOps(runtime, token)
+			ops, notes, err := cellsSetWritesOps(runtime, token)
 			if err != nil {
 				return err
 			}
@@ -97,59 +98,86 @@ var CellsSet = common.Shortcut{
 				"operations": ops,
 			})
 			if err != nil {
-				return err
+				// A batch is fail-fast, not transactional, and a transport
+				// failure leaves the outcome unknown either way — so a
+				// narrowed item may well be on the sheet. Its footprint has
+				// to travel with the error, or the caller reconciles against
+				// the range they stated rather than the one that was written.
+				return attachSheetsWarningsToError(err, notes)
 			}
-			runtime.Out(out, nil)
+			runtime.Out(appendSheetsWarnings(out, notes), nil)
 			return nil
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
-		input, err := cellsSetInput(runtime, token, sheetID, sheetName)
+		input, narrowNote, err := cellsSetInputWithNote(runtime, token, sheetID, sheetName)
 		if err != nil {
 			return err
 		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "set_cell_range", input)
 		if err != nil {
-			return err
+			return attachSheetsWarningsToError(err, narrowingNotes(narrowNote))
 		}
-		runtime.Out(out, nil)
+		runtime.Out(appendSheetsWarnings(out, narrowingNotes(narrowNote)), nil)
 		return nil
 	},
 }
 
+// narrowingNotes lifts fitCellsRange's note into the warnings slice the
+// success envelope carries. Silence would be the bug: the caller stated an
+// extent, and the cells covered less of it than they thought. Reconstructing
+// the note from the flags afterwards was tried and dropped — the reconstruction
+// only ever saw the top-level flags, so a --writes item or a +batch-update
+// sub-op that was narrowed reported nothing at all.
+func narrowingNotes(note string) []string {
+	if note == "" {
+		return nil
+	}
+	return []string{note}
+}
+
 // cellsSetWritesOps parses --writes ([{sheet_name|sheet_id, range, cells}, …])
 // and expands it into set_cell_range operations for ONE atomic batch_update.
-// Single source of truth per item: the sheet selector LIVES IN THE ITEM (same
-// convention as +batch-update sub-ops and +styles-put items — no top-level
-// fallback, no precedence table to remember). Every item runs through the
+// The sheet selector lives in the item (same convention as +batch-update
+// sub-ops and +styles-put items); a top-level --sheet-name / --sheet-id fills
+// in for the items that carry none, so a whole-payload single-sheet write
+// states its sheet once. Every item runs through the
 // exact standalone pipeline (key vocabulary, style acceptance layer, matrix
 // precheck, schema validation) via a per-item flag view, and item errors are
 // aggregated so one retry fixes them all. The payload rewrites land one step
 // earlier still, in normalizeWritesFlagValue, since the array is schema-checked
 // before it gets here.
-func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interface{}, error) {
+func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interface{}, []string, error) {
 	for _, conflicting := range []string{"range", "cells", "copy-to-range"} {
 		if runtime.Changed(conflicting) {
-			return nil, sheetsValidationForFlag("writes", "--writes and --%s are mutually exclusive: single region → --range + --cells; multiple regions → --writes alone", conflicting)
+			return nil, nil, sheetsValidationForFlag("writes", "--writes and --%s are mutually exclusive: single region → --range + --cells; multiple regions → --writes alone", conflicting)
 		}
 	}
-	if strings.TrimSpace(runtime.Str("sheet-name")) != "" || strings.TrimSpace(runtime.Str("sheet-id")) != "" {
-		return nil, sheetsValidationForFlag("writes", "--writes does not accept a top-level sheet selector — put sheet_name (or sheet_id) inside each writes item, same as +batch-update sub-ops")
-	}
+	// A top-level selector is the DEFAULT for items that name no sheet of
+	// their own, the same way --allow-overwrite fills the items below. It
+	// used to be rejected outright on the reasoning that one selector per
+	// item leaves no precedence table to remember; the precedence that
+	// actually needs remembering is the one the caller wrote, and every
+	// single-sheet --writes call had to repeat it on every item to say
+	// nothing new. 09-04..07: 19059 rejections, the single largest
+	// +cells-set cluster, on payloads that named the sheet exactly once.
+	topSheetID := strings.TrimSpace(runtime.Str("sheet-id"))
+	topSheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 	raw, err := requireJSONArray(runtime, "writes")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(raw) == 0 {
-		return nil, sheetsValidationForFlag("writes", "--writes must be a non-empty JSON array of {sheet_name, range, cells} items")
+		return nil, nil, sheetsValidationForFlag("writes", "--writes must be a non-empty JSON array of {sheet_name, range, cells} items")
 	}
 	if len(raw) > maxBatchOperations {
-		return nil, sheetsValidationForFlag("writes", "--writes accepts at most %d items; got %d — merge adjacent regions or split into several calls", maxBatchOperations, len(raw))
+		return nil, nil, sheetsValidationForFlag("writes", "--writes accepts at most %d items; got %d — merge adjacent regions or split into several calls", maxBatchOperations, len(raw))
 	}
 	topLevelOverwrite := runtime.Bool("allow-overwrite")
 	ops := make([]interface{}, 0, len(raw))
+	var notes []string
 	var probs []error
 	var totalCells int64
 	for i, v := range raw {
@@ -172,7 +200,12 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 		fv.normalizeRangeSheetPrefix()
 		sheetID := strings.TrimSpace(fv.Str("sheet-id"))
 		sheetName := strings.TrimSpace(fv.Str("sheet-name"))
-		input, err := cellsSetInput(fv, token, sheetID, sheetName)
+		if sheetID == "" && sheetName == "" {
+			// Read after normalizeRangeSheetPrefix, so an item that named its
+			// sheet in the range ("Sheet2!A1:B2") still wins over the default.
+			sheetID, sheetName = topSheetID, topSheetName
+		}
+		input, note, err := cellsSetInputWithNote(fv, token, sheetID, sheetName)
 		if err != nil {
 			// Prefix with the item index WITHOUT flattening: cellsSetInput's
 			// errors carry the domain's prescriptions in Hint (requireSheetSelector's
@@ -182,6 +215,9 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 			probs = append(probs, prefixValidationIssue(fmt.Sprintf("--writes[%d]", i), err))
 			continue
 		}
+		if note != "" {
+			notes = append(notes, fmt.Sprintf("--writes[%d]: %s", i, note))
+		}
 		if cells, ok := input["cells"].([]interface{}); ok {
 			for _, row := range cells {
 				if r, ok := row.([]interface{}); ok {
@@ -190,7 +226,7 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 			}
 		}
 		if err := checkBatchStampBudget("writes", totalCells); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		ops = append(ops, map[string]interface{}{
 			"tool_name": "set_cell_range",
@@ -198,9 +234,9 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 		})
 	}
 	if err := joinWritesValidationErrors(probs); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return ops, nil
+	return ops, notes, nil
 }
 
 // joinWritesValidationErrors mirrors joinStyleValidationErrors for --writes:
@@ -224,36 +260,67 @@ func joinWritesValidationErrors(probs []error) error {
 		return verr
 	}
 	const maxShown = 8
-	msgs := make([]string, 0, len(probs))
-	for _, e := range probs {
-		msgs = append(msgs, aggregatedIssueText(e))
-	}
+	msgs := collapseAggregatedIssues(probs)
+	distinct := len(msgs)
 	suffix := ""
 	if len(msgs) > maxShown {
 		suffix = fmt.Sprintf(" (+%d more)", len(msgs)-maxShown)
 		msgs = msgs[:maxShown]
 	}
+	if distinct < len(probs) {
+		return sheetsValidationForFlag("writes", "--writes has %d issues (%d distinct): %s%s", len(probs), distinct, strings.Join(msgs, " | "), suffix).
+			WithCause(probs[0])
+	}
 	return sheetsValidationForFlag("writes", "--writes has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix).
 		WithCause(probs[0])
 }
 
+// cellsSetInput keeps the batchTranslateFn shape every dispatch entry shares.
+// Callers that report to the user take cellsSetInputWithNote instead.
 func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
+	input, _, err := cellsSetInputWithNote(runtime, token, sheetID, sheetName)
+	return input, err
+}
+
+// cellsSetInputWithNote also hands back the narrowing note fitCellsRange
+// produced, empty when the range was left as written. The note is the only
+// record that the shipped extent is not the stated one, and it has to reach
+// the caller on every path that builds this input — standalone, a --writes
+// item, and a +batch-update sub-op — not just the standalone one.
+func cellsSetInputWithNote(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, string, error) {
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	if strings.TrimSpace(runtime.Str("range")) == "" {
-		return nil, sheetsValidationForFlag("range", "--range is required")
+	// --start-cell is the anchor spelling +csv-put documents, and --range reads
+	// as one here too: fitCellsRange sizes the write from the payload, so the
+	// two carry the same value with the same meaning. It is a declared hidden
+	// flag rather than a normalizer alias because a registered flag shadows an
+	// alias of the same name, which would silently cost the spelling entirely.
+	// --range stays canonical, so it wins when both are given.
+	rangeStr := strings.TrimSpace(runtime.Str("range"))
+	if rangeStr == "" {
+		rangeStr = strings.TrimSpace(runtime.Str("start-cell"))
+	}
+	if rangeStr == "" {
+		return nil, "", sheetsValidationForFlag("range", "--range is required")
 	}
 	cells, err := requireJSONArray(runtime, "cells")
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if err := normalizeTypedCellsStyleAliases(cells, "--cells"); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	rangeStr := expandAnchorRange(strings.TrimSpace(runtime.Str("range")), cells)
-	if err := checkCellsMatchRange(cells, rangeStr); err != nil {
-		return nil, err
+	rangeStr = expandAnchorRange(rangeStr, cells)
+	if err := checkCellsPayloadShape(cells); err != nil {
+		return nil, "", err
+	}
+	if err := checkRangeSheetAgreesWithSelector(rangeStr, sheetName); err != nil {
+		return nil, "", err
+	}
+	rangeStr, narrowNote, err := fitCellsRange(cells, rangeStr)
+	if err != nil {
+		return nil, "", err
 	}
 	input := map[string]interface{}{
 		"excel_id": token,
@@ -268,9 +335,9 @@ func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[stri
 		input["copy_to_range"] = copyTo
 	}
 	if err := validateInputAgainstSchema(runtime, input); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return input, nil
+	return input, narrowNote, nil
 }
 
 // CellsSetStyle stamps a single style block across every cell in --range.
@@ -304,7 +371,7 @@ var CellsSetStyle = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -395,6 +462,12 @@ var CsvPut = common.Shortcut{
 		cmd.MarkFlagsMutuallyExclusive("start-cell", "range")
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		// Order matters: --file's value is resolved to contents first, so the
+		// guard below sees the same thing it would for --csv @<path> — that is,
+		// a resolved value it skips.
+		if err := resolveCSVPathFromFileAlias(runtime); err != nil {
+			return err
+		}
 		if err := guardCSVValueIsNotFilePath(runtime); err != nil {
 			return err
 		}
@@ -415,7 +488,7 @@ var CsvPut = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -475,6 +548,85 @@ func csvPutWriteRangeFromInput(input map[string]interface{}) (string, bool) {
 	return fmt.Sprintf("%s:%s%d", anchor, endCol, endRow), true
 }
 
+// resolveCSVPathFromFileAlias reads the CSV file named by a value that arrived
+// under the --file alias, replacing the flag value with its contents exactly as
+// `--csv @<path>` would. It reports whether it did.
+//
+// --file is aliased onto --csv because agents habitually reach for it, but the
+// two names promise different things: --csv holds CSV text, --file holds a
+// path. Rewriting only the name left the path to be written into the sheet as
+// literal text, which the file-path guard then had to reject — so the alias
+// meant to save a round trip spent one instead, on an error naming a flag the
+// caller never typed (08-18..24 eval, 35 cases). A caller who writes --file
+// means a path in every vocabulary this alias was added for, so reading one is
+// the only reading; --csv keeps its guard, unchanged, for callers who type it.
+//
+// Values already resolved by the framework (--file @x / --file -) are left
+// alone: they are contents, not a path. The read goes through the same
+// cmdutil.ReadInputFile as @file, so the relative-path policy is identical —
+// an absolute path is rejected here exactly as it would be there, and stdin
+// stays the out-of-tree route.
+//
+// Exactly one value falls through untouched: one that names nothing AND is not
+// path-shaped, i.e. literal CSV text, which `--file` accepted before this rule
+// existed and still does. Every other outcome is answered here, naming --file —
+// the flag the caller actually typed. Handing an unreadable path to the --csv
+// guard instead would answer with the wrong flag and, for a file that exists
+// but cannot be read, with advice that cannot work ("pass it with @", which
+// uses this very reader).
+func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) error {
+	if runtime == nil || !flagValueCameFromAlias(runtime.Cmd, "csv", pathValuedCSVAliases...) {
+		return nil
+	}
+	// Name the spelling the caller actually typed: an error about --file for
+	// someone who wrote --csv-file is the same "flag I never typed" confusion
+	// the alias exists to remove.
+	flag := aliasSpellingUsed(runtime.Cmd, "csv", "file")
+	if runtime.InputResolvedFromSource("csv") {
+		return nil
+	}
+	raw := strings.TrimSpace(runtime.Str("csv"))
+	if raw == "" || strings.HasPrefix(raw, "@") {
+		return nil
+	}
+	data, err := cmdutil.ReadInputFile(runtime.FileIO(), raw)
+	if err != nil {
+		switch {
+		case errors.Is(err, fileio.ErrPathValidation):
+			// A real location the policy will not read (absolute, or outside
+			// the tree). The fix is stdin.
+			return sheetsValidationForFlag(flag, "--%s %v", flag, err).
+				WithCause(err).
+				WithHint("--%s reads a path relative to the current directory; for a file outside it, %s", flag, outOfTreeFileHint("csv"))
+		case errors.Is(err, fs.ErrNotExist) && !csvValueLooksLikePath(raw):
+			// Names nothing and does not look like a path: literal CSV text
+			// passed under the path-valued alias. Leave it for the --csv guard,
+			// which judges
+			// inline values on their shape.
+			return nil
+		case errors.Is(err, fs.ErrNotExist):
+			return sheetsValidationForFlag(flag, "--%s %q names no file under the current directory", flag, raw).
+				WithCause(err).
+				WithHint("--%s takes a path relative to the current directory; for a file outside it, %s", flag, outOfTreeFileHint("csv"))
+		default:
+			// Exists but cannot be read (permissions, a directory). @file
+			// shares this reader, so pointing there would be dead advice.
+			return sheetsValidationForFlag(flag, "--%s %v", flag, err).
+				WithCause(err).
+				WithHint("--%s reads the path itself; to pass contents this process cannot open, %s", flag, outOfTreeFileHint("csv"))
+		}
+	}
+	if err := runtime.Cmd.Flags().Set("csv", common.StripUTF8BOM(string(data))); err != nil {
+		return sheetsValidationForFlag(flag, "--%s: %v", flag, err).WithCause(err)
+	}
+	// The value is now file contents, so every downstream shape check has to
+	// treat it as such — the same bit @file and stdin get. Without it a file
+	// holding one path-shaped cell ("report.csv") reads back as a caller who
+	// forgot the @, and csvPutInput rejects a perfectly good CSV.
+	runtime.MarkInputResolved("csv")
+	return nil
+}
+
 // guardCSVValueIsNotFilePath catches the common slip of passing a CSV file path
 // to --csv without the "@" that reads it (e.g. `--csv data.csv` instead of
 // `--csv @data.csv`). Because any string is a valid one-cell CSV, the mistake
@@ -517,6 +669,14 @@ func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
 	if fio := runtime.FileIO(); fio != nil {
 		info, err := fio.Stat(raw)
 		if err == nil && info != nil && !info.IsDir() {
+			// The value names a real file. Reading it here was tried and
+			// reverted: --csv is documented as literal CSV text, so a caller
+			// writing the literal "./data.csv" into a cell would have silently
+			// uploaded a same-named local file instead, with the substitution
+			// reported only after the remote write. That makes the flag's
+			// meaning depend on the working directory and turns a cell write
+			// into a local-file read. File intent has to be explicit, so both
+			// routes are prescribed instead.
 			return sheetsValidationForFlag("csv",
 				"--csv value %q is an existing file, not inline CSV; to read it, pass the same path with an @ prefix (--csv @<path>), or pipe the literal text via stdin (--csv -)",
 				raw,
@@ -530,7 +690,7 @@ func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
 		"--csv value %q looks like a file path, not inline CSV, and no such file exists under the current directory",
 		raw,
 	).WithHint(
-		"to read a file: --csv @<path> (relative to the current directory; @ rejects absolute paths — pipe such a file in via stdin instead: --csv - < <path>). To write this text into the cell verbatim, pass it on stdin the same way (--csv -); values arriving via stdin or @file skip this check",
+		"to read a file: --csv @<path>, relative to the current directory; for a file outside it, " + outOfTreeFileHint("csv") + ". To write this text into the cell verbatim, pass it on stdin the same way; values arriving via stdin or @file skip this check",
 	)
 }
 
@@ -640,24 +800,24 @@ var DropdownSet = common.Shortcut{
 	HasFormat:   true,
 	Flags:       flagsFor("+dropdown-set"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateViaInput(dropdownSetInput)(ctx, runtime); err != nil {
-			return err
-		}
-		warnDropdownSourceRangeHighlight(runtime)
-		return nil
+		return validateViaInput(dropdownSetInput)(ctx, runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := dropdownSetInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "set_cell_range", input)
+		dry := invokeToolDryRun(token, ToolKindWrite, "set_cell_range", input)
+		if warning := dropdownSourceRangeHighlightWarning(runtime); warning != "" {
+			dry.Set("warning_message", warning)
+		}
+		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -669,7 +829,7 @@ var DropdownSet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		runtime.Out(out, nil)
+		runtime.Out(appendSheetsWarnings(out, dropdownHighlightWarnings(runtime)), nil)
 		return nil
 	},
 }
@@ -822,81 +982,175 @@ func validateDropdownSourceOrOptions(runtime flagView) (int, error) {
 // isOptionError=true (highlight + range > 2000 is an unsupported combo).
 const dropdownSourceRangeHighlightLimit = 2000
 
-// warnDropdownSourceRangeHighlight emits a soft stderr warning when the user
+// dropdownSourceRangeHighlightWarning returns a soft warning when the user
 // targets a --source-range larger than dropdownSourceRangeHighlightLimit while
-// highlight is on (the server-side default and the most common path).
-// Inline --options is not subject to this limit (server has no inline count
-// or per-item length cap; only the listFromRange + highlight combo is).
-// Validate phase only — never blocks the request. Caller must already have
+// highlight is on (the server-side default and the most common path), or ""
+// when the request is within limits. Inline --options is not subject to this
+// limit (server has no inline count or per-item length cap; only the
+// listFromRange + highlight combo is).
+//
+// It never blocks the request: the dropdown is still installed, just in the
+// server's option-error state. Because that state is a property of the RESULT
+// the caller now owns, the warning travels in the success payload's `warnings`
+// (and in the dry-run preview), not on stderr. Callers must already have
 // confirmed the source-or-options validation passed.
-func warnDropdownSourceRangeHighlight(runtime *common.RuntimeContext) {
+func dropdownSourceRangeHighlightWarning(runtime flagView) string {
 	sourceRange := strings.TrimSpace(runtime.Str("source-range"))
 	if sourceRange == "" {
-		return // inline --options mode — no server-side size cap applies
+		return "" // inline --options mode — no server-side size cap applies
 	}
 	// highlight is tri-state: omitted = ON (server default), --highlight=true
 	// = ON, --highlight=false = OFF. Only the OFF case avoids the warning.
 	if runtime.Changed("highlight") && !runtime.Bool("highlight") {
-		return
+		return ""
 	}
 	rows, cols, err := rangeDimensions(sourceRange)
 	if err != nil {
-		return // already errored upstream; don't double-report
+		return "" // already errored upstream; don't double-report
 	}
 	cellCount := rows * cols
 	if cellCount <= dropdownSourceRangeHighlightLimit {
-		return
+		return ""
 	}
-	fmt.Fprintf(runtime.IO().ErrOut,
-		"warning: --source-range covers %d cells; server marks the dropdown as option-error when highlight is on and the source exceeds %d cells. Pass --highlight=false to suppress this.\n",
+	return fmt.Sprintf(
+		"warning: --source-range covers %d cells; server marks the dropdown as option-error when highlight is on and the source exceeds %d cells. Pass --highlight=false to suppress this.",
 		cellCount, dropdownSourceRangeHighlightLimit)
+}
+
+// dropdownHighlightWarnings adapts dropdownSourceRangeHighlightWarning to the
+// []string shape appendSheetsWarnings takes.
+func dropdownHighlightWarnings(runtime flagView) []string {
+	if warning := dropdownSourceRangeHighlightWarning(runtime); warning != "" {
+		return []string{warning}
+	}
+	return nil
 }
 
 // ─── range parsing helpers ────────────────────────────────────────────
 
-// checkCellsMatchRange rejects, before any network call, the cells-vs-range
-// mismatches the server would otherwise fail mid-batch ("cells row count (N)
-// does not match range row count (M)" — a recurring server-side error cluster
-// in eval traces, and the failure leaves earlier batch sub-ops applied).
-// Single-cell ranges are checked too: the server enforces the same strict
-// match on a bare "A1" (07-21 rerun, 12 rows against range row count 1).
-// Callers reach this with the anchor already resolved by expandAnchorRange,
-// so what still fails here is a range that states an extent and disagrees
-// with the payload. An unparsable range is the range validator's job, not
-// ours.
+// liftFlatCellsRow gives a one-dimensional payload its second dimension. Every
+// spreadsheet library these callers arrive from reads a flat list as one ROW
+// (openpyxl's append, the Sheets API's default majorDimension), so that is the
+// reading taken — except where the caller's own range says otherwise: a range
+// one column wide and several rows tall can only be asking for a column, and
+// writing a row there would put the data somewhere they did not name.
 //
-// The message states BOTH axes and hands back the range that fits the payload.
-// This is the largest single --cells failure class in the corpus (132
-// rejections across 93 case-runs), driven by off-by-one on the inclusive end
-// (A1:C10 is 10 rows, not 9) and by hand-counted ranges against real data;
-// reporting one axis at a time cost a second round trip whenever both were
-// off, and 16 of the 132 retried straight into the same error.
+// A payload that already has rows is left alone, and so is a mixed one, where
+// no single reading covers both halves. 09-04..07: 396 rejections read
+// "[0]: expected type array".
+func liftFlatCellsRow(cells []interface{}, rangeStr string) []interface{} {
+	if len(cells) == 0 {
+		return cells
+	}
+	lifted := make([]interface{}, 0, len(cells))
+	for _, item := range cells {
+		if _, isRow := item.([]interface{}); isRow {
+			return cells // already 2D
+		}
+		cell, isObj := item.(map[string]interface{})
+		if !isObj {
+			if scalar := scalarCellValue(item); scalar != nil {
+				cell = scalar
+			} else {
+				return cells // not a cell either; the schema names it
+			}
+		}
+		lifted = append(lifted, cell)
+	}
+	if target, err := parseCellRange(rangeStr); err == nil && target.cols == 1 && target.rows > 1 {
+		column := make([]interface{}, 0, len(lifted))
+		for _, cell := range lifted {
+			// Bound to an interface value before appending: a []interface{}
+			// handed straight to append's ...interface{} is the shape
+			// asasalint flags, since it usually means a spread was intended.
+			var row interface{} = []interface{}{cell}
+			column = append(column, row)
+		}
+		return column
+	}
+	var single interface{} = lifted
+	return []interface{}{single}
+}
+
+// checkCellsPayloadShape rejects, before any network call, a --cells payload
+// that has no extent to write at all: empty, or rows of differing widths that
+// padRaggedCellRows could not square off (a row that is not an array).
 //
-// The computed range is NOT applied automatically: growing it would overwrite
-// rows the caller never mentioned and shrinking it would silently drop data.
-func checkCellsMatchRange(cells []interface{}, rangeStr string) error {
+// It used to also enforce cells-vs-range agreement, which the server checks
+// too ("cells row count (N) does not match range row count (M)", a recurring
+// cluster in eval traces whose failure leaves earlier batch sub-ops applied).
+// That comparison is gone: the extent is no longer enforced in either
+// direction: fitCellsRange
+// sizes the write from the payload and reports what it shipped. Shrinking was
+// already applied (122 rejections in the 08-29..31 reflow on payloads that
+// were unambiguous); keeping the rejection only for the other direction was
+// the least defensible of the three available positions, since the command
+// overwrites non-empty cells by default (--allow-overwrite) and a bare
+// single-cell range has always been an anchor. What that costs is a real
+// check: a payload built one row short now writes quietly instead of failing
+// here, which is why the note fitCellsRange returns names the shipped range
+// rather than staying silent. 09-04..07: 21425 rejections across both
+// directions.
+func checkCellsPayloadShape(cells []interface{}) error {
 	if len(cells) == 0 {
 		return sheetsValidationForFlag("cells",
 			"--cells is empty; to clear values use +cells-clear --scope content (needs --yes), or pass a non-empty 2D array")
 	}
-	target, err := parseCellRange(rangeStr)
-	if err != nil {
-		return nil //nolint:nilerr // an unparsable range is reported by the range validation path with proper context
-	}
-	payloadRows, payloadCols, ok := cellsExtent(cells)
-	if !ok {
-		// A payload with no single extent has nothing to compare against the
-		// range, so it is its own bug and gets its own message — reporting it
-		// as a range mismatch would send the caller off to edit --range.
+	if _, _, ok := cellsExtent(cells); !ok {
+		// A payload with no single extent has no extent to write at, so it is
+		// its own bug and gets its own message — reporting it against --range
+		// would send the caller off to edit the wrong flag.
 		return raggedCellsError(cells)
 	}
-	if payloadRows == target.rows && payloadCols == target.cols {
-		return nil
+	return nil
+}
+
+// fitCellsRange reconciles the payload's extent with the range that was
+// stated. What it may do depends on which of the two the caller wrote.
+//
+// A bare top-left ("A1", or the --start-cell spelling of it) states no extent
+// at all: it is an anchor, and the extent follows the data, which is how every
+// library these callers arrive from spells a write (gspread's update("A1",
+// values), openpyxl's anchor assignment) and how --csv-put already reads. Most
+// anchors are expanded before this by expandAnchorRange; one carrying a sheet
+// qualifier reaches here still anchored.
+//
+// A rectangle ("A1:B2") states an extent, and the two directions are not
+// symmetric. Narrowing touches nothing outside the payload — the dominant
+// shape is a one-cell title against the range it will occupy once merged — so
+// it proceeds, and says so. Widening writes past the boundary the caller drew,
+// onto cells they did not name, with overwrite on by default; a warning
+// returned after the write cannot prevent that, so it is refused instead. The
+// caller who meant the payload's extent has two ways to say so, and the error
+// names both.
+func fitCellsRange(cells []interface{}, rangeStr string) (string, string, error) {
+	target, err := parseCellRange(rangeStr)
+	if err != nil {
+		// A range this cannot parse is not this function's to report: the
+		// range is forwarded untouched and the parse failure surfaces from
+		// whoever actually needs it taken apart.
+		return rangeStr, "", nil //nolint:nilerr // reshaping is skipped, not failed
 	}
-	return sheetsValidationForFlag("cells",
-		"--cells is %d rows × %d columns but --range %q spans %d rows × %d columns; either write this payload to --range %q (same top-left, sized to the cells passed) or resize --cells to %d rows × %d columns — an A1 range covers both ends, so %q spans %d rows",
-		payloadRows, payloadCols, rangeStr, target.rows, target.cols,
-		target.sized(payloadRows, payloadCols), target.rows, target.cols, rangeStr, target.rows)
+	rows, cols, ok := cellsExtent(cells)
+	if !ok || (rows == target.rows && cols == target.cols) {
+		return rangeStr, "", nil
+	}
+	fitted := target.sized(rows, cols)
+	if target.anchored {
+		return fitted, fmt.Sprintf(
+			"--range %q is a single cell, so it was read as the top-left anchor and the write covers %q (%d rows × %d columns, from --cells)",
+			rangeStr, fitted, rows, cols), nil
+	}
+	if rows > target.rows || cols > target.cols {
+		return "", "", sheetsValidationForFlag("cells",
+			"--cells is %d rows × %d columns but --range %q covers %d × %d; writing it would reach past the range onto cells the call does not name",
+			rows, cols, rangeStr, target.rows, target.cols).
+			WithHint("state the extent you mean (--range %q), or drop the end cell to write from an anchor (--range %q), which takes its extent from --cells",
+				fitted, target.sheetQualifier+target.start)
+	}
+	return fitted, fmt.Sprintf(
+		"--cells is %d rows × %d columns against --range %q (%d × %d), so the write was narrowed to %q — cells land at the same top-left, and no cell outside them is touched",
+		rows, cols, rangeStr, target.rows, target.cols, fitted), nil
 }
 
 // cellsExtent measures a --cells payload: its row count and the width every
@@ -956,6 +1210,29 @@ func raggedCellsError(cells []interface{}) error {
 		"--cells has %d rows but every row is empty; each row needs one entry per column, e.g. [[{\"value\":…}]]", len(cells))
 }
 
+// checkRangeSheetAgreesWithSelector rejects a --range whose sheet prefix names
+// a different sheet than the selector does. A prefix only survives to here
+// when the caller passed a selector too (every entry point consumes it into
+// the selector when none was given), so a disagreement is the caller naming
+// two sheets for one write, and the request would ship a range pointing at one
+// next to a sheet_name pointing at the other.
+//
+// This used to be caught sideways, by the extent check failing on a range that
+// was never sized; now that the extent follows the payload, the conflict needs
+// naming in its own right.
+func checkRangeSheetAgreesWithSelector(rangeStr, sheetName string) error {
+	if strings.TrimSpace(sheetName) == "" {
+		return nil // an id-only selector has no name to compare against
+	}
+	prefix, _, ok := scanSheetQualifier(strings.TrimSpace(rangeStr))
+	if !ok || strings.EqualFold(prefix, strings.TrimSpace(sheetName)) {
+		return nil
+	}
+	return sheetsValidationForFlag("range",
+		"--range %q names sheet %q while the selector names %q; keep one — drop the prefix from --range, or drop --sheet-name",
+		rangeStr, prefix, sheetName)
+}
+
 // expandAnchorRange gives a bare single-cell --range the anchor semantics
 // every spreadsheet library these callers arrive from already has (gspread's
 // update("A1", values), openpyxl's ws["A1"] = …): a top-left alone plus a
@@ -967,18 +1244,13 @@ func raggedCellsError(cells []interface{}) error {
 // +csv-put already infers --start-cell's bottom-right from the CSV's own
 // counts; +cells-set was the odd one out.
 //
-// Only a bare "A1" expands: an explicit "A1:A1" states a 1×1 block, and a
-// payload disagreeing with a stated extent is a real mismatch. A ragged or
-// non-array payload has no extent to compute and falls through to
-// checkCellsMatchRange's prescription.
+// Only a bare "A1" expands here; a stated extent is sized by fitCellsRange
+// instead, which reports what it shipped. A ragged or non-array payload has no
+// extent to compute and falls through to checkCellsPayloadShape's message.
 //
-// A qualified anchor ("Sheet1!A1") does not expand either. It only reaches
-// here when the caller also passed --sheet-id / --sheet-name, since all three
-// entry points consume the prefix into the selector when none was given — so
-// the prefix is one that disagrees with the selector, and sizing it would ship
-// a range naming one sheet next to a sheet_name naming another. Left alone it
-// keeps failing checkCellsMatchRange locally, which is what it did before
-// anchors were inferred at all.
+// A qualified anchor ("Sheet1!A1") is left alone here and sized downstream like
+// any other stated range, once checkRangeSheetAgreesWithSelector has settled
+// whether its prefix and the selector name the same sheet.
 func expandAnchorRange(rangeStr string, cells []interface{}) string {
 	anchor, err := parseCellRange(rangeStr)
 	if err != nil || !anchor.anchored || anchor.sheetQualifier != "" {
@@ -1183,7 +1455,7 @@ var CellsSetImage = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
+		if err := validateSheetSelectorPreflight(runtime); err != nil {
 			return err
 		}
 		r := strings.TrimSpace(runtime.Str("range"))
@@ -1214,7 +1486,8 @@ var CellsSetImage = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		token, _ := resolveSpreadsheetToken(runtime)
+		ref, _ := parseSpreadsheetRef(runtime)
+		token := ref.Token
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		imgPath := strings.TrimSpace(runtime.Str("image"))
 		fileName := strings.TrimSpace(runtime.Str("name"))
@@ -1235,16 +1508,9 @@ var CellsSetImage = common.Shortcut{
 				}},
 			}}},
 		})
-		return common.NewDryRunAPI().
-			POST("/open-apis/drive/v1/medias/upload_all").
-			Desc("upload local image to drive (parent_type=" + sheetMediaParentType(token) + ")").
-			Body(map[string]interface{}{
-				"file_name":   fileName,
-				"parent_type": sheetMediaParentType(token),
-				"parent_node": token,
-				"size":        "<file_size>",
-				"file":        "@" + imgPath,
-			}).
+		d := common.NewDryRunAPI()
+		appendSheetImageUploadDryRun(d, runtime, ref, imgPath, fileName)
+		return d.
 			POST(toolInvokePath(token, ToolKindWrite)).
 			Desc("embed file_token into the cell via set_cell_range").
 			Body(setCellBody)
@@ -1254,7 +1520,7 @@ var CellsSetImage = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		sheetID, sheetName, err := resolveSheetSelectorExec(ctx, runtime, token)
 		if err != nil {
 			return err
 		}
@@ -1271,7 +1537,7 @@ var CellsSetImage = common.Shortcut{
 		if err != nil {
 			return sheetsInputStatError("image", err)
 		}
-		imgCfg, _, err := image.DecodeConfig(imgFile)
+		imgCfg, _, err := imageconfig.Decode(imgFile)
 		imgFile.Close()
 		if err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "decode image dimensions: %s", err).

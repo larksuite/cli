@@ -92,7 +92,17 @@ func TestDocs_LocalResourcesDryRun(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			apis := clie2e.DryRunGet(result.Stdout, "api").Array()
-			require.Len(t, apis, 6, "stdout:\n%s", result.Stdout)
+			resourceStart := 1
+			if tt.name == "create" {
+				require.Len(t, apis, 7, "stdout:\n%s", result.Stdout)
+				require.JSONEq(t, `{"open_create_async":true}`, apis[0].Get("body.extra_param").String())
+				require.Equal(t, "GET", apis[1].Get("method").String())
+				require.Equal(t, "/open-apis/docs_ai/v1/async_tasks/<task_id>", apis[1].Get("url").String())
+				resourceStart = 2
+			} else {
+				require.Len(t, apis, 6, "stdout:\n%s", result.Stdout)
+			}
+			resources := apis[resourceStart:]
 			require.Equal(t, tt.wantDocumentURL, apis[0].Get("url").String(), "stdout:\n%s", result.Stdout)
 			if tt.wantCommand != "" {
 				require.Equal(t, tt.wantCommand, apis[0].Get("body.command").String(), "stdout:\n%s", result.Stdout)
@@ -108,26 +118,26 @@ func TestDocs_LocalResourcesDryRun(t *testing.T) {
 			require.NotContains(t, preparedContent, "@dry-run.txt")
 			require.Equal(t, 2, strings.Count(preparedContent, "@lcli_"), "prepared content:\n%s", preparedContent)
 
-			require.Equal(t, "/open-apis/drive/v1/medias/upload_all", apis[1].Get("url").String())
-			require.Equal(t, "docx_image", apis[1].Get("body.parent_type").String())
-			require.Equal(t, "<local_image_1_block_id>", apis[1].Get("body.parent_node").String())
-			require.Equal(t, "/open-apis/drive/v1/medias/upload_all", apis[2].Get("url").String())
-			require.Equal(t, "docx_file", apis[2].Get("body.parent_type").String())
-			require.Equal(t, "<local_file_2_block_id>", apis[2].Get("body.parent_node").String())
+			require.Equal(t, "/open-apis/drive/v1/medias/upload_all", resources[0].Get("url").String())
+			require.Equal(t, "docx_image", resources[0].Get("body.parent_type").String())
+			require.Equal(t, "<local_image_1_block_id>", resources[0].Get("body.parent_node").String())
+			require.Equal(t, "/open-apis/drive/v1/medias/upload_all", resources[1].Get("url").String())
+			require.Equal(t, "docx_file", resources[1].Get("body.parent_type").String())
+			require.Equal(t, "<local_file_2_block_id>", resources[1].Get("body.parent_node").String())
 
-			require.Contains(t, apis[3].Get("url").String(), "/open-apis/docx/v1/documents/")
-			require.Contains(t, apis[3].Get("url").String(), "/blocks/batch_update")
-			require.NotEmpty(t, apis[3].Get("params.client_token").String())
-			require.Equal(t, "<uploaded_file_token_1>", apis[3].Get("body.requests.0.replace_image.token").String())
-			require.Equal(t, int64(100), apis[3].Get("body.requests.0.replace_image.width").Int())
-			require.Equal(t, int64(80), apis[3].Get("body.requests.0.replace_image.height").Int())
-			require.InDelta(t, 0.5, apis[3].Get("body.requests.0.replace_image.scale").Float(), 0.000001)
-			require.Equal(t, "<uploaded_file_token_2>", apis[3].Get("body.requests.1.replace_file.token").String())
+			require.Contains(t, resources[2].Get("url").String(), "/open-apis/docx/v1/documents/")
+			require.Contains(t, resources[2].Get("url").String(), "/blocks/batch_update")
+			require.NotEmpty(t, resources[2].Get("params.client_token").String())
+			require.Equal(t, "<uploaded_file_token_1>", resources[2].Get("body.requests.0.replace_image.token").String())
+			require.Equal(t, int64(100), resources[2].Get("body.requests.0.replace_image.width").Int())
+			require.Equal(t, int64(80), resources[2].Get("body.requests.0.replace_image.height").Int())
+			require.InDelta(t, 0.5, resources[2].Get("body.requests.0.replace_image.scale").Float(), 0.000001)
+			require.Equal(t, "<uploaded_file_token_2>", resources[2].Get("body.requests.1.replace_file.token").String())
 
-			require.Equal(t, "GET", apis[4].Get("method").String())
-			require.Equal(t, "PUT", apis[5].Get("method").String())
-			require.Contains(t, apis[5].Get("url").String(), "/open-apis/docs_ai/v1/documents/")
-			require.Equal(t, "block_delete", apis[5].Get("body.command").String())
+			require.Equal(t, "GET", resources[3].Get("method").String())
+			require.Equal(t, "PUT", resources[4].Get("method").String())
+			require.Contains(t, resources[4].Get("url").String(), "/open-apis/docs_ai/v1/documents/")
+			require.Equal(t, "block_delete", resources[4].Get("body.command").String())
 		})
 	}
 }
@@ -154,7 +164,10 @@ func TestDocs_RemoteImageDryRun(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	apis := clie2e.DryRunGet(result.Stdout, "api").Array()
-	require.Len(t, apis, 6, "stdout:\n%s", result.Stdout)
+	require.Len(t, apis, 7, "stdout:\n%s", result.Stdout)
+	require.JSONEq(t, `{"open_create_async":true}`, apis[0].Get("body.extra_param").String())
+	require.Equal(t, "GET", apis[1].Get("method").String())
+	require.Equal(t, "/open-apis/docs_ai/v1/async_tasks/<task_id>", apis[1].Get("url").String())
 	require.Equal(t, "POST", apis[0].Get("method").String())
 	require.Equal(t, "/open-apis/docs_ai/v1/documents", apis[0].Get("url").String())
 	preparedContent := apis[0].Get("body.content").String()
@@ -162,12 +175,12 @@ func TestDocs_RemoteImageDryRun(t *testing.T) {
 	require.Contains(t, preparedContent, "@lcli_img_")
 	require.Contains(t, preparedContent, `caption="remote image"`)
 
-	require.Equal(t, "GET", apis[1].Get("method").String())
-	require.Equal(t, "https://93.184.216.34/photo.png", apis[1].Get("url").String())
-	require.Contains(t, apis[1].Get("desc").String(), "query")
-	require.Contains(t, apis[1].Get("desc").String(), "bounded concurrent upload worker")
+	require.Equal(t, "GET", apis[2].Get("method").String())
+	require.Equal(t, "https://93.184.216.34/photo.png", apis[2].Get("url").String())
+	require.Contains(t, apis[2].Get("desc").String(), "query")
+	require.Contains(t, apis[2].Get("desc").String(), "bounded concurrent upload worker")
 
-	require.Equal(t, "/open-apis/drive/v1/medias/upload_all", apis[2].Get("url").String())
-	require.Equal(t, "docx_image", apis[2].Get("body.parent_type").String())
-	require.Equal(t, "<local_image_1_block_id>", apis[2].Get("body.parent_node").String())
+	require.Equal(t, "/open-apis/drive/v1/medias/upload_all", apis[3].Get("url").String())
+	require.Equal(t, "docx_image", apis[3].Get("body.parent_type").String())
+	require.Equal(t, "<local_image_1_block_id>", apis[3].Get("body.parent_node").String())
 }

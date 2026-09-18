@@ -4,11 +4,11 @@
 package schema
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/apicatalog"
-	"github.com/larksuite/cli/internal/registry"
 )
 
 // validEnvelope builds a baseline valid envelope used as a starting point in
@@ -142,7 +142,7 @@ func TestLintEnvelope_L2_TypeChecks(t *testing.T) {
 		{
 			name: "minimum >= maximum",
 			mutate: func(e *Envelope) {
-				min, max := 50.0, 10.0
+				min, max := json.Number("50"), json.Number("10")
 				e.InputSchema.Properties.Order = []string{"n"}
 				e.InputSchema.Properties.Map["n"] = Property{Type: "integer", Minimum: &min, Maximum: &max}
 			},
@@ -159,6 +159,58 @@ func TestLintEnvelope_L2_TypeChecks(t *testing.T) {
 				}
 			},
 			wantSub: "enumDescriptions",
+		},
+		{
+			name: "example must belong to enum",
+			mutate: func(e *Envelope) {
+				e.InputSchema.Properties.Order = []string{"mode"}
+				e.InputSchema.Properties.Map["mode"] = Property{
+					Type:    "string",
+					Enum:    []interface{}{"open", "closed"},
+					Example: "Open",
+				}
+			},
+			wantSub: "example (Open) is not in enum",
+		},
+		{
+			name: "default must belong to enum",
+			mutate: func(e *Envelope) {
+				e.InputSchema.Properties.Order = []string{"mode"}
+				e.InputSchema.Properties.Map["mode"] = Property{
+					Type:    "string",
+					Enum:    []interface{}{"open", "closed"},
+					Default: "unknown",
+				}
+			},
+			wantSub: "default (unknown) is not in enum",
+		},
+		{
+			name: "example must not exceed maximum",
+			mutate: func(e *Envelope) {
+				min, max := json.Number("1"), json.Number("100")
+				e.InputSchema.Properties.Order = []string{"page_size"}
+				e.InputSchema.Properties.Map["page_size"] = Property{
+					Type:    "integer",
+					Example: int64(101),
+					Minimum: &min,
+					Maximum: &max,
+				}
+			},
+			wantSub: "example (101) is above maximum (100)",
+		},
+		{
+			name: "default must not fall below minimum",
+			mutate: func(e *Envelope) {
+				min, max := json.Number("1"), json.Number("100")
+				e.InputSchema.Properties.Order = []string{"page_size"}
+				e.InputSchema.Properties.Map["page_size"] = Property{
+					Type:    "integer",
+					Default: int64(0),
+					Minimum: &min,
+					Maximum: &max,
+				}
+			},
+			wantSub: "default (0) is below minimum (1)",
 		},
 		{
 			// Regression guard: walkForL2 must recurse into the params/data
@@ -214,6 +266,50 @@ func TestLintEnvelope_L2_TypeChecks(t *testing.T) {
 				t.Errorf("expected error containing %q, got: %v", tt.wantSub, errs)
 			}
 		})
+	}
+}
+
+func TestLintEnvelope_L2_ConstrainedLiteralsValid(t *testing.T) {
+	env := validEnvelope()
+	min, max := json.Number("1"), json.Number("100")
+	env.InputSchema.Properties.Order = []string{"mode", "page_size"}
+	env.InputSchema.Properties.Map["mode"] = Property{
+		Type:    "string",
+		Enum:    []interface{}{"open", "closed"},
+		Example: "open",
+		Default: "closed",
+	}
+	env.InputSchema.Properties.Map["page_size"] = Property{
+		Type:    "integer",
+		Example: int64(10),
+		Default: int64(20),
+		Minimum: &min,
+		Maximum: &max,
+	}
+	if errs := lintEnvelope(env); len(errs) != 0 {
+		t.Fatalf("valid constrained literals were rejected: %v", errs)
+	}
+}
+
+func TestLintEnvelope_LargeIntegerBoundsCompareExactly(t *testing.T) {
+	env := validEnvelope()
+	min, max := json.Number("9007199254740993"), json.Number("9007199254740994")
+	env.InputSchema.Properties.Order = []string{"n"}
+	env.InputSchema.Properties.Map["n"] = Property{
+		Type:    "integer",
+		Minimum: &min,
+		Maximum: &max,
+	}
+	for _, err := range lintEnvelope(env) {
+		if strings.Contains(err.Error(), "minimum") || strings.Contains(err.Error(), "maximum") {
+			t.Fatalf("exact adjacent integer bounds rejected: %v", err)
+		}
+	}
+}
+
+func TestExactJSONNumberRejectsQuotedNumber(t *testing.T) {
+	if got, ok := exactJSONNumber(json.Number(`"1"`)); ok || got != nil {
+		t.Fatalf("exactJSONNumber accepted quoted number: got=%v ok=%v", got, ok)
 	}
 }
 
@@ -345,10 +441,9 @@ func TestAllEnvelopesPass(t *testing.T) {
 	failCount := 0
 	knownWarnings := 0
 	knownEnvelopes := map[string]bool{}
-	// Use embedded data only so the gate is deterministic across machines
-	// (matches Task 17b: envelope assembly is overlay-independent).
-	for _, svc := range registry.EmbeddedServicesTyped() {
-		envs := Envelopes(apicatalog.ServiceMethods(svc, nil))
+	catalog := testFullCatalog(t)
+	for _, svc := range catalog.Services() {
+		envs := Envelopes(nil, apicatalog.ServiceMethods(svc, nil))
 		for _, env := range envs {
 			errs := lintEnvelope(env)
 			if len(errs) == 0 {
@@ -378,7 +473,7 @@ func TestAllEnvelopesPass(t *testing.T) {
 	}
 
 	// L4 coverage report (warn-only via t.Logf)
-	all := Envelopes(registry.EmbeddedCatalog().WalkMethods(nil))
+	all := Envelopes(nil, catalog.WalkMethods(nil))
 	c := measureCoverage(all)
 	for metric, rate := range c {
 		baseline := coverageBaseline[metric]

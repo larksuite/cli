@@ -122,6 +122,34 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 				"value_render_option": "formatted_value",
 			},
 		},
+		{
+			name:     "+cond-format-result-get hardcodes style outputs",
+			sc:       CondFormatResultGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":                         testToken,
+				"sheet_id":                         testSheetID,
+				"ranges":                           []interface{}{"A1:B2"},
+				"include_styles":                   true,
+				"include_conditional_format_style": true,
+				"cell_limit":                       float64(unboundedReadLimit),
+			},
+		},
+		{
+			name:     "+cells-get --include conditional_format",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--include", "conditional_format"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":                         testToken,
+				"sheet_id":                         testSheetID,
+				"ranges":                           []interface{}{"A1:B2"},
+				"include_conditional_format_style": true,
+				"include_styles":                   true,
+				"cell_limit":                       float64(unboundedReadLimit),
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -162,6 +190,7 @@ func TestReadData_RequiresRange(t *testing.T) {
 	}{
 		{"+cells-get", CellsGet},
 		{"+dropdown-get", DropdownGet},
+		{"+cond-format-result-get", CondFormatResultGet},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -233,4 +262,84 @@ func TestCsvGet_StripRowPrefix(t *testing.T) {
 	if out["other"] != "untouched" {
 		t.Errorf("other field corrupted: %v", out["other"])
 	}
+}
+
+// TestCellsGet_MultiAreaRange pins the split: get_cell_ranges already takes a
+// LIST of ranges, so the areas a caller joined with commas go out as the
+// several ranges they name rather than being refused. The prescription itself
+// still exists for commands whose input is one range — see
+// TestMultiAreaRangeStillPrescribedOnWrites.
+func TestCellsGet_MultiAreaRange(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name  string
+		rng   string
+		sheet string
+		want  []string
+	}{
+		{"single cells joined by commas", "A3,G3,H3,J3", "s", []string{"A3", "G3", "H3", "J3"}},
+		{"ranges joined by commas", "A1:B2,D1:E2", "s", []string{"A1:B2", "D1:E2"}},
+		{"a single continuous range is unchanged", "A3:L3", "s", []string{"A3:L3"}},
+		// The qualifier is lifted into the selector once and every area loses
+		// it; stripping only the first would ship a prefixed range beside a
+		// sheet_name that already says the same thing.
+		{"every area carries the same qualifier", "'Q1'!A1:A21,'Q1'!C1:D21", "", []string{"A1:A21", "C1:D21"}},
+		{"only the first area is qualified", "Sheet1!A1:B2,D1:E2", "", []string{"A1:B2", "D1:E2"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			args := []string{"--url", testURL, "--range", tt.rng, "--dry-run"}
+			if tt.sheet != "" {
+				args = append(args, "--sheet-name", tt.sheet)
+			}
+			stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-get"), args)
+			if err != nil {
+				t.Fatalf("a multi-area range should be forwarded, got: %v", err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(stdout, `"`+want+`"`) {
+					t.Errorf("range %q missing from the request, got %q", want, stdout)
+				}
+			}
+		})
+	}
+}
+
+// A command whose tool input is ONE range keeps the prescription: fanning a
+// single call into several would change what a partial failure leaves behind.
+// The enclosing-rectangle hint is the part worth pinning, since it has to
+// cover every area rather than the first and last.
+func TestMultiAreaRangeStillPrescribedOnWrites(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct{ name, rng, wantCount, wantHint string }{
+		{"cells prescribe the enclosing rectangle", "A3,G3,H3,J3", "lists 4 separate areas", `--range "A3:J3"`},
+		// The widest column is in the middle here; first-and-last would
+		// prescribe "A3:G3" and silently drop the J3 the caller asked for.
+		{"unordered areas still land inside the rectangle", "A3,J3,G3", "lists 3 separate areas", `--range "A3:J3"`},
+		{"the rectangle spans both axes", "C5,A2,B9", "lists 3 separate areas", `--range "A2:C9"`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+				"--url", testURL, "--sheet-name", "s", "--range", tt.rng,
+				"--font-weight", "bold", "--dry-run",
+			})
+			ve := requireValidation(t, err, tt.wantCount)
+			if !strings.Contains(ve.Hint, tt.wantHint) {
+				t.Errorf("hint should carry %q, got %q", tt.wantHint, ve.Hint)
+			}
+		})
+	}
+
+	t.Run("two ranges get no invented rectangle", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:B2,D1:E2",
+			"--font-weight", "bold", "--dry-run",
+		})
+		ve := requireValidation(t, err, "lists 2 separate areas")
+		if strings.Contains(ve.Hint, `--range "A1:B2:D1:E2"`) {
+			t.Errorf("hint must not invent a rectangle from two ranges, got %q", ve.Hint)
+		}
+	})
 }

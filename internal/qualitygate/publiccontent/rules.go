@@ -37,7 +37,10 @@ func actionForRule(rule string) report.Action {
 		"public_content_provenance_marker",
 		"public_content_detector_fingerprint",
 		"public_content_harness_metadata",
-		"public_content_ccm_harness_trailer":
+		"public_content_ccm_harness_trailer",
+		"public_content_catalog_pii",
+		"public_content_catalog_internal_host",
+		"public_content_catalog_prompt_injection":
 		return report.ActionReject
 	case "public_content_private_ipv4",
 		"public_content_automation_branch":

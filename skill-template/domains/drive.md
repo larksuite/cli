@@ -44,17 +44,17 @@ lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
 
 返回结果包含 `type`（底层文档类型）、`token`（真实 file_token）、`title`、`url` 等字段，直接用于后续操作。
 
-**手动方式：使用 `wiki.spaces.get_node` 查询节点信息**
+**节点详情方式：使用 `wiki +node-get` 查询节点信息**
 
-1. **使用 `wiki.spaces.get_node` 查询节点信息**
+1. **使用 `wiki +node-get` 查询节点信息**
    ```bash
-   lark-cli wiki spaces get_node --params '{"token":"wiki_token"}'
+   lark-cli wiki +node-get --node-token 'https://xxx.feishu.cn/wiki/<wiki_token>' --format json
    ```
 
 2. **从返回结果中提取关键信息**
-   - `node.obj_type`：文档类型（docx/doc/sheet/bitable/slides/file/mindnote）
-   - `node.obj_token`：**真实的文档 token**（用于后续操作）
-   - `node.title`：文档标题
+   - `data.obj_type`：文档类型（docx/doc/sheet/bitable/slides/file/mindnote）
+   - `data.obj_token`：**真实的文档 token**（用于后续操作）
+   - `data.title`：文档标题
 
 3. **根据 `obj_type` 使用对应的 API**
 
@@ -72,13 +72,15 @@ lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
 
 ```bash
 # 查询 wiki 节点
-lark-cli wiki spaces get_node --params '{"token":"wiki_token"}'
+lark-cli wiki +node-get --node-token 'https://xxx.feishu.cn/wiki/<wiki_token>' --format json
 ```
 
-返回结果示例：
+返回结果中的路由关键字段示例（`data` 中的其他节点字段省略）：
 ```json
 {
-  "node": {
+  "ok": true,
+  "identity": "user",
+  "data": {
     "obj_type": "docx",
     "obj_token": "xxxx",
     "title": "标题",
@@ -204,8 +206,8 @@ lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "
 
 ```bash
 # 1. 获取当前应用的 open_id
-lark-cli api GET /open-apis/bot/v3/info --as bot
-# 从返回值中取 bot.open_id
+lark-cli api GET /open-apis/bot/v3/info --as bot --jq '.data.open_id'
+# 输出即当前应用的 open_id
 
 # 2. 授权当前应用访问文档
 lark-cli drive permission.members create \

@@ -4,10 +4,14 @@
 package auth
 
 import (
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/zalando/go-keyring"
 )
 
@@ -18,6 +22,117 @@ func setupStoredTokenTest(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", filepath.Join(root, "data"))
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(root, "config"))
 	keyring.MockInit()
+}
+
+func mustGetStoredToken(t testing.TB, appID, userOpenID string) *StoredUAToken {
+	t.Helper()
+	stored, err := GetStoredToken(appID, userOpenID)
+	if err != nil {
+		t.Fatalf("GetStoredToken() error = %v", err)
+	}
+	return stored
+}
+
+func TestGetStoredTokenDistinguishesMissingFromCorrupt(t *testing.T) {
+	setupStoredTokenTest(t)
+
+	const (
+		appID      = "cli_corrupt"
+		userOpenID = "ou_corrupt"
+		secret     = "sensitive-access-token"
+	)
+
+	stored, err := GetStoredToken(appID, userOpenID)
+	if err != nil || stored != nil {
+		t.Fatalf("missing token = (%#v, %v), want (nil, nil)", stored, err)
+	}
+
+	malformed := `{"accessToken":"` + secret + `",`
+	if writeErr := keychain.Set(keychain.LarkCliService, accountKey(appID, userOpenID), malformed); writeErr != nil {
+		t.Fatalf("keychain.Set() error = %v", writeErr)
+	}
+
+	stored, err = GetStoredToken(appID, userOpenID)
+	if stored != nil {
+		t.Fatalf("corrupt token = %#v, want nil", stored)
+	}
+	var storageErr *errs.InternalError
+	if !errors.As(err, &storageErr) || storageErr.Subtype != errs.SubtypeStorage {
+		t.Fatalf("corrupt token error = %T (%v), want internal/storage", err, err)
+	}
+	if !errors.Is(err, errStoredTokenCorrupt) {
+		t.Fatalf("corrupt token error = %v, want corruption sentinel in cause chain", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("corrupt token error leaked credential content: %v", err)
+	}
+	if !strings.Contains(storageErr.Hint, "auth login") {
+		t.Fatalf("corrupt token hint = %q, want re-authorization guidance", storageErr.Hint)
+	}
+}
+
+func TestGetStoredTokenRejectsSemanticallyCorruptJSON(t *testing.T) {
+	setupStoredTokenTest(t)
+
+	const (
+		appID      = "cli_semantic_corrupt"
+		userOpenID = "ou_semantic_corrupt"
+		secret     = "sensitive-semantic-token"
+	)
+	account := accountKey(appID, userOpenID)
+	cases := []struct {
+		name string
+		data string
+	}{
+		{name: "empty object", data: `{}`},
+		{name: "wrong account binding", data: `{"appId":"other-app","userOpenId":"other-user","accessToken":"` + secret + `"}`},
+		{name: "missing access token", data: `{"appId":"` + appID + `","userOpenId":"` + userOpenID + `","expiresAt":4102444800000}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := keychain.Set(keychain.LarkCliService, account, tc.data); err != nil {
+				t.Fatalf("keychain.Set() error = %v", err)
+			}
+			stored, err := GetStoredToken(appID, userOpenID)
+			if stored != nil {
+				t.Fatalf("GetStoredToken() token = %#v, want nil", stored)
+			}
+			var storageErr *errs.InternalError
+			if !errors.As(err, &storageErr) || storageErr.Subtype != errs.SubtypeStorage {
+				t.Fatalf("GetStoredToken() error = %T (%v), want internal/storage", err, err)
+			}
+			if !errors.Is(err, errStoredTokenCorrupt) {
+				t.Fatalf("GetStoredToken() error = %v, want corruption sentinel", err)
+			}
+			if strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), tc.data) {
+				t.Fatalf("GetStoredToken() error leaked stored data: %v", err)
+			}
+			if !strings.Contains(storageErr.Hint, "auth login") {
+				t.Fatalf("GetStoredToken() hint = %q, want re-authorization guidance", storageErr.Hint)
+			}
+		})
+	}
+}
+
+func TestSetStoredTokenRejectsSemanticCorruption(t *testing.T) {
+	setupStoredTokenTest(t)
+
+	token := &StoredUAToken{AppId: "cli_invalid_write", UserOpenId: "ou_invalid_write"}
+	err := SetStoredToken(token)
+	var storageErr *errs.InternalError
+	if !errors.As(err, &storageErr) || storageErr.Subtype != errs.SubtypeStorage {
+		t.Fatalf("SetStoredToken() error = %T (%v), want internal/storage", err, err)
+	}
+	if !errors.Is(err, errStoredTokenCorrupt) {
+		t.Fatalf("SetStoredToken() error = %v, want corruption sentinel", err)
+	}
+	if storageErr.Hint != "" {
+		t.Fatalf("SetStoredToken() hint = %q, want no re-authorization guidance on the write path", storageErr.Hint)
+	}
+	stored, readErr := keychain.Get(keychain.LarkCliService, accountKey(token.AppId, token.UserOpenId))
+	if readErr != nil || stored != "" {
+		t.Fatalf("invalid write persisted data = (%q, %v), want empty", stored, readErr)
+	}
 }
 
 func TestStoredTokenGenerationGuard(t *testing.T) {
@@ -88,7 +203,41 @@ func TestStoredTokenGenerationGuard(t *testing.T) {
 		}
 		return err
 	})
-	if current := GetStoredToken(generation0.AppId, generation0.UserOpenId); current != nil {
+	if current := mustGetStoredToken(t, generation0.AppId, generation0.UserOpenId); current != nil {
 		t.Fatalf("stored token = %#v, want removed", current)
+	}
+}
+
+func TestSetStoredTokenReplacesCorruptEntry(t *testing.T) {
+	setupStoredTokenTest(t)
+
+	const (
+		appID      = "cli_replace"
+		userOpenID = "ou_replace"
+	)
+	account := accountKey(appID, userOpenID)
+	if err := keychain.Set(keychain.LarkCliService, account, `{"accessToken":`); err != nil {
+		t.Fatalf("keychain.Set() error = %v", err)
+	}
+	if _, err := GetStoredToken(appID, userOpenID); !errors.Is(err, errStoredTokenCorrupt) {
+		t.Fatalf("precondition GetStoredToken() error = %v, want corruption", err)
+	}
+
+	now := time.Now()
+	fresh := &StoredUAToken{
+		AppId:            appID,
+		UserOpenId:       userOpenID,
+		AccessToken:      "fresh-access",
+		RefreshToken:     "fresh-refresh",
+		ExpiresAt:        now.Add(time.Hour).UnixMilli(),
+		RefreshExpiresAt: now.Add(24 * time.Hour).UnixMilli(),
+		GrantedAt:        now.UnixMilli(),
+	}
+	if err := SetStoredToken(fresh); err != nil {
+		t.Fatalf("SetStoredToken() over corrupt entry error = %v; the recovery hint promises a new login replaces it", err)
+	}
+	got := mustGetStoredToken(t, appID, userOpenID)
+	if got == nil || got.AccessToken != "fresh-access" {
+		t.Fatalf("stored token after re-login = %#v, want fresh token", got)
 	}
 }

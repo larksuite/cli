@@ -19,6 +19,26 @@ import (
 // and poll it with the doc type pinned to "sheet". The shortcut is distinct
 // from generic drive +import because it hard-codes type=sheet and uses --name
 // instead of --file-name.
+func TestSheets_WorkbookImportWikiProbeDryRun(t *testing.T) {
+	setSheetsDryRunEnv(t)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "data.csv"), []byte("a,b\n1,2\n"), 0o644))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"sheets", "+workbook-import", "--file", "data.csv", "--folder-token", "folderTarget", "--dry-run"},
+		DefaultAs: "user", WorkDir: dir,
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	out := result.Stdout
+	require.Equal(t, "/open-apis/wiki/v2/spaces/node_by_token", clie2e.DryRunGet(out, "api.0.url").String())
+	require.Equal(t, "folderTarget", clie2e.DryRunGet(out, "api.0.params.token").String())
+	require.Equal(t, "GET", clie2e.DryRunGet(out, "api.0.method").String())
+	require.Equal(t, "folderTarget", clie2e.DryRunGet(out, "api.3.body.point.mount_key").String())
+	require.Equal(t, "sheet", clie2e.DryRunGet(out, "api.3.body.type").String())
+}
+
 func TestSheets_WorkbookImportDryRun(t *testing.T) {
 	setSheetsDryRunEnv(t)
 

@@ -4,8 +4,10 @@
 package sheets
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -103,11 +105,17 @@ func buildCellStyleFromFlags(runtime flagView) map[string]interface{} {
 
 // cellStyleAliases maps shorthand cell_styles field names that models commonly
 // hallucinate (Excel / openpyxl / CSS conventions) onto the canonical field
-// names the backend expects. Only the unambiguous alignment shorthands are
-// aliased — they are the high-frequency miss; ambiguous guesses (e.g. "color",
-// "bg_color", "text_align") are intentionally left out so a wrong guess still
-// surfaces as an error rather than being silently reinterpreted.
+// names the backend expects. Entries here are pure renames; a word whose
+// VALUE also has to be read (bold, italic) belongs in cellStyleValueAliases.
+// Ambiguous guesses (e.g. "color", "bg_color", "text_align") are intentionally
+// left out either way, so a wrong guess still surfaces as an error rather than
+// being silently reinterpreted.
 var cellStyleAliases = []struct{ alias, canonical string }{
+	// openpyxl's Font(name=…) and xlsxwriter's {'font_name': …} name this
+	// CLI's font_family and nothing else — a real external vocabulary with
+	// one reading, which is what the admission bar asks for. 09-04..07: 511
+	// rejections.
+	{"font_name", "font_family"},
 	{"horizontal_align", "horizontal_alignment"},
 	{"halign", "horizontal_alignment"},
 	{"vertical_align", "vertical_alignment"},
@@ -118,6 +126,80 @@ var cellStyleAliases = []struct{ alias, canonical string }{
 	{"wrap_text", "word_wrap"},
 	{"text_wrap", "word_wrap"},
 	{"wrap_strategy", "word_wrap"},
+	// Bare "wrap" is the same concept with the noun dropped, and it arrived
+	// far more often than the three spellings above that were already taken.
+	// Refusing only the shortest of four spellings of one concept is a rule
+	// no caller can infer.
+	{"wrap", "word_wrap"},
+	// text_color names the same thing font_color does; the prescription it
+	// used to get said exactly that and nothing else.
+	{"text_color", "font_color"},
+}
+
+// cellStyleValueAliases carries the style words that name a field this
+// contract does have while spelling its VALUE as a flag rather than an enum:
+// openpyxl's Font(bold=True, italic=True, underline="single") and
+// xlsxwriter's {'bold': 1} are the two vocabularies every model has read, and
+// both put the concept in the key and the on/off in the value. The rename
+// alone would land a boolean under font_weight, so each entry carries its own
+// value reading and only fires when that reading succeeds — italic:true is
+// font_style:"italic", while italic:"sort of" keeps the prescription below.
+// 09-04..07: italic 1546 rejections, font_bold 135, on payloads whose intent
+// the error text already spelled out.
+var cellStyleValueAliases = []struct {
+	alias, canonical string
+	value            func(interface{}) (string, bool)
+}{
+	{"bold", "font_weight", styleOnOffWord("bold", "normal")},
+	{"font_bold", "font_weight", styleOnOffWord("bold", "normal")},
+	{"italic", "font_style", styleOnOffWord("italic", "normal")},
+	{"font_italic", "font_style", styleOnOffWord("italic", "normal")},
+	{"underline", "font_line", styleUnderlineWord},
+	{"font_underline", "font_line", styleUnderlineWord},
+}
+
+// styleOnOffWord reads the flag-shaped value of a two-state style field: the
+// booleans and 0/1 both vocabularies use, and the enum word itself for a
+// caller who wrote the right value under the wrong key. Anything else returns
+// false and leaves the field to its prescription.
+func styleOnOffWord(on, off string) func(interface{}) (string, bool) {
+	return func(raw interface{}) (string, bool) {
+		switch v := raw.(type) {
+		case bool:
+			if v {
+				return on, true
+			}
+			return off, true
+		case float64:
+			switch v {
+			case 1:
+				return on, true
+			case 0:
+				return off, true
+			}
+		case string:
+			switch strings.ToLower(strings.TrimSpace(v)) {
+			case "true", "1", "yes", on:
+				return on, true
+			case "false", "0", "no", "none", off:
+				return off, true
+			}
+		}
+		return "", false
+	}
+}
+
+// styleUnderlineWord reads openpyxl's underline vocabulary, where the value is
+// which underline rather than whether: single / double / the accounting
+// variants all draw one, and this contract carries the one line style.
+func styleUnderlineWord(raw interface{}) (string, bool) {
+	if s, isStr := raw.(string); isStr {
+		switch strings.ToLower(strings.TrimSpace(s)) {
+		case "single", "double", "singleaccounting", "doubleaccounting":
+			return "underline", true
+		}
+	}
+	return styleOnOffWord("underline", "none")(raw)
 }
 
 // styleFieldPrescriptions carries the exact fix for high-frequency
@@ -126,8 +208,9 @@ var cellStyleAliases = []struct{ alias, canonical string }{
 // font_color?" and nested font drew "font_line" — an agent that follows
 // either burns a second failed round trip). Keyed by lowercased field name;
 // the text replaces the did-you-mean on the unsupported-field error. These
-// stay prescriptions, not silent aliases: bold/text_align are on the
-// deliberate no-alias list above.
+// stay prescriptions, not silent aliases: text_align is on the deliberate
+// no-alias list above, and the bold / italic / underline rows now answer only
+// the values cellStyleValueAliases could not read.
 var styleFieldPrescriptions = map[string]string{
 	"bold":       `bold text is font_weight:"bold"`,
 	"font_bold":  `bold text is font_weight:"bold"`,
@@ -135,6 +218,88 @@ var styleFieldPrescriptions = map[string]string{
 	"underline":  `underline is font_line:"underline"`,
 	"text_align": "horizontal text alignment is horizontal_alignment (left/center/right)",
 	"font":       `cell_styles has no nested font object — use the flat font_* fields (font:{"bold":true,"size":18,"color":"#000"} becomes font_weight:"bold", font_size:18, font_color:"#000")`,
+	// The OpenAPI's own request shape is {range, style:{…}}, so a cell_styles
+	// item written from the API docs nests one level too deep. Distance-based
+	// suggestion is useless here (the fix is structural, not a rename) and the
+	// bare "style is not a supported style field" reads like the whole payload
+	// shape is wrong. 08-18..24 eval, --styles group.
+	"style": `cell_styles has no nested style object — the style fields sit directly on the item, next to range ({"range":"A1:B2","style":{"font_weight":"bold"}} becomes {"range":"A1:B2","font_weight":"bold"})`,
+	// bg_color / text_color read unambiguously (unlike fore_color, which is
+	// rejected as ambiguous above) but stay prescriptions rather than silent
+	// aliases: they are spelling permutations, not words from a real external
+	// vocabulary, and the silent-alias admission bar excludes those.
+	"bg_color":   "the cell fill is background_color",
+	"fill_color": "the cell fill is background_color",
+	// 08-29..31 reflow, --styles unknown-field group (96 rejections on
+	// +styles-put alone). These name real concepts that the payload does
+	// carry — just not inside a cell_styles item, so the fix is structural
+	// and the field list alone does not spell it.
+	"row_height":    `row height is a sheet-level row_sizes entry, not a cell style ({"row_sizes":[{"range":"1:1","type":"pixel","size":30}]})`,
+	"row_heights":   `row height is a sheet-level row_sizes entry, not a cell style ({"row_sizes":[{"range":"1:1","type":"pixel","size":30}]})`,
+	"column_width":  `column width is a sheet-level col_sizes entry, not a cell style ({"col_sizes":[{"range":"A:C","type":"pixel","size":120}]})`,
+	"col_width":     `column width is a sheet-level col_sizes entry, not a cell style ({"col_sizes":[{"range":"A:C","type":"pixel","size":120}]})`,
+	"unmerge_cells": "a styles payload only adds merges (cell_merges); undo an existing one with +cells-unmerge --range <A1 range>",
+}
+
+// styleItemKeyPrescriptions answers a key written on a styles[N] item that
+// belongs one level deeper, on a cell_styles entry. The distance ranker cannot
+// help: border_styles is six edits from cell_styles, and the fix is structural
+// anyway. 08-29..31 reflow, +workbook-create and +table-put --styles.
+var styleItemKeyPrescriptions = map[string]string{
+	"borderstyles": `borders belong on a cell_styles entry, next to its range ({"cell_styles":[{"range":"A1:C1","border_styles":{"top":{"style":"solid"}}}]})`,
+	"borders":      `borders belong on a cell_styles entry, next to its range ({"cell_styles":[{"range":"A1:C1","border":{"style":"solid","color":"#000000"}}]})`,
+	"border":       `borders belong on a cell_styles entry, next to its range ({"cell_styles":[{"range":"A1:C1","border":{"style":"solid","color":"#000000"}}]})`,
+	"style":        `a styles item carries cell_styles / cell_merges / row_sizes / col_sizes / freeze; the style fields themselves sit on a cell_styles entry next to its range`,
+	"styles":       `a styles item carries cell_styles / cell_merges / row_sizes / col_sizes / freeze; the style fields themselves sit on a cell_styles entry next to its range`,
+}
+
+// borderFieldPrescription answers any unsupported border-family spelling that
+// survived foldBorderFamilyAliases, which absorbs border / borders /
+// border_<side> / border_<attr> / border_type / border_width and their
+// word-order twins, in both the attribute-object and one-value forms. What
+// reaches this text is a name none of those cover, so it gets the two
+// canonical shapes rather than a did-you-mean: the distance ranker's answer
+// for a border name is another border name, and the retry comes back with the
+// same unusable value (08-18..24 eval).
+const borderFieldPrescription = `borders go in border ({"border":{"style":"solid","weight":"thin","color":"#000000"}} — all four sides, or just {"border":"solid"}) or border_styles for per-side control ({"border_styles":{"bottom":{"style":"solid"}}}); style is solid/dashed/dotted/double/none, weight is thin/medium/thick`
+
+// styleFieldPrescriptionsSquashed keys the curated table by letters alone, so
+// every separator spelling of one mistake (border_type / borderType /
+// border-type) resolves to the same prescription. Built once at init; the
+// parity test asserts no two entries collide after squashing.
+var styleFieldPrescriptionsSquashed = func() map[string]string {
+	out := make(map[string]string, len(styleFieldPrescriptions))
+	for k, v := range styleFieldPrescriptions {
+		out[squashStyleFieldKey(k)] = v
+	}
+	return out
+}()
+
+// squashStyleFieldKey reduces a field name to its letters and digits, lowercased.
+func squashStyleFieldKey(field string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(field) {
+		if r == '_' || r == '-' || r == ' ' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// styleFieldPrescriptionFor returns the curated fix for an unsupported
+// cell_styles field name, or "" when the generic did-you-mean should answer
+// instead. The border family gets one shared answer: enumerating its spelling
+// permutations is endless, but every one of them has the same two-form fix.
+func styleFieldPrescriptionFor(field string) string {
+	key := squashStyleFieldKey(field)
+	if rx, ok := styleFieldPrescriptionsSquashed[key]; ok {
+		return rx
+	}
+	if strings.HasPrefix(key, "border") || strings.HasSuffix(key, "border") {
+		return borderFieldPrescription
+	}
+	return ""
 }
 
 // cellStyleEnumFields sources the enum vocabulary for enum-bearing
@@ -207,6 +372,29 @@ func cellStyleScalarTypes() map[string]string {
 // cross-vocabulary aliases like CSS "center" → Lark "middle"; boolean
 // word_wrap → the enum) and rejects off-enum values client-side instead of
 // letting the server fail the whole batch. path labels the map for errors.
+// numericStyleValue reads a quoted number ("16", " 10.5 ") as the number a
+// numeric style field wants. The test is "is this a JSON number literal", not
+// "does Go parse it": strconv.ParseFloat also takes Inf / NaN / hex floats,
+// none of which survive as JSON in the request body.
+func numericStyleValue(raw interface{}) (float64, bool) {
+	s, ok := raw.(string)
+	if !ok {
+		return 0, false
+	}
+	// Decoding into interface{} rather than float64: the literal "null"
+	// unmarshals into a float64 without an error and leaves it at 0, which
+	// would turn {"font_size":"null"} into a zero-point font.
+	var decoded interface{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(s)), &decoded); err != nil {
+		return 0, false
+	}
+	f, ok := decoded.(float64)
+	if !ok {
+		return 0, false
+	}
+	return f, true
+}
+
 func normalizeCellStyleAliases(style map[string]interface{}, path string) error {
 	if len(style) == 0 {
 		return nil
@@ -220,6 +408,23 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 			return common.ValidationErrorf("%s.%s conflicts with %s; pass only %s", path, a.alias, a.canonical, a.canonical)
 		}
 		style[a.canonical] = v
+		delete(style, a.alias)
+	}
+	for _, a := range cellStyleValueAliases {
+		raw, ok := style[a.alias]
+		if !ok {
+			continue
+		}
+		word, readable := a.value(raw)
+		if !readable {
+			// An unreadable value is a guess about the vocabulary, not a
+			// spelling of it: leave the key for the prescription.
+			continue
+		}
+		if _, exists := style[a.canonical]; exists {
+			return common.ValidationErrorf("%s.%s conflicts with %s; pass only %s", path, a.alias, a.canonical, a.canonical)
+		}
+		style[a.canonical] = word
 		delete(style, a.alias)
 	}
 	// fore_color is deliberately NOT aliased: in openpyxl vocabulary fgColor
@@ -252,6 +457,18 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 			continue
 		}
 		if got := jsType(raw); got != want {
+			// A quoted number under a numeric style field ("font_size":"16")
+			// is the one type mismatch with a single reading — the digits are
+			// right and only the quotes are wrong. 08-29..31 reflow: 30
+			// --styles rejections, all font_size. Every other mismatch
+			// (a boolean font_weight, a numeric background_color) still
+			// fails: those are guesses about the vocabulary, not typing slips.
+			if want == "number" {
+				if n, ok := numericStyleValue(raw); ok {
+					style[field] = n
+					continue
+				}
+			}
 			return common.ValidationErrorf("%s.%s must be a %s, got %s (%s)",
 				path, field, want, got, formatJSONValue(raw))
 		}
@@ -313,17 +530,37 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 			if _, has := cell["type"]; has {
 				return common.ValidationErrorf("%s[%d][%d].type is not a cell field — the value type is inferred from the JSON value; control display format via cell_styles.number_format", path, r, c)
 			}
+			// border_styles written one level too deep is the same object in
+			// the same cell under the same name — the only thing wrong is its
+			// depth, which the error used to state and then refuse to act on.
+			// Lifted before the shorthand expansion below so a nested "all"
+			// gets the same treatment a correctly placed one does. A cell
+			// carrying both keeps the error: that is two different borders for
+			// one cell, and nothing here says which one the caller meant.
+			if st, isObj := cell["cell_styles"].(map[string]interface{}); isObj {
+				if nested, misNested := st["border_styles"]; misNested {
+					if _, alsoTop := cell["border_styles"]; alsoTop {
+						return common.ValidationErrorf(
+							"%s[%d][%d] sets border_styles both on the cell and inside cell_styles; keep the one on the cell",
+							path, r, c)
+					}
+					cell["border_styles"] = nested
+					delete(st, "border_styles")
+					// A cell_styles that held nothing else is gone with it: an
+					// empty style object is not what the caller wrote, and
+					// shipping one would put a field on the wire that the
+					// correctly spelled payload does not carry.
+					if len(st) == 0 {
+						delete(cell, "cell_styles")
+					}
+				}
+			}
 			if bs, ok := cell["border_styles"].(map[string]interface{}); ok {
 				expandBorderAllShorthand(bs)
 			}
 			st, ok := cell["cell_styles"].(map[string]interface{})
 			if !ok {
 				continue
-			}
-			if _, misNested := st["border_styles"]; misNested {
-				return common.ValidationErrorf(
-					"%s[%d][%d].cell_styles.border_styles is not valid — border_styles is a top-level cell field, a sibling of cell_styles; move it up one level",
-					path, r, c)
 			}
 			if err := normalizeCellStyleAliases(st, fmt.Sprintf("%s[%d][%d].cell_styles", path, r, c)); err != nil {
 				return err
@@ -340,7 +577,27 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 // sub-ops get the same rewrite as standalone calls. Every side it leaves
 // behind then goes through normalizeBorderSideVocab, which makes this the
 // one funnel where border VALUES get canonicalized as well.
+//
+// "outer" is the same shorthand under the Lark OpenAPI's own name
+// (OUTER_BORDER): per-side specs address the RANGE's edges, so its four sides
+// are exactly the outer box. Its counterpart INNER_BORDER has no expression
+// here at all and keeps the border prescription instead of a wrong guess.
 func expandBorderAllShorthand(border map[string]interface{}) {
+	if outer, ok := border["outer"]; ok {
+		all, hasAll := border["all"]
+		switch {
+		case !hasAll:
+			border["all"] = outer
+			delete(border, "outer")
+		case reflect.DeepEqual(all, outer):
+			// A duplicate spelling of the same box; dropping it loses nothing.
+			delete(border, "outer")
+		default:
+			// Two different boxes under two names for the same thing. Picking
+			// one would silently apply half the caller's intent, so "outer"
+			// stays and the invalid-side check downstream names the collision.
+		}
+	}
 	if all, ok := border["all"]; ok {
 		for _, side := range []string{"top", "bottom", "left", "right"} {
 			if _, exists := border[side]; !exists {
@@ -391,6 +648,20 @@ func normalizeBorderSideVocab(side map[string]interface{}) {
 		if _, taken := side["weight"]; !taken {
 			side["weight"] = w
 			delete(side, "width")
+		}
+	}
+	// "type" is the line-kind slot in the Lark OpenAPI's own border vocabulary
+	// (border_type: FULL_BORDER / …) and in openpyxl's Side(border_style=…)
+	// read loosely; inside a per-side spec whose only kind slot is `style`,
+	// it can mean nothing else. 08-29..31 reflow: 29 rejections across
+	// +styles-put and +workbook-create answered "type is not a border
+	// attribute", a message that names the vocabulary but not the mapping.
+	// The value then goes through the style/weight sorting below, so
+	// {"type":"thin"} lands as a thin solid line exactly like {"style":"thin"}.
+	if t, aliased := side["type"]; aliased {
+		if _, taken := side["style"]; !taken {
+			side["style"] = t
+			delete(side, "type")
 		}
 	}
 	// A number is a line width in px/pt (xlsxwriter's set_border(1) and the
@@ -465,11 +736,42 @@ func borderLineWidth(v interface{}) (float64, bool) {
 // expandBorderAllShorthand exists to absorb — the acceptance layer was
 // unreachable on this path (07-28 root-cause report #2, 173 occurrences).
 // Non-object shapes pass through for the validator to prescribe.
-func normalizeBorderStylesFlagValue(v interface{}) interface{} {
+func normalizeBorderStylesFlagValue(_ flagView, v interface{}) interface{} {
+	// A bare line word or width is the whole spec: --border-styles solid, and
+	// the habitual spellings that alias onto this flag (--border-type solid,
+	// --border thin, --border 2). The side-keyed object is what the flag
+	// documents; one value can only mean all four sides, which is the reading
+	// the payload path's own shorthand takes (setSideScalar). 09-01..08
+	// backflow: 1491 rows arrived on the three aliases.
+	if side, ok := borderSpecFromScalar(v); ok {
+		v = map[string]interface{}{"all": side}
+	}
 	if m, ok := v.(map[string]interface{}); ok {
 		expandBorderAllShorthand(m)
 	}
 	return v
+}
+
+// borderSpecFromScalar reads one value as a side spec: a thickness word or a
+// pixel count fills weight and leaves the line solid, anything else is the
+// line style itself and meets the style enum downstream.
+func borderSpecFromScalar(v interface{}) (map[string]interface{}, bool) {
+	switch value := v.(type) {
+	case string:
+		word := strings.TrimSpace(value)
+		if word == "" {
+			return nil, false
+		}
+		if canon := borderWeightWord(word); canon != "" {
+			return map[string]interface{}{"style": "solid", "weight": canon}, true
+		}
+		return map[string]interface{}{"style": word}, true
+	case float64, json.Number:
+		if _, isWidth := borderLineWidth(v); isWidth {
+			return map[string]interface{}{"style": "solid", "weight": v}, true
+		}
+	}
+	return nil, false
 }
 
 // normalizeCellsFlagValue is the +cells-set --cells pre-validation pipeline:
@@ -481,12 +783,21 @@ func normalizeBorderStylesFlagValue(v interface{}) interface{} {
 // root-cause report #10, 58 occurrences). Each helper documents why its own
 // rewrite is unambiguous. Structure is checked leniently: anything that isn't
 // the expected shape is left for the validator.
-func normalizeCellsFlagValue(v interface{}) interface{} {
+func normalizeCellsFlagValue(runtime flagView, v interface{}) interface{} {
 	v = wrapLoneCellObject(unwrapCellsEnvelope(v))
+	// A lone scalar is the one cell it names. The 2D shape is what the flag
+	// documents, but "write this here" with a single value and a single
+	// anchor has no second reading (09-04..07: 400 rejections whose payload
+	// was a bare string or number).
+	if lifted := scalarCellValue(v); lifted != nil {
+		return []interface{}{[]interface{}{lifted}}
+	}
 	rows, ok := v.([]interface{})
 	if !ok {
 		return v
 	}
+	rows = liftFlatCellsRow(rows, strings.TrimSpace(runtime.Str("range")))
+	v = rows
 	for _, rowRaw := range rows {
 		row, ok := rowRaw.([]interface{})
 		if !ok {
@@ -500,10 +811,177 @@ func normalizeCellsFlagValue(v interface{}) interface{} {
 				}
 				continue
 			}
+			foldCellLevelStyleVocabulary(cell)
 			if bs, ok := cell["border_styles"].(map[string]interface{}); ok {
 				expandBorderAllShorthand(bs)
 			}
 		}
+	}
+	padRaggedCellRows(rows)
+	return v
+}
+
+// padRaggedCellRows squares off a payload whose rows stop at their last
+// meaningful cell, padding the short ones with {} — the empty cell object
+// that writes nothing and leaves what is there alone. The rewrite is the one
+// the rejection already prescribed word for word ("pad short rows with {} to
+// keep those cells unchanged"), so performing it changes no outcome except
+// the round trip: a payload the caller has to retype byte for byte is a
+// rejection that carries its own answer. 09-04..07: 3063 rejections on
+// +cells-set alone. Same reading as the short-row fill --sheets takes.
+//
+// A payload whose rows are uniformly short is already a rectangle and stays
+// untouched; the range it does or does not fill is fitCellsRange's question,
+// not this one.
+func padRaggedCellRows(rows []interface{}) {
+	width := 0
+	for _, rowRaw := range rows {
+		row, isArray := rowRaw.([]interface{})
+		if !isArray {
+			return // not the 2D shape at all — leave the validator its error
+		}
+		width = max(width, len(row))
+	}
+	if width == 0 {
+		return
+	}
+	// Squaring off is what materializes the matrix, so the cap is checked
+	// against the rectangle BEFORE it exists: one very wide row over many
+	// short ones describes a payload whose padded form is orders of magnitude
+	// larger than the JSON that arrived, and allocating it first would take
+	// the process down before any validator could refuse it. Left ragged, it
+	// reaches checkCellsPayloadShape and reports as the payload it is.
+	if int64(len(rows))*int64(width) > maxStampMatrixCells {
+		return
+	}
+	for i, rowRaw := range rows {
+		row, _ := rowRaw.([]interface{})
+		for len(row) < width {
+			row = append(row, map[string]interface{}{})
+		}
+		rows[i] = row
+	}
+}
+
+// cellCarrierFields are the keys a cell object may hold on the wire: one
+// content field plus the stackable carriers. Anything else that is style
+// vocabulary belongs inside cell_styles (scalars) or border_styles (the
+// border family), which is what foldCellLevelStyleVocabulary arranges.
+var cellCarrierFields = map[string]bool{
+	"value": true, "formula": true, "rich_text": true, "multiple_values": true,
+	"cell_styles": true, "border_styles": true, "note": true, "data_validation": true,
+}
+
+// foldCellLevelStyleVocabulary moves style fields written directly on a cell
+// into the carrier that holds them. A cell spelled
+// {"value":"x","font_weight":"bold","border":{…}} passed every client check
+// and reached the backend verbatim, which answered
+// `[cells[0][0].border] unexpected property "border" is not defined` -- a
+// message naming neither the carrier nor the fix. 08-29..31 reflow: 33
+// +cells-set rejections came back from the server that way, on a payload the
+// --styles path would have accepted, which is exactly the vocabulary-parity
+// break this file's contract forbids.
+//
+// Only keys this domain already knows are moved. An unrecognized key is left
+// where it is: it may be a field the tool contract gained since this build,
+// and guessing at it is what the contract forbids.
+func foldCellLevelStyleVocabulary(cell map[string]interface{}) {
+	// The border family folds into border_styles, which IS a cell-level
+	// carrier -- the same rewrite the --styles path performs. A conflict
+	// (both spellings present) is left alone for the validator to report.
+	if hasBorderFamilyKey(cell) {
+		if err := foldBorderFamilyAliases(cell, "--cells"); err != nil {
+			return
+		}
+	}
+	scalars := cellStyleScalarTypes()
+	for _, field := range sortedKeys(cell) {
+		if cellCarrierFields[field] {
+			continue
+		}
+		canonical := field
+		if _, known := scalars[canonical]; !known {
+			// Try the alias table's spellings (wrap_text, halign, …) so a
+			// habitual name written at cell level lands the same way it does
+			// inside cell_styles.
+			for _, a := range cellStyleAliases {
+				if a.alias == field {
+					canonical = a.canonical
+					break
+				}
+			}
+		}
+		if _, known := scalars[canonical]; !known {
+			continue
+		}
+		styles, ok := cell["cell_styles"].(map[string]interface{})
+		if !ok {
+			if _, exists := cell["cell_styles"]; exists {
+				return // a non-object cell_styles is the validator's to report
+			}
+			styles = map[string]interface{}{}
+			cell["cell_styles"] = styles
+		}
+		if _, taken := styles[canonical]; taken {
+			continue // cell_styles wins; the duplicate is reported downstream
+		}
+		styles[canonical] = cell[field]
+		delete(cell, field)
+	}
+	// Canonicalize the values too, on the same pass. The typed --cells carrier
+	// meets the generic JSON-schema check right after this normalizer, while
+	// the --styles carrier skips it and reaches normalizeCellStyleAliases with
+	// its rewrites intact -- so without this, a boolean word_wrap that
+	// --styles accepts died here on "expected type string". The error is
+	// dropped on purpose: this is the rewrite pass, and the same function runs
+	// again later with the path context that makes a good message.
+	if styles, ok := cell["cell_styles"].(map[string]interface{}); ok {
+		_ = normalizeCellStyleAliases(styles, "--cells")
+	}
+}
+
+// hasBorderFamilyKey reports whether a cell carries any border spelling other
+// than the canonical border_styles carrier, i.e. whether the fold has work.
+func hasBorderFamilyKey(cell map[string]interface{}) bool {
+	for field := range cell {
+		if field == "border_styles" {
+			continue
+		}
+		if strings.Contains(strings.ToLower(field), "border") {
+			return true
+		}
+	}
+	return false
+}
+
+// unwrapWritesEnvelope turns the two object spellings of --writes into the
+// array the flag takes: the {"writes":[…]} wrapper (the flag name repeated
+// inside its own value, the same habit that produces a bare {"cells":…}), and
+// a lone write object written without its list. 08-29..31 reflow: 54
+// +cells-set rejections read `--writes: expected type "array", got "object"`,
+// the largest diagnosed cluster on that command.
+//
+// A lone write is recognized by carrying `cells` or `values` -- the payload a
+// write must have. An object with neither is left alone: it is not a write,
+// and the type error is the right answer for it.
+func unwrapWritesEnvelope(v interface{}) interface{} {
+	obj, ok := v.(map[string]interface{})
+	if !ok {
+		return v
+	}
+	if inner, wrapped := obj["writes"]; wrapped && len(obj) == 1 {
+		if list, isList := inner.([]interface{}); isList {
+			return list
+		}
+		if single, isObj := inner.(map[string]interface{}); isObj {
+			return []interface{}{single}
+		}
+		return v
+	}
+	_, hasCells := obj["cells"]
+	_, hasValues := obj["values"]
+	if hasCells || hasValues {
+		return []interface{}{obj}
 	}
 	return v
 }
@@ -520,7 +998,8 @@ func normalizeCellsFlagValue(v interface{}) interface{} {
 // values → cells only when "cells" is absent: two spellings carrying
 // different payloads is a conflict for normalizeSubOpInputKeys to report, not
 // one to silently resolve here.
-func normalizeWritesFlagValue(v interface{}) interface{} {
+func normalizeWritesFlagValue(runtime flagView, v interface{}) interface{} {
+	v = unwrapWritesEnvelope(v)
 	items, ok := v.([]interface{})
 	if !ok {
 		return v
@@ -537,7 +1016,7 @@ func normalizeWritesFlagValue(v interface{}) interface{} {
 			}
 		}
 		if cells, ok := item["cells"]; ok {
-			item["cells"] = normalizeCellsFlagValue(cells)
+			item["cells"] = normalizeCellsFlagValue(newMapFlagViewForCommand("+cells-set", item), cells)
 		}
 	}
 	return v
@@ -639,6 +1118,12 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		if !ok {
 			return common.ValidationErrorf("%s.%s must be an object like {\"style\":\"solid\",\"color\":\"#000000\"}", path, from)
 		}
+		// The line-kind slot is spelled `type` in the Lark OpenAPI's own
+		// border vocabulary and in openpyxl's Side(border_style=…) read
+		// loosely. This spec has exactly one kind slot, so the rename is the
+		// only reading; normalizeBorderSideVocab then sorts a thickness word
+		// out of the style slot as it does for any other spelling.
+		normalizeBorderSideVocab(obj)
 		for _, attr := range sortedKeys(obj) {
 			if !attrs[attr] {
 				return common.ValidationErrorf("%s.%s.%s is not a border attribute (want style/weight/color)", path, from, attr)
@@ -648,6 +1133,45 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 			}
 		}
 		return nil
+	}
+	// setSideScalar reads a border written as ONE value rather than an
+	// attribute object — border:"solid", border_all:"thin", border:2. Every
+	// external border vocabulary has this form (xlsxwriter's {'border': 1},
+	// CSS's shorthand, openpyxl's Side(border_style="thin")) and it has one
+	// reading: the value names the line, the rest of the spec defaults.
+	// A thickness word or a pixel count fills weight and leaves style solid,
+	// exactly as the flattened border_style path does; anything else is a
+	// line style and reaches the style enum, which names the allowed set when
+	// the word came from a vocabulary this contract does not carry.
+	// 09-04..07: 5903 rejections read "border must be an object", all of them
+	// a caller who wrote the value the shorthand takes everywhere else.
+	setSideScalar := func(side string, v interface{}, from string) error {
+		if s, ok := v.(string); ok {
+			if canon := borderWeightWord(s); canon != "" {
+				if err := setSideAttr(side, "weight", canon, from); err != nil {
+					return err
+				}
+				return setSideAttr(side, "style", "solid", from)
+			}
+			return setSideAttr(side, "style", v, from)
+		}
+		if _, isWidth := borderLineWidth(v); isWidth {
+			// normalizeBorderSideVocab turns the number into a weight word
+			// once the side object exists; setting it here keeps that one
+			// conversion table in one place.
+			if err := setSideAttr(side, "weight", v, from); err != nil {
+				return err
+			}
+			return setSideAttr(side, "style", "solid", from)
+		}
+		return common.ValidationErrorf("%s.%s must be an object like {\"style\":\"solid\",\"color\":\"#000000\"}, a line style (\"solid\"), or a thickness (\"thin\", 2)", path, from)
+	}
+	// setSideLoose takes whichever of the two forms the caller used.
+	setSideLoose := func(side string, v interface{}, from string) error {
+		if _, isObj := v.(map[string]interface{}); isObj {
+			return setSide(side, v, from)
+		}
+		return setSideScalar(side, v, from)
 	}
 	// A flattened border_style holding a thickness word fills both attributes
 	// — same helper as the nested form (borderWeightWord), but split out here
@@ -674,7 +1198,12 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		}
 		obj, ok := v.(map[string]interface{})
 		if !ok {
-			return common.ValidationErrorf("%s.%s must be an object — either side-keyed ({\"top\":{…},\"bottom\":{…}} / {\"all\":{…}}) or attribute-keyed ({\"style\":\"solid\",\"color\":\"#000\"} = all four sides)", path, key)
+			// The one-value shorthand, not a malformed object.
+			if err := setSideScalar("all", v, key); err != nil {
+				return err
+			}
+			delete(in, key)
+			continue
 		}
 		sideKeyed := false
 		for k := range obj {
@@ -688,7 +1217,7 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 				if !sides[side] {
 					return common.ValidationErrorf("%s.%s.%s is not a valid side (want top/bottom/left/right/all)", path, key, side)
 				}
-				if err := setSide(side, obj[side], key); err != nil {
+				if err := setSideLoose(side, obj[side], key); err != nil {
 					return err
 				}
 			}
@@ -697,12 +1226,15 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		}
 		delete(in, key)
 	}
-	for _, side := range []string{"top", "bottom", "left", "right"} {
+	// "all" rides in the same loop as the four sides: border_all is the same
+	// flattened habit one key wider, and the side vocabulary already carries
+	// it (09-04..07: 242 rejections).
+	for _, side := range []string{"top", "bottom", "left", "right", "all"} {
 		// Both word orders appear in the wild: border_bottom (07-20 eval) and
 		// bottom_border (07-21), same for the flattened attribute triples.
 		for _, key := range []string{"border_" + side, side + "_border"} {
 			if v, has := in[key]; has {
-				if err := setSide(side, v, key); err != nil {
+				if err := setSideLoose(side, v, key); err != nil {
 					return err
 				}
 				delete(in, key)
@@ -710,6 +1242,16 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		}
 		for _, attr := range attrNames {
 			for _, key := range []string{"border_" + side + "_" + attr, side + "_border_" + attr} {
+				if v, has := in[key]; has {
+					if err := setSideAttr(side, attr, v, key); err != nil {
+						return err
+					}
+					delete(in, key)
+				}
+			}
+		}
+		for spelling, attr := range borderAttrAliases {
+			for _, key := range []string{"border_" + side + "_" + spelling, side + "_border_" + spelling} {
 				if v, has := in[key]; has {
 					if err := setSideAttr(side, attr, v, key); err != nil {
 						return err
@@ -728,5 +1270,134 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 			delete(in, key)
 		}
 	}
+	for _, spelling := range sortedKeys(borderAttrAliases) {
+		key := "border_" + spelling
+		if v, has := in[key]; has {
+			if err := setAllScalar(borderAttrAliases[spelling], v, key); err != nil {
+				return err
+			}
+			delete(in, key)
+		}
+	}
+	// border_type runs last so an explicitly spelled attribute wins: the
+	// values that only pick SIDES say nothing about the line, and a caller
+	// who wrote border_type:"FULL_BORDER" alongside border_style:"dashed"
+	// means a dashed box, not a conflict.
+	if v, has := in["border_type"]; has {
+		soft := func(side, attr string, val interface{}) {
+			bs, ok := in["border_styles"].(map[string]interface{})
+			if !ok {
+				bs = map[string]interface{}{}
+				in["border_styles"] = bs
+			}
+			// A side selector picks WHICH edges, and the line attributes the
+			// caller spelled out apply to those edges. Those attributes have
+			// already been folded onto "all" by the loops above, so they move
+			// with the selection: border_type:"LEFT_BORDER" next to
+			// border_style:"dashed" is one dashed left border, not a dashed
+			// box with a solid left edge.
+			if side != "all" {
+				if allSide, spread := bs["all"].(map[string]interface{}); spread {
+					// Merged, not replaced: the selected side may already
+					// carry attributes the caller spelled for it alone
+					// (border_left_color), and those are the narrower
+					// statement, so only what it lacks comes from "all".
+					sideObj, exists := bs[side].(map[string]interface{})
+					if !exists {
+						sideObj = map[string]interface{}{}
+					}
+					for attr, val := range allSide {
+						if _, taken := sideObj[attr]; !taken {
+							sideObj[attr] = val
+						}
+					}
+					bs[side] = sideObj
+					delete(bs, "all")
+				}
+			}
+			sideObj, ok := bs[side].(map[string]interface{})
+			if !ok {
+				if _, exists := bs[side]; exists {
+					return
+				}
+				sideObj = map[string]interface{}{}
+				bs[side] = sideObj
+			}
+			if _, exists := sideObj[attr]; !exists {
+				sideObj[attr] = val
+			}
+		}
+		if err := foldBorderTypeValue(v, path, setSideAttr, setSideLoose, soft); err != nil {
+			return err
+		}
+		delete(in, "border_type")
+	}
 	return nil
+}
+
+// borderAttrAliases carries the border attribute names other vocabularies use
+// for a slot this contract spells differently. width is the Google Sheets API
+// and CSS name for weight; normalizeBorderSideVocab already folds it inside a
+// per-side object, and these entries close the flattened spellings
+// (border_width, border_top_width) that never reach a side object at all.
+// 09-04..07: 919 rejections on border.width and border_width.
+var borderAttrAliases = map[string]string{"width": "weight"}
+
+// borderTypeSideValues maps the Lark OpenAPI's own borderType vocabulary onto
+// the sides a per-cell style spec addresses. set_cell_range applies each side
+// to EVERY cell of the range (verified 09-10: border_styles.top over A1:C3
+// leaves a top border on all nine cells, not on row 1 only), so FULL_BORDER
+// and the single-side words are exact — "all" is precisely FULL_BORDER, and
+// the earlier reading of these values as inexpressible was the mapping being
+// read the wrong way round.
+var borderTypeSideValues = map[string]string{
+	"FULL_BORDER": "all", "ALL_BORDER": "all", "ALL_BORDERS": "all", "ALL": "all", "GRID": "all",
+	"TOP_BORDER": "top", "BOTTOM_BORDER": "bottom", "LEFT_BORDER": "left", "RIGHT_BORDER": "right",
+}
+
+// borderTypeInteriorValues are the borderType words that address a subset of
+// a range's edges — the interior lines, or the outline alone. A per-cell spec
+// styles every cell the same way, so neither has an expression here and a
+// silent nearest-fit would draw lines the caller did not ask for.
+var borderTypeInteriorValues = map[string]string{
+	"OUTER_BORDER":      `border_type:"OUTER_BORDER" outlines the range while leaving the cells inside it bare, which a per-cell style spec cannot express: style the four edge ranges instead ({"border_styles":{"top":{"style":"solid"}}} on the first row, "bottom" on the last, "left" on the first column, "right" on the last)`,
+	"INNER_BORDER":      `border_type:"INNER_BORDER" draws only the lines between cells, which a per-cell style spec cannot express; border every cell with border_type:"FULL_BORDER"`,
+	"HORIZONTAL_BORDER": `border_type:"HORIZONTAL_BORDER" draws only the lines between rows, which a per-cell style spec cannot express; border every cell with border_type:"FULL_BORDER", or style one row's range with {"border_styles":{"bottom":{"style":"solid"}}}`,
+	"VERTICAL_BORDER":   `border_type:"VERTICAL_BORDER" draws only the lines between columns, which a per-cell style spec cannot express; border every cell with border_type:"FULL_BORDER", or style one column's range with {"border_styles":{"right":{"style":"solid"}}}`,
+}
+
+// foldBorderTypeValue folds border_type onto the border_styles it names,
+// dispatching on the VALUE because the field carries two vocabularies at
+// once: the Lark OpenAPI's side selector (FULL_BORDER / TOP_BORDER / …) and
+// the CSS-ish line word every model reaches for (solid, dashed, thin, 2).
+// Each value belongs to exactly one of them, so the pair is decidable even
+// though the field name alone is not — which is what kept border_type
+// rejected until now, at 46035 rejections over 09-04..07, the single largest
+// style-field cluster.
+//
+// soft fills a side attribute only when nothing has claimed it, for the
+// side-selector branch: those values state that a border exists, not what it
+// looks like.
+func foldBorderTypeValue(v interface{}, path string,
+	setSideAttr func(side, attr string, v interface{}, from string) error,
+	setSideLoose func(side string, v interface{}, from string) error,
+	soft func(side, attr string, val interface{}),
+) error {
+	word, isStr := v.(string)
+	if !isStr {
+		return setSideLoose("all", v, "border_type")
+	}
+	key := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(word), "-", "_"))
+	key = strings.ReplaceAll(key, " ", "_")
+	if side, ok := borderTypeSideValues[key]; ok {
+		soft(side, "style", "solid")
+		return nil
+	}
+	if key == "NO_BORDER" || key == "NONE" {
+		return setSideAttr("all", "style", "none", "border_type")
+	}
+	if rx, ok := borderTypeInteriorValues[key]; ok {
+		return common.ValidationErrorf("%s.border_type: %s", path, rx)
+	}
+	return setSideLoose("all", v, "border_type")
 }

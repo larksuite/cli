@@ -58,7 +58,6 @@ type searchEventItem struct {
 	Start    *searchEventTimeInfo `json:"start,omitempty"`
 	End      *searchEventTimeInfo `json:"end,omitempty"`
 	IsAllDay bool                 `json:"is_all_day,omitempty"`
-	AppLink  string               `json:"app_link,omitempty"`
 }
 
 // searchEventOutput is the structured output for +search-event.
@@ -179,7 +178,7 @@ var CalendarSearchEvent = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},
 		{Name: "query", Desc: "search keyword"},
-		{Name: "attendee-ids", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_, room omm_)"},
+		{Name: "attendee-ids", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_, room omm_). Same-type IDs are OR/union — e.g. --attendee-ids \"ou_A,ou_B\" matches events A or B joined, not both."},
 		{Name: "start", Desc: "search time range start (ISO 8601 or YYYY-MM-DD)"},
 		{Name: "end", Desc: "search time range end (ISO 8601 or YYYY-MM-DD)"},
 		{Name: "page-token", Desc: "page token for next page"},
@@ -195,6 +194,10 @@ var CalendarSearchEvent = common.Shortcut{
 		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", defaultSearchEventPageSize, 1, maxSearchEventPageSize); err != nil {
 			return err
 		}
+		warnCalendarTimezoneMismatch(runtime,
+			calendarTimeInputRange{Flag: "start", Value: runtime.Str("start")},
+			calendarTimeInputRange{Flag: "end", Value: runtime.Str("end")},
+		)
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -268,9 +271,6 @@ var CalendarSearchEvent = common.Shortcut{
 				}
 				if v, ok := meta["is_all_day"].(bool); ok {
 					out.IsAllDay = v
-				}
-				if v, ok := meta["app_link"].(string); ok {
-					out.AppLink = v
 				}
 				if start, ok := meta["start"].(map[string]any); ok {
 					out.Start = extractTimeInfo(start)

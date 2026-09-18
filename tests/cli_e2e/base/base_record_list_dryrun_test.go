@@ -4,6 +4,7 @@
 package base
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -230,6 +231,54 @@ func TestBaseRecordGetDryRunInfersNDJSON(t *testing.T) {
 	require.Equal(t, "rec_x", gjson.Get(out, "data.api.0.body.record_id_list.0").String(), out)
 	require.Equal(t, "ndjson", gjson.Get(out, "data.export_format").String(), out)
 	require.Equal(t, "record.ndjson", gjson.Get(out, "data.output").String(), out)
+}
+
+func TestBaseRecordSearchDryRunMissingFlagHints(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantMessage string
+		wantParams  []string
+	}{
+		{
+			name:        "filter only is missing keyword",
+			args:        []string{"--filter-json", `{"logic":"and","conditions":[["Status","==","Todo"]]}`},
+			wantMessage: "--keyword is required unless --json is used",
+			wantParams:  []string{"--keyword"},
+		},
+		{
+			name:        "sort only is missing keyword",
+			args:        []string{"--sort-json", `[{"field":"Updated","desc":true}]`},
+			wantMessage: "--keyword is required unless --json is used",
+			wantParams:  []string{"--keyword"},
+		},
+		{
+			name:        "keyword is missing search field",
+			args:        []string{"--keyword", "Alice"},
+			wantMessage: "--search-field is required unless --json is used",
+			wantParams:  []string{"--search-field"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := []string{"base", "+record-search", "--base-token", "app_x", "--table-id", "tbl_x"}
+			result := runBaseDryRun(t, 2, append(args, tt.args...)...)
+
+			require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+			require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+			require.Equal(t, tt.wantMessage, gjson.Get(result.Stderr, "error.message").String(), result.Stderr)
+			require.Equal(t, tt.wantParams[0], gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+			require.Equal(t, int64(len(tt.wantParams)), gjson.Get(result.Stderr, "error.params.#").Int(), result.Stderr)
+			for i, wantParam := range tt.wantParams {
+				require.Equal(t, wantParam, gjson.Get(result.Stderr, fmt.Sprintf("error.params.%d.name", i)).String(), result.Stderr)
+			}
+			hint := gjson.Get(result.Stderr, "error.hint").String()
+			for _, want := range []string{"In flag mode", "--keyword", "--search-field", "+record-list", "--filter-json", "--sort-json", "--json"} {
+				require.Contains(t, hint, want, result.Stderr)
+			}
+			require.Empty(t, result.Stdout)
+		})
+	}
 }
 
 func TestBaseRecordSearchDryRunJSONConflictReportsActualParams(t *testing.T) {

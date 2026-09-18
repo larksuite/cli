@@ -669,8 +669,8 @@ func TestDriveUpdateTitleExecuteDocxURL(t *testing.T) {
 	if got := mustStringField(t, data, "url", "data.url"); got != "https://www.feishu.cn/docx/docxRenameTarget" {
 		t.Fatalf("url = %q, want the built docx URL", got)
 	}
-	if progress := stderr.String(); !strings.Contains(progress, "Updating docx") {
-		t.Fatalf("stderr = %q, want a progress line naming the target type", progress)
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no update progress", stderr.String())
 	}
 }
 

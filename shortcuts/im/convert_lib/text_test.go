@@ -44,6 +44,7 @@ func TestPostConverterConvert(t *testing.T) {
 	}
 }
 
+// TestPostConverterConvertFallback covers fallback rendering for invalid post content.
 func TestPostConverterConvertFallback(t *testing.T) {
 	tests := []struct {
 		name string
@@ -63,6 +64,46 @@ func TestPostConverterConvertFallback(t *testing.T) {
 	}
 }
 
+// TestPostConverterConvertAttachmentZone covers attachment-zone rendering in both response and write formats.
+func TestPostConverterConvertAttachmentZone(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "file and folder attachments (response format)",
+			raw:  `{"zh_cn":{"title":"Docs","content":[[{"tag":"text","text":"see below"}]]},"files":[{"file_key":"file_1","file_name":"report.pdf"},{"file_key":"file_2","file_name":"assets","is_folder":true}]}`,
+			want: "Docs\nsee below\n<file key=\"file_1\" name=\"report.pdf\"/>\n<folder key=\"file_2\" name=\"assets\"/>",
+		},
+		{
+			name: "attachment without name shows key only",
+			raw:  `{"zh_cn":{"content":[[{"tag":"text","text":"hi"}]]},"files":[{"file_key":"file_3"}]}`,
+			want: "hi\n<file key=\"file_3\"/>",
+		},
+		{
+			name: "attachment with empty key skipped",
+			raw:  `{"zh_cn":{"content":[[{"tag":"text","text":"hi"}]]},"files":[{"file_name":"no key"}]}`,
+			want: "hi",
+		},
+		{
+			name: "attachment zone only (empty post body)",
+			raw:  `{"files":[{"file_key":"file_4","file_name":"a.txt"}]}`,
+			want: "[Rich text message]\n<file key=\"file_4\" name=\"a.txt\"/>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConvertContext{RawContent: tt.raw, MentionMap: map[string]string{}}
+			if got := (postConverter{}).Convert(ctx); got != tt.want {
+				t.Fatalf("postConverter.Convert() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestUnwrapPostLocale covers extracting the locale map from a post content JSON.
 func TestUnwrapPostLocale(t *testing.T) {
 	direct := map[string]interface{}{"title": "Direct"}
 	if got := unwrapPostLocale(direct); got["title"] != "Direct" {

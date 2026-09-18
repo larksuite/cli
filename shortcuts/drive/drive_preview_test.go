@@ -461,25 +461,25 @@ func TestDrivePreviewDryRunIncludesVersionAndMode(t *testing.T) {
 		t.Fatalf("requested_type=%v, want image", got)
 	}
 	api, _ := data["api"].([]interface{})
-	if len(api) != 2 {
-		t.Fatalf("len(api)=%d, want 2", len(api))
+	if len(api) != 3 {
+		t.Fatalf("len(api)=%d, want 3", len(api))
 	}
-	call, _ := api[0].(map[string]interface{})
+	call, _ := api[1].(map[string]interface{})
 	if got := call["method"]; got != "POST" {
 		t.Fatalf("method=%v, want POST", got)
 	}
-	if got := call["url"]; got != "/open-apis/drive/v1/medias/file_preview/preview_result" {
+	if got := call["url"]; got != "/open-apis/drive/v1/medias/resolved_file_token/preview_result" {
 		t.Fatalf("url=%v, want preview_result", got)
 	}
 	body, _ := call["body"].(map[string]interface{})
 	if got := body["version"]; got != "7" {
 		t.Fatalf("body.version=%v, want 7", got)
 	}
-	downloadCall, _ := api[1].(map[string]interface{})
+	downloadCall, _ := api[2].(map[string]interface{})
 	if got := downloadCall["method"]; got != "GET" {
 		t.Fatalf("download method=%v, want GET", got)
 	}
-	if got := downloadCall["url"]; got != "/open-apis/drive/v1/medias/file_preview/preview_download" {
+	if got := downloadCall["url"]; got != "/open-apis/drive/v1/medias/resolved_file_token/preview_download" {
 		t.Fatalf("download url=%v, want preview_download", got)
 	}
 	params, _ := downloadCall["params"].(map[string]interface{})
@@ -515,14 +515,14 @@ func TestDrivePreviewDryRunSourceFileDocumentsDirectDownload(t *testing.T) {
 		t.Fatalf("selected_type_code=%v, want %s", got, drivePreviewTypeSourceFile)
 	}
 	api, _ := data["api"].([]interface{})
-	if len(api) != 1 {
-		t.Fatalf("len(api)=%d, want 1", len(api))
+	if len(api) != 2 {
+		t.Fatalf("len(api)=%d, want 2", len(api))
 	}
-	call, _ := api[0].(map[string]interface{})
+	call, _ := api[1].(map[string]interface{})
 	if got := call["method"]; got != "GET" {
 		t.Fatalf("method=%v, want GET", got)
 	}
-	if got := call["url"]; got != "/open-apis/drive/v1/medias/file_source/preview_download" {
+	if got := call["url"]; got != "/open-apis/drive/v1/medias/resolved_file_token/preview_download" {
 		t.Fatalf("url=%v, want preview_download", got)
 	}
 	params, _ := call["params"].(map[string]interface{})
@@ -545,11 +545,11 @@ func TestDrivePreviewDryRunSourceAliasUsesPreviewCandidates(t *testing.T) {
 
 	data := decodeDryRunOutput(t, DrivePreview.DryRun(context.Background(), runtime))
 	api, _ := data["api"].([]interface{})
-	if len(api) != 2 {
-		t.Fatalf("len(api)=%d, want 2", len(api))
+	if len(api) != 3 {
+		t.Fatalf("len(api)=%d, want 3", len(api))
 	}
-	call, _ := api[0].(map[string]interface{})
-	if got := call["url"]; got != "/open-apis/drive/v1/medias/file_source/preview_result" {
+	call, _ := api[1].(map[string]interface{})
+	if got := call["url"]; got != "/open-apis/drive/v1/medias/resolved_file_token/preview_result" {
 		t.Fatalf("url=%v, want preview_result", got)
 	}
 	if _, ok := data["selected_type_code"]; ok {
@@ -569,7 +569,7 @@ func TestDrivePreviewDryRunListOmitsBodyWithoutVersion(t *testing.T) {
 		t.Fatalf("mode=%v, want list", got)
 	}
 	api, _ := data["api"].([]interface{})
-	call, _ := api[0].(map[string]interface{})
+	call, _ := api[1].(map[string]interface{})
 	if _, ok := call["body"]; ok {
 		t.Fatalf("dry-run body should be omitted when version is empty: %#v", call)
 	}
@@ -587,10 +587,10 @@ func TestDrivePreviewDryRunDownloadWithoutVersionShowsResolvedVersion(t *testing
 
 	data := decodeDryRunOutput(t, DrivePreview.DryRun(context.Background(), runtime))
 	api, _ := data["api"].([]interface{})
-	if len(api) != 2 {
-		t.Fatalf("len(api)=%d, want 2", len(api))
+	if len(api) != 3 {
+		t.Fatalf("len(api)=%d, want 3", len(api))
 	}
-	downloadCall, _ := api[1].(map[string]interface{})
+	downloadCall, _ := api[2].(map[string]interface{})
 	params, _ := downloadCall["params"].(map[string]interface{})
 	if got := params["version"]; got != "<resolved version from preview_result>" {
 		t.Fatalf("download params.version=%v, want resolved-version placeholder", got)

@@ -11,30 +11,30 @@
 ```bash
 # 追加到末尾（XML 直接作为参数）
 lark-cli slides +add-slide --as user \
-  --presentation "$PID" \
+  --presentation "$PRES_ID" \
   --slide '<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>'
 
 # XML 从文件读（推荐：避免 shell 转义和长参数截断）
 lark-cli slides +add-slide --as user \
-  --presentation "$PID" \
+  --presentation "$PRES_ID" \
   --slide @page3.xml
 
 # XML 从 stdin 读
-cat page3.xml | lark-cli slides +add-slide --as user --presentation "$PID" --slide -
+cat page3.xml | lark-cli slides +add-slide --as user --presentation "$PRES_ID" --slide -
 
 # 插到某页之前
 lark-cli slides +add-slide --as user \
-  --presentation "$PID" \
+  --presentation "$PRES_ID" \
   --slide @cover.xml \
   --before-slide-id "$SID"
 
-# wiki 链接（CLI 自动 wiki.spaces.get_node 解析，并校验 obj_type=slides）
+# wiki 链接（CLI 自动通过 node_by_token 接口解析，并校验 obj_type=slides）
 lark-cli slides +add-slide --as user \
   --presentation "https://xxx.feishu.cn/wiki/wikcnXXXXXX" \
   --slide @page3.xml
 
 # 预览请求，不实际写入
-lark-cli slides +add-slide --presentation "$PID" --slide @page3.xml --dry-run
+lark-cli slides +add-slide --presentation "$PRES_ID" --slide @page3.xml --dry-run
 ```
 
 ## 参数
@@ -57,7 +57,7 @@ XML 里写 `<img src="@./chart.png" .../>`，CLI 会：先把每个不重复的�
 
 ```bash
 lark-cli slides +add-slide --as user \
-  --presentation "$PID" \
+  --presentation "$PRES_ID" \
   --slide '<slide xmlns="https://www.larkoffice.com/sml/2.0"><data><img src="@./chart.png" topLeftX="100" topLeftY="100" width="320" height="180"/></data></slide>'
 ```
 

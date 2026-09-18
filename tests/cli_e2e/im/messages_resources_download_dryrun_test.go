@@ -75,13 +75,30 @@ func TestIM_MessagesResourcesDownloadDryRun(t *testing.T) {
 		require.Equal(t, "img_dryrun", clie2e.DryRunGet(out, "output").String(), "stdout:\n%s", out)
 	})
 
-	t.Run("rejects an output path outside the working directory", func(t *testing.T) {
+	// An absolute path inside an allowed root is the case agents kept failing
+	// on: the command used to refuse the shape before the built-in path policy
+	// could judge where it pointed.
+	t.Run("accepts an absolute output path inside an allowed root", func(t *testing.T) {
+		result := run(t,
+			"--message-id", "om_dryrun",
+			"--file-key", "file_dryrun",
+			"--type", "file",
+			"--output", "/tmp/out.bin",
+		)
+		result.AssertExitCode(t, 0)
+		require.Equal(t, "/tmp/out.bin", clie2e.DryRunGet(result.Stdout, "output").String(),
+			"stdout:\n%s", result.Stdout)
+	})
+
+	t.Run("rejects an output path the policy refuses", func(t *testing.T) {
 		for _, tt := range []struct {
 			name       string
 			outputPath string
 		}{
-			{name: "absolute", outputPath: "/tmp/out.bin"},
+			// Neither resolves inside an allowed root from this working
+			// directory, so the policy — not a shape check — turns them down.
 			{name: "parent escape", outputPath: "../out.bin"},
+			{name: "denylisted directory", outputPath: "/etc/out.bin"},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				result := run(t,

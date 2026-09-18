@@ -23,7 +23,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/riskcontrol"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
 	"github.com/larksuite/cli/internal/transport"
@@ -93,7 +92,6 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 			return nil, err
 		}
 		cfg := acct.ToCliConfig()
-		registry.InitWithBrand(cfg.Brand)
 		return cfg, nil
 	})
 
@@ -281,7 +279,14 @@ type credentialDeps struct {
 }
 
 func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
-	providers := extcred.Providers()
+	store := credential.NewTenantTokenStore(deps.Keychain)
+	providers := withTenantAccessTokenLookup(extcred.Providers(), func(_ context.Context, appID string) (*extcred.Token, error) {
+		value, found, err := store.Get(appID)
+		if err != nil || !found {
+			return nil, err
+		}
+		return &extcred.Token{Value: value, Source: "keychain:tenant-access-token"}, nil
+	})
 	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile, deps.ProfileSource)
 	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
 	// NOTE: Do not pass deps.ErrOut as warnOut. Credential resolution
@@ -291,4 +296,19 @@ func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider
 	// provider clears unverified identity fields), so silencing the
 	// warning is safe.
 	return credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
+}
+
+func withTenantAccessTokenLookup(
+	providers []extcred.Provider,
+	lookup func(context.Context, string) (*extcred.Token, error),
+) []extcred.Provider {
+	for i, provider := range providers {
+		configurer, ok := provider.(interface {
+			WithTenantAccessTokenLookup(func(context.Context, string) (*extcred.Token, error)) extcred.Provider
+		})
+		if ok {
+			providers[i] = configurer.WithTenantAccessTokenLookup(lookup)
+		}
+	}
+	return providers
 }

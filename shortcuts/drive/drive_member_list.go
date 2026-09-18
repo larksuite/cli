@@ -273,13 +273,9 @@ var DriveMemberList = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive members for %s %s...\n", spec.Type, common.MaskToken(spec.Token))
 		data, err := runtime.CallAPITyped("GET", spec.apiPath(), spec.params(), nil)
 		if err != nil {
 			return err
-		}
-		if items, ok := data["items"].([]interface{}); ok {
-			fmt.Fprintf(runtime.IO().ErrOut, "Found %d Drive member(s)\n", len(items))
 		}
 		runtime.OutFormat(data, nil, func(w io.Writer) {
 			renderDriveMemberListPretty(w, data)

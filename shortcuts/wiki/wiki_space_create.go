@@ -5,7 +5,6 @@ package wiki
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -58,8 +57,6 @@ var WikiSpaceCreate = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Creating wiki space %q...\n", spec.Name)
-
 		data, err := runtime.CallAPITyped("POST", wikiSpacesAPIPath, nil, spec.RequestBody())
 		if err != nil {
 			return err
@@ -71,7 +68,6 @@ var WikiSpaceCreate = common.Shortcut{
 		}
 
 		out := wikiSpaceCreateOutput(raw)
-		fmt.Fprintf(runtime.IO().ErrOut, "Created wiki space %s\n", common.MaskToken(common.GetString(out, "space_id")))
 		runtime.Out(out, nil)
 		return nil
 	},

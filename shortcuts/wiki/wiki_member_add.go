@@ -61,9 +61,6 @@ var WikiMemberAdd = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Adding wiki space member %s (type=%s, role=%s) to space %s...\n",
-			common.MaskToken(spec.MemberID), spec.MemberType, spec.MemberRole, common.MaskToken(spaceID))
-
 		path := fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/members", validate.EncodePathSegment(spaceID))
 		data, err := runtime.CallAPITyped("POST", path, spec.QueryParams(), spec.RequestBody())
 		if err != nil {
@@ -83,7 +80,6 @@ var WikiMemberAdd = common.Shortcut{
 		if common.GetString(out, "member_role") == "" {
 			out["member_role"] = spec.MemberRole
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Added wiki space member %s\n", common.MaskToken(common.GetString(out, "member_id")))
 		runtime.Out(out, nil)
 		return nil
 	},

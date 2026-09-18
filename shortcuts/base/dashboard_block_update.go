@@ -34,6 +34,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"number_format":{"formatName":"dollar_rounded","precision":0}}'`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --position '{"x":6,"y":0,"w":6,"h":4}'`,
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <ranking_block_id> --data-config '{"limit_size":20}'`,
 		"Read lark-base-dashboard-block-config.md as the SSOT for data_config templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
 		"Use +dashboard-block-get first to inspect the current data_config before replacing nested values.",
 		"Block type cannot be changed; delete and recreate the block to change chart type.",
@@ -56,15 +57,14 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		effective := cfg
 		if !runtime.Bool("no-validate") {
 			effective = normalizeDataConfig(cfg)
-			// update 不传 type，其余字段交给后端按组件现有类型校验。
-			// number_format 是例外：它必须和 create 一样在本地拦截，否则同一份
-			// 非法取值在 create 报错、在 update 却要等一次网络往返才失败。这里
-			// 只复用 number_format 子校验，不走 validateBlockDataConfig 全量分支
-			// ——后者会误报 table_name/series 缺失，破坏“只改 number_format”的用法。
+			// Update 不传 type，因此只执行与组件类型无关的局部校验；全量校验
+			// 会误报局部 patch 未提交的 table_name/series 等字段。
+			problems := validateBlockFilter(effective, "filter", true)
 			if rawNumberFormat, hasNumberFormat := effective["number_format"]; hasNumberFormat {
-				if problems := validateNumberFormat(rawNumberFormat); len(problems) > 0 {
-					return formatDataConfigErrors(problems)
-				}
+				problems = append(problems, validateNumberFormat(rawNumberFormat)...)
+			}
+			if len(problems) > 0 {
+				return formatDataConfigErrors(problems)
 			}
 		}
 		// Fold @file input into inline JSON after the first successful parse.

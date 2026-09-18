@@ -2,7 +2,7 @@
 
 从演示文稿删除**一页**，按 `slide_id` 指定。只改一页里的局部内容用 [`+replace-slide`](lark-slides-replace-slide.md)，不要删了重建。
 
-`--presentation` 接受 token / `/slides/` URL / `/wiki/` URL，ID 是普通 flag 而不是 `--params` JSON 串。
+`--presentation` 接受 token / `/slides/` URL / `/wiki/` URL，页面 ID 通过 `--slide-id` 传入。
 
 > `--slide-id` 只接受单个 ID —— 不支持逗号分隔的列表（`+screenshot` 的 `--slide-id` 支持，这个不支持），也不支持按页号删。
 
@@ -11,7 +11,7 @@
 ```bash
 # 直接传 xml_presentation_id
 lark-cli slides +delete-slide --as user \
-  --presentation "$PID" \
+  --presentation "$PRES_ID" \
   --slide-id "$SID"
 
 # slides URL / wiki URL 都可以（wiki 会自动解析并校验 obj_type=slides）
@@ -20,7 +20,7 @@ lark-cli slides +delete-slide --as user \
   --slide-id "$SID"
 
 # 删之前先确认打到哪份 PPT、哪一页
-lark-cli slides +delete-slide --presentation "$PID" --slide-id "$SID" --dry-run
+lark-cli slides +delete-slide --presentation "$PRES_ID" --slide-id "$SID" --dry-run
 ```
 
 ## 参数
@@ -48,7 +48,7 @@ lark-cli slides +delete-slide --presentation "$PID" --slide-id "$SID" --dry-run
 `slide_id` 是服务端短 ID，**不能从 XML 里推导**。两个来源：
 
 1. `+create` / `+add-slide` 的返回值里存下来；
-2. 事后回读：`slides +xml-get --presentation "$PID" --output .lark-slides/plan/<deck>/readback.xml`。
+2. 事后回读：`slides +xml-get --presentation "$PRES_ID" --output .lark-slides/plan/<deck>/readback.xml`。
 
 删错页的代价高于多跑一次回读 —— 不确定就先回读 + `+screenshot` 看一眼再删。
 

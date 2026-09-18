@@ -151,13 +151,11 @@ var DriveStatus = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "could not resolve cwd: %s", err)
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Walking local: %s\n", localDir)
 		localFiles, err := walkLocalForStatus(safeRoot, cwdCanonical)
 		if err != nil {
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
 		entries, err := listRemoteFolderEntries(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err

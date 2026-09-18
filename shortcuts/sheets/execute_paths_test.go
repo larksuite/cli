@@ -6,12 +6,15 @@ package sheets
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // TestExecute_WorkbookInfo_Happy stubs the invoke_read endpoint and
@@ -110,14 +113,14 @@ func TestExecute_ToolError_KnownSubtypePassthrough(t *testing.T) {
 }
 
 // TestExecute_WikiURLResolvesToSheet covers the two-step wiki path: a /wiki/
-// URL is resolved via get_node to its spreadsheet obj_token, which then feeds
+// URL is resolved via node_by_token to its spreadsheet obj_token, which then feeds
 // the tool invoke. The tool stub is keyed on the resolved obj_token, so the
 // test would fail if the node_token were used unresolved.
 func TestExecute_WikiURLResolvesToSheet(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -141,13 +144,119 @@ func TestExecute_WikiURLResolvesToSheet(t *testing.T) {
 	}
 }
 
+func TestExecute_WikiURLClassifiesNodeByTokenErrors(t *testing.T) {
+	const wikiToken = "wikTestNODE"
+	for _, tt := range []struct {
+		code    int
+		subtype errs.Subtype
+	}{
+		{code: 131012, subtype: errs.SubtypeNotFound},
+		{code: 131013, subtype: errs.SubtypeInvalidParameters},
+		{code: 131014, subtype: errs.SubtypeFailedPrecondition},
+		{code: 131016, subtype: errs.SubtypeInvalidParameters},
+	} {
+		t.Run(fmt.Sprint(tt.code), func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+			lookup := &httpmock.Stub{
+				Method:  "GET",
+				URL:     "/open-apis/wiki/v2/spaces/node_by_token",
+				Headers: http.Header{"X-Tt-Logid": []string{"sheets-wiki-lookup-log"}},
+				Body:    map[string]interface{}{"code": tt.code, "msg": "lookup rejected"},
+				OnMatch: func(req *http.Request) {
+					if got := req.URL.Query().Get("token"); got != wikiToken {
+						t.Errorf("lookup token = %q, want %q", got, wikiToken)
+					}
+				},
+			}
+			parent, stdout, _, reg := newTestRig(t, WorkbookInfo)
+			reg.Register(lookup)
+			parent.SetArgs([]string{"+workbook-info", "--url", "https://example.feishu.cn/wiki/" + wikiToken})
+
+			err := parent.Execute()
+			problem := requireProblem(t, err, errs.CategoryAPI, tt.subtype, "lookup rejected")
+			if problem.Code != tt.code || problem.Retryable {
+				t.Fatalf("problem = %#v, want terminal code %d", problem, tt.code)
+			}
+			if problem.LogID != "sheets-wiki-lookup-log" {
+				t.Fatalf("log_id = %q, want sheets-wiki-lookup-log", problem.LogID)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("unexpected success output: %s", stdout)
+			}
+		})
+	}
+}
+
 // TestExecute_RevisionGet_WikiURL guards RevisionGet's custom Execute hook:
 // the wiki node token must be resolved before get_workbook_structure runs.
+// TestExecute_CondFormatResultGet_WikiURL guards the condition-format result
+// reader's custom Execute hook: wiki URLs must be resolved to the backing
+// spreadsheet token before get_cell_ranges runs.
+func TestExecute_CondFormatResultGet_WikiURL(t *testing.T) {
+	t.Parallel()
+	getNode := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "sheet",
+					"obj_token": testToken,
+				},
+			},
+		},
+	}
+	tool := toolOutputStub(testToken, "read", `{"warning_message":"use row_indices and col_indices","has_more":false,"returned_cell_count":1,"approx_char_count":120,"server_debug":"drop me","ranges":[{"range":"A1:A1","actual_range":"A1:A1","row_indices":[1],"col_indices":["A"],"truncated":false,"range_debug":"drop me","cells":[[{"value":"x","formula":"=1","note":"drop me","data_validation":{"type":"list"},"border_styles":{"top":{"style":"solid"}},"cell_styles":{"background_color":"#FF0000"}}]]}]}`)
+	out, err := runShortcutWithStubs(t, CondFormatResultGet,
+		[]string{"--url", "https://example.feishu.cn/wiki/wikTestNODE", "--sheet-id", testSheetID, "--range", "A1:A1"}, getNode, tool)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+	data := decodeEnvelopeData(t, out)
+	if _, exists := data["server_debug"]; exists {
+		t.Fatalf("top-level unrelated data was retained; out=%s", out)
+	}
+	for _, key := range []string{"warning_message", "has_more", "returned_cell_count"} {
+		if _, exists := data[key]; !exists {
+			t.Fatalf("position/pagination metadata %q missing; out=%s", key, out)
+		}
+	}
+	if _, exists := data["approx_char_count"]; exists {
+		t.Fatalf("raw response size metadata was retained; out=%s", out)
+	}
+	ranges, _ := data["ranges"].([]interface{})
+	if len(ranges) != 1 {
+		t.Fatalf("ranges len = %d, want 1; out=%s", len(ranges), out)
+	}
+	rangeData := ranges[0].(map[string]interface{})
+	if _, exists := rangeData["range_debug"]; exists {
+		t.Fatalf("range-level unrelated data was retained; out=%s", out)
+	}
+	rows := rangeData["cells"].([]interface{})
+	cells := rows[0].([]interface{})
+	cell := cells[0].(map[string]interface{})
+	if len(cell) != 1 {
+		t.Fatalf("cell keys = %#v, want only cell_styles; out=%s", cell, out)
+	}
+	style := cell["cell_styles"].(map[string]interface{})
+	if style["background_color"] != "#FF0000" {
+		t.Fatalf("background_color = %#v, want #FF0000; out=%s", style["background_color"], out)
+	}
+	for _, key := range []string{"value", "formula", "note", "data_validation", "border_styles"} {
+		if _, exists := cell[key]; exists {
+			t.Fatalf("cell unexpectedly retained %q; out=%s", key, out)
+		}
+	}
+}
+
 func TestExecute_RevisionGet_WikiURL(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -177,7 +286,7 @@ func TestExecute_WikiURLWrongObjType(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -194,14 +303,14 @@ func TestExecute_WikiURLWrongObjType(t *testing.T) {
 	requireValidation(t, err, "obj_type")
 }
 
-// TestExecute_WikiURLIncompleteNode treats an incomplete get_node response
+// TestExecute_WikiURLIncompleteNode treats an incomplete node_by_token response
 // (missing obj_type/obj_token) as an internal/server error, not a user --url
 // validation error.
 func TestExecute_WikiURLIncompleteNode(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -213,7 +322,7 @@ func TestExecute_WikiURLIncompleteNode(t *testing.T) {
 	_, err := runShortcutWithStubs(t, WorkbookInfo,
 		[]string{"--url", "https://example.feishu.cn/wiki/wikTestNODE"}, getNode)
 	if err == nil {
-		t.Fatal("want error for incomplete get_node node data")
+		t.Fatal("want error for incomplete node_by_token node data")
 	}
 	var ve *errs.ValidationError
 	if errors.As(err, &ve) {
@@ -230,7 +339,7 @@ func TestExecute_RangeMove_WikiURL(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -493,6 +602,200 @@ func TestExecute_BatchUpdate_Translated(t *testing.T) {
 	}
 }
 
+func TestExecute_BatchChartCreate_ContinueOnErrorKeepsLocallyValidOperations(t *testing.T) {
+	t.Parallel()
+	stub := toolOutputStub(testToken, "write", `{
+		"total":1,
+		"succeeded":1,
+		"failed":0,
+		"results":[{"index":0,"tool_name":"manage_chart_object","success":true}]
+	}`)
+	out, err := runShortcutWithStubs(t, BatchChartCreate, []string{
+		"--url", testURL,
+		"--operations", `[
+			{"sheet-id":"sh1","chart-type":"donut","data-range":"A1:C10"},
+			{"sheet-id":"sh1","chart-type":"line","data-range":"E1:G10","title":"Trend"}
+		]`,
+		"--continue-on-error",
+	}, stub)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	input := decodeToolInput(t, decodeRawEnvelopeBody(t, stub.CapturedBody), "batch_update")
+	ops, _ := input["operations"].([]interface{})
+	if len(ops) != 1 {
+		t.Fatalf("server should receive only the locally valid operation, got %d", len(ops))
+	}
+	for _, want := range []string{
+		`"total": 2`,
+		`"succeeded": 1`,
+		`"failed": 1`,
+		`"index": 0`,
+		`"index": 1`,
+		`"stage": "cli_validation"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("merged partial result should contain %q, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestExecute_BatchChartCreate_StrictModeRejectsBeforeWrite(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, BatchChartCreate, []string{
+		"--url", testURL,
+		"--operations", `[
+			{"sheet-id":"sh1","chart-type":"donut","data-range":"A1:C10"},
+			{"sheet-id":"sh1","chart-type":"line","data-range":"E1:G10","title":"Trend"}
+		]`,
+		"--continue-on-error=false",
+	})
+	requireValidation(t, err, "invalid value \"donut\" for --chart-type")
+}
+
+func TestExecute_BatchChartUpdate_PreflightsSnapshots(t *testing.T) {
+	t.Parallel()
+	read := toolOutputStub(testToken, "read", `{
+		"sheets":[{
+			"sheet_id":"shtSubA",
+			"charts":[{
+				"chart_id":"chart-1",
+				"details":{"snapshot":{
+					"title":{"text":"Old"},
+					"plotArea":{"plot":{"type":"line"}}
+				}}
+			}]
+		}]
+	}`)
+	write := toolOutputStub(testToken, "write", `{
+		"total":1,
+		"succeeded":1,
+		"failed":0,
+		"results":[{"index":0,"tool_name":"manage_chart_object","success":true}]
+	}`)
+	out, err := runShortcutWithStubs(t, BatchChartUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{
+			"shortcut":"+chart-config-update",
+			"input":{"sheetId":"shtSubA","chartId":"chart-1","title":"New"}
+		}]`,
+	}, read, write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+	input := decodeToolInput(t, decodeRawEnvelopeBody(t, write.CapturedBody), "batch_update")
+	ops := input["operations"].([]interface{})
+	chartInput := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+	snapshot := chartDryRunSnapshot(t, chartInput)
+	if snapshot["title"].(map[string]interface{})["text"] != "New" {
+		t.Fatalf("batch partial title = %#v", snapshot["title"])
+	}
+}
+
+func TestExecute_ChartBatches_RejectDuplicateTargetByIDAndName(t *testing.T) {
+	t.Parallel()
+	operations := `[
+			{"shortcut":"+chart-config-update","input":{"sheet_id":"shtSubA","chart_id":"chart-1","title":"New"}},
+			{"shortcut":"+chart-data-update","input":{"sheet_name":"Data","chart_id":"chart-1","data_range":"A1:C10"}}
+		]`
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		extra    []string
+	}{
+		{name: "dedicated chart batch", shortcut: BatchChartUpdate},
+		{name: "general batch", shortcut: BatchUpdate, extra: []string{"--yes"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			structure := toolOutputStub(testToken, "read", `{
+				"sheets":[{"sheet_id":"shtSubA","title":"Data","index":0}]
+			}`)
+			args := []string{"--url", testURL, "--operations", operations}
+			_, err := runShortcutWithStubs(t, tc.shortcut, append(args, tc.extra...), structure)
+			requireValidation(t, err, "both target chart \"chart-1\"")
+		})
+	}
+}
+
+func TestExecute_BatchUpdate_MixesCellsAndSemanticChartUpdate(t *testing.T) {
+	t.Parallel()
+	read := toolOutputStub(testToken, "read", `{
+		"sheets":[{
+			"sheet_id":"shtSubA",
+			"charts":[{
+				"chart_id":"chart-1",
+				"details":{"snapshot":{
+					"title":{"text":"Old"},
+					"plotArea":{"plot":{"type":"line"}}
+				}}
+			}]
+		}]
+	}`)
+	write := toolOutputStub(testToken, "write", `{
+		"total":2,
+		"succeeded":2,
+		"failed":0,
+		"results":[
+			{"index":0,"tool_name":"set_cell_range","success":true},
+			{"index":1,"tool_name":"manage_chart_object","success":true}
+		]
+	}`)
+	out, err := runShortcutWithStubs(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[
+			{"shortcut":"+cells-set","input":{"sheet-id":"shtSubA","range":"A1","cells":[[{"value":1}]]}},
+			{"shortcut":"+chart-config-update","input":{"sheetId":"shtSubA","chartId":"chart-1","title":"New"}}
+		]`,
+		"--yes",
+	}, read, write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+	input := decodeToolInput(t, decodeRawEnvelopeBody(t, write.CapturedBody), "batch_update")
+	ops := input["operations"].([]interface{})
+	if len(ops) != 2 || ops[0].(map[string]interface{})["tool_name"] != "set_cell_range" {
+		t.Fatalf("mixed operations = %#v", ops)
+	}
+	chartInput := ops[1].(map[string]interface{})["input"].(map[string]interface{})
+	snapshot := chartDryRunSnapshot(t, chartInput)
+	if snapshot["title"].(map[string]interface{})["text"] != "New" {
+		t.Fatalf("generic batch partial title = %#v", snapshot["title"])
+	}
+}
+
+func TestExecute_BatchUpdate_CompactsChartCreateSnapshot(t *testing.T) {
+	t.Parallel()
+	write := toolOutputStub(testToken, "write", `{
+		"total":1,
+		"succeeded":1,
+		"failed":0,
+		"results":[{
+			"index":0,
+			"tool_name":"manage_chart_object",
+			"success":true,
+			"data":{"chart_id":"chart-1","snapshot":{"title":{"text":"Large"}}}
+		}]
+	}`)
+	out, err := runShortcutWithStubs(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{
+			"shortcut":"+chart-create-basic",
+			"input":{"sheet-id":"shtSubA","chart-type":"line","data-range":"A1:C10"}
+		}]`,
+		"--yes",
+	}, write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+	if strings.Contains(out, `"snapshot"`) {
+		t.Fatalf("generic batch create must omit the full chart snapshot: %s", out)
+	}
+	if !strings.Contains(out, `"chart_id": "chart-1"`) {
+		t.Fatalf("generic batch create must retain chart_id: %s", out)
+	}
+}
+
 // TestExecute_BatchUpdate_ContinueOnErrorPrecedence locks the flag-vs-envelope
 // precedence: an explicit --continue-on-error=false must keep the strict
 // transaction even when the --operations envelope carries continue_on_error:true,
@@ -733,6 +1036,113 @@ func TestExecute_ChartCreate(t *testing.T) {
 	}
 }
 
+func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing.T) {
+	t.Parallel()
+	readBefore := toolOutputStub(testToken, "read", `{
+		"sheets":[{
+			"sheet_id":"shtSubA",
+			"charts":[{
+				"chart_id":"chart-1",
+				"details":{"snapshot":{
+					"title":{"text":"Old"},
+					"plotArea":{
+						"axes":[
+							{"type":"x","valueType":"linear","axisLine":true,"label":{},"title":{"text":"Month"}},
+							{"type":"y","position":"left","title":{"text":"Amount"}}
+						],
+						"plot":{"type":"line","extra":{"smooth":false}}
+					},
+					"data":{"direction":"column"}
+				}}
+			}]
+		}]
+	}`)
+	write := toolOutputStub(testToken, "write", `{"chart_id":"chart-1"}`)
+	out, err := runShortcutWithStubs(t, ChartConfigUpdate, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--title", "New",
+		"--x-axis-min", "2",
+		"--y-axis-title", "Revenue",
+	}, readBefore, write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	readInput := decodeToolInput(t, decodeRawEnvelopeBody(t, readBefore.CapturedBody), "get_chart_objects")
+	if readInput["chart_id"] != "chart-1" {
+		t.Fatalf("read chart_id = %#v", readInput["chart_id"])
+	}
+	writeInput := decodeToolInput(t, decodeRawEnvelopeBody(t, write.CapturedBody), "manage_chart_object")
+	snapshot := chartDryRunSnapshot(t, writeInput)
+	if snapshot["title"].(map[string]interface{})["text"] != "New" {
+		t.Fatalf("partial title = %#v", snapshot["title"])
+	}
+	axes := snapshot["plotArea"].(map[string]interface{})["axes"].([]interface{})
+	if len(axes) != 2 {
+		t.Fatalf("partial axes = %#v, want existing axes without a duplicate X axis", axes)
+	}
+	xAxis := axes[0].(map[string]interface{})
+	if xAxis["min"] != float64(2) || xAxis["axisLine"] != true ||
+		xAxis["title"].(map[string]interface{})["text"] != "Month" ||
+		axes[1].(map[string]interface{})["title"].(map[string]interface{})["text"] != "Revenue" {
+		t.Fatalf("partial axes = %#v", axes)
+	}
+	data := decodeEnvelopeData(t, out)
+	viewModel := data["viewModel"].(map[string]interface{})
+	if _, ok := viewModel["data"]; ok {
+		t.Fatal("config shortcut output viewModel must not include data")
+	}
+}
+
+func TestExecute_ChartDataUpdate_ReadsSnapshotAndReturnsData(t *testing.T) {
+	t.Parallel()
+	read := toolOutputStub(testToken, "read", `{
+		"sheets":[{
+			"sheet_id":"shtSubA",
+			"charts":[{
+				"chart_id":"chart-1",
+				"details":{"snapshot":{
+					"plotArea":{"plot":{"type":"line"}},
+					"data":{
+						"isStaticData":false,
+						"direction":"column",
+						"refs":[{"value":"A1:C10"}],
+						"dim1":{"serie":{"index":1}},
+						"dim2":{"series":[{"index":2},{"index":3}]}
+					}
+				}}
+			}]
+		}]
+	}`)
+	write := toolOutputStub(testToken, "write", `{"chart_id":"chart-1"}`)
+	out, err := runShortcutWithStubs(t, ChartDataUpdate, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--data-range", "A1:D10",
+		"--dim1-index", "1",
+		"--dim2-indexes", "2,4",
+	}, read, write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	writeInput := decodeToolInput(t, decodeRawEnvelopeBody(t, write.CapturedBody), "manage_chart_object")
+	patchData := chartDryRunSnapshot(t, writeInput)["data"].(map[string]interface{})
+	series := patchData["dim2"].(map[string]interface{})["series"].([]interface{})
+	if len(series) != 2 || series[0].(map[string]interface{})["index"] != float64(2) ||
+		series[1].(map[string]interface{})["index"] != float64(4) {
+		t.Fatalf("partial data series = %#v", series)
+	}
+	data := decodeEnvelopeData(t, out)
+	returned := data["data"].(map[string]interface{})
+	if returned["direction"] != "column" {
+		t.Fatalf("returned data = %#v", returned)
+	}
+}
+
 // TestExecute_SheetCreate hits the workbook write path with all four
 // optional flags so the input builder + callTool wiring is exercised.
 func TestExecute_SheetCreate(t *testing.T) {
@@ -793,4 +1203,183 @@ func decodeRawEnvelopeBody(t *testing.T, raw []byte) map[string]interface{} {
 		t.Fatalf("captured body parse error: %v\nraw=%s", err, string(raw))
 	}
 	return body
+}
+
+// TestExecute_TransientReadRetry pins the read-only retry: an identical read
+// is reissued when the tool answers with its own timeout wording, and the
+// write path is never reissued because this API has no idempotency key.
+func TestExecute_TransientReadRetry(t *testing.T) {
+	t.Parallel()
+
+	timeoutBody := map[string]interface{}{
+		"code": 1310299, "msg": "server time out error", "data": map[string]interface{}{},
+	}
+
+	t.Run("a read retries past a tool timeout", func(t *testing.T) {
+		t.Parallel()
+		parent, stdout, _, reg := newTestRig(t, WorkbookInfo)
+		calls := 0
+		count := func(*http.Request) { calls++ }
+		readURL := "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read"
+		// Stubs are served in registration order, so the first try fails and
+		// the retry meets the success stub.
+		reg.Register(&httpmock.Stub{Method: "POST", URL: readURL, Body: timeoutBody, OnMatch: count})
+		reg.Register(&httpmock.Stub{Method: "POST", URL: readURL, OnMatch: count, Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"output": `{"sheets":[]}`},
+		}})
+		parent.SetArgs([]string{"+workbook-info", "--url", testURL})
+		if err := parent.Execute(); err != nil {
+			t.Fatalf("the second try should succeed, got: %v", err)
+		}
+		if calls != 2 {
+			t.Errorf("calls = %d, want 2 (one retry)", calls)
+		}
+		if !strings.Contains(stdout.String(), `"ok": true`) {
+			t.Errorf("stdout should carry the successful read, got %q", stdout.String())
+		}
+	})
+
+	t.Run("a persistent failure surfaces after the attempts are spent", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, WorkbookInfo)
+		calls := 0
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+			Body: timeoutBody, Reusable: true, OnMatch: func(*http.Request) { calls++ },
+		})
+		parent.SetArgs([]string{"+workbook-info", "--url", testURL})
+		err := parent.Execute()
+		// The exhausted read must still surface the classified backend
+		// failure: a plain error here would cost an agent the subtype it
+		// routes on, and the request count alone would not notice.
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "server time out error")
+		if p.Code != 1310299 {
+			t.Errorf("Code = %d, want 1310299 (the backend's own code must survive the retry loop)", p.Code)
+		}
+		// Pinned locally, not read off readRetryAttempts: reading the
+		// production constant would let a regression that shrinks the retry
+		// budget pass this test unchanged.
+		const wantAttempts = 3
+		if calls != wantAttempts {
+			t.Errorf("calls = %d, want %d", calls, wantAttempts)
+		}
+	})
+
+	t.Run("a rate limit is not reissued even on a read", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, WorkbookInfo)
+		calls := 0
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+			Body: map[string]interface{}{
+				"code": 99991400, "msg": "rate limited", "data": map[string]interface{}{},
+			},
+			Reusable: true, OnMatch: func(*http.Request) { calls++ },
+		})
+		parent.SetArgs([]string{"+workbook-info", "--url", testURL})
+		err := parent.Execute()
+		// The classifier marks a rate limit retryable, so only the explicit
+		// exclusion in isTransientToolFailure keeps the read path from
+		// answering "send less traffic" by sending more. The write test above
+		// cannot show this: it is excluded by ToolKindWrite instead.
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeRateLimit, "rate limited")
+		if !p.Retryable {
+			t.Error("Retryable = false, want true — the agent pacing on this subtype needs the flag intact")
+		}
+		if calls != 1 {
+			t.Errorf("calls = %d, want 1 (a rate limit surfaces immediately)", calls)
+		}
+	})
+
+	t.Run("a write is never reissued", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, CellsSet)
+		calls := 0
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+			Body: timeoutBody, Reusable: true, OnMatch: func(*http.Request) { calls++ },
+		})
+		parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
+			"--range", "A1:A1", "--cells", `[[{"value":"x"}]]`})
+		err := parent.Execute()
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "server time out error")
+		if p.Code != 1310299 {
+			t.Errorf("Code = %d, want 1310299 (the backend's own code must reach the caller unretried)", p.Code)
+		}
+		// A create that timed out after the backend committed it must not be
+		// committed twice.
+		if calls != 1 {
+			t.Errorf("calls = %d, want 1 (writes are not retried)", calls)
+		}
+	})
+}
+
+// TestExecute_MergedRegionHints pins the prescriptions on the two merged-cell
+// rejections. The backend names the obstacle but never in A1 notation and
+// never with the command that clears it.
+func TestExecute_MergedRegionHints(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, serverMsg, wantHint string
+	}{
+		{
+			name:      "merge overlapping an existing region",
+			serverMsg: "batch_update: 0 succeeded, 1 failed — operations[0] (merge_cells): Range A1:J1 overlaps existing merged cells: [0,0-0,6]. Unmerge them first (operation=unmerge) before merging.",
+			wantHint:  `+cells-unmerge --range "A1:G1"`,
+		},
+		{
+			name:      "write landing inside a merged region",
+			serverMsg: "cell at row 0, col 1 is inside a merged region (top-left: A1). Writing to non-top-left cells of merged regions is not supported.",
+			wantHint:  "top-left cell",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			parent, _, _, reg := newTestRig(t, CellsSet)
+			reg.Register(&httpmock.Stub{
+				Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+				Body: map[string]interface{}{
+					"code": 900015206, "msg": tc.serverMsg, "data": map[string]interface{}{},
+				},
+			})
+			parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
+				"--range", "B2:B2", "--cells", `[[{"value":"x"}]]`})
+			err := parent.Execute()
+			if err == nil {
+				t.Fatal("expected the merge conflict to surface")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("err = %v, want a typed problem", err)
+			}
+			if !strings.Contains(p.Hint, tc.wantHint) {
+				t.Errorf("hint = %q, want it to carry %q", p.Hint, tc.wantHint)
+			}
+		})
+	}
+
+	t.Run("an unrelated failure gets no merge hint", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, CellsSet)
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+			Body: map[string]interface{}{
+				"code": 900015206, "msg": "parameter validation failed", "data": map[string]interface{}{},
+			},
+		})
+		parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
+			"--range", "B2:B2", "--cells", `[[{"value":"x"}]]`})
+		err := parent.Execute()
+		// Assert the failure IS the classified API error first: without this
+		// the subtest also passes when Execute returns nil or an untyped
+		// error, neither of which proves anything about the hint.
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "parameter validation failed")
+		if p.Code != 900015206 {
+			t.Errorf("Code = %d, want 900015206", p.Code)
+		}
+		if strings.Contains(p.Hint, "+cells-unmerge") {
+			t.Errorf("hint = %q, want no merge prescription", p.Hint)
+		}
+	})
 }

@@ -31,6 +31,7 @@ type profileListItem struct {
 	EffectiveSource string         `json:"effectiveSource,omitempty"` // config | flag | environment
 	User            string         `json:"user,omitempty"`
 	TokenStatus     string         `json:"tokenStatus,omitempty"`
+	Error           *errs.Problem  `json:"error,omitempty"`
 }
 
 // NewCmdProfileList creates the profile list subcommand.
@@ -96,8 +97,15 @@ func profileListRun(f *cmdutil.Factory) error {
 
 		if len(app.Users) > 0 {
 			item.User = app.Users[0].UserName
-			stored := larkauth.GetStoredToken(app.AppId, app.Users[0].UserOpenId)
-			if stored != nil {
+			stored, readErr := larkauth.GetStoredToken(app.AppId, app.Users[0].UserOpenId)
+			switch {
+			case readErr != nil:
+				item.TokenStatus = "error"
+				presented := f.PresentError(readErr, cmdutil.ErrorPresentationOptions{Identity: core.AsUser})
+				if problem, ok := errs.ProblemOf(presented); ok {
+					item.Error = problem
+				}
+			case stored != nil:
 				item.TokenStatus = larkauth.TokenStatus(stored)
 			}
 		}

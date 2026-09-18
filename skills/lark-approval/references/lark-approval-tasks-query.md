@@ -14,6 +14,9 @@ lark-cli approval tasks query --params '{"topic":"1"}' --as user
 # 查询已办审批
 lark-cli approval tasks query --params '{"topic":"2"}' --as user
 
+# 按关键词搜索任务列表
+lark-cli approval tasks query --params '{"topic":"1","keyword":"测试","page_size":10}' --as user
+
 # 按任务时间范围筛选（秒级时间戳）
 lark-cli approval tasks query --params '{"topic":"1","start_timestamp":"<START_SECONDS>","end_timestamp":"<END_SECONDS>"}' --as user
 
@@ -31,6 +34,7 @@ lark-cli approval tasks query --params '{"topic":"1"}' --format table --as user
 | `--params '{"topic":"..."}'` | 是 | 查询参数，使用 JSON 传入 |
 | `topic` | 是 | 任务分组主题，见下方“topic 枚举” |
 | `definition_code` | 否 | 审批定义 Code，用于仅查询某个审批定义下的任务 |
+| `keyword` | 否 | 搜索关键词；非空时走搜索链路，空或仅空格时保持普通列表链路 |
 | `start_timestamp` | 否 | 按任务时间筛选，时间范围开始值，秒级时间戳 |
 | `end_timestamp` | 否 | 按任务时间筛选，时间范围结束值，秒级时间戳 |
 | `locale` | 否 | 返回语言：`zh-CN`、`en-US`、`ja-JP` |
@@ -80,6 +84,7 @@ lark-cli approval tasks query --params '{"topic":"1"}' --format table --as user
 
 - 常见处理链：先用 `tasks query` 拿到 `task_id` 和 `instance_code`，若用户需要查看详情、当前节点、表单内容、流程进度等内容，则调用 `instances get` 查看详情，最后执行 `tasks approve` / `tasks reject` / `tasks transfer` / `tasks add_sign` / `tasks rollback`。
 - 如果你只想看“已发起的审批实例”，使用 `instances initiated`；`tasks query` 更适合围绕“任务分组”来拉取列表。
+- 需要搜索任务标题、摘要或相关内容时传入 `keyword`；搜索排序和普通列表排序不同，按搜索服务结果为准。
 - 按时间排查任务时使用 `start_timestamp` / `end_timestamp` 缩小范围；这两个值都是秒级时间戳。
 - 需要继续翻页时，直接把上一次返回的 `page_token` 放回 `--params`。
 - 当结果量较大时，优先使用 `--format table` 提升可读性。

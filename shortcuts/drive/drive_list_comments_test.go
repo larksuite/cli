@@ -380,7 +380,7 @@ func TestDriveListCommentsExecuteWikiResolvesToDocx(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		OnMatch: func(req *http.Request) {
 			if got := req.URL.Query().Get("token"); got != "wikiResource" {
 				t.Errorf("wiki token = %q, want wikiResource", got)
@@ -393,6 +393,7 @@ func TestDriveListCommentsExecuteWikiResolvesToDocx(t *testing.T) {
 				"node": map[string]interface{}{
 					"obj_type":  "docx",
 					"obj_token": "docxFromWikiResource",
+					"node_type": "shortcut", "node_token": "wikiResource", "origin_node_token": "wikiOriginal",
 				},
 			},
 		},
@@ -449,7 +450,7 @@ func TestDriveListCommentsExecuteWikiRejectsUnsupportedResolvedType(t *testing.T
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",

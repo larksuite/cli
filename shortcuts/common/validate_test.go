@@ -373,7 +373,10 @@ func TestValidateSafePathTyped_AllowsNormalSubdir(t *testing.T) {
 // TestValidateSafePathTyped_ReturnsTypedValidation verifies that an escaping
 // path is rejected with a typed validation error and a safe path passes.
 func TestValidateSafePathTyped_ReturnsTypedValidation(t *testing.T) {
-	outside := t.TempDir()
+	// The symlink target is outside every allowed root; a t.TempDir() target
+	// would sit inside /tmp on hosts whose temp dir lives there, which the
+	// built-in allowlist permits.
+	outside := filepath.Join(string(filepath.Separator), "not-an-allowed-root")
 	workDir := t.TempDir()
 	chdirForTest(t, workDir)
 

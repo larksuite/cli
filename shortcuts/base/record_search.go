@@ -49,7 +49,7 @@ var BaseRecordSearch = common.Shortcut{
 		`Option intersection filter: --filter-json '{"logic":"and","conditions":[["Tags","intersects",["P0","Blocked"]]]}'`,
 		`Sort priority follows --sort-json array order.`,
 		formatRecordQueryPriorityTip(),
-		"Use +record-search for keyword matching; use --filter-json for structured conditions and --sort-json for result ordering.",
+		"Use +record-search flag mode for keyword matching; combine --filter-json or --sort-json to narrow or order matches. For filter/sort-only reads, use +record-list.",
 		"Use --json only when you need to pass the full search body directly.",
 		recordAnalysisOutputTip,
 	},

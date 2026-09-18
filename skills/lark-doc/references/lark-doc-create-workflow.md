@@ -24,7 +24,7 @@
 
 下表文件均位于当前 Skill 的 `references/genres/` 目录。
 
-- 路由表仅用于选择候选，不代替 contract。高置信命中后必须读取对应 Profile / Adapter，并按其中的路由与消歧规则复核；未读取不得确定该值或进入 Step 3。确认后记录固定短名，最多各读取一个；未命中时，`genre_contract` 和 `adapter` 均可使用 `"none"` 或 `null`。
+- 路由表仅用于选择候选，不代替 contract。高置信命中后必须读取对应 Profile / Adapter，并按其中的路由与消歧规则复核；未读取不得确定该值或进入 Step 3。确认后记录固定短名，最多各读取一个；未命中时可省略 `genre_contract` 和 `adapter`。
 - contract 决定内容任务、证据和体裁边界；adapter 只调整与所选 contract 兼容的平台结构、写作风格和组件约束。
 
    | Content Profile | 独特专业任务 |
@@ -46,7 +46,7 @@
 ### Step 3：收集资料并扫描表达机会。
 
 1. 强制扫描事实、数据、案例、引用和图片等资源缺口；内容需要而现有材料不足时必须检索或生成，判断需要图片且用户未提供素材时必须搜索图片。
-2. 根据用户要求、contract / adapter 限制和内容需要确定 `presentation_mode`，再识别真实信息关系并选择候选表达；不因命中关系就机械使用组件。
+2. 根据用户要求、contract / adapter 限制和内容需要选择表达方式；可用 `presentation_mode` 记录视觉策略，不因字段存在就机械使用组件。
 
    | 信息关系 | 候选表达 |
    |-|-|
@@ -59,7 +59,7 @@
    | 简单并列、步骤或连续论述 | 列表或段落 |
 
 3. 按全篇、章节、block 三个尺度构图：相关内容相邻，同类关系保持相同顺序与对齐；正文可以是主表达，不要求每节都有 presentation block。
-4. 在写正文前确定计划使用的 block 和具体 `purpose`。Presentation Decision 的 `visual_plan.blocks` 只记录确需最低数量约束的 `whiteboard`、`img`、`html5-block`。三类均无硬性数量要求时写 `"blocks": []`。
+4. 在写正文前确定计划使用的 block。Presentation Decision 的 `visual_plan.blocks` 只记录确需最低数量约束的 `whiteboard`、`img`、`html5-block`。三类均无硬性数量要求时写 `"blocks": []`。
 
 `presentation_mode` 只表示模型采用的视觉策略；只有用户要求、contract / adapter 限制互相冲突时才询问用户：
 
@@ -93,29 +93,27 @@
 lark-cli docs +script --command init-draft --presentation-decision '<上方完整 JSON>' --format json
 ```
 
-成功后：
-
-- 保持当前工作目录不变；将 `data.workspace` 原样记为 `work_dir`，将 `data.draft_path` 原样记为 `draft_path`；遵循 `data.tip`，后续始终使用 `@./<draft_path>`。
-- CLI 会创建独占的 `work_dir` 并保存 `.presentation-decision.json` 作为固定基线，**但不会创建 `draft_path` 指向的 XML**。`draft_path` 是当前任务可直接写入的新文件路径；要求、资料或 contract 实质变化时，提交新决策并重新初始化，不得直接改基线。
+- 返回的 `data` 字段包含 cwd、workspace、draft_path，后续 CLI 在 `data.cwd` 下执行；将 `data.workspace` 记为 `work_dir`、`data.draft_path` 记为 `draft_path`（已含工作区前缀）。
+- CLI 会创建独占的 `work_dir` 并保存 `.presentation-decision.json` 作为固定基线，**但不会创建 `draft_path` 指向的 XML**。`draft_path` 是当前任务可直接写入的新文件路径；
 
 ### Step 5：生成 release candidate。
 
 读取 [`lark-doc-xml.md`](lark-doc-xml.md)，并结合 Presentation Decision、适用 contract 和 Philosophy 生成完整 XML。使用扩展标签时按需读取 [`拓展标签`](lark-doc-xml-extended-blocks.md)。
 
-1. 公开网络图片使用 `<img href="URL"/>`；已有本地图片使用 `<img path="@./relative/path"/>`；画板使用 `<whiteboard path="@./relative/path"/>` 并遵循[`画板工作流`](lark-doc-whiteboard.md)；HTML 使用 `<html5-block path="@./file.html"/>` 并遵循[`拓展标签`](lark-doc-xml-extended-blocks.md)。
-2. 直接在 Step 4 返回的 `draft_path` 创建并写入完整 release candidate。
+1. 公开网络图片使用 `<img href="URL"/>`；已有本地图片使用 `<img path="@./downloads/image.png"/>`；画板使用 `<whiteboard type="svg" path="@./<work_dir>/diagram.svg"/>` 并遵循[`画板工作流`](lark-doc-whiteboard.md)；HTML 使用 `<html5-block path="@./<work_dir>/widget.html"/>` 并遵循[`拓展标签`](lark-doc-xml-extended-blocks.md)。
+2. 直接在 `<data.cwd>/<draft_path>` 创建并写入完整 release candidate。新建资源建议放 `<data.cwd>/<work_dir>`，已有资源可原地复用；CWD 内优先用相对路径，其他位置用允许访问的绝对路径。XML 内相对资源先查 CWD，仅文件不存在时回退到 XML 所在目录。
 3. 首次写入后，发现 XML 语法问题时只修复最小范围，不无故重写正确内容。
 
 ### Step 6：执行 Draft Profile Check。
 
 1. 执行 `lark-cli docs +script --command parse --content "@./<draft_path>" --format json`。顶层 `ok` 仅表示命令执行成功，是否通过看 `data.assessment.status`。失败时按 `data.diagnostics[]` 局部修复；只有草稿为空、截断或结构无效时才全文重建。`parse` 不替代 XML 规则或服务端校验。
-2. Profile Check 通过后，按 [`lark-doc-xml.md`](lark-doc-xml.md) 复查标签、属性和值，并依据 Philosophy 检查事实与来源、用户硬约束、适用 contract / adapter 以及 `visual_plan`。最终 XML 能否写入以 `docs +create` 的服务端结果为准。
+2. `passed` 只覆盖已启用的检查；先对照用户要求确认应声明的约束已完整填写，再按 [`lark-doc-xml.md`](lark-doc-xml.md) 复查标签、属性和值，并依据 Philosophy 检查事实与来源、用户硬约束、适用 contract / adapter 以及 `visual_plan`。最终 XML 能否写入以 `docs +create` 的服务端结果为准。
 
 ### Step 7：创建文档并处理局部失败。
 
 1. 只有最新 release candidate 完成 Draft Profile Check 和 XML 规则复查后，才读取 [`lark-doc-create.md`](lark-doc-create.md)，使用同一个 `draft_path` 创建文档。
 2. 创建结果存在 warning、局部资源失败或回查发现局部问题时，不得再次新建文档；读取 [`lark-doc-update.md`](lark-doc-update.md)，对已创建文档做最小范围修复，并按 update 流程 fetch 验证。
 
-### Step 8：清理并交付。
+### Step 8：交付。
 
-无论创建成功、失败或被阻塞，只要 Step 4 已返回 `work_dir`，就先离开该目录，再使用当前运行时的文件删除能力精确删除整个 `work_dir`；不要使用通配符，也不要删除目录外的用户原始文件。最终只交付用户需要的结果，并说明必要来源、未关闭缺口、异常、失败或阻塞原因，以及文档 URL 或 token。
+保留 Step 4 返回的 `work_dir` 及其中的创作草稿。最终只交付用户需要的结果，并说明必要来源、未关闭缺口、异常、失败或阻塞原因，以及文档 URL 或 token。

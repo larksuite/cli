@@ -23,7 +23,6 @@ var recordCellValueHappyPathTips = []string{
 	`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}], [{"id":"oc_xxx"}], [{"id":"rec_xxx"}]; location uses {"lng":116.397428,"lat":39.90923}; null clears a cell when allowed.`,
 	"User and group fields always use arrays; when multiple=false, the array can contain only one item.",
 	"Do not guess user/chat/linked-record IDs or location coordinates; resolve them first with the relevant contact/im/record lookup flow.",
-	"Use lark-base-cell-value.md for complex CellValue shapes and special field types; do not invent values for fields not covered by the happy path.",
 }
 
 type recordSelection struct {
@@ -385,16 +384,16 @@ const maxShareBatchSize = 100
 func validateRecordShareBatch(runtime *common.RuntimeContext) error {
 	recordIDs := deduplicateRecordIDs(runtime)
 	if len(recordIDs) == 0 {
-		return baseFlagErrorf("--record-ids is required and must not be empty")
+		return baseFlagErrorf("--record-id is required and must not be empty")
 	}
 	if len(recordIDs) > maxShareBatchSize {
-		return baseFlagErrorf("--record-ids exceeds maximum limit of %d (got %d)", maxShareBatchSize, len(recordIDs))
+		return baseFlagErrorf("--record-id exceeds maximum limit of %d (got %d)", maxShareBatchSize, len(recordIDs))
 	}
 	return nil
 }
 
 func deduplicateRecordIDs(runtime *common.RuntimeContext) []string {
-	raw := runtime.StrSlice("record-ids")
+	raw := runtime.StrSlice("record-id")
 	seen := make(map[string]bool, len(raw))
 	result := make([]string, 0, len(raw))
 	for _, id := range raw {

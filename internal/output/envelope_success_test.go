@@ -6,6 +6,7 @@ package output
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -33,6 +34,21 @@ func TestSuccessEnvelopeData_ExtractsBusinessData(t *testing.T) {
 	}
 }
 
+func TestSuccessEnvelopeData_StandardDataTakesPrecedenceOverBot(t *testing.T) {
+	result := map[string]interface{}{
+		"code": float64(0),
+		"msg":  "ok",
+		"data": map[string]interface{}{"id": "1"},
+		"bot":  map[string]interface{}{"open_id": "ou_legacy"},
+	}
+
+	got := SuccessEnvelopeData(result)
+	want := map[string]interface{}{"id": "1"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("business data = %#v, want standard data payload %#v", got, want)
+	}
+}
+
 func TestSuccessEnvelopeData_MissingDataUsesEmptyObject(t *testing.T) {
 	got := SuccessEnvelopeData(map[string]interface{}{"code": float64(0), "msg": "ok"})
 	m, ok := got.(map[string]interface{})
@@ -52,6 +68,112 @@ func TestSuccessEnvelopeData_NilDataUsesEmptyObject(t *testing.T) {
 	}
 	if len(m) != 0 {
 		t.Fatalf("business data = %#v, want empty object", m)
+	}
+}
+
+func TestSuccessEnvelopeData_BotPayloadNormalized(t *testing.T) {
+	// /bot/v3/info returns payload under "bot" key, not "data"
+	result := map[string]interface{}{
+		"code": float64(0),
+		"msg":  "ok",
+		"bot": map[string]interface{}{
+			"activate_status": float64(2),
+			"app_name":        "TestBot",
+			"open_id":         "ou_123",
+		},
+	}
+
+	got := SuccessEnvelopeData(result)
+	m, ok := got.(map[string]interface{})
+	if !ok {
+		t.Fatalf("business data type = %T, want map", got)
+	}
+	if _, ok := m["code"]; ok {
+		t.Fatal("business data must not contain outer code")
+	}
+	if _, ok := m["msg"]; ok {
+		t.Fatal("business data must not contain outer msg")
+	}
+	if _, ok := m["bot"]; ok {
+		t.Fatalf("business data = %#v, want legacy bot container normalized away", m)
+	}
+	if m["activate_status"] != float64(2) {
+		t.Fatalf("activate_status = %v, want 2", m["activate_status"])
+	}
+	if m["app_name"] != "TestBot" {
+		t.Fatalf("app_name = %v, want TestBot", m["app_name"])
+	}
+}
+
+func TestSuccessEnvelopeData_UnknownNonDataPayloadPreserved(t *testing.T) {
+	result := map[string]interface{}{
+		"code":       float64(0),
+		"msg":        "ok",
+		"result":     "success",
+		"request_id": "req_123",
+	}
+
+	got := SuccessEnvelopeData(result)
+	want := map[string]interface{}{"result": "success", "request_id": "req_123"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("business data = %#v, want %#v", got, want)
+	}
+}
+
+func TestSuccessEnvelopeData_NullDataWithBotPayloadNormalized(t *testing.T) {
+	// A null "data" next to a payload key used to collapse to {} and lose the
+	// payload; the legacy bot container is normalized like standard data.
+	result := map[string]interface{}{
+		"code": float64(0),
+		"msg":  "ok",
+		"data": nil,
+		"bot":  map[string]interface{}{"open_id": "ou_123"},
+	}
+
+	got := SuccessEnvelopeData(result)
+	m, ok := got.(map[string]interface{})
+	if !ok {
+		t.Fatalf("business data type = %T, want map", got)
+	}
+	if _, ok := m["data"]; ok {
+		t.Fatal("business data must not contain the null data key")
+	}
+	if _, ok := m["bot"]; ok {
+		t.Fatalf("business data = %#v, want legacy bot container normalized away", m)
+	}
+	if m["open_id"] != "ou_123" {
+		t.Fatalf("business data.open_id = %#v, want ou_123", m["open_id"])
+	}
+	if len(m) != 1 {
+		t.Fatalf("business data = %#v, want only the normalized bot fields", m)
+	}
+}
+
+func TestSuccessEnvelopeData_NilResultUsesEmptyObject(t *testing.T) {
+	got := SuccessEnvelopeData(nil)
+	m, ok := got.(map[string]interface{})
+	if !ok || len(m) != 0 {
+		t.Fatalf("business data = %#v, want empty object", got)
+	}
+}
+
+func TestSuccessEnvelopeData_NonObjectBodyPreserved(t *testing.T) {
+	cases := []struct {
+		name string
+		body interface{}
+	}{
+		{"array", []interface{}{map[string]interface{}{"id": "1"}, map[string]interface{}{"id": "2"}}},
+		{"string", "pong"},
+		{"number", json.Number("42")},
+		{"bool", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := SuccessEnvelopeData(tc.body)
+			if !reflect.DeepEqual(got, tc.body) {
+				t.Fatalf("business data = %#v, want body %#v preserved", got, tc.body)
+			}
+		})
 	}
 }
 

@@ -1,6 +1,6 @@
 # im default message enrichment (reactions / update_time)
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
 This is the single source of truth for the automatic message-enrichment contract shared by the four message-pulling shortcuts — [`+messages-mget`](lark-im-messages-mget.md), [`+chat-messages-list`](lark-im-chat-messages-list.md), [`+messages-search`](lark-im-messages-search.md), [`+threads-messages-list`](lark-im-threads-messages-list.md). They automatically attach `reactions` and `update_time` to each returned message, so callers do **not** need to invoke the raw [`im.reactions.batch_query`](lark-im-reactions.md) API separately.
 

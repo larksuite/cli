@@ -37,7 +37,7 @@ func acceptStyleItem(t *testing.T, fields map[string]interface{}) (map[string]in
 			"name":        "S1",
 			"cell_styles": []interface{}{item},
 		}},
-	}), testToken)
+	}), testToken, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -142,8 +142,12 @@ var stylesPriorCorpus = []struct {
 	{name: "border_left_weight flattened",
 		fields: map[string]interface{}{"border_left_weight": "thin"},
 		check:  wantBorder("left", "weight", "thin")},
-	{name: "border_styles invalid side prescribed",
-		fields:  map[string]interface{}{"border_styles": map[string]interface{}{"outer": map[string]interface{}{"style": "solid"}}},
+	{name: "border_styles outer means the four range edges",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"outer": map[string]interface{}{"style": "solid"}}},
+		check: wantAll(wantBorder("top", "style", "solid"), wantBorder("bottom", "style", "solid"),
+			wantBorder("left", "style", "solid"), wantBorder("right", "style", "solid"))},
+	{name: "border_styles inner has no expression and stays rejected",
+		fields:  map[string]interface{}{"border_styles": map[string]interface{}{"inner": map[string]interface{}{"style": "solid"}}},
 		wantErr: "not a valid side"},
 	// wrap family
 	{name: "wrap_text boolean", fields: map[string]interface{}{"wrap_text": true}, check: wantStyle("word_wrap", "auto-wrap")},
@@ -198,12 +202,157 @@ var stylesPriorCorpus = []struct {
 	{name: "wrap_strategy aliases to word_wrap",
 		fields: map[string]interface{}{"wrap_strategy": "auto-wrap"},
 		check:  wantStyle("word_wrap", "auto-wrap")},
+	// 08-18..24 batch, revisited 09-10. border_type carries two vocabularies
+	// at once — the Lark OpenAPI's side selector and the CSS-ish line word —
+	// and dispatching on the value tells them apart. FULL_BORDER is exactly
+	// border_styles.all: set_cell_range applies each side to EVERY cell of
+	// the range (verified on a live sheet), which is what made the earlier
+	// reading of these values as inexpressible the wrong way round. The
+	// values that address a SUBSET of a range's edges still have no
+	// expression here and keep a prescription that says which subset.
+	{name: "border_type line style", fields: map[string]interface{}{"border_type": "solid"},
+		check: wantBorder("top", "style", "solid")},
+	{name: "border_type thickness word", fields: map[string]interface{}{"border_type": "thin"},
+		check: wantAll(wantBorder("left", "weight", "thin"), wantBorder("left", "style", "solid"))},
+	{name: "border_type FULL_BORDER is all four sides",
+		fields: map[string]interface{}{"border_type": "FULL_BORDER"},
+		check: wantAll(wantBorder("top", "style", "solid"), wantBorder("bottom", "style", "solid"),
+			wantBorder("left", "style", "solid"), wantBorder("right", "style", "solid"))},
+	{name: "border_type NO_BORDER clears", fields: map[string]interface{}{"border_type": "NO_BORDER"},
+		check: wantAll(wantBorder("top", "style", "none"), wantBorder("bottom", "style", "none"),
+			wantBorder("left", "style", "none"), wantBorder("right", "style", "none"))},
+	{name: "border_type single side", fields: map[string]interface{}{"border_type": "LEFT_BORDER"},
+		check: wantBorder("left", "style", "solid")},
+	{name: "border_type keeps an explicit line style",
+		fields: map[string]interface{}{"border_type": "FULL_BORDER", "border_style": "dashed"},
+		check:  wantBorder("top", "style", "dashed")},
+	{name: "border_type OUTER_BORDER prescribed",
+		fields:  map[string]interface{}{"border_type": "OUTER_BORDER"},
+		wantErr: "cannot express"},
+	{name: "border_type INNER_BORDER prescribed",
+		fields:  map[string]interface{}{"border_type": "INNER_BORDER"},
+		wantErr: "cannot express"},
+	{name: "border_type off-vocabulary value reaches the style enum",
+		fields:  map[string]interface{}{"border_type": "xlContinuous"},
+		wantErr: "is invalid"},
+	{name: "camelCase borderType prescribed", fields: map[string]interface{}{"borderType": "FULL_BORDER"},
+		wantErr: "borders go in border"},
+	{name: "kebab border-style prescribed", fields: map[string]interface{}{"border-style": "solid"},
+		wantErr: "borders go in border"},
+	{name: "border_width reads as a weight", fields: map[string]interface{}{"border_width": float64(1)},
+		check: wantBorder("top", "weight", "thin")},
+	// The one-value border shorthand every external vocabulary has.
+	{name: "border as a line style", fields: map[string]interface{}{"border": "solid"},
+		check: wantBorder("bottom", "style", "solid")},
+	{name: "border as a thickness", fields: map[string]interface{}{"border": "thin"},
+		check: wantAll(wantBorder("top", "weight", "thin"), wantBorder("top", "style", "solid"))},
+	{name: "border as a pixel width", fields: map[string]interface{}{"border": float64(3)},
+		check: wantAll(wantBorder("top", "weight", "thick"), wantBorder("top", "style", "solid"))},
+	{name: "border_all scalar", fields: map[string]interface{}{"border_all": "solid"},
+		check: wantBorder("right", "style", "solid")},
+	{name: "border_all object", fields: map[string]interface{}{"border_all": map[string]interface{}{"style": "solid"}},
+		check: wantBorder("left", "style", "solid")},
+	{name: "side-keyed border with a scalar side",
+		fields: map[string]interface{}{"border": map[string]interface{}{"top": "solid"}},
+		check:  wantBorder("top", "style", "solid")},
+	// openpyxl / xlsxwriter font flags: the concept is in the key and the
+	// on/off in the value, so the rename alone would land a boolean under an
+	// enum field.
+	{name: "openpyxl bold flag", fields: map[string]interface{}{"bold": true},
+		check: wantStyle("font_weight", "bold")},
+	{name: "openpyxl bold flag off", fields: map[string]interface{}{"bold": false},
+		check: wantStyle("font_weight", "normal")},
+	{name: "font_bold as xlsxwriter's 1", fields: map[string]interface{}{"font_bold": float64(1)},
+		check: wantStyle("font_weight", "bold")},
+	{name: "openpyxl italic flag", fields: map[string]interface{}{"italic": true},
+		check: wantStyle("font_style", "italic")},
+	{name: "openpyxl underline vocabulary", fields: map[string]interface{}{"underline": "single"},
+		check: wantStyle("font_line", "underline")},
+	{name: "font_name is font_family", fields: map[string]interface{}{"font_name": "Arial"},
+		check: wantStyle("font_family", "Arial")},
+	{name: "an unreadable italic value keeps its prescription",
+		fields:  map[string]interface{}{"italic": "sort of"},
+		wantErr: `font_style:"italic"`},
+	{name: "nested style envelope prescribed",
+		fields:  map[string]interface{}{"style": map[string]interface{}{"font_weight": "bold"}},
+		wantErr: "no nested style object"},
+	{name: "bg_color prescribed", fields: map[string]interface{}{"bg_color": "#FFFFFF"},
+		wantErr: "the cell fill is background_color"},
+	{name: "text_color is font_color", fields: map[string]interface{}{"text_color": "#000000"},
+		check: wantStyle("font_color", "#000000")},
 	// prescriptions (ambiguous / unsupported / typo)
 	{name: "fore_color prescribed", fields: map[string]interface{}{"fore_color": "#F00"}, wantErr: "ambiguous"},
 	{name: "indent rejected not ignored", fields: map[string]interface{}{"indent": float64(2)}, wantErr: "not a supported style field"},
 	{name: "unknown field carries did-you-mean and the field list",
 		fields: map[string]interface{}{"fontcolor": "#000000"}, wantErr: `did you mean "font_color"`},
 	{name: "enum typo gets did-you-mean", fields: map[string]interface{}{"vertical_alignment": "botom"}, wantErr: "did you mean"},
+	// 08-29..31 reflow. A quoted number under a numeric field is a typing
+	// slip with one reading; the row/column size fields and bare wrap are
+	// real concepts that live elsewhere in the payload, so they prescribe.
+	{name: "quoted font_size reads as the number",
+		fields: map[string]interface{}{"font_size": "16"},
+		check:  wantNumberStyle("font_size", 16)},
+	{name: "non-numeric font_size still rejected",
+		fields: map[string]interface{}{"font_size": "large"}, wantErr: "must be a number"},
+	{name: "row_height prescribes row_sizes",
+		fields: map[string]interface{}{"row_height": float64(30)}, wantErr: "row_sizes"},
+	{name: "column_width prescribes col_sizes",
+		fields: map[string]interface{}{"column_width": float64(120)}, wantErr: "col_sizes"},
+	// wrap_text / text_wrap / wrap_strategy were already taken; the bare noun
+	// is the fourth spelling of the one wrap concept.
+	{name: "bare wrap is word_wrap",
+		fields: map[string]interface{}{"wrap": true}, check: wantStyle("word_wrap", "auto-wrap")},
+	{name: "bare wrap keeps an unreadable value's error",
+		fields: map[string]interface{}{"wrap": "sort of"}, wantErr: "word_wrap"},
+	{name: "unmerge_cells prescribes the unmerge command",
+		fields: map[string]interface{}{"unmerge_cells": "A1:B2"}, wantErr: "+cells-unmerge"},
+	// 08-29..31 reflow, second pass. `type` is the line-kind slot in the Lark
+	// OpenAPI's border vocabulary and in openpyxl's Side(border_style=…); a
+	// per-side spec has exactly one kind slot, so it can mean nothing else.
+	{name: "border.type names the line kind",
+		fields: map[string]interface{}{"border": map[string]interface{}{"type": "dashed"}},
+		check:  wantBorder("top", "style", "dashed")},
+	{name: "border.type carrying a thickness word sorts into weight",
+		fields: map[string]interface{}{"border": map[string]interface{}{"type": "thin"}},
+		check:  wantAll(wantBorder("top", "weight", "thin"), wantBorder("top", "style", "solid"))},
+	{name: "border_styles side type names the line kind",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"type": "dotted"}}},
+		check:  wantBorder("top", "style", "dotted")},
+	{name: "an unrelated border attribute stays rejected",
+		fields:  map[string]interface{}{"border": map[string]interface{}{"thickness": "solid"}},
+		wantErr: "is not a border attribute"},
+	// The literal "null" decodes into any destination without an error and
+	// leaves it at the zero value, so a numeric field has to reject it
+	// explicitly or a zero-point font slips through as a success.
+	{name: "the string null is not a font size",
+		fields: map[string]interface{}{"font_size": "null"}, wantErr: "must be a number"},
+	// "outer" and "all" are two names for the same box. Two DIFFERENT boxes
+	// under them is a conflict, and dropping one would apply half the caller's
+	// intent silently; the invalid-side check answers it instead.
+	{name: "a conflicting outer border is not discarded",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{
+			"outer": map[string]interface{}{"style": "dashed"},
+			"all":   map[string]interface{}{"style": "solid"},
+		}},
+		wantErr: "is not a valid side"},
+	{name: "outer duplicating all is folded away",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{
+			"outer": map[string]interface{}{"style": "solid"},
+			"all":   map[string]interface{}{"style": "solid"},
+		}},
+		check: wantBorder("left", "style", "solid")},
+}
+
+// wantNumberStyle pins a numeric style field, which normalization stores as a
+// float64 regardless of how the caller spelled it.
+func wantNumberStyle(field string, want float64) func(map[string]interface{}) string {
+	return func(proto map[string]interface{}) string {
+		cs, _ := proto["cell_styles"].(map[string]interface{})
+		if cs == nil || cs[field] != want {
+			return fmt.Sprintf("cell_styles.%s = %v, want %v", field, cs[field], want)
+		}
+		return ""
+	}
 }
 
 func wantStyle(field, want string) func(map[string]interface{}) string {
@@ -249,8 +398,15 @@ func TestStylesAcceptance_PriorCorpus(t *testing.T) {
 			t.Parallel()
 			proto, err := acceptStyleItem(t, tc.fields)
 			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("want prescription containing %q, got err=%v", tc.wantErr, err)
+				// A prescription is only usable if it is also typed: an agent
+				// reads Param to know which flag to fix, and the message alone
+				// would keep passing if that attribution regressed.
+				ve := requireValidation(t, err, tc.wantErr)
+				if ve.Param != "--styles" {
+					t.Errorf("Param = %q, want --styles", ve.Param)
+				}
+				if ve.Cause == nil {
+					t.Error("the prescription should keep the underlying error as Cause")
 				}
 				return
 			}
@@ -281,7 +437,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 		}
 		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
 			"styles": []interface{}{map[string]interface{}{"name": "S1", "cell_styles": entries}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -301,7 +457,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 				map[string]interface{}{"range": "A1:F1", "font_weight": "bold"},
 				map[string]interface{}{"range": "A2:F2", "background_color": "#EEEEEE"},
 			}}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil || len(ops) != 2 {
 			t.Fatalf("ops=%d err=%v, want 2", len(ops), err)
 		}
@@ -314,7 +470,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 				map[string]interface{}{"range": "A1:C5", "font_weight": "bold"},
 				map[string]interface{}{"range": "D1:F5", "font_weight": "bold"},
 			}}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil || len(ops) != 1 {
 			t.Fatalf("ops=%d err=%v, want 1", len(ops), err)
 		}
@@ -336,7 +492,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 				map[string]interface{}{"range": "A1:C1", "font_weight": "bold"},
 				map[string]interface{}{"range": "A3:C3", "font_weight": "bold"},
 			}}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -352,7 +508,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 				map[string]interface{}{"range": "A1:B5", "font_weight": "bold"},
 				map[string]interface{}{"range": "D1:E5", "font_weight": "bold"},
 			}}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -380,7 +536,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 		}
 		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
 			"styles": []interface{}{map[string]interface{}{"name": "S1", "cell_styles": entries}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -471,7 +627,7 @@ func TestStylesAcceptance_ResizeAndMergeCorpus(t *testing.T) {
 				"name":  "S1",
 				section: []interface{}{entry},
 			}},
-		}), testToken)
+		}), testToken, nil)
 	}
 	pixelValue := func(t *testing.T, ops []interface{}, key string) interface{} {
 		t.Helper()

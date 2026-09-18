@@ -138,13 +138,11 @@ var DriveSync = common.Shortcut{
 		}
 
 		// --- Phase 1: Compute diff (same logic as +status) ---
-		fmt.Fprintf(runtime.IO().ErrOut, "Walking local: %s\n", localDir)
 		localFiles, err := walkLocalForStatus(safeRoot, cwdCanonical)
 		if err != nil {
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
 		entries, err := listRemoteFolderEntries(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
@@ -243,9 +241,6 @@ var DriveSync = common.Shortcut{
 			detection = driveStatusDetectionQuick
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Diff: %d new_local, %d new_remote, %d modified, %d unchanged (detection=%s)\n",
-			len(newLocal), len(newRemote), len(modified), len(unchanged), detection)
-
 		conflictResolutions := make(map[string]string, len(modified))
 		if onConflict == driveSyncOnConflictAsk && len(modified) > 0 && runtime.IO().In == nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--on-conflict=ask requires interactive stdin when modified files exist").WithParam("--on-conflict")
@@ -299,7 +294,6 @@ var DriveSync = common.Shortcut{
 				failed++
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
 				continue
@@ -325,7 +319,6 @@ var DriveSync = common.Shortcut{
 				failed++
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, err)
 					break
 				}
 				continue
@@ -353,7 +346,6 @@ var DriveSync = common.Shortcut{
 				failed++
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
 				continue
@@ -365,7 +357,6 @@ var DriveSync = common.Shortcut{
 				failed++
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, upErr)
 					break
 				}
 				continue
@@ -411,7 +402,6 @@ var DriveSync = common.Shortcut{
 					failed++
 					if terminal {
 						aborted = true
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, err)
 						break
 					}
 					continue
@@ -434,7 +424,6 @@ var DriveSync = common.Shortcut{
 					failed++
 					if terminal {
 						aborted = true
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, parentErr)
 						break
 					}
 					continue
@@ -455,7 +444,6 @@ var DriveSync = common.Shortcut{
 					failed++
 					if terminal {
 						aborted = true
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, upErr)
 						break
 					}
 					continue
@@ -524,7 +512,6 @@ var DriveSync = common.Shortcut{
 					failed++
 					if terminal {
 						aborted = true
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, downloadErr)
 						break
 					}
 					continue

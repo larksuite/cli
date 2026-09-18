@@ -88,10 +88,7 @@ func (s *FeishuSource) buildRawHandler(emit func(*event.RawEvent)) func(context.
 		}
 		if err := json.Unmarshal(e.Body, &envelope); err != nil {
 			if s.Logger != nil {
-				preview := string(e.Body)
-				if len(preview) > 200 {
-					preview = preview[:200] + "...(truncated)"
-				}
+				preview := event.TruncateDiagnostic(string(e.Body), 200, "...(truncated)")
 				s.Logger.Printf("[feishu] drop malformed event: unmarshal error: %v body=%s", err, preview)
 			}
 			return nil

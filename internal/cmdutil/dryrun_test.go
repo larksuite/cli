@@ -41,6 +41,25 @@ func TestDryRunAPI_WithParams(t *testing.T) {
 	}
 }
 
+// TestDryRunAPI_ScalarParamsMatchWireRendering pins scalar params to the
+// rendering client.buildApiReq puts on the wire, so the preview does not
+// disagree with the request: %v would print "1.7e+09" here.
+func TestDryRunAPI_ScalarParamsMatchWireRendering(t *testing.T) {
+	dr := NewDryRunAPI().
+		GET("/open-apis/test").
+		Params(map[string]interface{}{"start_time": float64(1700000000), "page_size": float64(1000000)})
+
+	text := dr.Format()
+	for _, want := range []string{"start_time=1700000000", "page_size=1000000"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("preview missing %q, got: %s", want, text)
+		}
+	}
+	if strings.Contains(text, "e%2B") {
+		t.Errorf("preview used scientific notation, got: %s", text)
+	}
+}
+
 func TestDryRunAPI_WithBody(t *testing.T) {
 	dr := NewDryRunAPI().
 		POST("/open-apis/test").
@@ -112,6 +131,33 @@ func TestDryRunAPI_MarshalJSON(t *testing.T) {
 	api, ok := m["api"].([]interface{})
 	if !ok || len(api) != 1 {
 		t.Errorf("expected 1 api call, got: %v", m["api"])
+	}
+}
+
+func TestDryRunAPI_FileIntentIsVisibleInJSONAndPrettyOutput(t *testing.T) {
+	dr := NewDryRunAPI().
+		GET("/open-apis/drive/v1/files/file_1/download").
+		File(DryRunFileIntent{Name: "reports/file.bin", IfExists: "fail", Content: "OpenAPI response body"})
+
+	data, err := json.Marshal(dr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	files, ok := decoded["files"].([]any)
+	if !ok || len(files) != 1 {
+		t.Fatalf("files = %#v", decoded["files"])
+	}
+	file, ok := files[0].(map[string]any)
+	if !ok || file["name"] != "reports/file.bin" || file["if_exists"] != "fail" || file["content"] != "OpenAPI response body" {
+		t.Fatalf("file intent = %#v", files[0])
+	}
+	pretty := dr.Format()
+	if !strings.Contains(pretty, "WRITE reports/file.bin (if exists: fail)") || !strings.Contains(pretty, "content: OpenAPI response body") {
+		t.Fatalf("pretty dry-run = %s", pretty)
 	}
 }
 

@@ -1,6 +1,6 @@
 # IM message read status
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first for authentication and global parameters.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first for authentication and global parameters.
 
 Use two focused shortcuts for message read-status queries:
 

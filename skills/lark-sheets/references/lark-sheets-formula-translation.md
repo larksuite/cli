@@ -1,23 +1,42 @@
 # 飞书表格公式生成规则
 
-> **本文定位**：飞书公式正确性的**唯一权威**——书写任何飞书公式、或把 Excel 公式迁移到飞书前，先读本文。涵盖公式书写约定（绝对引用、范围语法）、投影 vs spill、ARRAYFORMULA / 数组语义、高风险引用函数、日期差、不支持函数清单。
-> **边界**：本文只讲"公式怎么写对"；公式**怎么写入表格**（`+cells-set` / 模板单元格 + `--copy-to-range` / 容错回读）见 `lark-sheets-write-cells`。**公式写入完成后的强制收尾**见 `lark-sheets-formula-verify`：不要把"翻译对了"误当成"已经交付完成"。本文不含 shortcut，通用编辑准则见主 SKILL.md「飞书表格编辑准则」。
+> **本文定位**：飞书公式正确性的**唯一权威**——书写任何飞书公式、或把 Excel 公式迁移到飞书前，先读本文。涵盖公式书写约定（绝对引用、范围语法）、投影 vs spill、`ARRAYFORMULA` / 数组语义与逐行填充、高风险引用函数、日期差、不支持函数清单。
+> **边界**：本文只讲"公式怎么写对"；公式**怎么写入表格**（`+cells-set` / 模板单元格 + `--copy-to-range` / 容错回读）见 `references/lark-sheets-write-cells.md`。公式写入完成后必须用 `references/lark-sheets-formula-verify.md` 对本次公式范围逐段诊断并回读关键公式；不要把"翻译对了"误当成"结果一定正确"。本文不含 shortcut，通用编辑准则见主 SKILL.md「飞书表格编辑准则」。
 
-**核心原则：飞书不像 Excel 365 那样默认 spill（溢出展开）。飞书普通公式遇到区域时默认"投影"（只取当前行/列对应的单个值），必须显式使用 `ARRAYFORMULA` 或原生数组函数才能逐项展开。**
+**核心原则一：飞书不像 Excel 365 那样默认 spill（溢出展开）。** 某个参数要求单值、实际传入的却是区域时，飞书默认取"投影"（按公式所在行/列取对应的那一个值）；只有当求值处于**数组公式上下文内部**——最外层套了 `ARRAYFORMULA`，或公式里已有原生数组函数（`FILTER` / `XLOOKUP` / `SORT` 等，见下方清单）——才逐项展开。`ARRAYFORMULA` 与"逐行标量公式 + `--copy-to-range` 填充"导出后都保真，按需要选：前者一条公式覆盖整片、写起来短；后者每格是独立公式，导出后在 Excel 里能单格编辑。
+
+**核心原则二：`LAMBDA` 系高阶函数（`MAP` / `REDUCE` / `SCAN` / `BYROW` / `BYCOL` / `MAKEARRAY`）在飞书内算得对，但导出 `.xlsx` 会静默算错。** 导出时飞书只把 LAMBDA 体内联展开成普通数组表达式，**不保留高阶语义**，全程不报错：
+
+- `REDUCE(0,A2:A6,LAMBDA(acc,x,acc+x))`（归约求和）→ `=0+A2:A6`，归约整个丢失
+- `BYROW(A2:B6,LAMBDA(r,SUM(r)))`（逐行求和）→ `=SUM(A2:B6)`，5 个结果塌成 1 个
+- `MAP(A2:A6,LAMBDA(x,IF(x>0,x,0)))` → `=A2:A6>0`，`IF` 整个消失
+
+唯一例外是 `MAP` 且 LAMBDA 体为**纯运算符或单参函数**时展开恰好等价（`LAMBDA(a,b,a*b)` → `=A2:A6*B2:B6` ✓）。**除此之外一律改走 `ARRAYFORMULA` / 逐行填充 / 辅助列**——同样的逐项逻辑写成 `=ARRAYFORMULA(IF(A2:A6>0,A2:A6,0))` 导出后完整保留，写成 `MAP(...LAMBDA(...IF...))` 就丢。这类错误公式不报错、飞书里回读也是对的，只有导出后才暴露，靠事后检查发现不了。
 
 ## 公式书写约定（写任何公式都先满足）
 
 - **绝对引用 `$`**：向下 / 向右填充前判断哪些引用要锁定——用户指定的固定 cell（`$C$3`）、要固定的数据范围（`$A$2:$B$5`）、锁列不锁行（`$A2`）、锁行不锁列（`B$1`）。填充前检查是否需固定汇率 / 税率 / 查找表 / 权重表，以及同列 / 同行公式结构是否一致。
 - **公式字符串用飞书范围语法**：写 `H:H`、`A2:B5`，**禁止** `H2:H` / `2:2`。要在公式里引用整行，用显式范围（如 `$A2:$Z2`）替代禁用的 `2:2`。这与 CLI 工具参数（如 `--range` / `--copy-to-range`）的 A1 表示法写法不同：参数侧合法的 `D3:D`、`1:1`、`3:6` 在公式串里反而非法。**公式串 ≠ CLI 参数**，两套规则别互相照搬，混用会导致调用失败或公式报错。
+- **产物要导出 xlsx 交付时优先 Excel 兼容函数**：同一计算能用 Excel 兼容函数（SUMIFS / TEXT / MID / FIND 等）表达就不用飞书特有函数（MAP / REGEXEXTRACT / ARRAYFORMULA 等）——特有函数在导出后的 xlsx 里可能无法重算；确需使用时，导出后核对重算正常再交付。
 
-## 翻译后必做：代码复现校验
+## 业务语义契约（复杂统计公式写前必做）
 
-公式语法翻译完之后，**必须**用本地脚本在源数据上独立复现一份"等价计算结果"再写入。流程：
+公式无错误码不等于业务逻辑正确。写入前把用户要求整理成一张短契约并逐项核对：
+
+1. **字段**：用表头 + 3–5 行真实值确认“姓名/工号、开始/结束、秒/分钟”等列语义，禁止只凭列字母或列名猜测。
+2. **阈值**：中文“以上 / 至少 / 不低于”用 `>=`，“超过 / 大于”用 `>`；“以下 / 至多 / 不高于”用 `<=`。阈值恰好相等的记录必须作为哨兵。
+3. **单位与时区**：显式记录秒↔分钟、百分比↔小数、Unix 秒/毫秒与 UTC→本地时区转换；日期由时间戳计算时先用一条已知记录手算。
+4. **完整范围**：公式范围覆盖源数据真实首末行，不能把探结构的前 N 行样本直接当计算范围；回读/落盘结果出现 `truncated` / `complete:false` 时先续读。
+5. **业务哨兵**：写前用本地脚本或手算得到至少一条可核预期；写后同时核首、中、末、空值、阈值边界和该预期。`formula-verify success` 只证明没有公式错误码，不能替代这些结果断言。
+
+## 翻译后建议：代码复现校验
+
+公式语法翻译完之后，建议用本地脚本在源数据上独立复现一份"等价计算结果"再写入。流程：
 
 1. **挑 3-5 个代表性输入行**（首行 / 中段 / 末行 / 含空值 / 含异常格式各一）
 2. **用 Python 复现 Excel 原公式的语义**（不是飞书译文的语义，而是用户原本想要的结果）
 3. **写入飞书译文公式后回读这几行的实际值**
-4. **三方对照**：`Excel 原公式语义 == Python 复现 == 飞书译文回读值`，全部一致才交付；不一致先排查（数组语义？日期差？范围引用？）
+4. **三方对照**：`Excel 原公式语义 == Python 复现 == 飞书译文回读值`；不一致时优先排查（数组语义？日期差？范围引用？），无法修完时在交付说明标明风险。
 
 **理由**：Excel→飞书的语法翻译很容易在 spill / 数组 / 日期差 / 范围引用上出现等价性偏差，仅靠语法转换通过不足以保证业务结果正确。
 
@@ -25,40 +44,120 @@
 
 本文解决的是"公式怎么写对"，不是"写进表里后一定能零错误运行"。因此：
 
-1. 按本文完成公式改写后，用 `lark-sheets-write-cells` / `lark-sheets-batch-update` 把公式真实写入表格。
-2. 公式一旦落表，就默认进入 `lark-sheets-formula-verify` 的收尾阶段。
-3. 最终必须跑 `+formula-verify` 收敛到 `status='success'`；`errors_found` / `partial` 都不算完成。
+1. 按本文完成公式改写后，用 `references/lark-sheets-write-cells.md` / `references/lark-sheets-batch-update.md` 把公式真实写入表格。
+2. 公式一旦落表，必须对本次新增 / 修改的公式范围逐段运行 `+formula-verify --exit-on-error`；关键公式区还要回读首、中、末及汇总行的 `formula`。
+3. 每段 `status='success'` 后才结束公式任务；`errors_found` 继续修复，`partial` 缩小 `--range` 或按 sheet 拆分续扫，不能用说明替代完整验证；AI 公式不套这条 success 收敛，按下方「AI 公式」的全区间一次异步状态检查规则交付。
+
+**静态值改公式（"让统计表跟随源数据变化"类任务）额外一步**：改写前先快照原静态值，公式写完后逐格与快照 diff。不一致时先尝试口径变体（`>` / `>=`、取整方式、匹配列）逼近原值；仍不一致不算失败——原静态值可能对应旧数据或含未声明口径——但必须在交付说明中给出 diff 表与所用口径的解释，禁止不声明差异直接交付。
+
+**首次写计算结果时默认写公式**：在已有表上做统计、汇总、排名、分类计算等——无论源数据是已有单元格还是新读取的数据——默认把计算结果写成引用源数据的公式，不要用 Python 在本地算好数值再硬编码写入。公式优先原则的例外：外部抓取数据、永不变化的常量、循环引用。
+
+## AI 公式（`AI` 函数）
+
+飞书表格提供一个统一的 **`AI` 公式**：用自然语言描述需求，AI 返回文本结果。AI 公式的**写入方式与普通公式完全一致**（复用 `references/lark-sheets-write-cells.md` 的 `+cells-set` / `set_cell_range`，无需特殊接口），只是计算是**异步**的——写入后要等 AI 算完才有结果。
+
+**AI 公式几乎必然含逗号 + 双引号（如 `=AI("翻译成中文", E2)`），默认走 `+cells-set` 的 JSON `formula` 字段，不要走 `+csv-put`**：`+csv-put` 会按逗号把公式拆列、写坏（详见 `references/lark-sheets-write-cells.md`）。`+cells-set` 里公式内部的双引号写成 `\"`。整列填充用模板 + `--copy-to-range`：
+
+```bash
+# 种子格写一条 AI 公式（内部引号用 \" 转义），再向下铺满整列
+lark-cli sheets +cells-set --url <表URL> --sheet-name <子表名> \
+  --range D2 --cells '[[{"formula":"=AI(\"翻译成中文\", E2)"}]]' \
+  --copy-to-range "D2:D107"
+# 写完先对种子格 D2 做一次 +cells-get --include formula 核对文本，再用 --ai-only 校验整个写入区间；禁止用 +cells-get 轮询计算结果
+lark-cli sheets +formula-verify --url <表URL> --sheet-name <子表名> --range D2:D107 --ai-only
+```
+
+**校验纪律**：AI 公式计算是异步的。写完先做**一次性公式文本核对**（对种子格 / 首格做**一次** `+cells-get --include formula`，确认落进去的确实是 `=AI(...)` 而非 `#ERROR` 或残缺字面量）——这一步是**必经**的；被禁止的只是用 `+cells-get` / `+csv-get` 反复**轮询计算结果**。计算状态的**第一校验入口必须是 `+formula-verify --ai-only`**，`--range` 给**整个写入区间**（只读、成本低，不要抽样）；注意 `--range` 只透传给后端，AI-only 汇总不保证按它收窄，**认返回里的单元格定位、不认总数**。交付判据（机读）：`ai_formula_failed_count == 0`，`failed` / `unsupported` 先修；满足后即使仍有 `ai_formula_pending_count > 0` 也可交付，并告知用户后台仍在计算。若文本核对暴露出 `#ERROR` / 残缺字面量（半截括号 / 全角括号），那是公式串在写入层被转义写坏了、不是 AI 失败，回到 `+cells-set` 用 `\"` 重写（详见 `references/lark-sheets-formula-verify.md`）。
+
+### 语法
+
+```
+=AI(prompt)
+=AI(prompt, range)
+=AI(part1, part2, ...)
+```
+
+- `prompt`：提示词，说明要 AI 做什么（可以是字符串常量，也可以引用单元格）。
+- `range`：可选，交给 AI 处理的输入数据。可以是单个单元格（如 `A2`），也可以是一段单元格（如整行 `A2:G2` 或几列 `A2:C2`）——这段单元格会作为**这一次计算的输入上下文**一并喂给 AI，公式返回**一个**结果。具体写法见下方「常见用途」。
+- **多参数拼接**：`AI` 接受多个参数，会按顺序把字符串常量与单元格 / 区域引用拼成一段完整提示词。可用来把散落在不同位置的值组进一句话，例如 `=AI("结合", A2, "和", A4, "的描述，总结3个关键词")`。
+
+### 常见用途（同一个函数，靠提示词区分）
+
+`range` 既可以是单个单元格，也可以引用整行 / 多列作为一次计算的输入上下文；也可以用多个参数把不同位置的值拼进同一句提示词：
+
+| 场景 | 示例 |
+|---|---|
+| 翻译 | `=AI("翻译成日语", A2)` |
+| 情感分析 | `=AI("判断客户情绪，只返回 Positive、Neutral、Negative", A2)` |
+| 分类打标签 | `=AI("判断这封邮件是不是垃圾邮件", D2)`；结合多列辅助信息判断：`=AI("把餐厅归类到它所属的纽约市行政区，可参考街区信息", A2:C2)` |
+| 信息提取 | `=AI("提取邮箱", A2)` / `=AI("提取手机号", A2)` |
+| 总结 | `=AI("为这位客户的反馈写一句话总结", A2:D2)`；`=AI("用要点列出这段书籍摘要的主要主题", D2)` |
+| 多值拼接 | `=AI("结合", A2, "和", A4, "的描述，总结3个关键词")` |
+| 润色改写 | `=AI("改写得更正式", A2)` |
+| 生成文案 | `=AI("用 10 个字以内为活动生成一句宣传语", A2)`；引用整行回应具体内容：`=AI("给评审写一封邮件，针对评审意见中的具体条目逐条回应", A2:G2)`；`=AI("根据这段岗位职责摘要，为该职位生成一组关键词", A2:C2)` |
+| 数据清洗 / 标准化 | `=AI("统一公司名称写法", A2)` |
+| 关键词提取 | `=AI("提取 5 个关键词，用逗号分隔", A2)` |
+
+### 提示词最佳实践（写对提示词是结果稳定的关键）
+
+AI 公式的质量高度依赖提示词。推荐：
+
+1. **明确输出格式**：与其写"分析一下"，不如写"判断情绪，只返回 Positive / Neutral / Negative"。限定可选值能让结果可机读、可再计算。
+2. **指定语言**：写"翻译成中文"比只写"翻译"更稳定。
+3. **指定长度**：如"总结成一句话""30 字以内"。
+4. **需要结构化时明确要 JSON**：如提示"返回 JSON：{category:'', score:0-100}"，AI 能较稳定地输出结构化结果。
+
+### 与普通公式组合
+
+`AI` 可以像普通函数一样嵌进公式链，引用单元格或区域：
+
+```
+=IF(B2>90, AI("夸奖一下这位员工"), "")
+=IF(A2="", "", AI("翻译成英文", A2))
+```
+
+`AI(...)` 返回单个结果（标量），把它嵌进公式链时按标量对待即可，不要套 `TEXTJOIN` / `ARRAYFORMULA` 等按数组语义设计的写法——AI 公式不会 spill 出数组。
+
+### 用 CLI 对一列逐行处理
+
+对整列逐行跑 AI，推荐**模板单元格 + `--copy-to-range` 向下扩展**：在种子单元格写 `=AI("<提示词>", A2)`，再用 `--copy-to-range` 扩展到整列，相对引用会随行自增（`A2` → `A3` → …）。这样每行独立计算、行为可预测，比依赖单条公式一次铺开整列更稳。
+
+**行数多时分批串行**：AI 公式是异步计算，一次扩展的行数越多越容易触发超时。普通公式可以照 `references/lark-sheets-write-cells.md` 的整列 / 到列尾（`H:H`、`D3:D`）用法一次铺开；**AI 公式**行数很多时建议按批（量级参考：每批约几百到一千行）**串行**扩展——写完一批、`+formula-verify --ai-only` 确认这批已进入计算后再铺下一批，不要一次铺极长的列，也不要多批并发。
+
+**写完 AI 公式后的校验与交付**：先对种子格 / 首格做**一次** `+cells-get --include formula` 核对公式文本（**必经步骤**，确认落进去的是 `=AI(...)` 而非 `#ERROR` / 残缺字面量），随后计算状态的第一校验入口必须是 `references/lark-sheets-formula-verify.md` 的 `+formula-verify --ai-only --range <整个写入区间>`（只读、成本低，`--range` 覆盖全区间、不要抽样），**禁止用 `+cells-get` / `+csv-get` 轮询计算结果**。交付判据（机读）：`ai_formula_failed_count == 0`（`--range` 不保证收窄汇总口径，按返回的单元格定位核对本次区间，不按总数比对）；满足后即使仍有 `ai_formula_pending_count > 0` 也可以交付，飞书会在后台继续计算，交付时告知用户"AI 公式仍在后台运行，结果会陆续完成"。细节见 `references/lark-sheets-formula-verify.md`。
 
 ## 决策流程
 
-1. 最终结果是**标量**（单值）→ 通常不需要 `ARRAYFORMULA`
+1. 最终结果是**标量**（单值）→ 直接写普通公式
 2. 最终结果是**一维或二维数组**：
-   - 公式中**包含**飞书原生数组函数（如 FILTER、XLOOKUP、MAP 等）→ 无需加 `ARRAYFORMULA`，数组语义会自动传播到整个公式，包括原生数组函数外层接的标量运算（如 `+1`、`*100`）
-   - 公式中**不包含**任何原生数组函数，但在对区域做标量计算 → 加 `ARRAYFORMULA(<整个表达式>)`
-3. Excel 依赖 `ROW(range)` 逐项驱动 `SUBTOTAL/INDIRECT/OFFSET` → 改用 `MAP(ARRAYFORMULA(ROW(...)), LAMBDA(r, ...))`
-4. 内层 `INDEX/INDIRECT/OFFSET` 返回范围，外层 `SUMIF/COUNTIF/SUMIFS` 还要继续吃这些范围 → 改用 `MAP(..., LAMBDA(...))` 或 `REDUCE(..., LAMBDA(...))`
-5. 公式意图是"对多个区域分别计算再汇总"（例如用 INDIRECT/OFFSET 对每行生成一个范围，再对所有范围聚合）→ 飞书不能直接返回"区域的列表"，必须明确降维：用 `VSTACK` 垂直合并、`HSTACK` 水平合并、`TOCOL/TOROW` 展平，或 `REDUCE` 归约成标量
+   - 公式中**包含**飞书原生数组函数（如 FILTER、XLOOKUP、MAP 等）→ 直接写，数组语义会自动传播到整个公式，包括原生数组函数外层接的标量运算（如 `+1`、`*100`）
+   - 公式中**不包含**任何原生数组函数，只是在对区域做标量计算 → 用 `ARRAYFORMULA` 包住整个表达式，或写成**单行标量公式再向下 / 向右填充**（`--copy-to-range`）
+3. Excel 依赖 `ROW(range)` 逐项驱动 `SUBTOTAL/INDIRECT/OFFSET` → 拆成辅助列：辅助列每行写单行标量式（`=SUBTOTAL(103,INDIRECT("E"&ROW(E16)))`）向下填充，再对辅助列做聚合；但结果要随筛选联动时保持单条 `MAP(...LAMBDA(...))`，见下方「Excel 隐式逐项求值」
+4. 内层 `INDEX/INDIRECT/OFFSET` 返回范围，外层 `SUMIF/COUNTIF/SUMIFS` 还要继续吃这些范围 → 同样拆辅助列逐行算，再聚合
+5. 公式意图是"对多个区域分别计算再汇总"（例如用 INDIRECT/OFFSET 对每行生成一个范围，再对所有范围聚合）→ 飞书不能直接返回"区域的列表"，必须明确降维：用 `VSTACK` 垂直合并、`HSTACK` 水平合并、`TOCOL/TOROW` 展平，或先把各段结果落到辅助区域再用普通聚合函数汇总
 6. 算日期差 → 不要写 `DAY(end-start)`，用 `DAYS`、`DATEDIF` 或直接 `end-start`
 
 ## 飞书的投影行为（不是默认 spill）
 
-飞书普通公式对引用区域默认"投影"而不是"spill"：
+触发条件是**参数要求单值、实际传入的却是区域**，此时飞书取"投影"而不是"spill"：
 
 - 单列区域 → 按当前公式所在行取值
 - 单行区域 → 按当前公式所在列取值
 - 二维区域 → 只有当前公式位置能映射到该区域时才取值，否则报错
 - 数组常量 `{...}` 或函数返回矩阵，在普通标量上下文里通常只取左上角
 
-因此：
+**例外是数组公式上下文内部**：最外层套了 `ARRAYFORMULA`、或公式里已有原生数组函数时，同一个区域会逐项展开，不再投影。
+
+因此（以下均指普通公式，即不在数组公式上下文里）：
 - `=A1:A2` 在飞书普通公式里不会 spill，只会投影到当前行
-- `=ABS(A2:B2)` 不会得到一整行，要写 `=ARRAYFORMULA(ABS(A2:B2))`
+- `=ABS(A2:B2)` 不会得到一整行，要写 `=ARRAYFORMULA(ABS(A2:B2))`，或在 A、B 两格分别写 `=ABS(A2)` / `=ABS(B2)`
 - `=TRUNC({1.1111,2.222},{1,2})` 要得到一整行，写 `=ARRAYFORMULA(TRUNC({1.1111,2.222},{1,2}))`
 
-## ARRAYFORMULA 使用规则
+## 没有原生数组函数时：ARRAYFORMULA 或逐行填充
 
-**前提：以下规则适用于公式中没有任何原生数组函数的情况。** 若公式中已有原生数组函数（如 FILTER、XLOOKUP、MAP 等），数组语义会自动传播到整个公式的求值过程，后续标量运算无需额外包 `ARRAYFORMULA`（见下一节）。
+**前提：本节适用于公式中没有任何原生数组函数的情况。** 若公式中已有原生数组函数（如 FILTER、XLOOKUP、MAP 等），数组语义会自动传播到整个公式的求值过程（见下一节）。
 
-需要加 `ARRAYFORMULA` 的典型场景（公式中无原生数组函数时）：
+以下运算与函数**只按标量求值**，直接喂整段区域不会逐项展开：
 
 - 算术运算：`+ - * / ^ %`
 - 比较运算：`= <> > >= < <=`
@@ -68,38 +167,39 @@
 - 条件函数：`IF IFS IFERROR IFNA NOT ISNUMBER ISTEXT ISBLANK ...`
 - 引用函数（高风险）：`INDEX OFFSET COLUMN ROW MATCH`
 
+**两条等价做法，导出 `.xlsx` 后都保真，按需要选一条：**
+
+- **`ARRAYFORMULA(<整个表达式>)`**：一条公式覆盖整片，写起来短。`=ARRAYFORMULA(A2:A100*B2:B100)` ✓、`=ARRAYFORMULA(IF(A2:A100>0,B2:B100,""))` ✓
+- **逐行标量式 + 填充**：首行写 `=A2*B2` / `=IF(A2>0,B2,"")`，再用 `--copy-to-range` 铺到整列，引用随行递增。每格是独立公式，导出后在 Excel 里能单格编辑
+
+`MAP` 只在 LAMBDA 体是**纯运算符或单参函数**时可用（如 `=MAP(A2:A100,B2:B100,LAMBDA(a,b,a*b))`）；体内出现 `IF`、多参函数或字符串拼接就改用上面两条路，理由见开头核心原则二。
+
 ### 公式中有原生数组函数时，整个公式已进入数组模式
 
 飞书的数组语义会在整个公式求值过程中累积传播：一旦某个原生数组函数运行，后续所有运算符和函数也会自动逐元素处理，无论它们出现在哪一层。
 
-因此，以下写法**无需**额外包 `ARRAYFORMULA`：
+因此以下写法直接成立，不必再包 `ARRAYFORMULA`、也不必拆成逐行填充：
 
 - `=FILTER(A2:A10,B2:B10="x")+1` ✓
 - `=XLOOKUP(E2:E10,A2:A10,B2:B10)*100` ✓
 - `=ABS(FILTER(A2:A10,B2:B10>0))` ✓
 - `=MAP(A2:A10,LAMBDA(x,x*2))-1` ✓
 
-对比：**没有原生数组函数**时必须加：
+## 原生数组函数清单
 
-- `=A2:A100*B2:B100` → `=ARRAYFORMULA(A2:A100*B2:B100)` ✓
-- `=IF(A2:A100>0,B2:B100,"")` → `=ARRAYFORMULA(IF(A2:A100>0,B2:B100,""))` ✓
+以下函数按数组语义工作，可直接返回整片结果，不必拆成逐行填充；且它们在 Excel 侧同样存在，可安全使用：
 
-## 飞书原生数组函数清单
+`CELL` `CHOOSECOLS` `CHOOSEROWS` `DROP` `EXPAND` `FILTER` `FREQUENCY` `GROWTH` `HSTACK` `LINEST` `LOGEST` `LOOKUP` `MINVERSE` `MMULT` `MUNIT` `RANDARRAY` `SEQUENCE` `SORT` `SORTBY` `SUMPRODUCT` `SWITCH` `TAKE` `TEXTSPLIT` `TOCOL` `TOROW` `TRANSPOSE` `TREND` `UNIQUE` `VSTACK` `WRAPCOLS` `WRAPROWS` `XLOOKUP`
 
-以下函数按数组语义工作，通常**不需要额外包 `ARRAYFORMULA`**：
+`BYCOL` `BYROW` `MAKEARRAY` `MAP` `REDUCE` `SCAN` 同样是原生数组函数，但受核心原则二约束——导出 `.xlsx` 会丢高阶语义，默认改走 `ARRAYFORMULA` / 逐行填充 / 辅助列。
 
-`ARRAYFORMULA` `ARRAY_CONSTRAIN` `BYCOL` `BYROW` `CELL` `CHOOSECOLS` `CHOOSEROWS` `DROP` `EXPAND` `FILTER` `FLATTEN` `FREQUENCY` `GROWTH` `HSTACK` `IMPORTDATA` `IMPORTFEED` `IMPORTHTML` `IMPORTRANGE` `IMPORTXML` `LINEST` `LOGEST` `LOOKUP` `MAKEARRAY` `MAP` `MINVERSE` `MMULT` `MUNIT` `QUERY` `RANDARRAY` `REDUCE` `REGEXEXTRACT` `SCAN` `SEQUENCE` `SORT` `SORTBY` `SORTN` `SPLIT` `SUMPRODUCT` `SWITCH` `TAKE` `TEXTSPLIT` `TOCOL` `TOROW` `TRANSPOSE` `TREND` `UNIQUE` `VSTACK` `WRAPCOLS` `WRAPROWS` `XLOOKUP`
+`ARRAYFORMULA` 不在上面这份清单里——它的作用是给**本来只按标量求值**的表达式套上数组语义，而不是自己返回数组。导出 `.xlsx` 时它会被翻译成 Excel 原生数组公式（`=ARRAYFORMULA(IF(A2:A6>2,B2:B6,""))` → `=IF(A2:A6>2,B2:B6,"")`，作用范围覆盖整片），语义完整保留，可安全使用。
 
-> **注意：`SWITCH` 在飞书里被当作原生数组函数处理，这与 Excel 行为不同，不需要额外包 `ARRAYFORMULA`。**
+> **注意：`SWITCH` 在飞书里被当作原生数组函数处理，这与 Excel 行为不同——把区域喂给它会逐项展开。**
 
-## IMPORTRANGE 跨工作簿引用限制
+## 跨电子表格取数不要用公式
 
-用 `IMPORTRANGE` 跨电子表格引用数据时有两条硬上限：
-
-- **嵌套最多 5 层**：被引用的表里若又用 `IMPORTRANGE` 继续引下一张表，整条引用链最多 5 层。
-- **每个工作表最多 100 个 `IMPORTRANGE` 引用**。
-
-超限会让引用失效或报错。设计大量跨表汇总前先估算引用数，必要时先把数据落地到本表再计算。
+飞书公式没有跨工作簿引用的通用写法（Excel 的外部链接迁过来也不成立）。需要另一份电子表格的数据时，先把那份数据读出来（`+csv-get` 等）落到本表的一张子表，再在本表内用普通引用计算——既避开跨表引用限制，也保证导出后公式仍可用。
 
 ## INDEX / OFFSET / COLUMN / ROW / MATCH 是高风险函数
 
@@ -111,18 +211,13 @@
 - 结果本来应该是一行或一块二维区域
 - 外层还有算术、比较、`IF` 等继续处理它
 
-更稳的写法：
+更稳的写法：整体包一层 `=ARRAYFORMULA(INDEX(...))` / `=ARRAYFORMULA(ROW(...))`；或退回**当前行的标量式再向下填充**——首行写 `=INDEX($A$2:$A$100,ROW(A1))`，向下填充时 `ROW(A1)` 自动递增为 1、2、3…
 
-- `=ARRAYFORMULA(INDEX(...))`
-- `=ARRAYFORMULA(OFFSET(...))`
-- `=ARRAYFORMULA(COLUMN(...))`
-- `=ARRAYFORMULA(ROW(...))`
-
-**例外：** 如果返回值只是立刻交给聚合函数消费，不需要额外包：
+**例外：** 如果返回值只是立刻交给聚合函数消费，直接写即可：
 
 - `=SUM(INDEX(A1:B2,0,1))` ✓
 
-## Excel 隐式逐项求值，飞书里要显式写 MAP
+## Excel 隐式逐项求值，飞书里要拆辅助列
 
 **典型特征：**
 
@@ -133,18 +228,25 @@
 
 同类本质也包括：`INDEX/INDIRECT/OFFSET` 先返回范围，外层再把这些范围交给 `SUMIF`、`COUNTIF`、`AVERAGEIF`、`SUMIFS` 等范围感知函数 —— 飞书里这些外层函数不会自动二次展开内层范围。
 
-这时不要只会补 `ARRAYFORMULA`，要显式写"遍历"。最常用模板：
+这时要把"遍历"落到**辅助列**上，分两步：
 
 ```excel
-=SUMPRODUCT(
-  MAP(
-    ARRAYFORMULA(ROW(目标范围)),
-    LAMBDA(r, 单行计算逻辑)
-  )
-)
+辅助列首行（如 Z16）：=单行计算逻辑          # 例：=SUBTOTAL(103,INDIRECT("E"&ROW(E16)))
+                        用 --copy-to-range 铺满 Z16:Z387（引用随行递增）
+汇总格：              =SUM(Z16:Z387)         # 需要时可隐藏辅助列
 ```
 
-同类场景也优先考虑 `MAP`：
+辅助列全是普通标量公式，导出 `.xlsx` 后逐格原样保留，也避开了 `LAMBDA` 系高阶函数的导出陷阱。
+
+**例外：结果要随筛选联动时，保持单条公式。** `SUBTOTAL` 的意义就在于筛选变化后重新计算，这类需求写成
+
+```excel
+=SUMPRODUCT(MAP(ARRAYFORMULA(ROW($E$16:$E$387)),LAMBDA(row,SUBTOTAL(103,INDIRECT("E"&row)))))
+```
+
+筛选状态本身导出 `.xlsx` 就不会保留，所以这个场景是飞书内专用，不受核心原则二的导出约束。
+
+其余同类场景走辅助列：
 
 - `INDIRECT("A"&ROW(...))`
 - `OFFSET(...,ROW(...)-ROW(...),...)`
@@ -160,10 +262,7 @@
 
 ### 多层范围不能自动二次展开
 
-内层 `INDEX/INDIRECT/OFFSET` 返回的是二维范围，外层还想继续对这些范围做范围计算时，不要假设飞书会"再展开一层"。改用：
-
-- `MAP(..., LAMBDA(...))` 显式逐项算
-- `REDUCE(..., LAMBDA(...))` 显式累加/归约
+内层 `INDEX/INDIRECT/OFFSET` 返回的是二维范围，外层还想继续对这些范围做范围计算时，不要假设飞书会"再展开一层"。改用辅助列逐行算再聚合（见上一节），别把二次展开压进单条数组公式。
 
 ### 真正的三维或更高维结果不能直接返回
 
@@ -177,7 +276,7 @@
 - 左右拼接：`=HSTACK(slice1, slice2, slice3)`
 - 压成单列：`=TOCOL(...)`
 - 压成单行：`=TOROW(...)`
-- 只保留聚合值：`=REDUCE(slice1, {slice2,slice3}, LAMBDA(acc,x,acc+x))`
+- 只保留聚合值：把各 slice 分别落到辅助区域，再用 `SUM` / `SUMPRODUCT` 等普通聚合函数汇总（`REDUCE` 受核心原则二约束，不要用）
 
 不要替用户"偷定"第三维展示方式；如果用户没有明确说明怎么展示，至少先把结果改写成可见的二维形状。
 
@@ -199,7 +298,7 @@ Excel：`=A1#`（引用 A1 公式溢出的整片区域）
 飞书没有此语法，迁移方式：
 
 - spill 区域已知 → 改成明确范围
-- spill 区域未知 → 回到源公式重写，或用 `TAKE` / `DROP` / `ARRAY_CONSTRAIN`
+- spill 区域未知 → 回到源公式重写，或用 `TAKE` / `DROP` 截取
 
 ### 结构化引用
 
@@ -211,7 +310,7 @@ Excel：`=SUM(Table1[Amount])`
 
 Excel：`{=A1:A10*B1:B10}`（Ctrl+Shift+Enter 输入）
 
-飞书改为：`=ARRAYFORMULA(A1:A10*B1:B10)`
+飞书改为：`=ARRAYFORMULA(A1:A10*B1:B10)`——导出 `.xlsx` 后正好还原成 Excel 的 CSE 数组公式；或首行写 `=A1*B1` 再向下填充
 
 ## 日期序列与日期差
 
@@ -242,16 +341,16 @@ Excel：`{=A1:A10*B1:B10}`（Ctrl+Shift+Enter 输入）
 - `INFO`、`RTD` — 系统信息 / 实时数据函数，飞书不支持
 - `PIVOT` — 用 `+pivot-{create|update|delete}` 透视表对象替代
 - `AMORDEGRC`、`PHONETIC`、`DETECTLANGUAGE` — 飞书不支持
-- `LET`、命名自定义函数（名称管理器里定义的 LAMBDA）、独立调用的 `LAMBDA`（如 `=LAMBDA(x,x+1)(5)`）— 会报 `#NAME?`；改用嵌套 IF / 辅助列。**例外**：`LAMBDA` 作为 `MAP` / `REDUCE` / `BYROW` / `BYCOL` / `SCAN` / `MAKEARRAY` 的内联参数时**支持**（见上方「飞书原生数组函数清单」）
+- `LET`、命名自定义函数（名称管理器里定义的 LAMBDA）、独立调用的 `LAMBDA`（如 `=LAMBDA(x,x+1)(5)`）— 会报 `#NAME?`；改用嵌套 IF / 辅助列。**例外**：`LAMBDA` 作为 `MAP` / `REDUCE` / `BYROW` / `BYCOL` / `SCAN` / `MAKEARRAY` 的内联参数时飞书**支持**，但受核心原则二约束（导出 `.xlsx` 丢高阶语义），默认仍走逐行填充 / 辅助列
 
 ## 代表性改写示例
 
 - 基础逐项计算
   - Excel: `=A2:A100*B2:B100`
-  - 飞书: `=ARRAYFORMULA(A2:A100*B2:B100)`
+  - 飞书: `=ARRAYFORMULA(A2:A100*B2:B100)`；或首行 `=A2*B2` + `--copy-to-range` 向下填充
 - 条件判断
   - Excel: `=IF(A2:A100>0,B2:B100,"")`
-  - 飞书: `=ARRAYFORMULA(IF(A2:A100>0,B2:B100,""))`
+  - 飞书: `=ARRAYFORMULA(IF(A2:A100>0,B2:B100,""))`；或首行 `=IF(A2>0,B2,"")` + 向下填充（LAMBDA 体含 `IF`，不能用 `MAP`）
 - 原生数组函数（无需改动）
   - Excel: `=FILTER(A2:C100,B2:B100="East")`
   - 飞书: `=FILTER(A2:C100,B2:B100="East")`
@@ -260,17 +359,17 @@ Excel：`{=A1:A10*B1:B10}`（Ctrl+Shift+Enter 输入）
   - 飞书: `=XLOOKUP(E2:E10,A2:A10,B2:B10)*100`
 - 高风险引用函数
   - Excel: `=INDEX(A1:D2,{2,1},0)`
-  - 飞书: `=ARRAYFORMULA(INDEX(A1:D2,{2,1},0))`
+  - 飞书: `=ARRAYFORMULA(INDEX(A1:D2,{2,1},0))`（`col_num=0` 取整行必须包在 `ARRAYFORMULA` 里才成立，裸写会报 `#VALUE!`）
 - 日期差
   - 错误: `=DAY(B2-A2)`
   - 推荐: `=DAYS(B2,A2)` 或 `=DATEDIF(A2,B2,"D")` 或 `=B2-A2`
 - Excel 隐式逐项求值
   - Excel: `=SUMPRODUCT(SUBTOTAL(103,INDIRECT("E"&ROW($E$16:$E$387))))`
-  - 飞书: `=SUMPRODUCT(MAP(ARRAYFORMULA(ROW($E$16:$E$387)),LAMBDA(row,SUBTOTAL(103,INDIRECT("E"&row)))))`
+  - 飞书: `=SUMPRODUCT(MAP(ARRAYFORMULA(ROW($E$16:$E$387)),LAMBDA(row,SUBTOTAL(103,INDIRECT("E"&row)))))`（`SUBTOTAL` 要随筛选联动，保持单条公式）
 - 多层范围 / 二次展开
   - 错误思路: `=SUMIF(INDIRECT("E"&ROW($E$16:$E$387)),">0")`
-  - 飞书: `=MAP(ARRAYFORMULA(ROW($E$16:$E$387)),LAMBDA(r,SUMIF(INDIRECT("E"&r),">0")))`
+  - 飞书: 辅助列 `Z16` 写 `=SUMIF(INDIRECT("E"&ROW(E16)),">0")` 向下填充到 `Z387`
 - 三维降二维（保留所有层）
   - 飞书: `=VSTACK(slice1,slice2,slice3)` 或 `=HSTACK(slice1,slice2,slice3)`
 - 三维降二维（只保留聚合值）
-  - 飞书: `=REDUCE(slice1,{slice2,slice3},LAMBDA(acc,x,acc+x))`
+  - 飞书: 各 slice 落到辅助区域后 `=SUM(辅助区域)`（不要用 `REDUCE`）

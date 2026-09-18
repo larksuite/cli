@@ -5,16 +5,41 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/zalando/go-keyring"
 )
+
+func TestAuthLogoutRun_PreservesMalformedConfigError(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+	err := authLogoutRun(&LogoutOptions{Factory: f, JSON: true})
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) || configErr.Subtype != errs.SubtypeInvalidConfig {
+		t.Fatalf("error = %T (%v), want config/invalid_config", err, err)
+	}
+	if !errors.Is(err, core.ErrMalformedConfig) {
+		t.Fatalf("error = %v, want malformed-config cause", err)
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("direct runner wrote output before root error rendering: stdout=%q stderr=%q", stdout, stderr)
+	}
+}
 
 func writeLogoutConfig(t *testing.T, users []core.AppUser) {
 	t.Helper()
@@ -93,8 +118,9 @@ func TestAuthLogoutRun_JSONMode_Success_WritesStdoutOnly(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	writeLogoutConfig(t, []core.AppUser{{UserOpenId: "ou_user", UserName: "tester"}})
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
-		AppId:      "test-app",
-		UserOpenId: "ou_user",
+		AppId:       "test-app",
+		UserOpenId:  "ou_user",
+		AccessToken: "user-access-token",
 	}); err != nil {
 		t.Fatalf("SetStoredToken() error = %v", err)
 	}
@@ -129,8 +155,9 @@ func TestAuthLogoutRun_DefaultMode_KeepsTextOutput(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	writeLogoutConfig(t, []core.AppUser{{UserOpenId: "ou_user", UserName: "tester"}})
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
-		AppId:      "test-app",
-		UserOpenId: "ou_user",
+		AppId:       "test-app",
+		UserOpenId:  "ou_user",
+		AccessToken: "user-access-token",
 	}); err != nil {
 		t.Fatalf("SetStoredToken() error = %v", err)
 	}
@@ -207,7 +234,11 @@ func TestAuthLogoutRun_RevokesTokenAndClearsLocalState(t *testing.T) {
 	if got := stderr.String(); !strings.Contains(got, "Logged out") {
 		t.Fatalf("stderr = %q, want Logged out", got)
 	}
-	if got := larkauth.GetStoredToken("cli_test", "ou_user"); got != nil {
+	got, readErr := larkauth.GetStoredToken("cli_test", "ou_user")
+	if readErr != nil {
+		t.Fatalf("GetStoredToken() error = %v", readErr)
+	}
+	if got != nil {
 		t.Fatalf("expected stored token removed, got %#v", got)
 	}
 	saved, err := core.LoadMultiAppConfig()
@@ -277,7 +308,11 @@ func TestAuthLogoutRun_FallsBackToAccessTokenWhenRefreshTokenMissing(t *testing.
 	if got := stderr.String(); !strings.Contains(got, "Logged out") {
 		t.Fatalf("stderr = %q, want Logged out", got)
 	}
-	if got := larkauth.GetStoredToken("cli_test", "ou_user"); got != nil {
+	got, readErr := larkauth.GetStoredToken("cli_test", "ou_user")
+	if readErr != nil {
+		t.Fatalf("GetStoredToken() error = %v", readErr)
+	}
+	if got != nil {
 		t.Fatalf("expected stored token removed, got %#v", got)
 	}
 	saved, err := core.LoadMultiAppConfig()
@@ -343,7 +378,11 @@ func TestAuthLogoutRun_RevokeFailureStillClearsLocalState(t *testing.T) {
 	if !strings.Contains(gotErr, "Logged out") {
 		t.Fatalf("stderr = %q, want Logged out", gotErr)
 	}
-	if got := larkauth.GetStoredToken("cli_test", "ou_user"); got != nil {
+	got, readErr := larkauth.GetStoredToken("cli_test", "ou_user")
+	if readErr != nil {
+		t.Fatalf("GetStoredToken() error = %v", readErr)
+	}
+	if got != nil {
 		t.Fatalf("expected stored token removed, got %#v", got)
 	}
 	saved, err := core.LoadMultiAppConfig()

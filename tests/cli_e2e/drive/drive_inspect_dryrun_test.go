@@ -101,9 +101,9 @@ func TestDriveInspectDryRun_WikiURL(t *testing.T) {
 
 	require.Equal(t, int64(2), clie2e.DryRunGet(result.Stdout, "api.#").Int(),
 		"expected exactly 2 dry-run API steps for wiki URL, stdout:\n%s", result.Stdout)
-	require.Equal(t, "/open-apis/wiki/v2/spaces/get_node",
+	require.Equal(t, "/open-apis/wiki/v2/spaces/node_by_token",
 		clie2e.DryRunGet(result.Stdout, "api.0.url").String(),
-		"expected get_node as first step, stdout:\n%s", result.Stdout)
+		"expected node_by_token as first step, stdout:\n%s", result.Stdout)
 	require.Equal(t, "/open-apis/drive/v1/metas/batch_query",
 		clie2e.DryRunGet(result.Stdout, "api.1.url").String(),
 		"expected batch_query as second step, stdout:\n%s", result.Stdout)

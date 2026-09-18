@@ -132,11 +132,12 @@ func TestSheets_RangeSheetPrefixExplicitSelectorWinsDryRun(t *testing.T) {
 	require.Equal(t, "Sheet1!A1:D20", gjson.Get(input, "ranges.0").String(), "input:\n%s", input)
 }
 
-// A single-cell --range is an anchor sized from the payload — but not when it
-// carries a sheet prefix. Such a range only survives the rewrite beside an
-// explicit selector it contradicts, and sizing it would ship a range naming
-// one sheet next to a sheet_name naming another. It fails locally instead,
-// with the mismatch the caller can act on.
+// A --range that carries a sheet prefix only survives the rewrite beside an
+// explicit selector it contradicts, since every entry point consumes the
+// prefix into the selector when none was given. Sizing it would ship a range
+// naming one sheet next to a sheet_name naming another, so it fails locally —
+// naming the two sheets, rather than reporting the extent it was never going
+// to be given.
 func TestSheets_QualifiedAnchorNotExpandedDryRun(t *testing.T) {
 	setSheetsDryRunEnv(t)
 
@@ -156,9 +157,21 @@ func TestSheets_QualifiedAnchorNotExpandedDryRun(t *testing.T) {
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 2)
-	combined := result.Stdout + "\n" + result.Stderr
-	if !strings.Contains(combined, "2 rows") {
-		t.Fatalf("expected a cells-vs-range mismatch, got:\nstdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
+
+	// Assert the typed envelope, not just the prose: the message is free to be
+	// reworded, while type / subtype / param are the contract a caller
+	// branches on. (Pinning only the text is what made this test fail on a
+	// reworded message once already.) No cause is asserted -- this path adds
+	// none, and ValidationError.Cause is excluded from the JSON envelope.
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+	require.Equal(t, "--range", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+
+	// Supplemental: the message has to name BOTH sheets, which is the whole
+	// reason this conflict gets its own error instead of a size mismatch.
+	msg := gjson.Get(result.Stderr, "error.message").String()
+	for _, want := range []string{`names sheet "Sheet1"`, `selector names "Other"`} {
+		require.Contains(t, msg, want, result.Stderr)
 	}
 }
 

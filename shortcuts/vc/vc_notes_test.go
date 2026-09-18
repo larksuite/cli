@@ -25,7 +25,6 @@ import (
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/shortcuts/common"
-	"github.com/larksuite/cli/shortcuts/note"
 )
 
 func TestNotes_UserMissingScopeProjectsInlineHintWithoutChangingExit(t *testing.T) {
@@ -1294,7 +1293,10 @@ func minuteGetErrStub(token string, code int, msg string) *httpmock.Stub {
 func TestMinutesReadError_ProblemOf_EnrichesMessage(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
-	reg.Register(minuteGetErrStub("tokperm", minutesNoReadPermissionCode, "no permission"))
+	// Literal wire code, not the constant: feeding the constant back in would
+	// pass whatever value it holds, hiding a drift to the minutes service's
+	// internal 40005.
+	reg.Register(minuteGetErrStub("tokperm", 2091005, "no permission"))
 	// artifactsStub not needed: we never reach it on error
 
 	// A single minute-token that fails on a no-read-permission code still
@@ -1335,7 +1337,7 @@ func TestFetchNoteDetail_NoteNoPermission_ProblemOf(t *testing.T) {
 
 	// meeting.get returns note_id, note detail returns 121005
 	reg.Register(meetingGetStub("m_noteperm2", "note_perm2"))
-	reg.Register(noteDetailErrStub("note_perm2", note.NoNoteReadPermissionCode, "no permission"))
+	reg.Register(noteDetailErrStub("note_perm2", 121005, "no permission"))
 	reg.Register(recordingOKStub("m_noteperm2", "https://meetings.feishu.cn/minutes/obcpermtest"))
 
 	// note fails but minute_token succeeds → partial success (hasNotesPayload=true)

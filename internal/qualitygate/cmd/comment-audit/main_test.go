@@ -121,10 +121,9 @@ func TestScanCommentContentPreservesReviewCommentPath(t *testing.T) {
 }
 
 func TestCommentBodyRejectsUnsafeEventPath(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "event.json")
-	if err := writeTestFile(path, `{"comment":{"body":"clean"}}`); err != nil {
-		t.Fatal(err)
-	}
+	// No file is created: the path is refused by validation before any read,
+	// and a location outside every allowed root is not writable here anyway.
+	path := filepath.Join(string(filepath.Separator), "not-an-allowed-root", "event.json")
 
 	_, err := commentBody(path)
 	problem, ok := errs.ProblemOf(err)
@@ -137,6 +136,35 @@ func TestCommentBodyRejectsUnsafeEventPath(t *testing.T) {
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) || validationErr.Param != "--event" {
 		t.Fatalf("commentBody(%q) error = %v, want --event validation param", path, err)
+	}
+}
+
+func TestCommentBodyRejectsHardLinkedEventFile(t *testing.T) {
+	dir := t.TempDir()
+	original := filepath.Join(dir, "event.json")
+	link := filepath.Join(dir, "event-link.json")
+	if err := writeTestFile(original, `{"comment":{"body":"clean"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(original, link); err != nil {
+		t.Skipf("cannot create hard-link probe: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origDir)
+	})
+
+	_, err = commentBody(filepath.Base(link))
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Param != "--event" {
+		t.Fatalf("commentBody(hard link) error = %v, want --event validation error", err)
 	}
 }
 

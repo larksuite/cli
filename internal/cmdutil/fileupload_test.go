@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
@@ -391,39 +392,22 @@ func TestBuildFormdata(t *testing.T) {
 	})
 }
 
-// TestFormatFormFieldValue locks in the fix for the float64 -> scientific
-// notation bug. JSON numbers unmarshal to float64, and fmt's default %v for
-// float64 delegates to %g which switches to scientific notation at ~1e6
-// (e.g. 1185356 -> "1.185356e+06"). Backends that parse the form field as an
-// integer reject that, surfacing as a generic "params error".
-func TestFormatFormFieldValue(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		in   any
-		want string
-	}{
-		{"float64 large integer avoids scientific", float64(1185356), "1185356"},
-		{"float64 below scientific threshold", float64(358934), "358934"},
-		{"float64 zero", float64(0), "0"},
-		{"float64 huge", float64(20 * 1024 * 1024), "20971520"},
-		{"float64 negative", float64(-42), "-42"},
-		{"float64 fractional preserved", float64(3.14), "3.14"},
-		{"string pass-through", "hello", "hello"},
-		{"bool true", true, "true"},
-		{"int via %v", 42, "42"},
-		{"int64 via %v", int64(9007199254740992), "9007199254740992"},
+// TestParseOptionalBody_FileFormNumberFormatting locks in plain-decimal form
+// fields: %v would render these as "1.185356e+06" and "1.7e+09", which
+// backends reject when parsing an integer field.
+func TestParseOptionalBody_FileFormNumberFormatting(t *testing.T) {
+	body, err := ParseOptionalBody("POST", `{"size":1.185356e6,"created_at":1700000000}`, nil, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	for _, temp := range tests {
-		tt := temp
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := formatFormFieldValue(tt.in)
-			if got != tt.want {
-				t.Fatalf("formatFormFieldValue(%v) = %q, want %q", tt.in, got, tt.want)
-			}
-		})
+	fields, ok := body.(map[string]any)
+	if !ok {
+		t.Fatalf("body type = %T, want map[string]any", body)
+	}
+	if got := client.FormatScalar(fields["size"]); got != "1185356" {
+		t.Fatalf("size form field = %q, want 1185356", got)
+	}
+	if got := client.FormatScalar(fields["created_at"]); got != "1700000000" {
+		t.Fatalf("created_at form field = %q, want 1700000000", got)
 	}
 }

@@ -8,10 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"mime"
 	"net/http"
@@ -22,6 +18,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/imageconfig"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -587,7 +584,7 @@ func detectAttachmentImageDimensions(fio fileio.FileIO, filePath string, mimeTyp
 		return 0, 0, false
 	}
 	defer f.Close()
-	cfg, _, err := image.DecodeConfig(f)
+	cfg, _, err := imageconfig.Decode(f)
 	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
 		return 0, 0, false
 	}

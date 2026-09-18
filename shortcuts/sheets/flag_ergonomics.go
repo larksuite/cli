@@ -5,11 +5,15 @@ package sheets
 
 import (
 	"fmt"
+	"math"
+	goruntime "runtime"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/flagalias"
 	"github.com/larksuite/cli/internal/suggest"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -40,8 +44,62 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		chainEnumNormalization(cmd)
 		chainFlagAliases(cmd)
 		chainRangeSheetPrefix(cmd)
+		chainMultiAreaRange(cmd)
+		chainPositionalArgsCause(cmd)
+		chainRequiredFlagHelp(cmd)
+		chainDefensiveConfirmFlag(cmd)
+		relaxPayloadBorneRequired(cmd)
+		chainRequiredFlagCheck(cmd)
 	}
 }
+
+// chainRequiredFlagHelp marks a required flag as required in --help. The
+// framework calls MarkFlagRequired, which only sets a completion annotation
+// cobra's help never renders, so a required flag was listed exactly like an
+// optional one and callers learned the difference by omitting it and reading
+// the failure (08-18..24 eval: 88 calls hit "required flag(s) \"title\" not
+// set" on +workbook-create, after a --help showing nothing but "Spreadsheet
+// title"). The marker is a domain decoration here rather than a framework one,
+// so no other domain's help shifts.
+//
+// flag-defs is the source of truth, not the cobra annotation: two commands
+// deliberately clear that annotation after mounting (+csv-put relaxes
+// --start-cell for its one-required pair, +chart-create relaxes --properties
+// for --print-example) while the flag stays required on the real path. The
+// exception is a flag cobra has since put in a one-required GROUP, where
+// neither member is individually required — those keep the plain description.
+func chainRequiredFlagHelp(cmd *cobra.Command) {
+	defs, err := loadFlagDefs()
+	if err != nil {
+		return
+	}
+	spec, ok := defs[cmd.Name()]
+	if !ok {
+		return
+	}
+	for _, df := range spec.Flags {
+		// "xor" flags (--url / --spreadsheet-token, --sheet-id / --sheet-name)
+		// are required as a pair, and their descriptions already say so.
+		if df.Kind == "system" || df.Required != "required" {
+			continue
+		}
+		fl := cmd.Flags().Lookup(df.Name)
+		if fl == nil || strings.HasPrefix(fl.Usage, requiredFlagHelpPrefix) {
+			continue
+		}
+		// Same literal cobra uses for MarkFlagsOneRequired (it exports no
+		// constant); runner.go's --print-schema relaxation reads it too.
+		if _, grouped := fl.Annotations["cobra_annotation_one_required"]; grouped {
+			continue
+		}
+		fl.Usage = requiredFlagHelpPrefix + fl.Usage
+	}
+}
+
+// requiredFlagHelpPrefix leads the description rather than trailing it: this
+// domain's payload flags carry paragraph-long descriptions that a terminal
+// wraps or truncates, and the marker has to survive that.
+const requiredFlagHelpPrefix = "(required) "
 
 // ─── intuitive flag names: silent aliases & prescriptions ───────────────
 //
@@ -56,33 +114,165 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 
 // commandFlagAliases maps, per command, habitual flag names onto the flag
 // actually registered. Only pairs with identical value semantics belong
-// here: the rewrite is invisible, so it must be safe to apply unread
-// (+csv-put --file with a path value still trips the file-path guard, which
-// prescribes @file / stdin).
+// here: the rewrite is invisible, so it must be safe to apply unread.
+//
+// +csv-put's file / csv-file → csv are the entries whose value semantics
+// differ, and they carry their own value-side rule to make them match: both
+// name a path by definition, so the value is read as one
+// (resolveCSVPathFromFileAlias) rather than being written into the sheet as
+// literal text. Without that, the alias itself manufactured a failure — an
+// agent that wrote `--file ./data.csv` got "--csv value is an existing file",
+// an error about a flag it never typed.
 var commandFlagAliases = map[string]map[string]string{
-	"+csv-put":      {"file": "csv"},
-	"+sheet-create": {"name": "title"},
+	// data / content name the payload the way sibling CLIs do and carry
+	// --csv's own value semantics (inline text, @file or -), so they are pure
+	// renames. csv-file joins file on the path-valued side. 08-29..31 reflow:
+	// 8 of +csv-put's 29 rejections were one of these four names.
+	"+csv-put":      {"file": "csv", "csv-file": "csv", "data": "csv", "content": "csv", "csv-data": "csv", "text": "csv"},
+	"+sheet-create": {"name": "title", "sheet-name": "title"},
 	// The new name is the only name-valued input a rename takes, so the
 	// habitual spellings are unambiguous (unlike +sheet-copy, where a name
 	// could mean the copy's title or the source selector and gets a
 	// prescription instead). 07-28 root-cause report #25: 10/10 wrote
 	// --new-name, 24 occurrences.
-	"+sheet-rename": {"name": "title", "new-name": "title"},
+	"+sheet-rename": {"name": "title", "new-name": "title", "new-title": "title", "new-sheet-name": "title"},
 	// size → width/height: the styles protocol (--styles row_sizes/col_sizes)
 	// spells the pixel dimension "size", and pre-2026-07 batches accepted it
 	// here too — the rename is the single largest sub-op error cluster in
 	// eval traces (15+ hits). Same pixel-count semantics, safe to rewrite.
-	"+cols-resize": {"cols": "range", "size": "width"},
-	"+rows-resize": {"rows": "range", "size": "height"},
-	"+range-fill":  {"source": "source-range", "target": "target-range"},
-	"+range-copy":  {"source": "source-range", "target": "target-range"},
-	"+range-move":  {"source": "source-range", "target": "target-range"},
+	// position → range: +dim-insert takes a real --position, and the habit
+	// carries to its sibling, which names rows and columns by an A1 span. The
+	// value survives the rename untouched — --range takes a lone "5" as the
+	// single row 5, which is the only thing "delete at position 5" can mean,
+	// the command having no notion of inserting before anything. Kept to
+	// --position alone: --start-index / --end-index name a half-open pair
+	// whose end would have to be guessed, so those keep their prescription.
+	"+dim-delete":          {"position": "range"},
+	"+cols-resize":         {"cols": "range", "size": "width"},
+	"+rows-resize":         {"rows": "range", "size": "height"},
+	"+range-fill":          {"source": "source-range", "target": "target-range"},
+	"+range-copy":          {"source": "source-range", "target": "target-range"},
+	"+range-move":          {"source": "source-range", "target": "target-range"},
+	"+chart-create-basic":  {"type": "chart-type", "range": "data-range", "x-axis": "x-axis-title", "y-axis": "y-axis-title"},
+	"+chart-config-update": {"x-axis": "x-axis-title", "y-axis": "y-axis-title"},
+	"+chart-data-update":   {"range": "data-range"},
 	// values → cells: gspread spells the write payload values, and this CLI's
 	// own +workbook-create uses --values for untyped 2D data. It qualifies for
 	// the silent tier only because normalizeCellsFlagValue lifts bare scalars
 	// into {"value":…}, so a --values matrix ('[["工作内容"]]') is accepted
 	// verbatim as --cells — the name was the only thing wrong.
-	"+cells-set": {"values": "cells"},
+	// start-cell used to be an alias of --range here. The spec now declares it
+	// as a hidden flag of its own, and a registered flag short-circuits the
+	// normalizer above before the alias table is consulted — an entry for it
+	// would be dead, so the reconciliation lives in cellsSetInputWithNote.
+	"+cells-set": {"values": "cells", "value": "cells"},
+	// The comparison range is a JSON array here and a bare A1 string
+	// everywhere else in the domain; wrapBareListValue reads the bare form as
+	// the one-element list it can only be, which is what makes the rename a
+	// pure one (1862 rows on create alone).
+	"+cond-format-create": {"range": "ranges"},
+	"+cond-format-update": {"range": "ranges"},
+	// The border flag is composite JSON, and the habitual spellings name a
+	// line rather than a side-keyed object: --border-type solid, --border
+	// thin. normalizeBorderStylesFlagValue reads a bare line word as all four
+	// sides, so the rename carries the value unchanged (1491 rows).
+	// wrap-text / wrap-strategy → word-wrap: these used to get a prescription
+	// on the grounds that the VALUES differ too. They no longer do — the enum
+	// normalizer already reads true/false, the Google Sheets API words
+	// (WRAP / OVERFLOW / CLIP) and the bare CSS-ish ones onto this enum, so
+	// nothing is left for the caller to change but the name.
+	// border-style joins border-type / border / border-all: a bare line word
+	// is read as all four sides by normalizeBorderStylesFlagValue.
+	"+cells-set-style":       {"border-type": "border-styles", "border": "border-styles", "border-all": "border-styles", "border-style": "border-styles", "wrap-text": "word-wrap", "wrap-strategy": "word-wrap", "text-wrap": "word-wrap", "wrap": "word-wrap"},
+	"+cells-batch-set-style": {"border-type": "border-styles", "border": "border-styles", "border-all": "border-styles", "border-style": "border-styles", "wrap-text": "word-wrap", "wrap-strategy": "word-wrap", "text-wrap": "word-wrap", "wrap": "word-wrap"},
+	// 08-29..31 reflow, long-tail table. Each of these names an input the
+	// command already has under one other spelling, with identical value
+	// semantics: the import name (16 rejections, all but one on windows),
+	// the export destination (13 + 2), and the replacement text (7). None is
+	// within the did-you-mean budget -- "title" shares no prefix with "name",
+	// and "replace" is 4 edits from "replacement".
+	"+workbook-import": {"title": "name"},
+	// type → file-extension: --file-format and --file-type already resolve, and
+	// the only "type" this command has is the export format.
+	"+workbook-export": {"file": "output-path", "outdir": "output-path", "output-dir": "output-path", "output": "output-path", "type": "file-extension"},
+	"+cells-replace":   {"replace": "replacement"},
+	"+csv-get":         {"output": "output-path"},
+	// +sheet-create already answers to "name"; new-title joins new-name on
+	// +sheet-rename for the same reason.
+}
+
+// squashFlagName reduces a flag name to its letters and digits, lowercased —
+// the form every separator and casing spelling of one name shares.
+func squashFlagName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if r == '-' || r == '_' || r == '.' || r == ' ' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// borderFlagPrescription answers any border spelling this command does not
+// carry. --border-type / --border / --border-all are renames onto the
+// composite flag (see commandFlagAliases); what reaches this text names a side
+// or an attribute, which only the JSON can express.
+const borderFlagPrescription = `borders take one composite flag: --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}' for all four sides, or per side '{"bottom":{"style":"solid","color":"#000000"}}' (sides: top/bottom/left/right); a bare --border-styles solid works too`
+
+// domainFlagAliases are renames that hold on EVERY command carrying the
+// canonical flag, rather than on one. The sheets surface spells its locators
+// in full (--sheet-name, --spreadsheet-token, --output-path) while callers
+// reach for the short form, and the short form names nothing else here — so
+// the rename is safe wherever the long one exists, and an entry costs one
+// table row instead of one per command.
+//
+// Applied only when the command registers the canonical name and does NOT
+// register the alias: +cond-format-create really has --ranges, so --range
+// there is a different question (see commandFlagAliases), and a command that
+// grows its own --output later takes it back automatically.
+//
+// --outdir / --output-dir are deliberately NOT here: they name a directory,
+// which only +workbook-export implements (directoryValuedExportAliases), and
+// every other --output-path is strictly a file path. They stay per-command.
+//
+// 09-01..08 backflow, unknown-flag rows: --sheet 765 across 21 commands,
+// --spreadsheet 541 across 17, --ranges 525 across 18, --output / --file-path
+// / --outdir 450 across 19.
+var domainFlagAliases = map[string]string{
+	"sheet":                 "sheet-name",
+	"sheet_name":            "sheet-name",
+	"spreadsheet":           "spreadsheet-token",
+	"spreadsheet-id":        "spreadsheet-token",
+	"ranges":                "range",
+	"output":                "output-path",
+	"file-path":             "output-path",
+	"font-name":             "font-family",
+	"horizontal-align":      "horizontal-alignment",
+	"vertical-align":        "vertical-alignment",
+	"halign":                "horizontal-alignment",
+	"valign":                "vertical-alignment",
+	"conditional-format-id": "rule-id",
+	"file-format":           "file-extension",
+	"file-type":             "file-extension",
+	"sort-conditions":       "sort-keys",
+	"sort-rules":            "sort-keys",
+	"sort-spec":             "sort-keys",
+	"back-color":            "background-color",
+	"bg-color":              "background-color",
+	"fill-color":            "background-color",
+	"text-color":            "font-color",
+	"query":                 "find",
+	"search":                "find",
+	"items":                 "options",
+}
+
+// domainAliasExceptions keeps a domain rename off a command whose own
+// prescription says something the rename would paper over. +cells-unmerge
+// takes ONE span per call, so --ranges there is a caller asking for several
+// and the answer is how to send several, not a silent narrowing to the first.
+var domainAliasExceptions = map[string]map[string]bool{
+	"+cells-unmerge": {"ranges": true},
 }
 
 // intuitiveFlagHints carries the prescription for habitual names whose fix
@@ -98,31 +288,38 @@ var intuitiveFlagHints = map[string]map[string]string{
 	"+dim-insert": {
 		"dimension": "+dim-insert infers rows vs columns from --position: a row number like 3 inserts rows, a column letter like C inserts columns; pair with --count N",
 	},
+	// Not a silent rename despite naming the same integer: +dim-freeze sends
+	// the whole freeze state every call, so --frozen-rows 2 alone would ship
+	// freeze_rows:2 with no freeze_columns and quietly unfreeze a column
+	// freeze the caller never mentioned. The prescription is what names the
+	// other axis. 09-01..08 backflow adds the *-count spellings.
+	//
 	// Must prescribe --rows / --cols, never the retired --dimension/--count
 	// pair (DEPRECATED(phase-2) on dimFreezeLegacyNote): those flags are hidden
 	// from --help, so they do not even appear in the "valid flags" list printed
 	// beside this hint, and using them earns a second note steering back here.
 	"+dim-freeze": {
-		"frozen-rows":         "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state)",
-		"frozen-cols":         "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
-		"frozen-columns":      "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
-		"frozen-row-count":    "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state)",
-		"frozen-col-count":    "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
-		"frozen-column-count": "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
+		"frozen-rows":         "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"frozen-row-count":    "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"row-count":           "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"frozen-cols":         "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"frozen-columns":      "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"frozen-col-count":    "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"frozen-column-count": "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"col-count":           "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
+		"column-count":        "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state: an omitted axis is UNFROZEN, not left alone)",
 	},
 	"+cells-set-style": {
 		"bold":      "use --font-weight bold",
 		"italic":    "use --font-style italic",
 		"underline": "use --font-line underline",
 		"font-bold": "use --font-weight bold",
-		"bg-color":  "use --background-color",
-		// Google Sheets API vocabulary (wrapStrategy).
-		"wrap-strategy": "use --word-wrap (overflow / auto-wrap / word-clip)",
+		// There is no composite style flag here: the OpenAPI's {style:{…}}
+		// envelope is one flat flag per field on this command.
+		"style": "there is no single --style flag — pass each field on its own: --font-weight, --font-style, --font-color, --background-color, --font-size, --border-styles",
 		// The border family: the only border flag is --border-styles (composite
 		// JSON); color and per-side variants ride inside it.
-		"border-style":  `borders take one composite flag: --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}' (sides: top/bottom/left/right, or "all" for all four)`,
 		"border-color":  `border color rides inside --border-styles JSON, e.g. --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}'`,
-		"border-all":    `use --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}' — the "all" key applies one spec to all four sides`,
 		"border-top":    `per-side borders ride inside --border-styles JSON, e.g. --border-styles '{"top":{"style":"solid","weight":"thin","color":"#000000"}}'`,
 		"border-bottom": `per-side borders ride inside --border-styles JSON, e.g. --border-styles '{"bottom":{"style":"solid","weight":"thin","color":"#000000"}}'`,
 		"border-left":   `per-side borders ride inside --border-styles JSON, e.g. --border-styles '{"left":{"style":"solid","weight":"thin","color":"#000000"}}'`,
@@ -131,12 +328,123 @@ var intuitiveFlagHints = map[string]map[string]string{
 	"+cells-set": {
 		// Predictable prior from +table-put --styles: models will try to
 		// attach range-level styling to a --writes call the same way.
-		"styles": `range-level styling goes through +styles-put (same {"styles":[...]} vocabulary); per-cell styles ride inside the cells objects as cell_styles`,
+		"styles":      `range-level styling goes through +styles-put (same {"styles":[...]} vocabulary); per-cell styles ride inside the cells objects as cell_styles`,
+		"cell-styles": `per-cell styles ride inside each --cells entry ({"value":"x","cell_styles":{"font_weight":"bold"}}); a whole range at once goes through +cells-set-style`,
+		"payload":     `the write payload is --cells ([[{"value":"x"}]]), or --writes for several regions in one call`,
+		"formula":     `a formula is a cell field: --cells '[[{"formula":"=SUM(A1:A5)"}]]'`,
+	},
+	// The index vocabulary of the OpenAPI (start_index / end_index) against a
+	// CLI that names dimensions by A1 span. 09-01..08 backflow: 579 rows
+	// across the five dimension commands.
+	"+cols-resize": {
+		"start-index":     `+cols-resize names columns with --range: "C" is one column, "C:E" is three`,
+		"start-col-index": `+cols-resize names columns with --range: "C" is one column, "C:E" is three`,
+		"end-index":       `+cols-resize names columns with --range: "C" is one column, "C:E" is three`,
+		"col-count":       `+cols-resize names columns with --range: "C" is one column, "C:E" is three`,
+	},
+	"+rows-resize": {
+		"start-index":     `+rows-resize names rows with --range: "3" is one row, "3:5" is three`,
+		"start-row-index": `+rows-resize names rows with --range: "3" is one row, "3:5" is three`,
+		"end-index":       `+rows-resize names rows with --range: "3" is one row, "3:5" is three`,
+		"row-count":       `+rows-resize names rows with --range: "3" is one row, "3:5" is three`,
+	},
+	"+dim-hide": {
+		"start-index": `+dim-hide names what to hide with --range: "3:5" is rows, "C:E" is columns`,
+		"end-index":   `+dim-hide names what to hide with --range: "3:5" is rows, "C:E" is columns`,
+	},
+	"+dim-show": {
+		"start-index": `+dim-show names what to show with --range: "3:5" is rows, "C:E" is columns`,
+		"end-index":   `+dim-show names what to show with --range: "3:5" is rows, "C:E" is columns`,
+	},
+	"+cells-set-image": {
+		"image-url": "+cells-set-image uploads a LOCAL file: --file ./chart.png; download a remote image first",
+		"url":       "+cells-set-image uploads a LOCAL file: --file ./chart.png; --url names the spreadsheet, not the image",
+	},
+	"+float-image-create": {
+		"image-url": "+float-image-create uploads a LOCAL file: --file ./chart.png; download a remote image first",
 	},
 	"+table-put": {
+		"payload":    `the sub-sheet payload flag is --sheets ({"sheets":[{"name":"Sheet1","columns":[…],"data":[…]}]}); --values takes an untyped 2D array instead`,
 		"start-cell": `anchor each sub-sheet via the "start_cell" field inside --sheets (e.g. {"sheets":[{"name":"Sheet1","start_cell":"B2",…}]}); to paste CSV at a cell use +csv-put --start-cell`,
 		"sheet-name": `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
 		"sheet-id":   `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
+	},
+	"+chart-create-basic": {
+		"position":    "use --anchor-cell F2 for the chart anchor; optionally pair --width and --height for its pixel size",
+		"show-labels": "use --data-labels value (or any value/category/percentage combination such as value_category_percentage; use series for series names or none to hide labels)",
+	},
+	"+chart-config-update": {
+		"show-labels": "use --data-labels value (or any value/category/percentage combination such as value_category_percentage; use series for series names or none to hide labels)",
+	},
+	// 08-29..31 reflow, long-tail table. These name a real input, but the fix
+	// is not a rename: the value moves to a differently-shaped flag, or the
+	// command does not carry that concept at all.
+	"+dim-delete": {
+		// 18 rejections, the largest single long-tail entry. +dim-insert does
+		// take --position, so the habit carries over to its sibling, where
+		// rows and columns are named by an A1 span instead.
+		"index":       `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"start-index": `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"end-index":   `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"dimension":   `+dim-delete infers rows vs columns from --range: "3:5" is rows, "C:E" is columns`,
+	},
+	"+cells-unmerge": {
+		"ranges": `+cells-unmerge takes one span per call: --range "A1:B2"; unmerge several regions with several calls (or one +batch-update carrying them all)`,
+	},
+	// The --ranges commands name their sheet inside each entry, as a bare A1
+	// prefix. Without these the generic locator answers instead, and it only
+	// says which OTHER commands take --sheet-name -- never where the sheet
+	// goes here. --sheet-id has no expression at all in a prefix, which the
+	// flag's own contract states (a prefix is the display name, never a
+	// reference_id), so it is pointed at --sheet-name rather than at a form
+	// that does not exist.
+	"+cells-batch-clear": {
+		"sheet-name": rangesCarryTheSheetPrefix("+cells-batch-clear", `["Sheet1!A2:Z1000","Sheet2!A2:Z1000"]`),
+		"sheet-id":   rangesCarryTheSheetIDPrefix("+cells-batch-clear", `["Sheet1!A2:Z1000"]`),
+		"sheet":      rangesCarryTheSheetPrefix("+cells-batch-clear", `["Sheet1!A2:Z1000","Sheet2!A2:Z1000"]`),
+		"range":      `+cells-batch-clear takes the plural --ranges, each entry carrying its own sheet prefix: --ranges '["Sheet1!A1:B2"]'`,
+	},
+	"+dropdown-delete": {
+		"sheet-name": rangesCarryTheSheetPrefix("+dropdown-delete", `["Sheet1!A1:A10"]`),
+		"sheet-id":   rangesCarryTheSheetIDPrefix("+dropdown-delete", `["Sheet1!A1:A10"]`),
+		"sheet":      rangesCarryTheSheetPrefix("+dropdown-delete", `["Sheet1!A1:A10"]`),
+		"range":      `+dropdown-delete takes the plural --ranges, each entry carrying its own sheet prefix: --ranges '["Sheet1!A1:A10"]'`,
+	},
+	"+dropdown-update": {
+		"sheet-name": rangesCarryTheSheetPrefix("+dropdown-update", `["Sheet1!A1:A10"]`),
+		"sheet-id":   rangesCarryTheSheetIDPrefix("+dropdown-update", `["Sheet1!A1:A10"]`),
+		"sheet":      rangesCarryTheSheetPrefix("+dropdown-update", `["Sheet1!A1:A10"]`),
+		"range":      `+dropdown-update takes the plural --ranges, each entry carrying its own sheet prefix: --ranges '["Sheet1!A1:A10"]'`,
+	},
+	"+csv-get": {
+		"include":     "+csv-get returns values only; for formulas / styles / comments use +cells-get --include formula,style",
+		"include-all": "+csv-get returns values only; for formulas / styles / comments use +cells-get --include formula,style",
+	},
+	"+cells-get": {
+		"value-only":      "+cells-get returns values by default; --include adds categories on top, so drop this flag (or narrow the output with --jq)",
+		"include-styles":  "categories are values of one flag: --include style (comma-separate for several, e.g. --include formula,style)",
+		"include-style":   "categories are values of one flag: --include style (comma-separate for several, e.g. --include formula,style)",
+		"include-formula": "categories are values of one flag: --include formula (comma-separate for several, e.g. --include formula,style)",
+		"formula":         "categories are values of one flag: --include formula (comma-separate for several, e.g. --include formula,style)",
+		"styles":          "categories are values of one flag: --include style (comma-separate for several, e.g. --include formula,style)",
+	},
+	// The rule's own parameters live inside --properties; the flags beside it
+	// are only the locator and the rule type. 09-01..08 backflow: 537 rows.
+	"+cond-format-create": {
+		"operator": `the comparison goes inside --properties: {"attrs":[{"compare_type":"greaterThan","value":"100"}], "style":{…}}`,
+		"attrs":    `attrs is a field of --properties: {"attrs":[{"compare_type":"greaterThan","value":"100"}], "style":{…}}`,
+		"text":     `the matched text goes inside --properties: {"attrs":[{"compare_type":"containsText","text":"done"}], "style":{…}}`,
+		"value":    `the compared value goes inside --properties: {"attrs":[{"compare_type":"greaterThan","value":"100"}], "style":{…}}`,
+		"style":    `the applied style goes inside --properties: {"attrs":[…], "style":{"fore_color":"#FF0000","font":"bold"}}`,
+		"formula":  `a formula rule is rule_type "expression" with the formula in --properties: {"rule_type":"expression","attrs":[{"formula":"=A1>100"}], "style":{…}}`,
+	},
+	"+workbook-import": {
+		"output-path": "+workbook-import uploads a local file and returns the new spreadsheet's token and url; it writes nothing locally. Capture the JSON result instead, or use +workbook-export --output-path to pull a sheet back down",
+	},
+	"+styles-put": {
+		"payload":    `the styles payload flag is --styles ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
+		"sheet-name": `+styles-put has no sheet selector -- each --styles item carries its own "name" field ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
+		"sheet-id":   `+styles-put has no sheet selector -- each --styles item carries its own "name" field ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
 	},
 }
 
@@ -154,21 +462,215 @@ var intuitiveFlagHints = map[string]map[string]string{
 // unknown-flag prescription.
 func chainFlagAliases(cmd *cobra.Command) {
 	aliases := commandFlagAliases[cmd.Name()]
-	usable := make(map[string]string, len(aliases))
+	usable := make(map[string]string, len(aliases)+len(domainFlagAliases))
+	for alias, target := range domainFlagAliases {
+		if domainAliasExceptions[cmd.Name()][alias] {
+			continue
+		}
+		if cmd.Flags().Lookup(alias) == nil && cmd.Flags().Lookup(target) != nil {
+			usable[alias] = target
+		}
+	}
+	// The per-command table wins: it is the narrower statement, and one of its
+	// entries reverses a domain one (--range means --ranges on cond-format).
 	for alias, target := range aliases {
 		if cmd.Flags().Lookup(alias) == nil && cmd.Flags().Lookup(target) != nil {
 			usable[alias] = target
 		}
 	}
+	trackers := installAliasProvenance(cmd)
+	flags := cmd.Flags()
+	// squashed indexes every name this command answers to — its own flags and
+	// the aliases above — by letters and digits alone, so a spelling that
+	// differs only in separators or casing resolves without an entry of its
+	// own. Built before the normalizer is installed: pflag runs it on Lookup
+	// too, and looking a flag up from inside it would recurse.
+	squashed := map[string]string{}
+	registered := map[string]bool{}
+	flags.VisitAll(func(f *pflag.Flag) {
+		registered[f.Name] = true
+		key := squashFlagName(f.Name)
+		if prior, taken := squashed[key]; taken && prior != f.Name {
+			squashed[key] = "" // two real flags collide; neither is the answer
+			return
+		}
+		squashed[key] = f.Name
+	})
+	// An alias's squashed key is indexed apart from a real flag's: resolving
+	// through it has to stage provenance exactly as the alias table does, or
+	// --csvFile reaches --csv without the record that says the value is a path
+	// (resolveCSVPathFromFileAlias would then write it into the sheet as text).
+	squashedAlias := map[string]string{}
+	for alias := range usable {
+		key := squashFlagName(alias)
+		if _, taken := squashed[key]; !taken {
+			squashedAlias[key] = alias
+		}
+	}
 	flagalias.InstallNormalizer(cmd, func(name string) string {
+		if registered[name] {
+			return name // already the canonical spelling
+		}
 		if strings.Contains(name, "_") {
 			name = strings.ReplaceAll(name, "_", "-")
 		}
-		if target, ok := usable[name]; ok {
-			name = target
+		target, ok := usable[name]
+		if !ok {
+			// The separator-and-casing fold: --sheetName, --sheet_Name and
+			// --sheet.name are one spelling of --sheet-name, and the wire
+			// vocabulary (camelCase JSON keys) is where every one of them
+			// comes from. Only a fold onto a name this command actually
+			// carries applies, so a flag that does not exist still reaches
+			// the unknown-flag error with its did-you-mean rather than being
+			// renamed into something the caller never asked for.
+			key := squashFlagName(name)
+			if folded := squashed[key]; folded != "" && folded != name {
+				return folded
+			}
+			if alias, isAlias := squashedAlias[key]; isAlias {
+				name, target, ok = alias, usable[alias], true
+			}
 		}
-		return name
+		if !ok {
+			return name
+		}
+		// Stage only while the parser is walking argv. pflag normalizes on
+		// Lookup too, and this function's own alias lookups run again if
+		// PostMount is composed twice — arming pending at mount time would let
+		// the next real --csv occurrence commit a spelling nobody typed.
+		if tracker := trackers[target]; tracker != nil && flags.Parsed() {
+			tracker.pending = name
+		}
+		return target
 	})
+}
+
+// ─── alias provenance ───────────────────────────────────────────────────
+//
+// One rule needs to know WHICH spelling supplied a value, not just that the
+// flag was set: +csv-put reads --file's value as a path (see
+// resolveCSVPathFromFileAlias) while --csv's is text. InstallNormalizer
+// records nothing by design, and the rewrite it performs cannot be observed
+// after the fact — so the spelling is captured as it parses.
+//
+// Recording it from the normalizer alone does not work: pflag normalizes a
+// name on Lookup and Set too, including once more with the canonical name
+// immediately after the rewrite, and again on every later Lookup (Str, the
+// framework's own resolveInputFlags). A record written or cleared there would
+// answer for calls that are not flag occurrences at all. So the normalizer
+// only stages a pending spelling and the flag's Value commits it: Value.Set
+// runs exactly once per real occurrence, so the last occurrence wins and
+// `--file a.csv --csv ./b.csv` correctly ends up with no alias attribution.
+//
+// Same shape as flagalias.Bind's own pendingSource/commit, which this cannot
+// reuse: Bind advertises its aliases on the flag and in the exported
+// manifest, and these rewrites are deliberately silent.
+
+// aliasProvenanceFlags names, per command, the canonical flags whose supplying
+// spelling must be tracked — the aliases in commandFlagAliases whose value
+// semantics differ from their target's. Two today: +csv-put's --csv (--file
+// carries a path, --csv carries text) and +workbook-export's --output-path
+// (--outdir names a directory, --output-path names a file unless the path
+// already exists as one). Kept explicit rather than derived, so wrapping a
+// flag's Value stays a deliberate, reviewed act.
+var aliasProvenanceFlags = map[string][]string{
+	"+csv-put":         {"csv"},
+	"+workbook-export": {"output-path"},
+}
+
+// aliasTrackingValue wraps a flag's pflag.Value to commit the staged spelling
+// on each real Set. Only string flags are tracked (see aliasProvenanceFlags),
+// so no richer pflag value interface is at stake.
+type aliasTrackingValue struct {
+	pflag.Value
+	cmd     *cobra.Command
+	key     string
+	pending string
+}
+
+func (v *aliasTrackingValue) Set(raw string) error {
+	if v.pending == "" {
+		delete(v.cmd.Annotations, v.key)
+	} else {
+		if v.cmd.Annotations == nil {
+			v.cmd.Annotations = map[string]string{}
+		}
+		v.cmd.Annotations[v.key] = v.pending
+		v.pending = ""
+	}
+	return v.Value.Set(raw)
+}
+
+// installAliasProvenance wraps the tracked flags' values and returns the
+// trackers by canonical flag name, for the normalizer to stage into.
+func installAliasProvenance(cmd *cobra.Command) map[string]*aliasTrackingValue {
+	names := aliasProvenanceFlags[cmd.Name()]
+	if len(names) == 0 {
+		return nil
+	}
+	out := make(map[string]*aliasTrackingValue, len(names))
+	for _, name := range names {
+		fl := cmd.Flags().Lookup(name)
+		if fl == nil {
+			continue
+		}
+		if tracked, ok := fl.Value.(*aliasTrackingValue); ok {
+			// Already installed (PostMount composed twice). Reset staging: a
+			// remount's own alias lookups run through the normalizer installed
+			// by the first pass, and after parsing has started the Parsed()
+			// guard no longer stops them — a spelling left staged there would
+			// be committed by whichever occurrence sets the flag next.
+			tracked.pending = ""
+			out[name] = tracked
+			continue
+		}
+		tracked := &aliasTrackingValue{Value: fl.Value, cmd: cmd, key: aliasSourceAnnotation(name)}
+		fl.Value = tracked
+		out[name] = tracked
+	}
+	return out
+}
+
+// aliasSourceAnnotation names the command annotation holding the alias
+// spelling that supplied a canonical flag's value, absent when the canonical
+// name supplied it.
+func aliasSourceAnnotation(canonical string) string {
+	return "lark-cli/sheets-alias-source/" + canonical
+}
+
+// pathValuedCSVAliases are the +csv-put spellings whose value is a path rather
+// than CSV text (see resolveCSVPathFromFileAlias). The other two aliases
+// (data / content) carry --csv's own semantics and need no value-side rule.
+var pathValuedCSVAliases = []string{"file", "csv-file"}
+
+// directoryValuedExportAliases are the +workbook-export spellings that name a
+// DIRECTORY to download into. --output-path itself, and the --file / --output
+// spellings, name the file to write; applyWorkbookOutputPath only reads a
+// value as a directory when one already exists at that path, so "--outdir
+// ./exports" with no ./exports would otherwise write a file literally named
+// "exports". These two say directory in their own name and are treated as one
+// whether or not it exists yet.
+var directoryValuedExportAliases = []string{"outdir", "output-dir"}
+
+// aliasSpellingUsed returns the habitual spelling that supplied canonical's
+// value, or fallback when the annotation is missing.
+func aliasSpellingUsed(cmd *cobra.Command, canonical, fallback string) string {
+	if cmd == nil {
+		return fallback
+	}
+	if used := cmd.Annotations[aliasSourceAnnotation(canonical)]; used != "" {
+		return used
+	}
+	return fallback
+}
+
+// flagValueCameFromAlias reports whether canonical's value was supplied under
+// any of the given habitual spellings on this invocation.
+func flagValueCameFromAlias(cmd *cobra.Command, canonical string, aliases ...string) bool {
+	if cmd == nil {
+		return false
+	}
+	return slices.Contains(aliases, cmd.Annotations[aliasSourceAnnotation(canonical)])
 }
 
 // sheetsFlagErrorFunc overrides the root FlagErrorFunc for sheets commands.
@@ -210,6 +712,23 @@ func sheetsFlagErrorFunc(c *cobra.Command, ferr error) error {
 				strings.Join(suggestions, ", "), list)
 		}
 	}
+	// A flag this command does not carry but a SIBLING does is a fact, not a
+	// guess, and it beats an edit-distance neighbour whenever the neighbour is
+	// not a near-typo: the caller reached for a real capability and knocked on
+	// the wrong door (--font-color belongs to +cells-set-style, --csv to
+	// +csv-put). Kept behind the near-typo test so --range on a command
+	// spelling it --ranges still gets the rename it needs rather than a tour
+	// of the sheets surface.
+	if !nearTypo(name, suggestions) {
+		if owners := commandsCarryingFlag(c, name); len(owners) > 0 {
+			hint = fmt.Sprintf("--%s is a flag of %s, not of %s", name,
+				strings.Join(owners, " / "), c.Name())
+			if list := inlineFlagList(valid); list != "" {
+				hint += "; valid flags here: " + list
+			}
+			suggestions = nil
+		}
+	}
 	// A curated prescription beats both: it spells the exact correct form
 	// for a habitual name whose fix is not a rename (see intuitiveFlagHints).
 	// Edit-distance candidates are dropped with it — they can contradict the
@@ -218,6 +737,17 @@ func sheetsFlagErrorFunc(c *cobra.Command, ferr error) error {
 	// disagrees with the hint sends agents down the wrong retry.
 	// The map is keyed hyphenated but the parse error reports the flag as
 	// typed, so --frozen_rows must hit the same entry as --frozen-rows.
+	// The border family's per-side, per-attribute spellings are endless
+	// (--border-bottom-color, --border-top-width, …) and every one of them has
+	// the same answer: one composite flag. A prefix rule covers the tail at no
+	// per-name cost, the way the payload path's own border prescription does.
+	if c.Flags().Lookup("border-styles") != nil && strings.HasPrefix(squashFlagName(name), "border") {
+		hint = borderFlagPrescription
+		if list := inlineFlagList(valid); list != "" {
+			hint += "; valid flags: " + list
+		}
+		suggestions = nil
+	}
 	if rx, ok := intuitiveFlagHints[c.Name()][strings.ReplaceAll(name, "_", "-")]; ok {
 		hint = rx
 		if list := inlineFlagList(valid); list != "" {
@@ -262,6 +792,47 @@ func visibleFlagNames(c *cobra.Command) []string {
 	return names
 }
 
+// nearTypo reports whether the best local candidate is close enough to read as
+// a misspelling of it rather than a different flag altogether. Two edits is the
+// same budget the unsupported-style-field path uses, and the second test keeps
+// that budget honest on short names: --csv to --as is two edits over a
+// three-letter word, which is not a typo, it is a different flag.
+func nearTypo(name string, suggestions []string) bool {
+	if len(suggestions) == 0 {
+		return false
+	}
+	dist := suggest.Levenshtein(name, strings.TrimPrefix(suggestions[0], "--"))
+	return dist <= 2 && dist*2 <= len(name)
+}
+
+// commandsCarryingFlag names the sibling shortcuts that do carry the flag,
+// up to three, in the order they are mounted. Only +-prefixed siblings are
+// consulted: the raw API resources under the same parent spell their inputs
+// differently and pointing at one would send the caller off the shortcut path
+// entirely.
+func commandsCarryingFlag(c *cobra.Command, name string) []string {
+	parent := c.Parent()
+	if parent == nil {
+		return nil
+	}
+	wanted := strings.ReplaceAll(name, "_", "-")
+	var owners []string
+	for _, sib := range parent.Commands() {
+		if sib == c || sib.Hidden || !strings.HasPrefix(sib.Name(), "+") {
+			continue
+		}
+		fl := sib.Flags().Lookup(wanted)
+		if fl == nil || fl.Hidden {
+			continue
+		}
+		owners = append(owners, sib.Name())
+		if len(owners) == 3 {
+			break
+		}
+	}
+	return owners
+}
+
 // inlineFlagListLimit caps how many flag names ride inline on an
 // unknown-flag hint. Sheets shortcuts stay well under it.
 const inlineFlagListLimit = 25
@@ -284,6 +855,199 @@ func inlineFlagList(names []string) string {
 		parts[i] = "--" + n
 	}
 	return strings.Join(parts, ", ") + suffix
+}
+
+// chainPositionalArgsCause names the reason a sheets command saw a positional
+// argument on windows. The framework's message ("pass values via flags") is
+// correct and useless there: the caller DID pass a flag, and PowerShell split
+// its JSON value into separate tokens, so the tail arrived as positionals. The
+// framework cannot say that — it is one message for every command on every
+// platform — while this domain knows both the shell and which of its flags
+// take a payload big enough to split. 08-29..31 reflow: 35 rejections, every
+// one on windows.
+//
+// Other platforms keep the framework's wording: there a positional argument
+// usually is one.
+func chainPositionalArgsCause(cmd *cobra.Command) {
+	prev := cmd.Args
+	if prev == nil || goruntime.GOOS != "windows" {
+		return
+	}
+	cmd.Args = func(c *cobra.Command, args []string) error {
+		err := prev(c, args)
+		if err == nil {
+			return nil
+		}
+		return annotatePositionalArgsCause(c, err)
+	}
+}
+
+// annotatePositionalArgsCause is the windows annotation itself, split out from
+// the chain so it is reachable from a test on any host: chainPositionalArgsCause
+// declines to install anything off windows, which would otherwise leave the
+// typed shape of this error unasserted everywhere CI runs.
+func annotatePositionalArgsCause(cmd *cobra.Command, err error) error {
+	hint := "on PowerShell this is usually a JSON flag value the shell split into tokens: single quotes do not protect the quotes and commas inside it. Write the payload to a file and pass it as @./payload.json"
+	if payload := payloadFlagNames(cmd); payload != "" {
+		hint = fmt.Sprintf("%s — this command's payload flags are %s", hint, payload)
+	}
+	// err stays in the chain: the framework's argument-validation error is
+	// what this only annotates, and a caller inspecting the failure should
+	// still reach it through errors.Is / errors.As.
+	return common.ValidationErrorf("%v", err).WithHint("%s", hint).WithCause(err)
+}
+
+// payloadFlagNames lists the command's flags that take a file or stdin, i.e.
+// the ones whose values are large enough for a shell to split.
+func payloadFlagNames(cmd *cobra.Command) string {
+	defs, err := loadFlagDefs()
+	if err != nil {
+		return ""
+	}
+	spec, ok := defs[cmd.Name()]
+	if !ok {
+		return ""
+	}
+	names := make([]string, 0, 4)
+	for _, df := range spec.Flags {
+		if len(df.Input) > 0 {
+			names = append(names, "--"+df.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return strings.Join(names, " / ")
+}
+
+// chainMultiAreaRange rejects an Excel multi-area --range on any command that
+// takes one. It is chained AFTER chainRangeSheetPrefix so a sheet prefix has
+// already moved into --sheet-name: a sheet whose name contains a comma must
+// not be read as several areas.
+func chainMultiAreaRange(cmd *cobra.Command) {
+	prev := cmd.PreRunE
+	cmd.PreRunE = func(c *cobra.Command, args []string) error {
+		if prev != nil {
+			if err := prev(c, args); err != nil {
+				return err
+			}
+		}
+		if want, err := c.Flags().GetBool("print-schema"); err == nil && want {
+			return nil
+		}
+		// Lookup normalizes, so on a command where --range is an ALIAS the
+		// lookup lands on the flag it aliases and this guard would judge a
+		// value that never belonged to it. +chart-create-basic is exactly
+		// that: its real flag is --data-range, whose contract takes the
+		// comma-separated multi-range this check exists to refuse.
+		fl := c.Flags().Lookup("range")
+		if fl == nil || fl.Name != "range" {
+			return nil
+		}
+		if multiAreaReadCommands[c.Name()] {
+			return nil // splitRangeAreas forwards each area as its own range
+		}
+		return rejectMultiAreaRange(fl.Value.String())
+	}
+}
+
+// multiAreaReadCommands are the read commands whose tool input is already a
+// LIST of ranges, so the areas a caller joined with commas go on the wire as
+// the several ranges they name. The rewrite adds no semantics these commands
+// do not have: one read, several rectangles, the response keyed by range.
+// Write and style commands stay with the prescription — fanning one call into
+// several changes what a partial failure leaves behind.
+var multiAreaReadCommands = map[string]bool{
+	"+cells-get":              true,
+	"+dropdown-get":           true,
+	"+cond-format-result-get": true,
+}
+
+// splitRangeAreas reads the --range value as the list of areas it names. A
+// single range never contains a comma, so a comma can only be separating two
+// of them; a value with none is the one-element list it has always been.
+func splitRangeAreas(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.Contains(trimmed, ",") {
+		return []string{trimmed}
+	}
+	areas := make([]string, 0, 2)
+	// splitAreasRespectingQuotes, not strings.Split: a quoted sheet name may
+	// contain a comma ('Q1,Sales'!A1), and splitting on it would forward two
+	// halves of one name as two ranges.
+	for _, part := range splitAreasRespectingQuotes(trimmed) {
+		if part = strings.TrimSpace(part); part != "" {
+			areas = append(areas, part)
+		}
+	}
+	if len(areas) == 0 {
+		return []string{trimmed}
+	}
+	return areas
+}
+
+// rangesCarryTheSheetPrefix and its sheet-id counterpart phrase the one answer
+// the --ranges commands have for a sheet selector: the sheet is named inside
+// each entry, bare and unquoted, and there is no top-level flag for it.
+func rangesCarryTheSheetPrefix(command, example string) string {
+	return fmt.Sprintf("%s has no sheet selector — each --ranges entry names its own sheet as a bare A1 prefix: --ranges '%s' "+
+		"(the prefix is the sheet's display name, written without quotes; entries may name different sheets)", command, example)
+}
+
+func rangesCarryTheSheetIDPrefix(command, example string) string {
+	return fmt.Sprintf("%s has no sheet selector, and a reference_id cannot appear in one — each --ranges entry names its sheet by "+
+		"DISPLAY NAME as a bare A1 prefix: --ranges '%s' (look the name up with +sheet-list if you only have the id)", command, example)
+}
+
+// rejectMultiAreaRange answers the Excel multi-area habit — several
+// non-adjacent cells joined by commas ("A3,G3,H3") — before it reaches the
+// backend, which rejects it as an opaque "[90015206] invalid range" (or, on a
+// write path, as "invalid cell ref"). A single A1 range never contains a
+// comma, so the shape is unambiguous; the fix is not (the enclosing
+// rectangle, or one call per area), so this prescribes both rather than
+// picking one. 08-29..31 reflow: 54 of +cells-get's 69 rejections, 5 more on
+// +csv-get and 4 on +cells-set-style — the habit is not specific to reads,
+// which is why the check rides the shared --range chain.
+func rejectMultiAreaRange(rng string) error {
+	rng = strings.TrimSpace(rng)
+	if !strings.Contains(rng, ",") {
+		return nil
+	}
+	areas := splitAreasRespectingQuotes(rng)
+	hint := "use the enclosing rectangle in one call"
+	if enclosing := enclosingRangeHint(areas); enclosing != "" {
+		hint = fmt.Sprintf("use the enclosing rectangle in one call (--range %q)", enclosing)
+	}
+	return sheetsValidationForFlag("range", "--range %q lists %d separate areas; one call takes ONE continuous A1 range", rng, len(areas)).
+		WithHint("%s, or issue one call per area — several areas in one request go through +batch-update, which carries a separate op per area", hint)
+}
+
+// enclosingRangeHint spells the rectangle covering EVERY area the caller
+// listed, so the prescription carries a range they can paste. The areas need
+// not be ordered — "A3,J3,G3" has its widest column in the middle, and taking
+// the first and last would prescribe a range that drops J3. Empty when any
+// area is not a plain cell reference: a guess is worse than the generic hint.
+func enclosingRangeHint(areas []string) string {
+	minCol, minRow := math.MaxInt, math.MaxInt
+	maxCol, maxRow := 0, 0
+	for _, area := range areas {
+		area = strings.TrimSpace(area)
+		if area == "" || strings.Contains(area, ":") {
+			return ""
+		}
+		col, row, ok := splitCellRef(area)
+		if !ok {
+			return ""
+		}
+		minCol, maxCol = min(minCol, col), max(maxCol, col)
+		minRow, maxRow = min(minRow, row), max(maxRow, row)
+	}
+	if minCol == math.MaxInt {
+		return ""
+	}
+	return fmt.Sprintf("%s%d:%s%d",
+		columnIndexToLetter(minCol), minRow+1,
+		columnIndexToLetter(maxCol), maxRow+1)
 }
 
 // ─── enum vocabulary normalization ──────────────────────────────────────
@@ -311,6 +1075,27 @@ var enumAliases = map[string]string{
 	// the first two need mapping — overflow is spelled the same in both.
 	"wrap": "auto-wrap",
 	"clip": "word-clip",
+	// CSS text-decoration vocabulary for --font-line, whose Lark spelling is
+	// the hyphenated line-through. 08-29..31 reflow: every one of the 8
+	// --font-line rejections was one of these words.
+	"strikethrough": "line-through",
+	"strike":        "line-through",
+	"line_through":  "line-through",
+	"linethrough":   "line-through",
+	"underlined":    "underline",
+	// Axis vocabulary: the dimension enums spell one axis in the singular
+	// while callers arrive with the plural or the abbreviation (pandas
+	// axis="columns", Excel's "cols"). Only reached when the plural is not
+	// itself in the enum, so merge_type's own rows / columns still match
+	// exactly. 09-04..07: 2898 rejections on --dimension.
+	"col":     "column",
+	"cols":    "column",
+	"columns": "column",
+	"rows":    "row",
+	// Combined chart data-label vocabulary emitted by models. The tool enum
+	// spells the same intent as one value.
+	"percentage,value": "value_percentage",
+	"value,percentage": "value_percentage",
 }
 
 // DEPRECATED(phase-2): enum values this CLI used to accept and now expresses
@@ -374,7 +1159,8 @@ func canonicalEnumValue(val string, enum []string) string {
 			return allowed
 		}
 	}
-	if target, ok := enumAliases[lower]; ok {
+	aliasKey := strings.ReplaceAll(lower, " ", "")
+	if target, ok := enumAliases[aliasKey]; ok {
 		if slices.Contains(enum, target) {
 			return target
 		}
@@ -460,4 +1246,199 @@ func chainEnumNormalization(cmd *cobra.Command) {
 		}
 		return nil
 	}
+}
+
+// payloadBorneRequiredFlags lists, per command, the required flags whose value
+// the command also reads out of a payload flag. +cond-format-create and its
+// update sibling hoist rule_type and ranges out of --properties for
+// convenience, and --properties' own schema requires both at its root — so a
+// caller who wrote the whole rule in one JSON object has supplied them, and
+// cobra's flag-level check is the only thing that disagrees. 09-04..07:
+// +cond-format-create is the third-largest source of "required flag(s) not
+// set", behind two commands where the flag really is the only carrier.
+//
+// Nothing is read from the payload here: when the field is missing from it
+// too, the --properties schema names it at the exact path, which beats naming
+// the flag the caller deliberately did not use.
+var payloadBorneRequiredFlags = map[string]map[string]string{
+	"+cond-format-create": {"ranges": "properties", "rule-type": "properties"},
+	"+cond-format-update": {"ranges": "properties", "rule-type": "properties"},
+}
+
+// chainDefensiveConfirmFlag accepts --yes on the commands that do not need it.
+// The framework registers it only on high-risk writes and reads it only there;
+// a caller who passes it everywhere is saying "do not stop to ask", which a
+// command that never asks has already honoured. Rejecting it fails a call that
+// is otherwise complete — 437 rows over 09-01..08, on 14 commands.
+//
+// Hidden, so --help still teaches the flag only where it means something.
+func chainDefensiveConfirmFlag(cmd *cobra.Command) {
+	if cmd.Flags().Lookup("yes") != nil {
+		return
+	}
+	cmd.Flags().Bool("yes", false, "accepted and ignored: this command asks for no confirmation")
+	_ = cmd.Flags().MarkHidden("yes")
+}
+
+// relaxPayloadBorneRequired drops cobra's flag-level requirement for the
+// flags payloadBorneRequiredFlags says a payload also carries, the same way
+// +csv-put relaxes --start-cell for its one-required pair. The requirement
+// itself does not go away — chainRequiredFlagCheck re-imposes it as "this
+// flag or that payload", which cobra's per-flag annotation cannot express —
+// and --help keeps its "(required)" marker, which reads from flag-defs.
+func relaxPayloadBorneRequired(cmd *cobra.Command) {
+	for name := range payloadBorneRequiredFlags[cmd.Name()] {
+		if fl := cmd.Flags().Lookup(name); fl != nil {
+			delete(fl.Annotations, cobra.BashCompOneRequiredFlag)
+		}
+	}
+}
+
+// chainRequiredFlagCheck answers a missing required flag before cobra does,
+// with the flag's own description and the command's example attached. Cobra
+// runs ValidateRequiredFlags after PreRunE, so this stage simply gets there
+// first; its message keeps cobra's exact opening words, which the error
+// classifier and several domain tests match on.
+//
+// The bare form names the flag and stops there. 09-04..07: 20447 rejections,
+// on commands whose flag is spelled nothing like the concept the caller was
+// reaching for (+cells-clear wants --range, +chart-create-basic wants
+// --data-range), so the retry is a --help round trip that the description and
+// one worked example remove.
+func chainRequiredFlagCheck(cmd *cobra.Command) {
+	prev := cmd.PreRunE
+	cmd.PreRunE = func(c *cobra.Command, args []string) error {
+		if prev != nil {
+			if err := prev(c, args); err != nil {
+				return err
+			}
+		}
+		// --print-schema prints a flag's schema without running the command;
+		// the runner relaxes required flags for it and so must this.
+		if want, err := c.Flags().GetBool("print-schema"); err == nil && want {
+			return nil
+		}
+		missing := missingRequiredFlags(c)
+		if len(missing) == 0 {
+			return nil
+		}
+		names := make([]string, 0, len(missing))
+		params := make([]errs.InvalidParam, 0, len(missing))
+		for _, f := range missing {
+			names = append(names, strconv.Quote(f.Name))
+			params = append(params, sheetsInvalidParam(f.Name, "required; not set"))
+		}
+		msg := fmt.Sprintf("required flag(s) %s not set", strings.Join(names, ", "))
+		// WithParams, not WithParam per flag: the scalar Param field holds one
+		// name, so a loop would leave only the last of them in the envelope
+		// while the message named them all.
+		// Params carries every one of them; Param keeps the first, so a reader
+		// of the scalar field still sees a flag rather than an empty string.
+		verr := common.ValidationErrorf("%s", msg).
+			WithParam("--" + missing[0].Name).
+			WithParams(params...)
+		if hint := requiredFlagHint(c, missing); hint != "" {
+			verr = verr.WithHint("%s", hint)
+		}
+		return verr
+	}
+}
+
+// missingRequiredFlags mirrors cobra's own ValidateRequiredFlags — the
+// annotation it sets in MarkFlagRequired, minus anything already given —
+// then drops the flags a payload flag on this command carries instead.
+func missingRequiredFlags(c *cobra.Command) []*pflag.Flag {
+	var missing []*pflag.Flag
+	c.Flags().VisitAll(func(f *pflag.Flag) {
+		req, marked := f.Annotations[cobra.BashCompOneRequiredFlag]
+		if !marked || len(req) == 0 || req[0] != "true" || f.Changed {
+			return
+		}
+		missing = append(missing, f)
+	})
+	// The payload-borne flags carry no annotation to walk (relaxPayloadBorne-
+	// Required removed it), so they are checked against both carriers here.
+	for _, name := range sortedKeys(payloadBorneRequiredFlags[c.Name()]) {
+		fl := c.Flags().Lookup(name)
+		if fl == nil || fl.Changed || c.Flags().Changed(payloadBorneRequiredFlags[c.Name()][name]) {
+			continue
+		}
+		missing = append(missing, fl)
+	}
+	sort.Slice(missing, func(i, j int) bool { return missing[i].Name < missing[j].Name })
+	return missing
+}
+
+// requiredFlagHint spells what each missing flag takes, then one whole
+// invocation of the command. The description is trimmed to its first sentence:
+// this domain's payload flags carry paragraph-long usage text, and the part
+// that answers "what do I pass" is always the opening clause.
+func requiredFlagHint(c *cobra.Command, missing []*pflag.Flag) string {
+	parts := make([]string, 0, len(missing)+1)
+	borne := payloadBorneRequiredFlags[c.Name()]
+	for _, f := range missing {
+		desc := firstUsageClause(f.Usage)
+		if desc == "" {
+			continue
+		}
+		if payload, viaPayload := borne[f.Name]; viaPayload {
+			parts = append(parts, fmt.Sprintf("--%s takes %s, or carry %s inside --%s",
+				f.Name, desc, strings.ReplaceAll(f.Name, "-", "_"), payload))
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("--%s takes %s", f.Name, desc))
+	}
+	if example := commandExampleTip(c); example != "" {
+		parts = append(parts, example)
+	}
+	return strings.Join(parts, "; ")
+}
+
+// firstUsageClause cuts a flag description down to its first sentence, without
+// the "(required)" marker chainRequiredFlagHelp prepends (the message it
+// decorates is about that very requirement) and without a trailing input-mode
+// parenthetical, which repeats on every payload flag.
+func firstUsageClause(usage string) string {
+	usage = strings.TrimPrefix(strings.TrimSpace(usage), requiredFlagHelpPrefix)
+	if i := strings.Index(usage, " (supports @file"); i > 0 {
+		usage = usage[:i]
+	}
+	// "e.g." and "i.e." are sentence-shaped and land mid-clause on nearly
+	// every flag here; mask them to the same byte length so the cut below
+	// keeps its offsets and does not stop at an abbreviation's period.
+	masked := strings.NewReplacer("e.g.", "e\x00g\x00", "i.e.", "i\x00e\x00").Replace(usage)
+	cut := len(masked)
+	for _, stop := range []string{". ", "; ", " — ", " -- "} {
+		if i := strings.Index(masked, stop); i > 0 {
+			cut = min(cut, i)
+		}
+	}
+	usage = usage[:cut]
+	// A cut inside a parenthetical leaves an open bracket; drop it with the
+	// half-sentence it opened rather than printing "(A1 notation, e.g".
+	if strings.Count(usage, "(") > strings.Count(usage, ")") {
+		if i := strings.LastIndex(usage, "("); i > 0 {
+			usage = usage[:i]
+		}
+	}
+	usage = strings.TrimRight(strings.TrimSpace(usage), ".,;")
+	if runes := []rune(usage); len(runes) > 140 {
+		// Counted in runes: a byte cut lands inside a multi-byte character
+		// and emits an invalid hint, which this domain's descriptions carry
+		// plenty of.
+		usage = strings.TrimSpace(string(runes[:140])) + "…"
+	}
+	return usage
+}
+
+// commandExampleTip returns the command's first "Example:" tip, the one --help
+// prints, so the hint carries a line the caller can run rather than a
+// description of one.
+func commandExampleTip(c *cobra.Command) string {
+	for _, tip := range cmdutil.GetTips(c) {
+		if strings.HasPrefix(tip, "Example:") {
+			return tip
+		}
+	}
+	return ""
 }

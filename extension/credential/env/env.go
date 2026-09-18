@@ -7,14 +7,29 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 )
 
-// Provider resolves credentials from environment variables.
-type Provider struct{}
+const tenantAccessTokenSourceCredentialStore = "credential-store"
+
+// Provider resolves account selection from environment variables. A configured
+// TAT lookup is consulted only when the dedicated source variable selects it.
+type Provider struct {
+	tenantAccessTokenLookup func(context.Context, string) (*credential.Token, error)
+}
+
+// WithTenantAccessTokenLookup returns an invocation-scoped provider copy with
+// the CLI-owned stored-TAT lookup. The narrow callback keeps account resolution
+// independent from secret storage and avoids exposing a second full Provider.
+func (p *Provider) WithTenantAccessTokenLookup(lookup func(context.Context, string) (*credential.Token, error)) credential.Provider {
+	clone := *p
+	clone.tenantAccessTokenLookup = lookup
+	return &clone
+}
 
 func (p *Provider) Name() string { return "env" }
 
@@ -23,6 +38,17 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	appSecret := os.Getenv(envvars.CliAppSecret)
 	hasUAT := os.Getenv(envvars.CliUserAccessToken) != ""
 	hasTAT := os.Getenv(envvars.CliTenantAccessToken) != ""
+	tatSource, err := tenantAccessTokenSource()
+	if err != nil {
+		return nil, err
+	}
+	storedTATSelected := tatSource == tenantAccessTokenSourceCredentialStore
+	if storedTATSelected && appID == "" {
+		return nil, &credential.BlockError{
+			Provider: "env",
+			Reason:   envvars.CliTenantAccessTokenSource + "=credential-store requires " + envvars.CliAppID,
+		}
+	}
 	if appID == "" && appSecret == "" {
 		switch {
 		case hasUAT:
@@ -36,7 +62,7 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	if appID == "" {
 		return nil, &credential.BlockError{Provider: "env", Reason: envvars.CliAppSecret + " is set but " + envvars.CliAppID + " is missing"}
 	}
-	if appSecret == "" && !hasUAT && !hasTAT {
+	if appSecret == "" && !hasUAT && !hasTAT && !storedTATSelected {
 		return nil, &credential.BlockError{
 			Provider: "env",
 			Reason:   envvars.CliAppID + " is set but no app secret or access token is available",
@@ -57,8 +83,9 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 		}
 	}
 
-	// Explicit strict mode policy takes priority
-	switch strictMode := os.Getenv(envvars.CliStrictMode); strictMode {
+	// Explicit strict mode policy takes priority.
+	strictMode := os.Getenv(envvars.CliStrictMode)
+	switch strictMode {
 	case "bot":
 		acct.SupportedIdentities = credential.SupportsBot
 	case "user":
@@ -70,7 +97,7 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 		if hasUAT {
 			acct.SupportedIdentities |= credential.SupportsUser
 		}
-		if hasTAT {
+		if hasTAT || storedTATSelected {
 			acct.SupportedIdentities |= credential.SupportsBot
 		}
 	default:
@@ -82,9 +109,13 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 
 	if acct.DefaultAs == "" {
 		switch {
+		case strictMode == "user":
+			acct.DefaultAs = credential.IdentityUser
+		case strictMode == "bot":
+			acct.DefaultAs = credential.IdentityBot
 		case hasUAT:
 			acct.DefaultAs = credential.IdentityUser
-		case hasTAT:
+		case hasTAT || storedTATSelected:
 			acct.DefaultAs = credential.IdentityBot
 		}
 	}
@@ -98,6 +129,22 @@ func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (
 	case credential.TokenTypeUAT:
 		envKey = envvars.CliUserAccessToken
 	case credential.TokenTypeTAT:
+		tatSource, err := tenantAccessTokenSource()
+		if err != nil {
+			return nil, err
+		}
+		if tatSource == tenantAccessTokenSourceCredentialStore {
+			if req.AppID == "" || req.AppID != os.Getenv(envvars.CliAppID) {
+				return nil, nil
+			}
+			if p.tenantAccessTokenLookup == nil {
+				return nil, &credential.BlockError{
+					Provider: "env",
+					Reason:   "credential-store tenant access token source is unavailable in this CLI distribution",
+				}
+			}
+			return p.tenantAccessTokenLookup(ctx, req.AppID)
+		}
 		envKey = envvars.CliTenantAccessToken
 	default:
 		return nil, nil
@@ -107,6 +154,20 @@ func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (
 		return nil, nil
 	}
 	return &credential.Token{Value: token, Source: "env:" + envKey}, nil
+}
+
+func tenantAccessTokenSource() (string, error) {
+	source := strings.ToLower(strings.TrimSpace(os.Getenv(envvars.CliTenantAccessTokenSource)))
+	switch source {
+	case "", tenantAccessTokenSourceCredentialStore:
+		return source, nil
+	default:
+		return "", &credential.BlockError{
+			Provider: "env",
+			Reason: fmt.Sprintf("invalid %s %q (want credential-store or empty)",
+				envvars.CliTenantAccessTokenSource, source),
+		}
+	}
 }
 
 func init() {

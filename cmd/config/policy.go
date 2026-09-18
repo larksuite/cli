@@ -6,6 +6,7 @@ package config
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
@@ -37,6 +38,9 @@ func newCmdConfigPolicyShow(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmdutil.SetRisk(cmd, "read")
+	// denied_paths counts the paths pruned from the assembled tree, so the
+	// answer is only meaningful against the complete command surface.
+	cmdmeta.SetRequiresFullTree(cmd)
 	return cmd
 }
 

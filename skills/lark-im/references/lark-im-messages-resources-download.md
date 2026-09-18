@@ -1,6 +1,6 @@
 # im +messages-resources-download
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
 Download an image or file attached to a message. Use the `message_id` and resource key returned by a message-reading command; do not guess or combine identifiers from different messages.
 
@@ -34,7 +34,7 @@ lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_x
 | `--message-id <id>` | Yes | Message ID (`om_xxx` format) |
 | `--file-key <key>` | Yes | Resource key (`img_xxx` or `file_xxx`) |
 | `--type <type>` | Yes | Resource type: `image` or `file` |
-| `--output <path>` | No | Relative output path; absolute paths and `..` traversal are rejected. When omitted, the command uses the attachment name when available and otherwise falls back to the resource key |
+| `--output <path>` | No | Output path, relative or absolute, that must resolve inside the built-in allowed roots (the working directory, `/tmp`, `~/files`); system and credential directories stay refused. When omitted, the command uses the attachment name when available and otherwise falls back to the resource key |
 | `--as <identity>` | No | Identity type: `user` (default) or `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 
@@ -50,6 +50,8 @@ Different resource markers in message content correspond to different `file_key`
 | Video | `file_xxx` | `file_xxx` | `file` |
 
 Stickers cannot be downloaded with this command.
+
+A folder itself cannot be downloaded: expand it with `lark-cli im files folder --recursive` first (see [lark-im](../SKILL.md)), then download the files it contains.
 
 ## Output
 

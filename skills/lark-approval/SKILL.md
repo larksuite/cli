@@ -34,7 +34,7 @@ metadata:
 | 搜可发起定义 | `approvals search` | [`lark-approval-approvals-search.md`](references/lark-approval-approvals-search.md) |
 | 看审批定义详情/提单前确认表单与流程 | `approvals get` | [`lark-approval-approvals-get.md`](references/lark-approval-approvals-get.md)   |
 | 发起原生审批实例/提交请假审批/提交报销审批/创建审批实例 | `instances create` | [`lark-approval-initiate.md`](references/lark-approval-initiate.md)             |
-| 查待办/已办 | `tasks query`（`topic`：1待办 2已办 17未读 18已读） | [`lark-approval-tasks-query.md`](references/lark-approval-tasks-query.md)       |
+| 查/搜待办、已办 | `tasks query`（`topic`：1待办 2已办 17未读 18已读） | [`lark-approval-tasks-query.md`](references/lark-approval-tasks-query.md)       |
 | 看表单/进度/当前节点 | `instances get` | [`lark-approval-instances-get.md`](references/lark-approval-instances-get.md)   |
 | 同意审批 | `tasks approve` | [`lark-approval-tasks-approve.md`](references/lark-approval-tasks-approve.md)   |
 | 拒绝审批 | `tasks reject` | [`lark-approval-tasks-reject.md`](references/lark-approval-tasks-reject.md)     |
@@ -44,7 +44,7 @@ metadata:
 | 催办审批 | `tasks remind` | [`lark-approval-tasks-remind.md`](references/lark-approval-tasks-remind.md)     |
 | 撤回已发起审批 | `instances cancel` | [`lark-approval-instances-cancel.md`](references/lark-approval-instances-cancel.md) |
 | 给审批实例追加抄送 | `instances cc` | [`lark-approval-instances-cc.md`](references/lark-approval-instances-cc.md)     |
-| 按定义查已发起审批 | `instances initiated` | [`lark-approval-instances-initiated.md`](references/lark-approval-instances-initiated.md) |
+| 按定义/关键词查已发起审批 | `instances initiated` | [`lark-approval-instances-initiated.md`](references/lark-approval-instances-initiated.md) |
 
 处理链：
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // StoredUAToken represents a stored user access token.
@@ -42,33 +43,33 @@ func MaskToken(token string) string {
 	return "****" + token[len(token)-4:]
 }
 
-// GetStoredToken reads the stored UAT for a given (appId, userOpenId) pair.
-func GetStoredToken(appId, userOpenId string) *StoredUAToken {
-	token, _ := readStoredToken(appId, userOpenId)
-	return token
-}
-
-func readStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
+// GetStoredToken reads the stored UAT and preserves storage and decode errors.
+func GetStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
 	jsonStr, err := keychain.Get(keychain.LarkCliService, accountKey(appId, userOpenId))
 	if err != nil {
-		storageErr := errs.NewInternalError(errs.SubtypeStorage,
-			"failed to read stored token: %v", err).
-			WithCause(err)
-		if problem, ok := errs.ProblemOf(err); ok && problem.Hint != "" {
-			storageErr.WithHint("%s", problem.Hint)
-		}
-		return nil, storageErr
+		return nil, err
 	}
 	if jsonStr == "" {
 		return nil, nil
 	}
 	var token StoredUAToken
 	if err := json.Unmarshal([]byte(jsonStr), &token); err != nil {
-		return nil, errs.NewInternalError(errs.SubtypeStorage,
+		return nil, withCorruptTokenRecovery(errs.NewInternalError(errs.SubtypeStorage,
 			"failed to decode stored token: %v", err).
-			WithCause(errors.Join(errStoredTokenCorrupt, err))
+			WithCause(errors.Join(errStoredTokenCorrupt, err)))
+	}
+	if err := validateStoredToken(&token, appId, userOpenId); err != nil {
+		return nil, withCorruptTokenRecovery(err)
 	}
 	return &token, nil
+}
+
+// withCorruptTokenRecovery attaches re-authorization guidance to a read-side
+// corruption error: a new login overwrites the damaged entry, so it is the
+// recovery step. The write-side validator stays hint-free because a rejected
+// write leaves nothing on disk to re-authorize.
+func withCorruptTokenRecovery(err error) error {
+	return recovery.Attach(err, recovery.UserAuthorization())
 }
 
 // SetStoredToken persists a UAT.
@@ -89,9 +90,8 @@ func writeStoredToken(appID, userOpenID string, token *StoredUAToken) error {
 		return errs.NewInternalError(errs.SubtypeStorage,
 			"cannot store a nil token")
 	}
-	if token.AppId != appID || token.UserOpenId != userOpenID {
-		return errs.NewInternalError(errs.SubtypeStorage,
-			"cannot store a token for a different account")
+	if err := validateStoredToken(token, appID, userOpenID); err != nil {
+		return err
 	}
 	key := accountKey(appID, userOpenID)
 	data, err := json.Marshal(token)
@@ -99,6 +99,25 @@ func writeStoredToken(appID, userOpenID string, token *StoredUAToken) error {
 		return err
 	}
 	return keychain.Set(keychain.LarkCliService, key, string(data))
+}
+
+func validateStoredToken(token *StoredUAToken, appID, userOpenID string) error {
+	var reason error
+	switch {
+	case token == nil:
+		reason = errors.New("stored token is nil")
+	case token.AppId == "" || token.UserOpenId == "":
+		reason = errors.New("stored token account binding is incomplete")
+	case token.AppId != appID || token.UserOpenId != userOpenID:
+		reason = errors.New("stored token account binding does not match its storage key")
+	case token.AccessToken == "":
+		reason = errors.New("stored token has no access token")
+	default:
+		return nil
+	}
+	return errs.NewInternalError(errs.SubtypeStorage,
+		"stored token data failed semantic validation").
+		WithCause(errors.Join(errStoredTokenCorrupt, reason))
 }
 
 // RemoveStoredToken removes a stored UAT.
@@ -143,7 +162,7 @@ func compareAndSwapStoredToken(appID, userOpenID string, expected, updated *Stor
 			"cannot compare and swap stored tokens for different accounts")
 	}
 
-	current, err := readStoredToken(appID, userOpenID)
+	current, err := GetStoredToken(appID, userOpenID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -169,7 +188,7 @@ func compareAndDeleteStoredToken(appID, userOpenID string, expected *StoredUATok
 			"cannot compare and delete a stored token for a different account")
 	}
 
-	current, err := readStoredToken(appID, userOpenID)
+	current, err := GetStoredToken(appID, userOpenID)
 	if err != nil {
 		return nil, false, err
 	}

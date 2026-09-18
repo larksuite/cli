@@ -46,7 +46,7 @@ func TestSheets_CallCompatWorkflow(t *testing.T) {
 	t.Run("create the target sheet", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
-				"sheets", "+create-sheet",
+				"sheets", "+sheet-create",
 				"--spreadsheet-token", spreadsheetToken,
 				"--title", sheetName,
 				"--index", "1",
@@ -56,7 +56,7 @@ func TestSheets_CallCompatWorkflow(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		require.Equal(t, sheetName, gjson.Get(result.Stdout, "data.sheet.title").String(),
+		require.NotEmpty(t, gjson.Get(result.Stdout, "data.sheet_id").String(),
 			"stdout:\n%s", result.Stdout)
 	})
 

@@ -158,21 +158,31 @@ func TestStampMatrixBudgetCap(t *testing.T) {
 // buildSheetMatrix builds the whole matrix in memory, so the total cell count is
 // bounded before that allocation, summed across all sheets.
 func TestTablePutCellBudgetCap(t *testing.T) {
+	// The budget counts the HEADER row buildSheetMatrix prepends, so the
+	// materialized total is (data rows + 1) × columns: 999 data rows here.
 	// 1000×1000 = 1,000,000 == cap → allowed.
 	atCap := &tablePayload{Sheets: []tableSheetSpec{{
 		Columns: make([]tableColumnSpec, 1000),
-		Rows:    make([][]interface{}, 1000),
+		Rows:    make([][]interface{}, 999),
 	}}}
 	if err := atCap.checkCellBudget(); err != nil {
 		t.Fatalf("1,000,000 cells (== cap) should pass, got: %v", err)
 	}
-	// 1000×1001 = 1,001,000 > cap → rejected.
+	// One more data row → 1,001,000 > cap → rejected.
 	over := &tablePayload{Sheets: []tableSheetSpec{{
 		Columns: make([]tableColumnSpec, 1000),
-		Rows:    make([][]interface{}, 1001),
+		Rows:    make([][]interface{}, 1000),
 	}}}
 	if err := over.checkCellBudget(); err == nil {
 		t.Fatal("1,001,000 cells should be rejected")
+	}
+	// A header-only payload is not free: zero data rows still materializes the
+	// header, which is what let a million columns past the budget before.
+	headerOnly := &tablePayload{Sheets: []tableSheetSpec{{
+		Columns: make([]tableColumnSpec, maxTablePutCells+1),
+	}}}
+	if err := headerOnly.checkCellBudget(); err == nil {
+		t.Fatal("a header row over the cap should be rejected")
 	}
 	// Budget is summed across sheets, not per-sheet: 600k + 600k = 1.2M > cap.
 	twoSheets := &tablePayload{Sheets: []tableSheetSpec{

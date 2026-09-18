@@ -68,8 +68,8 @@ func rangeSheetPrefixApplies(command string) bool {
 //   - The separator has four equal spellings: "!", the full-width "！"
 //     (TractorLexer.ts, ExclamationMark = `[ \t\r\n]*(?:!|！)[ \t\r\n]*`), and
 //     the backslash-escaped forms of both, which survive shell history
-//     expansion. Legacy v2 normalizes the same set (backward/helpers.go,
-//     sheetRangeSeparatorReplacer).
+//     expansion. The pre-refactor v2 surface normalized the same four
+//     spellings, so nothing a caller could already type is rejected here.
 //   - Quoted names ('My Sheet'!A1) are unwrapped, doubled-quote escape
 //     collapsed. The quotes are what delimit the name, so one may contain a
 //     "!"; escapeSheetName quotes everything that is not pure a-z, so any name
@@ -214,7 +214,7 @@ func applyRangeSheetPrefixToFlags(c *cobra.Command) {
 	if strings.TrimSpace(sheetID) != "" || strings.TrimSpace(sheetName) != "" {
 		return
 	}
-	sheet, rest, ok := splitRangeSheetPrefix(rng)
+	sheet, rest, ok := splitRangeSheetPrefixAcrossAreas(rng)
 	if !ok {
 		return
 	}
@@ -222,4 +222,61 @@ func applyRangeSheetPrefixToFlags(c *cobra.Command) {
 		return
 	}
 	_ = c.Flags().Set(rangeSheetPrefixFlag, rest)
+}
+
+// splitRangeSheetPrefixAcrossAreas is splitRangeSheetPrefix over a value that
+// may list several comma-joined areas. A multi-area range is one call against
+// one sheet, so every qualifier present has to name the same one; the selector
+// is then lifted once and each area loses its prefix. Stripping only the first
+// — which is what handling the value as a single range does — would leave the
+// later areas carrying a qualifier the selector already states.
+//
+// Areas that name no sheet ride along: "Sheet1!A1:B2,D1:E2" is the one sheet
+// the qualifier names. Disagreeing qualifiers are left entirely alone, so the
+// value reaches the command as written rather than being retargeted here.
+func splitRangeSheetPrefixAcrossAreas(rng string) (sheet, rest string, ok bool) {
+	areas := splitAreasRespectingQuotes(rng)
+	if len(areas) == 1 {
+		return splitRangeSheetPrefix(rng)
+	}
+	stripped := make([]string, 0, len(areas))
+	for _, area := range areas {
+		name, bare, hasPrefix := splitRangeSheetPrefix(area)
+		if !hasPrefix {
+			stripped = append(stripped, area)
+			continue
+		}
+		if sheet != "" && name != sheet {
+			return "", "", false // two sheets in one call; not ours to resolve
+		}
+		sheet = name
+		stripped = append(stripped, bare)
+	}
+	if sheet == "" {
+		return "", "", false
+	}
+	return sheet, strings.Join(stripped, ","), true
+}
+
+// splitAreasRespectingQuotes splits a multi-area range on its separators only.
+// A quoted sheet name may itself contain a comma ('Q1,Sales'!A1:B2), and that
+// comma separates nothing.
+func splitAreasRespectingQuotes(raw string) []string {
+	var areas []string
+	var current strings.Builder
+	quoted := false
+	for _, r := range strings.TrimSpace(raw) {
+		switch {
+		case r == '\'':
+			quoted = !quoted
+			current.WriteRune(r)
+		case r == ',' && !quoted:
+			areas = append(areas, strings.TrimSpace(current.String()))
+			current.Reset()
+		default:
+			current.WriteRune(r)
+		}
+	}
+	areas = append(areas, strings.TrimSpace(current.String()))
+	return areas
 }

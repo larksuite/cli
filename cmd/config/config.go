@@ -46,6 +46,7 @@ func newCmdConfig(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Comm
 	cmd.AddCommand(NewCmdConfigPolicy(f))
 	cmd.AddCommand(NewCmdConfigPlugins(f))
 	cmd.AddCommand(NewCmdConfigKeychainDowngrade(f))
+	cmd.AddCommand(newCmdConfigTenantAccessToken(f))
 	return cmd
 }
 

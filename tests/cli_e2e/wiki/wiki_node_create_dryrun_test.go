@@ -71,12 +71,12 @@ func TestWikiNodeCreateDryRun(t *testing.T) {
 
 		// 2-step: resolve parent node -> create node
 		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/spaces/get_node", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "/open-apis/wiki/v2/spaces/node_by_token", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
 		assert.Equal(t, "wikcnABC123", clie2e.DryRunGet(result.Stdout, "api.0.params.token").String())
 
 		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.1.method").String())
 		assert.Equal(t, "/open-apis/wiki/v2/spaces/123456/nodes", clie2e.DryRunGet(result.Stdout, "api.1.url").String())
-		assert.Equal(t, "wikcnABC123", clie2e.DryRunGet(result.Stdout, "api.1.body.parent_node_token").String())
+		assert.Equal(t, "<resolved_parent_node_token>", clie2e.DryRunGet(result.Stdout, "api.1.body.parent_node_token").String())
 	})
 
 	t.Run("HappyPath_ShortcutNodeType", func(t *testing.T) {

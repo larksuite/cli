@@ -33,9 +33,76 @@ var chartExampleTemplates = map[string]string{
 	"line":   chartSimpleExample("line"),
 	"area":   chartSimpleExample("area"),
 	"radar":  chartSimpleExample("radar"),
+	"bubble": `{
+  "position": {"row": 1, "col": "G"},
+  "size": {"width": 640, "height": 400},
+  "snapshot": {
+    "title": {"text": "气泡图标题"},
+    "plotArea": {"plot": {
+      "type": "bubble",
+      "extra": {"bubble": {
+        "aggregate": false,
+        "showNegativeSize": false,
+        "opacityGradientStyle": "linear",
+        "idLabel": {"visible": true}
+      }}
+    }},
+    "data": {
+      "refs": [{"value": "'Sheet1'!A1:E20"}],
+      "dim1": {"serie": {"index": 1}},
+      "dim2": {"series": [
+        {"index": 2, "role": "x"},
+        {"index": 3, "role": "y"},
+        {"index": 4, "role": "group"},
+        {"index": 5, "role": "size"}
+      ]}
+    }
+  }
+}`,
+	"waterfall": `{
+  "position": {"row": 1, "col": "F"},
+  "size": {"width": 640, "height": 400},
+  "snapshot": {
+    "title": {"text": "瀑布图标题"},
+    "plotArea": {"plot": {
+      "type": "waterfall",
+      "extra": {"waterfall": {
+        "firstValueAsTotal": true,
+        "lastValueAsSubtotal": true,
+        "connectorLine": {"style": "solid", "width": 1},
+        "totalLabels": {"template": "{{value}}"}
+      }}
+    }},
+    "data": {
+      "refs": [{"value": "'Sheet1'!A1:B10"}],
+      "dim1": {"serie": {"index": 1}},
+      "dim2": {"series": [{"index": 2}]}
+    }
+  }
+}`,
+	"pareto": `{
+  "position": {"row": 1, "col": "F"},
+  "size": {"width": 640, "height": 400},
+  "snapshot": {
+    "title": {"text": "排列图标题"},
+    "plotArea": {"plot": {
+      "type": "pareto",
+      "extra": {"pareto": {"aggregateType": "sum", "categoryNumber": 5}},
+      "series": [
+        {"index": 1, "bars": {"gap": 0.25}, "labels": {"value": true}},
+        {"index": 2, "line": {"width": 2}, "points": {"shape": "circle", "size": 6}, "labels": {"percentage": true, "format": "0%"}}
+      ]
+    }},
+    "data": {
+      "refs": [{"value": "'Sheet1'!A1:B20"}],
+      "dim1": {"serie": {"index": 1, "aggregate": true}},
+      "dim2": {"series": [{"index": 2, "aggregateType": "sum"}]}
+    }
+  }
+}`,
 	"scatter": `{
   "position": {"row": 1, "col": "F"},
-  "size": {"width": 600, "height": 400},
+  "size": {"width": 640, "height": 400},
   "snapshot": {
     "title": {"text": "图表标题"},
     "plotArea": {"plot": {"type": "scatter"}},
@@ -48,7 +115,7 @@ var chartExampleTemplates = map[string]string{
 }`,
 	"pie": `{
   "position": {"row": 1, "col": "F"},
-  "size": {"width": 600, "height": 450},
+  "size": {"width": 720, "height": 440},
   "snapshot": {
     "title": {"text": "占比标题"},
     "plotArea": {"plot": {
@@ -67,7 +134,7 @@ var chartExampleTemplates = map[string]string{
 }`,
 	"combo": `{
   "position": {"row": 1, "col": "F"},
-  "size": {"width": 700, "height": 400},
+  "size": {"width": 720, "height": 420},
   "snapshot": {
     "title": {"text": "柱线组合"},
     "plotArea": {"plot": {
@@ -89,9 +156,13 @@ var chartExampleTemplates = map[string]string{
 // chartSimpleExample renders the shared minimal shape for plot types that
 // need nothing beyond plot.type (column / bar / line / area / radar).
 func chartSimpleExample(typ string) string {
+	width, height := 640, 400
+	if typ == "bar" {
+		width, height = 720, 420
+	}
 	return fmt.Sprintf(`{
   "position": {"row": 1, "col": "F"},
-  "size": {"width": 600, "height": 400},
+  "size": {"width": %d, "height": %d},
   "snapshot": {
     "title": {"text": "图表标题"},
     "plotArea": {"plot": {"type": %q}},
@@ -101,7 +172,7 @@ func chartSimpleExample(typ string) string {
       "dim2": {"series": [{"index": 2}, {"index": 3}]}
     }
   }
-}`, typ)
+}`, width, height, typ)
 }
 
 func chartExampleTypes() []string {

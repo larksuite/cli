@@ -102,7 +102,6 @@ var WikiNodeList = common.Shortcut{
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(runtime.IO().ErrOut, "Resolved my_library to space %s\n", common.MaskToken(resolved))
 			spaceID = resolved
 		}
 
@@ -110,7 +109,6 @@ var WikiNodeList = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Found %d node(s)\n", len(nodes))
 		outData := map[string]interface{}{
 			"nodes":      nodes,
 			"has_more":   hasMore,

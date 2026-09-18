@@ -13,6 +13,8 @@ package sheets
 // on --print-schema or when validating a command that is in this set. Do not
 // hand-edit; regenerate with `go generate ./shortcuts/sheets/...`.
 var commandsWithSchema = map[string]struct{}{
+	"+batch-chart-create":    {},
+	"+batch-chart-update":    {},
 	"+batch-update":          {},
 	"+cells-batch-set-style": {},
 	"+cells-set":             {},

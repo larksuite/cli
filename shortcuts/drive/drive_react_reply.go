@@ -115,7 +115,6 @@ var DriveReactReply = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Reaction %s (%s) on reply %s in %s...\n", spec.Action, spec.ReactionType, spec.ReplyID, common.MaskToken(target.FileToken))
 		path := fmt.Sprintf("/open-apis/drive/v2/files/%s/comments/reaction", validate.EncodePathSegment(target.FileToken))
 		if _, err := runtime.CallAPITyped(
 			"POST",
@@ -195,7 +194,7 @@ func buildDriveReactReplyDryRun(spec driveReactReplySpec) *common.DryRunAPI {
 	if spec.Ref.Type == "wiki" {
 		return common.NewDryRunAPI().
 			Desc("2-step orchestration: resolve wiki -> update reply reaction").
-			GET("/open-apis/wiki/v2/spaces/get_node").
+			GET("/open-apis/wiki/v2/spaces/node_by_token").
 			Desc("[1] Resolve wiki node to underlying document").
 			Params(map[string]interface{}{"token": spec.Ref.Token}).
 			POST("/open-apis/drive/v2/files/<obj_token from step 1>/comments/reaction").

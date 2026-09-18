@@ -245,7 +245,7 @@ func TestDriveDeleteTaskCheckOutcomes(t *testing.T) {
 			wantStdout: []string{
 				`"ready": false`,
 				`"timed_out": true`,
-				`"next_command": "lark-cli drive +task_result --scenario task_check --task-id task_123 --as bot"`,
+				`"next_command": "lark-cli --profile secondary drive +task_result --scenario task_check --task-id task_123 --as bot"`,
 			},
 		},
 		{
@@ -272,7 +272,9 @@ func TestDriveDeleteTaskCheckOutcomes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			config := driveTestConfig()
+			config.ProfileName = "secondary"
+			f, stdout, _, reg := cmdutil.TestFactory(t, config)
 			reg.Register(&httpmock.Stub{
 				Method: "DELETE",
 				URL:    "/open-apis/drive/v1/files/" + tt.fileToken,
@@ -320,7 +322,9 @@ func TestDriveDeleteTaskCheckOutcomes(t *testing.T) {
 }
 
 func TestDriveDeleteTimedOutTaskCanBeResumedWithTaskResult(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	config := driveTestConfig()
+	config.ProfileName = "secondary"
+	f, stdout, _, reg := cmdutil.TestFactory(t, config)
 	reg.Register(&httpmock.Stub{
 		Method: "DELETE",
 		URL:    "/open-apis/drive/v1/files/fld_token_test",
@@ -361,7 +365,7 @@ func TestDriveDeleteTimedOutTaskCanBeResumedWithTaskResult(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": false`)) {
 		t.Fatalf("stdout missing ready=false: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"next_command": "lark-cli drive +task_result --scenario task_check --task-id task_resume_123 --as bot"`)) {
+	if !bytes.Contains(stdout.Bytes(), []byte(`"next_command": "lark-cli --profile secondary drive +task_result --scenario task_check --task-id task_resume_123 --as bot"`)) {
 		t.Fatalf("stdout missing next_command: %s", stdout.String())
 	}
 

@@ -1,6 +1,6 @@
 # drive +list-comments
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和权限处理。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和权限处理。
 
 列出 doc/docx/sheet/file/slides/base(bitable)/apps 的评论卡片。优先传用户给出的完整 URL，shortcut 会自动识别类型；apps 为妙搭类型，支持 `/page/<token>` URL；如果传 wiki URL 或 `--token <wiki_token> --type wiki`，会先解析到真实文档。
 

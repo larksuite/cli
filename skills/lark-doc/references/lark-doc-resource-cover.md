@@ -1,6 +1,6 @@
 # docs +resource-*（Docx 封面图资源）
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 Docx 封面图不是正文里的 `<img token="...">` 素材块。读取、更新、删除文档封面图时，使用 `docs +resource-download/+resource-update/+resource-delete --type cover`，不要使用 `+media-insert` 或 `+media-download --token <cover.token>` 让用户手动拼步骤。
 

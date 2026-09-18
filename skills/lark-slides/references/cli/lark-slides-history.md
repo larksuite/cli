@@ -12,7 +12,7 @@
 4. 使用 `+history-revert` 发起回滚。接口会立即返回 `task_id`，回滚任务在服务端异步执行。
 5. 如果返回 `status: running`，保存 `task_id`，按照返回的 `poll_after_ms` 等待后调用 `+history-revert-status`。任务创建成功后，不得因为状态查询失败而重新发起回滚。
 6. 状态变为 `done`、`partial_failed` 或 `failed` 后停止轮询；达到整体轮询上限时也停止轮询，并向用户返回 `task_id` 和当前状态。
-7. 回滚完成后，用 `slides +xml-get` 或 `slides xml_presentations get` 读取演示文稿确认内容。
+7. 回滚完成后，用 `slides +xml-get` 读取演示文稿确认内容。
 
 ## 按 revision_id 或时间点回滚
 
@@ -122,11 +122,4 @@ lark-cli slides +history-revert-status --presentation "<slides_url_or_token>" --
 
 ```bash
 lark-cli slides +xml-get --presentation "<slides_url_or_token>" --output ./presentation.xml
-```
-
-如果只需要快速检查返回结构，也可以走 raw OpenAPI：
-
-```bash
-lark-cli api get "/open-apis/slides_ai/v1/xml_presentations/<xml_presentation_id>" \
-  --params '{"revision_id":-1}'
 ```

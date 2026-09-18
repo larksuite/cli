@@ -288,9 +288,9 @@ func TestNormalize_DefaultsAndFormatOverride(t *testing.T) {
 	t.Parallel()
 	in := &tableSheetIn{
 		Name:    "S",
-		Columns: []string{"id", "amt", "d", "raw"},
-		Dtypes:  map[string]string{"amt": "float64", "d": "datetime64[ns]"}, // id, raw left unspecified
-		Formats: map[string]string{"amt": "#,##0.00"},                       // override float default ("")
+		Columns: headingNames("id", "amt", "d", "raw"),
+		Dtypes:  labelsByName(map[string]string{"amt": "float64", "d": "datetime64[ns]"}), // id, raw left unspecified
+		Formats: labelsByName(map[string]string{"amt": "#,##0.00"}),                       // override float default ("")
 		Data:    [][]interface{}{},
 	}
 	spec, err := in.normalize(0)
@@ -334,12 +334,9 @@ func TestTablePut_PayloadValidation(t *testing.T) {
 		{"empty sheets", `{"sheets":[]}`, "at least one sheet"},
 		{"missing name", `{"sheets":[{"columns":["a"],"data":[]}]}`, "name is required"},
 		{"duplicate name", `{"sheets":[{"name":"S","columns":["a"],"data":[]},{"name":"S","columns":["a"],"data":[]}]}`, "duplicate sheet name"},
-		{"no columns", `{"sheets":[{"name":"S","columns":[],"data":[]}]}`, "columns must be non-empty"},
-		{"column missing name", `{"sheets":[{"name":"S","columns":[""],"data":[]}]}`, "columns[0] name is required"},
-		{"duplicate column", `{"sheets":[{"name":"S","columns":["a","a"],"data":[]}]}`, "duplicate column name"},
+		{"dtypes key on a blank column", `{"sheets":[{"name":"S","columns":["a",""],"dtypes":{"":"int64"},"data":[]}]}`, `dtypes references unknown column ""`},
 		{"dtypes refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"dtypes":{"b":"int64"}}]}`, "dtypes references unknown column"},
 		{"formats refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"formats":{"b":"0.0"}}]}`, "formats references unknown column"},
-		{"row width mismatch", `{"sheets":[{"name":"S","columns":["a","b"],"data":[["x"]]}]}`, "column count"},
 		{"bad start_cell", `{"sheets":[{"name":"S","start_cell":"A","columns":["a"],"data":[]}]}`, "start_cell"},
 		{"bad date value", `{"sheets":[{"name":"S","columns":["d"],"dtypes":{"d":"datetime64[ns]"},"data":[["2025/03/31"]]}]}`, "must be ISO"},
 		{"number expects numeric", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"int64"},"data":[["abc"]]}]}`, "number expects"},
@@ -517,16 +514,6 @@ func TestTablePut_Validation(t *testing.T) {
 			name: "url and token are mutually exclusive",
 			args: []string{"--url", testURL, "--spreadsheet-token", testToken, "--sheets", tablePutSheetsJSON},
 			want: "mutually exclusive",
-		},
-		{
-			name: "duplicate column name rejected",
-			args: []string{"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":["a","a"],"data":[]}]}`},
-			want: "duplicate column name",
-		},
-		{
-			name: "row width mismatch rejected",
-			args: []string{"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":["a","b"],"data":[["only-one"]]}]}`},
-			want: "column count",
 		},
 		{
 			name: "trailing JSON data after --sheets value rejected",
@@ -1946,4 +1933,264 @@ func TestTableGet_CharBudgetSpansTheWholeWorkbook(t *testing.T) {
 	if caps[1] >= caps[0] {
 		t.Errorf("second sheet asked for max_chars=%d, not reduced by what the first consumed (%d) — the budget is per-workbook, not per-sheet", caps[1], caps[0])
 	}
+}
+
+// TestPositionalColumnLabels covers the dtypes / formats array form: the same
+// pandas habit that produces `columns` and `data` also produces a positional
+// `df.dtypes.tolist()`, and rejecting it cost a full retry on payloads that
+// were otherwise correct (08-18..24 eval, the largest --sheets decode failure).
+// Accepting it is only unambiguous when the array lines up 1:1 with columns.
+func TestPositionalColumnLabels(t *testing.T) {
+	t.Parallel()
+
+	t.Run("positional dtypes and formats zip onto columns", func(t *testing.T) {
+		t.Parallel()
+		p, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id","amt"],"data":[["001",1.5]],` +
+				`"dtypes":["object","float64"],"formats":[null,"#,##0.00"]}]}`,
+		}))
+		if err != nil {
+			t.Fatalf("positional labels rejected: %v", err)
+		}
+		want := []tableColumnSpec{
+			{Name: "id", Type: "string", Format: "@"},         // object → text, leading zero survives
+			{Name: "amt", Type: "number", Format: "#,##0.00"}, // float64 + its positional format
+		}
+		for i, w := range want {
+			if got := p.Sheets[0].Columns[i]; got != w {
+				t.Errorf("columns[%d] = %+v, want %+v", i, got, w)
+			}
+		}
+	})
+
+	t.Run("a mismatched length is rejected, not guessed", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id","amt"],"data":[["001",1.5]],"dtypes":["object"]}]}`,
+		}))
+		ve := requireValidation(t, err, "positional array of 1 entries but the sheet has 2 columns")
+		if !strings.Contains(ve.Hint, "line up 1:1") {
+			t.Errorf("hint should explain the alignment rule, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("the map form is unchanged", func(t *testing.T) {
+		t.Parallel()
+		p, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id","amt"],"data":[["001",1.5]],"dtypes":{"amt":"float64"}}]}`,
+		}))
+		if err != nil {
+			t.Fatalf("map form rejected: %v", err)
+		}
+		if got := p.Sheets[0].Columns[1].Type; got != "number" {
+			t.Errorf("columns[1].Type = %q, want number", got)
+		}
+	})
+
+	t.Run("an unknown key in the map form still errors", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id"],"data":[["001"]],"dtypes":{"nope":"float64"}}]}`,
+		}))
+		requireValidation(t, err, `dtypes references unknown column "nope"`)
+	})
+}
+
+// TestTablePut_ReflowLeniency pins the --sheets acceptances added after the
+// 08-29..31 reflow report, where the payload was otherwise correct and every
+// retry rewrote the same data in a different spelling. Each case states the
+// rejection count it removes; the rejections that remain are the ones where
+// the caller's intent is genuinely unclear.
+func TestTablePut_ReflowLeniency(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		sheets string
+		want   []string // substrings the planned write body must carry
+	}{
+		{
+			name:   "numeric column written as strings (155 rejections)",
+			sheets: `{"sheets":[{"name":"S","columns":["n","t"],"dtypes":{"n":"Int64"},"data":[["1","a"],["2.5","b"],["","c"]]}]}`,
+			want:   []string{`"value":1`, `"value":2.5`},
+		},
+		{
+			name:   "short rows padded to the column count (25)",
+			sheets: `{"sheets":[{"name":"S","columns":["a","b","c"],"data":[["title"]]}]}`,
+			want:   []string{`"value":"title"`},
+		},
+		{
+			name:   "object-per-column entries (35)",
+			sheets: `{"sheets":[{"name":"S","columns":[{"name":"n","dtype":"float64"},{"name":"t"}],"data":[[1.5,"a"]]}]}`,
+			want:   []string{`"value":1.5`, `"value":"n"`},
+		},
+		{
+			name:   "the writer's own type vocabulary as a dtype",
+			sheets: `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"number"},"data":[[1.5]]}]}`,
+			want:   []string{`"value":1.5`},
+		},
+		{
+			// A spacer column, or the empty cells under a merged title (13).
+			name:   "a blank column heading writes a blank header cell",
+			sheets: `{"sheets":[{"name":"S","columns":["a","","c"],"data":[["1","2","3"]]}]}`,
+			want:   []string{`"value":""`, `"value":"c"`},
+		},
+		{
+			// A total row or a trailing blank inside a date column (7).
+			name:   "blank text in a date column is a blank cell",
+			sheets: `{"sheets":[{"name":"S","columns":["d"],"dtypes":{"d":"datetime64[ns]"},"data":[["2026-01-01"],[""]]}]}`,
+			want:   []string{`"number_format":"yyyy-mm-dd"`},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+				"--url", testURL, "--sheets", tc.sheets, "--dry-run",
+			})
+			if err != nil {
+				t.Fatalf("payload should be accepted, got: %v", err)
+			}
+			// The tool body is a JSON string inside the dry-run envelope, so
+			// its own quotes arrive escaped.
+			plain := strings.ReplaceAll(stdout, `\"`, `"`)
+			for _, want := range tc.want {
+				if !strings.Contains(plain, want) {
+					t.Errorf("write body should carry %s, got %q", want, stdout)
+				}
+			}
+		})
+	}
+
+	t.Run("a column-less sheet plans no write", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":[],"data":[]}]}`, "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("an empty sheet should be accepted, got: %v", err)
+		}
+		if strings.Contains(stdout, "set_cell_range") {
+			t.Errorf("nothing to write, so no set_cell_range should be planned, got %q", stdout)
+		}
+	})
+
+	t.Run("a repeated heading writes both columns", func(t *testing.T) {
+		t.Parallel()
+		// A sheet is not a database: two columns can share a heading, and the
+		// source data often did. A dtypes entry for the repeated name applies
+		// to each of its columns, which is the only reading available.
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["a","a"],"dtypes":{"a":"int64"},"data":[[1,2]]}]}`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("a repeated heading should write, got: %v", err)
+		}
+		if strings.Count(stdout, `\"a\"`) < 2 {
+			t.Errorf("both columns should carry the heading, got %q", stdout)
+		}
+	})
+
+	t.Run("a dtypes key that differs only in spacing folds onto its column", func(t *testing.T) {
+		t.Parallel()
+		for _, key := range []string{"营 收", "营收 ", "营\u3000收"} {
+			if _, _, err := runShortcutCapturingErr(t, TablePut, []string{
+				"--url", testURL,
+				"--sheets", `{"sheets":[{"name":"S","columns":["营收"],"dtypes":{"` + key + `":"float64"},"data":[[1]]}]}`,
+				"--dry-run",
+			}); err != nil {
+				t.Errorf("dtypes key %q should fold onto 营收, got: %v", key, err)
+			}
+		}
+	})
+
+	t.Run("a dtypes key naming nothing still fails", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["营收"],"dtypes":{"利润":"float64"},"data":[[1]]}]}`,
+			"--dry-run",
+		})
+		requireValidation(t, err, "dtypes references unknown column")
+	})
+
+	t.Run("+workbook-create names the sub-sheets the caller left unnamed", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+workbook-create")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--title", "T", "--dry-run",
+			"--sheets", `{"sheets":[{"columns":["a"],"data":[["x"]]},{"name":"Sheet1","columns":["b"],"data":[["y"]]},{"columns":["c"],"data":[["z"]]}]}`,
+		})
+		if err != nil {
+			t.Fatalf("a new workbook may name its own sheets, got: %v", err)
+		}
+		// The caller's own Sheet1 is skipped, so the filled names continue the
+		// series instead of colliding with it.
+		for _, want := range []string{"Sheet2", "Sheet3"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("unnamed sub-sheet should become %s, got %q", want, stdout)
+			}
+		}
+	})
+
+	t.Run("+table-put still requires the name that selects the sheet", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL, "--sheets", `{"sheets":[{"columns":["a"],"data":[["x"]]}]}`, "--dry-run",
+		})
+		ve := requireValidation(t, err, "name is required")
+		if !strings.Contains(ve.Hint, "+workbook-info") {
+			t.Errorf("hint should point at the sheet list, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("a non-numeric string in a numeric column still fails", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"Int64"},"data":[["1,234"]]}]}`,
+			"--dry-run",
+		})
+		// A thousands separator is either one number or two cells that lost
+		// their split — stripping it would guess at a locale.
+		requireValidation(t, err, "non-numeric string")
+	})
+
+	t.Run(`the literal "null" is not a number`, func(t *testing.T) {
+		t.Parallel()
+		// "null" decodes into a json.Number without an error and leaves it
+		// empty, which then marshals back out as 0 — a zero written into the
+		// cell under a success exit code. A blank cell is JSON null, not the
+		// four-letter word.
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"Int64"},"data":[["null"]]}]}`,
+			"--dry-run",
+		})
+		requireValidation(t, err, "non-numeric string")
+	})
+
+	t.Run("append with cell_styles plans the style-only write", func(t *testing.T) {
+		t.Parallel()
+		// header:false with no data rows leaves an empty matrix, but Execute
+		// expands it through the styles before deciding whether to write. The
+		// plan has to model that expansion or it shows no write where one
+		// happens; the range stays dynamic because the base row is resolved
+		// against the live sheet.
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","mode":"append","header":false,"columns":["a"],"data":[]}]}`,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1:B2","background_color":"#FFE6E6"}]}]}`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("the styled append should be planned, got: %v", err)
+		}
+		if !strings.Contains(stdout, "set_cell_range") {
+			t.Errorf("a style-only append still writes, so the plan must show it, got %q", stdout)
+		}
+		if !strings.Contains(stdout, "append below existing data") {
+			t.Errorf("the append range must stay dynamic in the plan, got %q", stdout)
+		}
+	})
 }

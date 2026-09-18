@@ -667,7 +667,7 @@ func TestSaveOutputFile_InvalidFinalPathTypedError(t *testing.T) {
 	chdirTemp(t)
 
 	rt := newTestRuntime(nil, nil)
-	_, _, err := saveOutputFile("../escape", ".png", "token123", rt, strings.NewReader("test content"))
+	_, _, err := saveOutputFile("../../../../../../../../../../../../escape", ".png", "token123", rt, strings.NewReader("test content"))
 	if err == nil {
 		t.Fatal("expected error for unsafe final path")
 	}

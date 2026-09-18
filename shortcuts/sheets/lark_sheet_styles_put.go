@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -31,48 +32,107 @@ import (
 var StylesPut = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+styles-put",
-	Description: "Apply one declarative visual spec (styles/merges/row-col sizes/freeze) to existing sheets in one batch request (fail-fast, no rollback).",
+	Description: "Apply one declarative visual spec (styles/merges/row-col sizes/freeze) to existing sheets; sent as one batch request, or several when the spec is large (each atomic on its own, no rollback).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
-	Flags:       flagsFor("+styles-put"),
+	// A whole-column / whole-row cell_styles range is closed against the
+	// sheet's real grid (newSheetGridBounder), which is a structure READ. This
+	// command has no sheet selector, so the flag-derived declaration in
+	// Shortcuts() does not reach it and it is stated here.
+	ConditionalScopes: []string{"sheets:spreadsheet:read"},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
+	Flags:             flagsFor("+styles-put"),
 	Tips: []string{
 		`Example: lark-cli sheets +styles-put --url <URL> --styles '{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1:F1","font_weight":"bold"}],"freeze":{"rows":1}}]}'`,
 		"Same --styles vocabulary as +workbook-create / +table-put; one item per target sheet, name = the real sheet name.",
-		"Style stamps are safe to re-run; the whole spec goes out as one batch request — fail-fast, and applied sub-ops are NOT rolled back.",
+		"A spec of up to 100 operations goes out as ONE atomic batch request; a larger one is split, and each request is atomic only on its own — a later failure leaves the earlier requests applied.",
+		"Style stamps are safe to re-run. Merges are not: re-sending an applied merge_cells can be rejected as an overlap, so after a partial failure read the sheet back (+cells-get --include style) and resend only the merges that did not land.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetToken(runtime)
 		if err != nil {
 			return err
 		}
-		_, err = stylesPutOperations(runtime, token)
+		// Pre-flight runs offline, so it cannot know how far a whole-column
+		// range reaches; the execute path asks the workbook. Everything else
+		// about the item is still checked, against a stand-in rectangle.
+		_, err = stylesPutOperations(runtime, token, preflightRangeBounder(runtime))
 		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
-		ops, _ := stylesPutOperations(runtime, token)
-		return invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
+		ops, _ := stylesPutOperations(runtime, token, nil)
+		chunks := chunkOperations(ops, maxBatchOperations)
+		dry := invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
 			"excel_id":   token,
-			"operations": ops,
+			"operations": chunks[0],
 		})
+		for _, chunk := range chunks[1:] {
+			body, _ := buildToolBody("batch_update", map[string]interface{}{
+				"excel_id":   token,
+				"operations": chunk,
+			})
+			dry.POST(toolInvokePath(token, ToolKindWrite)).
+				Desc(fmt.Sprintf("batch_update (%d operations)", len(chunk))).
+				Body(body)
+		}
+		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
-		ops, err := stylesPutOperations(runtime, token)
+		ops, err := stylesPutOperations(runtime, token, newSheetGridBounder(ctx, runtime, token))
 		if err != nil {
 			return err
 		}
-		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
-			"excel_id":   token,
-			"operations": ops,
-		})
-		if err != nil {
-			return err
+		chunks := chunkOperations(ops, maxBatchOperations)
+		var out interface{}
+		for i, chunk := range chunks {
+			out, err = callTool(ctx, runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
+				"excel_id":   token,
+				"operations": chunk,
+			})
+			if err != nil {
+				if len(chunks) == 1 {
+					return err
+				}
+				// Say what landed before naming the failure: each request is
+				// atomic on its own, so the sheet now carries the earlier
+				// chunks. Re-running the WHOLE spec is only safe when it holds
+				// no merges — a style stamp is idempotent, but replaying an
+				// already-applied merge_cells can come back as an overlap
+				// rejection before the failed chunk is even reached, which
+				// would leave the caller stuck on an error about work that
+				// already succeeded.
+				if i == 0 {
+					// A failed FIRST request is not the same as an untouched
+					// sheet: batch_update is fail-fast but not transactional,
+					// so operations before the failing one inside that request
+					// stay applied, and a transport failure leaves the outcome
+					// unknown entirely. Only the backend saying "0 succeeded"
+					// settles it.
+					if toolReportedZeroApplied(err) {
+						return attachSheetsWarningsToError(err, []string{fmt.Sprintf(
+							"--styles was sent as %d batch requests; the first one failed with nothing applied, so the sheet is unchanged — fix the spec and re-run it whole",
+							len(chunks))})
+					}
+					return attachSheetsWarningsToError(err, []string{fmt.Sprintf(
+						"--styles was sent as %d batch requests and the first one failed; the request is not transactional, so part of it may already be on the sheet. Read the affected sheets back (+cells-get --include style) before retrying, and resend only what did not land — style stamps are idempotent, but replaying an applied merge is rejected as an overlap",
+						len(chunks))})
+				}
+				return attachSheetsWarningsToError(err, []string{fmt.Sprintf(
+					"--styles was sent as %d batch requests and request %d failed; requests 1-%d already applied. Style stamps are idempotent, so a spec of styles/sizes/freeze alone is safe to re-run as-is; if it carries cell_merges, read the sheet back first and resend only the merges that did not land — replaying an applied merge is rejected as an overlap",
+					len(chunks), i+1, i)})
+			}
+		}
+		if len(chunks) > 1 {
+			out = annotateSheetsResult(out, "batch_requests", len(chunks))
+			out = appendSheetsWarnings(out, []string{fmt.Sprintf(
+				"--styles expanded to %d operations, over the %d per-request cap, so it was sent as %d batch requests — each atomic on its own, not as a whole",
+				len(ops), maxBatchOperations, len(chunks))})
 		}
 		runtime.Out(out, nil)
 		return nil
@@ -85,7 +145,7 @@ var StylesPut = common.Shortcut{
 // normalization (border "all" shorthand, style vocabulary) and the
 // aggregate-all-issues error shape are identical across the three --styles
 // carriers.
-func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) {
+func stylesPutOperations(runtime flagView, token string, bound sheetRangeBounder) ([]interface{}, error) {
 	if strings.TrimSpace(runtime.Str("styles")) == "" {
 		return nil, sheetsValidationForFlag("styles", "--styles is required")
 	}
@@ -95,6 +155,12 @@ func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) 
 	}
 	items, err := parseWorkbookCreateStylesItems(v)
 	if err != nil {
+		return nil, err
+	}
+	// A whole-column or whole-row range needs the grid it spans, which only
+	// the execute path can ask for; Validate and DryRun pass no bounder and
+	// keep the parse-time rejection.
+	if err := boundStyleItemRanges(items, bound); err != nil {
 		return nil, err
 	}
 	if len(items) == 0 {
@@ -177,12 +243,41 @@ func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) 
 			appendVisual(spec.name, workbookCreateStyleOp{Kind: "freeze", FreezeRows: f.Rows, FreezeCols: f.Cols})
 		}
 	}
-	if len(ops) > maxBatchOperations {
+	if len(ops) > maxStylesPutOperations {
 		return nil, sheetsValidationForFlag("styles",
-			"--styles expands to %d operations even after merging adjacent same-style ranges, over the %d cap; split the spec into several +styles-put calls — and for alternating-row banding or value-dependent coloring use +cond-format-create instead of per-row stamps",
-			len(ops), maxBatchOperations)
+			"--styles expands to %d operations even after merging adjacent same-style ranges, over the %d cap; for alternating-row banding or value-dependent coloring use +cond-format-create instead of per-row stamps, which one rule covers whatever the sheet grows to",
+			len(ops), maxStylesPutOperations)
 	}
 	return ops, nil
+}
+
+// maxStylesPutOperations bounds the whole spec. It is far above the
+// per-request cap because the spec is no longer one request: chunkOperations
+// splits it. What it still bounds is materialization — every translated op
+// with its own cells matrix is held at once — so it stays finite, and a spec
+// that reaches it is stamping per row, which +cond-format-create expresses as
+// one rule.
+const maxStylesPutOperations = 1000
+
+// chunkOperations splits an operation list into batch_update-sized requests.
+// A declarative spec states intent, so its execution shape is the CLI's to
+// choose — the same license coalesceStyleStamps already takes when it fuses
+// adjacent stamps, and the same thing +table-put does when it slices a large
+// write. 08-29..31 reflow: 48 rejections told the caller to split the spec by
+// hand, which is work with no decision in it.
+func chunkOperations(ops []interface{}, size int) [][]interface{} {
+	if len(ops) <= size {
+		return [][]interface{}{ops}
+	}
+	chunks := make([][]interface{}, 0, (len(ops)+size-1)/size)
+	for start := 0; start < len(ops); start += size {
+		end := start + size
+		if end > len(ops) {
+			end = len(ops)
+		}
+		chunks = append(chunks, ops[start:end])
+	}
+	return chunks
 }
 
 // coalesceStyleStamps merges cell_styles entries that carry the IDENTICAL
@@ -293,4 +388,147 @@ func stripSheetPrefix(rangeStr string) string {
 		return strings.TrimSpace(rangeStr[idx+1:])
 	}
 	return strings.TrimSpace(rangeStr)
+}
+
+// ─── unbounded style ranges ───────────────────────────────────────────
+
+// sheetRangeBounder turns a range that names whole columns ("A:C") or whole
+// rows ("3:5") into the rectangle it covers on a given sheet, or reports that
+// it could not. Nil on the paths that run offline.
+type sheetRangeBounder func(sheetName, rangeStr string) (string, bool, error)
+
+// boundStyleItemRanges rewrites the cell_styles ranges of every item, in
+// place, before the item parser rejects the unbounded forms. Only cell_styles
+// is touched: row_sizes and col_sizes take a dimension range BY DESIGN ("2:10",
+// "A:C"), and bounding those would turn their own vocabulary into an error.
+// 09-04..07: 1208 rejections read "unsupported range form" under --styles.
+func boundStyleItemRanges(items []map[string]interface{}, bound sheetRangeBounder) error {
+	if bound == nil {
+		return nil
+	}
+	for _, item := range items {
+		name, _ := item["name"].(string)
+		entries, isList := item["cell_styles"].([]interface{})
+		if !isList {
+			continue
+		}
+		for _, raw := range entries {
+			entry, isMap := raw.(map[string]interface{})
+			if !isMap {
+				continue
+			}
+			rng, isStr := entry["range"].(string)
+			if !isStr {
+				continue
+			}
+			// The sheet prefix is stripped later, by the item parser, so it
+			// is split here too: "Summary!A:C" is as unbounded as "A:C" and
+			// would otherwise sail past the match and be rejected as an
+			// unsupported range form.
+			prefix, bare := splitRangeSheetPrefixForBounding(rng)
+			fitted, ok, err := bound(strings.TrimSpace(name), bare)
+			if err != nil {
+				return err
+			}
+			if ok {
+				entry["range"] = prefix + fitted
+			}
+		}
+	}
+	return nil
+}
+
+// splitRangeSheetPrefixForBounding separates a sheet qualifier from the range
+// it precedes, keeping the qualifier verbatim so it can be put back exactly as
+// written.
+func splitRangeSheetPrefixForBounding(rangeStr string) (prefix, bare string) {
+	trimmed := strings.TrimSpace(rangeStr)
+	if _, end, ok := scanSheetQualifier(trimmed); ok {
+		return trimmed[:end], trimmed[end:]
+	}
+	return "", trimmed
+}
+
+// preflightRangeBounder keeps an unbounded range from failing a check that
+// cannot answer it. It stands in a rectangle that keeps whichever axis the
+// caller did state — "A:C" becomes A1:C1, "3:5" becomes A3:A5 — so the rest of
+// the item is validated as usual, and the extent is settled for real on the
+// execute path, where the grid is readable. Nil under --dry-run: a preview
+// sends nothing, so it cannot resolve the range either and says so.
+func preflightRangeBounder(runtime flagView) sheetRangeBounder {
+	if runtime.Bool("dry-run") {
+		return nil
+	}
+	return func(_, rangeStr string) (string, bool, error) {
+		trimmed := strings.TrimSpace(rangeStr)
+		if m := wholeColumnRange.FindStringSubmatch(trimmed); m != nil {
+			return fmt.Sprintf("%s1:%s1", strings.ToUpper(m[1]), strings.ToUpper(m[2])), true, nil
+		}
+		if m := wholeRowRange.FindStringSubmatch(trimmed); m != nil {
+			return fmt.Sprintf("A%s:A%s", m[1], m[2]), true, nil
+		}
+		return "", false, nil
+	}
+}
+
+// newSheetGridBounder returns a bounder backed by one workbook-structure read,
+// taken lazily and at most once per invocation: a payload whose ranges are all
+// rectangular never pays for it.
+func newSheetGridBounder(ctx context.Context, runtime *common.RuntimeContext, token string) sheetRangeBounder {
+	var grids map[string]sheetGrid
+	var loaded bool
+	return func(sheetName, rangeStr string) (string, bool, error) {
+		if !isUnboundedRange(rangeStr) {
+			return "", false, nil
+		}
+		if !loaded {
+			loaded = true
+			var err error
+			if grids, err = workbookSheetGrids(ctx, runtime, token); err != nil {
+				// Authentication, permission and transport failures all land
+				// here. Reported as-is: swallowing one leaves the range
+				// unbounded and the caller reading "unsupported range form"
+				// about a payload that was fine.
+				return "", false, err
+			}
+		}
+		grid, ok := grids[sheetName]
+		if !ok {
+			return "", false, nil
+		}
+		fitted, ok := boundRangeToGrid(rangeStr, grid)
+		return fitted, ok, nil
+	}
+}
+
+// isUnboundedRange reports whether a range names whole columns or whole rows,
+// the two forms parseCellRange refuses because their extent lives on the sheet
+// rather than in the string.
+func isUnboundedRange(rangeStr string) bool {
+	return wholeColumnRange.MatchString(strings.TrimSpace(rangeStr)) ||
+		wholeRowRange.MatchString(strings.TrimSpace(rangeStr))
+}
+
+var (
+	wholeColumnRange = regexp.MustCompile(`^([A-Za-z]+):([A-Za-z]+)$`)
+	wholeRowRange    = regexp.MustCompile(`^([0-9]+):([0-9]+)$`)
+)
+
+// boundRangeToGrid closes an unbounded range against the sheet's own extent:
+// "A:C" on a 200-row sheet is A1:C200, "3:5" on a 20-column one is A3:T5. The
+// result is exact rather than a guess — the grid is what the caller meant by
+// "the whole column" — and an oversized one then meets the same stamp budget
+// any explicit range of that size would.
+func boundRangeToGrid(rangeStr string, grid sheetGrid) (string, bool) {
+	trimmed := strings.TrimSpace(rangeStr)
+	if grid.rows <= 0 || grid.cols <= 0 {
+		return "", false
+	}
+	if m := wholeColumnRange.FindStringSubmatch(trimmed); m != nil {
+		return fmt.Sprintf("%s1:%s%d", strings.ToUpper(m[1]), strings.ToUpper(m[2]), grid.rows), true
+	}
+	if m := wholeRowRange.FindStringSubmatch(trimmed); m != nil {
+		return fmt.Sprintf("A%s:%s%s", m[1], columnIndexToLetter(grid.cols-1), m[2]), true
+	}
+	return "", false
 }

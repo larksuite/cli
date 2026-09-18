@@ -60,9 +60,6 @@ var WikiMemberRemove = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Removing wiki space member %s (type=%s, role=%s) from space %s...\n",
-			common.MaskToken(spec.MemberID), spec.MemberType, spec.MemberRole, common.MaskToken(spaceID))
-
 		path := fmt.Sprintf(
 			"/open-apis/wiki/v2/spaces/%s/members/%s",
 			validate.EncodePathSegment(spaceID),
@@ -89,7 +86,6 @@ var WikiMemberRemove = common.Shortcut{
 		if common.GetString(out, "member_role") == "" {
 			out["member_role"] = spec.MemberRole
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Removed wiki space member %s\n", common.MaskToken(common.GetString(out, "member_id")))
 		runtime.Out(out, nil)
 		return nil
 	},

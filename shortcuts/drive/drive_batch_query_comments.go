@@ -90,7 +90,6 @@ var DriveBatchQueryComments = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Batch querying %d comment(s) in %s...\n", len(spec.CommentIDs), common.MaskToken(target.FileToken))
 		path := fmt.Sprintf("/open-apis/drive/v1/files/%s/comments/batch_query", validate.EncodePathSegment(target.FileToken))
 		data, err := runtime.CallAPITyped(
 			"POST",
@@ -157,7 +156,7 @@ func buildDriveBatchQueryCommentsDryRun(spec driveBatchQueryCommentsSpec) *commo
 		}
 		return common.NewDryRunAPI().
 			Desc("2-step orchestration: resolve wiki -> batch query comments").
-			GET("/open-apis/wiki/v2/spaces/get_node").
+			GET("/open-apis/wiki/v2/spaces/node_by_token").
 			Desc("[1] Resolve wiki node to underlying document").
 			Params(map[string]interface{}{"token": spec.Ref.Token}).
 			POST("/open-apis/drive/v1/files/<obj_token from step 1>/comments/batch_query").

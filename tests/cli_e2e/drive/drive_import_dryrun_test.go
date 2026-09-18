@@ -43,8 +43,8 @@ func TestDriveImportDryRunFolderTokenWikiProbe(t *testing.T) {
 	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
 		t.Fatalf("data.api.0.method = %q, want GET\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
-		t.Fatalf("data.api.0.url = %q, want wiki get_node\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/node_by_token" {
+		t.Fatalf("data.api.0.url = %q, want wiki node_by_token\nstdout:\n%s", got, out)
 	}
 	if got := clie2e.DryRunGet(out, "api.0.params.token").String(); got != "fldcnImportDryRunTarget" {
 		t.Fatalf("data.api.0.params.token = %q, want fldcnImportDryRunTarget\nstdout:\n%s", got, out)

@@ -4,9 +4,13 @@
 package localfileio
 
 import (
+	"errors"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -144,3 +148,67 @@ func TestAtomicWrite_HandlesCorrectlyUnderConcurrentWrites(t *testing.T) {
 		t.Error("file is empty after concurrent writes")
 	}
 }
+
+// The exclusive commit must publish the target only once the content is
+// complete. A reader that blocks mid-copy proves the final name is absent while
+// bytes are still in flight -- writing straight to the final name with O_EXCL
+// would satisfy no-clobber but expose a partial file, and a killed process would
+// leave it behind as a phantom target for the next attempt.
+func TestExclusiveWriteFromReaderPublishesOnlyCompleteContent(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "artifact.bin")
+
+	released := make(chan struct{})
+	observed := make(chan error, 1)
+	reader := io.MultiReader(
+		strings.NewReader("first-half"),
+		readerFunc(func(p []byte) (int, error) {
+			// The copy is now half done; the final name must not exist yet.
+			_, statErr := os.Stat(target)
+			observed <- statErr
+			close(released)
+			return 0, io.EOF
+		}),
+	)
+
+	written, err := ExclusiveWriteFromReader(target, reader, 0600)
+	if err != nil {
+		t.Fatalf("ExclusiveWriteFromReader() error = %v", err)
+	}
+	<-released
+	if statErr := <-observed; !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("target existed mid-copy: %v", statErr)
+	}
+	if written != int64(len("first-half")) {
+		t.Fatalf("written = %d", written)
+	}
+	content, readErr := os.ReadFile(target)
+	if readErr != nil || string(content) != "first-half" {
+		t.Fatalf("committed content = %q (err=%v)", content, readErr)
+	}
+}
+
+// The commit refuses an existing target instead of replacing it.
+func TestExclusiveWriteFromReaderRefusesExistingTarget(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "artifact.bin")
+	if err := os.WriteFile(target, []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ExclusiveWriteFromReader(target, strings.NewReader("replacement"), 0600)
+	if !errors.Is(err, fs.ErrExist) {
+		t.Fatalf("error = %v, want fs.ErrExist", err)
+	}
+	content, readErr := os.ReadFile(target)
+	if readErr != nil || string(content) != "original" {
+		t.Fatalf("existing content = %q (err=%v), want it preserved", content, readErr)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Fatalf("directory holds %d entries, want only the original file (temp file leaked)", len(entries))
+	}
+}
+
+type readerFunc func(p []byte) (int, error)
+
+func (f readerFunc) Read(p []byte) (int, error) { return f(p) }

@@ -5,14 +5,13 @@ package cmdutil
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/client"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -133,24 +132,13 @@ func BuildFormdata(fileIO fileio.FileIO, fieldName, filePath string, isStdin boo
 	}
 
 	// Add top-level JSON keys as text form fields.
+	// Field order is not ours to choose: Formdata keeps fields in a map and
+	// serializes by ranging over it, so ordering them here would not survive.
 	if m, ok := dataJSON.(map[string]any); ok {
 		for k, v := range m {
-			fd.AddField(k, formatFormFieldValue(v))
+			fd.AddField(k, client.FormatScalar(v))
 		}
 	}
 
 	return fd, nil
-}
-
-// formatFormFieldValue renders a JSON-unmarshalled value as a multipart form
-// field string. float64 is handled specially: fmt's default %v/%g switches to
-// scientific notation for values >= ~1e6 (e.g. "1.185356e+06"), which some
-// backends reject when parsing the field as an integer. Use decimal notation
-// instead so size / block_num / offset-style numeric fields round-trip cleanly.
-// All other types fall through to %v.
-func formatFormFieldValue(v any) string {
-	if n, ok := v.(float64); ok {
-		return strconv.FormatFloat(n, 'f', -1, 64)
-	}
-	return fmt.Sprintf("%v", v)
 }
