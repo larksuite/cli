@@ -957,7 +957,9 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"workflow-id must start with wkf",
 				"steps may be an empty array",
-				"Use +workflow-get before +workflow-update",
+				"not a lossless backup",
+				"native editor",
+				"null/empty values alone",
 				"lark-base-workflow-schema.md",
 			},
 		},
@@ -981,8 +983,8 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"lark-cli base +workflow-update --base-token <base_token> --workflow-id <workflow_id> --json @workflow.json",
 				"PUT uses full replacement semantics",
-				"Use +workflow-get first",
-				"keep title/status/steps fields",
+				"verify expression fidelity in the native editor",
+				"Do not round-trip a lossy export",
 				"workflow-id must start with wkf",
 				"Updating does not enable or disable",
 				"do not invent steps[].type/data/next/children from natural language",
