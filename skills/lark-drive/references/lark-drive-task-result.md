@@ -263,12 +263,12 @@ lark-cli drive +task_result --scenario import --ticket <IMPORT_TICKET>
 ### 配合 +move 使用
 
 ```bash
-# 1. 移动文件夹（异步操作）
+# 1. 移动文件夹
 lark-cli drive +move --file-token <FOLDER_TOKEN> --type folder --folder-token <TARGET_FOLDER_TOKEN>
-# 若轮询窗口内完成：直接返回 ready=true
+# 已完成时返回 ready=true，无需继续查询
 # 若内置轮询结束仍未完成：返回 ready=false、task_id 和 next_command
 
-# 2. 轮询移动结果
+# 2. 仅在 ready=false 时继续查询
 lark-cli drive +task_result --scenario task_check --task-id <TASK_ID>
 ```
 

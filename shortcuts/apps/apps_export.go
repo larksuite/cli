@@ -8,13 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/charcheck"
-	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -277,7 +277,7 @@ func classifyExportErr(err error) error {
 // type.
 func rejectExportErrorEnvelope(rctx *common.RuntimeContext, resp *http.Response) error {
 	contentType := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type")))
-	if !client.IsJSONContentType(contentType) {
+	if !isExportJSONContentType(contentType) {
 		return nil
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxExportEnvelopeBytes))
@@ -301,6 +301,34 @@ func rejectExportErrorEnvelope(rctx *common.RuntimeContext, resp *http.Response)
 	}
 	return errs.NewInternalError(errs.SubtypeInvalidResponse,
 		"export returned a JSON body instead of an archive")
+}
+
+// isExportJSONContentType reports whether ct is a JSON media type, including the
+// structured "+json" suffix (RFC 6839) that client.IsJSONContentType does not
+// cover: a gateway may label the error envelope application/problem+json
+// (RFC 9457) or a vendor type like application/vnd.lark.error+json.
+//
+// The media type is parsed and matched exactly rather than by substring. The
+// shared helper's strings.Contains would classify a genuine archive as JSON
+// whenever the token appears anywhere in the header — application/jsonfoo, or a
+// parameter such as application/octet-stream; note="application/json" — and the
+// archive would then be refused as an error envelope. That is the same
+// mislabelling failure this file just removed, mirrored.
+//
+// Only the envelope check needs this, so it stays local rather than widening the
+// shared helper, whose other callers are outside this change. Broadening the
+// match cannot resurrect the whitelist bug this file just fixed — no archive
+// format carries a "+json" suffix, so no real zip is caught by it.
+func isExportJSONContentType(ct string) bool {
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		// An unparseable Content-Type is not a credible JSON envelope label;
+		// leave it to stream as the archive.
+		return false
+	}
+	return mediaType == "application/json" ||
+		mediaType == "text/json" ||
+		strings.HasSuffix(mediaType, "+json")
 }
 
 // exportAppNotPublishedCode is the business code the gateway returns (as an

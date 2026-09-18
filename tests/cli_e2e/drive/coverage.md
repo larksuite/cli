@@ -2,10 +2,11 @@
 
 ## Metrics
 - Denominator: 46 leaf commands
-- Covered: 26
-- Coverage: 56.5%
+- Covered: 27
+- Coverage: 58.7%
 
 ## Summary
+- TestDrive_MoveFolderRetryWorkflow: live bot regression for `drive +move`. Creates isolated source and destination folders, waits for the first move to finish (polling its task when needed), then repeats the move and asserts `ready=true`, `status=success`, matching tokens, and no task/continuation fields. Reads the destination listing after both moves and registers source-before-destination cleanup even on failure. `LARK_CLI_E2E_DRIVE_PARENT_FOLDER_TOKEN` optionally selects the fixture parent; otherwise the bot root is used. This fixture must produce a taskless retry; a deployment returning a task requires reassessing the fixture, not silently counting the async path as taskless coverage. User/root-destination variants remain covered by mock tests.
 - TestDrive_FilesCreateFolderWorkflow: proves `drive files create_folder` in `create_folder as bot`; helper asserts the returned folder token and registers best-effort cleanup via `drive files delete`.
 - TestDrive_StatusWorkflow: proves `drive +status` against a real Drive folder. Seeds the remote side via `drive +upload` (`unchanged.txt`, `modified.txt`, `remote-only.txt`), seeds local files with the matching/diverging contents, and asserts every output bucket (`unchanged`, `modified`, `new_local`, `new_remote`) holds exactly the expected `rel_path` and `file_token`. Cleans up uploaded files and the parent folder via best-effort cleanup hooks.
 - TestDrive_UploadWorkflow: proves `drive +upload` against the real backend in both create and overwrite modes. First uploads a fresh file into a temporary Drive folder, then re-uploads new bytes with `--file-token` against the returned token, asserts the overwrite keeps the token stable, downloads the file with explicit `--output` to confirm the remote content changed, and downloads again without `--output` to prove default filename resolution saves the remote name with matching bytes.
@@ -52,7 +53,7 @@
 | ✓ | drive +export | shortcut | drive_export_dryrun_test.go::TestDriveExportDryRun_FileNameMetadata + TestDriveExportDryRun_WikiURLPlansResolveBeforeExportTask + TestDriveExportDryRun_WikiTokenTypePlansResolveBeforeExportTask + TestDriveExportDryRun_MarkdownFetchAPI + TestDriveExportDryRun_BitableBaseOnlySchema | `--url`; `--token`; `--doc-type`; `--file-extension`; `--file-name`; `--output-dir`; `--only-schema`; Wiki URL / `--doc-type wiki` resolve step; markdown fetch omits docs fetch `extra_param` | dry-run only; no live export workflow yet |
 | ✕ | drive +export-download | shortcut |  | none | no export-download workflow yet |
 | ✓ | drive +import | shortcut | drive_import_dryrun_test.go::TestDriveImportDryRunFolderTokenWikiProbe + drive_import_workflow_test.go::TestDrive_ImportWorkflow | `--file`; `--type docx`; upload report request shape; async ticket polling; imported token cleanup | dry-run pins the upload/report/import request chain; live workflow imports a real Markdown fixture and deletes the resulting docx |
-| ✕ | drive +move | shortcut |  | none | no move workflow yet |
+| ✓ | drive +move | shortcut | drive_move_dryrun_test.go::TestDriveMoveDryRunFolderDestination + drive_move_workflow_test.go::TestDrive_MoveFolderRetryWorkflow | explicit destination; first-move completion; same-destination taskless retry | dry-run pins request planning; live bot workflow verifies synchronous retry output and persisted destination, with isolated fixtures and cleanup |
 | ✓ | drive +pull | shortcut | drive_pull_dryrun_test.go::TestDrive_PullDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; `--on-duplicate-remote=rename\|newest\|oldest`; `--delete-local --yes` guard | dry-run locks flag/validate shape; live workflow proves duplicate fail-fast and rename recovery |
 | ✓ | drive +push | shortcut | drive_push_dryrun_test.go::TestDrive_PushDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; `--if-exists`; `--on-duplicate-remote=newest\|oldest`; `--delete-remote --yes` | dry-run locks flag/validate shape; live workflow proves overwrite + duplicate cleanup converges status |
 | ✓ | drive +secure-label-list | shortcut | drive_secure_label_dryrun_test.go::TestDrive_SecureLabelDryRun | `--page-size`; `--page-token`; `--lang` | dry-run only; live label availability depends on tenant security-label configuration |

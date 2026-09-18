@@ -107,7 +107,7 @@
 
 1. 如有 `create_target` 项，先执行。
 2. 按确认计划顺序执行 `move_resource` 项。
-3. 如果命令返回 task ID，执行异步任务轮询。
+3. 若命令返回 `ready=false`，按 `next_command` 继续查询；`ready=true` 时无需继续轮询，即使仍返回 task ID。
 4. 输出写操作执行摘要。
 
 ### 进度 UI
