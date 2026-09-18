@@ -183,6 +183,10 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+form-create", "+form-delete", "+form-list", "+form-update", "+form-get", "+form-detail",
 		"+form-questions-create", "+form-questions-delete", "+form-questions-update", "+form-questions-list",
 		"+form-submit", "+form-share-get", "+form-share-update",
+		"+form-submission-settings-get", "+form-submission-settings-update",
+		"+form-notification-settings-get", "+form-notification-settings-update",
+		"+form-post-submit-settings-get", "+form-post-submit-settings-update",
+		"+form-lottery-settings-get", "+form-lottery-settings-update",
 		"+dashboard-list", "+dashboard-get", "+dashboard-share-get", "+dashboard-share-update", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
 		"+dashboard-block-list", "+dashboard-block-get", "+dashboard-block-get-data", "+dashboard-block-create", "+dashboard-block-update", "+dashboard-block-delete",
 		"+workspace-create", "+workspace-entity-list", "+workspace-move-in",
@@ -224,6 +228,16 @@ func TestShareManagementShortcutScopes(t *testing.T) {
 		{
 			name:   "form update requires update scope",
 			scopes: BaseFormShareUpdate.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form submission settings get requires update scope",
+			scopes: BaseFormSubmissionSettingsGet.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form lottery settings update requires update scope",
+			scopes: BaseFormLotterySettingsUpdate.Scopes,
 			want:   []string{"base:form:update"},
 		},
 	}
