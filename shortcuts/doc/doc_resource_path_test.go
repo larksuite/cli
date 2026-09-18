@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -45,12 +46,24 @@ func TestDocResourcePaths(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, path := range []string{"@./" + name, "@./draft/" + name, "@" + filepath.Join(cwd, "draft", name)} {
+			for _, path := range []string{"@./" + name, "@./draft/" + name, "@./old-workspace/" + name, "@" + filepath.Join(cwd, "draft", name)} {
 				got, err := readDocResourceFixture(runtime, kind, path)
 				if err != nil || got != fixture {
 					t.Fatalf("read %q = %q, %v; want fixture", path, got, err)
 				}
 			}
+			// Downloading from inside the draft directory can leave the shell there,
+			// while XML references still carry the original workspace prefix.
+			cmdutil.TestChdir(t, "draft")
+			for _, source := range []string{"document.xml", filepath.Join(cwd, "draft", "document.xml")} {
+				runtime.Cmd.Annotations[docsContentPathAnnotation] = source
+				got, err := readDocResourceFixture(runtime, kind, "@./draft/"+name)
+				if err != nil || got != fixture {
+					t.Fatalf("read after chdir with source %q = %q, %v; want fixture", source, got, err)
+				}
+			}
+			cmdutil.TestChdir(t, cwd)
+			runtime.Cmd.Annotations[docsContentPathAnnotation] = "draft/document.xml"
 			// A CWD file wins even when the XML directory has a valid namesake.
 			cwdFixture := fixture + "\n"
 			if err := os.WriteFile(name, []byte(cwdFixture), 0o600); err != nil {
@@ -114,26 +127,59 @@ func readDocResourceFixture(runtime *common.RuntimeContext, kind, path string) (
 
 type deniedDocResourceFileIO struct {
 	fileio.FileIO
-	err   error
-	paths []string
+	err    error
+	paths  []string
+	failAt int
 }
 
 func (f *deniedDocResourceFileIO) Stat(path string) (fileio.FileInfo, error) {
 	f.paths = append(f.paths, path)
+	if len(f.paths) < f.failAt {
+		return nil, fs.ErrNotExist
+	}
 	return nil, f.err
 }
 
 func TestDocResourcePathDoesNotFallBackOnAccessFailure(t *testing.T) {
 	for _, failure := range []error{fs.ErrPermission, &fileio.PathValidationError{Err: fs.ErrNotExist}} {
-		f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("resource-path-denied"))
-		fio := &deniedDocResourceFileIO{FileIO: f.ResolveFileIO(context.Background()), err: failure}
-		f.FileIOProvider = docsScriptFileIOProvider{fileIO: fio}
-		runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{
-			Use: "test", Annotations: map[string]string{docsContentPathAnnotation: "draft/document.xml"},
-		}, docsTestConfigWithAppID("resource-path-denied"), f, core.AsUser)
-		_, _, err := statDocResource(runtime, "asset.html")
-		if !errors.Is(err, failure) || len(fio.paths) != 1 || fio.paths[0] != "asset.html" {
-			t.Fatalf("error = %v, attempted paths = %v", err, fio.paths)
+		for _, failAt := range []int{1, 2, 3} {
+			f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("resource-path-denied"))
+			fio := &deniedDocResourceFileIO{FileIO: f.ResolveFileIO(context.Background()), err: failure, failAt: failAt}
+			f.FileIOProvider = docsScriptFileIOProvider{fileIO: fio}
+			runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{
+				Use: "test", Annotations: map[string]string{docsContentPathAnnotation: "draft/document.xml"},
+			}, docsTestConfigWithAppID("resource-path-denied"), f, core.AsUser)
+			_, _, err := statDocResource(runtime, "old/asset.html")
+			if !errors.Is(err, failure) || len(fio.paths) != failAt {
+				t.Fatalf("failure at %d: error = %v, attempted paths = %v", failAt, err, fio.paths)
+			}
 		}
+	}
+}
+
+func TestDocResourcePathPreservesSubdirectoryPrecedence(t *testing.T) {
+	runtime := newLocalDocResourceTestRuntime(t, nil)
+	runtime.Cmd.Annotations = map[string]string{docsContentPathAnnotation: "draft/document.xml"}
+	if err := os.MkdirAll("draft/assets", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("draft/asset.txt", []byte("basename"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("draft/assets/asset.txt", []byte("nested"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readDocResourceFixture(runtime, "source", "@assets/asset.txt")
+	if err != nil || got != "nested" {
+		t.Fatalf("XML-relative precedence = %q, %v", got, err)
+	}
+	// An existing empty resource must fail validation, not use a namesake.
+	if err := os.WriteFile("draft/assets/asset.txt", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = readDocResourceFixture(runtime, "source", "@assets/asset.txt")
+	var validation *errs.ValidationError
+	if !errors.As(err, &validation) || validation.Subtype != errs.SubtypeInvalidArgument || validation.Param != "path" {
+		t.Fatalf("empty resource error = %#v", err)
 	}
 }

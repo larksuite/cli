@@ -13,7 +13,8 @@ import (
 )
 
 // statDocResource keeps file access policy in the invocation's FileIO. Only a
-// missing relative resource may fall back to the source XML's directory;
+// missing relative resource may fall back to the source XML's directory,
+// first with its relative path and then with only its basename;
 // permission, policy and content failures must not select a different file.
 func statDocResource(runtime *common.RuntimeContext, path string) (string, fileio.FileInfo, error) {
 	fio := runtime.FileIO()
@@ -25,10 +26,18 @@ func statDocResource(runtime *common.RuntimeContext, path string) (string, filei
 	if source == "" || runtime.Str("doc-format") == "markdown" {
 		return path, info, err
 	}
-	candidate := filepath.Join(filepath.Dir(source), path)
-	if candidate == filepath.Clean(path) {
-		return path, info, err
+	for _, candidate := range []string{
+		filepath.Join(filepath.Dir(source), path),
+		filepath.Join(filepath.Dir(source), filepath.Base(path)),
+	} {
+		if candidate == filepath.Clean(path) {
+			continue
+		}
+		path = candidate
+		info, err = fio.Stat(path)
+		if err == nil || !errors.Is(err, fs.ErrNotExist) || errors.Is(err, fileio.ErrPathValidation) {
+			return path, info, err
+		}
 	}
-	info, err = fio.Stat(candidate)
-	return candidate, info, err
+	return path, info, err
 }

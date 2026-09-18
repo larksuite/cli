@@ -51,7 +51,7 @@ func testDocsLocalResourcesWorkflow(t *testing.T, defaultAs string) {
 	overwrittenSource := []byte("overwritten source fixture\n")
 	writeLocalResourceFixture(t, workDir, "created.png", hundredByEightyPNG)
 	writeLocalResourceFixture(t, draftDir, "positioned.png", onePixelPNG)
-	writeLocalResourceFixture(t, draftDir, "update.xml", []byte(`<img path="@positioned.png" caption="positioned image"/>`))
+	writeLocalResourceFixture(t, draftDir, "update.xml", []byte(`<img path="@./draft/positioned.png" caption="positioned image"/>`))
 	writeLocalResourceFixture(t, workDir, "created.txt", createdSource)
 	writeLocalResourceFixture(t, workDir, "appended.png", onePixelPNG)
 	writeLocalResourceFixture(t, workDir, "replaced.png", onePixelPNG)
@@ -121,10 +121,10 @@ func testDocsLocalResourcesWorkflow(t *testing.T, defaultAs string) {
 				"--doc", docToken,
 				"--command", "block_insert_after",
 				"--block-id", anchorBlockID,
-				"--content", "@./draft/update.xml",
+				"--content", "@" + filepath.Join(draftDir, "update.xml"),
 			},
 			DefaultAs: defaultAs,
-			WorkDir:   workDir,
+			WorkDir:   draftDir,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

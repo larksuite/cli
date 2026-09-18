@@ -28,27 +28,37 @@ func TestDocsResourcePathsParseAndWriteDryRun(t *testing.T) {
 	writeLocalResourceFixture(t, draftDir, ".presentation-decision.json", []byte(`{"visual_plan":{"blocks":[{"type":"whiteboard","min_count":1}]}}`))
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	t.Cleanup(cancel)
-	for _, mode := range []string{"xml directory fallback", "absolute"} {
+	for _, mode := range []string{"xml directory fallback", "absolute", "xml basename fallback", "changed cwd"} {
 		t.Run(mode, func(t *testing.T) {
 			ref := func(name string) string {
 				if mode == "absolute" {
 					return "@" + html.EscapeString(filepath.Join(draftDir, name))
+				}
+				if mode == "xml basename fallback" {
+					return "@./old-workspace/" + name
+				}
+				if mode == "changed cwd" {
+					return "@./draft/" + name
 				}
 				return "@./" + name
 			}
 			content := fmt.Sprintf(`<p>path fixture</p><img path="%s"/><source path="%s"/><whiteboard type="svg" path="%s"/><html5-block path="%s"/>`,
 				ref("image.png"), ref("attachment.txt"), ref("diagram.svg"), ref("widget.html"))
 			writeLocalResourceFixture(t, draftDir, "draft.xml", []byte(content))
+			commandDir, contentPath := workDir, "@./draft/draft.xml"
+			if mode == "changed cwd" {
+				commandDir, contentPath = draftDir, "@"+filepath.Join(draftDir, "draft.xml")
+			}
 			for _, operation := range []string{"parse", "create", "update"} {
 				t.Run(operation, func(t *testing.T) {
-					args := []string{"docs", "+script", "--command", "parse", "--content", "@./draft/draft.xml"}
+					args := []string{"docs", "+script", "--command", "parse", "--content", contentPath}
 					if operation == "create" {
-						args = []string{"docs", "+create", "--content", "@./draft/draft.xml", "--dry-run"}
+						args = []string{"docs", "+create", "--content", contentPath, "--dry-run"}
 					}
 					if operation == "update" {
-						args = []string{"docs", "+update", "--doc", "doxcnResourcePathFixture", "--command", "append", "--content", "@./draft/draft.xml", "--dry-run"}
+						args = []string{"docs", "+update", "--doc", "doxcnResourcePathFixture", "--command", "append", "--content", contentPath, "--dry-run"}
 					}
-					result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "bot", WorkDir: workDir, Env: docsScriptE2EEnv(t)})
+					result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "bot", WorkDir: commandDir, Env: docsScriptE2EEnv(t)})
 					require.NoError(t, err)
 					result.AssertExitCode(t, 0)
 					result.AssertStdoutStatus(t, true)
