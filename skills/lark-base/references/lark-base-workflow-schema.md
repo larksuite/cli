@@ -3,6 +3,8 @@
 本文档是 Workflow `steps` JSON 的单一事实来源（SSOT），定义完整数据结构，适用于：
 - **查询场景**：理解 `+workflow-get` 返回的 `steps` 结构
 - **创建/修改场景**：构造 `+workflow-create` / `+workflow-update` 的 `--json` body
+> **读取边界**：此 schema 描述 API 结构，不保证已配置的内嵌公式能完整导出或往返。解释空值或复用 `steps` 前，先读 [读取完整性与回写边界](lark-base-workflow.md#读取完整性与回写边界)。
+
 > 💡 **本文档是纯字段参考**。如需**创建/修改**工作流的完整示例，请阅读 [Workflow](lark-base-workflow.md)。
 ---
 ## 📖 快速导航
