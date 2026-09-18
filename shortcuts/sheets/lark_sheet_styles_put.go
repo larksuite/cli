@@ -32,7 +32,7 @@ import (
 var StylesPut = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+styles-put",
-	Description: "Apply one declarative visual spec (styles/merges/row-col sizes/freeze) to existing sheets; sent as one batch request, or several when the spec is large (each atomic on its own, no rollback).",
+	Description: "Apply one declarative visual spec (styles/merges/row-col sizes/freeze) to existing sheets; sent as one batch request, or several when the spec is large (earlier requests are not rolled back; read back before retrying).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	// A whole-column / whole-row cell_styles range is closed against the
@@ -109,11 +109,13 @@ var StylesPut = common.Shortcut{
 				// already succeeded.
 				if i == 0 {
 					// A failed FIRST request is not the same as an untouched
-					// sheet: batch_update is fail-fast but not transactional,
-					// so operations before the failing one inside that request
-					// stay applied, and a transport failure leaves the outcome
-					// unknown entirely. Only the backend saying "0 succeeded"
-					// settles it.
+					// sheet: batch_update is fail-fast, and whether the
+					// operations before the failing one inside that request
+					// survived depends on the batch (pure style/merge/size
+					// stamps are buffered and dropped together; anything that
+					// flushes the buffer is not), while a transport failure
+					// leaves the outcome unknown entirely. Only the backend
+					// saying "0 succeeded" settles it.
 					if toolReportedZeroApplied(err) {
 						return attachSheetsWarningsToError(err, []string{fmt.Sprintf(
 							"--styles was sent as %d batch requests; the first one failed with nothing applied, so the sheet is unchanged — fix the spec and re-run it whole",

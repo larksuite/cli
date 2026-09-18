@@ -381,8 +381,11 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 	}
 }
 
-// TestFlattenToolErrorMsg_PartialFailureRecovery pins the no-rollback recovery
-// prescription appended to server-side "N succeeded, M failed" errors.
+// TestFlattenToolErrorMsg_PartialFailureRecovery pins the recovery prescription
+// appended to server-side "N succeeded, M failed" errors: under fail-fast the
+// succeeded count is not a persistence guarantee (fault injection shows a pure
+// cell/structure batch applying nothing at all), so the prescription is a
+// read-back — never "resend from the first failed index".
 func TestFlattenToolErrorMsg_PartialFailureRecovery(t *testing.T) {
 	t.Parallel()
 
@@ -390,10 +393,10 @@ func TestFlattenToolErrorMsg_PartialFailureRecovery(t *testing.T) {
 		return `{"error":` + jsonQuote(inner) + `}`
 	}
 
-	t.Run("single failure prescribes resend-from-index", func(t *testing.T) {
+	t.Run("single failure prescribes read-back, not resend-from-index", func(t *testing.T) {
 		t.Parallel()
 		msg := flattenToolErrorMsg(wrap(`{"message":"batch_update: 4 succeeded, 1 failed","failures":[{"index":4,"tool_name":"set_cell_range","error":"cells is required"}]}`), false, true)
-		for _, want := range []string{"operations[4] (set_cell_range)", "no rollback", "resend only operations[4:]"} {
+		for _, want := range []string{"operations[4] (set_cell_range)", "what the executor ran, not what persisted", "operations[:4] may have applied nothing", "Read the target back"} {
 			if !strings.Contains(msg, want) {
 				t.Fatalf("msg %q missing %q", msg, want)
 			}
@@ -411,7 +414,7 @@ func TestFlattenToolErrorMsg_PartialFailureRecovery(t *testing.T) {
 	t.Run("zero succeeded gets no note", func(t *testing.T) {
 		t.Parallel()
 		msg := flattenToolErrorMsg(wrap(`{"message":"batch_update: 0 succeeded, 1 failed","failures":[{"index":0,"tool_name":"set_cell_range","error":"e"}]}`), false, true)
-		if strings.Contains(msg, "no rollback") {
+		if strings.Contains(msg, "Read the target back") {
 			t.Fatalf("msg %q must not carry the note when nothing was applied", msg)
 		}
 	})

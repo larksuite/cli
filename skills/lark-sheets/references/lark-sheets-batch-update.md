@@ -27,7 +27,7 @@
 
 **行高列宽批量不走这里**：多行 / 多列不同尺寸用 `+styles-put` 的 `row_sizes` / `col_sizes`（可与样式同批），或 `+rows-resize --heights` / `+cols-resize --widths` 的 map 形态（见 `references/lark-sheets-range-operations.md`）；map 形态不可作为 `--operations` 子操作嵌入（子操作里仍可用单区间形态 `range` + `height`/`width`）。
 
-**执行语义（fail-fast；失败后哪些已生效取决于批次构成）**：默认首个失败的子操作即中断剩余操作。此前的子操作**是否已落盘不统一**：纯单元格 / 行列结构类写入在提交前只累计在内存，失败时整体不落盘（等效回滚）；而图表 / 透视表等对象类子操作执行时会**先把此前累计的写入提交落盘再创建对象**——批次含这类子操作时，失败前完成的部分（含其之前的普通写入）已实际生效、无法回滚。因此失败后**不要假设"全部回滚"或"全部保留"**：先看返回 `results` 里各子操作的状态，再回读现状（行列数 / 目标格 / `+chart-list` 等对象清单）确认已生效集合，只补发未生效部分——盲目整批重发会重复应用已生效操作（如插行 / 建图），盲目只发失败尾可能写到未生效的旧结构上。传 `--continue-on-error` 则遇失败仍继续执行剩余操作，已成功部分保留（返回 "N succeeded, M failed"）。
+**执行语义（fail-fast；"N succeeded" 不等于已落盘）**：默认首个失败的子操作即中断剩余操作。回包里的 `N succeeded` 是服务端**执行**过的子操作数，不是落盘数，此前的子操作**是否已落盘不统一**：纯单元格 / 行列结构类写入在提交前只累计在内存，失败时整批丢弃——回包可能报 `N succeeded` 而 revision 未变、目标格全空；而图表 / 透视表等对象类子操作执行时会**先把此前累计的写入提交落盘再创建对象**——这部分写入无法回滚，但对象自身即使计入 succeeded 也可能没建出来，它之后的写入同样丢失。因此失败后**不要假设"全部回滚"或"全部保留"**，也**不要按"从失败下标往后重发"恢复**——那等于默认失败点之前都已生效，纯写入批次会因此整段丢失。正确做法：先看返回 `results` 里各子操作的状态，再回读现状（行列数 / 目标格 / `+chart-list` 等对象清单）确认已生效集合，只补发未生效部分（盲目整批重发会重复应用已生效操作，如插行 / 建图）。传 `--continue-on-error` 则遇失败仍继续执行剩余操作，已成功部分确实保留（返回 "N succeeded, M failed"）。
 
 **公式相关批处理的完成流程**：
 - 写前：先读 `references/lark-sheets-formula-translation.md`，把公式改写成飞书可执行语义。
@@ -55,7 +55,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--operations` | string + File + Stdin（复合 JSON） | required | JSON 数组：[{"shortcut":"+xxx-yyy","input":{...}}, ...]。shortcut 用 CLI 名；input 是该 shortcut 的入参集——含子表定位 sheet_id（或 sheet_name），但不含 spreadsheet token/url（后者只在顶层 --url/--spreadsheet-token 给一次；+batch-update 顶层没有 --sheet-id）；input 的键是该 shortcut 的 flag 展平成 JSON（如 "range":"A11:B12"），不是再套一层嵌套。基础 flag 查 --help，复合 JSON flag 查 --print-schema --flag-name <flag>；不要手填 operation 字段（由 CLI 按 shortcut 自动注入）。默认 fail-fast：首个失败即中断剩余操作；此前子操作是否已落盘**不统一**（纯单元格/结构写入失败时整体不落盘，图表/透视表等对象子操作会提前把累计写入落盘且自身无法回滚），失败后不要假设全回滚或全保留——先看 results 再回读现状确认已生效集合，只补发未生效部分；传 --continue-on-error 遇失败仍继续、已成功部分保留；不支持嵌套；按数组顺序串行执行 |
+| `--operations` | string + File + Stdin（复合 JSON） | required | JSON 数组：[{"shortcut":"+xxx-yyy","input":{...}}, ...]。shortcut 用 CLI 名；input 是该 shortcut 的入参集——含子表定位 sheet_id（或 sheet_name），但不含 spreadsheet token/url（后者只在顶层 --url/--spreadsheet-token 给一次；+batch-update 顶层没有 --sheet-id）；input 的键是该 shortcut 的 flag 展平成 JSON（如 "range":"A11:B12"），不是再套一层嵌套。基础 flag 查 --help，复合 JSON flag 查 --print-schema --flag-name <flag>；不要手填 operation 字段（由 CLI 按 shortcut 自动注入）。默认 fail-fast：首个失败即中断剩余操作；此前子操作是否已落盘**不统一**（纯单元格/结构写入失败时整体不落盘，图表/透视表等对象子操作会提前把累计写入落盘、这部分无法回滚，但对象自身即使计入 succeeded 也可能没建出来），失败后不要假设全回滚或全保留——先看 results 再回读现状确认已生效集合，只补发未生效部分；传 --continue-on-error 遇失败仍继续、已成功部分保留；不支持嵌套；按数组顺序串行执行 |
 | `--continue-on-error` | bool | optional | 遇子操作失败时继续执行剩余操作；默认 false（首个失败即整批中断） |
 
 ### `+batch-chart-create`
@@ -222,4 +222,4 @@ lark-cli sheets +cells-batch-clear --url "..." \
 
 - `Validate`：`+batch-update` 的 `--operations` 必须合法 JSON，且为非空数组；逐个子操作 `shortcut` / `input` 字段必填校验，input 键必须在该 shortcut 的 flag 词汇表内（未知键报错并提示最近似键与完整键契约）；**校验错误聚合上报**——所有子操作的首错一次性返回，全部修完再重发一次即可；**禁止嵌套 `+batch-update`**。`+cells-batch-clear` 的 `--ranges` 必须 JSON 数组、每项带 sheet 前缀，`high-risk-write` 强制 `--yes` 或 `--dry-run`（`--scope` 默认 `content`）。
 - `DryRun`：按顺序输出每个子操作的目标 API + 请求 body 模板，不发起调用。
-- `Execute`：按声明顺序串行执行；默认 fail-fast。失败时已成功子操作不回滚，先按子操作类型回读现状，只重发失败起的剩余子集；成功时也完成上述分流验证。
+- `Execute`：按声明顺序串行执行；默认 fail-fast。回包的 `N succeeded` 只表示执行过、不表示已落盘（纯单元格 / 结构批次整批丢弃，对象子操作自身也可能丢失）；失败后按子操作类型回读现状，只补发确实没生效的部分，不按失败下标往后重发；成功时也完成上述分流验证。

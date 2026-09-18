@@ -103,6 +103,14 @@ type objectCRUDSpec struct {
 	// before it happens, without blocking the call. Local-only (no network), so
 	// it stays safe to call from dry-run.
 	createWarn func(rt flagView) string
+	// inputWarnings, when set, inspects the tool input built for a create or
+	// an update and returns advisories to attach to the result (and to the
+	// dry-run preview) as `warnings`. Unlike createWarn it sees the wire
+	// input, so it can reason about --properties, and it runs on both write
+	// paths. Used by filter views, where the backend accepts a notEquals
+	// condition and then stores no value for it. Local-only (no network), so
+	// it stays safe to call from dry-run.
+	inputWarnings func(input map[string]interface{}) []string
 }
 
 // sheetIDFlagOnCreate / sheetNameFlagOnCreate return the cobra flag name
@@ -150,6 +158,11 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetName := strings.TrimSpace(runtime.Str(spec.sheetNameFlagOnCreate()))
 			input, _ := objectCreateInput(runtime, token, sheetID, sheetName, spec)
 			dr := invokeToolDryRun(token, ToolKindWrite, spec.toolName, input)
+			if spec.inputWarnings != nil {
+				if w := spec.inputWarnings(input); len(w) > 0 {
+					dr = dr.Set("warnings", w)
+				}
+			}
 			if spec.createWarn != nil {
 				if w := spec.createWarn(runtime); w != "" {
 					dr = dr.Set("placement_warning", w)
@@ -188,6 +201,9 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			out, err := callTool(ctx, runtime, token, ToolKindWrite, spec.toolName, input)
 			if err != nil {
 				return err
+			}
+			if spec.inputWarnings != nil {
+				out = appendSheetsWarnings(out, spec.inputWarnings(input))
 			}
 			if spec.createWarn != nil {
 				if w := spec.createWarn(runtime); w != "" {
@@ -261,7 +277,13 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			token, _ := resolveSpreadsheetToken(runtime)
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
 			input, _ := objectUpdateInput(runtime, token, sheetID, sheetName, spec)
-			return invokeToolDryRun(token, ToolKindWrite, spec.toolName, input)
+			dr := invokeToolDryRun(token, ToolKindWrite, spec.toolName, input)
+			if spec.inputWarnings != nil {
+				if w := spec.inputWarnings(input); len(w) > 0 {
+					dr = dr.Set("warnings", w)
+				}
+			}
+			return dr
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 			token, err := resolveSpreadsheetTokenExec(runtime)
@@ -280,6 +302,9 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			if err != nil {
 				objectID, _ := input[spec.idField].(string)
 				return annotateStaleObjectID(err, spec, objectID)
+			}
+			if spec.inputWarnings != nil {
+				out = appendSheetsWarnings(out, spec.inputWarnings(input))
 			}
 			runtime.Out(out, nil)
 			return nil
@@ -1043,7 +1068,87 @@ var filterViewSpec = objectCRUDSpec{
 	idField:            "view_id",
 	enhanceCreateInput: filterViewEnhance,
 	enhanceUpdateInput: filterViewEnhance,
+	inputWarnings:      filterViewNegatedEqualityWarnings,
 }
+
+// filterViewNegatedEqualityWarnings flags the one filter-view condition the
+// backend accepts and then throws away: "not equal to <value>".
+//
+// A text `notEquals` (and its already-canonical spelling, multiValue
+// `notEqual`) is normalized server-side into a multiValue filter -- the
+// checkbox-style "show these values" model -- without turning the excluded
+// value into the complementary keep-set. Measured on a live sheet right after
+// the create:
+//
+//	+filter-view-list          -> compare_type notEqual, values ["done"]
+//	GET .../conditions/query   -> filter_type multiValue, expected []
+//
+// The canonical store is empty from the moment of the create; the list
+// read-back is a cached echo of the request that flips to the stored state --
+// compare_type equal, values [], a view with no value selected -- after an
+// unpredictable window (one measured view flipped within minutes, another was
+// still echoing 20 minutes later, which is why only some callers ever see it).
+// Every other compare_type round-trips intact, including doesNotContain /
+// notBeginsWith / notEndsWith and number notEqual, and a sheet-level
+// +filter-create keeps notEquals working (its filtered_out_rows are correct),
+// so the loss is specific to filter views.
+//
+// The call is not blocked: it succeeds and the view exists. What the caller
+// must not do is trust the read-back -- which is exactly what an agent does
+// when it verifies its own write -- so the advisory rides on the result and
+// names the spellings that do persist.
+func filterViewNegatedEqualityWarnings(input map[string]interface{}) []string {
+	props, _ := input["properties"].(map[string]interface{})
+	if props == nil {
+		return nil
+	}
+	rules, _ := props["rules"].([]interface{})
+	var columns []string
+	for _, r := range rules {
+		rule, _ := r.(map[string]interface{})
+		if rule == nil {
+			continue
+		}
+		conditions, _ := rule["conditions"].([]interface{})
+		for _, c := range conditions {
+			cond, _ := c.(map[string]interface{})
+			if cond == nil {
+				continue
+			}
+			condType, _ := cond["type"].(string)
+			compare, _ := cond["compare_type"].(string)
+			if !isNegatedEqualityCondition(condType, compare) {
+				continue
+			}
+			column, _ := rule["column_index"].(string)
+			if column == "" {
+				column = "(unnamed column)"
+			}
+			columns = append(columns, column)
+			break
+		}
+	}
+	if len(columns) == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"filter-view rule on column %s uses a not-equal condition: the backend stores filter-view conditions as a multiValue value set and drops the excluded value, so the view ends up with an empty value set and filters nothing. +filter-view-list keeps echoing the condition back for a while and then flips to compare_type=equal with values [], so neither read confirms anything -- do not take the read-back as proof the view filters. Express the rule as the values to KEEP instead ({\"type\":\"multiValue\",\"compare_type\":\"equal\",\"values\":[...]}), or use doesNotContain, or apply it as a sheet-level filter with +filter-create -- those persist.",
+		strings.Join(columns, ", "))}
+}
+
+// isNegatedEqualityCondition reports whether a condition is the "not equal to
+// this value" shape that filter views lose. `notEquals` is the text spelling
+// the schema exposes; `notEqual` is what the backend echoes back, and callers
+// who copy a read-back into an update send that one.
+func isNegatedEqualityCondition(condType, compareType string) bool {
+	switch condType {
+	case "text", "multiValue":
+		return compareType == "notEquals" || compareType == "notEqual"
+	default:
+		return false
+	}
+}
+
 var FilterViewCreate = newObjectCreateShortcut(filterViewSpec)
 var FilterViewUpdate = newObjectUpdateShortcut(filterViewSpec)
 var FilterViewDelete = newObjectDeleteShortcut(filterViewSpec)

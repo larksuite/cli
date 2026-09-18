@@ -377,3 +377,24 @@ func TestMultiAreaRangeStillPrescribedOnWrites(t *testing.T) {
 		}
 	})
 }
+
+// TestCsvGet_StripsOnlyTheRowPrefixSpace pins the fix for a read that came
+// back one space wider than the sheet: the earlier stripper removed "[row=N]"
+// and then trimmed a leading COMMA, while the tool separates the marker from
+// the data with a SPACE — so every first field arrived as " 列A" and callers
+// that copied the CSV verbatim delivered 20 wrong cells.
+//
+// Trimming is exactly one space: real leading / trailing spaces inside a cell
+// are data and must survive, and a first field that is empty ("[row=4] ,b,c")
+// must stay empty rather than pulling the next column left.
+func TestCsvGet_StripsOnlyTheRowPrefixSpace(t *testing.T) {
+	t.Parallel()
+	in := map[string]interface{}{
+		"annotated_csv": "[row=1] 列A,列B\n[row=2] 文本1,\"  前后空格1  \"\n[row=3] ,b\n[row=4]   两个空格,c",
+	}
+	out := addPlainCsvField(in).(map[string]interface{})
+	want := "列A,列B\n文本1,\"  前后空格1  \"\n,b\n  两个空格,c"
+	if got := out["csv"].(string); got != want {
+		t.Errorf("csv = %q, want %q", got, want)
+	}
+}

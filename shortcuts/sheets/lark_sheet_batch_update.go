@@ -33,13 +33,27 @@ import (
 //   { excel_id, operations: [{tool_name, input}, ...], continue_on_error? }
 //
 // continue_on_error defaults to false (fail-fast): execution stops at the
-// first failing sub-op, but sub-ops already applied are NOT rolled back —
-// the server reports "N succeeded, M failed" and the N stay in the sheet
-// (verified against live batches; earlier docs wrongly promised a rollback,
-// which made agents resend whole batches and double-apply the successes).
-// CLI leaves the default in place for the fan-out shortcuts since they're
-// idempotent stamps; only +batch-update lets callers flip it via
-// --continue-on-error.
+// first failing sub-op, and the "N succeeded" the server reports is the
+// count of sub-ops it RAN, not of writes that survived. Verified by fault
+// injection against live batches (bogus sheet_id as the last sub-op):
+//
+//   - pure cell / structure batch (set_cell_range ×2 + freeze; merge +
+//     insert_dimension + set_cell_range): "3 succeeded, 1 failed", yet the
+//     target cells stayed empty, the merge / row count never changed and the
+//     document revision did not move — the buffered writes are dropped as a
+//     whole, i.e. the failing batch is effectively atomic.
+//   - batch with an object sub-op (set_cell_range → chart-create-basic →
+//     set_cell_range): the writes BEFORE the chart landed (the object flushes
+//     the buffer to disk), the chart itself did NOT exist afterwards despite
+//     being counted as succeeded, and the write after it was dropped.
+//   - --continue-on-error: the remaining sub-ops run and their writes do stay
+//     applied.
+//
+// So the only safe recovery after a fail-fast failure is to read the target
+// back and resend whatever is missing. Prescribing "resend from the first
+// failed index" silently loses every sub-op before it. CLI leaves the default
+// in place for the fan-out shortcuts since they're idempotent stamps; only
+// +batch-update lets callers flip it via --continue-on-error.
 
 // BatchUpdate accepts a CLI-shape operations array (each item
 // {shortcut, input}); on Validate / DryRun / Execute we translate each
@@ -49,7 +63,7 @@ import (
 var BatchUpdate = common.Shortcut{
 	Service:           "sheets",
 	Command:           "+batch-update",
-	Description:       "Execute a batch of write shortcuts in one request; fail-fast on the first failing sub-op (already-applied sub-ops are NOT rolled back).",
+	Description:       "Execute a batch of write shortcuts in one request; fail-fast on the first failing sub-op (what actually persisted is not uniform — read back before resending).",
 	Risk:              "high-risk-write",
 	Scopes:            []string{"sheets:spreadsheet:write_only"},
 	ConditionalScopes: []string{"sheets:spreadsheet:read"},
@@ -115,7 +129,7 @@ var BatchUpdate = common.Shortcut{
 	},
 	Tips: []string{
 		"high-risk-write: preview with --dry-run, get the user's explicit consent, then re-run with --yes appended — do not pass --yes before the user has confirmed (without it the call exits 10 asking for confirmation).",
-		"Execution is fail-fast, NOT transactional: on \"N succeeded, M failed\" the succeeded sub-ops stay applied (no rollback) — fix the failure and resend ONLY the operations from the first failed index onward; resending the whole batch re-applies the succeeded ones. Pass --continue-on-error to keep going past failures instead.",
+		"Execution is fail-fast, and \"N succeeded, M failed\" counts the sub-ops the server RAN, not the writes that survived: pure cell/structure sub-ops are buffered and the whole buffer is dropped when a later one fails (that batch ends up applying nothing), while a chart/pivot sub-op flushes the writes before it to disk and can itself still be lost. After a failure read the target back (+cells-get / +sheet-info / +<object>-list) and resend exactly what is missing — resending from the first failed index on the assumption the earlier sub-ops landed is how they get silently dropped. Pass --continue-on-error to keep going past failures; there the successes do stay applied.",
 		"Each sub-op is {shortcut, input}. Do NOT pass input.operation (implied by shortcut name). Repeated input.excel_id / input.spreadsheet_token / input.url fields are ignored; the top-level locator wins.",
 		"Chart operations are supported, but prefer +batch-chart-create / +batch-chart-update for chart-only work because their contracts and partial-failure recovery are simpler.",
 	},
@@ -749,7 +763,46 @@ func batchWarnings(runtime *common.RuntimeContext) []string {
 	}
 	out = append(out, batchCollidingDimFreezeNotes(runtime)...)
 	out = append(out, batchNarrowedRangeNotes(runtime)...)
+	out = append(out, batchFilterViewNegatedEqualityNotes(runtime)...)
 	return append(out, batchLegacyDimFreezeNotes(runtime)...)
+}
+
+// batchFilterViewNegatedEqualityNotes carries the filter-view "not equal"
+// advisory (see filterViewNegatedEqualityWarnings) into the batch path. The
+// sub-op never runs the shortcut's own Execute, so without this a rule the
+// backend stores empty is silent exactly where it is hardest to notice — one
+// line inside a batch whose result says nothing about that sub-op.
+func batchFilterViewNegatedEqualityNotes(runtime *common.RuntimeContext) []string {
+	rawOps, err := parseBatchOperationsFlag(runtime)
+	if err != nil {
+		return nil // a malformed --operations is the translator's to report.
+	}
+	var notes []string
+	for i, raw := range rawOps {
+		op, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		shortcut, _ := op["shortcut"].(string)
+		if shortcut != "+filter-view-create" && shortcut != "+filter-view-update" {
+			continue
+		}
+		item, ok := op["input"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if err := normalizeSubOpInputKeys(shortcut, item); err != nil {
+			continue
+		}
+		props, err := requireJSONObject(newMapFlagViewForCommand(shortcut, item), "properties")
+		if err != nil {
+			continue // the real translation reports a malformed --properties.
+		}
+		for _, w := range filterViewNegatedEqualityWarnings(map[string]interface{}{"properties": props}) {
+			notes = append(notes, fmt.Sprintf("operations[%d] (%s): %s", i, shortcut, w))
+		}
+	}
+	return notes
 }
 
 // batchNarrowedRangeNotes reports every +cells-set sub-op whose range was
@@ -1018,7 +1071,7 @@ func parseBatchOperationsFlag(runtime *common.RuntimeContext) ([]interface{}, er
 var CellsBatchSetStyle = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cells-batch-set-style",
-	Description: "Apply one style block to many sheet-prefixed ranges in one batch request (fail-fast, no rollback).",
+	Description: "Apply one style block to many sheet-prefixed ranges in one batch request (fail-fast; a failing range drops the earlier ones too — read back before resending).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
@@ -1138,7 +1191,7 @@ func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[
 var CellsBatchClear = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cells-batch-clear",
-	Description: "Clear content/formats across many sheet-prefixed ranges in one batch request (irreversible; fail-fast, no rollback).",
+	Description: "Clear content/formats across many sheet-prefixed ranges in one batch request (irreversible; fail-fast — a failing range drops the earlier ones too, read back before resending).",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
@@ -1214,7 +1267,7 @@ func cellsBatchClearInput(runtime *common.RuntimeContext, token string) (map[str
 var DropdownUpdate = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+dropdown-update",
-	Description: "Install or replace one dropdown across many sheet-prefixed ranges in one batch request (fail-fast, no rollback).",
+	Description: "Install or replace one dropdown across many sheet-prefixed ranges in one batch request (fail-fast; a failing range drops the earlier ones too — read back before resending).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
@@ -1263,7 +1316,7 @@ var DropdownUpdate = common.Shortcut{
 var DropdownDelete = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+dropdown-delete",
-	Description: "Clear dropdowns from many sheet-prefixed ranges in one batch request (irreversible; fail-fast, no rollback).",
+	Description: "Clear dropdowns from many sheet-prefixed ranges in one batch request (irreversible; fail-fast — a failing range drops the earlier ones too, read back before resending).",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},

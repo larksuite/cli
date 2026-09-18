@@ -70,8 +70,11 @@ func TestFlattenToolErrorMsg_OperationIndexProvenance(t *testing.T) {
 	t.Run("caller-authored operations get the index-based resend", func(t *testing.T) {
 		t.Parallel()
 		got := flattenToolErrorMsg(msg, false, true)
-		if !strings.Contains(got, "resend only operations[4:] onward") {
-			t.Errorf("want the index-based prescription, got %q", got)
+		if !strings.Contains(got, "operations[:4]") {
+			t.Errorf("want the failure index named in the prescription, got %q", got)
+		}
+		if !strings.Contains(got, "Read the target back") {
+			t.Errorf("want the read-back prescription, got %q", got)
 		}
 	})
 
@@ -83,8 +86,8 @@ func TestFlattenToolErrorMsg_OperationIndexProvenance(t *testing.T) {
 		}
 		for _, want := range []string{
 			"expands into the operations above client-side",
-			"stay applied (no rollback)",
-			"read the affected area back",
+			"is not proof the write landed",
+			"Read the affected area back",
 		} {
 			if !strings.Contains(got, want) {
 				t.Errorf("want %q in the prescription, got %q", want, got)

@@ -354,7 +354,7 @@ var DimDelete = common.Shortcut{
 	},
 	Tips: []string{
 		"Row/column deletion is irreversible. Always preview with --dry-run first.",
-		`Scattered ranges: --ranges '["5:5","8:8","11:13"]' deletes them in one batch request (fail-fast, no rollback) — the CLI orders positions descending, so indexes never shift under you.`,
+		`Scattered ranges: --ranges '["5:5","8:8","11:13"]' deletes them in one batch request (fail-fast; on failure read back before retrying — the earlier deletes may not have landed) — the CLI orders positions descending, so indexes never shift under you.`,
 	},
 }
 

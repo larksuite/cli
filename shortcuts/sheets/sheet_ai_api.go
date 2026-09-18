@@ -337,24 +337,28 @@ func flattenToolErrorMsg(msg string, continueOnError, callerAuthoredOps bool) st
 			}
 		}
 		out := detail.Message + " — " + strings.Join(parts, "; ")
-		// Partial failure is NOT rolled back server-side: the succeeded sub-ops
-		// stay applied. Spell out the recovery so agents don't resend the whole
-		// batch and double-apply the successes (observed in eval traces). Only
-		// under fail-fast does a single failure mean nothing after it ran —
-		// resend from that index. Under continue-on-error the later operations
-		// already executed, so even a single listed failure must be resent
-		// alone; prescribing the tail there would double-apply the successes.
+		// "N succeeded" counts the sub-ops the server RAN, not the writes that
+		// survived: under fail-fast a pure cell/structure batch is buffered and
+		// the whole buffer is dropped when a later sub-op fails, while an
+		// object sub-op (chart/pivot) flushes the writes before it to disk and
+		// can itself still be lost (both verified by fault injection — see the
+		// contract notes on +batch-update). So the fail-fast prescription is
+		// read-back, not "resend from the first failed index": that assumption
+		// silently loses every sub-op before the failure. Under
+		// continue-on-error the later operations already executed and their
+		// writes do stay applied, so there only the listed failures are resent
+		// — prescribing the tail would double-apply the successes.
 		if strings.Contains(detail.Message, "succeeded") &&
 			!strings.Contains(detail.Message, " 0 succeeded") {
 			switch {
 			case !callerAuthoredOps:
 				// Client-side expansion: the indexes above are internal, so
 				// prescribe a read-back instead of an un-issuable resend.
-				out += "; note: this command expands into the operations above client-side, so their indexes are not something you can resend directly. Succeeded operations stay applied (no rollback) — read the affected area back (+sheet-info / +cells-get), then re-issue only the part that did not land"
+				out += "; note: this command expands into the operations above client-side, so their indexes are not something you can resend directly. A reported \"succeeded\" is not proof the write landed — a failing sub-op can drop the buffered writes before it. Read the affected area back (+sheet-info / +cells-get), then re-issue only the part that did not land"
 			case !continueOnError && len(detail.Failures) == 1:
-				out += fmt.Sprintf("; note: succeeded operations stay applied (no rollback) — fix the failure and resend only operations[%d:] onward, do not resend the whole batch", firstFailed)
+				out += fmt.Sprintf("; note: the succeeded count is what the executor ran, not what persisted — pure cell/structure sub-ops are buffered and the whole buffer is dropped when a later one fails, so operations[:%d] may have applied nothing, while a chart/pivot sub-op flushes the writes before it to disk. Read the target back (+cells-get / +sheet-info / +<object>-list), then resend exactly what is missing; do not assume operations[:%d] landed and resend only operations[%d:]", firstFailed, firstFailed, firstFailed)
 			default:
-				out += "; note: succeeded operations stay applied (no rollback) — fix and resend only the failed operations listed above, do not resend the whole batch"
+				out += "; note: the remaining operations already ran and their writes stay applied — fix and resend only the failed operations listed above, do not resend the whole batch"
 			}
 		}
 		return out

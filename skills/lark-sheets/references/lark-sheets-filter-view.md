@@ -113,12 +113,14 @@ lark-cli sheets +filter-view-create --url "..." --sheet-id "$SID" \
 
 | `type` | 可用 `compare_type` | `values` |
 |---|---|---|
-| `text` | `contains` / `doesNotContain` / `beginsWith` / `doesNotBeginWith` / `endsWith` / `doesNotEndWith` / `equals` / `notEquals` | 字符串数组 |
+| `text` | `contains` / `doesNotContain` / `beginsWith` / `doesNotBeginWith` / `endsWith` / `doesNotEndWith` / `equals` / `notEquals`（筛选视图里存不住，见下） | 字符串数组 |
 | `number` | `equal` / `notEqual` / `greaterThan` / `greaterThanOrEqual` / `lessThan` / `lessThanOrEqual` / `between` / `notBetween` | 数值（或数值字符串）数组；`between` / `notBetween` 传两个边界 |
-| `multiValue` | `equal` / `notEqual` | 字符串数组（精确匹配其中任一值） |
+| `multiValue` | `equal` / `notEqual`（筛选视图里存不住，见下） | 字符串数组（精确匹配其中任一值） |
 | `color` | `backgroundColor` / `foregroundColor` | 不传 `values`（按单元格颜色筛选） |
 
 > ⚠️ `text` 用 `equals` / `notEquals`（**带 s**），`number` / `multiValue` 用 `equal` / `notEqual`（**不带 s**）——别混。完整 schema 跑 `+filter-view-create --print-schema --flag-name properties`。
+
+> ⚠️ **"不等于"在筛选视图里存不住，改写成要保留的值**：`text.notEquals` / `multiValue.notEqual` 会被服务端归一成 multiValue 值集合，被排除的值没有换算成要保留的值集合，最终存下来是空值集合，视图不筛任何行。回读也不能作为验收依据：`+filter-view-list` 会把请求里的条件原样回显一段时间（之后翻成 `compare_type: equal, values: []`），而官方 `GET /sheets/v3/.../filter_views/{view_id}/conditions/query` 从创建那一刻起读到的就是 `expected: []`。改用要保留的值集合 `{"type":"multiValue","compare_type":"equal","values":["未开始","进行中"]}`，或用 `doesNotContain`，或改用工作表级筛选 `+filter-create`（它的 `notEquals` 正常生效）。其余 compare_type（`doesNotContain` / `doesNotBeginWith` / `doesNotEndWith` / `number.notEqual` / `equals` 等）都能正常持久化。较新版本的 CLI 会在 create / update 的返回里带一条 `warnings` 说明这一点；没有这条 warnings 也不代表条件已生效，仍按本条改写。
 
 > `--range` **必须覆盖表头行**（如 `A1:F1000`），不能只包含数据行；`--view-name` 重名时服务端自动改名。
 
@@ -134,4 +136,4 @@ lark-cli sheets +filter-view-create --url "..." --sheet-id "$SID" \
 
 - `Validate`：XOR 公共四件套；`+filter-view-create` 校验 `--range` 起始行为表头（第一行）；`+filter-view-update` 必须先 `+filter-view-list` 确认 view 存在，`--properties` 必传（整组覆盖式）；`+filter-view-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：输出"将要 POST/PATCH/DELETE 的 view 请求模板"，零网络副作用；`--sheet-name` 在 dry-run 输出里生成为 `<resolve:Sheet1>` 占位符。
-- `Execute`：写后不自动回读；create/update 后必须调用 `+filter-view-list --view-id <id>` 比对 range + rules；delete 后 list 确认目标 view 不存在。
+- `Execute`：写后不自动回读；create/update 后必须调用 `+filter-view-list --view-id <id>` 比对 range + rules；delete 后 list 确认目标 view 不存在。`notEquals` / `notEqual` 类条件例外——它们在创建后会被原样回显一段时间，回读通过不代表真的存住了；改写成要保留的值集合或 `doesNotContain` 后再回读验证。

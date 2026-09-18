@@ -9,6 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 func TestBatchUpdate_Scopes(t *testing.T) {
@@ -972,5 +975,76 @@ func TestBatchUpdate_AggregatedErrorsKeepHints(t *testing.T) {
 		if !strings.Contains(ve.Message, want) {
 			t.Errorf("aggregated message should inline %q, got %q", want, ve.Message)
 		}
+	}
+}
+
+// TestBatchUpdateHelpAgreesOnFailureSemantics pins the three surfaces that
+// describe what survives a failed batch — the one-line Description, the Tips
+// block and the --operations flag text — against the behaviour verified by
+// fault injection: "N succeeded" counts sub-ops the server RAN, and a pure
+// cell/structure batch applies nothing at all when a later sub-op fails.
+//
+// They used to disagree: --operations documented the buffered-and-dropped
+// behaviour while the Tips promised "the succeeded sub-ops stay applied" and
+// prescribed resending from the first failed index. An agent that follows the
+// Tips after a failure silently loses every sub-op before the failure, so the
+// two must never drift apart again.
+func TestBatchUpdateHelpAgreesOnFailureSemantics(t *testing.T) {
+	t.Parallel()
+
+	surfaces := map[string]string{
+		"Description": BatchUpdate.Description,
+		"Tips":        strings.Join(BatchUpdate.Tips, "\n"),
+	}
+	for _, f := range BatchUpdate.Flags {
+		if f.Name == "operations" {
+			surfaces["--operations"] = f.Desc
+		}
+	}
+	if _, ok := surfaces["--operations"]; !ok {
+		t.Fatal("+batch-update lost its --operations flag")
+	}
+
+	for name, text := range surfaces {
+		for _, banned := range []string{
+			"succeeded sub-ops stay applied",
+			"succeeded operations stay applied",
+			"already-applied sub-ops are NOT rolled back",
+			"resend ONLY the operations from the first failed index",
+		} {
+			if strings.Contains(text, banned) {
+				t.Errorf("%s promises %q, but a failed pure cell/structure batch applies nothing", name, banned)
+			}
+		}
+	}
+
+	// The read-back prescription is the one recovery that is correct for every
+	// batch composition; it has to be stated where a failing caller looks.
+	if !strings.Contains(surfaces["Tips"], "read the target back") {
+		t.Errorf("Tips must prescribe reading the target back, got %q", surfaces["Tips"])
+	}
+}
+
+// TestBatchFilterViewNegatedEqualityNotes pins that the filter-view "not
+// equal" advisory survives the batch path, where the sub-op never runs the
+// shortcut's own Execute and the batch result says nothing per sub-op.
+func TestBatchFilterViewNegatedEqualityNotes(t *testing.T) {
+	t.Parallel()
+
+	ops := `[{"shortcut":"+cells-set","input":{"sheet_id":"s1","range":"A1","values":[["x"]]}},
+	         {"shortcut":"+filter-view-create","input":{"sheet_id":"s1","range":"A1:H20","properties":{"rules":[{"column_index":"G","conditions":[{"type":"text","compare_type":"notEquals","values":["done"]}]}]}}}]`
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("operations", "", "")
+	_ = cmd.ParseFlags(nil)
+	_ = cmd.Flags().Set("operations", ops)
+	notes := batchFilterViewNegatedEqualityNotes(&common.RuntimeContext{Cmd: cmd})
+	if len(notes) != 1 {
+		t.Fatalf("want one note, got %v", notes)
+	}
+	if !strings.HasPrefix(notes[0], "operations[1] (+filter-view-create): ") {
+		t.Errorf("note must name the sub-op index, got %q", notes[0])
+	}
+	if !strings.Contains(notes[0], "column G") {
+		t.Errorf("note must name the column, got %q", notes[0])
 	}
 }

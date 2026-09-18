@@ -1134,3 +1134,89 @@ func TestCondFormatStaleRuleIDHint(t *testing.T) {
 		}
 	})
 }
+
+// TestFilterViewNegatedEqualityWarnings pins the advisory on the one condition
+// the backend accepts and then stores empty: "not equal to <value>" on a
+// filter view. The create succeeds and the immediate read-back still echoes
+// the condition, so without this the caller's own verification confirms a
+// filter that is not there.
+func TestFilterViewNegatedEqualityWarnings(t *testing.T) {
+	t.Parallel()
+
+	rule := func(col, condType, compare string) map[string]interface{} {
+		return map[string]interface{}{
+			"column_index": col,
+			"conditions": []interface{}{map[string]interface{}{
+				"type":         condType,
+				"compare_type": compare,
+				"values":       []interface{}{"done"},
+			}},
+		}
+	}
+	input := func(rules ...map[string]interface{}) map[string]interface{} {
+		items := make([]interface{}, 0, len(rules))
+		for _, r := range rules {
+			items = append(items, r)
+		}
+		return map[string]interface{}{
+			"properties": map[string]interface{}{"rules": items},
+		}
+	}
+
+	t.Run("text notEquals warns and names the column", func(t *testing.T) {
+		t.Parallel()
+		got := filterViewNegatedEqualityWarnings(input(rule("G", "text", "notEquals")))
+		if len(got) != 1 {
+			t.Fatalf("want one advisory, got %v", got)
+		}
+		for _, want := range []string{"column G", "multiValue", "doesNotContain", "+filter-create"} {
+			if !strings.Contains(got[0], want) {
+				t.Errorf("advisory %q missing %q", got[0], want)
+			}
+		}
+	})
+
+	t.Run("multiValue notEqual warns too", func(t *testing.T) {
+		t.Parallel()
+		// The spelling the backend echoes back, so it is what a caller who
+		// round-trips a +filter-view-list into an update sends.
+		if got := filterViewNegatedEqualityWarnings(input(rule("B", "multiValue", "notEqual"))); len(got) != 1 {
+			t.Fatalf("want one advisory, got %v", got)
+		}
+	})
+
+	t.Run("one advisory per affected column", func(t *testing.T) {
+		t.Parallel()
+		got := filterViewNegatedEqualityWarnings(input(
+			rule("A", "text", "contains"),
+			rule("B", "text", "notEquals"),
+			rule("C", "multiValue", "notEqual"),
+		))
+		if len(got) != 1 || !strings.Contains(got[0], "column B, C") {
+			t.Fatalf("want both affected columns named once, got %v", got)
+		}
+	})
+
+	t.Run("conditions that do persist stay silent", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range [][2]string{
+			{"text", "equals"},
+			{"text", "doesNotContain"},
+			{"text", "doesNotBeginWith"},
+			{"text", "doesNotEndWith"},
+			{"number", "notEqual"},
+			{"multiValue", "equal"},
+		} {
+			if got := filterViewNegatedEqualityWarnings(input(rule("G", tc[0], tc[1]))); got != nil {
+				t.Errorf("%s/%s round-trips intact, must not warn: %v", tc[0], tc[1], got)
+			}
+		}
+	})
+
+	t.Run("no rules, no advisory", func(t *testing.T) {
+		t.Parallel()
+		if got := filterViewNegatedEqualityWarnings(map[string]interface{}{}); got != nil {
+			t.Errorf("want no advisory, got %v", got)
+		}
+	})
+}
