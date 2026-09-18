@@ -96,6 +96,8 @@ jobs:
           python-version: '3.x'
       - name: Run tests
         run: go test -v -race -count=1 -timeout=5m ./cmd/... ./internal/... ./shortcuts/... ./extension/...
+      - name: Run scopeexport tag build + contract tests
+        run: make test-scopeexport
 
   lint:
     needs: fast-gate
