@@ -268,7 +268,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// TAT (bot identity): shared credential provider (app-level).
 	var resolvedToken string
 	if identity == sidecar.IdentityUser && h.authBridge != nil {
-		token, err := h.authBridge.resolveUserTokenByClient(matchedClient)
+		token, err := h.authBridge.resolveUserTokenByClient(r.Context(), matchedClient)
 		if err != nil {
 			http.Error(w, "failed to resolve user token: "+err.Error(), http.StatusInternalServerError)
 			h.logger.Printf("TOKEN_ERROR method=%s path=%s identity=%s client=%s error=%q",
