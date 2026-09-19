@@ -5,12 +5,49 @@ package websocket
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
+	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
+	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher/callback"
 
 	event "github.com/larksuite/cli/internal/event"
 )
+
+func TestCardActionUsesCallbackResponse(t *testing.T) {
+	s := &FeishuSource{}
+	d := dispatcher.NewEventDispatcher("", "")
+	var received *event.RawEvent
+	s.registerHandlers(
+		d,
+		[]string{"card.action.trigger"},
+		s.buildRawHandler(func(raw *event.RawEvent) { received = raw }),
+	)
+
+	payload := []byte(`{
+        "schema":"2.0",
+        "header":{"event_id":"evt-card","event_type":"card.action.trigger","create_time":"1"},
+        "event":{"operator":{"open_id":"ou_test"},"token":"token","action":{"tag":"select_static","option":"task"}}
+    }`)
+	response, err := d.Do(context.Background(), payload)
+	if err != nil {
+		t.Fatalf("dispatch card action: %v", err)
+	}
+	if received == nil || received.EventID != "evt-card" {
+		t.Fatalf("card action was not emitted: %#v", received)
+	}
+	if _, ok := response.(*callback.CardActionTriggerResponse); !ok {
+		t.Fatalf("response type = %T, want *callback.CardActionTriggerResponse", response)
+	}
+	body, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	if string(body) != `{}` {
+		t.Fatalf("response = %s, want {}", body)
+	}
+}
 
 // The websocket ingress is the only place that parses the envelope header;
 // every canonical fact consumers rely on must be captured here, once.
