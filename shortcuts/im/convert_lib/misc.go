@@ -363,6 +363,12 @@ func (calendarEventConverter) Convert(ctx *ConvertContext) string {
 	if err != nil {
 		return invalidJSONPlaceholder("calendar")
 	}
+	attrs := calendarOpenIDAttrs(parsed)
+	attrs += calendarShareTokenAttr(parsed)
+	return formatCalendarContent(parsed, "calendar_share", attrs)
+}
+
+func calendarOpenIDAttrs(parsed map[string]interface{}) string {
 	calendarID, _ := parsed["open_calendar_id"].(string)
 	eventID, _ := parsed["open_event_id"].(string)
 	var attrs string
@@ -372,8 +378,7 @@ func (calendarEventConverter) Convert(ctx *ConvertContext) string {
 	if eventID != "" {
 		attrs += fmt.Sprintf(` open_event_id="%s"`, cardEscapeAttr(eventID))
 	}
-	attrs += calendarShareTokenAttr(parsed)
-	return formatCalendarContent(parsed, "calendar_share", attrs)
+	return attrs
 }
 
 type calendarInviteConverter struct{}
@@ -394,7 +399,9 @@ func (generalCalendarConverter) Convert(ctx *ConvertContext) string {
 	if err != nil {
 		return invalidJSONPlaceholder("calendar")
 	}
-	return formatCalendarContent(parsed, "calendar", calendarShareTokenAttr(parsed))
+	attrs := calendarOpenIDAttrs(parsed)
+	attrs += calendarShareTokenAttr(parsed)
+	return formatCalendarContent(parsed, "calendar", attrs)
 }
 
 func calendarShareTokenAttr(parsed map[string]interface{}) string {
