@@ -73,9 +73,9 @@ func newCmdConfigBind(
 	cmd := &cobra.Command{
 		Use:   "bind",
 		Short: "Bind Agent config to a workspace (source / app-id / force)",
-		Long: `Bind an AI Agent's (OpenClaw / Hermes / Lark Channel) Feishu credentials to a lark-cli workspace.
+		Long: `Bind an AI Agent's (OpenClaw / Hermes / Lark Channel / DeepSeek Harness) Feishu credentials to a lark-cli workspace.
 
---source is auto-detected from env (OPENCLAW_HOME / HERMES_HOME / LARK_CHANNEL); pass it only to override.
+--source is auto-detected from env (OPENCLAW_HOME / HERMES_HOME / LARK_CHANNEL / DSH_HOME); pass it only to override.
 
 For AI agents — DO NOT bind without user confirmation. Binding may
 overwrite an existing one and locks in an identity policy. Ask the user:
@@ -100,6 +100,9 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
   lark-cli config bind --source hermes --identity user-default
   lark-cli config bind --source lark-channel
 
+  # Inside a DeepSeek Harness agent the source is already detected:
+  lark-cli config bind --identity bot-only
+
   # Interactive (terminal user) — TUI prompts for everything:
   lark-cli config bind`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -111,7 +114,7 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Source, "source", "", "Agent source to bind from (openclaw|hermes|lark-channel); auto-detected from env signals when omitted")
+	cmd.Flags().StringVar(&opts.Source, "source", "", "Agent source to bind from (openclaw|hermes|lark-channel|dsh); auto-detected from env signals when omitted")
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID to bind (required for OpenClaw multi-account)")
 	cmd.Flags().StringVar(&opts.Identity, "identity", "", "identity preset (bot-only|user-default); defaults to bot-only in flag mode (safer: no impersonation)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "confirm a risky transition (currently: bot-only → user-default identity change in flag mode)")
@@ -194,8 +197,8 @@ type existingBinding struct {
 //     fall back to a TUI prompt (TUI mode) or an error (flag mode).
 func finalizeSource(opts *BindOptions) (string, error) {
 	explicit := strings.TrimSpace(strings.ToLower(opts.Source))
-	if explicit != "" && explicit != "openclaw" && explicit != "hermes" && explicit != "lark-channel" {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --source %q; valid values: openclaw, hermes, lark-channel", explicit).WithParam("--source")
+	if explicit != "" && explicit != "openclaw" && explicit != "hermes" && explicit != "lark-channel" && explicit != "dsh" {
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --source %q; valid values: openclaw, hermes, lark-channel, dsh", explicit).WithParam("--source")
 	}
 
 	var detected string
@@ -206,6 +209,8 @@ func finalizeSource(opts *BindOptions) (string, error) {
 		detected = "hermes"
 	case core.WorkspaceLarkChannel:
 		detected = "lark-channel"
+	case core.WorkspaceDSH:
+		detected = "dsh"
 	}
 
 	// Explicit and env detection must agree when both are present. Reject
@@ -242,7 +247,7 @@ func finalizeSource(opts *BindOptions) (string, error) {
 	}
 	return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
 		"cannot determine Agent source: no --source flag and no Agent environment detected").
-		WithHint("pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context").
+		WithHint("pass --source openclaw|hermes|lark-channel|dsh, or run this command inside the corresponding Agent context").
 		WithParam("--source")
 }
 
@@ -541,6 +546,8 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 		source = "hermes"
 	case core.WorkspaceLarkChannel:
 		source = "lark-channel"
+	case core.WorkspaceDSH:
+		source = "dsh"
 	default:
 		source = "openclaw" // default first option
 	}
@@ -549,6 +556,7 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 	openclawPath := resolveOpenClawConfigPath()
 	hermesEnvPath := resolveHermesEnvPath()
 	larkChannelPath := resolveLarkChannelConfigPath()
+	dshPath := resolveDSHSettingsPath()
 
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -559,6 +567,7 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 					huh.NewOption(fmt.Sprintf(msg.SourceOpenClaw, openclawPath), "openclaw"),
 					huh.NewOption(fmt.Sprintf(msg.SourceHermes, hermesEnvPath), "hermes"),
 					huh.NewOption(fmt.Sprintf(msg.SourceLarkChannel, larkChannelPath), "lark-channel"),
+					huh.NewOption(fmt.Sprintf(msg.SourceDSH, dshPath), "dsh"),
 				).
 				Value(&source),
 		),
