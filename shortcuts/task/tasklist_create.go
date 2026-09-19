@@ -142,6 +142,7 @@ var CreateTasklist = common.Shortcut{
 			"created_tasks": createdTasks,
 			"failed_tasks":  failedTasks,
 		}
+		projectTasklistFields(outData, tasklist, standardTasklistOutputFields...)
 
 		pretty := func(w io.Writer) {
 			fmt.Fprintf(w, "✅ Tasklist created successfully!\n")

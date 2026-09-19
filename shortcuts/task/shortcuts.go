@@ -208,7 +208,7 @@ var CreateTask = common.Shortcut{
 		{Name: "description", Desc: "task description"},
 		{Name: "assignee", Desc: "task assignee id added during create; use open_id (ou_xxx) when assignee is user, use app id (cli_xxx) when assignee is app"},
 		{Name: "follower", Desc: "task follower id added during create; use open_id (ou_xxx) when follower is user, use app id (cli_xxx) when follower is app"},
-		{Name: "due", Desc: "due date (ISO 8601 / date:YYYY-MM-DD / relative:+2d / ms timestamp)"},
+		{Name: "due", Desc: "due date (e.g. 2027-04-18, 2027-04-18T10:00:00+08:00, +2d, or ms timestamp)"},
 		{Name: "tasklist-id", Desc: "tasklist id or applink URL"},
 		{Name: "idempotency-key", Desc: "client token for idempotency"},
 		{Name: "data", Desc: "JSON payload for creating task"},
