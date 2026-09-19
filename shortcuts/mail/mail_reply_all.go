@@ -6,6 +6,7 @@ package mail
 import (
 	"context"
 	"fmt"
+	netmail "net/mail"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -70,6 +71,9 @@ var MailReplyAll = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if _, err := buildRemoveSet(normalizeCommaListFlagValues(runtime.StrArray("remove"))); err != nil {
+			return err
+		}
 		attach := normalizeCommaFlagValues(runtime.StrArray("attach"))
 		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
@@ -121,6 +125,10 @@ var MailReplyAll = common.Shortcut{
 		ccFlag := normalizeRecipientFlagValues(runtime.StrArray("cc"))
 		bccFlag := normalizeRecipientFlagValues(runtime.StrArray("bcc"))
 		removeList := normalizeCommaListFlagValues(runtime.StrArray("remove"))
+		removeSet, err := buildRemoveSet(removeList)
+		if err != nil {
+			return err
+		}
 		plainText := runtime.Bool("plain-text")
 		attachFlag := normalizeCommaFlagValues(runtime.StrArray("attach"))
 		inlineFlag, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
@@ -175,13 +183,12 @@ var MailReplyAll = common.Shortcut{
 		}
 
 		selfEmails := fetchSelfEmailSet(runtime, mailboxID)
-		excluded := buildExcludeSet(selfEmails, removeList)
-		replyToAddr := orig.replyTo
-		if replyToAddr == "" {
-			replyToAddr = orig.headFrom
+		replyTarget := orig.replyTo
+		isSelfSent := sameRecipientAddress(orig.headFrom, senderEmail)
+		if !isSelfSent && replyTarget == "" {
+			replyTarget = orig.headFrom
 		}
-		isSelfSent := selfEmails[strings.ToLower(orig.headFrom)] || (senderEmail != "" && strings.EqualFold(orig.headFrom, senderEmail))
-		toList, ccList := buildReplyAllRecipients(replyToAddr, orig.toAddresses, orig.ccAddresses, senderEmail, excluded, isSelfSent)
+		toList, ccList := buildReplyAllRecipients(replyTarget, orig.toAddresses, orig.ccAddresses, senderEmail, selfEmails, isSelfSent)
 
 		toList = mergeAddrLists(toList, toFlag)
 		ccList = mergeAddrLists(ccList, ccFlag)
@@ -227,6 +234,10 @@ var MailReplyAll = common.Shortcut{
 				"ccs_count":          countAddresses(ccList),
 				"bccs_count":         countAddresses(bccFlag),
 			})
+		}
+		toList, ccList, bccFlag = filterAndDeduplicateReplyAllRecipients(toList, ccList, bccFlag, removeSet)
+		if err := validateReplyAllRecipients(toList, ccList, bccFlag); err != nil {
+			return err
 		}
 		// Resolve signature after template processing so plainText reflects any IsPlainTextMode
 		// override from the template. This avoids downloading HTML signature images when the
@@ -388,19 +399,33 @@ var MailReplyAll = common.Shortcut{
 	},
 }
 
-// buildExcludeSet returns a lowercase set of addresses to exclude from reply-all.
-// selfEmails contains all known addresses for the current user (enterprise + personal).
-func buildExcludeSet(selfEmails map[string]bool, remove []string) map[string]bool {
-	set := make(map[string]bool)
-	for addr := range selfEmails {
-		set[addr] = true
-	}
-	for _, r := range remove {
-		if s := strings.ToLower(strings.TrimSpace(r)); s != "" {
-			set[s] = true
+func recipientAddressKey(raw string) string {
+	return strings.ToLower(strings.TrimSpace(ParseMailbox(raw).Email))
+}
+
+func sameRecipientAddress(left, right string) bool {
+	leftKey := recipientAddressKey(left)
+	return leftKey != "" && leftKey == recipientAddressKey(right)
+}
+
+// buildRemoveSet validates explicit removals and indexes them by bare email
+// address. Keeping this separate from automatic self-exclusion ensures
+// self-sent messages retain their original To/Cc recipients unless the user
+// explicitly removes them.
+func buildRemoveSet(remove []string) (map[string]bool, error) {
+	set := make(map[string]bool, len(remove))
+	for _, raw := range remove {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return nil, mailValidationParamError("--remove", "email address must not be empty")
 		}
+		addr, err := netmail.ParseAddress(raw)
+		if err != nil || strings.TrimSpace(addr.Address) == "" {
+			return nil, mailValidationParamError("--remove", "invalid email address %q", raw)
+		}
+		set[strings.ToLower(strings.TrimSpace(addr.Address))] = true
 	}
-	return set
+	return set, nil
 }
 
 // buildReplyAllRecipients constructs the To and Cc lists for a reply-all.
@@ -412,16 +437,15 @@ func buildExcludeSet(selfEmails map[string]bool, remove []string) map[string]boo
 // the original Cc recipients stay in Cc, preserving the distinction from the
 // original message. If a Reply-To header was set, its address is also added to To.
 // This aligns with the Lark client (rust-sdk) behavior.
-func buildReplyAllRecipients(origFrom string, origTo, origCC []string, senderEmail string, excluded map[string]bool, isSelfSent bool) (to, cc string) {
+func buildReplyAllRecipients(replyTarget string, origTo, origCC []string, senderEmail string, selfEmails map[string]bool, isSelfSent bool) (to, cc string) {
 	// Copy excluded to avoid mutating the caller's map.
-	excl := make(map[string]bool, len(excluded)+1)
-	for k, v := range excluded {
-		excl[k] = v
+	excluded := make(map[string]bool, len(selfEmails)+1)
+	for k, v := range selfEmails {
+		excluded[strings.ToLower(strings.TrimSpace(k))] = v
 	}
-	excluded = excl
 	// Ensure senderEmail (which may be an alias or shared mailbox) is also excluded.
 	if senderEmail != "" {
-		excluded[strings.ToLower(senderEmail)] = true
+		excluded[recipientAddressKey(senderEmail)] = true
 	}
 
 	if isSelfSent {
@@ -429,46 +453,78 @@ func buildReplyAllRecipients(origFrom string, origTo, origCC []string, senderEma
 		seen := make(map[string]bool)
 		var toList []string
 		for _, addr := range origTo {
-			lower := strings.ToLower(addr)
-			if excluded[lower] || seen[lower] {
+			key := recipientAddressKey(addr)
+			if key == "" || seen[key] {
 				continue
 			}
-			seen[lower] = true
+			seen[key] = true
 			toList = append(toList, addr)
 		}
-		// If Reply-To is set (origFrom differs from self), include it in To.
-		if lf := strings.ToLower(origFrom); !excluded[lf] && !seen[lf] {
-			toList = append(toList, origFrom)
-			seen[lf] = true
+		// replyTarget is non-empty only when the source message had a real
+		// Reply-To header; a From fallback is never supplied for self-sent mail.
+		if key := recipientAddressKey(replyTarget); key != "" && !seen[key] {
+			toList = append(toList, replyTarget)
+			seen[key] = true
 		}
 		var ccList []string
 		for _, addr := range origCC {
-			lower := strings.ToLower(addr)
-			if excluded[lower] || seen[lower] {
+			key := recipientAddressKey(addr)
+			if key == "" || seen[key] {
 				continue
 			}
-			seen[lower] = true
+			seen[key] = true
 			ccList = append(ccList, addr)
 		}
 		return strings.Join(toList, ", "), strings.Join(ccList, ", ")
 	}
 
 	// Normal case: original sender → To; origTo+origCC → Cc.
-	if !excluded[strings.ToLower(origFrom)] {
-		to = origFrom
+	if key := recipientAddressKey(replyTarget); key != "" && !excluded[key] {
+		to = replyTarget
 	}
 
 	seen := make(map[string]bool)
-	seen[strings.ToLower(origFrom)] = true
+	if key := recipientAddressKey(replyTarget); key != "" {
+		seen[key] = true
+	}
 	var ccList []string
 	for _, addr := range append(origTo, origCC...) {
-		lower := strings.ToLower(addr)
-		if excluded[lower] || seen[lower] {
+		key := recipientAddressKey(addr)
+		if key == "" || excluded[key] || seen[key] {
 			continue
 		}
-		seen[lower] = true
+		seen[key] = true
 		ccList = append(ccList, addr)
 	}
 	cc = strings.Join(ccList, ", ")
 	return to, cc
+}
+
+// filterAndDeduplicateReplyAllRecipients applies explicit removals after all
+// sources (original message, flags and template) have been merged. It then
+// performs one stable, case-insensitive de-duplication pass across To, Cc and
+// Bcc, so the first occurrence keeps its list, display text and position.
+func filterAndDeduplicateReplyAllRecipients(to, cc, bcc string, remove map[string]bool) (string, string, string) {
+	seen := make(map[string]bool)
+	filter := func(raw string) string {
+		kept := make([]string, 0, len(ParseMailboxList(raw)))
+		for _, mailbox := range ParseMailboxList(raw) {
+			key := strings.ToLower(strings.TrimSpace(mailbox.Email))
+			if key == "" || remove[key] || seen[key] {
+				continue
+			}
+			seen[key] = true
+			kept = append(kept, mailbox.rawString())
+		}
+		return strings.Join(kept, ", ")
+	}
+	return filter(to), filter(cc), filter(bcc)
+}
+
+func validateReplyAllRecipients(to, cc, bcc string) error {
+	if strings.TrimSpace(to) != "" || strings.TrimSpace(cc) != "" || strings.TrimSpace(bcc) != "" {
+		return nil
+	}
+	return mailValidationError("no valid recipients remain after applying --remove").
+		WithParams(mailInvalidParam("--remove", "all recipients were removed"))
 }
