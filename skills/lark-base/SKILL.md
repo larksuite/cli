@@ -174,7 +174,7 @@ PY
 }
 ```
 
-附件使用专用 shortcut 上传、下载或移除。created_at, updated_at, created_by, updated_by, auto_number, formula, lookup 类型字段只读，若误写入单元格会返回 `ignored_fields` 表示这些字段被静默过滤，其余字段正常写入。
+附件使用专用 shortcut 上传、下载或移除；其中 `style.type` 为 `signature` 的附件字段（签字）单元格只读，写入或上传前先用 `+field-get` 核对样式，规则见 [Field Schema](references/lark-base-field-schema.md) §3.12。created_at, updated_at, created_by, updated_by, auto_number, formula, lookup 类型字段只读，若误写入单元格会返回 `ignored_fields` 表示这些字段被静默过滤，其余字段正常写入。
 
 ```bash
 # 新增：成功时返回 record_id_list
