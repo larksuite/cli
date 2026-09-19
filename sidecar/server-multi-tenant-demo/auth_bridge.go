@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -26,6 +27,7 @@ import (
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -42,6 +44,7 @@ type authBridge struct {
 	cred      *credential.CredentialProvider
 	logger    *log.Logger
 	httpCl    *http.Client
+	dpopMode  core.DPoPMode
 
 	mu           sync.Mutex
 	pendingPolls map[string]context.CancelFunc
@@ -51,7 +54,7 @@ type authBridge struct {
 	mapFile string
 }
 
-func newAuthBridge(key []byte, appID, appSecret string, brand core.LarkBrand, cred *credential.CredentialProvider, logger *log.Logger) *authBridge {
+func newAuthBridge(key []byte, appID, appSecret string, brand core.LarkBrand, dpopMode core.DPoPMode, cred *credential.CredentialProvider, logger *log.Logger) *authBridge {
 	configDir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR")
 	mapFile := ""
 	if configDir != "" {
@@ -65,7 +68,8 @@ func newAuthBridge(key []byte, appID, appSecret string, brand core.LarkBrand, cr
 		brand:        brand,
 		cred:         cred,
 		logger:       logger,
-		httpCl:       &http.Client{Timeout: 30 * time.Second},
+		httpCl:       &http.Client{Transport: &dpop.Transport{Base: http.DefaultTransport}, Timeout: 30 * time.Second},
+		dpopMode:     dpopMode,
 		pendingPolls: make(map[string]context.CancelFunc),
 		userMap:      make(map[string]string),
 		mapFile:      mapFile,
@@ -182,7 +186,7 @@ func parseClientID(body []byte) string {
 }
 
 // handleLogin initiates a device-flow OAuth login.
-func (ab *authBridge) handleLogin(w http.ResponseWriter, _ *http.Request, body []byte) {
+func (ab *authBridge) handleLogin(w http.ResponseWriter, r *http.Request, body []byte) {
 	var req struct {
 		Scope   string   `json:"scope"`
 		Domains []string `json:"domains"`
@@ -204,7 +208,7 @@ func (ab *authBridge) handleLogin(w http.ResponseWriter, _ *http.Request, body [
 		len(strings.Fields(scope)), req.Domains, clientID)
 
 	authResp, err := larkauth.RequestDeviceAuthorization(
-		ab.httpCl, ab.appID, ab.appSecret, ab.brand, scope, io.Discard,
+		r.Context(), ab.httpCl, ab.appID, ab.appSecret, ab.brand, scope, io.Discard,
 	)
 	if err != nil {
 		jsonError(w, http.StatusBadGateway, "device authorization failed: "+err.Error())
@@ -254,12 +258,16 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 		ab.mu.Unlock()
 	}()
 
-	result := larkauth.PollDeviceToken(
-		ctx, ab.httpCl, ab.appID, ab.appSecret, ab.brand,
-		req.DeviceCode, 5, 600, io.Discard,
-	)
+	result := larkauth.PollDeviceTokenWithMode(ctx, ab.httpCl, ab.appID, ab.appSecret, ab.brand,
+		req.DeviceCode, 5, 600, io.Discard, ab.dpopMode)
 
 	if !result.OK {
+		if result.Err != nil {
+			jsonError(w, http.StatusBadGateway, result.Err.Error())
+			ab.logger.Printf("AUTH_BRIDGE_POLL_ERROR device_code_prefix=%s error=%q",
+				truncate(req.DeviceCode, 12), result.Err.Error())
+			return
+		}
 		resp := map[string]interface{}{
 			"ok":    false,
 			"error": result.Error,
@@ -275,8 +283,12 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 		jsonError(w, http.StatusInternalServerError, "token response was nil")
 		return
 	}
+	keyStore := dpop.NewKeyStore(nil)
 
 	now := time.Now().UnixMilli()
+	if result.Token.DPoP != nil {
+		now = result.Token.DPoP.Key().Clock().Now().UnixMilli()
+	}
 	storedToken := &larkauth.StoredUAToken{
 		AppId:            ab.appID,
 		AccessToken:      result.Token.AccessToken,
@@ -285,23 +297,51 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 		RefreshExpiresAt: now + int64(result.Token.RefreshExpiresIn)*1000,
 		Scope:            result.Token.Scope,
 		GrantedAt:        now,
+		TokenType:        larkauth.StoredTokenTypeBearer,
+	}
+	if result.Token.DPoP != nil {
+		storedToken.TokenType = larkauth.StoredTokenTypeDPoP
+		storedToken.DPoPKeyID = result.Token.DPoP.KeyID
+		storedToken.DPoPJKT = result.Token.DPoP.JKT
+		storedToken.DPoPKeySecurityLevel = string(result.Token.DPoP.KeyStoreSecureLevel)
+		clockState := result.Token.DPoP.Key().Clock().State()
+		storedToken.ClockOffsetMs = clockState.OffsetMillis
+		storedToken.ClockSyncedAtMs = clockState.SyncedAtMillis
 	}
 
 	ep := core.ResolveEndpoints(ab.brand)
-	openID, userName, err := fetchUserInfoDirect(ab.httpCl, ep.Open, result.Token.AccessToken)
+	openID, userName, err := fetchUserInfoDirect(ctx, ab.httpCl, ep.Open, result.Token.AccessToken, result.Token.DPoP)
 	if err != nil {
+		err = cleanupAuthBridgeDPoPKey(ctx, keyStore, result.Token.DPoP, err)
 		ab.logger.Printf("AUTH_BRIDGE_WARN action=user_info error=%q", err.Error())
 		jsonError(w, http.StatusBadGateway, "login succeeded but failed to get user info: "+err.Error())
 		return
 	}
 	storedToken.UserOpenId = openID
 
+	// The platform already owns the non-exportable key so it can sign the first
+	// resource request. Commit only its public metadata after user_info.
+	if result.Token.DPoP != nil {
+		if err := keyStore.SaveContext(ctx, result.Token.DPoP.Key()); err != nil {
+			err = cleanupAuthBridgeDPoPKey(ctx, keyStore, result.Token.DPoP, err)
+			jsonError(w, http.StatusInternalServerError, "failed to store DPoP key: "+err.Error())
+			return
+		}
+	}
 	if err := larkauth.SetStoredToken(storedToken); err != nil {
+		err = cleanupAuthBridgeDPoPKey(ctx, keyStore, result.Token.DPoP, err)
 		jsonError(w, http.StatusInternalServerError, "failed to store token: "+err.Error())
 		return
 	}
 
 	if err := addUserToConfig(ab.appID, openID, userName); err != nil {
+		if storedToken.DPoPKeyID != "" {
+			if cleanupErr := larkauth.RemoveStoredToken(ab.appID, openID); cleanupErr != nil {
+				err = fmt.Errorf("sync login profile and roll back stored token: %w", errors.Join(err, cleanupErr))
+			}
+			jsonError(w, http.StatusInternalServerError, "failed to sync login profile: "+err.Error())
+			return
+		}
 		ab.logger.Printf("AUTH_BRIDGE_WARN action=sync_config error=%q", err.Error())
 	}
 
@@ -323,6 +363,20 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 		"open_id":   openID,
 	}
 	jsonOK(w, resp)
+}
+
+func cleanupAuthBridgeDPoPKey(ctx context.Context, store *dpop.KeyStore, binding *dpop.Binding, cause error) error {
+	if binding == nil {
+		return cause
+	}
+	cleanupCtx := context.Background()
+	if ctx != nil {
+		cleanupCtx = context.WithoutCancel(ctx)
+	}
+	if cleanupErr := store.DeleteKeyContext(cleanupCtx, binding.Key()); cleanupErr != nil {
+		return fmt.Errorf("clean up uncommitted DPoP key: %w", errors.Join(cause, cleanupErr))
+	}
+	return cause
 }
 
 // handleStatus returns current auth status.
@@ -391,29 +445,31 @@ func (ab *authBridge) handleStatus(w http.ResponseWriter, _ *http.Request, body 
 // resolveUserTokenByClient resolves a UAT for a specific client environment.
 // Returns an error if the client has no user mapping — the user must
 // run the login flow first. No fallback to other users' tokens.
-func (ab *authBridge) resolveUserTokenByClient(clientName string) (string, error) {
+func (ab *authBridge) resolveUserTokenByClient(ctx context.Context, clientName string) (*credential.TokenResult, error) {
 	ab.mu.Lock()
 	openID := ab.userMap[clientName]
 	ab.mu.Unlock()
 
 	if openID == "" {
 		ab.logger.Printf("AUTH_BRIDGE_REJECT_NO_MAPPING client=%s", clientName)
-		return "", fmt.Errorf("client %q has no user mapping; run the login flow to authorize", clientName)
+		return nil, fmt.Errorf("client %q has no user mapping; run the login flow to authorize", clientName)
 	}
 
 	ab.logger.Printf("AUTH_BRIDGE_RESOLVE client=%s feishu=%s", clientName, openID)
 
 	opts := larkauth.UATCallOptions{
-		UserOpenId: openID,
-		AppId:      ab.appID,
-		AppSecret:  ab.appSecret,
-		Domain:     ab.brand,
+		UserOpenId:   openID,
+		AppId:        ab.appID,
+		AppSecret:    ab.appSecret,
+		Domain:       ab.brand,
+		DPoPMode:     ab.dpopMode,
+		DPoPKeyStore: dpop.NewKeyStore(nil),
 	}
-	token, err := larkauth.GetValidAccessToken(ab.httpCl, opts)
+	token, err := larkauth.GetValidAccessToken(ctx, ab.httpCl, opts)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve token for user %s: %v", openID, err)
+		return nil, fmt.Errorf("failed to resolve token for user %s: %v", openID, err)
 	}
-	return token, nil
+	return &credential.TokenResult{Token: token.AccessToken, Source: core.CredentialSourceLocal, DPoP: token.DPoP}, nil
 }
 
 func addUserToConfig(appID, openID, userName string) error {
@@ -444,9 +500,12 @@ func addUserToConfig(appID, openID, userName string) error {
 	return fmt.Errorf("app %s not found in config", appID)
 }
 
-func fetchUserInfoDirect(client *http.Client, openBase, accessToken string) (openID, name string, err error) {
+func fetchUserInfoDirect(ctx context.Context, client *http.Client, openBase, accessToken string, binding *dpop.Binding) (openID, name string, err error) {
 	u := openBase + "/open-apis/authen/v1/user_info"
-	req, err := http.NewRequest("GET", u, nil)
+	if binding != nil {
+		ctx = dpop.WithBinding(ctx, binding)
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return "", "", err
 	}

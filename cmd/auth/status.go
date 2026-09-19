@@ -8,7 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -17,6 +19,7 @@ import (
 // StatusOptions holds all inputs for auth status.
 type StatusOptions struct {
 	Factory *cmdutil.Factory
+	Ctx     context.Context
 	Verify  bool
 	JSON    bool
 }
@@ -37,6 +40,7 @@ func newCmdAuthStatus(
 		Use:   "status",
 		Short: "View current auth status",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Ctx = cmd.Context()
 			if runF != nil {
 				return runF(opts)
 			}
@@ -53,6 +57,10 @@ func newCmdAuthStatus(
 
 func authStatusRun(opts *StatusOptions, projector *recovery.Projector) error {
 	f := opts.Factory
+	ctx := opts.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	config, err := f.Config()
 	if err != nil {
@@ -64,15 +72,26 @@ func authStatusRun(opts *StatusOptions, projector *recovery.Projector) error {
 		defaultAs = "auto"
 	}
 	result := map[string]interface{}{
-		"appId":     config.AppID,
-		"brand":     config.Brand,
-		"defaultAs": defaultAs,
+		"appId":            config.AppID,
+		"brand":            config.Brand,
+		"defaultAs":        defaultAs,
+		"dpopMode":         core.EffectiveDPoPMode(config.DPoPMode),
+		"credentialSource": config.CredentialSource,
 	}
-
 	diagnostics := identitydiag.FilterRecovery(
-		identitydiag.Diagnose(context.Background(), f, config, opts.Verify),
+		identitydiag.Diagnose(ctx, f, config, opts.Verify),
 		projector,
 	)
+	if user := diagnostics.User; config.CredentialSource == core.CredentialSourceLocal && user.TokenType != "" {
+		result["tokenType"] = user.TokenType
+		if user.TokenType == larkauth.StoredTokenTypeDPoP {
+			result["dpopKeyStatus"] = user.DPoPKeyStatus
+			if user.DPoPKeyStatus == "available" {
+				result["dpopKeyProvider"] = user.DPoPKeyProvider
+				result["dpopKeySecurityLevel"] = user.DPoPKeySecurityLevel
+			}
+		}
+	}
 	result["identities"] = diagnostics
 	result["identity"] = effectiveIdentity(diagnostics)
 	addEffectiveVerification(result, diagnostics)

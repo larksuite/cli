@@ -25,6 +25,10 @@ github.com/charmbracelet/x/cellbuf
 github.com/charmbracelet/x/exp/strings
 github.com/charmbracelet/x/term
 github.com/dustin/go-humanize
+github.com/ebitengine/purego
+github.com/ebitengine/purego/internal/fakecgo
+github.com/ebitengine/purego/internal/strings
+github.com/ebitengine/purego/internal/xreflect
 github.com/gofrs/flock
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/proto
@@ -176,10 +180,13 @@ github.com/spf13/pflag
 github.com/xo/terminfo
 github.com/zalando/go-keyring
 github.com/zalando/go-keyring/internal/shellescape
+golang.org/x/crypto/argon2
+golang.org/x/crypto/blake2b
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/html/charset
 golang.org/x/sync/errgroup
+golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/term
 golang.org/x/text/encoding

@@ -42,6 +42,7 @@ func newCmdConfig(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Comm
 	cmd.AddCommand(NewCmdConfigShow(f, nil))
 	cmd.AddCommand(NewCmdConfigDefaultAs(f))
 	cmd.AddCommand(NewCmdConfigStrictMode(f))
+	cmd.AddCommand(NewCmdConfigDPoP(f))
 	cmd.AddCommand(NewCmdConfigRiskControl(f))
 	cmd.AddCommand(NewCmdConfigPolicy(f))
 	cmd.AddCommand(NewCmdConfigPlugins(f))
