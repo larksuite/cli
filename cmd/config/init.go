@@ -31,6 +31,7 @@ type ConfigInitOptions struct {
 	appSecret      string // internal only; populated from stdin, never from a CLI flag
 	AppSecretStdin bool   // read app-secret from stdin (avoids process list exposure)
 	Brand          string
+	brandExplicit  bool // true when --brand was explicitly passed
 	New            bool
 
 	Lang         string // raw --lang (string for cobra); normalized to canonical/"" in validateInitLang
@@ -90,6 +91,7 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Ctx = cmd.Context()
 			opts.langExplicit = cmd.Flags().Changed("lang")
+			opts.brandExplicit = cmd.Flags().Changed("brand")
 			if err := validateInitLang(opts); err != nil {
 				return err
 			}
@@ -198,11 +200,18 @@ func cleanupOldConfig(existing *core.MultiAppConfig, f *cmdutil.Factory, skipApp
 }
 
 // saveAsOnlyApp overwrites config.json with a single-app config.
-func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, lang string) error {
+// Workspace-level policies (strict mode, risk control) are independent of the
+// app set and survive the overwrite; CurrentApp/PreviousApp are dropped with
+// the apps they referenced.
+func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, lang string, existing *core.MultiAppConfig) error {
 	config := &core.MultiAppConfig{
 		Apps: []core.AppConfig{{
 			AppId: appId, AppSecret: secret, Brand: brand, Lang: i18n.Lang(lang), Users: []core.AppUser{},
 		}},
+	}
+	if existing != nil {
+		config.StrictMode = existing.StrictMode
+		config.RiskControl = existing.RiskControl
 	}
 	return core.SaveMultiAppConfig(config)
 }
@@ -221,7 +230,7 @@ func saveInitConfig(profileName string, existing *core.MultiAppConfig, f *cmduti
 			prior = app.Lang
 		}
 	}
-	return saveAsOnlyApp(appId, secret, brand, string(preferredLang(i18n.Lang(lang), prior)))
+	return saveAsOnlyApp(appId, secret, brand, string(preferredLang(i18n.Lang(lang), prior)), existing)
 }
 
 // wrapSaveConfigError passes an already-typed error (e.g. the --name conflict
@@ -384,6 +393,14 @@ func configInitRun(opts *ConfigInitOptions) error {
 	// Mode 1: Non-interactive
 	if opts.AppID != "" && opts.appSecret != "" {
 		brand := parseBrand(opts.Brand)
+		// --brand defaults to feishu at flag registration, so a re-init that
+		// omits it would silently flip a prior lark brand. Inherit the current
+		// app's brand unless --brand was explicitly passed (mirrors --lang).
+		if !opts.brandExplicit && existing != nil {
+			if app := existing.CurrentAppConfig(""); app != nil && app.Brand != "" {
+				brand = core.ParseBrand(string(app.Brand))
+			}
+		}
 		secret, err := core.ForStorage(opts.AppID, core.PlainSecret(opts.appSecret), f.Keychain)
 		if err != nil {
 			return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
