@@ -1,0 +1,5 @@
+@import "tokens.css";
+body{background:url(../img/grid.png)}
+:root{--bg:url("../img/var.png")}
+.i{background:image-set(url("../img/set.png") 1x)}
+/* url(../img/comment.png) 在注释里 */
