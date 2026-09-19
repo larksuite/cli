@@ -19,7 +19,7 @@ var BaseFieldCreate = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		{Name: "json", Desc: "field property JSON object or non-empty array of field objects; supports @file", Required: true},
+		{Name: "json", Desc: "field property JSON object or non-empty array of field objects; supports @file; see lark-base-field-schema.md for JSON shapes", Required: true},
 		{Name: "i-have-read-guide", Type: "bool", Desc: "set only after you have read the formula/lookup guide for those field types", Hidden: true},
 	},
 	Tips: []string{

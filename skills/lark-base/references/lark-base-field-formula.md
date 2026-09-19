@@ -16,11 +16,11 @@ When using `+field-update`, also pass `--yes`: field update is a high-risk `PUT`
 
 When creating a formula field, the Agent should:
 
-1. Get all table names: `lark-cli base +table-list --base-token <base>` — returns `items[].table_name`
+1. Locate the destination and any source tables with `lark-cli base +table-list --base-token <base>` — returns `data.tables`.
 2. Get table structure: `lark-cli base +table-get --base-token <base> --table-id <table>` — returns `fields[]`
 3. If the formula references other tables, also get those tables' structures
 4. Write the formula expression following this guide
-5. Construct the Formula field JSON and submit it to create or update the field
+5. Construct the Formula field JSON and submit it to the destination table. Source tables supply inputs; the requested destination owns the new field.
 
 **Key constraints**:
 
@@ -36,14 +36,15 @@ This is the foundation of formula logic. You must determine this before writing 
 
 | Syntax                | Meaning                                      | Return type            | Example                                      |
 | --------------------- | -------------------------------------------- | ---------------------- | -------------------------------------------- |
-| `[Field]`             | Value of this field in the current row       | Scalar (single value)  | `[Name]` → `"Alice"`                         |
+| `[Field]`             | Value of this field in the current row       | Depends on field type and cardinality | `[Name]` → `"Alice"`; a multi-value field returns a list |
 | `[TableName].[Field]` | All values of this field in the target table | List (multiple values) | `[Employees].[Name]` → `["Alice","Bob",...]` |
 | `[TableName]`         | The target table (entire table)              | Table reference        | Used as data range for FILTER/COUNTIF etc.   |
 
 **Rules**:
 
 - Scalars can be used directly in operations: `[Price] * [Quantity]`
-- Lists cannot be used as scalars — they must be processed first: use `SUM()` for sum, `ARRAYJOIN(",")` for joining, `FIRST()`/`LAST()`/`NTH()` for single value extraction
+- Choose list operations by the required result: `SUM()` for a sum, `ARRAYJOIN` for an explicit joined-text format, or a list result when all values are needed. Text concatenation has documented implicit conversion (Section 2); a multi-value field alone does not require adding a custom join or separator.
+- `FIRST()`/`LAST()`/`NTH()` select one element. Use them for a requested element selection; `FIRST()` can also unwrap a result list known to contain at most one value, handling empty results according to the request. Selecting one arbitrary element does not implement matching against all members of a list.
 - Link field access `[LinkField].[TargetField]` returns a list (values of the target field for all linked records)
 - **LISTCOMBINE flattening rule**: When a FILTER's result column is itself a multi-value field (`select` with `multiple=true`, `link`, etc.), it produces a 2D array and **must** be flattened with `.LISTCOMBINE()`; for single-value fields (`number`, `text`, etc.) it can be omitted, but adding it is never wrong:
 
@@ -165,7 +166,7 @@ Retrieves the target field values for all linked records as a list. Supports con
 ### Notes
 
 - Link fields typically return **lists** (possibly empty)
-- To output a single value, use aggregation (SUM/MAX), joining (ARRAYJOIN), or extraction (FIRST/LAST/NTH)
+- Preserve all linked values unless the request calls for aggregation, text joining, or selection of a particular element; apply the cardinality rules in Section 1.
 - Do not nest FILTER inside FILTER for cross-table queries — prefer link field chained access
 
 ---
@@ -406,13 +407,15 @@ After the result column, it's recommended to flatten with `.LISTCOMBINE()` first
 
 ```
 Need data from another table?
-├─ Current table has a link field to the target table?
-│   ├─ Yes → Use chained access: [LinkField].[TargetField]
-│   │         Need aggregation? → .SUM() / .ARRAYJOIN(",") / .FIRST()
-│   └─ No → Need to match by field value?
-│       ├─ Field matching or complex filtering → [TargetTable].FILTER(CurrentValue.[MatchField] = [Value]).[OutputCol]
-│       └─ Only counting or summing → COUNTIF([TargetTable], condition) / FILTER+SUM
+├─ Entire source column, without row matching → SUM/AVERAGE/MAX/MIN([SourceTable].[Field])
+├─ Only records linked from this row → [LinkField].[TargetField]
+│   ├─ Need aggregation or joining? → .SUM() / .ARRAYJOIN(",")
+│   └─ First element explicitly requested? → .FIRST() (single-value unwrapping: see Section 1)
+└─ Match source rows by a value or condition → [SourceTable].FILTER(CurrentValue.[MatchField] = [Value]).[OutputCol]
+    └─ Only counting or summing → COUNTIF([SourceTable], condition) / FILTER+SUM
 ```
+
+Direct table/column references work within the same Base without a Link field. A whole-column aggregate stays in the formula and recalculates with its source; a locally calculated constant would lose that behavior.
 
 ### Conditional logic: IF vs IFS vs SWITCH?
 
@@ -494,6 +497,8 @@ DAYS([EndDate], [StartDate])
 ```
 
 ### Pattern 7: List element mapping
+
+Apply the mapping requested by the user. The examples below add a suffix or trim whitespace only when that transformation is requested.
 
 ```
 [SelectField(which multiple=true)].MAP(CurrentValue & " tag")
@@ -714,13 +719,14 @@ FIRST(
 
 When the user describes their formula need in natural language, follow these rules to convert it into a precise expression:
 
-1. **Numbers must use precise values**: "less than 80%" → field value less than `0.8`. "above 1000" → `>= 1000`.
-2. **Interval boundaries**: "above/below/within" = closed (inclusive); "less than/more than/outside" = open (exclusive).
-3. **Branching logic** must be organized as an ordered list with a fallback branch. Each branch has a condition and output.
-   - Example: "return risk level for 1-3" → `IFS([Value] = 1, "low", [Value] = 2, "medium", [Value] = 3, "high")` with an `IFERROR` or trailing empty-string fallback.
-4. **Multi-level branches must be flattened** to a single level. Nested if-else chains → flat IFS.
-5. **Branch conditions must be mutually exclusive**. If the user's conditions overlap, rewrite to eliminate ambiguity.
-6. **Reorder branches by logical priority** if the user's order is illogical (e.g., check specific conditions before catch-all).
+1. **Preserve the specified calculation**: A supplied expression or detailed rule defines the fields, operators, output values and precedence. Correct syntax against this guide without replacing those semantics with assumptions drawn from sample values or existing result columns.
+2. **Use the stated boundaries**: "less than 80%" → `< 0.8`; "more than 1000" → `> 1000`; "at least 1000" → `>= 1000`. Preserve explicit inclusive/exclusive bounds; clarify a materially ambiguous boundary instead of applying a blanket convention.
+3. **Preserve branch order and fallback**: `IF` and `IFS` may both express ordered conditions, including overlapping conditions. Keep the requested first-match priority and “otherwise” result. Flattening or reordering is valid only when it preserves every branch's behavior.
+4. **Handle missing values explicitly**: Blank keys are missing information, not evidence of the same identifier; in joins or duplicate checks on identifier keys, handle them separately unless the request groups missing values. Preserve requested blank/error outputs; do not infer non-nullability from populated samples or turn invalid input into a normal result. Clarify unspecified material choices.
+5. **Preserve calculation precision**: Do not round an intermediate value used in later arithmetic or comparisons unless the calculation requires it. Numeric rounding and fixed-decimal text formatting are different operations; apply the requested precision at the intended stage.
+6. **Apply only the requested transformations**: Trimming, case folding, sorting, deduplication, containment and custom multi-value separators change results. Use them for the requested semantics, not to make existing samples look cleaner; exact comparisons remain exact when requested.
+7. **Keep relative time dynamic**: “This year” uses the current year even when there is no matching data. “Latest year with data” is a different request. Empty or zero results alone do not justify changing a date range or predicate.
+8. **Check uncovered branches too**: Compare the final expression with all requested branches, including those absent from current records.
 
 ---
 
@@ -734,4 +740,4 @@ When the user describes their formula need in natural language, follow these rul
 - Strings must use double quotes `"`
 - Format dates with TEXT before concatenating, to control output format
 - SORTBY can only be chained and must include an output column
-- Link fields return lists — aggregate or extract single values before output
+- Link fields return lists — preserve their cardinality and apply the requested result operation
