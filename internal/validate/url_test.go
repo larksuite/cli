@@ -97,6 +97,24 @@ func TestNewDownloadHTTPClientRejectsInitialHTTPBeforeTransport(t *testing.T) {
 	}
 }
 
+func TestNewDownloadHTTPClientRejectsPrivateRedirectWithPolicyError(t *testing.T) {
+	download := validate.NewDownloadHTTPClient(&http.Client{}, validate.DownloadHTTPClientOptions{})
+	req, err := http.NewRequest(http.MethodGet, "https://127.0.0.1/file", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = download.CheckRedirect(req, nil)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryPolicy || problem.Subtype != errs.SubtypeAccessDenied {
+		t.Fatalf("CheckRedirect() problem = %#v, %v; want policy/access_denied", problem, ok)
+	}
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(err, &policyErr) || policyErr.Cause == nil || !errors.Is(err, policyErr.Cause) {
+		t.Fatalf("CheckRedirect() error = %T, want policy error with preserved validator cause", err)
+	}
+}
+
 func TestNewDownloadHTTPClientAllowsSelectedLoopbackProxy(t *testing.T) {
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Host != "203.0.113.10" {
