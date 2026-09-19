@@ -81,6 +81,7 @@ lark-cli mail +send --to 'alice@example.com' --subject '测试' --body '<p>test<
 | `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `mail +signature` 查看可用签名。与 `--no-signature` 互斥 |
 | `--no-signature` | 否 | 跳过默认签名自动追加。与 `--signature-id` 互斥，同时使用时返回参数校验错误（退出码 2） |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
+| `--send-separately <bool>` | 否 | 分别发送：`true` 为每个收件人单独发送一封；`false` 显式取消。两个显式值都会随草稿保存（`false` 不会因可选字段省略而丢失）。省略时新建草稿按普通发送、已有草稿保留原设置。非法值在写草稿/发送前被拒绝（退出码 2）。详见下方「分别发送」说明 |
 | `--event-summary <text>` | 否 | 日程标题。设置此参数即在邮件中嵌入日程邀请（text/calendar）。需同时设置 `--event-start` 和 `--event-end` |
 | `--event-start <time>` | 条件必填 | 日程开始时间（ISO 8601，如 `2026-04-20T14:00+08:00`） |
 | `--event-end <time>` | 条件必填 | 日程结束时间（ISO 8601） |
@@ -89,6 +90,13 @@ lark-cli mail +send --to 'alice@example.com' --subject '测试' --body '<p>test<
 | `--send-time <timestamp>` | 否 | 定时发送时间，Unix 时间戳（秒）。需至少为当前时间 + 5 分钟。配合 `--confirm-send` 使用可定时发送邮件 |
 | `--request-receipt` | 否 | 请求已读回执（RFC 3798 Message Disposition Notification）。在出站 EML 里写 `Disposition-Notification-To: <sender>` 头。收件人的邮件客户端**可能**弹出提示询问是否回执、可能自动发送、也可能忽略——送达不保证 |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
+
+### 分别发送（--send-separately）
+
+- 三态语义：`true` 显式开启（服务端按客户端既有语义为每个收件人单独投递一封）；`false` 显式取消；省略时不产生覆盖值——新建草稿按普通发送，已有草稿保留服务端已保存的设置。
+- 显式值随草稿持久化：`false` 同样作为已保存设置写入，不会因可选字段序列化被省略；后续 `+draft-edit` 不带该参数时保留原值，`+draft-send` 不带该参数时沿用服务端已保存值。
+- 发送链路由服务端单次提交完成（复用既有 drafts.send），CLI 不拆分收件人逐封调用；发送输出沿用既有响应封装，请求成功不等于所有收件人投递成功，逐收件人投递状态用 `send_status` 查询。
+- 错误与既有限制：权限拒绝、收件人非法/超限等沿用服务端错误码、错误信息与原 CLI 退出码规范；收件人数量、邮件组展开、账号类型等适用限制以客户端与服务端既有规则为准，CLI 不自行放宽或收紧。
 
 ### 日程邀请约束
 
