@@ -41,7 +41,7 @@ lark-cli wiki +member-remove \
 ```json
 {
   "space_id": "7160145948494381236",
-  "member_id": "ou_449b53ad6aee526f7ed311b216aabcef",
+  "member_id": "ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "member_type": "openid",
   "member_role": "admin"
 }
