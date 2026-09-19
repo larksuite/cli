@@ -1,0 +1,27 @@
+[
+  {
+    "id": "daily-create",
+    "prompt": "生成今天的工作日报并创建飞书云文档，时间范围按 Asia/Shanghai 当天 00:00 到当前时刻。",
+    "expected": "读取 lark-shared/lark-doc，运行飞书采集、本地 Agent 证据、候选审查脚本，生成 outputs/工作日报-YYYY-MM-DD.md，创建飞书文档并保存响应。"
+  },
+  {
+    "id": "daily-attribution-correction",
+    "prompt": "今天日报里不要把与我无关的群聊事项写成我的工作，AIEXCEL、Swimlane、Wardrobe 这些本地项目也要判断是否有当天证据。",
+    "expected": "运行候选审查，使用本人归因门槛过滤群聊噪声，并在证据/执行记录中说明历史重点本地项目纳入或未纳入原因。"
+  },
+  {
+    "id": "wbs-plan-no-write",
+    "prompt": "根据本周飞书会议和聊天，先生成研发 WBS 待填条目草稿，不要直接写入表格。",
+    "expected": "进入 WBS 填报模式，生成包含口述汇报摘要和候选 WBS 条目的本地 Markdown，不调用 Base 写入；如需排除项目，只影响 WBS 候选/写表；任务级别默认二级，后续写入 Base 时必须统一推送二级。"
+  },
+  {
+    "id": "meeting-transcript-codex-boundary",
+    "prompt": "今天有一场飞书妙记会议，妙记 AI 摘要说客户已确认方案，但逐字稿只显示还在讨论；同主题 Codex 会话里有后续方案草稿。生成日报时怎么归因？",
+    "expected": "逐字稿优先，妙记 AI 摘要只能作为候选线索；Codex 会话只作为会议事项补强，不能替代会议原始证据，不能写成客户已确认。"
+  },
+  {
+    "id": "local-codex-primary-evidence",
+    "prompt": "今天没有相关会议，但 Codex 会话里完成了本地方案文档、代码修改和测试验证。生成日报时 Codex 会话是不是只能作为补强证据？",
+    "expected": "不是。若事项本身是本地 Agent 工作产出，并有 knowledge、代码、脚本、测试或构建产物，则 Codex/Claude 会话和落地产物可作为该工作包主证据。"
+  }
+]
