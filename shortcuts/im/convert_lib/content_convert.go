@@ -209,6 +209,7 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 		"deleted":     deleted,
 		"updated":     updated,
 	}
+	ApplySyncToChatFields(msg, ProjectSyncToChatRelation(m["sync_to_chat_info"]))
 
 	// thread_id takes priority; fall back to reply_to (parent_id) if no thread
 	if tid, _ := m["thread_id"].(string); tid != "" {
