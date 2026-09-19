@@ -6,10 +6,14 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/url"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // PartialFailureError is the exit signal for a batch / multi-status command that
@@ -63,7 +67,7 @@ func WriteTypedErrorEnvelope(w io.Writer, err error, identity string) bool {
 	env := typedEnvelope{
 		OK:       false,
 		Identity: identity,
-		Error:    typed,
+		Error:    withEffectiveRequestURL(typed),
 		Notice:   GetNotice(),
 	}
 	var buf bytes.Buffer
@@ -81,6 +85,26 @@ func WriteTypedErrorEnvelope(w io.Writer, err error, identity string) bool {
 	// "Error:" path with exit 1.
 	_, _ = w.Write(buf.Bytes())
 	return true
+}
+
+// net/http records the original URL even when a transport rewrites it. Replace
+// only that error fragment, including for raw API transport failures; server
+// payloads and the producer's error chain remain untouched.
+func withEffectiveRequestURL(err error) error {
+	var requestErr *url.Error
+	var effective interface{ EffectiveRequestURL() string }
+	if !errors.As(err, &requestErr) || !errors.As(requestErr.Err, &effective) {
+		return err
+	}
+	rendered, ok := recovery.CloneTyped(err)
+	if !ok {
+		return err
+	}
+	cloned := *requestErr
+	cloned.URL = effective.EffectiveRequestURL()
+	problem, _ := errs.ProblemOf(rendered)
+	problem.Message = strings.ReplaceAll(problem.Message, requestErr.Error(), cloned.Error())
+	return rendered
 }
 
 // typedEnvelope wraps a typed error for wire emission. Error is `error` so the

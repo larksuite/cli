@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 	"github.com/smartystreets/goconvey/convey"
 )
 
@@ -88,6 +89,31 @@ func TestRequestAppRegistration_UsesFeishuBootstrapAndConfiguredVerificationBran
 				t.Errorf("verification URL = %q, want host %q", resp.VerificationUriComplete, c.verificationHost)
 			}
 		})
+	}
+}
+
+// TestRequestAppRegistration_RewritesVerificationURL pins the presentation
+// boundary: the final CLI-built confirmation page URL passes through the URL
+// rewrite extension for both brands without losing its query parameters.
+func TestRequestAppRegistration_RewritesVerificationURL(t *testing.T) {
+	testurlrewrite.Register(t, func(rawURL string) string {
+		rawURL = strings.Replace(rawURL, "open.feishu.cn", "open.mirror.test", 1)
+		return strings.Replace(rawURL, "open.larksuite.com", "open.mirror.test", 1)
+	})
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return jsonResponse(`{"device_code":"d","user_code":"TEST-CODE","expire_in":60,"interval":5}`), nil
+	})}
+
+	for _, brand := range []core.LarkBrand{core.BrandFeishu, core.BrandLark} {
+		resp, err := RequestAppRegistration(context.Background(), client, brand, io.Discard)
+		if err != nil {
+			t.Fatalf("RequestAppRegistration(%q) error = %v", brand, err)
+		}
+		got := BuildVerificationURL(resp.VerificationUriComplete, "1.2.3")
+		want := "https://open.mirror.test/page/cli?user_code=TEST-CODE&lpv=1.2.3&ocv=1.2.3&from=cli"
+		if got != want {
+			t.Errorf("brand %q: verification URL = %q, want %q", brand, got, want)
+		}
 	}
 }
 

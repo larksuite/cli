@@ -14,8 +14,57 @@ import (
 	"github.com/larksuite/cli/errs"
 	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/core"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 	internaltransport "github.com/larksuite/cli/internal/transport"
 )
+
+func TestSafeRedirectPolicyUsesRewrittenPlatformOrigin(t *testing.T) {
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, "https://open.feishu.cn", "https://mirror.example", 1)
+	})
+
+	platformCalls := 0
+	platform := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		platformCalls++
+		if req.URL.Host != "mirror.example" {
+			t.Fatalf("platform request host = %q", req.URL.Host)
+		}
+		if req.Header.Get("Authorization") != "Bearer secret" {
+			t.Fatalf("redirect lost Authorization: %#v", req.Header)
+		}
+		if platformCalls == 1 {
+			return &http.Response{
+				StatusCode: http.StatusTemporaryRedirect,
+				Header:     http.Header{"Location": []string{"https://mirror.example/next"}},
+				Body:       http.NoBody,
+				Request:    req,
+			}, nil
+		}
+		return &http.Response{StatusCode: http.StatusNoContent, Header: make(http.Header), Body: http.NoBody, Request: req}, nil
+	})
+	external := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("rewritten redirect used external policy for %s", req.URL)
+		return nil, nil
+	})
+	client := &http.Client{
+		Transport:     internaltransport.NewHTTPPolicyRouter(platform, external),
+		CheckRedirect: safeRedirectPolicy,
+	}
+	req, err := http.NewRequest(http.MethodPost, "https://open.feishu.cn/start", strings.NewReader("body"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer secret")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if platformCalls != 2 {
+		t.Fatalf("platform calls = %d, want 2", platformCalls)
+	}
+}
 
 func TestCachedHTTPClientFunc_ReturnsSameInstance(t *testing.T) {
 	isEnabled := false
