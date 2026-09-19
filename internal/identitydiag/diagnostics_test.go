@@ -54,8 +54,28 @@ func TestFilterRecoveryProjectsTopLevelAndNestedErrorHintTogether(t *testing.T) 
 	if got.Hint != "check keychain access" {
 		t.Errorf("top-level hint = %q, want generic recovery only", got.Hint)
 	}
-	if got.Error == nil || got.Error.Hint != got.Hint {
+	if got.Error == nil || got.Error.ProblemDetail().Hint != got.Hint {
 		t.Fatalf("nested error hint = %#v, want %q", got.Error, got.Hint)
+	}
+}
+
+func TestFilterRecoveryPreservesPolicyFieldsWithoutMutatingSource(t *testing.T) {
+	source := errs.NewSecurityPolicyError(errs.SubtypeChallengeRequired, "challenge required").
+		WithChallengeURL("https://example.com/challenge").WithHint("run auth login")
+	identity := withCommandRecovery(withPolicyError(Identity{}, source), recovery.TargetAuthLogin, source.Hint)
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	got := FilterRecovery(Result{User: identity}, recovery.NewProjector(func() *surface.Plan { return plan })).User
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(got.Error, &policyErr) || policyErr.ChallengeURL != source.ChallengeURL {
+		t.Fatalf("projected error = %#v, want policy error with original challenge URL", got.Error)
+	}
+	if got.Hint != "" || policyErr.Hint != "" {
+		t.Fatalf("projected hints = (%q, %q), want empty", got.Hint, policyErr.Hint)
+	}
+	if source.Hint != "run auth login" {
+		t.Fatalf("source hint = %q, want unchanged", source.Hint)
 	}
 }
 
@@ -273,6 +293,31 @@ func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
 	}
 	if !strings.Contains(got.User.Message, "server rejected token") {
 		t.Fatalf("user message = %q, want 'server rejected token'", got.User.Message)
+	}
+
+	stored, err := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
+	if err != nil {
+		t.Fatalf("GetStoredToken() error = %v", err)
+	}
+	if stored == nil {
+		t.Fatal("GetStoredToken() = nil")
+	}
+	stored.ExpiresAt = now.Add(-time.Minute).UnixMilli()
+	if err := larkauth.SetStoredToken(stored); err != nil {
+		t.Fatalf("SetStoredToken() refresh fixture error = %v", err)
+	}
+
+	const refreshMessage = "User token refresh was denied by policy"
+	f, _, _, reg = cmdutil.TestFactory(t, cfg)
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    larkauth.PathOAuthTokenV2,
+		Error:  errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "%s", refreshMessage).WithCode(21001),
+	})
+	got = Diagnose(context.Background(), f, cfg, true)
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(got.User.Error, &policyErr) || policyErr.Code != 21001 || policyErr.Message != refreshMessage {
+		t.Fatalf("user error = %#v, want policy error 21001 with message %q", got.User.Error, refreshMessage)
 	}
 }
 
@@ -546,7 +591,7 @@ func TestDiagnose_CorruptStoredTokenCarriesReauthorizationRecovery(t *testing.T)
 	if got.Status != StatusError || got.Available {
 		t.Fatalf("user = %#v, want error and unavailable", got)
 	}
-	if !strings.Contains(got.Hint, "auth login") || got.Error == nil || got.Error.Hint != got.Hint {
+	if !strings.Contains(got.Hint, "auth login") || got.Error == nil || got.Error.ProblemDetail().Hint != got.Hint {
 		t.Fatalf("user hint = %q, error = %#v; want re-authorization guidance on both", got.Hint, got.Error)
 	}
 
@@ -558,7 +603,7 @@ func TestDiagnose_CorruptStoredTokenCarriesReauthorizationRecovery(t *testing.T)
 	if strings.Contains(projected.Hint, "auth login") || !strings.Contains(projected.Hint, "supported authorization flow") {
 		t.Fatalf("projected hint = %q, want the reduced-distribution fallback instead of a dead auth login pointer", projected.Hint)
 	}
-	if projected.Error == nil || projected.Error.Hint != projected.Hint {
+	if projected.Error == nil || projected.Error.ProblemDetail().Hint != projected.Hint {
 		t.Fatalf("projected error = %#v, want nested hint to follow the top-level projection %q", projected.Error, projected.Hint)
 	}
 }
