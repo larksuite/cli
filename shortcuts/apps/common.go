@@ -73,7 +73,7 @@ const appNoContainerMessage = "this app has no running container; online metrics
 // status check; a failed metrics read alone does not authorize a release. It
 // names existing commands with a stable placeholder arg so a harness can act on
 // it without parsing natural-language error text.
-const appNoContainerHint = "check the app's deployment status with `lark-cli apps +release-list --app-id <app_id> --status finished` (a newly created or undeployed app has no finished release, so it produces no metrics yet); if it is not deployed, ask the user whether to deploy — deploying takes the whole app live and can affect existing production traffic — and only if confirmed run `lark-cli apps +release-create --app-id <app_id>`, then retry once it is serving traffic"
+const appNoContainerHint = "check the app's deployment status with `lark-cli apps +release-list --app-id <app_id> --status finished` (a newly created or undeployed app has no finished release, so it produces no metrics yet); if it is not deployed, ask the user whether to deploy — deploying takes the whole app live and can affect existing production traffic — and only if confirmed run `lark-cli apps +release-create --app-id <app_id> --apply-reason \"<release reason>\"`, then retry once it is serving traffic"
 
 // appNoContainerMessageMarkers are lowercase substrings of the raw "Container
 // not exists" server message, used as a fallback when the business code is not

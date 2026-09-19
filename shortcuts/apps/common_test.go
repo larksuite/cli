@@ -5,6 +5,7 @@ package apps
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -329,5 +330,12 @@ func TestWithObservabilityHint(t *testing.T) {
 func TestIsAppNoContainerError_NilProblem(t *testing.T) {
 	if isAppNoContainerError(nil) {
 		t.Error("isAppNoContainerError(nil) = true, want false")
+	}
+}
+
+func TestAppNoContainerHintIncludesRequiredReleaseReason(t *testing.T) {
+	want := `lark-cli apps +release-create --app-id <app_id> --apply-reason "<release reason>"`
+	if !strings.Contains(appNoContainerHint, want) {
+		t.Fatalf("appNoContainerHint = %q, want it to contain %q", appNoContainerHint, want)
 	}
 }
