@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"sort"
@@ -824,16 +825,22 @@ func installTipsHelpFunc(root *cobra.Command, help *service.HelpRenderer) {
 		// Domain and method commands compose their agent guidance into Long lazily
 		// here (shortcuts attach after service registration); both skip the generic
 		// bottom-of-help append below.
-		if help.PrepareDomainHelp(cmd) || help.PrepareMethodHelp(cmd) || help.PrepareShortcutHelp(cmd) {
+		if help.PrepareDomainHelp(cmd) || help.PrepareMethodHelp(cmd) {
 			defaultHelp(cmd, args)
 			return
 		}
+		preparedShortcutHelp := help.PrepareShortcutHelp(cmd)
 		defaultHelp(cmd, args)
 		out := cmd.OutOrStdout()
+		if preparedShortcutHelp {
+			writeShortcutAuthorizationHelp(out, cmd)
+			return
+		}
 		if level, ok := cmdutil.GetRisk(cmd); ok {
 			fmt.Fprintln(out)
 			fmt.Fprintln(out, "Risk:", level)
 		}
+		writeShortcutAuthorizationHelp(out, cmd)
 		tips := cmdutil.GetTips(cmd)
 		if len(tips) == 0 {
 			return
@@ -844,4 +851,25 @@ func installTipsHelpFunc(root *cobra.Command, help *service.HelpRenderer) {
 			fmt.Fprintf(out, "    • %s\n", tip)
 		}
 	})
+}
+
+func writeShortcutAuthorizationHelp(out io.Writer, cmd *cobra.Command) {
+	if source, _ := cmdmeta.SourceOf(cmd); source != cmdmeta.SourceShortcut {
+		return
+	}
+	identities := cmdmeta.Identities(cmd)
+	if len(identities) == 0 {
+		return
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Supported identities:", strings.Join(identities, ", "))
+	fmt.Fprintln(out, "Required scopes:")
+	for _, identity := range identities {
+		scopes := cmdmeta.DeclaredScopes(cmd, identity)
+		if len(scopes) == 0 {
+			fmt.Fprintf(out, "    %s: none\n", identity)
+			continue
+		}
+		fmt.Fprintf(out, "    %s: %s\n", identity, strings.Join(scopes, ", "))
+	}
 }
