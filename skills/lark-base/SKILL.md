@@ -30,7 +30,7 @@ metadata:
 
 **读取 Base：** Base 信息用 `+base-get`，资源目录按下方 Base Block 资源模型读取。
 
-**写入 Base：** 创建新 Base 使用一次 `+base-create --name <base-name> --table-name <table-name> --fields '<field-array>'` 同时创建 Base、首表和 fields；`+base-copy` 复制整个 Base；Base 内资源统一按下方 Block 生命周期管理。
+**写入 Base：** 新建 Base 的名称、用途和初始结构均缺失且上下文无法唯一确定时，创建前先一次性询问名称、用途和初始结构。创建新 Base 使用一次 `+base-create --name <base-name> --table-name <table-name> --fields '<field-array>'` 同时创建 Base、首表和 fields；`+base-copy` 复制整个 Base；Base 内资源统一按下方 Block 生命周期管理。
 
 ## Base 模板中心
 
