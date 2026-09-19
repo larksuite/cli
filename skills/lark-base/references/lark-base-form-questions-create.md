@@ -82,6 +82,29 @@ lark-cli base +form-questions-create \
 - 新建字段题目：创建一个新字段，并把该字段作为表单题目。
 - 已有字段题目：把一个已存在字段加入表单，只改变该字段在表单中的可见性，不创建字段。
 
+无论新建字段题目还是复用已有字段题目，表单题目都仅支持 `text`、`number`、`select`、`datetime`、`user`、`attachment`、`location` 这 7 种字段类型，未列出的字段类型不支持。以下字段类型明确不支持作为任何表单题目，不能通过复用已有字段绕过：
+
+| 不支持的字段类型 | 类型名 |
+|----------------|--------|
+| 进度 | `Progress` |
+| 货币 | `Currency` |
+| 超链接 | `Url` |
+| 邮箱 | `Email` |
+| 条码 | `Barcode` |
+| 复选框 | `Checkbox` |
+| 群组 | `GroupChat` |
+| 单向关联 | `SingleLink` |
+| 双向关联 | `DuplexLink` |
+| 创建时间 | `CreatedTime` |
+| 修改时间 | `ModifiedTime` |
+| 创建人 | `CreatedUser` |
+| 修改人 | `ModifiedUser` |
+| 自动编号 | `AutoNumber` |
+| 按钮 | `Button` |
+| 流程字段 | `Stage` |
+| 对象字段 | `Object` |
+| 签字字段 | `Signature` |
+
 ### 形态 A：新建字段题目
 
 新建字段题目会在数据表中创建新字段，返回的 question `id` 就是新字段的 `field_id`。CLI 当前要求每个新建字段题目显式传 `title` 和 `type`。
@@ -100,7 +123,7 @@ lark-cli base +form-questions-create \
 
 ### 形态 B：已有字段题目
 
-已有字段题目只把一个已存在字段加入表单，不新建字段，也不改变已有记录数据。适合把之前用 `+form-questions-delete --keep-field` 移出表单的题目重新加回，或把表里已有字段补充为表单题目。
+已有字段题目只把一个已存在且属于上述 7 种支持类型的字段加入表单，不新建字段，也不改变已有记录数据。不支持的字段类型不能通过该形态加入表单。该形态适合把之前用 `+form-questions-delete --keep-field` 移出表单的题目重新加回，或把表里已有的受支持字段补充为表单题目。
 
 | 字段                    | 必填 | 说明 |
 |-----------------------|------|------|
@@ -118,7 +141,7 @@ lark-cli base +form-questions-create \
 
 | 类型 | style 结构 | 说明 |
 |------|------|------|
-| `text` | `{"type":"plain"}` | 当前仅支持 `plain` |
+| `text` | `{"type":"plain"}` / `{"type":"phone"}` / `{"type":"email"}` / `{"type":"url"}` / `{"type":"barcode"}` | 保留字段已有 text style |
 | `number` | `{"type":"plain","precision":2}` | precision 为小数位数 |
 | `number`（评分） | `{"type":"rating","icon":"star","min":1,"max":5}` | icon 可选：`star`/`heart`/`thumbsup`/`fire`/`smile`/`lightning`/`flower`/`number` |
 | `datetime` | `{"format":"yyyy/MM/dd"}` | format 可选：`yyyy/MM/dd`、`yyyy/MM/dd HH:mm`、`MM-dd`、`MM/dd/yyyy`、`dd/MM/yyyy` |
@@ -173,7 +196,35 @@ lark-cli base +form-questions-create \
 4. 除非用户明确要求同名的独立问题，否则目标标题已经存在时用 `+form-questions-update` 更新必填状态、标题或描述；不要创建同名问题后再删除旧问题。
 5. 创建确实不存在的问题，或用户明确要求的同名独立问题，并报告新建的问题 ID。
 
-`+form-questions-delete` 默认会删除承载问题的数据表字段及记录数据；如果只是想把题目移出表单并保留字段，必须用 `+form-questions-delete --keep-field`。移出后可用本文的已有字段题目形态加回。
+### 删除语义决策表
+
+`+form-questions-delete` 的默认行为会删除承载问题的数据表字段及该字段已有记录值，因此自然语言中的“删除题目”不能直接采用命令默认值：
+
+| 用户意图 | 正确操作 |
+|---|---|
+| 删除/移除题目、问题、问卷项、不再让填写者看到 | 默认使用 `--keep-field`，只移出表单 |
+| 删除底层字段、整列及其已有数据 | 仅当用户明确要求时省略 `--keep-field` |
+| 只说“删掉这个”且可能同时指题目或字段 | 先澄清；不得选择破坏性更大的解释 |
+
+只从表单移除“体重”题并保留底表字段：
+
+```bash
+lark-cli base +form-questions-delete \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id> \
+  --question-ids '["<weight_field_id>"]' \
+  --keep-field \
+  --yes
+```
+
+“删除表单题目”默认使用 `--keep-field`。操作前保存目标 `field_id` 和代表性记录值，操作后必须同时验证：
+
+1. `+form-questions-list` 中目标题目不存在；
+2. `+field-list` 中同一 `field_id` 仍存在；
+3. 表中已有数据时，`+record-list --field-id <field_id>` 返回的原值仍保留。
+
+任一保留对象缺失都表示删除范围过大，不能宣称完成。移出后可用本文的已有字段题目形态加回。
 
 ## 参考
 
