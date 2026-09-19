@@ -55,7 +55,7 @@ func runTypedShortcut(cmdFactory *cmdutil.Factory, runtime *RuntimeContext, shor
 		if preview != nil {
 			preview.Context(runtime.Config.AppID, runtime.UserOpenId())
 		}
-		return cmdutil.WriteDryRun(preview, cmdutil.DryRunOutputOptions{Format: runtime.Format, JqExpr: runtime.JqExpr, CommandPath: runtime.Cmd.CommandPath(), Identity: runtime.As(), Out: cmdFactory.IOStreams.Out, ErrOut: cmdFactory.IOStreams.ErrOut})
+		return cmdutil.WriteDryRun(preview, cmdutil.DryRunOutputOptions{Format: runtime.Format, JqExpr: runtime.outputJQ(), CommandPath: runtime.Cmd.CommandPath(), Identity: runtime.As(), Out: cmdFactory.IOStreams.Out, ErrOut: cmdFactory.IOStreams.ErrOut})
 	}
 	if shortcut.Risk == string(typedRiskHighRiskWrite) && !runtime.Bool("yes") {
 		return cmdutil.RequireConfirmation(shortcut.Service + " " + shortcut.Command)
@@ -127,7 +127,7 @@ func emitTypedResult(runtime *RuntimeContext, command *compiledCommand, result c
 		// injected --format flag existed but output was always JSON.
 		format = ""
 	}
-	options := output.EmitOptions{Format: format, Raw: command.output.DisableHTMLEscaping, JQ: runtime.JqExpr, Pretty: pretty, Meta: outputMetaFromTyped(result.meta)}
+	options := output.EmitOptions{Format: format, Raw: command.output.DisableHTMLEscaping, JQ: runtime.outputJQ(), Pretty: pretty, Meta: outputMetaFromTyped(result.meta)}
 	switch result.outcome {
 	case typedOutcomeSuccess:
 		runtime.handleEmitterError(runtime.newEmitter().Success(result.data, options))
