@@ -95,6 +95,34 @@ func TestFormatMessageItem(t *testing.T) {
 	}
 }
 
+func TestFormatMessageItemDeletedUnavailableContent(t *testing.T) {
+	tests := []struct {
+		name string
+		body interface{}
+	}{
+		{name: "invalid json", body: map[string]interface{}{"content": `{invalid`}},
+		{name: "null json", body: map[string]interface{}{"content": `null`}},
+		{name: "null body", body: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := map[string]interface{}{
+				"msg_type":    "post",
+				"message_id":  "om_deleted",
+				"deleted":     true,
+				"create_time": "1710500000",
+				"body":        tt.body,
+			}
+
+			got := FormatMessageItem(raw, nil)
+			if got["content"] != "[deleted]" {
+				t.Fatalf("FormatMessageItem() content = %#v, want %q", got["content"], "[deleted]")
+			}
+		})
+	}
+}
+
 func TestFormatMessageItem_UpdateTime_Present(t *testing.T) {
 	raw := map[string]interface{}{
 		"msg_type":    "text",
