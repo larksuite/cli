@@ -1,6 +1,6 @@
 ---
 name: lark-wiki
-version: 1.0.3
+version: 1.0.4
 description: "飞书知识库：管理知识空间、空间成员和文档节点。创建和查询知识空间、查看和管理空间成员、管理节点层级结构、在知识库中组织文档和快捷方式。当用户需要在知识库中查找或创建文档、浏览知识空间结构、查看或管理空间成员、移动或复制节点时使用。当用户给出 doubao.com 的 /wiki/ URL/token 时，也应直接使用本 skill，不要因为域名不是飞书而回退到 WebFetch；路由依据是 URL 路径模式和 token，而不是域名。不负责：上传文件到知识库节点下（走 lark-drive）、编辑文档/表格/Base 内容（走 lark-doc / lark-sheets / lark-base）。"
 metadata:
   requires:
@@ -36,6 +36,7 @@ metadata:
   - 用户明确选定后再执行 `lark-cli wiki +delete-space --space-id <ID> --yes`（高风险写操作，必须显式 `--yes`）。
   - 反例：不要把 wiki URL / 名称直接当 `--space-id`（如 `--space-id "https://.../wiki/<wiki_token>"`）；务必先用 `wiki +node-get` 解析出 `data.space_id` 再传。
 - 用户要在知识库中创建新节点，优先使用 `lark-cli wiki +node-create`。
+- 用户要创建 Wiki 快捷方式时，写入前必须先用 `lark-cli wiki +node-get --node-token <SOURCE_TOKEN> --format json` 解析源节点：源节点为 `origin` 时使用其 `node_token`；源节点为 `shortcut` 时使用其非空 `origin_node_token`。`--obj-type` 必须与查询结果中的 `obj_type` 一致，禁止把一个 shortcut 的 `node_token` 直接作为另一个 shortcut 的 `--origin-node-token`，也不要自动猜测或改写对象类型。
 - 用户要**原地重命名 Wiki 节点 / 修改节点标题**：使用 `lark-cli drive +update-title --url '<wiki_url>' --title '<new_title>'`。该命令保留同一个 `node_token`，并会根据 API 返回给出准确的缺失 scope 和授权提示；不要探索 raw `wiki.nodes` 的 `update_title` 端点，也不要通过复制或新建第二个节点实现改名。
 - 用户要列出 Wiki 节点：先用 `wiki +space-list --as user` 拿数字 `space_id`，再用 `wiki +node-list --space-id <space_id>`。不要把 wiki URL、node token、doc token、名称直接当 `--space-id`。钻子节点时 `--parent-node-token` 必须是 wiki node token；如果用户给的是 docx/sheet/base URL，先用 `wiki +node-get --node-token <url>` 解析出 `node_token`。
 - `wiki +node-list` 命中 `invalid_parameters`、`not_found`、`permission_denied` 时，不要重复调用同一参数；按 hint 修 `space_id` / `parent_node_token` / 权限。只有 `rate_limit` 才做退避重试。
