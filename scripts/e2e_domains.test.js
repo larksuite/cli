@@ -101,3 +101,45 @@ test("falls back to full when a mapped path has no e2e package", () => {
   assert.equal(output.mode, "full");
   assert.match(output.reason, /unmapped CLI E2E domain path/);
 });
+
+test("reads quoted Git paths without changing filenames", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-domains-git-"));
+  const git = (...args) => execFileSync("git", [
+    "-c", "user.name=Test",
+    "-c", "user.email=test@example.com",
+    "-c", "commit.gpgsign=false",
+    ...args,
+  ], { cwd: dir, stdio: "ignore" });
+  const files = ["docs/使用指南.md", "docs/usage notes.md"];
+
+  try {
+    git("init", "-q");
+    git("config", "core.quotepath", "true");
+    git("commit", "--allow-empty", "-qm", "base");
+    git("update-ref", "refs/remotes/origin/main", "HEAD");
+    fs.mkdirSync(path.join(dir, "docs"));
+    for (const file of files) {
+      fs.writeFileSync(path.join(dir, file), "example\n");
+    }
+    git("add", "docs");
+    git("commit", "-qm", "docs");
+
+    const raw = execFileSync(process.execPath, [
+      "-e", "console.log(JSON.stringify(require(process.argv[1]).readChangedFiles()))",
+      scriptPath,
+    ], {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        E2E_DOMAINS_ROOT: dir,
+        E2E_DOMAIN_CHANGED_FILES: "",
+        GITHUB_EVENT_NAME: "pull_request",
+        GITHUB_BASE_REF: "main",
+      },
+    });
+    assert.deepEqual(JSON.parse(raw).sort(), files.sort());
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
