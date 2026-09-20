@@ -357,12 +357,36 @@ func PrefetchFolderChildren(runtime *common.RuntimeContext, rawItems []interface
 type calendarEventConverter struct{}
 
 // Convert converts a share_calendar_event message content JSON to human-readable string.
-// Includes open_calendar_id and open_event_id as XML attributes so agents can look up the event.
 func (calendarEventConverter) Convert(ctx *ConvertContext) string {
+	return convertCalendar(ctx, "calendar_share")
+}
+
+type calendarInviteConverter struct{}
+
+// Convert converts a legacy calendar invite (msg_type "calendar") to human-readable string.
+func (calendarInviteConverter) Convert(ctx *ConvertContext) string {
+	return convertCalendar(ctx, "calendar_invite")
+}
+
+type generalCalendarConverter struct{}
+
+// Convert converts a general_calendar (RSVP) message content JSON to human-readable string.
+func (generalCalendarConverter) Convert(ctx *ConvertContext) string {
+	return convertCalendar(ctx, "calendar")
+}
+
+// convertCalendar parses a calendar message content JSON and renders it under the given
+// tag. open_calendar_id/open_event_id/share_token are appended as attributes whenever the
+// content carries them, so every calendar card type stays in sync as attributes evolve.
+func convertCalendar(ctx *ConvertContext, tag string) string {
 	parsed, err := ParseJSONObject(ctx.RawContent)
 	if err != nil {
 		return invalidJSONPlaceholder("calendar")
 	}
+	return formatCalendarContent(parsed, tag, calendarOpenIDAttrs(parsed)+calendarShareTokenAttr(parsed))
+}
+
+func calendarOpenIDAttrs(parsed map[string]interface{}) string {
 	calendarID, _ := parsed["open_calendar_id"].(string)
 	eventID, _ := parsed["open_event_id"].(string)
 	var attrs string
@@ -372,29 +396,7 @@ func (calendarEventConverter) Convert(ctx *ConvertContext) string {
 	if eventID != "" {
 		attrs += fmt.Sprintf(` open_event_id="%s"`, cardEscapeAttr(eventID))
 	}
-	attrs += calendarShareTokenAttr(parsed)
-	return formatCalendarContent(parsed, "calendar_share", attrs)
-}
-
-type calendarInviteConverter struct{}
-
-// Convert converts a calendar message content JSON to human-readable string.
-func (calendarInviteConverter) Convert(ctx *ConvertContext) string {
-	parsed, err := ParseJSONObject(ctx.RawContent)
-	if err != nil {
-		return invalidJSONPlaceholder("calendar")
-	}
-	return formatCalendarContent(parsed, "calendar_invite", "")
-}
-
-type generalCalendarConverter struct{}
-
-func (generalCalendarConverter) Convert(ctx *ConvertContext) string {
-	parsed, err := ParseJSONObject(ctx.RawContent)
-	if err != nil {
-		return invalidJSONPlaceholder("calendar")
-	}
-	return formatCalendarContent(parsed, "calendar", calendarShareTokenAttr(parsed))
+	return attrs
 }
 
 func calendarShareTokenAttr(parsed map[string]interface{}) string {
