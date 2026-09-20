@@ -190,8 +190,13 @@ lark-cli auth login --domain calendar --no-wait
 # Resume polling later
 lark-cli auth login --device-code <DEVICE_CODE>
 
-# Require proof-of-possession tokens for new local credentials, then re-authorize
+# DPoP (Demonstrating Proof of Possession) is enabled in preferred mode by default for new local credentials
+lark-cli config dpop preferred
+# Or disable DPoP
+lark-cli config dpop disabled
+# Or require DPoP without Bearer fallback
 lark-cli config dpop required
+# Re-authorize after choosing a different policy
 lark-cli auth login
 
 # Identity switching: execute commands as user or bot
