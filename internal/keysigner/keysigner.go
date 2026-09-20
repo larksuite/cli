@@ -1,212 +1,500 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package keysigner defines the pluggable signing abstraction used by the
-// private_key_jwt registration and authentication flow.
-//
-// The open-source core only declares the Signer interface and pure-stdlib key
-// helpers. The platform implementations that hold a non-exportable private key
-// (TPM 2.0 via facebookincubator/sks on Linux/Windows, a non-extractable
-// Keychain key on macOS) live OUTSIDE this core — in a build-tagged module or
-// extension — and register themselves via Register from init(). This keeps
-// CGO-heavy and license-sensitive dependencies out of the open-source build.
+// Package keysigner provides stable handles for signing keys. L1/L2
+// backends keep private material inside platform security services; the L3
+// backend decrypts an encrypted file in-process using a caller-supplied secret.
+// Callers can obtain the public key and request signatures but cannot export
+// private material through this API. ES256 is the default. SoftwareSigner also
+// supports ES384, ES512, EdDSA, and RS256. Native adapters accept only algorithms
+// implemented by their platform API; Apple's Secure Enclave is P-256 only.
 package keysigner
 
 import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/elliptic"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/rsa"
-	"crypto/x509"
-	"encoding/asn1"
-	"encoding/base64"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
+	"runtime"
 	"strings"
+	"unicode/utf8"
 )
 
-// KeyRef identifies a non-exportable signing key held by a backend
-// (TEE/TPM/Keychain). It is a stable handle (label), never the key material.
-type KeyRef struct {
-	// Label is the backend key label/tag (e.g. "larksuite-cli-agent").
-	Label string
-}
-
-// Signer signs JWS signing inputs with a non-exportable key.
-type Signer interface {
-	// EnsureKey returns the public key for ref, creating the key if absent.
-	EnsureKey(ctx context.Context, ref KeyRef) (crypto.PublicKey, error)
-	// PublicKey returns the public key for ref without creating it.
-	PublicKey(ctx context.Context, ref KeyRef) (crypto.PublicKey, error)
-	// Sign signs signingInput and returns a JOSE-format signature plus the JWS
-	// alg ("ES256"/"RS256"). Implementations apply the alg's hash and, for
-	// ECDSA, MUST return the fixed-width r||s form required by RFC 7518 §3.4
-	// (not ASN.1 DER), because the backend (TPM/Keychain) typically yields DER.
-	Sign(ctx context.Context, ref KeyRef, signingInput []byte) (sig []byte, alg string, err error)
-}
-
-// Supported JWS algorithms.
 const (
+	// AlgES256 is ECDSA with P-256 and SHA-256.
 	AlgES256 = "ES256"
+	// AlgES384 is ECDSA with P-384 and SHA-384.
+	AlgES384 = "ES384"
+	// AlgES512 is ECDSA with P-521 and SHA-512.
+	AlgES512 = "ES512"
+	// AlgEdDSA is EdDSA with Ed25519.
+	AlgEdDSA = "EdDSA"
+	// AlgRS256 is RSA PKCS#1 v1.5 with SHA-256 and a key of at least 2048 bits.
 	AlgRS256 = "RS256"
 )
 
-// DefaultKeyLabel is the backend key label lark-cli uses for its device signing
-// key. One non-exportable key is created on first private_key_jwt registration
-// and reused across subsequent app registrations on the same device.
-const DefaultKeyLabel = "larksuite-cli-agent"
+// Stable backend names used by stored key metadata and backend directories.
+const (
+	MacOSSecureEnclaveSignerName = "macos-secure-enclave"
+	MacOSKeychainSignerName      = "macos-keychain"
+	WindowsPlatformKSPSignerName = "windows-platform-ksp"
+	WindowsSoftwareKSPSignerName = "windows-software-ksp"
+	LinuxTPMSignerName           = "linux-tpm"
+	SoftwareSignerName           = "software-file"
+)
 
-// HardwareInfo describes the secure hardware backing a Signer, as reported by a
-// HardwareProber. It is advisory/diagnostic: it tells a user whether
-// private_key_jwt can use a real TEE on this device.
-type HardwareInfo struct {
-	Backend    string // backing technology, e.g. "tpm2" or "keychain"
-	Available  bool   // the hardware is present and usable for signing
-	VendorName string // hardware vendor/manufacturer, when known
-	VendorInfo string // additional vendor detail, when known
-	Reason     string // when Available is false, a human-readable cause
+// SecurityLevel is the protection class of a signing backend.
+type SecurityLevel string
+
+const (
+	SecurityLevelL1 SecurityLevel = "L1"
+	SecurityLevelL2 SecurityLevel = "L2"
+	SecurityLevelL3 SecurityLevel = "L3"
+)
+
+var (
+	// ErrUnavailable means this signer cannot be used on this build or host.
+	// Only new bindings may try another signer; existing bindings fail closed.
+	ErrUnavailable = errors.New("key signer is unavailable")
+	// ErrCleanupFailed prevents fallback after incomplete rollback or state restoration.
+	ErrCleanupFailed = errors.New("key signer cleanup failed")
+	// ErrKeyNotFound means the stable handle no longer resolves to its private
+	// key. Callers must never recreate a key for an existing token binding.
+	ErrKeyNotFound    = errors.New("signing key not found")
+	ErrKeyExists      = errors.New("signing key already exists")
+	ErrCorrupt        = errors.New("invalid or mismatched signing key record")
+	ErrUnlock         = errors.New("wrong unlock secret or damaged signing key ciphertext")
+	ErrUnlockRequired = errors.New("software signing requires a 32-byte cryptographically random unlock secret")
+	// ErrUnsupportedAlgorithm rejects an algorithm without accessing key storage.
+	ErrUnsupportedAlgorithm = errors.New("unsupported signing algorithm")
+)
+
+// KeyRef is a stable backend handle.
+type KeyRef struct {
+	Label string
+	// Algorithm is the required JOSE signing algorithm; empty means AlgES256.
+	// It is not part of the label's identity and must never replace an existing key.
+	Algorithm string
 }
 
-// HardwareProber is an optional capability a Signer may implement to report on
-// the secure hardware backing it (TPM/TEE vendor and availability) WITHOUT
-// creating or using a key. Probing never mutates key state.
-type HardwareProber interface {
-	ProbeHardware(ctx context.Context) (HardwareInfo, error)
+// NewKeyLabel returns a random 128-bit key label with the caller's prefix.
+func NewKeyLabel(prefix string) (string, error) {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", fmt.Errorf("keysigner: generate key label: %w", err)
+	}
+	label := prefix + hex.EncodeToString(id[:])
+	if err := validateRefContext(nil, KeyRef{Label: label}); err != nil {
+		return "", err
+	}
+	return label, nil
 }
 
-// ProbeActiveHardware probes the active signer's secure hardware. ok is false
-// when there is no active signer or it does not implement HardwareProber — in
-// which case private_key_jwt is unsupported on this build. When ok is true, info
-// reports availability and, if unavailable, info.Reason explains why.
-func ProbeActiveHardware(ctx context.Context) (info HardwareInfo, ok bool, err error) {
-	return probeHardware(ctx, Active())
+// Signer owns signing keys behind stable references. Sign hashes signingInput
+// as required by ref.Algorithm and returns a JOSE signature and that algorithm.
+type Signer interface {
+	// Name identifies the exact backend used to restore an existing binding.
+	Name() string
+	SecurityLevel() SecurityLevel
+	// EnsureKey is only for new bindings. Existing bindings must use PublicKey
+	// and Sign, which never create replacements. KeyCreator rejects duplicates.
+	EnsureKey(ctx context.Context, ref KeyRef) (crypto.PublicKey, error)
+	PublicKey(ctx context.Context, ref KeyRef) (crypto.PublicKey, error)
+	Sign(ctx context.Context, ref KeyRef, signingInput []byte) (signature []byte, algorithm string, err error)
+	// DeleteKey removes a key; missing keys may return nil or ErrKeyNotFound.
+	DeleteKey(ctx context.Context, ref KeyRef) error
 }
 
-// probeHardware is the registry-independent core of ProbeActiveHardware, so it
-// can be unit-tested without touching the global signer.
-func probeHardware(ctx context.Context, s Signer) (HardwareInfo, bool, error) {
-	p, ok := s.(HardwareProber)
+// KeyCreator optionally supports creation without reusing an existing identity.
+type KeyCreator interface {
+	CreateKey(ctx context.Context, ref KeyRef) (crypto.PublicKey, error)
+}
+
+// PlatformSignerNames returns the ordered native backends for the current OS.
+func PlatformSignerNames() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{MacOSSecureEnclaveSignerName, MacOSKeychainSignerName}
+	case "windows":
+		return []string{WindowsPlatformKSPSignerName, WindowsSoftwareKSPSignerName}
+	case "linux":
+		return []string{LinuxTPMSignerName}
+	default:
+		return nil
+	}
+}
+
+// IsPlatformSignerName reports whether name identifies a built-in native
+// backend on any supported OS.
+func IsPlatformSignerName(name string) bool {
+	switch name {
+	case MacOSSecureEnclaveSignerName, MacOSKeychainSignerName,
+		WindowsPlatformKSPSignerName, WindowsSoftwareKSPSignerName,
+		LinuxTPMSignerName:
+		return true
+	default:
+		return false
+	}
+}
+
+// NewPlatformSigners constructs the current OS's native backends in fallback
+// order. Storage location remains caller policy through directory.
+func NewPlatformSigners(directory func(string) (string, error)) []Signer {
+	names := PlatformSignerNames()
+	signers := make([]Signer, 0, len(names))
+	for _, name := range names {
+		if signer := NewSigner(name, directory); signer != nil {
+			signers = append(signers, signer)
+		}
+	}
+	return signers
+}
+
+// ResolvePlatformSigner restores one recorded native backend. An empty name
+// selects the strongest backend available on the current OS for legacy records.
+func ResolvePlatformSigner(name string, directory func(string) (string, error)) (Signer, error) {
+	if name == "" {
+		signers := NewPlatformSigners(directory)
+		if len(signers) == 0 {
+			return nil, ErrUnavailable
+		}
+		return signers[0], nil
+	}
+	if !IsPlatformSignerName(name) {
+		return nil, fmt.Errorf("keysigner: unknown platform signer %q", name)
+	}
+	signer := NewSigner(name, directory)
+	if signer == nil {
+		return nil, fmt.Errorf("%w: platform signer %q is not supported on %s", ErrUnavailable, name, runtime.GOOS)
+	}
+	return signer, nil
+}
+
+// CanFallback reports whether a new binding may try another backend.
+// Cancellation and incomplete cleanup always take precedence over unavailability.
+func CanFallback(err error) bool {
+	return errors.Is(err, ErrUnavailable) && !errors.Is(err, ErrCleanupFailed) &&
+		!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+}
+
+// EnsureKeyWithFallback creates or opens a key with the strongest usable
+// signer. It falls through only when a backend is unavailable.
+func EnsureKeyWithFallback(ctx context.Context, signers []Signer, ref KeyRef) (Signer, crypto.PublicKey, error) {
+	var unavailable []error
+	for _, signer := range signers {
+		if ctx != nil && ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		public, err := signer.EnsureKey(ctx, ref)
+		if err != nil && ctx != nil && ctx.Err() != nil {
+			return nil, nil, errors.Join(ctx.Err(), err)
+		}
+		if err == nil {
+			return signer, public, nil
+		}
+		if CanFallback(err) {
+			unavailable = append(unavailable, err)
+			continue
+		}
+		return nil, nil, fmt.Errorf("keysigner: ensure key with %q: %w", signer.Name(), err)
+	}
+	return nil, nil, errors.Join(append([]error{ErrUnavailable}, unavailable...)...)
+}
+
+// ProbeSigner verifies one signer's create/sign/delete path without retaining
+// the probe key.
+func ProbeSigner(ctx context.Context, signer Signer, ref KeyRef, input []byte) (err error) {
+	if signer == nil {
+		return ErrUnavailable
+	}
+	public, err := signer.EnsureKey(ctx, ref)
+	if err != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return errors.Join(ctx.Err(), err)
+		}
+		return err
+	}
+	cleanupCtx := context.WithoutCancel(ctx)
+	defer func() {
+		if cleanupErr := signer.DeleteKey(cleanupCtx, ref); cleanupErr != nil {
+			err = errors.Join(err, ErrCleanupFailed, cleanupErr)
+		}
+		if err != nil && ctx.Err() != nil {
+			err = errors.Join(ctx.Err(), err)
+		}
+	}()
+	algorithm, err := algorithmForRef(ctx, ref)
+	if err != nil {
+		return err
+	}
+	if err := algorithm.validatePublicKey(public); err != nil {
+		return err
+	}
+	signature, signedAlgorithm, signErr := signer.Sign(ctx, ref, input)
+	if signErr != nil {
+		return signErr
+	}
+	validSize := len(signature) > 0
+	switch key := public.(type) {
+	case *ecdsa.PublicKey:
+		validSize = len(signature) == 2*((key.Curve.Params().BitSize+7)/8)
+	case ed25519.PublicKey:
+		validSize = len(signature) == ed25519.SignatureSize
+	case *rsa.PublicKey:
+		validSize = len(signature) == key.Size()
+	}
+	if signedAlgorithm != algorithm.name() || !validSize {
+		return fmt.Errorf("keysigner: probe returned algorithm %q and %d-byte signature", signedAlgorithm, len(signature))
+	}
+	return nil
+}
+
+// signingAlgorithm owns cryptography, independently of key storage.
+// Native adapters separately select the algorithms their platform implements.
+type signingAlgorithm interface {
+	name() string
+	generateKey() (crypto.Signer, error)
+	validatePublicKey(crypto.PublicKey) error
+	sign(crypto.Signer, []byte) ([]byte, error)
+	// Clear software private material without invalidating returned public keys.
+	clearPrivateKey(crypto.Signer)
+}
+
+func algorithmForRef(ctx context.Context, ref KeyRef) (signingAlgorithm, error) {
+	if err := validateRefContext(ctx, ref); err != nil {
+		return nil, err
+	}
+	switch ref.Algorithm {
+	case "", AlgES256:
+		return es256Algorithm{}, nil
+	case AlgES384, AlgES512:
+		return newECDSAAlgorithm(ref.Algorithm)
+	case AlgEdDSA:
+		return edDSAAlgorithm{}, nil
+	case AlgRS256:
+		return rs256Algorithm{}, nil
+	default:
+		return nil, fmt.Errorf("keysigner: %w: %q", ErrUnsupportedAlgorithm, ref.Algorithm)
+	}
+}
+
+func validateRefContext(ctx context.Context, ref KeyRef) error {
+	if len(ref.Label) == 0 || len(ref.Label) > 256 || !utf8.ValidString(ref.Label) ||
+		strings.ContainsFunc(ref.Label, func(r rune) bool { return r < 32 || r == 127 }) {
+		return errors.New("keysigner: key reference must be 1..256 UTF-8 bytes without control characters")
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type es256Algorithm struct{}
+
+func (es256Algorithm) name() string { return AlgES256 }
+
+func (es256Algorithm) common() ecdsaAlgorithm {
+	algorithm, _ := newECDSAAlgorithm(AlgES256)
+	return algorithm
+}
+
+func (es256Algorithm) generateKey() (crypto.Signer, error) {
+	return es256Algorithm{}.common().generateKey()
+}
+
+func (es256Algorithm) validatePublicKey(public crypto.PublicKey) error {
+	return es256Algorithm{}.common().validatePublicKey(public)
+}
+
+func (a es256Algorithm) sign(key crypto.Signer, input []byte) ([]byte, error) {
+	return a.common().sign(key, input)
+}
+
+// Best effort only: Go and the crypto implementation may retain other copies.
+func (es256Algorithm) clearPrivateKey(key crypto.Signer) {
+	es256Algorithm{}.common().clearPrivateKey(key)
+}
+
+// signatureToJOSE converts ASN.1 into the fixed-width R || S representation
+// required by RFC 7518 for ES256.
+func (es256Algorithm) signatureToJOSE(der []byte) ([]byte, error) {
+	return ecdsaSignatureToJOSE(es256Algorithm{}.common().parameters, der)
+}
+
+type ecdsaAlgorithm struct {
+	parameters ecKeyParameters
+}
+
+func newECDSAAlgorithm(name string) (ecdsaAlgorithm, error) {
+	parameters, ok := ecParametersForAlgorithm(name)
 	if !ok {
-		return HardwareInfo{}, false, nil
+		return ecdsaAlgorithm{}, fmt.Errorf("keysigner: %w: %q", ErrUnsupportedAlgorithm, name)
 	}
-	info, err := p.ProbeHardware(ctx)
-	return info, true, err
+	return ecdsaAlgorithm{parameters: parameters}, nil
 }
 
-// cleanProbeError renders err's message with redundant re-wraps collapsed. Some
-// backends (e.g. facebookincubator/sks) wrap an error twice with the SAME "%w"
-// prefix, yielding "P: P: cause"; this peels each outer layer whose only
-// contribution is to repeat the prefix already present in the wrapped error,
-// leaving a single "P: cause". A layer that adds genuinely new context is kept.
-func cleanProbeError(err error) string {
-	if err == nil {
-		return ""
-	}
-	msg := err.Error()
-	for {
-		inner := errors.Unwrap(err)
-		if inner == nil {
-			break
-		}
-		innerMsg := inner.Error()
-		prefix, ok := strings.CutSuffix(msg, innerMsg)
-		if !ok || prefix == "" || !strings.HasPrefix(innerMsg, prefix) {
-			break
-		}
-		msg, err = innerMsg, inner
-	}
-	return msg
+func (a ecdsaAlgorithm) name() string { return a.parameters.algorithm }
+
+func (a ecdsaAlgorithm) generateKey() (crypto.Signer, error) {
+	return ecdsa.GenerateKey(a.parameters.ellipticCurve, rand.Reader)
 }
 
-// AlgForKey returns the JWS alg for a public key: EC P-256 -> ES256, RSA -> RS256.
-// The signer backend chooses the key type (the macOS keychain signer uses an
-// RSA-2048 key, hence RS256).
-func AlgForKey(pub crypto.PublicKey) (string, error) {
-	switch k := pub.(type) {
-	case *ecdsa.PublicKey:
-		if k.Curve == elliptic.P256() {
-			return AlgES256, nil
-		}
-		return "", fmt.Errorf("keysigner: unsupported EC curve %q (only P-256/ES256)", k.Curve.Params().Name)
-	case *rsa.PublicKey:
-		return AlgRS256, nil
-	default:
-		return "", fmt.Errorf("keysigner: unsupported public key type %T", pub)
+func (a ecdsaAlgorithm) validatePublicKey(public crypto.PublicKey) error {
+	key, ok := public.(*ecdsa.PublicKey)
+	if !ok {
+		return fmt.Errorf("keysigner: public key is %T, want a valid %s ECDSA key", public, a.parameters.curve)
 	}
-}
-
-// ecdsaDERToJOSE converts an ASN.1 DER-encoded ECDSA signature — the form most
-// TEE/TPM backends emit (e.g. facebookincubator/sks marshals the TPM's r,s with
-// asn1.Marshal) — into the fixed-width r||s form JWS requires for ES256
-// (RFC 7518 §3.4). byteLen is the curve coordinate size (32 for P-256), so the
-// result is exactly 2*byteLen bytes with r and s each left-zero-padded.
-//
-// This is intentionally part of the pure-stdlib core (not a platform signer) so
-// it can be unit-tested with a software key on any machine, including TPM-less CI.
-func ecdsaDERToJOSE(der []byte, byteLen int) ([]byte, error) {
-	var sig struct{ R, S *big.Int }
-	rest, err := asn1.Unmarshal(der, &sig)
+	parameters, err := ecParametersForPublicKey(key)
 	if err != nil {
-		return nil, fmt.Errorf("keysigner: parse ECDSA DER signature: %w", err)
+		return err
 	}
-	if len(rest) != 0 {
-		return nil, fmt.Errorf("keysigner: %d trailing byte(s) after ECDSA DER signature", len(rest))
+	if parameters.algorithm != a.name() {
+		return fmt.Errorf("keysigner: public key uses %s, want %s", parameters.algorithm, a.name())
 	}
-	if sig.R == nil || sig.S == nil || sig.R.Sign() <= 0 || sig.S.Sign() <= 0 {
-		return nil, fmt.Errorf("keysigner: ECDSA signature has non-positive r/s")
-	}
-	// Guard before FillBytes, which panics if the scalar does not fit in byteLen.
-	if sig.R.BitLen() > byteLen*8 || sig.S.BitLen() > byteLen*8 {
-		return nil, fmt.Errorf("keysigner: ECDSA r/s exceeds %d-byte coordinate", byteLen)
-	}
-	out := make([]byte, 2*byteLen)
-	sig.R.FillBytes(out[:byteLen])
-	sig.S.FillBytes(out[byteLen:])
-	return out, nil
+	return nil
 }
 
-// EncodePublicKey marshals pub to PKIX DER and base64-encodes it (std encoding),
-// matching the public-key form the registration backend binds to the app.
-func EncodePublicKey(pub crypto.PublicKey) (string, error) {
-	der, err := x509.MarshalPKIXPublicKey(pub)
+func (a ecdsaAlgorithm) sign(key crypto.Signer, input []byte) ([]byte, error) {
+	public, ok := key.Public().(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("keysigner: public key is %T, want a valid %s ECDSA key", key.Public(), a.parameters.curve)
+	}
+	if err := a.validatePublicKey(public); err != nil {
+		return nil, err
+	}
+	digest := a.digest(input)
+	der, err := key.Sign(rand.Reader, digest, a.parameters.hash)
 	if err != nil {
-		return "", fmt.Errorf("keysigner: encode public key: %w", err)
+		return nil, err
 	}
-	return base64.StdEncoding.EncodeToString(der), nil
+	if !ecdsa.VerifyASN1(public, digest, der) {
+		return nil, ErrCorrupt
+	}
+	return ecdsaSignatureToJOSE(a.parameters, der)
 }
 
-// PublicKeyJWK returns the RFC 7517 JSON Web Key for pub, used to embed the
-// public key in the attestation JWT's "jwk" header so the registration backend
-// can bind it to the app. EC keys use base64url fixed-width coordinates
-// (RFC 7518 §6.2.1); RSA keys use base64url-encoded modulus and exponent.
-func PublicKeyJWK(pub crypto.PublicKey) (map[string]any, error) {
-	switch k := pub.(type) {
-	case *ecdsa.PublicKey:
-		if k.Curve != elliptic.P256() {
-			return nil, fmt.Errorf("keysigner: JWK supports EC P-256 only, got %q", k.Curve.Params().Name)
-		}
-		const coordLen = 32 // P-256 field element size
-		x := make([]byte, coordLen)
-		y := make([]byte, coordLen)
-		k.X.FillBytes(x)
-		k.Y.FillBytes(y)
-		return map[string]any{
-			"use": "sig",
-			"kty": "EC",
-			"crv": "P-256",
-			"x":   base64.RawURLEncoding.EncodeToString(x),
-			"y":   base64.RawURLEncoding.EncodeToString(y),
-		}, nil
-	case *rsa.PublicKey:
-		return map[string]any{
-			"use": "sig",
-			"kty": "RSA",
-			"n":   base64.RawURLEncoding.EncodeToString(k.N.Bytes()),
-			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(k.E)).Bytes()),
-		}, nil
+// Best effort only: Go and the crypto implementation may retain other copies.
+func (ecdsaAlgorithm) clearPrivateKey(key crypto.Signer) {
+	if private, ok := key.(*ecdsa.PrivateKey); ok && private != nil && private.D != nil {
+		clear(private.D.Bits())
+		private.D.SetInt64(0)
+	}
+}
+
+func (a ecdsaAlgorithm) digest(input []byte) []byte {
+	switch a.parameters.hash {
+	case crypto.SHA256:
+		digest := sha256.Sum256(input)
+		return digest[:]
+	case crypto.SHA384:
+		digest := sha512.Sum384(input)
+		return digest[:]
+	case crypto.SHA512:
+		digest := sha512.Sum512(input)
+		return digest[:]
 	default:
-		return nil, fmt.Errorf("keysigner: unsupported public key type %T for JWK", pub)
+		panic("keysigner: unsupported ECDSA hash")
+	}
+}
+
+type edDSAAlgorithm struct{}
+
+func (edDSAAlgorithm) name() string { return AlgEdDSA }
+
+func (edDSAAlgorithm) generateKey() (crypto.Signer, error) {
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	return private, err
+}
+
+func (edDSAAlgorithm) validatePublicKey(public crypto.PublicKey) error {
+	key, ok := public.(ed25519.PublicKey)
+	if !ok || len(key) != ed25519.PublicKeySize {
+		return fmt.Errorf("keysigner: public key is %T, want a valid Ed25519 key", public)
+	}
+	return nil
+}
+
+func (a edDSAAlgorithm) sign(key crypto.Signer, input []byte) ([]byte, error) {
+	public := key.Public()
+	if err := a.validatePublicKey(public); err != nil {
+		return nil, err
+	}
+	signature, err := key.Sign(rand.Reader, input, crypto.Hash(0))
+	if err != nil {
+		return nil, err
+	}
+	if len(signature) != ed25519.SignatureSize || !ed25519.Verify(public.(ed25519.PublicKey), input, signature) {
+		return nil, ErrCorrupt
+	}
+	return signature, nil
+}
+
+// Best effort only: Go and the crypto implementation may retain other copies.
+func (edDSAAlgorithm) clearPrivateKey(key crypto.Signer) {
+	if private, ok := key.(ed25519.PrivateKey); ok {
+		clear(private)
+	}
+}
+
+type rs256Algorithm struct{}
+
+func (rs256Algorithm) name() string { return AlgRS256 }
+
+func (rs256Algorithm) generateKey() (crypto.Signer, error) {
+	return rsa.GenerateKey(rand.Reader, 2048)
+}
+
+func (rs256Algorithm) validatePublicKey(public crypto.PublicKey) error {
+	key, ok := public.(*rsa.PublicKey)
+	if !ok || key == nil || key.N == nil || key.N.Sign() <= 0 || key.N.BitLen() < 2048 ||
+		key.N.Bit(0) == 0 || key.E < 3 || key.E > 1<<31-1 || key.E%2 == 0 {
+		return fmt.Errorf("keysigner: public key is %T, want a valid RSA key of at least 2048 bits", public)
+	}
+	return nil
+}
+
+func (a rs256Algorithm) sign(key crypto.Signer, input []byte) ([]byte, error) {
+	public := key.Public()
+	if err := a.validatePublicKey(public); err != nil {
+		return nil, err
+	}
+	digest := sha256.Sum256(input)
+	signature, err := key.Sign(rand.Reader, digest[:], crypto.SHA256)
+	if err != nil {
+		return nil, err
+	}
+	if err := rsa.VerifyPKCS1v15(public.(*rsa.PublicKey), crypto.SHA256, digest[:], signature); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrCorrupt, err)
+	}
+	return signature, nil
+}
+
+// Best effort only: Go and the crypto implementation may retain other copies.
+// The public modulus is deliberately preserved for callers retaining Public().
+func (rs256Algorithm) clearPrivateKey(key crypto.Signer) {
+	private, ok := key.(*rsa.PrivateKey)
+	if !ok || private == nil {
+		return
+	}
+	values := []*big.Int{private.D, private.Precomputed.Dp, private.Precomputed.Dq, private.Precomputed.Qinv}
+	values = append(values, private.Primes...)
+	for _, crt := range private.Precomputed.CRTValues {
+		values = append(values, crt.Exp, crt.Coeff, crt.R)
+	}
+	for _, value := range values {
+		if value != nil {
+			clear(value.Bits())
+			value.SetInt64(0)
+		}
 	}
 }

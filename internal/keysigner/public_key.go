@@ -81,15 +81,6 @@ func ecParametersForPublicKey(key *ecdsa.PublicKey) (ecKeyParameters, error) {
 	return ecKeyParameters{}, fmt.Errorf("keysigner: unsupported EC curve %q", key.Curve.Params().Name)
 }
 
-// P256PublicKey validates and projects a backend public key to P-256 ECDSA.
-func P256PublicKey(public crypto.PublicKey) (*ecdsa.PublicKey, error) {
-	ec, ok := public.(*ecdsa.PublicKey)
-	if !ok || ec == nil || ec.Curve != elliptic.P256() || ec.X == nil || ec.Y == nil || !ec.Curve.IsOnCurve(ec.X, ec.Y) {
-		return nil, fmt.Errorf("keysigner: public key is %T, want a valid P-256 ECDSA key", public)
-	}
-	return ec, nil
-}
-
 // AlgForKey returns the JOSE algorithm for a validated public signing key.
 func AlgForKey(public crypto.PublicKey) (string, error) {
 	switch key := public.(type) {
@@ -194,6 +185,15 @@ func PublicKeyThumbprint(public crypto.PublicKey) (string, error) {
 	}
 	digest := sha256.Sum256(canonical)
 	return base64.RawURLEncoding.EncodeToString(digest[:]), nil
+}
+
+// ECDSASignatureToJOSE converts an ASN.1 ECDSA signature to fixed-width R || S.
+func ECDSASignatureToJOSE(public *ecdsa.PublicKey, der []byte) ([]byte, error) {
+	parameters, err := ecParametersForPublicKey(public)
+	if err != nil {
+		return nil, err
+	}
+	return ecdsaSignatureToJOSE(parameters, der)
 }
 
 func ecdsaSignatureToJOSE(parameters ecKeyParameters, der []byte) ([]byte, error) {

@@ -17,7 +17,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
-
 	"github.com/larksuite/cli/internal/apicatalog"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -46,8 +45,12 @@ type LoginOptions struct {
 
 var pollDeviceToken = larkauth.PollDeviceToken
 
-func resolveLoginClientAuth(ctx context.Context, cfg *core.CliConfig) (larkauth.ClientAuth, error) {
-	return larkauth.ClientAuthFromConfig(cfg).ResolveSigner(ctx)
+func resolveLoginClientAuth(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) (larkauth.ClientAuth, error) {
+	signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
+	if err != nil {
+		return larkauth.ClientAuth{}, err
+	}
+	return larkauth.ClientAuthFromConfig(cfg, signer).ResolveSigner(ctx)
 }
 
 // NewCmdAuthLogin creates the auth login subcommand.
@@ -332,7 +335,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	if err != nil {
 		return err
 	}
-	clientAuth, err := resolveLoginClientAuth(opts.Ctx, config)
+	clientAuth, err := resolveLoginClientAuth(opts.Ctx, f, config)
 	if err != nil {
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "device authorization failed: %v", err).WithCause(err)
 	}
@@ -396,7 +399,10 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	result, err := pollDeviceToken(opts.Ctx, httpClient, clientAuth, config.Brand,
 		authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
 	if err != nil {
-		return err
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "token polling failed: %v", err).WithCause(err)
 	}
 
 	if !result.OK {
@@ -502,7 +508,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	if err != nil {
 		return err
 	}
-	clientAuth, err := resolveLoginClientAuth(opts.Ctx, config)
+	clientAuth, err := resolveLoginClientAuth(opts.Ctx, f, config)
 	if err != nil {
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "authorization failed: %v", err).WithCause(err)
 	}
@@ -530,7 +536,10 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 			problem.Category == errs.CategoryPolicy && problem.Subtype == errs.SubtypeAccessDenied {
 			cleanupRequestedScope()
 		}
-		return err
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "authorization failed: %v", err).WithCause(err)
 	}
 
 	if !result.OK {

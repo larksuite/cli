@@ -191,11 +191,11 @@ func TestIsPlatformEndpointURL_RequiresSecureStandardOrigin(t *testing.T) {
 	}
 }
 
-func TestOpenAPIAudience(t *testing.T) {
-	if got := OpenAPIAudience(BrandFeishu); got != "open.feishu.cn" {
-		t.Errorf("OpenAPIAudience(feishu) = %q, want open.feishu.cn", got)
+func TestClientAssertionAudience(t *testing.T) {
+	if got := ClientAssertionAudience(BrandFeishu); got != "accounts.feishu.cn" {
+		t.Errorf("ClientAssertionAudience(feishu) = %q, want accounts.feishu.cn", got)
 	}
-	if got := OpenAPIAudience(BrandLark); got != "open.larksuite.com" {
-		t.Errorf("OpenAPIAudience(lark) = %q, want open.larksuite.com", got)
+	if got := ClientAssertionAudience(BrandLark); got != "accounts.larksuite.com" {
+		t.Errorf("ClientAssertionAudience(lark) = %q, want accounts.larksuite.com", got)
 	}
 }

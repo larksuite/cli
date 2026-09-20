@@ -3,8 +3,12 @@
 
 // Package keylessprovider resolves the fixed keyless signer optional dependency
 // installed with the OpenClaw Feishu plugin. Application config contains only
-// the logical provider ID and keyRef; executable paths and argv are never read
-// from application config, environment variables, or PATH.
+// the logical provider ID and keyRef, not executable paths or argv. Discovery
+// uses a cached provider manifest, OpenClaw found on PATH, or a fixed package
+// location under the OpenClaw state directory. OPENCLAW_* environment overrides
+// can select that directory. This trusts the user's OpenClaw installation, PATH,
+// and directory overrides: ownership, permission, and digest checks do not
+// authenticate the publisher. Command arguments are constructed by the CLI.
 package keylessprovider
 
 import (
@@ -525,6 +529,7 @@ func executeOpenClawInspectCommand(ctx context.Context, stateDir, executable str
 	if err != nil {
 		return nil, &inspectUnavailableError{cause: fmt.Errorf("prepare openclaw plugin inspection: %w", err)}
 	}
+	cmd.WaitDelay = 10 * time.Second
 
 	stdout := &cappedBuffer{limit: inspectStdoutLimit}
 	stderr := &cappedBuffer{limit: inspectStderrLimit}

@@ -24,6 +24,10 @@ import (
 // JWS path and the produced token is actually cryptographically verifiable.
 type fakeSigner struct{ key *ecdsa.PrivateKey }
 
+func (*fakeSigner) Name() string { return "fake" }
+
+func (*fakeSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL3 }
+
 func newFakeSigner(t *testing.T) *fakeSigner {
 	t.Helper()
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -51,6 +55,8 @@ func (f *fakeSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) ([]b
 	s.FillBytes(sig[32:])
 	return sig, keysigner.AlgES256, nil
 }
+
+func (*fakeSigner) DeleteKey(context.Context, keysigner.KeyRef) error { return nil }
 
 func TestBuildSignedJWT_VerifiableES256(t *testing.T) {
 	f := newFakeSigner(t)
@@ -148,6 +154,18 @@ func TestSignClientAssertion(t *testing.T) {
 	if len(parts) != 3 {
 		t.Fatalf("want 3 parts, got %d", len(parts))
 	}
+	hb, _ := base64.RawURLEncoding.DecodeString(parts[0])
+	var header map[string]any
+	if err := json.Unmarshal(hb, &header); err != nil {
+		t.Fatal(err)
+	}
+	wantKID, err := keysigner.PublicKeyThumbprint(f.key.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header["kid"] != wantKID {
+		t.Fatalf("client_assertion kid = %v, want %q", header["kid"], wantKID)
+	}
 	cb, _ := base64.RawURLEncoding.DecodeString(parts[1])
 	var claims map[string]any
 	if err := json.Unmarshal(cb, &claims); err != nil {
@@ -197,6 +215,13 @@ func TestSignAttestation(t *testing.T) {
 	}
 	if jwk["kty"] != "EC" || jwk["crv"] != "P-256" || jwk["use"] != "sig" {
 		t.Errorf("jwk = %v", jwk)
+	}
+	wantKID, err := keysigner.PublicKeyThumbprint(f.key.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hdr["kid"] != wantKID || jwk["alg"] != keysigner.AlgES256 {
+		t.Errorf("attestation key metadata = header:%v jwk:%v, want kid=%q alg=%s", hdr["kid"], jwk, wantKID, keysigner.AlgES256)
 	}
 
 	cb, _ := base64.RawURLEncoding.DecodeString(parts[1])
