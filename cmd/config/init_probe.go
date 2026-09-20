@@ -109,7 +109,8 @@ func runProbePKJWT(parent context.Context, factory *cmdutil.Factory, brand core.
 		return nil
 	}
 	if signer == nil {
-		return nil
+		return errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"private-key JWT probe requires a key signer")
 	}
 	httpClient, err := factory.HttpClient()
 	if err != nil {

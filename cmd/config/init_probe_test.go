@@ -67,9 +67,21 @@ func (f *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // probeTestSigner is an in-memory real ECDSA P-256 signer used to sign the
-// client_assertion in runProbePKJWT tests (authMethodTestSigner returns a nil
-// key and cannot sign).
-type probeTestSigner struct{ key *ecdsa.PrivateKey }
+// client_assertion in runProbePKJWT tests. authMethodTestSigner only exercises
+// auth-method gating and does not produce a verifiable assertion.
+type probeTestSigner struct {
+	key  *ecdsa.PrivateKey
+	name string
+}
+
+func (p *probeTestSigner) Name() string {
+	if p.name != "" {
+		return p.name
+	}
+	return keysigner.MacOSKeychainSignerName
+}
+
+func (*probeTestSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL2 }
 
 func newProbeTestSigner(t *testing.T) *probeTestSigner {
 	t.Helper()
@@ -99,6 +111,8 @@ func (p *probeTestSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte)
 	s.FillBytes(sig[32:])
 	return sig, keysigner.AlgES256, nil
 }
+
+func (*probeTestSigner) DeleteKey(context.Context, keysigner.KeyRef) error { return nil }
 
 func jsonResp(code int, body string) *http.Response {
 	return &http.Response{
@@ -389,21 +403,30 @@ func TestRunProbePKJWT_Ambiguous_Silent(t *testing.T) {
 	assertSilent(t, runProbePKJWT(context.Background(), f, core.BrandFeishu, "cli_x", newProbeTestSigner(t), "agent-key"), errBuf)
 }
 
-// probeInitResult dispatches private_key_jwt to the assertion-backed probe.
+// probeInitResult dispatches private_key_jwt_local_keypair to the assertion-backed probe.
 func TestProbeInitResult_PrivateKeyJWT(t *testing.T) {
 	rt := &fakeRT{} // default oauth handler returns 200 + access_token
 	f, errBuf := fakeFactory(t, rt)
-	previous := keysigner.Active()
-	keysigner.Register(newProbeTestSigner(t))
-	t.Cleanup(func() { keysigner.Register(previous) })
 	opts := &ConfigInitOptions{Ctx: context.Background()}
-	result := &configInitResult{AppID: "cli_x", AuthMethod: core.AuthMethodPrivateKeyJWT, KeyLabel: "agent-key", Brand: core.BrandFeishu}
+	result := &configInitResult{
+		AppID:      "cli_x",
+		AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		KeyLabel:   "agent-key",
+		Brand:      core.BrandFeishu,
+		Signer:     newProbeTestSigner(t),
+	}
 	assertSilent(t, probeInitResult(opts, f, result), errBuf)
 }
 
-// runProbePKJWT: a nil signer is a defensive no-op (should not be reached, must
-// not panic).
-func TestRunProbePKJWT_NilSigner_Silent(t *testing.T) {
+// runProbePKJWT fails closed if the signer dispatch invariant is broken.
+func TestRunProbePKJWT_NilSigner_FailsClosed(t *testing.T) {
 	f, errBuf := fakeFactory(t, &fakeRT{})
-	assertSilent(t, runProbePKJWT(context.Background(), f, core.BrandFeishu, "cli_x", nil, "k"), errBuf)
+	err := runProbePKJWT(context.Background(), f, core.BrandFeishu, "cli_x", nil, "k")
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) || configErr.Subtype != errs.SubtypeInvalidConfig {
+		t.Fatalf("error = %T %v, want config/invalid_config", err, err)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("runProbePKJWT must not write stderr, got %q", errBuf.String())
+	}
 }

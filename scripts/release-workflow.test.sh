@@ -51,7 +51,7 @@ end
 
 expect_equal(workflow.dig("env", "RELEASE_GO_VERSION"), "1.26.8", "release Go version")
 
-expected_jobs = %w[preflight signer-test-macos build-sign-notarize create-draft-release verify-macos publish-github publish-npm retry-guidance]
+expected_jobs = %w[preflight build-sign-notarize create-draft-release verify-macos publish-github publish-npm retry-guidance]
 expect_equal(jobs.keys.sort, expected_jobs.sort, "release jobs")
 
 expect_equal(workflow.fetch("concurrency"), {
@@ -61,8 +61,7 @@ expect_equal(workflow.fetch("concurrency"), {
 
 expected_needs = {
   "preflight" => nil,
-  "signer-test-macos" => "preflight",
-  "build-sign-notarize" => %w[preflight signer-test-macos],
+  "build-sign-notarize" => "preflight",
   "create-draft-release" => %w[preflight build-sign-notarize],
   "verify-macos" => %w[preflight build-sign-notarize create-draft-release],
   "publish-github" => %w[preflight create-draft-release verify-macos],
@@ -75,7 +74,6 @@ end
 
 expected_permissions = {
   "preflight" => { "contents" => "read" },
-  "signer-test-macos" => { "contents" => "read" },
   "build-sign-notarize" => { "contents" => "read" },
   "create-draft-release" => { "contents" => "write" },
   "verify-macos" => { "contents" => "read" },

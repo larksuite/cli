@@ -86,6 +86,84 @@ func saveWorkspace(t *testing.T) {
 
 // ── Command flag parsing tests (aligned with config_test.go pattern) ──
 
+func TestConfigBindRun_OpenClawAuthMethodPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name, channel, method string
+		wantError, wantSecret bool
+	}{
+		{"keyless with secret", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"private_key_jwt","keyRef":"key-b"`, core.AuthMethodPrivateKeyJWT, false, false},
+		{"local keypair with secret", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"private_key_jwt_local_keypair","keyRef":"key-b"`, core.AuthMethodPrivateKeyJWTLocalKeyPair, false, false},
+		{"inherited keyless with account secret", `"authMethod":"private_key_jwt","keyRef":"key-b","accounts":{"a":{"appId":"cli_a"},"b":{"appId":"cli_b","appSecret":"leftover-secret"}}`, core.AuthMethodPrivateKeyJWT, false, false},
+		{"unresolvable secret ignored", `"appId":"cli_b","appSecret":"${BIND_TEST_ABSENT_SECRET}","authMethod":"private_key_jwt","keyRef":"key-b"`, core.AuthMethodPrivateKeyJWT, false, false},
+		{"missing key reference", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"private_key_jwt"`, "", true, false},
+		{"unknown method", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"unknown"`, "", true, false},
+		{"explicit client secret", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"client_secret"`, "", false, true},
+		{"implicit client secret", `"appId":"cli_b","appSecret":"leftover-secret"`, "", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			saveWorkspace(t)
+			clearAgentEnv(t)
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			t.Setenv("BIND_TEST_ABSENT_SECRET", "")
+			path := filepath.Join(t.TempDir(), "openclaw.json")
+			source := []byte(`{"channels":{"feishu":{` + tc.channel + `}}}`)
+			if err := os.WriteFile(path, source, 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("OPENCLAW_CONFIG_PATH", path)
+			f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+			kc := newStatefulKeychain()
+			f.Keychain = kc
+			err := configBindRun(&BindOptions{Factory: f, Source: "openclaw", AppID: "cli_b"})
+			if tc.wantError {
+				var ce *errs.ConfigError
+				if !errors.As(err, &ce) || ce.Subtype != errs.SubtypeInvalidConfig {
+					t.Fatalf("error = %v, want typed invalid_config", err)
+				}
+				if _, err := os.Stat(core.GetConfigPath()); !os.IsNotExist(err) {
+					t.Fatalf("invalid configuration must not be persisted: %v", err)
+				}
+				if stdout.Len() != 0 {
+					t.Fatal("failure wrote to stdout")
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				multi, err := core.LoadMultiAppConfig()
+				if err != nil {
+					t.Fatal(err)
+				}
+				app := multi.Apps[0]
+				if app.AuthMethod != tc.method || app.AppSecret.IsZero() == tc.wantSecret {
+					t.Fatalf("unexpected persisted authentication: %+v", app)
+				}
+				if tc.method != "" {
+					want := &core.SecretRef{Source: core.SecretSourceTEE, Provider: core.KeylessProviderLarkSuite, ID: "key-b"}
+					if !reflect.DeepEqual(app.KeyRef, want) {
+						t.Fatalf("keyRef = %+v, want %+v", app.KeyRef, want)
+					}
+				}
+				if !json.Valid(stdout.Bytes()) {
+					t.Fatal("success stdout is not JSON")
+				}
+			}
+			if (len(kc.items) > 0) != tc.wantSecret {
+				t.Fatalf("unexpected keychain writes: %d", len(kc.items))
+			}
+			if strings.Contains(stderr.String(), "appSecret is ignored and will not be imported") != (tc.method != "") {
+				t.Fatalf("unexpected warning: %s", stderr.String())
+			}
+			if strings.Contains(stdout.String()+stderr.String(), "leftover-secret") {
+				t.Fatal("secret leaked to output")
+			}
+			if got, err := os.ReadFile(path); err != nil || string(got) != string(source) {
+				t.Fatal("source configuration changed")
+			}
+		})
+	}
+}
+
 func TestConfigBindCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 

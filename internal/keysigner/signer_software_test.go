@@ -16,14 +16,14 @@ import (
 	"testing"
 )
 
-func newTestUnlockSecret() []byte {
-	return bytes.Repeat([]byte{0x42}, 32)
+func testUnlockMaterial() []byte {
+	return bytes.Repeat([]byte{0x5a}, 32)
 }
 
 func TestSoftwareSignerLifecycle(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	unlock := func(context.Context) ([]byte, error) { return newTestUnlockSecret(), nil }
+	unlock := func(context.Context) ([]byte, error) { return testUnlockMaterial(), nil }
 	signer, err := NewSoftwareSigner(dir, unlock)
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func TestSoftwareSignerLifecycle(t *testing.T) {
 func TestSoftwareSignerRejectsKeyFileTampering(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	unlock := func(context.Context) ([]byte, error) { return newTestUnlockSecret(), nil }
+	unlock := func(context.Context) ([]byte, error) { return testUnlockMaterial(), nil }
 	signer, err := NewSoftwareSigner(dir, unlock)
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +116,7 @@ func TestSoftwareSignerRejectsKeyFileTampering(t *testing.T) {
 	}
 
 	wrong, err := NewSoftwareSigner(dir, func(context.Context) ([]byte, error) {
-		return bytes.Repeat([]byte{0x24}, 32), nil
+		return bytes.Repeat([]byte{0xa5}, 32), nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -210,8 +210,8 @@ func TestSoftwareSignerClearsAndValidatesUnlockSecret(t *testing.T) {
 		err    error
 		want   error
 	}{
-		{name: "success", secret: newTestUnlockSecret()},
-		{name: "provider error", secret: newTestUnlockSecret(), err: cause, want: cause},
+		{name: "success", secret: testUnlockMaterial()},
+		{name: "provider error", secret: testUnlockMaterial(), err: cause, want: cause},
 		{name: "too short", secret: make([]byte, 31), want: ErrUnlockRequired},
 		{name: "too long", secret: make([]byte, 33), want: ErrUnlockRequired},
 	} {
@@ -232,7 +232,7 @@ func TestSoftwareSignerClearsAndValidatesUnlockSecret(t *testing.T) {
 		t.Fatalf("nil unlock provider: %v", err)
 	}
 	if _, err := NewSoftwareSigner("caller/keys", func(context.Context) ([]byte, error) {
-		return newTestUnlockSecret(), nil
+		return testUnlockMaterial(), nil
 	}); err != nil {
 		t.Fatalf("caller-selected relative directory: %v", err)
 	}
