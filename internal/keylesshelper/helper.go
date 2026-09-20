@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package keylesshelper invokes a signer generation that has already been
-// resolved and verified by internal/keylessprovider.
+// Package keylesshelper owns CLI-side keyless signer adapters: verified
+// provider executables, referenced PEM files, and managed signing backends.
 package keylesshelper
 
 import (
@@ -19,7 +19,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -27,6 +26,7 @@ const (
 	helperOutputLimit      = 1 << 20
 	helperStderrLimit      = 64 << 10
 	helperExecutionTimeout = 10 * time.Second
+	defaultKeyLabel        = "larksuite-cli-agent"
 )
 
 type request struct {
@@ -152,7 +152,7 @@ func defaultKeyRef(keyRef string) string {
 	if keyRef != "" {
 		return keyRef
 	}
-	return keysigner.DefaultKeyLabel
+	return defaultKeyLabel
 }
 
 func runCommandConfigured(ctx context.Context, argv []string, req request, cwd string, env []string) (response, error) {
@@ -165,10 +165,10 @@ func runCommandConfigured(ctx context.Context, argv []string, req request, cwd s
 	helperCtx, cancel := withExecutionTimeout(ctx)
 	defer cancel()
 
-	// CommandContext's default cancellation kills the helper process. This is
-	// important for unattended agent calls: a signer blocked on platform UI must
-	// not hold the caller indefinitely.
+	// Cancellation kills the helper; WaitDelay bounds pipe draining when a
+	// descendant keeps stdout or stderr open after the helper exits.
 	cmd := exec.CommandContext(helperCtx, argv[0], argv[1:]...)
+	cmd.WaitDelay = 10 * time.Second
 	if cwd != "" {
 		cmd.Dir = cwd
 		cmd.Env = env

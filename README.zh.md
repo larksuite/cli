@@ -94,6 +94,15 @@ npx skills add larksuite/cli -y -g
 # 1. 配置应用凭证（仅需一次，交互式引导完成）
 lark-cli config init
 
+# 交互式配置 private_key_jwt。
+lark-cli config init --private-key-jwt
+
+# 使用 CLI 管理的签名密钥注册 private_key_jwt 应用。
+lark-cli config init --new --private-key-jwt
+
+# 使用已注册的 PEM 私钥配置 private_key_jwt_local_keypair。
+lark-cli config init --app-id cli_xxx --private-key-file ./private.pem
+
 # 2. 登录授权（--recommend 自动选择常用权限）
 lark-cli auth login --recommend
 
