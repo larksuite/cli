@@ -33,7 +33,7 @@ func b64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 // jwt"), even though the spec examples (§8.1/§8.2) show only alg.
 func buildSignedJWT(ctx context.Context, signer keysigner.Signer, ref keysigner.KeyRef, alg string, header, claims map[string]any) (string, error) {
 	if signer == nil {
-		return "", fmt.Errorf("jwt: no signer available (private_key_jwt unsupported on this build)")
+		return "", fmt.Errorf("jwt: no signer available for private-key JWT")
 	}
 	if header == nil {
 		header = map[string]any{}
@@ -53,6 +53,7 @@ func buildSignedJWT(ctx context.Context, signer keysigner.Signer, ref keysigner.
 	}
 
 	signingInput := b64(hb) + "." + b64(cb)
+	ref.Algorithm = alg
 	sig, gotAlg, err := signer.Sign(ctx, ref, []byte(signingInput))
 	if err != nil {
 		return "", fmt.Errorf("jwt: sign: %w", err)
@@ -83,7 +84,7 @@ func attestationClaims(nonce string, now time.Time) map[string]any {
 }
 
 // clientAssertionClaims builds an RFC 7523 client_assertion claim set used to
-// mint tokens in place of client_secret. aud is the brand's token endpoint URL.
+// mint tokens in place of client_secret. aud is the brand's accounts host.
 func clientAssertionClaims(clientID, aud string, now time.Time, ttl time.Duration) map[string]any {
 	return map[string]any{
 		"iss": clientID,
@@ -108,7 +109,7 @@ const defaultAssertionTTL = 5 * time.Minute
 // proof-of-possession challenge.
 func SignAttestation(ctx context.Context, signer keysigner.Signer, ref keysigner.KeyRef, nonce string, now time.Time) (string, error) {
 	if signer == nil {
-		return "", fmt.Errorf("jwt: no signer available (private_key_jwt unsupported on this build)")
+		return "", fmt.Errorf("jwt: no signer available for private-key JWT")
 	}
 	pub, err := signer.EnsureKey(ctx, ref)
 	if err != nil {
@@ -118,20 +119,27 @@ func SignAttestation(ctx context.Context, signer keysigner.Signer, ref keysigner
 	if err != nil {
 		return "", err
 	}
-	jwk, err := keysigner.PublicKeyJWK(pub)
+	publicJWK, err := keysigner.PublicKeyJWK(pub)
 	if err != nil {
 		return "", err
 	}
-	return buildSignedJWT(ctx, signer, ref, alg, map[string]any{"jwk": jwk}, attestationClaims(nonce, now))
+	jwk := publicJWK.Map()
+	jwk["use"] = "sig"
+	kid, err := keysigner.PublicKeyThumbprint(pub)
+	if err != nil {
+		return "", err
+	}
+	jwk["alg"] = alg
+	return buildSignedJWT(ctx, signer, ref, alg, map[string]any{"jwk": jwk, "kid": kid}, attestationClaims(nonce, now))
 }
 
 // SignClientAssertion mints a short-lived RFC 7523 client_assertion: it reads the
 // registered key (it must already exist — bound at registration; a missing key is
 // an error, not a reason to create a new unbound one), derives the JWS alg from
-// the public key, and signs an assertion whose audience is the brand's Open API
+// the public key, and signs an assertion whose audience is the brand's accounts
 // host. The server, holding the public key bound at registration, verifies it in
-// place of client_secret. The assertion header carries only alg (no jwk/kid);
-// the server locates the key via iss/sub = client_id.
+// place of client_secret. The protected header carries the RFC 7638 public-key
+// thumbprint as kid so the server can select one key from the app's key set.
 //
 // This is the model-independent glue: the assertion JWT is identical whether the
 // server augments an existing grant (device_code/refresh_token) with client
@@ -139,7 +147,7 @@ func SignAttestation(ctx context.Context, signer keysigner.Signer, ref keysigner
 // attaches it differs.
 func SignClientAssertion(ctx context.Context, signer keysigner.Signer, ref keysigner.KeyRef, clientID, audience string, now time.Time) (string, error) {
 	if signer == nil {
-		return "", fmt.Errorf("jwt: no signer available (private_key_jwt unsupported on this build)")
+		return "", fmt.Errorf("jwt: no signer available for private-key JWT")
 	}
 	pub, err := signer.PublicKey(ctx, ref)
 	if err != nil {
@@ -149,5 +157,9 @@ func SignClientAssertion(ctx context.Context, signer keysigner.Signer, ref keysi
 	if err != nil {
 		return "", err
 	}
-	return buildSignedJWT(ctx, signer, ref, alg, map[string]any{}, clientAssertionClaims(clientID, audience, now, defaultAssertionTTL))
+	kid, err := keysigner.PublicKeyThumbprint(pub)
+	if err != nil {
+		return "", err
+	}
+	return buildSignedJWT(ctx, signer, ref, alg, map[string]any{"kid": kid}, clientAssertionClaims(clientID, audience, now, defaultAssertionTTL))
 }

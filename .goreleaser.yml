@@ -1,11 +1,9 @@
 version: 2
 
 builds:
-  # Linux & Windows: pure-Go TPM 2.0 signer is compiled in by default (no build
-  # tag), cross-compiled with CGO disabled — the binaries ship the platform key
-  # signer for private_key_jwt. windows/arm64 is the one exception: the sks
-  # Windows dependency stack (go-ole) has no arm64 support, so the signer file is
-  # arch-excluded there and that binary falls back to client_secret only.
+  # Linux ships the pure-Go TPM 2.0 signer. Windows ships the native CNG
+  # platform/software KSP signers on both amd64 and arm64. All are selected by
+  # GOOS build constraints and cross-compile with CGO disabled.
   - id: linux
     binary: lark-cli
     main: .
@@ -36,8 +34,8 @@ builds:
       - amd64
       - arm64
   # macOS: the keychain signer calls Security.framework via runtime FFI (purego),
-  # so it is CGO-free, compiled into every darwin build (no build tag), and
-  # cross-compiles from the same ubuntu runner as linux/windows.
+  # so it is CGO-free, needs no custom feature tag, and cross-compiles from the
+  # same ubuntu runner as linux/windows.
   - id: darwin
     binary: lark-cli
     main: .

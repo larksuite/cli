@@ -18,9 +18,9 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/transport"
@@ -28,16 +28,20 @@ import (
 
 // configInitResult holds the result of the interactive config init flow.
 type configInitResult struct {
-	Mode       string // "create" or "existing"
-	Brand      core.LarkBrand
-	AppID      string
-	AppSecret  string
-	AuthMethod string // "" == client_secret; core.AuthMethodPrivateKeyJWT
-	KeyLabel   string // TEE key handle when AuthMethod == private_key_jwt
+	Mode        string // "create" or "existing"
+	Brand       core.LarkBrand
+	AppID       string
+	AppSecret   string
+	AuthMethod  string // "" == client_secret; either private-key JWT method
+	KeySource   string // tee or file
+	KeyLabel    string // signer handle when AuthMethod uses private-key JWT
+	KeyProvider string // exact built-in backend; empty for imported/external keys
+	KeyID       string // RFC 7638 thumbprint returned for the registered public key
+	Signer      keysigner.Signer
 }
 
 // runInteractiveConfigInit shows an interactive TUI for config init.
-func runInteractiveConfigInit(ctx context.Context, f *cmdutil.Factory, authMethodFlag string, msg *initMsg) (*configInitResult, error) {
+func runInteractiveConfigInit(ctx context.Context, f *cmdutil.Factory, authMethodFlag string, msg *initMsg, registrationSigners []keysigner.Signer) (*configInitResult, error) {
 	// Phase 1: Choose mode
 	var mode string
 	form1 := huh.NewForm(
@@ -60,18 +64,18 @@ func runInteractiveConfigInit(ctx context.Context, f *cmdutil.Factory, authMetho
 	}
 
 	if mode == "existing" {
-		return runExistingAppForm(ctx, f, authMethodFlag, msg)
+		return runExistingAppForm(ctx, f, authMethodFlag, msg, registrationSigners)
 	}
 
-	return runCreateAppFlow(ctx, f, "", authMethodFlag, msg, "")
+	return runCreateAppFlow(ctx, f, "", authMethodFlag, msg, "", registrationSigners)
 }
 
 func existingAppRequiresSecret(requestedAuthMethod string) bool {
-	return requestedAuthMethod != core.AuthMethodPrivateKeyJWT
+	return !core.IsPrivateKeyJWTAuthMethod(requestedAuthMethod)
 }
 
 // runExistingAppForm shows a huh form for manually entering App ID / App Secret / Brand.
-func runExistingAppForm(ctx context.Context, f *cmdutil.Factory, requestedAuthMethod string, msg *initMsg) (*configInitResult, error) {
+func runExistingAppForm(ctx context.Context, f *cmdutil.Factory, requestedAuthMethod string, msg *initMsg, registrationSigners []keysigner.Signer) (*configInitResult, error) {
 	// Load existing config for defaults
 	existing, _ := core.LoadMultiAppConfig()
 	var firstApp *core.AppConfig
@@ -147,7 +151,7 @@ func runExistingAppForm(ctx context.Context, f *cmdutil.Factory, requestedAuthMe
 			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "App ID cannot be empty").
 				WithParam("--app-id")
 		}
-		return runCreateAppFlow(ctx, f, parseBrand(brand), core.AuthMethodPrivateKeyJWT, msg, appID)
+		return runCreateAppFlow(ctx, f, parseBrand(brand), requestedAuthMethod, msg, appID, registrationSigners)
 	}
 	if appSecret == "" && firstApp != nil && !firstApp.AppSecret.IsZero() {
 		// Keep existing secret - caller will handle
@@ -179,47 +183,81 @@ func runExistingAppForm(ctx context.Context, f *cmdutil.Factory, requestedAuthMe
 }
 
 // resolveRegisterAuthMethod decides the auth method for a new-app registration.
-// An explicit private_key_jwt request wins; otherwise the default is
+// An explicit private-key JWT request wins; otherwise the default is
 // client_secret with no extra prompt.
-func resolveRegisterAuthMethod(ctx context.Context, _ *cmdutil.Factory, requested string) (string, error) {
+func resolveRegisterAuthMethod(ctx context.Context, requested string, registrationSigners []keysigner.Signer) (string, error) {
 	const pkjwtUnsupportedMessage = "this machine does not support --private-key-jwt"
 
 	switch requested {
 	case core.AuthMethodPrivateKeyJWT:
-		info, ok, err := keysigner.ProbeActiveHardware(ctx)
+		ok, err := probeRegistrationSigner(ctx, registrationSigners)
 		if !ok {
 			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
 				pkjwtUnsupportedMessage).
 				WithHint("omit --private-key-jwt to register with an app secret")
 		}
 		if err != nil {
+			if errs.IsTyped(err) {
+				return "", err
+			}
 			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
 				pkjwtUnsupportedMessage).
 				WithCause(err).
 				WithHint("omit --private-key-jwt to register with an app secret")
 		}
-		if !info.Available {
-			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
-				pkjwtUnsupportedMessage).
-				WithHint("omit --private-key-jwt to register with an app secret")
-		}
-		return core.AuthMethodPrivateKeyJWT, nil
+		return requested, nil
+	case core.AuthMethodPrivateKeyJWTLocalKeyPair:
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"%s uses an already-registered private key file", requested).
+			WithHint("use config init --app-id <app-id> --private-key-file <path>")
 	case core.AuthMethodClientSecret:
 		return core.AuthMethodClientSecret, nil
 	case "":
 		return core.AuthMethodClientSecret, nil
 	default:
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"unknown auth method %q (use client_secret or private_key_jwt)", requested)
+			"unknown registration auth method %q (use client_secret or private_key_jwt)", requested)
 	}
+}
+
+func probeRegistrationSigner(ctx context.Context, signers []keysigner.Signer) (bool, error) {
+	if len(signers) == 0 {
+		return false, nil
+	}
+	return true, keylesshelper.NewKeyStoreWithSigners(nil, signers...).ProbeWritableContext(ctx)
 }
 
 // runCreateAppFlow runs the "create new app" flow via OpenClaw device flow.
 // If brandOverride is non-empty, skip the interactive brand selection.
 // requestedAuthMethod is the requested auth method; empty means client_secret.
-// privateKeyJWTAppID, when non-empty, identifies an existing app being migrated
-// to private_key_jwt. Empty preserves the normal new-app flow.
-func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, requestedAuthMethod string, msg *initMsg, privateKeyJWTAppID string) (*configInitResult, error) {
+// targetAppID, when non-empty, identifies an existing app being migrated to
+// the requested authentication method. Empty preserves the normal new-app flow.
+func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, requestedAuthMethod string, msg *initMsg, targetAppID string, registrationSigners []keysigner.Signer) (_ *configInitResult, retErr error) {
+	var registrationKey *keylesshelper.Key
+	var registrationSigner keysigner.Signer
+	store := keylesshelper.NewKeyStoreWithSigners(f.Keychain, registrationSigners...)
+	retainRegistrationKey := false
+	defer func() {
+		if registrationKey == nil || retainRegistrationKey {
+			return
+		}
+		cleanupCtx := ctx
+		if cleanupCtx == nil {
+			cleanupCtx = context.Background()
+		} else {
+			cleanupCtx = context.WithoutCancel(cleanupCtx)
+		}
+		if err := store.DeleteKeyContext(cleanupCtx, registrationKey); err != nil &&
+			!errors.Is(err, keysigner.ErrKeyNotFound) {
+			cleanupErr := errs.NewInternalError(
+				errs.SubtypeStorage,
+				"failed to clean up uncommitted registration key: %v",
+				err,
+			).WithCause(err)
+			retErr = errors.Join(retErr, cleanupErr)
+		}
+	}()
+
 	var larkBrand core.LarkBrand
 	if brandOverride != "" {
 		larkBrand = brandOverride
@@ -247,7 +285,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		larkBrand = parseBrand(brand)
 	}
 
-	authMethod, err := resolveRegisterAuthMethod(ctx, f, requestedAuthMethod)
+	authMethod, err := resolveRegisterAuthMethod(ctx, requestedAuthMethod, registrationSigners)
 	if err != nil {
 		return nil, err
 	}
@@ -257,35 +295,54 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	// a bypass of proxy plugin mode.
 	httpClient := transport.NewHTTPClient(0)
 
-	// For private_key_jwt: init to obtain a nonce, then sign a TEE attestation
+	// For private_key_jwt: init to obtain a nonce, then sign a managed-key attestation
 	// (carrying the public key in its jwk header) to send with begin.
 	beginOpts := larkauth.AppRegistrationBeginOptions{}
 	keyLabel := ""
+	keyProvider := ""
+	keyID := ""
 	if authMethod == core.AuthMethodPrivateKeyJWT {
 		initResp, initErr := larkauth.RequestAppRegistrationInit(ctx, httpClient)
 		if initErr != nil {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration init failed: %v", initErr).WithCause(initErr)
 		}
 		// An empty SupportedAuthMethods is treated as unknown for compatibility.
-		// Only an explicit capability list that omits private_key_jwt rejects here.
-		if len(initResp.SupportedAuthMethods) > 0 && !slices.Contains(initResp.SupportedAuthMethods, core.AuthMethodPrivateKeyJWT) {
+		// An explicit capability list must contain the requested method. The
+		// two private-key methods are distinct and must never replace each other.
+		if len(initResp.SupportedAuthMethods) > 0 &&
+			!slices.Contains(initResp.SupportedAuthMethods, authMethod) {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidClient,
-				"server does not support private_key_jwt for this app type (supported: %s)", strings.Join(initResp.SupportedAuthMethods, ", ")).
+				"server does not support %s for this app type (supported: %s)", authMethod, strings.Join(initResp.SupportedAuthMethods, ", ")).
 				WithHint("omit --private-key-jwt to register with an app secret instead")
 		}
-		keyLabel = keysigner.DefaultKeyLabel
-		signer := keysigner.Active() // non-nil, guaranteed by resolveRegisterAuthMethod
-		attestation, signErr := jwt.SignAttestation(ctx, signer, keysigner.KeyRef{Label: keyLabel}, initResp.Nonce, time.Now())
+		keyLabel, initErr = keysigner.NewKeyLabel("larksuite-cli-")
+		if initErr != nil {
+			return nil, errs.NewInternalError(errs.SubtypeUnknown, "failed to allocate registration key: %v", initErr).WithCause(initErr)
+		}
+		var attestation string
+		var signErr error
+		registrationKey, attestation, signErr = store.CreateAttestationContext(ctx, keyLabel, initResp.Nonce, time.Now())
 		if signErr != nil {
-			return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "failed to sign registration attestation: %v", signErr).WithCause(signErr)
+			return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "failed to prepare registration key attestation: %v", signErr).WithCause(signErr)
+		}
+		for _, signer := range registrationSigners {
+			if signer.Name() == registrationKey.Provider() {
+				registrationSigner = signer
+				break
+			}
+		}
+		keyProvider = registrationKey.Provider()
+		keyID, signErr = registrationKey.Thumbprint()
+		if signErr != nil {
+			return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "failed to identify registration public key: %v", signErr).WithCause(signErr)
 		}
 		beginOpts = larkauth.AppRegistrationBeginOptions{
-			AuthMethod:      core.AuthMethodPrivateKeyJWT,
+			AuthMethod:      authMethod,
 			AuthAttestation: attestation,
 		}
 	}
 
-	beginOpts.PrivateKeyJWTAppID = privateKeyJWTAppID
+	beginOpts.TargetAppID = targetAppID
 
 	authResp, err := larkauth.RequestAppRegistration(ctx, httpClient, larkBrand, beginOpts, f.IOStreams.ErrOut)
 	if err != nil {
@@ -293,7 +350,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	}
 
 	// Step 2: Build and display verification URL + QR code
-	verificationURL := larkauth.BuildVerificationURL(authResp.VerificationUriComplete, build.Version, privateKeyJWTAppID)
+	verificationURL := larkauth.BuildVerificationURL(authResp.VerificationUriComplete, build.Version, targetAppID)
 
 	// Branch on TTY: human-friendly copy in interactive terminals,
 	// preserve original copy for AI / non-interactive callers.
@@ -322,14 +379,20 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		return nil, classifyRegistrationError(err)
 	}
 
-	// Poll does not return auth_method. The normalized method sent by begin is
-	// authoritative. When private_key_jwt targets an existing client_secret app,
-	// the server migrates that app and removes its client_secret authentication.
+	if authMethod == "client_secret_basic" || authMethod == "client_secret_post" {
+		authMethod = core.AuthMethodClientSecret
+	}
+	switch authMethod {
+	case core.AuthMethodClientSecret, core.AuthMethodPrivateKeyJWT:
+	default:
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient,
+			"app registration resolved unsupported auth method %q", authMethod)
+	}
 
 	if result.ClientID == "" {
-		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration succeeded but missing app_id")
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration succeeded but missing client_id")
 	}
-	if authMethod != core.AuthMethodPrivateKeyJWT && result.ClientSecret == "" {
+	if !core.IsPrivateKeyJWTAuthMethod(authMethod) && result.ClientSecret == "" {
 		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration succeeded but missing client_secret")
 	}
 
@@ -337,25 +400,34 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.AppCreated, result.ClientID))
 
 	keyToStore := ""
-	if authMethod == core.AuthMethodPrivateKeyJWT {
+	if core.IsPrivateKeyJWTAuthMethod(authMethod) {
 		keyToStore = keyLabel
 	}
 	if err := validatePKJWTKeyBinding(authMethod, keyToStore); err != nil {
 		return nil, err
 	}
+	retainRegistrationKey = core.IsPrivateKeyJWTAuthMethod(authMethod)
 	return &configInitResult{
-		Mode:       "create",
-		Brand:      finalBrand,
-		AppID:      result.ClientID,
-		AppSecret:  result.ClientSecret, // empty for private_key_jwt; real secret otherwise
-		AuthMethod: authMethod,
-		KeyLabel:   keyToStore,
+		Mode:        "create",
+		Brand:       finalBrand,
+		AppID:       result.ClientID,
+		AppSecret:   result.ClientSecret, // empty for private-key JWT; real secret otherwise
+		AuthMethod:  authMethod,
+		KeySource:   core.SecretSourceTEE,
+		KeyLabel:    keyToStore,
+		KeyProvider: keyProvider,
+		KeyID:       keyID,
+		Signer:      registrationSigner,
 	}, nil
 }
 
 // classifyRegistrationBeginError keeps transport/cancellation failures out of
 // the invalid-client category: the begin request sends no app credentials.
 func classifyRegistrationBeginError(err error) error {
+	var remoteErr *larkauth.AppRegistrationRemoteError
+	if errors.As(err, &remoteErr) {
+		return classifyRegistrationError(err)
+	}
 	switch {
 	case errors.Is(err, context.Canceled):
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "app registration cancelled").WithCause(err)
@@ -376,6 +448,31 @@ func classifyRegistrationBeginError(err error) error {
 // classifyRegistrationError maps registration terminal outcomes to typed
 // errors, preserving causes.
 func classifyRegistrationError(err error) error {
+	var remoteErr *larkauth.AppRegistrationRemoteError
+	if errors.As(err, &remoteErr) {
+		switch remoteErr.Code {
+		case larkauth.AppRegistrationCodeInvalidPublicKey:
+			detail := remoteErr.Description
+			if detail == "" {
+				detail = "invalid public key or incompatible enterprise keyless policy"
+			}
+			return errs.NewAPIError(errs.SubtypeInvalidParameters,
+				"the platform rejected the registration public key: %s", detail).
+				WithCode(remoteErr.Code).
+				WithHint("review the app's keyless authentication policy and registered public keys in Developer Console, then retry").
+				WithCause(err)
+		case larkauth.AppRegistrationCodePublicKeyLimit:
+			return errs.NewAPIError(errs.SubtypeQuotaExceeded,
+				"the app has reached its public-key limit").
+				WithCode(remoteErr.Code).
+				WithHint("delete an unused public key in Developer Console, then retry").
+				WithCause(err)
+		default:
+			return errs.NewAPIError(errs.SubtypeUnknown, "app registration failed: %s", remoteErr.Error()).
+				WithCode(remoteErr.Code).
+				WithCause(err)
+		}
+	}
 	switch {
 	case errors.Is(err, larkauth.ErrRegistrationDenied):
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "%v", err).
@@ -390,13 +487,13 @@ func classifyRegistrationError(err error) error {
 	}
 }
 
-// validatePKJWTKeyBinding rejects a private_key_jwt registration without the
-// local key that signed its attestation. Persisting such a config would defer
-// the failure until the first token request.
+// validatePKJWTKeyBinding rejects a private-key JWT registration without the
+// key that signed its attestation. Persisting such a config would defer the
+// failure until the first token request.
 func validatePKJWTKeyBinding(authMethod, keyLabel string) error {
-	if authMethod == core.AuthMethodPrivateKeyJWT && keyLabel == "" {
+	if core.IsPrivateKeyJWTAuthMethod(authMethod) && keyLabel == "" {
 		return errs.NewConfigError(errs.SubtypeInvalidClient,
-			"registration resolved to private_key_jwt but no signing key was bound to this app (an existing secret-based app may have been selected)").
+			"registration resolved to %s but no signing key was bound to this app (an existing secret-based app may have been selected)", authMethod).
 			WithHint("re-register with: lark-cli config init --new --private-key-jwt")
 	}
 	return nil
