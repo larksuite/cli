@@ -180,6 +180,7 @@ github.com/spf13/pflag
 github.com/xo/terminfo
 github.com/zalando/go-keyring
 github.com/zalando/go-keyring/internal/shellescape
+golang.org/x/crypto/hkdf
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/html/charset

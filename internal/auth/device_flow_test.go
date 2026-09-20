@@ -6,6 +6,7 @@ package auth
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -366,5 +367,35 @@ func TestPollDeviceToken_ReturnsPolicyErrorWithoutRetry(t *testing.T) {
 	}
 	if got := requests.Load(); got != 1 {
 		t.Fatalf("PollDeviceToken() sent %d requests, want exactly 1", got)
+	}
+}
+
+func TestPollDeviceToken_ReturnsAssertionErrorWithoutRequest(t *testing.T) {
+	var requests atomic.Int32
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requests.Add(1)
+			return nil, errors.New("unexpected request")
+		}),
+	}
+
+	result, err := PollDeviceToken(
+		context.Background(),
+		client,
+		ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWT},
+		core.BrandFeishu,
+		"device-code",
+		1,
+		3,
+		nil,
+	)
+	if result != nil {
+		t.Fatalf("PollDeviceToken() result = %#v, want nil", result)
+	}
+	if err == nil || !strings.Contains(err.Error(), "requires a key signer") {
+		t.Fatalf("PollDeviceToken() error = %v, want key signer error", err)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("PollDeviceToken() sent %d requests, want 0", got)
 	}
 }

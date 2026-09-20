@@ -16,11 +16,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/identitydiag"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keylessprovider"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
@@ -168,8 +170,8 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 		checks = append(checks, fail("identity_ready", "no usable bot or user identity is available", ""))
 	}
 
-	// ── 3b. private_key_jwt / TEE signer (local; runs even with --offline) ──
-	checks = append(checks, teeSignerCheck(opts.Ctx, cfg))
+	// ── 3b. private-key JWT signer (local; runs even with --offline) ──
+	checks = append(checks, teeSignerCheck(opts.Ctx, f, cfg))
 
 	// ── 4 & 5. Endpoint reachability ──
 	checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
@@ -184,16 +186,28 @@ func identityCheck(name string, id identitydiag.Identity) checkResult {
 	return warn(name, id.Message, id.Hint)
 }
 
-const teeUnavailableHint = "ensure the device secure hardware is accessible (Linux TPM: add your user to the 'tss' group or run with sufficient privileges)"
-
-// teeSignerCheck reports the private_key_jwt signing backend (TEE/TPM) status.
-// The probe is local hardware only (no network), so it runs even with --offline;
-// in a build without a TEE signer it short-circuits without touching any
-// hardware. It is a hard requirement for private_key_jwt apps and purely
-// informational for client_secret apps.
-func teeSignerCheck(ctx context.Context, cfg *core.CliConfig) checkResult {
-	usesPKJWT := cfg != nil && cfg.AuthMethod == core.AuthMethodPrivateKeyJWT
-	if usesPKJWT && cfg.KeyProvider != "" {
+// teeSignerCheck checks the configured private-key JWT signer using its existing
+// key. Other authentication methods skip signer checks, including with --offline.
+func teeSignerCheck(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) checkResult {
+	if cfg == nil || !core.IsPrivateKeyJWTAuthMethod(cfg.AuthMethod) {
+		return skip("tee_signer", "not required for client_secret authentication")
+	}
+	if cfg.KeySource == core.SecretSourceKeyFile {
+		signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
+		if err != nil {
+			return fail("tee_signer", "private-key file signer is unavailable", err.Error())
+		}
+		pub, err := signer.PublicKey(ctx, keysigner.KeyRef{Label: cfg.KeyLabel})
+		if err != nil {
+			return fail("tee_signer", "private-key file is unusable", err.Error())
+		}
+		kid, err := keysigner.PublicKeyThumbprint(pub)
+		if err != nil {
+			return fail("tee_signer", "private-key file is unusable", err.Error())
+		}
+		return pass("tee_signer", fmt.Sprintf("private-key file available (kid %s)", kid))
+	}
+	if cfg.KeyProvider == core.KeylessProviderLarkSuite {
 		helper, err := keylessprovider.Resolve(ctx, cfg.KeyProvider)
 		if err != nil {
 			return fail("tee_signer", "OpenClaw keyless signer is unavailable",
@@ -205,43 +219,21 @@ func teeSignerCheck(ctx context.Context, cfg *core.CliConfig) checkResult {
 		}
 		return pass("tee_signer", "OpenClaw keyless signer available")
 	}
-	info, ok, err := keysigner.ProbeActiveHardware(ctx)
-	return teeCheckResult(info, ok, err, usesPKJWT)
-}
-
-// teeCheckResult maps a hardware probe to a doctor check. Split out from
-// teeSignerCheck so the full matrix is unit-testable without a TPM.
-func teeCheckResult(info keysigner.HardwareInfo, ok bool, probeErr error, usesPKJWT bool) checkResult {
-	const name = "tee_signer"
-
-	// No signer registered → private_key_jwt is unsupported on this build.
-	if !ok {
-		if usesPKJWT {
-			return fail(name,
-				"app uses private_key_jwt but this build has no TEE key signer",
-				"the platform key signer ships by default on macOS, Linux, and Windows/amd64; this platform (e.g. Windows/arm64) has none — use a supported platform or re-register without --private-key-jwt")
-		}
-		return skip(name, "no TEE signer in this build (only private_key_jwt is affected; client_secret is unaffected)")
+	signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
+	if err != nil {
+		return fail("tee_signer", "configured signing backend is unavailable", err.Error())
 	}
-
-	backend := info.Backend
-	if backend == "" {
-		backend = "tee"
+	store := keylesshelper.NewKeyStoreWithSigner(f.Keychain, signer)
+	key, err := store.ProbeKeyContext(ctx, signer.Name(), cfg.KeyLabel)
+	if err != nil {
+		return fail("tee_signer", "configured signing key is unusable", err.Error())
 	}
-
-	switch {
-	case probeErr != nil:
-		return warn(name, fmt.Sprintf("%s signer present but probe errored: %s", backend, probeErr), "")
-	case info.Available:
-		if info.VendorName != "" {
-			return pass(name, fmt.Sprintf("%s TEE available (%s)", backend, info.VendorName))
-		}
-		return pass(name, fmt.Sprintf("%s TEE available", backend))
-	case usesPKJWT:
-		return fail(name, fmt.Sprintf("%s signer present but TEE unavailable: %s", backend, info.Reason), teeUnavailableHint)
-	default:
-		return warn(name, fmt.Sprintf("%s signer present but TEE unavailable: %s", backend, info.Reason), teeUnavailableHint)
+	kid, err := key.Thumbprint()
+	if err != nil {
+		return fail("tee_signer", "configured signing key is invalid", err.Error())
 	}
+	backend := signer.Name()
+	return pass("tee_signer", fmt.Sprintf("%s signer available (kid %s)", backend, kid))
 }
 
 // networkChecks probes Open API and MCP endpoints concurrently.

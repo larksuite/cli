@@ -6,6 +6,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -30,7 +31,7 @@ func jsonResponse(body string) *http.Response {
 // Test_BuildVerificationURL verifies that tracking parameters are correctly appended.
 func Test_BuildVerificationURL(t *testing.T) {
 	t.Run("URL不含问号则添加?分隔符", func(t *testing.T) {
-		result := BuildVerificationURL("https://example.com/verify", "1.0.0")
+		result := BuildVerificationURL("https://example.com/verify", "1.0.0", "")
 		got, err := url.Parse(result)
 		if err != nil {
 			t.Fatal(err)
@@ -44,7 +45,7 @@ func Test_BuildVerificationURL(t *testing.T) {
 	})
 
 	t.Run("URL已含问号则添加&分隔符", func(t *testing.T) {
-		result := BuildVerificationURL("https://example.com/verify?code=abc", "2.0.0")
+		result := BuildVerificationURL("https://example.com/verify?code=abc", "2.0.0", "")
 		convey.Convey("should add & separator", t, func() {
 			convey.So(result, convey.ShouldContainSubstring, "&lpv=2.0.0")
 			convey.So(result, convey.ShouldContainSubstring, "&ocv=2.0.0")
@@ -53,27 +54,26 @@ func Test_BuildVerificationURL(t *testing.T) {
 		})
 	})
 
-	t.Run("指定已有应用时添加app_id", func(t *testing.T) {
+	t.Run("指定已有应用时添加client_id", func(t *testing.T) {
 		result := BuildVerificationURL("https://example.com/verify?user_code=abc", "2.0.0", "cli_existing")
 		got, err := url.Parse(result)
 		if err != nil {
 			t.Fatal(err)
 		}
-		convey.Convey("should include target app_id", t, func() {
-			convey.So(got.Query().Get("app_id"), convey.ShouldEqual, "cli_existing")
-			convey.So(got.Query().Get("client_id"), convey.ShouldEqual, "")
+		convey.Convey("should include target client_id", t, func() {
+			convey.So(got.Query().Get("client_id"), convey.ShouldEqual, "cli_existing")
 			convey.So(got.Query().Get("lpv"), convey.ShouldEqual, "2.0.0")
 		})
 	})
 
-	t.Run("服务端已返回app_id时不覆盖", func(t *testing.T) {
-		result := BuildVerificationURL("https://example.com/verify?app_id=cli_server&user_code=abc", "2.0.0", "cli_existing")
+	t.Run("服务端已返回client_id时不覆盖", func(t *testing.T) {
+		result := BuildVerificationURL("https://example.com/verify?client_id=cli_server&user_code=abc", "2.0.0", "cli_existing")
 		got, err := url.Parse(result)
 		if err != nil {
 			t.Fatal(err)
 		}
-		convey.Convey("should keep server app_id", t, func() {
-			convey.So(got.Query().Get("app_id"), convey.ShouldEqual, "cli_server")
+		convey.Convey("should keep server client_id", t, func() {
+			convey.So(got.Query().Get("client_id"), convey.ShouldEqual, "cli_server")
 		})
 	})
 }
@@ -225,6 +225,7 @@ func TestRegisterAppWithDiscovery_DeadlineBoundsInFlightRequests(t *testing.T) {
 func TestRegisterAppWithDiscovery_PollsUntilCredentials(t *testing.T) {
 	responses := []string{
 		`{}`,
+		`{"code":1061045,"msg":"internal service error"}`,
 		`{"client_id":"cli_x","user_info":{"open_id":"ou_x","tenant_brand":"feishu"}}`,
 		`{"client_id":"cli_x","client_secret":"test-secret","user_info":{"open_id":"ou_x","tenant_brand":"feishu"}}`,
 	}
@@ -240,11 +241,31 @@ func TestRegisterAppWithDiscovery_PollsUntilCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterAppWithDiscovery error = %v, want nil", err)
 	}
-	if polls != 3 {
-		t.Errorf("polls = %d, want 3", polls)
+	if polls != 4 {
+		t.Errorf("polls = %d, want 4", polls)
 	}
 	if result.ClientSecret != "test-secret" || finalBrand != core.BrandFeishu {
 		t.Errorf("result = (%q, %q), want (test-secret, feishu)", result.ClientSecret, finalBrand)
+	}
+}
+
+func TestRegisterAppWithDiscovery_PublicKeyCodesAreTerminal(t *testing.T) {
+	for _, code := range []int{
+		AppRegistrationCodeInvalidPublicKey,
+		AppRegistrationCodePublicKeyLimit,
+	} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				return jsonResponse(fmt.Sprintf(`{"code":%d,"msg":"rejected"}`, code)), nil
+			})}
+			resp := &AppRegistrationResponse{DeviceCode: "device", Interval: 0, ExpiresIn: 5}
+
+			_, _, err := RegisterAppWithDiscovery(context.Background(), client, resp, io.Discard)
+			var remoteErr *AppRegistrationRemoteError
+			if !errors.As(err, &remoteErr) || remoteErr.Code != code {
+				t.Fatalf("error = %v, want registration code %d", err, code)
+			}
+		})
 	}
 }
 
@@ -450,7 +471,7 @@ func captureClient(gotBody *url.Values, respJSON string) *http.Client {
 
 func TestRequestAppRegistrationInit_ParsesNonceAndMethods(t *testing.T) {
 	var body url.Values
-	httpClient := captureClient(&body, `{"nonce":"n-123","supported_auth_methods":["client_secret","private_key_jwt"]}`)
+	httpClient := captureClient(&body, `{"nonce":"n-123","supported_auth_methods":["client_secret","private_key_jwt_local_keypair"]}`)
 
 	out, err := RequestAppRegistrationInit(context.Background(), httpClient)
 	if err != nil {
@@ -459,7 +480,7 @@ func TestRequestAppRegistrationInit_ParsesNonceAndMethods(t *testing.T) {
 	if out.Nonce != "n-123" {
 		t.Errorf("nonce = %q, want n-123", out.Nonce)
 	}
-	if len(out.SupportedAuthMethods) != 2 || out.SupportedAuthMethods[1] != "private_key_jwt" {
+	if len(out.SupportedAuthMethods) != 2 || out.SupportedAuthMethods[1] != "private_key_jwt_local_keypair" {
 		t.Errorf("methods = %v", out.SupportedAuthMethods)
 	}
 	if body.Get("action") != "init" {
@@ -493,9 +514,9 @@ func TestRequestAppRegistration_BeginDefaultsToClientSecret(t *testing.T) {
 	if body.Has("auth_attestation") {
 		t.Errorf("auth_attestation should be absent for client_secret, got %q", body.Get("auth_attestation"))
 	}
-	// A new-app begin must not carry an existing app id.
-	if body.Has("app_id") {
-		t.Errorf("app_id should be absent when PrivateKeyJWTAppID is empty, got %q", body.Get("app_id"))
+	// A new-app begin must not carry an existing client_id.
+	if body.Has("client_id") {
+		t.Errorf("client_id should be absent when TargetAppID is empty, got %q", body.Get("client_id"))
 	}
 }
 
@@ -512,8 +533,8 @@ func TestRequestAppRegistration_VerificationURICompleteFallback(t *testing.T) {
 		},
 		{
 			name: "verification_uri with existing query",
-			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify?app_id=cli_x","expires_in":300,"interval":5}`,
-			want: "https://example/verify?app_id=cli_x&user_code=uc",
+			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify?client_id=cli_x","expires_in":300,"interval":5}`,
+			want: "https://example/verify?client_id=cli_x&user_code=uc",
 		},
 	}
 	for _, tc := range cases {
@@ -532,11 +553,11 @@ func TestRequestAppRegistration_VerificationURICompleteFallback(t *testing.T) {
 }
 
 func TestRegistrationResultComplete(t *testing.T) {
-	if registrationResultComplete(&AppRegistrationResult{}, core.AuthMethodPrivateKeyJWT) {
+	if registrationResultComplete(&AppRegistrationResult{}, core.AuthMethodPrivateKeyJWTLocalKeyPair) {
 		t.Error("missing client_id must remain incomplete")
 	}
-	if !registrationResultComplete(&AppRegistrationResult{ClientID: "cli_x"}, core.AuthMethodPrivateKeyJWT) {
-		t.Error("private_key_jwt client_id without client_secret must be complete")
+	if !registrationResultComplete(&AppRegistrationResult{ClientID: "cli_x"}, core.AuthMethodPrivateKeyJWTLocalKeyPair) {
+		t.Error("private_key_jwt_local_keypair client_id without client_secret must be complete")
 	}
 	if registrationResultComplete(&AppRegistrationResult{ClientID: "cli_x"}, core.AuthMethodClientSecret) {
 		t.Error("client_secret registration without client_secret must remain incomplete")
@@ -551,14 +572,14 @@ func TestRequestAppRegistration_BeginPrivateKeyJWT(t *testing.T) {
 	httpClient := captureClient(&body, beginRespJSON)
 
 	opts := AppRegistrationBeginOptions{
-		AuthMethod:      core.AuthMethodPrivateKeyJWT,
+		AuthMethod:      core.AuthMethodPrivateKeyJWTLocalKeyPair,
 		AuthAttestation: "header.claims.sig",
 	}
 	if _, err := RequestAppRegistration(context.Background(), httpClient, core.BrandFeishu, opts, nil); err != nil {
 		t.Fatal(err)
 	}
-	if body.Get("auth_method") != "private_key_jwt" {
-		t.Errorf("auth_method = %q, want private_key_jwt", body.Get("auth_method"))
+	if body.Get("auth_method") != "private_key_jwt_local_keypair" {
+		t.Errorf("auth_method = %q, want private_key_jwt_local_keypair", body.Get("auth_method"))
 	}
 	if body.Get("auth_attestation") != "header.claims.sig" {
 		t.Errorf("auth_attestation = %q", body.Get("auth_attestation"))
@@ -570,20 +591,20 @@ func TestRequestAppRegistration_BeginPrivateKeyJWTExistingAppID(t *testing.T) {
 	hc := captureClient(&body, beginRespJSON)
 
 	opts := AppRegistrationBeginOptions{
-		AuthMethod:         core.AuthMethodPrivateKeyJWT,
-		AuthAttestation:    "header.claims.sig",
-		PrivateKeyJWTAppID: "cli_existing",
+		AuthMethod:      core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		AuthAttestation: "header.claims.sig",
+		TargetAppID:     "cli_existing",
 	}
 	if _, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, opts, nil); err != nil {
 		t.Fatal(err)
 	}
-	if body.Get("auth_method") != "private_key_jwt" {
-		t.Errorf("auth_method = %q, want private_key_jwt", body.Get("auth_method"))
+	if body.Get("auth_method") != "private_key_jwt_local_keypair" {
+		t.Errorf("auth_method = %q, want private_key_jwt_local_keypair", body.Get("auth_method"))
 	}
 	if body.Get("auth_attestation") != "header.claims.sig" {
 		t.Errorf("auth_attestation = %q", body.Get("auth_attestation"))
 	}
-	if body.Get("app_id") != "cli_existing" {
-		t.Errorf("app_id = %q, want cli_existing", body.Get("app_id"))
+	if body.Get("client_id") != "cli_existing" {
+		t.Errorf("client_id = %q, want cli_existing", body.Get("client_id"))
 	}
 }

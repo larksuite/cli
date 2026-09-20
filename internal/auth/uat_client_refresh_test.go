@@ -71,7 +71,7 @@ func newRefreshTestOptions(stored *StoredUAToken) UATCallOptions {
 func TestDoRefreshToken_ProviderResolutionFailsBeforeHTTP(t *testing.T) {
 	stored := newRefreshTestToken()
 	opts := newRefreshTestOptions(stored)
-	opts.AuthMethod = core.AuthMethodPrivateKeyJWT
+	opts.AuthMethod = core.AuthMethodPrivateKeyJWTLocalKeyPair
 	opts.KeyProvider = core.KeylessProviderLarkSuite
 	opts.KeyLabel = "openclaw-lark"
 
@@ -98,14 +98,14 @@ func TestDoRefreshToken_ProviderResolutionFailsBeforeHTTP(t *testing.T) {
 	}
 }
 
-func TestDoRefreshToken_UncertainRequestThenSigningFailureClearsToken(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+func TestDoRefreshToken_UncertainRequestThenSigningFailurePreservesToken(t *testing.T) {
+	setupStoredTokenTest(t)
 	stored := newRefreshTestToken()
 	if err := SetStoredToken(stored); err != nil {
 		t.Fatalf("SetStoredToken() error = %v", err)
 	}
 	opts := newRefreshTestOptions(stored)
-	opts.AuthMethod = core.AuthMethodPrivateKeyJWT
+	opts.AuthMethod = core.AuthMethodPrivateKeyJWTLocalKeyPair
 	opts.KeyProvider = core.KeylessProviderLarkSuite
 	opts.KeyLabel = "openclaw-lark"
 
@@ -122,13 +122,16 @@ func TestDoRefreshToken_UncertainRequestThenSigningFailureClearsToken(t *testing
 	}}, &calls)
 	refreshed, err := doRefreshToken(context.Background(), client, opts, stored)
 	if err == nil || refreshed != nil {
-		t.Fatalf("doRefreshToken() = (%v, %v), want terminal uncertain error", refreshed, err)
+		t.Fatalf("doRefreshToken() = (%v, %v), want signing error", refreshed, err)
 	}
 	if calls.Load() != 1 || signer.calls.Load() != 2 {
 		t.Fatalf("HTTP calls=%d sign calls=%d, want 1 and 2", calls.Load(), signer.calls.Load())
 	}
-	if got := mustGetStoredToken(t, stored.AppId, stored.UserOpenId); got != nil {
-		t.Fatalf("stored token = %#v, want cleared after uncertain request", got)
+	if IsNeedUserAuthorizationError(err) {
+		t.Fatalf("signing failure replaced with need-user-authorization: %v", err)
+	}
+	if got := mustGetStoredToken(t, stored.AppId, stored.UserOpenId); got == nil || got.RefreshToken != stored.RefreshToken {
+		t.Fatalf("stored token = %#v, want original token preserved", got)
 	}
 }
 

@@ -24,6 +24,31 @@ var (
 	ErrRegistrationTimedOut = errors.New("app registration timed out, please try again")
 )
 
+const (
+	AppRegistrationCodeInvalidPublicKey = 1108026
+	AppRegistrationCodePublicKeyLimit   = 1107010
+)
+
+// AppRegistrationRemoteError preserves structured registration failures that
+// need command-specific recovery guidance.
+type AppRegistrationRemoteError struct {
+	Code        int
+	Description string
+}
+
+func (e *AppRegistrationRemoteError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Description != "" {
+		return e.Description
+	}
+	if e.Code != 0 {
+		return fmt.Sprintf("app registration failed with code %d", e.Code)
+	}
+	return "app registration failed"
+}
+
 // Protocol defaults, mirroring the official SDK registration flow.
 const (
 	registrationBootstrapBrand = core.BrandFeishu
@@ -89,15 +114,27 @@ func appRegistrationEndpoint(brand core.LarkBrand) string {
 // AppRegistrationInit is the response from the app registration init endpoint.
 type AppRegistrationInit struct {
 	Nonce                string
-	SupportedAuthMethods []string // e.g. ["client_secret", "private_key_jwt"]
+	SupportedAuthMethods []string // e.g. ["client_secret", "private_key_jwt", "private_key_jwt_local_keypair"]
 }
 
 // AppRegistrationBeginOptions parametrizes the registration begin request.
 // A zero value selects the legacy client_secret flow, preserving prior behavior.
 type AppRegistrationBeginOptions struct {
-	AuthMethod         string // "" => client_secret; core.AuthMethodPrivateKeyJWT
-	AuthAttestation    string // private_key_jwt: the TEE-signed attestation JWT
-	PrivateKeyJWTAppID string // private_key_jwt migration target; empty creates a new app
+	AuthMethod      string // "" => client_secret; either private-key JWT method
+	AuthAttestation string // local key-pair attestation JWT
+	TargetAppID     string // existing app to update; empty creates a new app
+}
+
+func appRegistrationRemoteError(data map[string]interface{}) *AppRegistrationRemoteError {
+	code := getInt(data, "code", 0)
+	if code == 0 {
+		return nil
+	}
+	description := getStr(data, "msg")
+	return &AppRegistrationRemoteError{
+		Code:        code,
+		Description: description,
+	}
 }
 
 // RequestAppRegistrationInit performs the init step of the registration flow,
@@ -134,6 +171,9 @@ func RequestAppRegistrationInit(ctx context.Context, httpClient *http.Client) (*
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
 		return nil, fmt.Errorf("app registration init failed: HTTP %d – response not JSON", resp.StatusCode)
+	}
+	if remoteErr := appRegistrationRemoteError(data); remoteErr != nil {
+		return nil, remoteErr
 	}
 
 	if _, hasError := data["error"]; resp.StatusCode >= 400 || hasError {
@@ -188,8 +228,8 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 	if opts.AuthAttestation != "" {
 		form.Set("auth_attestation", opts.AuthAttestation)
 	}
-	if opts.PrivateKeyJWTAppID != "" {
-		form.Set("app_id", opts.PrivateKeyJWTAppID)
+	if opts.TargetAppID != "" {
+		form.Set("client_id", opts.TargetAppID)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(form.Encode()))
@@ -213,6 +253,9 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
 		return nil, fmt.Errorf("app registration failed: HTTP %d – response not JSON", resp.StatusCode)
+	}
+	if remoteErr := appRegistrationRemoteError(data); remoteErr != nil {
+		return nil, remoteErr
 	}
 
 	_, hasError := data["error"]
@@ -253,7 +296,7 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 			base = ep.Open + "/page/launcher"
 		}
 		// The server may return verification_uri with its own query (e.g.
-		// app_id when registering against an existing app), so join with
+		// client_id when registering against an existing app), so join with
 		// the same ?/& logic as BuildVerificationURL.
 		sep := "?"
 		if strings.Contains(base, "?") {
@@ -277,19 +320,18 @@ func registrationResultComplete(result *AppRegistrationResult, requestedAuthMeth
 	if result.ClientID == "" {
 		return false
 	}
-	// Poll never returns auth_method. A secret registration completes with both
-	// credentials; a private_key_jwt registration intentionally returns no
-	// client_secret, so the normalized method sent by begin is authoritative.
-	return result.ClientSecret != "" || requestedAuthMethod == core.AuthMethodPrivateKeyJWT
+	return result.ClientSecret != "" ||
+		requestedAuthMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair ||
+		requestedAuthMethod == core.AuthMethodPrivateKeyJWT
 }
 
 // BuildVerificationURL appends CLI tracking parameters to the verification URL.
 // When targetAppID is non-empty, it is also included so the launcher can lock
 // authorization to that existing app.
-func BuildVerificationURL(baseURL, cliVersion string, targetAppID ...string) string {
+func BuildVerificationURL(baseURL, cliVersion, targetAppID string) string {
 	u, err := url.Parse(baseURL)
 	if err != nil {
-		return appendVerificationURLFallback(baseURL, cliVersion, targetAppID...)
+		return appendVerificationURLFallback(baseURL, cliVersion, targetAppID)
 	}
 	q := u.Query()
 	if q.Get("lpv") == "" {
@@ -301,14 +343,14 @@ func BuildVerificationURL(baseURL, cliVersion string, targetAppID ...string) str
 	if q.Get("from") == "" {
 		q.Set("from", "cli")
 	}
-	if len(targetAppID) > 0 && targetAppID[0] != "" && q.Get("app_id") == "" {
-		q.Set("app_id", targetAppID[0])
+	if targetAppID != "" && q.Get("client_id") == "" {
+		q.Set("client_id", targetAppID)
 	}
 	u.RawQuery = q.Encode()
 	return u.String()
 }
 
-func appendVerificationURLFallback(baseURL, cliVersion string, targetAppID ...string) string {
+func appendVerificationURLFallback(baseURL, cliVersion, targetAppID string) string {
 	sep := "&"
 	if !strings.Contains(baseURL, "?") {
 		sep = "?"
@@ -316,8 +358,8 @@ func appendVerificationURLFallback(baseURL, cliVersion string, targetAppID ...st
 	out := baseURL + sep + "lpv=" + url.QueryEscape(cliVersion) +
 		"&ocv=" + url.QueryEscape(cliVersion) +
 		"&from=cli"
-	if len(targetAppID) > 0 && targetAppID[0] != "" && !strings.Contains(baseURL, "app_id=") {
-		out += "&app_id=" + url.QueryEscape(targetAppID[0])
+	if targetAppID != "" && !strings.Contains(baseURL, "client_id=") {
+		out += "&client_id=" + url.QueryEscape(targetAppID)
 	}
 	return out
 }
@@ -393,6 +435,13 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 			interval = minInt(interval+1, maxPollIntervalSeconds)
 			continue
 		}
+		remoteErr := appRegistrationRemoteError(data)
+		if remoteErr != nil {
+			switch remoteErr.Code {
+			case AppRegistrationCodeInvalidPublicKey, AppRegistrationCodePublicKeyLimit:
+				return nil, effectiveBrand, remoteErr
+			}
+		}
 
 		// A cross-brand tenant report switches the polled domain (once,
 		// immediately) regardless of the accompanying status — the signal can
@@ -410,9 +459,12 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 				}
 			}
 		}
+		if remoteErr != nil {
+			continue
+		}
 
 		errStr := getStr(data, "error")
-		// A successful response carries the app id in client_id. Empty, non-error
+		// A successful response carries the client/app id in client_id. Empty, non-error
 		// responses are incomplete rather than terminal, so keep polling below.
 		if errStr == "" {
 			result := &AppRegistrationResult{
@@ -426,8 +478,8 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 				}
 			}
 
-			// private_key_jwt succeeds without returning a client secret. Completion
-			// therefore also depends on the normalized auth method sent by begin.
+			// Private-key JWT succeeds without returning a client secret.
+			// Completion therefore also depends on the requested auth method.
 			if registrationResultComplete(result, resp.RequestedAuthMethod) {
 				// The issuing domain is authoritative; a contradictory final
 				// tenant report is a protocol violation, not a brand override.
@@ -449,6 +501,9 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 			fmt.Fprintf(errOut, "[lark-cli] app-registration: slow_down, interval increased to %ds\n", interval)
 			continue
 		case "access_denied":
+			if status := getStr(data, "status_message"); status != "" {
+				return nil, effectiveBrand, fmt.Errorf("%w: %s", ErrRegistrationDenied, status)
+			}
 			return nil, effectiveBrand, ErrRegistrationDenied
 		case "expired_token", "invalid_grant":
 			return nil, effectiveBrand, ErrRegistrationExpired

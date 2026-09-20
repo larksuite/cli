@@ -85,7 +85,7 @@ func RequestDeviceAuthorization(ctx context.Context, httpClient *http.Client, ca
 
 	// private_key_jwt authenticates the client with a signed assertion in the
 	// body; client_secret uses HTTP Basic.
-	usedAssertion, err := ca.applyClientAssertion(ctx, form, core.OpenAPIAudience(brand))
+	usedAssertion, err := ca.applyClientAssertion(ctx, form, core.ClientAssertionAudience(brand))
 	if err != nil {
 		return nil, err
 	}
@@ -149,8 +149,8 @@ func RequestDeviceAuthorization(ctx context.Context, httpClient *http.Client, ca
 }
 
 // PollDeviceToken polls the token endpoint until authorization completes or times out.
-// Typed policy errors are returned unchanged so callers can surface their
-// recovery fields instead of treating them as transient network failures.
+// Client assertion failures and typed policy errors are returned so callers can
+// surface them instead of treating them as transient network failures.
 func PollDeviceToken(ctx context.Context, httpClient *http.Client, ca ClientAuth, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*DeviceFlowResult, error) {
 	if errOut == nil {
 		errOut = io.Discard
@@ -181,9 +181,9 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, ca ClientAuth
 		form.Set("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
 		form.Set("device_code", deviceCode)
 		form.Set("client_id", ca.AppID)
-		usedAssertion, caErr := ca.applyClientAssertion(ctx, form, core.OpenAPIAudience(brand))
+		usedAssertion, caErr := ca.applyClientAssertion(ctx, form, core.ClientAssertionAudience(brand))
 		if caErr != nil {
-			return &DeviceFlowResult{OK: false, Error: "invalid_client", Message: caErr.Error()}, nil
+			return nil, caErr
 		}
 		if !usedAssertion {
 			form.Set("client_secret", ca.AppSecret)

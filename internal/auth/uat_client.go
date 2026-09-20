@@ -29,10 +29,10 @@ type UATCallOptions struct {
 	AppId       string
 	AppSecret   string
 	Domain      core.LarkBrand
-	AuthMethod  string           // "" == client_secret; core.AuthMethodPrivateKeyJWT
-	KeyLabel    string           // TEE key handle for private_key_jwt
-	KeyProvider string           // empty == built-in signer; explicit external route otherwise
-	Signer      keysigner.Signer // active signer for private_key_jwt
+	AuthMethod  string           // "" == client_secret; either private-key JWT method
+	KeyLabel    string           // signer key handle for private-key JWT
+	KeyProvider string           // built-in backend name, external provider, or empty legacy auto-selection
+	Signer      keysigner.Signer // active signer for private-key JWT
 	ErrOut      io.Writer        // diagnostic/status output (caller injects f.IOStreams.ErrOut)
 }
 
@@ -47,8 +47,9 @@ type UATStatus struct {
 	TokenStatus      string `json:"tokenStatus,omitempty"`
 }
 
-// NewUATCallOptions creates UATCallOptions from a CLI config.
-func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
+// NewUATCallOptions creates UATCallOptions from a CLI config and the
+// invocation-scoped signer selected for that config.
+func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer, signer keysigner.Signer) UATCallOptions {
 	if errOut == nil {
 		errOut = os.Stderr
 	}
@@ -60,7 +61,7 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 		AuthMethod:  cfg.AuthMethod,
 		KeyLabel:    cfg.KeyLabel,
 		KeyProvider: cfg.KeyProvider,
-		Signer:      keysigner.Active(),
+		Signer:      signer,
 		ErrOut:      errOut,
 	}
 }
@@ -253,7 +254,7 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 		}
 
 		clearAfterUncertainResult := result.action == refreshRetryAndClear ||
-			(uncertain && (result.action == refreshRetryAndPreserve || result.action == refreshStopAndPreserve))
+			(result.action == refreshRetryAndPreserve && uncertain)
 		clearToken := result.action == refreshStopAndClear || clearAfterUncertainResult
 		if !clearToken {
 			fmt.Fprintf(errOut,
@@ -306,7 +307,7 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 		ClientID:     opts.AppId,
 	}
 	form := url.Values{}
-	usedAssertion, err := clientAuth.applyClientAssertion(ctx, form, core.OpenAPIAudience(opts.Domain))
+	usedAssertion, err := clientAuth.applyClientAssertion(ctx, form, core.ClientAssertionAudience(opts.Domain))
 	if err != nil {
 		return refreshResult{action: refreshStopAndPreserve, err: err}
 	}

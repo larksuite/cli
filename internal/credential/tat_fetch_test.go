@@ -386,6 +386,10 @@ func (r *urlRewriteRT) RoundTrip(req *http.Request) (*http.Response, error) {
 // fakeTATSigner is a real in-memory ECDSA P-256 signer for assertion tests.
 type fakeTATSigner struct{ key *ecdsa.PrivateKey }
 
+func (*fakeTATSigner) Name() string { return "fake" }
+
+func (*fakeTATSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL3 }
+
 func newFakeTATSigner(t *testing.T) *fakeTATSigner {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -413,6 +417,8 @@ func (f *fakeTATSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) (
 	s.FillBytes(sig[32:])
 	return sig, keysigner.AlgES256, nil
 }
+
+func (*fakeTATSigner) DeleteKey(context.Context, keysigner.KeyRef) error { return nil }
 
 func TestFetchTATWithAssertion_Success(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 200, respBody: `{"access_token":"test-token","token_type":"Bearer","expires_in":7200}`}
@@ -443,7 +449,7 @@ func TestFetchTATWithAssertion_Success(t *testing.T) {
 		t.Error("client_assertion is empty")
 	}
 	if form.Has("client_secret") {
-		t.Error("client_secret must NOT be sent for private_key_jwt")
+		t.Error("client_secret must NOT be sent for private_key_jwt_local_keypair")
 	}
 	if form.Get("client_id") != "cli_app" {
 		t.Errorf("client_id = %q", form.Get("client_id"))

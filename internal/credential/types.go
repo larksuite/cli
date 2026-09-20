@@ -26,9 +26,10 @@ type Account struct {
 	UserName            string
 	Lang                i18n.Lang
 	SupportedIdentities uint8
-	AuthMethod          string // "" == client_secret; core.AuthMethodPrivateKeyJWT
-	KeyLabel            string // resolved TEE key handle for private_key_jwt
-	KeyProvider         string // empty == built-in signer; otherwise an explicit external signer route
+	AuthMethod          string // "" == client_secret; either private-key JWT method
+	KeySource           string // tee or file for private-key JWT
+	KeyLabel            string // platform handle or private-key file path
+	KeyProvider         string // built-in backend name, external provider, or empty legacy auto-selection
 }
 
 const runtimePlaceholderAppSecret = "__LARKSUITE_CLI_TOKEN_ONLY__"
@@ -73,6 +74,7 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 		Lang:                cfg.Lang,
 		SupportedIdentities: cfg.SupportedIdentities,
 		AuthMethod:          cfg.AuthMethod,
+		KeySource:           cfg.KeySource,
 		KeyLabel:            cfg.KeyLabel,
 		KeyProvider:         cfg.KeyProvider,
 	}
@@ -95,6 +97,7 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		Lang:                a.Lang,
 		SupportedIdentities: a.SupportedIdentities,
 		AuthMethod:          a.AuthMethod,
+		KeySource:           a.KeySource,
 		KeyLabel:            a.KeyLabel,
 		KeyProvider:         a.KeyProvider,
 	}

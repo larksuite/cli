@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
@@ -40,10 +41,17 @@ type AppUser struct {
 // Auth methods for app credentials. An empty AppConfig.AuthMethod means the
 // default, client_secret.
 const (
-	AuthMethodClientSecret  = "client_secret"   // app_id + app_secret
-	authMethodPKJWTValue    = "private_key_jwt" // TEE-signed client_assertion; no app secret
-	AuthMethodPrivateKeyJWT = authMethodPKJWTValue
+	AuthMethodClientSecret              = "client_secret" // app_id + app_secret
+	AuthMethodPrivateKeyJWT             = "private_key_jwt"
+	AuthMethodPrivateKeyJWTLocalKeyPair = "private_key_jwt_local_keypair"
 )
+
+// IsPrivateKeyJWTAuthMethod reports whether method authenticates with a signed
+// client assertion instead of an app secret.
+func IsPrivateKeyJWTAuthMethod(method string) bool {
+	return method == AuthMethodPrivateKeyJWT ||
+		method == AuthMethodPrivateKeyJWTLocalKeyPair
+}
 
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
@@ -57,12 +65,12 @@ type AppConfig struct {
 	Users      []AppUser   `json:"users"`
 
 	// AuthMethod selects how tokens are minted. Empty == AuthMethodClientSecret
-	// (back-compat). AuthMethodPrivateKeyJWT uses a TEE-held key (see KeyRef) to
-	// sign client_assertion JWTs instead of sending an app secret.
+	// (back-compat). Both private-key JWT methods use the signer selected by
+	// KeyRef instead of sending an app secret.
 	AuthMethod string `json:"authMethod,omitempty"`
-	// KeyRef references the non-exportable signing key for private_key_jwt.
-	// Source is "tee" and ID is the backend key label; the actual key never
-	// leaves the secure backend, so this is a handle, not secret material.
+	// KeyRef identifies the signer input for private-key JWT authentication.
+	// Source "tee" stores an opaque managed-key handle (including software-file);
+	// source "file" stores a resolved PEM path without embedding private material.
 	KeyRef *SecretRef `json:"keyRef,omitempty"`
 }
 
@@ -206,9 +214,10 @@ type CliConfig struct {
 	UserName            string
 	Lang                i18n.Lang
 	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
-	AuthMethod          string // "" == client_secret; AuthMethodPrivateKeyJWT
-	KeyLabel            string // resolved TEE key handle for private_key_jwt
-	KeyProvider         string // empty == built-in signer; otherwise an explicit external signer route
+	AuthMethod          string // "" == client_secret; private_key_jwt or private_key_jwt_local_keypair
+	KeySource           string // tee or file for private-key JWT authentication
+	KeyLabel            string // resolved platform handle or private-key file path
+	KeyProvider         string // built-in backend name, external provider, or empty legacy auto-selection
 }
 
 // identityBotBit is the bit flag for bot identity in SupportedIdentities.
@@ -302,29 +311,42 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	// at token-signing. Empty stays empty — downstream treats it as client_secret
 	// (back-compat).
 	switch app.AuthMethod {
-	case "", AuthMethodClientSecret, AuthMethodPrivateKeyJWT:
+	case "", AuthMethodClientSecret, AuthMethodPrivateKeyJWT, AuthMethodPrivateKeyJWTLocalKeyPair:
 	default:
 		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
 			"unknown authMethod %q", app.AuthMethod).
-			WithHint("supported: %s, %s (empty defaults to %s)", AuthMethodClientSecret, AuthMethodPrivateKeyJWT, AuthMethodClientSecret)
+			WithHint("supported: %s, %s, %s (empty defaults to %s)",
+				AuthMethodClientSecret, AuthMethodPrivateKeyJWT,
+				AuthMethodPrivateKeyJWTLocalKeyPair, AuthMethodClientSecret)
 	}
-	// private_key_jwt carries no secret: validate the key handle and skip secret
-	// resolution entirely, so a stale/broken AppSecret ref never produces a
-	// confusing secret-resolution error for an otherwise-valid pkjwt profile.
+	// Private-key JWT authentication does not require a secret. Preserve any
+	// stored secret reference for coexistence/recovery, but do not resolve or
+	// send it while either method is selected.
 	var secret string
-	if app.AuthMethod == AuthMethodPrivateKeyJWT {
-		if app.KeyRef == nil || app.KeyRef.Source != SecretSourceTEE || app.KeyRef.ID == "" {
+	if IsPrivateKeyJWTAuthMethod(app.AuthMethod) {
+		if app.KeyRef == nil || app.KeyRef.ID == "" {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
-				"private_key_jwt requires a valid tee key handle (keyRef)").
+				"%s requires a valid keyRef", app.AuthMethod).
 				WithHint("re-run: lark-cli config init --new --private-key-jwt")
 		}
 		provider := strings.TrimSpace(app.KeyRef.Provider)
-		switch provider {
-		case "", KeylessProviderLarkSuite:
+		switch app.KeyRef.Source {
+		case SecretSourceTEE:
+			if provider != "" && provider != KeylessProviderLarkSuite &&
+				provider != keysigner.SoftwareSignerName &&
+				!keysigner.IsPlatformSignerName(provider) {
+				return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+					"unknown keyless signer provider %q", app.KeyRef.Provider).
+					WithHint("use a signer provider recorded by config init, or %s for an external signer", KeylessProviderLarkSuite)
+			}
+		case SecretSourceKeyFile:
+			if provider != "" {
+				return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+					"private-key file references cannot select provider %q", app.KeyRef.Provider)
+			}
 		default:
 			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
-				"unknown keyless signer provider %q", app.KeyRef.Provider).
-				WithHint("supported external provider: %s; omit provider to use the built-in signer", KeylessProviderLarkSuite)
+				"%s requires keyRef.source tee or file", app.AuthMethod)
 		}
 	} else {
 		if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
@@ -356,6 +378,7 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		AuthMethod:  app.AuthMethod,
 	}
 	if app.KeyRef != nil {
+		cfg.KeySource = app.KeyRef.Source
 		cfg.KeyLabel = app.KeyRef.ID
 		cfg.KeyProvider = strings.TrimSpace(app.KeyRef.Provider)
 	}

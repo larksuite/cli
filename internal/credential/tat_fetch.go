@@ -152,10 +152,9 @@ func tatRetryAfterSeconds(header http.Header) int {
 	return 0
 }
 
-// FetchTATWithAssertion mints a tenant access token for a private_key_jwt app via
-// the RFC 7523 jwt-bearer grant: it signs a short-lived client_assertion with the
-// TEE-held key and posts it to the unified OAuth token endpoint, replacing the
-// app_secret entirely.
+// FetchTATWithAssertion mints a tenant access token for a private-key JWT app
+// via the RFC 7523 jwt-bearer grant. It signs a short-lived client_assertion
+// and posts it to the unified OAuth token endpoint instead of an app secret.
 //
 // The unified v2 token endpoint returns the minted token as access_token
 // (tenant_access_token is accepted as a fallback).
@@ -164,11 +163,20 @@ func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand c
 }
 
 // FetchTATWithAssertionForProvider resolves an explicit external signer once.
-// An empty provider preserves the built-in signer behavior.
+// Empty and built-in backend providers use the already-resolved signer.
 func FetchTATWithAssertionForProvider(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, provider, keyLabel string) (string, error) {
-	helper, err := keylessprovider.Resolve(ctx, provider)
-	if err != nil {
-		return "", err
+	var helper *keylesshelper.Command
+	if provider != "" && provider != keysigner.SoftwareSignerName &&
+		!keysigner.IsPlatformSignerName(provider) {
+		if provider != core.KeylessProviderLarkSuite {
+			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
+				"unsupported private-key JWT provider %q", provider)
+		}
+		var err error
+		helper, err = keylessprovider.Resolve(ctx, provider)
+		if err != nil {
+			return "", err
+		}
 	}
 	return FetchTATWithAssertionWithHelper(ctx, httpClient, brand, clientID, signer, helper, keyLabel)
 }
@@ -178,13 +186,13 @@ func FetchTATWithAssertionForProvider(ctx context.Context, httpClient *http.Clie
 func FetchTATWithAssertionWithHelper(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, helper *keylesshelper.Command, keyLabel string) (string, error) {
 	if signer == nil && helper == nil {
 		return "", errs.NewConfigError(errs.SubtypeInvalidClient,
-			"profile uses private_key_jwt but no TEE key signer is available on this build").
+			"profile uses private-key JWT but no key signer is available on this build").
 			WithHint("install a build with the platform key-signer extension or repair the configured OpenClaw signer provider")
 	}
 	ep := core.ResolveEndpoints(brand)
 	endpoint := ep.Open + auth.PathOAuthTokenV2
 
-	assertionType, assertion, err := auth.SignClientAssertion(ctx, signer, helper, keyLabel, clientID, core.OpenAPIAudience(brand))
+	assertionType, assertion, err := auth.SignClientAssertion(ctx, signer, helper, keyLabel, clientID, core.ClientAssertionAudience(brand))
 	if err != nil {
 		return "", err
 	}

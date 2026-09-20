@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -18,7 +17,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
 )
@@ -173,42 +171,8 @@ func TestDoctorRun_SplitsBotAndMissingUserIdentity(t *testing.T) {
 	assertCheck(t, got.Checks, "identity_ready", "pass")
 }
 
-func TestTeeCheckResult(t *testing.T) {
-	avail := keysigner.HardwareInfo{Backend: "tpm2", Available: true, VendorName: "ACME"}
-	unavail := keysigner.HardwareInfo{Backend: "tpm2", Reason: "open /dev/tpmrm0: permission denied"}
-
-	cases := []struct {
-		name     string
-		info     keysigner.HardwareInfo
-		ok       bool
-		probeErr error
-		pkjwt    bool
-		want     string
-	}{
-		{"no signer + private_key_jwt → fail", keysigner.HardwareInfo{}, false, nil, true, "fail"},
-		{"no signer + client_secret → skip", keysigner.HardwareInfo{}, false, nil, false, "skip"},
-		{"available + private_key_jwt → pass", avail, true, nil, true, "pass"},
-		{"available + client_secret → pass", avail, true, nil, false, "pass"},
-		{"unavailable + private_key_jwt → fail", unavail, true, nil, true, "fail"},
-		{"unavailable + client_secret → warn", unavail, true, nil, false, "warn"},
-		{"probe error → warn", keysigner.HardwareInfo{Backend: "tpm2"}, true, errors.New("boom"), true, "warn"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := teeCheckResult(tc.info, tc.ok, tc.probeErr, tc.pkjwt)
-			if got.Name != "tee_signer" {
-				t.Errorf("name = %q, want tee_signer", got.Name)
-			}
-			if got.Status != tc.want {
-				t.Errorf("status = %q, want %q (msg=%q)", got.Status, tc.want, got.Message)
-			}
-		})
-	}
-}
-
 // TestDoctorRun_TeeSignerWired proves the tee_signer check is part of doctorRun.
-// It asserts the build-independent invariant (a client_secret app must never
-// FAIL on TEE) so the test passes whether or not a signer is compiled in.
+// A client_secret app skips the signer check on every platform.
 func TestDoctorRun_TeeSignerWired(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
@@ -241,8 +205,8 @@ func TestDoctorRun_TeeSignerWired(t *testing.T) {
 	if c == nil {
 		t.Fatalf("tee_signer check not present in doctor output: %#v", got.Checks)
 	}
-	if c.Status == "fail" {
-		t.Errorf("tee_signer = fail for a client_secret app; want skip/warn/pass (msg=%q)", c.Message)
+	if c.Status != "skip" {
+		t.Errorf("tee_signer = %s for a client_secret app; want skip (msg=%q)", c.Status, c.Message)
 	}
 }
 

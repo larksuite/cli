@@ -113,17 +113,28 @@ func strictModeToIdentitySupport(multi *core.MultiAppConfig, profileOverride str
 // DefaultTokenProvider resolves UAT/TAT using keychain + direct HTTP calls.
 // No SDK/LarkClient dependency — eliminates circular dependency with Factory.
 type DefaultTokenProvider struct {
-	defaultAcct *DefaultAccountProvider
-	httpClient  func() (*http.Client, error)
-	errOut      io.Writer
+	defaultAcct   *DefaultAccountProvider
+	httpClient    func() (*http.Client, error)
+	errOut        io.Writer
+	resolveSigner func(*core.CliConfig) (keysigner.Signer, error)
 
 	tatOnce   sync.Once
 	tatResult *TokenResult
 	tatErr    error
 }
 
-func NewDefaultTokenProvider(defaultAcct *DefaultAccountProvider, httpClient func() (*http.Client, error), errOut io.Writer) *DefaultTokenProvider {
-	return &DefaultTokenProvider{defaultAcct: defaultAcct, httpClient: httpClient, errOut: errOut}
+func NewDefaultTokenProvider(
+	defaultAcct *DefaultAccountProvider,
+	httpClient func() (*http.Client, error),
+	errOut io.Writer,
+	resolveSigner func(*core.CliConfig) (keysigner.Signer, error),
+) *DefaultTokenProvider {
+	return &DefaultTokenProvider{
+		defaultAcct:   defaultAcct,
+		httpClient:    httpClient,
+		errOut:        errOut,
+		resolveSigner: resolveSigner,
+	}
 }
 
 func (p *DefaultTokenProvider) ResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, error) {
@@ -148,7 +159,11 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	if err != nil {
 		return nil, err
 	}
-	token, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut))
+	signer, err := p.signerForAccount(acct)
+	if err != nil {
+		return nil, err
+	}
+	token, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut, signer))
 	if err != nil {
 		return nil, err
 	}
@@ -179,10 +194,13 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 		return nil, err
 	}
 
-	// private_key_jwt apps have no app secret: mint via the jwt-bearer grant
-	// using a TEE-signed client_assertion instead.
-	if acct.AuthMethod == core.AuthMethodPrivateKeyJWT {
-		signer := keysigner.Active()
+	// Private-key JWT apps have no app secret: mint via the jwt-bearer grant
+	// using a signed client_assertion instead.
+	if core.IsPrivateKeyJWTAuthMethod(acct.AuthMethod) {
+		signer, err := p.signerForAccount(acct)
+		if err != nil {
+			return nil, err
+		}
 		token, err := FetchTATWithAssertionForProvider(ctx, httpClient, acct.Brand, acct.AppID, signer, acct.KeyProvider, acct.KeyLabel)
 		if err != nil {
 			return nil, err
@@ -198,4 +216,11 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 		fmt.Fprintf(p.errOut, "[lark-cli] tat-client: %s\n", result.StatusMessage)
 	}
 	return &TokenResult{Token: result.AccessToken}, nil
+}
+
+func (p *DefaultTokenProvider) signerForAccount(acct *Account) (keysigner.Signer, error) {
+	if acct == nil {
+		return nil, nil
+	}
+	return p.resolveSigner(acct.ToCliConfig())
 }
