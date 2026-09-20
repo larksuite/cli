@@ -165,7 +165,7 @@ var SlidesReplaceSlide = common.Shortcut{
 			// Lint first: enrichSlidesReplaceError only fills an empty hint, so
 			// running it second leaves the specific lint finding in place and
 			// the generic 3350001 checklist for everything else.
-			return enrichSlidesReplaceError(enrichSlidesLintError(err))
+			return enrichSlidesReplaceError(enrichSlidesLintError(err, noLintRequested(runtime)))
 		}
 
 		result := map[string]interface{}{

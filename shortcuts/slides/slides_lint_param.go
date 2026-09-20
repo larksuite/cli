@@ -16,6 +16,12 @@ import "github.com/larksuite/cli/shortcuts/common"
 // the checked path; --no-lint is the escape hatch for the case the lint is wrong
 // about a page that must still ship.
 //
+// The server can be configured to require a page to have been linted once before
+// it honours the flag, and a refusal counts as that lint. So the flag can need a
+// prior submission of the same content to take effect — it never needs a
+// successful one. What that changes is the wording of the refusal, not whether
+// the escape hatch works: see noLintFirstLintHint.
+//
 // Sent explicitly in both directions rather than omitted when on: the parameter
 // is newer than internal/registry/meta_data.json, so the server-side default is
 // not something this CLI can read anywhere, and a request that states the value

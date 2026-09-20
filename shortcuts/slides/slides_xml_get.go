@@ -6,6 +6,7 @@ package slides
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -211,6 +212,7 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 			out["revision_id"] = int(revisionID)
 			slideOut["revision_id"] = int(revisionID)
 		}
+		attachSlidesXMLGetIssues(out, data)
 		return content, out, nil
 	}
 
@@ -247,7 +249,40 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 	if runtime.Bool("remove-attr-id") {
 		out["remove_attr_id"] = true
 	}
+	attachSlidesXMLGetIssues(out, data)
 	return content, out, nil
+}
+
+// attachSlidesXMLGetIssues copies the backend's lint report onto the output.
+//
+// The field arrives as a string holding a JSON document, which is how the backend
+// forwards the lint service's own report without having to model it. Left as a string
+// it would reach the caller double-encoded — escaped JSON inside the JSON envelope —
+// which costs a second decode before jq or anything else can read a field out of it.
+// So it is expanded into the envelope, which needs no knowledge of its shape and so
+// keeps passing through whatever the lint service grows next.
+//
+// A payload that will not parse is kept verbatim rather than dropped: if the backend
+// ever sends something unexpected, the raw text is what makes that diagnosable.
+func attachSlidesXMLGetIssues(out map[string]interface{}, data map[string]interface{}) {
+	raw, ok := data["issues"]
+	if !ok {
+		return
+	}
+	text, isString := raw.(string)
+	if !isString {
+		out["issues"] = raw
+		return
+	}
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	var expanded interface{}
+	if err := json.Unmarshal([]byte(text), &expanded); err != nil {
+		out["issues"] = text
+		return
+	}
+	out["issues"] = expanded
 }
 
 func outputSlidesXMLGetContent(runtime *common.RuntimeContext, content string, outputPath string, out map[string]interface{}) error {
@@ -281,7 +316,7 @@ func outputSlidesXMLGetContent(runtime *common.RuntimeContext, content string, o
 		"size":                result.Size(),
 		"content_saved":       true,
 	}
-	for _, key := range []string{"revision_id", "remove_attr_id", "slide_id", "slide_number"} {
+	for _, key := range []string{"revision_id", "remove_attr_id", "slide_id", "slide_number", "issues"} {
 		if value, ok := out[key]; ok {
 			fileOut[key] = value
 		}

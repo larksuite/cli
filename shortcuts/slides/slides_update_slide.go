@@ -244,7 +244,7 @@ func updateSlideExecute(_ context.Context, runtime *common.RuntimeContext) error
 		// .../slide/replace is gated, and the subject is the page the write
 		// produces rather than the payload sent, so a page that is invalid only
 		// in combination is caught here too.
-		return enrichUpdateSlideError(enrichSlidesLintError(err))
+		return enrichUpdateSlideError(enrichSlidesLintError(err, noLintRequested(runtime)))
 	}
 
 	// A single part carries the whole page, so any failed_reason means the page

@@ -201,7 +201,7 @@ var SlidesCreate = common.Shortcut{
 					createSlideBody(slideXML, runtime),
 				)
 				if err != nil {
-					return appendSlidesProgressHint(enrichSlidesLintError(err), fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
+					return appendSlidesProgressHint(enrichSlidesLintError(err, noLintRequested(runtime)), fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
 				}
 				sid := common.GetString(slideData, "slide_id")
 				if sid != "" {

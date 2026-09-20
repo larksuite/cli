@@ -92,7 +92,7 @@ var SlidesReplacePages = common.Shortcut{
 				// batch that keeps going only ever sees the per-item record, so
 				// enriching inside the returning branch would have hidden the flag
 				// from the callers most likely to have several pages to fix.
-				err = enrichSlidesLintError(err)
+				err = enrichSlidesLintError(err, noLintRequested(runtime))
 				recordReplacePageError(&result, err)
 			}
 			results = append(results, result)

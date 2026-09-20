@@ -193,7 +193,7 @@ var SlidesAddSlide = common.Shortcut{
 			// Lint first: it names the actual finding, and enrichSlidesReplaceError
 			// only fills an empty hint, so its generic checklist stays out of the
 			// way when the backend already said what was wrong.
-			return enrichSlidesReplaceError(enrichSlidesLintError(err))
+			return enrichSlidesReplaceError(enrichSlidesLintError(err, noLintRequested(runtime)))
 		}
 
 		slideID := common.GetString(data, "slide_id")

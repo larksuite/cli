@@ -515,3 +515,179 @@ func TestSlidesXMLGetRejectsRemoveAttrIDForSingleSlide(t *testing.T) {
 		t.Fatalf("param = %q, want --remove-attr-id", validationErr.Param)
 	}
 }
+
+// lintReportJSON is the shape the backend forwards: the lint service's own report,
+// serialised into a string field.
+const lintReportJSON = `{"schema_version":"2.0","tool":"xml_lint",` +
+	`"summary":{"slide_count":1,"error_count":1,"warning_count":0,"status":"blocked"},` +
+	`"slides":[{"slide_number":1,"errors":[{"level":"error","code":"text_may_overflow_shape",` +
+	`"message":"text shape may overflow its own content box"}]}]}`
+
+func TestSlidesXMLGetExpandsIssuesIntoEnvelope(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation": map[string]interface{}{"content": xml},
+				"issues":           lintReportJSON,
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get", "--presentation", "pres_abc", "--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeShortcutData(t, stdout)
+
+	// The report has to arrive as a structure, not as escaped text: a caller reading
+	// summary.error_count should not have to decode a second time to get at it.
+	issues, ok := data["issues"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("issues = %#v, want an expanded object", data["issues"])
+	}
+	summary, ok := issues["summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("issues.summary = %#v, want an object", issues["summary"])
+	}
+	if got := summary["error_count"]; got != float64(1) {
+		t.Fatalf("issues.summary.error_count = %v, want 1", got)
+	}
+	if strings.Contains(stdout.String(), `\"schema_version\"`) {
+		t.Fatalf("issues should not be double-encoded: %s", stdout.String())
+	}
+}
+
+func TestSlidesXMLGetExpandsIssuesForSingleSlide(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	slideXML := `<slide id="s1"><shape id="a">hello</shape></slide>`
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide":  map[string]interface{}{"slide_id": "s1", "content": slideXML},
+				"issues": lintReportJSON,
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get", "--presentation", "pres_abc", "--slide-id", "s1", "--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeShortcutData(t, stdout)
+	if _, ok := data["issues"].(map[string]interface{}); !ok {
+		t.Fatalf("issues = %#v, want an expanded object", data["issues"])
+	}
+}
+
+func TestSlidesXMLGetKeepsUnparseableIssuesVerbatim(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	xml := `<presentation><slide id="s1"/></presentation>`
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation": map[string]interface{}{"content": xml},
+				"issues":           `{"truncated":`,
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get", "--presentation", "pres_abc", "--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeShortcutData(t, stdout)
+	// Dropping it would hide the very thing that makes a malformed report diagnosable.
+	if got := data["issues"]; got != `{"truncated":` {
+		t.Fatalf("issues = %#v, want the raw text preserved", got)
+	}
+}
+
+func TestSlidesXMLGetOmitsIssuesWhenBackendSendsNone(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	xml := `<presentation><slide id="s1"/></presentation>`
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation": map[string]interface{}{"content": xml},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get", "--presentation", "pres_abc", "--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeShortcutData(t, stdout)
+	if _, ok := data["issues"]; ok {
+		t.Fatalf("issues should be absent when the backend sends none: %#v", data["issues"])
+	}
+}
+
+func TestSlidesXMLGetKeepsIssuesWhenWritingToFile(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	xml := `<presentation><slide id="s1"/></presentation>`
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation": map[string]interface{}{"content": xml},
+				"issues":           lintReportJSON,
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get", "--presentation", "pres_abc", "--output", "deck.xml", "--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeShortcutData(t, stdout)
+	// The XML went to the file, so the summary on stdout is the only place the report
+	// can reach the caller.
+	if _, ok := data["issues"].(map[string]interface{}); !ok {
+		t.Fatalf("issues = %#v, want an expanded object in the file summary", data["issues"])
+	}
+	if _, err := os.Stat(filepath.Join(dir, "deck.xml")); err != nil {
+		t.Fatalf("expected the XML file to exist: %v", err)
+	}
+}

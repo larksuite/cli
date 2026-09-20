@@ -46,15 +46,20 @@ func lintBlockedError(message string) error {
 	return errs.NewAPIError(errs.SubtypeInvalidParameters, "%s", message).WithCode(lintBlockedCode)
 }
 
-// TestLintErrorKeepsTheReportVerbatimAndAddsTheEscapeHatch pins the division of
-// labour: the finding is the server's to word and travels untouched, the flag is
-// the CLI's to mention and travels in the hint.
+// TestLintErrorKeepsTheReportVerbatimAndSummarisesIt pins the division of
+// labour: the finding is the server's to word and travels untouched, the count
+// and what to do next are the CLI's and travel in the hint.
+//
+// The call under test does not pass --no-lint, so the hint offers it. The offer
+// holds whichever way the server is configured: where the flag skips the lint the
+// retry is never checked, and where the server wants a page linted once first,
+// this refusal was that lint.
 //
 // The message is asserted byte-for-byte because the same refusal also reaches
 // callers through `lark-cli api`, where nothing rewrites it. Rendering it here
 // would give one refusal two message formats depending on which command produced
 // it, and a caller could not parse the field one way.
-func TestLintErrorKeepsTheReportVerbatimAndAddsTheEscapeHatch(t *testing.T) {
+func TestLintErrorKeepsTheReportVerbatimAndSummarisesIt(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
@@ -90,11 +95,16 @@ func TestLintErrorKeepsTheReportVerbatimAndAddsTheEscapeHatch(t *testing.T) {
 	// The hint carries only what the document cannot say for itself.
 	for _, want := range []string{
 		"xml lint blocked: 2 error(s)",
-		"--no-lint",
+		"the page was not written",
+		"Fix the error-level findings",
 	} {
 		if !strings.Contains(problem.Hint, want) {
 			t.Fatalf("Hint lost %q\ngot: %q", want, problem.Hint)
 		}
+	}
+	// The escape hatch is the half of the hint the report cannot supply.
+	if !strings.Contains(problem.Hint, "re-run with --no-lint") {
+		t.Fatalf("Hint = %q, want the --no-lint offer when the call did not pass it", problem.Hint)
 	}
 	// The hint summarises, it does not restate: repeating the findings would put
 	// two copies of the same list in one error, and the copies drift.
@@ -121,7 +131,7 @@ func TestLintErrorCountsOnlyTheErrorsThatRefusedThePage(t *testing.T) {
 		`"infos":[{"level":"info","code":"table_resolved_size_mismatch",` +
 		`"message":"table is 12pt narrower than declared"}]}]}`
 
-	enriched := enrichSlidesLintError(lintBlockedError(msg))
+	enriched := enrichSlidesLintError(lintBlockedError(msg), false)
 	problem, ok := errs.ProblemOf(enriched)
 	if !ok {
 		t.Fatalf("err = %v, want typed problem metadata", enriched)
@@ -147,8 +157,8 @@ func TestLintErrorCountsOnlyTheErrorsThatRefusedThePage(t *testing.T) {
 
 // TestLintErrorLeavesOtherFailuresAlone guards the detection. The helper runs on
 // every write path including ones the backend does not lint, so a false positive
-// would staple "re-run with --no-lint" onto unrelated failures — advice that does
-// nothing and sends the caller down the wrong path.
+// would staple the --no-lint note onto unrelated failures — a remark about a
+// check that never ran, sending the caller down the wrong path.
 func TestLintErrorLeavesOtherFailuresAlone(t *testing.T) {
 	t.Parallel()
 
@@ -196,7 +206,7 @@ func TestLintErrorClaimsOnlyItsOwnCode(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			original := errs.NewAPIError(errs.SubtypeInvalidParameters, "%s", msg).WithCode(4001000)
-			enriched := enrichSlidesLintError(original)
+			enriched := enrichSlidesLintError(original, false)
 			problem, ok := errs.ProblemOf(enriched)
 			if !ok {
 				t.Fatalf("err = %v, want typed problem metadata", enriched)
@@ -219,7 +229,7 @@ func TestLintErrorClaimsOnlyItsOwnCode(t *testing.T) {
 func TestLintErrorStillHelpsWhenTheReportCannotBeRead(t *testing.T) {
 	t.Parallel()
 
-	enriched := enrichSlidesLintError(lintBlockedError("xml lint blocked"))
+	enriched := enrichSlidesLintError(lintBlockedError("xml lint blocked"), false)
 	problem, ok := errs.ProblemOf(enriched)
 	if !ok {
 		t.Fatalf("err = %v, want typed problem metadata", enriched)
@@ -232,6 +242,64 @@ func TestLintErrorStillHelpsWhenTheReportCannotBeRead(t *testing.T) {
 	}
 }
 
+// TestLintHintTracksTheNoLintFlag pins both halves of the rule the wording must
+// not drift off.
+//
+// Without the flag: offer it. It works whichever way the server is configured.
+//
+// With the flag: drop the offer and say in one clause why it did not apply. The
+// next action is the same either way, so the hint must not spend its length
+// arguing about when the flag is appropriate.
+func TestLintHintTracksTheNoLintFlag(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name            string
+		noLintRequested bool
+		wantSubstrings  []string
+		denySubstrings  []string
+	}{
+		{
+			name:            "without the flag the hint offers it",
+			noLintRequested: false,
+			wantSubstrings:  []string{"Fix the error-level findings", "re-run with --no-lint"},
+			denySubstrings:  []string{"first lint"},
+		},
+		{
+			name:            "with the flag the hint names the rule that was broken",
+			noLintRequested: true,
+			wantSubstrings: []string{
+				"--no-lint does not skip a page's first check",
+				"Fix the error-level findings in the message and retry",
+			},
+			// Two drifts to guard. Offering the flag back recommends what the caller
+			// just tried; leading with "retry and it works" turns the hint into a way
+			// to push unchecked content through, which is not what it is for.
+			denySubstrings: []string{"re-run with --no-lint", "re-send the same content"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			enriched := enrichSlidesLintError(lintBlockedError(lintBlockMessage), tc.noLintRequested)
+			problem, ok := errs.ProblemOf(enriched)
+			if !ok {
+				t.Fatalf("err = %v, want typed problem metadata", enriched)
+			}
+			for _, want := range tc.wantSubstrings {
+				if !strings.Contains(problem.Hint, want) {
+					t.Fatalf("Hint lost %q\ngot: %q", want, problem.Hint)
+				}
+			}
+			for _, deny := range tc.denySubstrings {
+				if strings.Contains(problem.Hint, deny) {
+					t.Fatalf("Hint = %q, must not contain %q", problem.Hint, deny)
+				}
+			}
+		})
+	}
+}
+
 // TestLintErrorSurvivesTheImageProgressHint covers the two enrichers landing on
 // the same error. Both write to Hint, and a caller that uploaded images needs
 // both facts: the pages were rejected, and the uploads already happened.
@@ -239,13 +307,13 @@ func TestLintErrorSurvivesTheImageProgressHint(t *testing.T) {
 	t.Parallel()
 
 	err := lintBlockedError(lintBlockMessage)
-	enriched := appendSlidesProgressHint(enrichSlidesLintError(err), "2 image(s) were uploaded before the page failed")
+	enriched := appendSlidesProgressHint(enrichSlidesLintError(err, false), "2 image(s) were uploaded before the page failed")
 
 	problem, ok := errs.ProblemOf(enriched)
 	if !ok {
 		t.Fatalf("err = %v, want typed problem metadata", enriched)
 	}
-	if !strings.Contains(problem.Hint, "--no-lint") {
+	if !strings.Contains(problem.Hint, "re-run with --no-lint") {
 		t.Fatalf("Hint = %q, want the lint escape hatch", problem.Hint)
 	}
 	if !strings.Contains(problem.Hint, "2 image(s) were uploaded") {
@@ -264,7 +332,7 @@ func TestLintErrorScopesTheRefusalToThePage(t *testing.T) {
 	err := lintBlockedError(lintBlockMessage)
 	// The order +create produces: the lint enricher first, then the progress
 	// note about what already landed.
-	enriched := appendSlidesProgressHint(enrichSlidesLintError(err),
+	enriched := appendSlidesProgressHint(enrichSlidesLintError(err, false),
 		"adding slide 2/3 failed; presentation pres_abc was created, 1 slide(s) added before failure")
 
 	problem, ok := errs.ProblemOf(enriched)
@@ -295,7 +363,41 @@ func TestLintErrorScopesTheRefusalToThePage(t *testing.T) {
 func TestLintErrorPassesNilThrough(t *testing.T) {
 	t.Parallel()
 
-	if got := enrichSlidesLintError(nil); got != nil {
-		t.Fatalf("enrichSlidesLintError(nil) = %v, want nil", got)
+	if got := enrichSlidesLintError(nil, false); got != nil {
+		t.Fatalf("enrichSlidesLintError(nil, false) = %v, want nil", got)
+	}
+}
+
+// TestLintErrorExplainsTheFlagWhenTheCallPassedIt is the end-to-end half of
+// TestLintHintTracksTheNoLintFlag: the flag has to survive the trip from the
+// command line to the hint. The unit test proves the branch, this proves the
+// wiring — a call site that forgot to pass the flag through would leave the
+// branch correct and the caller still unanswered.
+func TestLintErrorExplainsTheFlagWhenTheCallPassedIt(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_lint/slide",
+		Body:   map[string]interface{}{"code": lintBlockedCode, "msg": lintBlockMessage},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesAddSlide, []string{
+		"+add-slide",
+		"--presentation", "pres_lint",
+		"--slide", testPageXML,
+		"--no-lint",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected the lint block to surface as an error even with --no-lint")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("err = %v, want typed problem metadata", err)
+	}
+	if !strings.Contains(problem.Hint, "does not skip a page's first check") {
+		t.Fatalf("Hint = %q, want the first-lint explanation for the flag the call passed", problem.Hint)
 	}
 }
