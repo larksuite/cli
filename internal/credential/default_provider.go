@@ -133,9 +133,10 @@ func strictModeToIdentitySupport(multi *core.MultiAppConfig, profileOverride str
 // DefaultTokenProvider resolves UAT/TAT using keychain + direct HTTP calls.
 // No SDK/LarkClient dependency — eliminates circular dependency with Factory.
 type DefaultTokenProvider struct {
-	defaultAcct *DefaultAccountProvider
-	httpClient  func() (*http.Client, error)
-	errOut      io.Writer
+	defaultAcct   *DefaultAccountProvider
+	httpClient    func() (*http.Client, error)
+	errOut        io.Writer
+	resolveSigner func(*core.CliConfig) (keysigner.Signer, error)
 
 	tatMu        sync.Mutex
 	tatResult    *TokenResult
@@ -145,23 +146,17 @@ type DefaultTokenProvider struct {
 	timeNow      func() time.Time
 }
 
-type tatRefreshCall struct {
-	done   chan struct{}
-	result *TokenResult
-	err    error
-}
-
-const (
-	tatMaxRefreshAhead = 5 * time.Minute
-	tatRefreshTimeout  = 30 * time.Second
-)
-
-func NewDefaultTokenProvider(defaultAcct *DefaultAccountProvider, httpClient func() (*http.Client, error), errOut io.Writer) *DefaultTokenProvider {
+func NewDefaultTokenProvider(
+	defaultAcct *DefaultAccountProvider,
+	httpClient func() (*http.Client, error),
+	errOut io.Writer,
+	resolveSigner func(*core.CliConfig) (keysigner.Signer, error),
+) *DefaultTokenProvider {
 	return &DefaultTokenProvider{
-		defaultAcct: defaultAcct,
-		httpClient:  httpClient,
-		errOut:      errOut,
-		timeNow:     time.Now,
+		defaultAcct:   defaultAcct,
+		httpClient:    httpClient,
+		errOut:        errOut,
+		resolveSigner: resolveSigner,
 	}
 }
 
@@ -187,7 +182,11 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	if err != nil {
 		return nil, err
 	}
-	token, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut))
+	signer, err := p.signerForAccount(acct)
+	if err != nil {
+		return nil, err
+	}
+	token, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut, signer))
 	if err != nil {
 		return nil, err
 	}
@@ -282,10 +281,13 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 		return nil, 0, err
 	}
 
-	// private_key_jwt apps have no app secret: mint via the jwt-bearer grant
-	// using a TEE-signed client_assertion instead.
-	if acct.AuthMethod == core.AuthMethodPrivateKeyJWT {
-		signer := keysigner.Active()
+	// Private-key JWT apps have no app secret: mint via the jwt-bearer grant
+	// using a signed client_assertion instead.
+	if core.IsPrivateKeyJWTAuthMethod(acct.AuthMethod) {
+		signer, err := p.signerForAccount(acct)
+		if err != nil {
+			return nil, err
+		}
 		token, err := FetchTATWithAssertionForProvider(ctx, httpClient, acct.Brand, acct.AppID, signer, acct.KeyProvider, acct.KeyLabel)
 		if err != nil {
 			return nil, err
@@ -315,4 +317,11 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 		return nil, 0, fmt.Errorf("TAT response has invalid expires_in %d", token.ExpiresIn)
 	}
 	return &TokenResult{Token: token.AccessToken, DPoP: token.DPoP}, lifetime, nil
+}
+
+func (p *DefaultTokenProvider) signerForAccount(acct *Account) (keysigner.Signer, error) {
+	if acct == nil {
+		return nil, nil
+	}
+	return p.resolveSigner(acct.ToCliConfig())
 }

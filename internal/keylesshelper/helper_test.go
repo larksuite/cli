@@ -6,6 +6,7 @@ package keylesshelper
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,13 @@ import (
 
 const helperProcessMode = "GO_WANT_KEYLESS_PROVIDER_HELPER"
 
+func testClientAssertion() string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(
+		`{"alg":"ES256","kid":"NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs","typ":"JWT"}`,
+	))
+	return header + ".e30.c2ln"
+}
+
 func TestRunCommandProtocol(t *testing.T) {
 	t.Setenv(helperProcessMode, "reply")
 	resp, err := runCommandConfigured(context.Background(), []string{os.Args[0], "-test.run=^TestHelperProcess$"}, request{
@@ -27,7 +35,7 @@ func TestRunCommandProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !resp.OK || resp.ClientAssertion != "helper.jwt" {
+	if !resp.OK || resp.ClientAssertion != testClientAssertion() {
 		t.Fatalf("response = %#v", resp)
 	}
 }
@@ -102,7 +110,7 @@ func TestHelperProcess(t *testing.T) {
 			os.Exit(2)
 		}
 		_ = json.NewEncoder(os.Stdout).Encode(response{
-			OK: true, ClientAssertionType: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer", ClientAssertion: "helper.jwt",
+			OK: true, ClientAssertionType: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer", ClientAssertion: testClientAssertion(),
 		})
 		os.Exit(0)
 	case "hang":

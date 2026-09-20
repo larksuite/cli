@@ -286,7 +286,14 @@ func secureEnclavePublicKey(key uintptr) (*ecdsa.PublicKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return P256PublicKey(parsed)
+	p256, ok := parsed.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("keysigner: public key is %T, want a valid P-256 ECDSA key", parsed)
+	}
+	if err := (es256Algorithm{}).validatePublicKey(p256); err != nil {
+		return nil, err
+	}
+	return p256, nil
 }
 
 // Preserve the native code and its namespace. Missing entitlements make this
