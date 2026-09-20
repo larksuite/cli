@@ -24,6 +24,11 @@ func TestStaleNotice_Message(t *testing.T) {
 			StaleNotice{Current: "1.0.21", Target: "1.0.21", OfficialUnknown: true},
 			"lark-cli skills were installed from a fallback source; official completeness is unknown, run: lark-cli update",
 		},
+		{
+			"state unreadable",
+			StaleNotice{StateUnreadable: true},
+			"lark-cli skills state is unreadable; drift cannot be detected, run: lark-cli update",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

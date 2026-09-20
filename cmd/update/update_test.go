@@ -242,25 +242,6 @@ func TestUpdatePnpm_Unavailable_ManualFallback(t *testing.T) {
 	}
 }
 
-func TestNormalizeVersion(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{input: "1.2.3", want: "1.2.3"},
-		{input: "v1.2.3", want: "1.2.3"},
-		{input: "V1.2.3", want: "1.2.3"},
-		{input: " v1.2.3 ", want: "1.2.3"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := normalizeVersion(tt.input); got != tt.want {
-				t.Fatalf("normalizeVersion(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestUpdateAlreadyUpToDate_JSON(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	mockSkillsSync(t)
@@ -1645,7 +1626,7 @@ func TestUpdateRun_CheckAlreadyLatest_NoSideEffect(t *testing.T) {
 func TestRunSkillsAndState_StateWriteFailureWarns(t *testing.T) {
 	origSync := syncSkills
 	syncSkills = func(opts skillscheck.SyncOptions) *skillscheck.SyncResult {
-		return &skillscheck.SyncResult{Err: fmt.Errorf("skills synced but state not written: denied")}
+		return &skillscheck.SyncResult{Err: fmt.Errorf("%w: denied", skillscheck.ErrStateNotWritten)}
 	}
 	t.Cleanup(func() { syncSkills = origSync })
 
@@ -1653,6 +1634,9 @@ func TestRunSkillsAndState_StateWriteFailureWarns(t *testing.T) {
 	got := runSkillsAndState(&selfupdate.Updater{}, f.IOStreams, "1.0.21", false, "")
 	if got == nil || got.Err == nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with write error", got)
+	}
+	if !errors.Is(got.Err, skillscheck.ErrStateNotWritten) {
+		t.Errorf("got.Err = %v, want errors.Is ErrStateNotWritten", got.Err)
 	}
 	if !strings.Contains(stderr.String(), "warning: skills synced but state not written") {
 		t.Errorf("stderr does not contain warning: %q", stderr.String())
