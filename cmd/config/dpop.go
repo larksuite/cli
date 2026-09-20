@@ -27,7 +27,7 @@ the sandbox side of an auth sidecar delegates DPoP to the trusted sidecar.
 
 disabled issues new local credentials as Bearer. preferred tries DPoP first and
 may fall back on local preparation failures before the token exchange, or after
-three consecutive invalid_dpop_proof responses during new token issuance. required
+three consecutive ` + dpop.InvalidProofOAuthError + ` responses during new token issuance. required
 requires DPoP and fails closed. Existing DPoP tokens always keep their original
 key regardless of the configured mode.`,
 		Args: cobra.MaximumNArgs(1),
@@ -59,7 +59,7 @@ key regardless of the configured mode.`,
 					return errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 						"DPoP key storage is unavailable: %v", err).
 						WithCause(err).
-						WithHint("%s", dpop.KeyStoreUnavailableHint)
+						WithHint("%s", dpop.KeyStorePreExchangeUnavailableHint)
 				}
 			}
 			app.SetDPoPMode(mode)

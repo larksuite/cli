@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/keychain"
 
@@ -277,7 +278,7 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 		fmt.Fprintf(p.errOut, "[lark-cli] tat-client: %s\n", token.StatusMessage)
 	}
 	if token.proofFallback && p.errOut != nil {
-		fmt.Fprintln(p.errOut, "[lark-cli] [WARN] three consecutive invalid_dpop_proof responses; new tenant token issued as Bearer")
+		fmt.Fprintf(p.errOut, "[lark-cli] [WARN] three consecutive %s responses; new tenant token issued as Bearer\n", dpop.InvalidProofOAuthError)
 	}
 	lifetime := time.Duration(token.ExpiresIn) * time.Second
 	if lifetime <= 0 {

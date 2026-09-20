@@ -20,6 +20,8 @@ import (
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
+const invalidProofTATResponse = `{"code":1106072,"error":"` + dpop.InvalidProofOAuthError + `"}`
+
 // stubRoundTripper lets us assert request shape and return canned responses.
 type stubRoundTripper struct {
 	gotReq     *http.Request
@@ -194,7 +196,7 @@ func TestRequestTATRecoversClockOnceAndRejectsBindingDowngrade(t *testing.T) {
 	var proofs []string
 	client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		proofs = append(proofs, req.Header.Get(dpop.ProofHeader))
-		body := `{"code":1106072,"error":"invalid_dpop_proof"}`
+		body := invalidProofTATResponse
 		header := http.Header{"Date": []string{serverTime}}
 		if len(proofs) == 2 {
 			body = `{"code":0,"access_token":"tenant-token","token_type":"DPoP","expires_in":7200}`
@@ -535,12 +537,12 @@ func TestFetchTATRepeatedProofFallback(t *testing.T) {
 		wantBearer bool
 		wantError  bool
 	}{
-		{"preferred", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof", "Bearer"}, false, true, false},
-		{"without Date", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof", "Bearer"}, false, true, false},
-		{"required", core.DPoPModeRequired, []string{"invalid_dpop_proof", "invalid_dpop_proof"}, false, false, true},
-		{"recovered", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "DPoP"}, false, false, false},
-		{"other rejection", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_client"}, false, false, true},
-		{"canceled", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof"}, true, false, true},
+		{"preferred", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "Bearer"}, false, true, false},
+		{"without Date", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "Bearer"}, false, true, false},
+		{"required", core.DPoPModeRequired, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError}, false, false, true},
+		{"recovered", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "DPoP"}, false, false, false},
+		{"other rejection", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, "invalid_client"}, false, false, true},
+		{"canceled", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError}, true, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newTATDPoPStore(t)

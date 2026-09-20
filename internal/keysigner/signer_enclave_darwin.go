@@ -114,7 +114,7 @@ func (secureEnclaveSigner) Sign(ctx context.Context, ref KeyRef, input []byte) (
 			return err
 		}
 		a := es256Algorithm{}
-		digest := a.digest(input)
+		digest := a.common().digest(input)
 		data := cfBytes(digest)
 		if data == 0 {
 			return errors.New("keysigner: create Secure Enclave digest failed")

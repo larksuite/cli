@@ -195,9 +195,10 @@ type refreshRequest struct {
 }
 
 // refreshResponse contains the OAuth token fields consumed by the refresh
-// flow. Pointers distinguish an omitted numeric field from a real zero value.
+// flow. A missing code uses the success default; access_token remains the
+// authoritative success signal.
 type refreshResponse struct {
-	Code                  *int   `json:"code"`
+	Code                  int    `json:"code"`
 	AccessToken           string `json:"access_token"`
 	ExpiresIn             *int64 `json:"expires_in"`
 	RefreshToken          string `json:"refresh_token"`
@@ -220,7 +221,7 @@ const (
 	// refreshRetryAndClear retries, clearing the stored token if retry fails.
 	refreshRetryAndClear
 	// refreshRetryAfterClockSync performs the one recovery request permitted
-	// after a trusted invalid_dpop_proof clock-skew response. It does not consume
+	// after a trusted dpop.InvalidProofOAuthError clock-skew response. It does not consume
 	// the ordinary transient retry budget.
 	refreshRetryAfterClockSync
 	// refreshStopAndPreserve stops without clearing the stored token.
@@ -482,16 +483,7 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 				WithCause(err),
 		}
 	}
-	if parsed.Code == nil {
-		return refreshResult{
-			action: refreshRetryAndClear,
-			err: errs.NewInternalError(errs.SubtypeInvalidResponse,
-				"token refresh response is missing required field code").
-				WithRetryable(),
-		}
-	}
-
-	code := *parsed.Code
+	code := parsed.Code
 	if code != 0 {
 		if dpop.IsClockRecoverySignal(code, parsed.Error) && proofKey != nil {
 			if !allowClockRecovery {

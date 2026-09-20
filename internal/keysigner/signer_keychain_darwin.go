@@ -456,7 +456,7 @@ func (es256Algorithm) keychainMetadataPublicKey(md *keyMetadata) (crypto.PublicK
 }
 
 func (a es256Algorithm) signKeychain(keyRef uintptr, signingInput []byte) ([]byte, error) {
-	der, err := signKeychainDigest(keyRef, algECDSASHA256, a.digest(signingInput))
+	der, err := signKeychainDigest(keyRef, algECDSASHA256, a.common().digest(signingInput))
 	if err != nil {
 		return nil, err
 	}

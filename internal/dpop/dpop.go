@@ -35,9 +35,9 @@ const (
 )
 
 // ErrInvalidProofResponse is a safe cause for typed errors derived from an
-// invalid_dpop_proof Token Endpoint response. It intentionally excludes the
+// InvalidProofOAuthError Token Endpoint response. It intentionally excludes the
 // response description, token, proof, and key material.
-var ErrInvalidProofResponse = errors.New("token endpoint returned invalid_dpop_proof")
+var ErrInvalidProofResponse = errors.New("token endpoint returned " + InvalidProofOAuthError)
 
 // ErrRepeatedInvalidProof marks three consecutive explicit proof rejections during
 // new token issuance. Callers own the preferred-mode fallback and key rollback.

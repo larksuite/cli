@@ -19,7 +19,6 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -63,11 +62,11 @@ const (
 var (
 	// ErrUnavailable means this signer cannot be used on this build or host.
 	// Only new bindings may try another signer; existing bindings fail closed.
-	ErrUnavailable = errors.New("DPoP key signer is unavailable")
+	ErrUnavailable = errors.New("key signer is unavailable")
 	// ErrKeyNotFound means the stable handle no longer resolves to its private
 	// key. Callers must never recreate a key for an existing token binding.
-	ErrKeyNotFound    = errors.New("DPoP signing key not found")
-	ErrKeyExists      = errors.New("DPoP signing key already exists")
+	ErrKeyNotFound    = errors.New("signing key not found")
+	ErrKeyExists      = errors.New("signing key already exists")
 	ErrCorrupt        = errors.New("invalid or mismatched signing key record")
 	ErrUnlock         = errors.New("wrong unlock secret or damaged signing key ciphertext")
 	ErrUnlockRequired = errors.New("software signing requires a 16..1024-byte unlock secret")
@@ -81,19 +80,6 @@ type KeyRef struct {
 	// Algorithm is the required JOSE signing algorithm; empty means AlgES256.
 	// It is not part of the label's identity and must never replace an existing key.
 	Algorithm string
-}
-
-// NewKeyLabel returns a random 128-bit key label with the caller's prefix.
-func NewKeyLabel(prefix string) (string, error) {
-	var id [16]byte
-	if _, err := rand.Read(id[:]); err != nil {
-		return "", fmt.Errorf("keysigner: generate key label: %w", err)
-	}
-	label := prefix + hex.EncodeToString(id[:])
-	if err := validateRefContext(nil, KeyRef{Label: label}); err != nil {
-		return "", err
-	}
-	return label, nil
 }
 
 // Signer owns signing keys behind stable references. Sign hashes signingInput
@@ -130,19 +116,6 @@ func PlatformSignerNames() []string {
 	}
 }
 
-// IsPlatformSignerName reports whether name identifies a built-in native
-// backend on any supported OS.
-func IsPlatformSignerName(name string) bool {
-	switch name {
-	case MacOSSecureEnclaveSignerName, MacOSKeychainSignerName,
-		WindowsPlatformKSPSignerName, WindowsSoftwareKSPSignerName,
-		LinuxTPMSignerName:
-		return true
-	default:
-		return false
-	}
-}
-
 // NewPlatformSigners constructs the current OS's native backends in fallback
 // order. Storage location remains caller policy through directory.
 func NewPlatformSigners(directory func(string) (string, error)) []Signer {
@@ -154,26 +127,6 @@ func NewPlatformSigners(directory func(string) (string, error)) []Signer {
 		}
 	}
 	return signers
-}
-
-// ResolvePlatformSigner restores one recorded native backend. An empty name
-// selects the strongest backend available on the current OS for legacy records.
-func ResolvePlatformSigner(name string, directory func(string) (string, error)) (Signer, error) {
-	if name == "" {
-		signers := NewPlatformSigners(directory)
-		if len(signers) == 0 {
-			return nil, ErrUnavailable
-		}
-		return signers[0], nil
-	}
-	if !IsPlatformSignerName(name) {
-		return nil, fmt.Errorf("keysigner: unknown platform signer %q", name)
-	}
-	signer := NewSigner(name, directory)
-	if signer == nil {
-		return nil, fmt.Errorf("%w: platform signer %q is not supported on %s", ErrUnavailable, name, runtime.GOOS)
-	}
-	return signer, nil
 }
 
 // EnsureKeyWithFallback creates or opens a key with the strongest usable
@@ -298,10 +251,6 @@ func (a es256Algorithm) sign(key crypto.Signer, input []byte) ([]byte, error) {
 // Best effort only: Go and the crypto implementation may retain other copies.
 func (es256Algorithm) clearPrivateKey(key crypto.Signer) {
 	es256Algorithm{}.common().clearPrivateKey(key)
-}
-
-func (es256Algorithm) digest(input []byte) []byte {
-	return es256Algorithm{}.common().digest(input)
 }
 
 // signatureToJOSE converts ASN.1 into the fixed-width R || S representation

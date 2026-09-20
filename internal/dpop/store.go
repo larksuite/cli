@@ -30,9 +30,12 @@ const (
 	storedKeyVersion       = 1
 	keyStoreLockTimeout    = 60 * time.Second
 	keyStoreLockRetryDelay = 500 * time.Millisecond
-	// KeyStoreUnavailableHint is shared by every DPoP Token Flow so sandboxed
-	// agents and human callers receive the same fail-closed recovery guidance.
-	KeyStoreUnavailableHint = "restore access to a supported platform KeyStore/Keychain; if the current sandbox or automation environment blocks it, have the agent or user retry the same command from a trusted interactive session outside the sandbox; no OAuth token request was sent and Bearer fallback was not attempted"
+	// KeyStoreUnavailableHint is safe to use before or after a Token Endpoint
+	// exchange because it makes no claim about whether a request was sent.
+	KeyStoreUnavailableHint = "restore access to a supported platform KeyStore/Keychain; if the current sandbox or automation environment blocks it, have the agent or user retry the same command from a trusted interactive session outside the sandbox; Bearer fallback was not attempted"
+	// KeyStorePreExchangeUnavailableHint adds the stronger guarantee available
+	// only when key storage fails before the Token Endpoint request.
+	KeyStorePreExchangeUnavailableHint = "no OAuth token request was sent; " + KeyStoreUnavailableHint
 	// KeyAccessUnavailableHint covers an already-bound token whose key cannot be
 	// loaded or used to sign the protected resource request.
 	KeyAccessUnavailableHint = "restore access to the platform KeyStore/Keychain; if the current sandbox or automation environment blocks it, have the agent or user retry the same command from a trusted interactive session outside the sandbox; the protected request was not sent and Bearer fallback was not attempted"
@@ -220,9 +223,9 @@ func wrapKeyStoreProbeError(err error) error {
 	if err == nil {
 		return nil
 	}
-	hint := KeyStoreUnavailableHint
+	hint := KeyStorePreExchangeUnavailableHint
 	if problem, ok := errs.ProblemOf(err); ok && problem.Hint != "" {
-		hint = problem.Hint + "; " + KeyStoreUnavailableHint
+		hint = problem.Hint + "; " + KeyStorePreExchangeUnavailableHint
 	}
 	return errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 		"DPoP key storage is unavailable: %v", err).

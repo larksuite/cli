@@ -112,7 +112,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 				"DPoP key storage is unavailable: %v", err).
 				WithCause(err).
-				WithHint("%s", dpop.KeyStoreUnavailableHint)
+				WithHint("%s", dpop.KeyStorePreExchangeUnavailableHint)
 		}
 		var err error
 		proofKey, createdKey, err = keyStore.PrepareReplaceableContext(ctx, tatDPoPKeyID(brand, appID))
@@ -124,7 +124,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 				"failed to persist DPoP key reference: %v", err).
 				WithCause(err).
-				WithHint("%s", dpop.KeyStoreUnavailableHint)
+				WithHint("%s", dpop.KeyStorePreExchangeUnavailableHint)
 		}
 		if err := dpop.SynchronizeClock(ctx, httpClient, brand, proofKey); err != nil {
 			return nil, err
@@ -133,7 +133,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 				"failed to persist synchronized DPoP clock: %v", err).
 				WithCause(err).
-				WithHint("%s", dpop.KeyStoreUnavailableHint)
+				WithHint("%s", dpop.KeyStorePreExchangeUnavailableHint)
 		}
 	}
 	exchangeStarted = true

@@ -414,6 +414,9 @@ func TestKeyStoreMetadataProbeFailsBeforeNativeKeyCreation(t *testing.T) {
 			if !ok || problem.Subtype != errs.SubtypeDPoPKeyMissing || !errors.Is(err, cause) || problem.Hint == "" {
 				t.Fatalf("probe failure = %v", err)
 			}
+			if !strings.Contains(problem.Hint, "no OAuth token request was sent") {
+				t.Fatalf("probe hint = %q, want pre-exchange guarantee", problem.Hint)
+			}
 			if len(signer.calls) != 0 {
 				t.Fatal("native key creation preceded metadata preflight")
 			}

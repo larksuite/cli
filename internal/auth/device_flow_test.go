@@ -541,14 +541,14 @@ func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
 		wantBearer bool
 		wantError  bool
 	}{
-		{"preferred", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof", "Bearer"}, false, true, false},
-		{"without Date", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof", "Bearer"}, false, true, false},
-		{"required", core.DPoPModeRequired, []string{"invalid_dpop_proof", "invalid_dpop_proof"}, false, false, true},
-		{"recovered", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "DPoP"}, false, false, false},
-		{"pending resets count", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "authorization_pending", "invalid_dpop_proof", "invalid_dpop_proof", "DPoP"}, false, false, false},
-		{"cleanup failed", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof"}, false, false, true},
-		{"malformed resets count", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "malformed", "invalid_dpop_proof", "invalid_dpop_proof", "DPoP"}, false, false, false},
-		{"canceled", core.DPoPModePreferred, []string{"invalid_dpop_proof", "invalid_dpop_proof", "invalid_dpop_proof"}, true, false, true},
+		{"preferred", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "Bearer"}, false, true, false},
+		{"without Date", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "Bearer"}, false, true, false},
+		{"required", core.DPoPModeRequired, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError}, false, false, true},
+		{"recovered", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "DPoP"}, false, false, false},
+		{"pending resets count", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "authorization_pending", dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "DPoP"}, false, false, false},
+		{"cleanup failed", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError}, false, false, true},
+		{"malformed resets count", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "malformed", dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "DPoP"}, false, false, false},
+		{"canceled", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError}, true, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -607,7 +607,7 @@ func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
 			if calls != len(tc.responses) || result.OK == tc.wantError {
 				t.Fatalf("calls=%d result=%+v", calls, result)
 			}
-			if tc.name == "cleanup failed" && (result.Error != "dpop_key_cleanup_failed" || !errors.Is(result.Err, signer.deleteErr)) {
+			if tc.name == "cleanup failed" && (result.Error != deviceFlowErrorDPoPKeyCleanupFailed || !errors.Is(result.Err, signer.deleteErr)) {
 				t.Fatalf("cleanup cause lost: %+v", result)
 			}
 			if !tc.wantError && (result.Token == nil || (result.Token.DPoP == nil) != tc.wantBearer) {

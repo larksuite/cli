@@ -92,7 +92,7 @@ func (es256Algorithm) cngPublicKey(key windows.Handle) (crypto.PublicKey, error)
 }
 
 func (a es256Algorithm) signCNG(key windows.Handle, signingInput []byte) ([]byte, error) {
-	digest := a.digest(signingInput)
+	digest := a.common().digest(signingInput)
 	var size uint32
 	status, _, _ := ncryptSignHash.Call(
 		uintptr(key),
@@ -480,7 +480,7 @@ func (s cngSigner) containerName(label string) string {
 		return label
 	}
 	digest := sha256.Sum256([]byte(label))
-	return "lark-cli-dpop-" + base64.RawURLEncoding.EncodeToString(digest[:])
+	return "lark-cli-keysigner-" + base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
 func isCNGNotFound(err error) bool {

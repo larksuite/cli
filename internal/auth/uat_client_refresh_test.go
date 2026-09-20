@@ -35,6 +35,8 @@ type refreshHTTPTestStep struct {
 	beforeReply func() error
 }
 
+const invalidProofRefreshResponse = `{"code":1106072,"error":"` + dpop.InvalidProofOAuthError + `"}`
+
 func newRefreshTestToken() *StoredUAToken {
 	now := time.Now()
 	return &StoredUAToken{
@@ -143,8 +145,9 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 		if call == 1 {
 			return refreshHTTPResponse(req, `{"code":20050,"error_description":"retry"}`), nil
 		}
+		// OAuth success is identified by access_token; code may be omitted.
 		return refreshHTTPResponse(req,
-			`{"code":0,"access_token":"access-new","refresh_token":"refresh-new","expires_in":120,"refresh_token_expires_in":600,"status_message":"Some requested scopes were silently trimmed"}`), nil
+			`{"access_token":"access-new","refresh_token":"refresh-new","expires_in":120,"refresh_token_expires_in":600,"status_message":"Some requested scopes were silently trimmed"}`), nil
 	})}
 
 	token, err := GetValidAccessToken(context.Background(), client, opts)
@@ -236,7 +239,7 @@ func TestRefreshDPoPTokenRecoversClockAndKeepsBinding(t *testing.T) {
 				t.Fatal("DPoP refresh request omitted proof")
 			}
 			proofs = append(proofs, proof)
-			response := refreshHTTPResponse(req, `{"code":1106072,"error":"invalid_dpop_proof"}`)
+			response := refreshHTTPResponse(req, invalidProofRefreshResponse)
 			response.Header.Set("Date", serverTime.Add(time.Minute).Format(http.TimeFormat))
 			if tokenCalls == 2 {
 				response = refreshHTTPResponse(req,
@@ -300,14 +303,14 @@ func TestRefreshDPoPTokenRecoversClockAndKeepsBinding(t *testing.T) {
 		},
 		{
 			name:    "second clock rejection is terminal",
-			body:    `{"code":1106072,"error":"invalid_dpop_proof"}`,
+			body:    invalidProofRefreshResponse,
 			date:    serverTime.Format(http.TimeFormat),
 			key:     key,
 			subtype: errs.SubtypeDPoPTokenRejected,
 		},
 		{
 			name:          "clock rejection requires valid server time",
-			body:          `{"code":1106072,"error":"invalid_dpop_proof"}`,
+			body:          invalidProofRefreshResponse,
 			date:          "invalid",
 			key:           key,
 			allowRecovery: true,
