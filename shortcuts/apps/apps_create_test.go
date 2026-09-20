@@ -378,3 +378,103 @@ func TestAppsCreate_AcceptsFrontend(t *testing.T) {
 		t.Fatalf("expected app_type frontend in body, got %s", got)
 	}
 }
+
+// TestAppsCreate_AccessScopePassthrough pins the contract that --access-scope is a
+// strict lowercase enum forwarded verbatim as access_scope: the server defines the
+// values, so the CLI must not remap them the way +access-scope-set does.
+func TestAppsCreate_AccessScopePassthrough(t *testing.T) {
+	for _, scope := range []string{"self", "tenant", "public"} {
+		t.Run(scope, func(t *testing.T) {
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			stub := &httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/spark/v1/apps",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"app": map[string]interface{}{"app_id": "app_x", "name": "Demo"},
+					},
+				},
+			}
+			reg.Register(stub)
+
+			if err := runAppsShortcut(t, AppsCreate,
+				[]string{"+create", "--name", "Demo", "--app-type", "frontend", "--access-scope", scope, "--as", "user"},
+				factory, stdout); err != nil {
+				t.Fatalf("execute err=%v", err)
+			}
+
+			var sent map[string]interface{}
+			if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if got, _ := sent["access_scope"].(string); got != scope {
+				t.Fatalf("access_scope = %v, want %q (verbatim, no remapping)", sent["access_scope"], scope)
+			}
+		})
+	}
+}
+
+func TestAppsCreate_AccessScopeOmittedWhenUnset(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{"app_id": "app_x", "name": "Demo"},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	if err := runAppsShortcut(t, AppsCreate,
+		[]string{"+create", "--name", "Demo", "--app-type", "html", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+
+	var sent map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if _, present := sent["access_scope"]; present {
+		t.Fatalf("access_scope must be omitted when --access-scope is not passed, got body=%v", sent)
+	}
+}
+
+func TestAppsCreate_RejectsInvalidAccessScope(t *testing.T) {
+	for _, scope := range []string{"org", "Tenant", "All"} {
+		t.Run(scope, func(t *testing.T) {
+			// No stub registered: any outbound request would fail loudly, proving the
+			// enum guard runs before the API call.
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsCreate,
+				[]string{"+create", "--name", "Demo", "--app-type", "html", "--access-scope", scope, "--as", "user"},
+				factory, stdout)
+			if err == nil || !strings.Contains(err.Error(), "invalid value") {
+				t.Fatalf("expected invalid-enum error for %q, got %v", scope, err)
+			}
+			if !strings.Contains(err.Error(), "--access-scope") {
+				t.Fatalf("expected enum error to name --access-scope, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "public") {
+				t.Fatalf("expected enum error to list allowed values, got %v", err)
+			}
+		})
+	}
+}
+
+func TestAppsCreate_DryRunIncludesAccessScope(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsCreate,
+		[]string{"+create", "--name", "Demo", "--app-type", "frontend", "--access-scope", "public", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `"access_scope": "public"`) {
+		t.Fatalf("dry-run body missing access_scope: %s", got)
+	}
+}

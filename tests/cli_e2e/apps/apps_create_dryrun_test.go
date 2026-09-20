@@ -42,6 +42,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 		// Optional fields stay omitted when not provided.
 		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.description").Exists())
 		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.icon_url").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.access_scope").Exists())
 	})
 
 	t.Run("AllFields", func(t *testing.T) {
@@ -55,6 +56,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 				"--app-type", "html",
 				"--description", "survey app",
 				"--icon-url", "https://example.com/icon.svg",
+				"--access-scope", "tenant",
 				"--dry-run",
 			},
 			DefaultAs: "user",
@@ -66,6 +68,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 		assert.Equal(t, "html", clie2e.DryRunGet(result.Stdout, "api.0.body.app_type").String())
 		assert.Equal(t, "survey app", clie2e.DryRunGet(result.Stdout, "api.0.body.description").String())
 		assert.Equal(t, "https://example.com/icon.svg", clie2e.DryRunGet(result.Stdout, "api.0.body.icon_url").String())
+		assert.Equal(t, "tenant", clie2e.DryRunGet(result.Stdout, "api.0.body.access_scope").String())
 	})
 
 	t.Run("RejectsMissingName", func(t *testing.T) {
@@ -163,5 +166,29 @@ func TestAppsCreateDryRun(t *testing.T) {
 		msg := validateErrorMessage(result)
 		assert.Contains(t, msg, "invalid value")
 		assert.Contains(t, msg, "HTML")
+	})
+
+	t.Run("RejectsInvalidAccessScope", func(t *testing.T) {
+		// --access-scope is a strict lowercase enum (self / tenant / public) forwarded
+		// verbatim; anything else is rejected by the flag enum guard before any request.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"apps", "+create",
+				"--name", "Demo",
+				"--app-type", "frontend",
+				"--access-scope", "org",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 2)
+		msg := validateErrorMessage(result)
+		assert.Contains(t, msg, "invalid value")
+		assert.Contains(t, msg, "--access-scope")
+		assert.Contains(t, msg, "public")
 	})
 }

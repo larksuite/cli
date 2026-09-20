@@ -68,6 +68,21 @@ func validateHTMLDeployFlags(filePath, dir, entryFile string, skipBuild, noVerif
 	return nil
 }
 
+// validateHTMLDeployAccessScope guards --access-scope on the bare-HTML path:
+// the scope is applied by the server at creation time only, so it can only
+// take effect when this publish is the one creating the app. An explicit
+// --app-id names an existing target, where the flag would be silently lost —
+// reject that combination up front instead. (The idempotency lookup landing on
+// an existing app is only known at run time; that case warns on stderr.)
+func validateHTMLDeployAccessScope(accessScope, appID string) error {
+	if strings.TrimSpace(accessScope) == "" || strings.TrimSpace(appID) == "" {
+		return nil
+	}
+	return appsValidationParamError("--access-scope",
+		"--access-scope cannot be combined with --app-id: the scope is set when an app is created, and --app-id publishes to an existing one").
+		WithHint("drop --access-scope to publish to the existing app, which keeps the scope it has; or drop --app-id to let a first publish create the app with this scope")
+}
+
 // validateHTMLDeploy is the bare-HTML branch of AppsDeploy.Validate. It checks
 // the flag combination, collects the payload off disk and runs the credential
 // scan plus the pre-pack size caps. The guard deliberately runs here rather
@@ -77,6 +92,9 @@ func validateHTMLDeploy(rctx *common.RuntimeContext) error {
 	dir := strings.TrimSpace(rctx.Str("dir"))
 	entryFile := strings.TrimSpace(rctx.Str("entry-file"))
 	if err := validateHTMLDeployFlags(filePath, dir, entryFile, rctx.Bool("skip-build"), rctx.Bool("no-verify")); err != nil {
+		return err
+	}
+	if err := validateHTMLDeployAccessScope(rctx.Str("access-scope"), rctx.Str("app-id")); err != nil {
 		return err
 	}
 
@@ -155,13 +173,17 @@ type htmlDeployPlan struct {
 	EntryRel    string
 	AppID       string
 	AppIDSource htmlAppIDSource
-	Entries     []deploy.PackEntry
-	FileCount   int
-	TotalBytes  int64
-	ZipPaths    []string
-	RouteCount  int
-	ContentHash string
-	Waived      []string
+	// AccessScopeResult is the create endpoint's report on --access-scope, set
+	// only on the branch that actually created the app. It rides into the JSON
+	// envelope untouched so a caller can read reason_code and message.
+	AccessScopeResult map[string]interface{}
+	Entries           []deploy.PackEntry
+	FileCount         int
+	TotalBytes        int64
+	ZipPaths          []string
+	RouteCount        int
+	ContentHash       string
+	Waived            []string
 	// SkippedDeps names references found inside the payload that were not
 	// published. Only --file-path can produce them; --dir publishes the whole
 	// directory, so nothing a page references inside it can be missing.
@@ -368,6 +390,9 @@ func htmlDeployResult(plan htmlDeployPlan, fileCount int, zipSize int64, release
 	if lines := skippedLines(plan.SkippedDeps); len(lines) > 0 {
 		data["dependencies_skipped"] = lines
 	}
+	if plan.AccessScopeResult != nil {
+		data[accessScopeResultKey] = plan.AccessScopeResult
+	}
 	return data
 }
 
@@ -447,7 +472,10 @@ func htmlReleaseBody(contentHash string) map[string]interface{} {
 // flag says — the idempotency lookup itself is a write-shaped POST.
 // htmlCreateBody builds the app-creation request for the bare-HTML path. Kept
 // separate so the dry-run preview shows exactly the body the live call sends.
-func htmlCreateBody(absEntry string) map[string]interface{} {
+// accessScope is the --access-scope value: a strict lowercase enum guarded by
+// the flag, forwarded verbatim as access_scope (the same contract as +create)
+// and omitted when unset so the server picks its default.
+func htmlCreateBody(absEntry, accessScope string) map[string]interface{} {
 	body := map[string]interface{}{
 		"name":     deploy.DeriveAppName(absEntry),
 		"app_type": "html",
@@ -455,6 +483,9 @@ func htmlCreateBody(absEntry string) map[string]interface{} {
 		// later publish of the same entry finds this app instead of making a
 		// second one. apps has no +delete, so a missed match is not recoverable.
 		"idempotent_key": absEntry,
+	}
+	if accessScope != "" {
+		body["access_scope"] = accessScope
 	}
 	// Carry the same attribution +create sends. This path exists precisely for
 	// agent-driven publishing, so dropping it would lose attribution on the
@@ -493,11 +524,17 @@ func dryRunHTMLDeploy(rctx *common.RuntimeContext) *common.DryRunAPI {
 		// app created here cannot be removed afterwards.
 		dry.POST(hasHTMLAppCreatedPath).
 			Body(map[string]interface{}{"idempotent_key": plan.AbsEntry})
+		accessScope := rctx.Str("access-scope")
 		dry.POST(apiBasePath + "/apps").
 			Desc("only when the lookup reports exists=false; creates an app that cannot be deleted afterwards").
-			Body(htmlCreateBody(plan.AbsEntry))
+			Body(htmlCreateBody(plan.AbsEntry, accessScope))
 		dry.Set("app_id_source", string(htmlAppIDSourceLookup)+", falling back to "+string(htmlAppIDSourceCreate))
 		dry.Set("app_name_if_created", deploy.DeriveAppName(plan.AbsEntry))
+		if accessScope != "" {
+			// Only the create branch honours it; a lookup hit leaves the
+			// existing app's scope untouched (the live run warns on stderr).
+			dry.Set("access_scope_if_created", accessScope)
+		}
 	}
 	dry.GET(fmt.Sprintf("%s/apps/%s/pre_release", apiBasePath, segment)).
 		PUT("<presigned upload URL from pre_release kvs " + appDevUploadURLKey + "> (https only)").
@@ -510,6 +547,7 @@ func dryRunHTMLDeploy(rctx *common.RuntimeContext) *common.DryRunAPI {
 // --app-id wins and skips the lookup entirely, otherwise the idempotency
 // lookup decides, and a miss creates the app.
 func resolveHTMLDeployAppID(rctx *common.RuntimeContext, plan *htmlDeployPlan) error {
+	accessScope := rctx.Str("access-scope")
 	source, appID := htmlAppIDFromFlag(rctx.Str("app-id"))
 	if appID == "" {
 		data, err := rctx.CallAPITyped("POST", hasHTMLAppCreatedPath, nil,
@@ -519,11 +557,20 @@ func resolveHTMLDeployAppID(rctx *common.RuntimeContext, plan *htmlDeployPlan) e
 		}
 		if exists, id := parseHasHTMLAppCreated(data); exists {
 			appID = id
+			// The scope is applied at creation only. Landing on an existing app
+			// is exactly the case Validate could not rule out ahead of time, so
+			// say it out loud rather than let the flag vanish: the publish still
+			// proceeds, the scope does not change.
+			if accessScope != "" {
+				fmt.Fprintf(rctx.IO().ErrOut,
+					"warning: --access-scope %s not applied: publish target %s already exists (matched by %s), and the scope is only applied while an app is being created; it keeps the scope it has\n",
+					accessScope, appID, hasHTMLAppCreatedPath)
+			}
 		}
 	}
 	if appID == "" {
 		source = htmlAppIDSourceCreate
-		data, err := rctx.CallAPITyped("POST", apiBasePath+"/apps", nil, htmlCreateBody(plan.AbsEntry))
+		data, err := rctx.CallAPITyped("POST", apiBasePath+"/apps", nil, htmlCreateBody(plan.AbsEntry, accessScope))
 		if err != nil {
 			return withAppsHint(err, createHint)
 		}
@@ -534,6 +581,10 @@ func resolveHTMLDeployAppID(rctx *common.RuntimeContext, plan *htmlDeployPlan) e
 		if appID == "" {
 			return appsSubprocessEnvelopeError("app creation response carries no app_id")
 		}
+		// Only this branch created the app, so only here can the scope have been
+		// applied or refused. The publish continues either way.
+		plan.AccessScopeResult = accessScopeResultOf(data)
+		warnAccessScopeResult(rctx.IO().ErrOut, accessScope, data)
 	}
 	plan.AppID, plan.AppIDSource = appID, source
 	return nil

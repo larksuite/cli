@@ -481,6 +481,7 @@ var AppsDeploy = common.Shortcut{
 		"Add --dry-run to any of these to see the exact file list and the request bodies without publishing",
 		"Paths are relative to the current directory: cd to the payload first, absolute paths are rejected",
 		"Re-publishing: pass the --app-id returned last time; without it the target is looked up, and a new app is created when nothing matches",
+		"Only when a visibility was asked for: lark-cli apps +deploy --file-path ./report.html --access-scope tenant   (omit it otherwise; only a first publish that creates the app applies it, and an existing app keeps the scope it has)",
 		"--skip-build and --no-verify apply to project mode only",
 	},
 	Scopes:    []string{"spark:app:write", "spark:app:read"},
@@ -494,10 +495,18 @@ var AppsDeploy = common.Shortcut{
 		{Name: "dir", Desc: "publish a whole directory as-is (path relative to the current directory): every file in it ships and no references are followed, so a page pointing outside the directory is reported but still published broken; mutually exclusive with --file-path"},
 		{Name: "entry-file", Desc: "entry file name directly under --dir; defaults to index.html and is renamed to index.html inside the published payload"},
 		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / private keys / etc. in the publish payload)"},
+		{Name: "access-scope", Desc: "default runtime access scope for the app that a first bare-HTML publish (--file-path / --dir) creates, for when one was actually asked for: self (only the creator) | tenant (everyone in the organization) | public (anyone on the internet); leave it out otherwise and the server picks the default. It only applies when this publish creates the app — rejected in project mode and together with --app-id, and ignored when the idempotency lookup lands on an existing app", Enum: []string{"self", "tenant", "public"}},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if isHTMLDeployMode(rctx.Str("file-path"), rctx.Str("dir"), rctx.Str("entry-file")) {
 			return validateHTMLDeploy(rctx)
+		}
+		// The project mode never creates an app (spark.json or --app-id names
+		// an existing one), so there is nothing for --access-scope to apply to.
+		if rctx.Str("access-scope") != "" {
+			return appsValidationParamError("--access-scope",
+				"--access-scope only applies to the bare HTML publish (--file-path / --dir) that creates the app; the project mode publishes to an existing app").
+				WithHint("the scope is applied while the app is created, so pass it there: `lark-cli apps +create --name <name> --app-type <type> --access-scope <self|tenant|public>`, then publish with `lark-cli apps +deploy --app-id <returned app_id>`")
 		}
 		cfg, targetAppID, _, err := resolveAppDevPublishTarget(rctx)
 		if err != nil {

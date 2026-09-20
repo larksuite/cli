@@ -530,6 +530,177 @@ func TestHTMLDeployExecute_AppIDFlagSkipsLookup(t *testing.T) {
 	}
 }
 
+// TestValidateHTMLDeployAccessScope pins the local guard: --access-scope only
+// makes sense when this publish may create the app, so pairing it with an
+// explicit --app-id (an existing target) is rejected before any request.
+func TestValidateHTMLDeployAccessScope(t *testing.T) {
+	cases := []struct {
+		name, scope, appID string
+		wantErr            string
+	}{
+		{name: "scope alone is fine", scope: "tenant"},
+		{name: "no scope is fine", appID: "app_x"},
+		{name: "scope with app-id rejected", scope: "public", appID: "app_x", wantErr: "--access-scope"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateHTMLDeployAccessScope(tc.scope, tc.appID)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("got %v, want containing %q", err, tc.wantErr)
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok || !strings.Contains(p.Hint, "drop --access-scope") || !strings.Contains(p.Hint, "drop --app-id") {
+				t.Fatalf("hint must name both ways out (drop either flag), got %v", err)
+			}
+			if strings.Contains(p.Hint, "+access-scope-set") {
+				t.Fatalf("hint must not route to +access-scope-set: the scope is applied at creation only, got %v", err)
+			}
+		})
+	}
+}
+
+// TestHTMLDeployExecute_CreateFallbackCarriesAccessScope: when the lookup
+// misses and the publish creates the app, --access-scope rides on the create
+// body verbatim, the same contract as +create --access-scope.
+func TestHTMLDeployExecute_CreateFallbackCarriesAccessScope(t *testing.T) {
+	chdirHTMLPayload(t, map[string]string{"report.html": "<h1>hi</h1>"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubHasHTMLAppCreated(reg, map[string]interface{}{"exists": false})
+	create := &httpmock.Stub{
+		Method:     "POST",
+		URL:        "/open-apis/spark/v1/apps",
+		BodyFilter: func(b []byte) bool { return bytes.Contains(b, []byte(`"app_type"`)) },
+		Body: map[string]interface{}{"code": float64(0), "data": map[string]interface{}{
+			"app": map[string]interface{}{"app_id": "app_new"},
+		}},
+	}
+	reg.Register(create)
+	stubPreRelease(reg, "app_new", srv.URL, nil)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_new/releases",
+		Body: map[string]interface{}{"code": float64(0), "data": map[string]interface{}{
+			"release_id": "rel_2", "status": "publishing",
+		}},
+	})
+
+	args := []string{"+deploy", "--file-path", "report.html", "--access-scope", "tenant", "--as", "user"}
+	if err := runAppsShortcut(t, AppsDeploy, args, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(create.CapturedBody, &body); err != nil {
+		t.Fatalf("decode create body: %v", err)
+	}
+	if body["access_scope"] != "tenant" {
+		t.Errorf("access_scope = %v, want tenant (verbatim, no remapping)", body["access_scope"])
+	}
+}
+
+// TestHTMLDeployExecute_CreateFallbackOmitsAccessScopeWhenUnset keeps the
+// pre-existing create body unchanged when the flag is not passed.
+func TestHTMLDeployExecute_CreateFallbackOmitsAccessScopeWhenUnset(t *testing.T) {
+	chdirHTMLPayload(t, map[string]string{"report.html": "<h1>hi</h1>"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubHasHTMLAppCreated(reg, map[string]interface{}{"exists": false})
+	create := &httpmock.Stub{
+		Method:     "POST",
+		URL:        "/open-apis/spark/v1/apps",
+		BodyFilter: func(b []byte) bool { return bytes.Contains(b, []byte(`"app_type"`)) },
+		Body: map[string]interface{}{"code": float64(0), "data": map[string]interface{}{
+			"app": map[string]interface{}{"app_id": "app_new"},
+		}},
+	}
+	reg.Register(create)
+	stubPreRelease(reg, "app_new", srv.URL, nil)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_new/releases",
+		Body: map[string]interface{}{"code": float64(0), "data": map[string]interface{}{
+			"release_id": "rel_2", "status": "publishing",
+		}},
+	})
+
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--file-path", "report.html", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(create.CapturedBody, &body); err != nil {
+		t.Fatalf("decode create body: %v", err)
+	}
+	if _, present := body["access_scope"]; present {
+		t.Errorf("access_scope must be omitted when --access-scope is not passed, got %v", body)
+	}
+}
+
+// TestHTMLDeployExecute_LookupHitWarnsAccessScopeNotApplied: the idempotency
+// lookup landing on an existing app means the scope cannot be applied here —
+// the server only honours it while an app is being created. The publish still
+// goes through, but stderr must say so rather than drop the flag silently.
+func TestHTMLDeployExecute_LookupHitWarnsAccessScopeNotApplied(t *testing.T) {
+	chdirHTMLPayload(t, map[string]string{"site/index.html": "<h1>hi</h1>"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, stderr, reg := newAppsExecuteFactoryWithStderr(t)
+	stubHasHTMLAppCreated(reg, map[string]interface{}{"exists": true, "app_id": "app_x"})
+	stubPreRelease(reg, "app_x", srv.URL, nil)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/releases",
+		Body: map[string]interface{}{"code": float64(0), "data": map[string]interface{}{
+			"release_id": "rel_1", "status": "finished", "online_url": "https://x/app/app_x",
+		}},
+	})
+
+	args := []string{"+deploy", "--dir", "site", "--access-scope", "public", "--as", "user"}
+	if err := runAppsShortcut(t, AppsDeploy, args, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "--access-scope public") || !strings.Contains(got, "not applied") {
+		t.Errorf("stderr must warn that the scope was not applied, got %q", got)
+	}
+	if !strings.Contains(got, "app_x already exists") {
+		t.Errorf("stderr must name the existing publish target, got %q", got)
+	}
+	if strings.Contains(got, "+access-scope-set") {
+		t.Errorf("stderr must not route to +access-scope-set: the scope is applied at creation only, got %q", got)
+	}
+	data := parseEnvelopeData(t, stdout)
+	if data["app_id"] != "app_x" {
+		t.Errorf("publish must still land on the existing app, got %v", data)
+	}
+}
+
+// TestHTMLDeployDryRun_AccessScopeOnCreateBranch: the preview names the scope
+// the create branch would send, so an agent can confirm it before publishing.
+func TestHTMLDeployDryRun_AccessScopeOnCreateBranch(t *testing.T) {
+	chdirHTMLPayload(t, map[string]string{"report.html": "<h1>hi</h1>"})
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	args := []string{"+deploy", "--file-path", "report.html", "--access-scope", "self", "--as", "user", "--dry-run"}
+	if err := runAppsShortcut(t, AppsDeploy, args, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	reg.Verify(t)
+	data, err := decodeDryRunDataMap(stdout.Bytes())
+	if err != nil {
+		t.Fatalf("decode dry-run output: %v (raw=%q)", err, stdout.String())
+	}
+	if data["access_scope_if_created"] != "self" {
+		t.Errorf("access_scope_if_created = %v, want self", data["access_scope_if_created"])
+	}
+	if !strings.Contains(stdout.String(), `"access_scope": "self"`) {
+		t.Errorf("dry-run create body must carry access_scope, got %s", stdout.String())
+	}
+}
+
 func TestHTMLDeployDryRun_NoWrites(t *testing.T) {
 	root := chdirHTMLPayload(t, map[string]string{"report.html": "<h1>hi</h1>"})
 	factory, stdout, reg := newAppsExecuteFactory(t)

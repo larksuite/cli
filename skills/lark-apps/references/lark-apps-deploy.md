@@ -46,7 +46,7 @@ lark-cli apps +deploy --dry-run
 
 ### 前置引导
 
-- 未记录 app id 时：先 `lark-cli apps +create --name <name>` 创建应用，然后 `lark-cli apps +deploy --app-id <返回的 app_id>` 发布（成功后自动写入 spark.json，无需手工编辑文件）；应用名可从项目主题生成，不要让用户手动提供 app_id。
+- 未记录 app id 时：先 `lark-cli apps +create --name <name>` 创建应用，然后 `lark-cli apps +deploy --app-id <返回的 app_id>` 发布（成功后自动写入 spark.json，无需手工编辑文件）；应用名可从项目主题生成，不要让用户手动提供 app_id。用户对可见范围有要求时在 `+create` 那一步加 `--access-scope`；项目模式的 `+deploy` 不接受该 flag（它从不创建应用，而可见范围只在创建时可设）。
 - **记录的 app id 不是本会话写入的**（来自历史文件或他人仓库）时，发布前先把目标 app id 告知用户并确认——发布会覆盖该应用的线上内容。
 
 ### 安全规则
@@ -155,6 +155,7 @@ mv shared pages/                                  ← 只做这步，报错一�
 - **带上一次返回的 `--app-id` 是常态主路径**：`lark-cli apps +deploy --dir ./site --app-id app_xxx` 跳过幂等查询，直接更新同一个应用。首次发布返回的 `app_id` 必须记住并复用。
 - 不带 `--app-id` 时，**入口文件的绝对路径**（按当前用户隔离）就是幂等标识：同一路径复发布落回同一个应用；文件改名、目录搬家、或换个 cwd 导致绝对路径变了，会**新建一个应用**。要继续更新已有应用就带 `--app-id`。
 - 查不到已有应用时自动创建：应用名取入口文件名去扩展名（`report.html` → `report`）；入口是 `index.html` 时取父目录名；都取不到用 `html-app`。要自定义名字就先 `lark-cli apps +create --name <name> --app-type html`，再用返回的 app_id 发布。
+- **默认不要传 `--access-scope`**，用户没提可见范围就省略，交服务端默认。仅当用户明确提出诉求时才加 `self|tenant|public`，它**只在本次真的新建应用时生效**：与 `--app-id` 同传会被拒绝（目标已存在）；幂等查询命中已有应用时发布照常进行，但 stderr 会提示 `--access-scope ... not applied`，该应用保持原有可见范围不变。`--dry-run` 里的 `access_scope_if_created` 字段会预告创建分支将发送的值。即便本次确实新建了应用，`tenant` / `public` 也可能被租户文档密级管控拦下；此时发布照常完成，响应的 `data.access_scope_result` 会说明是否生效（仅在传了该 flag 且本次新建应用时出现，判据同 [`lark-apps-create.md`](lark-apps-create.md)）。
 - 发布时 stderr 回显 `publishing to app <app_id> (from <来源>)`，来源为 `--app-id` / `has_html_app_created` / `+create`——据此确认这次发到了哪个应用。发布会覆盖该应用线上内容，`app_id` 不是本会话拿到的（来自历史记录或他人）时先与用户确认。
 
 ### 凭证扫描与体积上限
@@ -173,6 +174,9 @@ lark-cli apps +deploy --file-path ./report.html --app-id app_xxx   # 复发布�
 lark-cli apps +deploy --dir ./site                                 # 目录，入口为 ./site/index.html
 lark-cli apps +deploy --dir ./site --entry-file page.html          # 目录里没有 index.html 时指定入口
 lark-cli apps +deploy --dir ./site --dry-run                       # 只看计划，不发起任何写请求
+
+# 仅当用户明确提出可见范围诉求时
+lark-cli apps +deploy --file-path ./report.html --access-scope tenant
 ```
 
 `--dry-run` 会原样打出实际外发的 `idempotent_key`（本机绝对路径，含用户名与目录结构）；需要判断这个外发是否可接受时先跑它。
@@ -184,6 +188,8 @@ lark-cli apps +deploy --dir ./site --dry-run                       # 只看计�
 | `mutually exclusive` | `--file-path` 与 `--dir` 同时给了；发单文件用前者，发目录用后者 |
 | `--entry-file only applies together with --dir` | 单文件模式下不要传 `--entry-file` |
 | `only applies to the spark.json project mode` | `--skip-build` / `--no-verify` 属于项目模式，裸 HTML 发布下去掉 |
+| `--access-scope only applies to the bare HTML publish` | 项目模式不创建应用；可见范围只能在 `+create --access-scope` 那一步指定 |
+| `--access-scope cannot be combined with --app-id` | `--app-id` 指向已有应用，去掉 `--access-scope`（该应用保持原有可见范围）；要让本次发布新建应用并带上该范围，则去掉 `--app-id` |
 | `does not publish by uploading an artifact` | 这个应用**不走产物上传**（`pre_release` 返回空 kvs），它从 git 仓库发布。按 hint 从 `+init` 开始，流程见 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)。**不要改用 `+html-publish`** —— 那是存量无 git 应用的兼容链路，不是这里的 fallback |
 | `pre_release` 请求本身失败（网络错 / 403 / 404） | 与上一条不同：这里服务端没返回成功。可能 `--app-id` 不对或没权限，也可能这个应用走 git 链路——两者返回一样，分不出来，hint 会并列给出 |
 | `must point at an .html file` / `must be an .html file` | `--file-path` 与 `--entry-file` 都只接受 `.html` |

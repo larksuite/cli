@@ -434,6 +434,23 @@ func TestAppDevPublishValidate_NoAppID(t *testing.T) {
 	}
 }
 
+// TestAppDevPublishValidate_AccessScopeRejectedInProjectMode: the project mode
+// never creates an app, so --access-scope has nothing to apply to; the guard
+// sends the caller to +create --access-scope instead of silently ignoring it.
+func TestAppDevPublishValidate_AccessScopeRejectedInProjectMode(t *testing.T) {
+	chdirSparkProjectRoot(t, `{"app":{"id":"app_recorded"},"dev":{"port":5173}}`)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsDeploy,
+		[]string{"+deploy", "--access-scope", "tenant", "--as", "user"}, factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryValidation)
+	if !strings.Contains(p.Message, "--access-scope") {
+		t.Errorf("message must name the flag, got %q", p.Message)
+	}
+	if !strings.Contains(p.Hint, "+create") {
+		t.Errorf("hint must route to +create --access-scope, got %q", p.Hint)
+	}
+}
+
 func TestAppDevPublishValidate_AppIDMismatch(t *testing.T) {
 	chdirSparkProjectRoot(t, `{"app":{"id":"app_recorded"}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
