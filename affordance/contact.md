@@ -11,6 +11,13 @@ The primary user lookup for user identity: search by keyword or email, resolve k
 - Running as a bot — this shortcut is user-only; use [[+get-user]] instead (it supports bot identity)
 - You only need users' personal status for ids you already hold → use [[user_profiles batch_query]]
 
+### Tips
+- 41050 / Permission denied means the target is outside your identity's visibility scope — retry with a different account or identity, or have an admin widen the visibility scope; the search endpoints themselves cannot bypass it
+- Filter-only enumeration — users you've chatted with: lark-cli contact +search-user --has-chatted
+- Refine same-name hits: lark-cli contact +search-user --query '张三' --has-chatted --exclude-external-users
+- Multi-name fanout: lark-cli contact +search-user --queries 'alice,bob,张三'
+- on has_more=true add filters or tighten --query — there is no auto-pagination.
+
 ### Examples
 
 **Find a user by name**
@@ -86,5 +93,5 @@ Bulk-fetch personal status and signature for user ids you already have.
 
 **Bulk-query status and signature**
 ```bash
-lark-cli contact user_profiles batch_query --data '{"user_ids":["ou_3a8b****6a7b"],"query_option":{"include_personal_status":true,"include_description":true}}'
+lark-cli contact user_profiles batch_query --as user --data '{"user_ids":["ou_3a8b****6a7b"],"query_option":{"include_personal_status":true,"include_description":true}}'
 ```
