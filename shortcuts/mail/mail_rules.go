@@ -1682,25 +1682,6 @@ func completeRuleOrder(input, current []string) ([]string, error) {
 	return target, nil
 }
 
-func validateFullRuleOrder(target, current []string) error {
-	if len(target) != len(current) {
-		return mailValidationParamError("--rule-ids", "--rule-ids must contain every current rule id exactly once (got %d, want %d)", len(target), len(current))
-	}
-	want := make(map[string]int, len(current))
-	for _, id := range current {
-		want[id]++
-	}
-	for _, id := range target {
-		want[id]--
-	}
-	for id, count := range want {
-		if count != 0 {
-			return mailValidationParamError("--rule-ids", "--rule-ids mismatch for %s; run +rule-list first and submit the complete order", id)
-		}
-	}
-	return nil
-}
-
 func normalizeRuleIDs(ids []string) []string {
 	var out []string
 	for _, id := range ids {
