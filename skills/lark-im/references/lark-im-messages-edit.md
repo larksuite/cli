@@ -28,6 +28,11 @@ The bot must be the original sender — editing another identity's message fails
 | Clear the edited message's attachment zone | `--clear-attachments` | Sets `files:[]` on the post content. Requires a post message; mutually exclusive with `--set-attachments` |
 | Keep the existing attachment zone while rewriting the body | *(no attachment flag)* | **Default.** Editing with only `--markdown` / `--text` / `--content` leaves the current `files` array untouched — a body-only edit never drops attachments |
 
+```bash
+# Read the replacement Markdown from a local file
+lark-cli im +messages-edit --as bot --message-id om_xxx --markdown @./updated-message.md
+```
+
 ## Editing the Attachment Zone
 
 `post` messages can carry an attachment zone — a top-level `files` array that renders files/folders under the rich-text body.
