@@ -9,17 +9,20 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"slices"
 
-	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/hkdf"
 )
 
-// The version-1 format fixes KDF cost before reading any untrusted data.
-const softwareKDF = "argon2id-m65536-t3-p1-aes256gcm"
+// The envelope identifies the fixed key derivation and encryption scheme.
+const softwareKDF = "hkdf-sha256-aes256gcm"
 
 type softwareSigner struct {
 	directory string
@@ -34,9 +37,10 @@ type softwareEnvelope struct {
 }
 
 // NewSoftwareSigner explicitly enables L3 in a caller-selected local directory.
-// Unlock returns a fresh 16..1024-byte secret buffer, cleared after derivation.
-// Use a strong passphrase or random secret kept apart from key files.
-// No system key store, environment secret, or automatic L3 fallback is used.
+// Unlock returns a fresh buffer containing a 32-byte cryptographically random
+// secret, cleared after derivation. Keep it apart from key files; passwords are
+// not supported.
+// The caller owns secret storage and backend fallback policy.
 func NewSoftwareSigner(directory string, unlock func(context.Context) ([]byte, error)) (Signer, error) {
 	if unlock == nil {
 		return nil, ErrUnlockRequired
@@ -105,6 +109,9 @@ func (s *softwareSigner) ensureKey(ctx context.Context, ref KeyRef, createOnly b
 			return err
 		}
 		if err := writeKeyFile(ctx, path, record); err != nil {
+			if !createOnly && errors.Is(err, ErrKeyExists) {
+				public, err = s.PublicKey(ctx, ref)
+			}
 			return err
 		}
 		public = private.Public()
@@ -144,12 +151,17 @@ func (s *softwareSigner) Sign(ctx context.Context, ref KeyRef, input []byte) (si
 }
 
 func (s *softwareSigner) DeleteKey(ctx context.Context, ref KeyRef) error {
-	return withKeyFile(ctx, s.directory, ref, func(path string, algorithm signingAlgorithm) error {
-		if _, err := readKeyFile(path, ref, s.Name(), algorithm); err != nil {
-			if errors.Is(err, ErrKeyNotFound) {
-				return nil
-			}
+	return withKeyFile(ctx, s.directory, ref, func(path string, _ signingAlgorithm) error {
+		// Deletion must remain available when the encrypted record is corrupt.
+		info, err := os.Lstat(path) //nolint:forbidigo // Inspect only this signer's hashed host-local key path without following symlinks.
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
 			return err
+		}
+		if !info.Mode().IsRegular() {
+			return ErrCorrupt
 		}
 		return removeKeyFile(path)
 	})
@@ -212,14 +224,17 @@ func (s *softwareSigner) fileCipher(ctx context.Context, salt []byte) (cipher.AE
 	if err != nil {
 		return nil, err
 	}
-	if len(secret) < 16 || len(secret) > 1024 {
+	if len(secret) != 32 {
 		return nil, ErrUnlockRequired
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	derived := argon2.IDKey(secret, salt, 3, 64*1024, 1, 32)
+	derived := make([]byte, 32)
 	defer clear(derived)
+	if _, err := io.ReadFull(hkdf.New(sha256.New, secret, salt, []byte("keysigner/software-file/aes256gcm")), derived); err != nil {
+		return nil, err
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

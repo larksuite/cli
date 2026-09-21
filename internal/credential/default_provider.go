@@ -150,7 +150,10 @@ type tatRefreshCall struct {
 	err    error
 }
 
-const tatMaxRefreshAhead = 5 * time.Minute
+const (
+	tatMaxRefreshAhead = 5 * time.Minute
+	tatRefreshTimeout  = 30 * time.Second
+)
 
 func NewDefaultTokenProvider(defaultAcct *DefaultAccountProvider, httpClient func() (*http.Client, error), errOut io.Writer) *DefaultTokenProvider {
 	return &DefaultTokenProvider{
@@ -196,9 +199,12 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 }
 
 // resolveTAT caches minted tenant tokens in memory and renews them before their
-// server-provided expiry. A process shares one in-flight mint while independent
+// server-provided expiry. Each provider shares one in-flight mint while independent
 // waiters retain their own cancellation.
 func (p *DefaultTokenProvider) resolveTAT(ctx context.Context) (*TokenResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	p.tatMu.Lock()
 	now := p.currentTimeForToken(p.tatResult)
 	if p.tatResult != nil && now.Before(p.tatRefreshAt) && now.Before(p.tatExpiresAt) {
@@ -206,37 +212,41 @@ func (p *DefaultTokenProvider) resolveTAT(ctx context.Context) (*TokenResult, er
 		p.tatMu.Unlock()
 		return result, nil
 	}
-	if call := p.tatRefresh; call != nil {
-		p.tatMu.Unlock()
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-call.done:
-			return cloneTokenResult(call.result), call.err
-		}
+	call := p.tatRefresh
+	if call == nil {
+		call = &tatRefreshCall{done: make(chan struct{})}
+		p.tatRefresh = call
+		go func() {
+			// Shared work belongs to the provider, not the first caller. Bound
+			// its lifetime even when every caller stops waiting.
+			mintCtx, cancel := context.WithTimeout(context.Background(), tatRefreshTimeout)
+			defer cancel()
+			result, lifetime, err := p.doResolveTAT(mintCtx)
+			p.tatMu.Lock()
+			defer p.tatMu.Unlock()
+			if err == nil {
+				now := p.currentTimeForToken(result)
+				refreshAhead := tatMaxRefreshAhead
+				if proportional := lifetime / 10; proportional < refreshAhead {
+					refreshAhead = proportional
+				}
+				p.tatResult = cloneTokenResult(result)
+				p.tatExpiresAt = now.Add(lifetime)
+				p.tatRefreshAt = p.tatExpiresAt.Add(-refreshAhead)
+			}
+			call.result = cloneTokenResult(result)
+			call.err = err
+			p.tatRefresh = nil
+			close(call.done)
+		}()
 	}
-	call := &tatRefreshCall{done: make(chan struct{})}
-	p.tatRefresh = call
 	p.tatMu.Unlock()
-
-	result, lifetime, err := p.doResolveTAT(ctx)
-	p.tatMu.Lock()
-	if err == nil {
-		now = p.currentTimeForToken(result)
-		refreshAhead := tatMaxRefreshAhead
-		if proportional := lifetime / 10; proportional < refreshAhead {
-			refreshAhead = proportional
-		}
-		p.tatResult = cloneTokenResult(result)
-		p.tatExpiresAt = now.Add(lifetime)
-		p.tatRefreshAt = p.tatExpiresAt.Add(-refreshAhead)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-call.done:
+		return cloneTokenResult(call.result), call.err
 	}
-	call.result = cloneTokenResult(result)
-	call.err = err
-	p.tatRefresh = nil
-	close(call.done)
-	p.tatMu.Unlock()
-	return result, err
 }
 
 func (p *DefaultTokenProvider) currentTime() time.Time {
@@ -276,6 +286,9 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	}
 	if token.StatusMessage != "" && p.errOut != nil {
 		fmt.Fprintf(p.errOut, "[lark-cli] tat-client: %s\n", token.StatusMessage)
+	}
+	if token.clockSyncErr != nil && p.errOut != nil {
+		fmt.Fprintf(p.errOut, "[lark-cli] [WARN] TAT clock synchronization failed; continued with the existing clock: %v\n", token.clockSyncErr)
 	}
 	if token.proofFallback && p.errOut != nil {
 		fmt.Fprintf(p.errOut, "[lark-cli] [WARN] three consecutive %s responses; new tenant token issued as Bearer\n", dpop.InvalidProofOAuthError)

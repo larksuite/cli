@@ -429,9 +429,10 @@ func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
 	const bearer = `{"access_token":"synthetic-token","token_type":"Bearer"}`
 	const bound = `{"access_token":"synthetic-token","token_type":"DPoP"}`
 	type step struct {
-		path, body string
-		proof      bool
-		cancel     bool
+		path, body   string
+		proof        bool
+		cancel       bool
+		networkError bool
 	}
 	for _, tc := range []struct {
 		name    string
@@ -441,16 +442,24 @@ func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
 	}{
 		{"preferred_clock_failure_before_request", core.DPoPModePreferred, []step{
 			{path: dpop.HeartbeatPath, body: `{}`},
-			{path: core.OAuthTokenV3Path, body: bearer},
+			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
+			{path: core.OAuthTokenV3Path, body: bound, proof: true},
 		}, ""},
 		{"required_clock_failure", core.DPoPModeRequired, []step{
 			{path: dpop.HeartbeatPath, body: `{}`},
-		}, errs.SubtypeDPoPClockSyncFailed},
-		{"preferred_clock_failure_after_request", core.DPoPModePreferred, []step{
+			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
+			{path: core.OAuthTokenV3Path, body: bound, proof: true},
+		}, ""},
+		{"preferred_pending_then_success", core.DPoPModePreferred, []step{
 			{path: dpop.HeartbeatPath, body: heartbeat},
 			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
-			{path: dpop.HeartbeatPath, body: `{}`},
-		}, errs.SubtypeDPoPClockSyncFailed},
+			{path: core.OAuthTokenV3Path, body: bound, proof: true},
+		}, ""},
+		{"required_clock_network_failure", core.DPoPModeRequired, []step{
+			{path: dpop.HeartbeatPath, networkError: true},
+			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
+			{path: core.OAuthTokenV3Path, body: bound, proof: true},
+		}, ""},
 		{"preferred_rejects_bearer_response", core.DPoPModePreferred, []step{
 			{path: dpop.HeartbeatPath, body: heartbeat},
 			{path: core.OAuthTokenV3Path, body: bearer, proof: true},
@@ -461,7 +470,6 @@ func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
 		{"required_pending_then_success", core.DPoPModeRequired, []step{
 			{path: dpop.HeartbeatPath, body: heartbeat},
 			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
-			{path: dpop.HeartbeatPath, body: heartbeat},
 			{path: core.OAuthTokenV3Path, body: bound, proof: true},
 		}, ""},
 	} {
@@ -486,16 +494,25 @@ func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
 				if proof != "" {
 					proofs = append(proofs, proof)
 				}
+				if step.networkError {
+					return nil, errors.New("heartbeat unavailable")
+				}
 				if step.cancel {
 					cancel()
 					return nil, ctx.Err()
 				}
 				return refreshHTTPResponse(req, step.body), nil
 			})}
+			var warnings bytes.Buffer
 			result, err := pollDeviceTokenWithKeyStore(ctx, client, "cli_test", "synthetic-secret",
-				core.BrandFeishu, "device-code", 1, 10, nil, tc.mode, store)
+				core.BrandFeishu, "device-code", 1, 10, &warnings, tc.mode, store)
 			if err != nil {
 				t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
+			}
+			if strings.Contains(tc.name, "clock_failure") || tc.name == "required_clock_network_failure" {
+				if !strings.Contains(warnings.String(), "clock synchronization failed") {
+					t.Fatal("missing clock warning")
+				}
 			}
 			if requests != len(tc.steps) {
 				t.Fatalf("requests = %d, want %d", requests, len(tc.steps))
@@ -546,7 +563,7 @@ func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
 		{"required", core.DPoPModeRequired, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError}, false, false, true},
 		{"recovered", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "DPoP"}, false, false, false},
 		{"pending resets count", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "authorization_pending", dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "DPoP"}, false, false, false},
-		{"cleanup failed", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError}, false, false, true},
+		{"cleanup failed", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "Bearer"}, false, true, false},
 		{"malformed resets count", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "malformed", dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "DPoP"}, false, false, false},
 		{"canceled", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError}, true, false, true},
 	} {
@@ -568,8 +585,11 @@ func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
 					calls++
 					proof := req.Header.Get(dpop.ProofHeader)
 					if response == "Bearer" {
-						if proof != "" || len(signer.keys) != 0 {
-							t.Fatal("fallback retained proof or uncommitted key")
+						if proof != "" {
+							t.Fatal("Bearer fallback carried proof")
+						}
+						if tc.name != "cleanup failed" && len(signer.keys) != 0 {
+							t.Fatal("fallback retained uncommitted key")
 						}
 					} else {
 						if proof == "" || proofs[proof] {
@@ -577,7 +597,7 @@ func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
 						}
 						proofs[proof] = true
 					}
-					body = `{"error":"` + response + `","code":1106072}`
+					body = fmt.Sprintf(`{"error":"%s","code":%d}`, response, dpop.ClockSkewErrorCode)
 					if response == "Bearer" || response == "DPoP" {
 						body = `{"access_token":"token","token_type":"` + response + `"}`
 					}
@@ -592,7 +612,7 @@ func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
 					}
 				}
 				if tc.name == "without Date" {
-					body = strings.ReplaceAll(body, `,"code":1106072`, "")
+					body = strings.ReplaceAll(body, fmt.Sprintf(`,"code":%d`, dpop.ClockSkewErrorCode), "")
 				}
 				resp := refreshHTTPResponse(req, body)
 				if tc.name != "without Date" {
@@ -600,15 +620,16 @@ func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
 				}
 				return resp, nil
 			})}
-			result, err := pollDeviceTokenWithKeyStore(ctx, client, "app", "secret", core.BrandFeishu, "device", 1, 22, nil, tc.mode, store)
+			var warnings bytes.Buffer
+			result, err := pollDeviceTokenWithKeyStore(ctx, client, "app", "secret", core.BrandFeishu, "device", 1, 22, &warnings, tc.mode, store)
 			if err != nil {
 				t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
 			}
 			if calls != len(tc.responses) || result.OK == tc.wantError {
 				t.Fatalf("calls=%d result=%+v", calls, result)
 			}
-			if tc.name == "cleanup failed" && (result.Error != deviceFlowErrorDPoPKeyCleanupFailed || !errors.Is(result.Err, signer.deleteErr)) {
-				t.Fatalf("cleanup cause lost: %+v", result)
+			if tc.name == "cleanup failed" && !strings.Contains(warnings.String(), "DPoP key cleanup failed") {
+				t.Fatalf("cleanup fallback warning = %q", warnings.String())
 			}
 			if !tc.wantError && (result.Token == nil || (result.Token.DPoP == nil) != tc.wantBearer) {
 				t.Fatalf("unexpected token: %+v", result.Token)

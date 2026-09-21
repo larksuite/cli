@@ -310,6 +310,9 @@ func findKey(appLabel []byte, keychainPath string, keyClass, keyType uintptr) (u
 	defer cfRelease(search)
 
 	labelData := cfBytes(appLabel)
+	if labelData == 0 {
+		return 0, errors.New("keysigner: create key application label data failed")
+	}
 	defer cfRelease(labelData)
 
 	q := cfDictCreateMutable(0, 0, cbDictKey, cbDictValue)
@@ -388,18 +391,14 @@ func withKeychainUserInteractionDisabled(ctx context.Context, operation func() e
 
 	previous, err := getKeychainUserInteractionAllowed()
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	if err := setKeychainUserInteractionAllowed(false); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	defer func() {
 		if restoreErr := setKeychainUserInteractionAllowed(previous); restoreErr != nil {
-			if err == nil {
-				err = restoreErr
-			} else {
-				err = fmt.Errorf("%w; additionally failed to restore Keychain user-interaction state: %w", err, restoreErr)
-			}
+			err = errors.Join(err, ErrCleanupFailed, fmt.Errorf("restore Keychain user-interaction state: %w", restoreErr))
 		}
 	}()
 	return operation()
@@ -536,7 +535,14 @@ func (keychainSigner) Name() string { return MacOSKeychainSignerName }
 
 func (keychainSigner) SecurityLevel() SecurityLevel { return SecurityLevelL2 }
 
-func (keychainSigner) EnsureKey(ctx context.Context, ref KeyRef) (crypto.PublicKey, error) {
+func (keychainSigner) EnsureKey(ctx context.Context, ref KeyRef) (public crypto.PublicKey, err error) {
+	defer func() {
+		// Only new bindings may skip an inaccessible dedicated store. Do not
+		// unwrap joined errors: interaction restoration or cleanup must succeed.
+		if _, ok := err.(*keychainStoreError); ok { //nolint:errorlint // Only a sole store failure permits fallback; wrapped/joined cleanup failures must stop.
+			err = fmt.Errorf("%w: %w", ErrUnavailable, err)
+		}
+	}()
 	algorithm, err := keychainAlgorithmForRef(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -786,6 +792,9 @@ func setKeychainKeyLabel(appLabel []byte, keychain, label string, keyType uintpt
 	defer cfRelease(search)
 
 	labelData := cfBytes(appLabel)
+	if labelData == 0 {
+		return errors.New("keysigner: create key application label data failed")
+	}
 	defer cfRelease(labelData)
 
 	q := cfDictCreateMutable(0, 0, cbDictKey, cbDictValue)
@@ -965,23 +974,32 @@ func keychainFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "lark-cli.keychain"), nil
+	return filepath.Join(dir, "signer.keychain"), nil
 }
 
 func keychainPassword() ([]byte, error) {
-	dir, err := keysignerDir()
+	directory, err := keysignerDir()
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, "keychain.pass")
+	path := filepath.Join(directory, "keychain.pass")
 	if data, err := os.ReadFile(path); err == nil { //nolint:forbidigo // Read the password for the dedicated on-disk keychain.
 		defer clear(data)
 		if pw := bytes.TrimSpace(data); len(pw) != 0 {
 			return append([]byte(nil), pw...), nil
 		}
-		return nil, fmt.Errorf("keysigner: empty keychain password")
+		return nil, &keychainStoreError{errors.New("keysigner: empty keychain password; restore the matching keychain.pass backup")}
 	} else if !os.IsNotExist(err) {
 		return nil, err
+	}
+	keychainPath, err := keychainFilePath()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(keychainPath); err == nil { //nolint:forbidigo // Never replace a lost password while the dedicated host keychain exists.
+		return nil, &keychainStoreError{errors.New("keysigner: dedicated keychain exists but keychain.pass is missing; restore the matching password backup or use another backend for new keys")}
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("keysigner: stat dedicated keychain: %w", err)
 	}
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
@@ -1009,21 +1027,32 @@ func keyMetadataPath(label string) (string, error) {
 	return filepath.Join(dir, "keys", hex.EncodeToString(id[:])+".json"), nil
 }
 
+// keychainStoreError identifies a dedicated-store failure without permitting
+// fallback for existing bindings, signing, deletion, or failed cleanup.
+type keychainStoreError struct{ error }
+
 func keychainError(operation string, status int) error {
 	switch status {
+	case -128:
+		return fmt.Errorf("keysigner: %s: %w (Security framework status %d)", operation, context.Canceled, status)
+	case -25293, -25295:
+		return &keychainStoreError{fmt.Errorf("keysigner: %s: dedicated keychain authentication failed or store is invalid (Security framework status %d); restore the matching keychain and keychain.pass backups or use another backend for new keys", operation, status)}
 	case -25299:
 		return fmt.Errorf("keysigner: %s: key already exists", operation)
 	case -25300:
 		return fmt.Errorf("keysigner: %s: key not found", operation)
 	case -2:
-		return fmt.Errorf("keysigner: %s: allocation failed", operation)
+		return &keychainStoreError{fmt.Errorf("keysigner: %s: allocation failed", operation)}
 	default:
-		return fmt.Errorf("keysigner: %s: Security framework status %d", operation, status)
+		return &keychainStoreError{fmt.Errorf("keysigner: %s: Security framework status %d", operation, status)}
 	}
 }
 
 func signKeychainDigest(keyRef, algorithm uintptr, digest []byte) ([]byte, error) {
 	digestData := cfBytes(digest)
+	if digestData == 0 {
+		return nil, errors.New("keysigner: create signing digest data failed")
+	}
 	defer cfRelease(digestData)
 
 	var errRef uintptr
@@ -1059,14 +1088,14 @@ func createKeychainKey(ctx context.Context, label string, a keychainAlgorithm) (
 	return publicKey, err
 }
 
-func createKeychainKeyWithoutUI(ctx context.Context, label string, a keychainAlgorithm) (crypto.PublicKey, error) {
+func createKeychainKeyWithoutUI(ctx context.Context, label string, a keychainAlgorithm) (public crypto.PublicKey, err error) {
 	metadataPath, err := keyMetadataPath(label)
 	if err != nil {
 		return nil, err
 	}
 	keychain, err := ensureKeychain(ctx)
 	if err != nil {
-		return nil, err
+		return nil, &keychainStoreError{err}
 	}
 
 	var keychainRef uintptr
@@ -1111,21 +1140,28 @@ func createKeychainKeyWithoutUI(ctx context.Context, label string, a keychainAlg
 		&publicKeyRef,
 		&privateKeyRef,
 	)
-	deleteAndRelease := func(keyRef uintptr) {
+	deleteAndRelease := func(keyRef uintptr) error {
 		if keyRef != 0 {
-			_ = secKeychainItemDelete(keyRef)
+			status := secKeychainItemDelete(keyRef)
 			cfRelease(keyRef)
+			if status != errSecSuccess && status != -25300 {
+				return keychainError("roll back key", int(status))
+			}
 		}
+		return nil
 	}
 	if status != errSecSuccess {
-		deleteAndRelease(privateKeyRef)
-		deleteAndRelease(publicKeyRef)
+		if cleanupErr := errors.Join(deleteAndRelease(privateKeyRef), deleteAndRelease(publicKeyRef)); cleanupErr != nil {
+			return nil, errors.Join(keychainError("generate key", int(status)), ErrCleanupFailed, cleanupErr)
+		}
 		return nil, keychainError("generate non-extractable "+a.name()+" key", int(status))
 	}
 	if publicKeyRef == 0 || privateKeyRef == 0 {
-		deleteAndRelease(privateKeyRef)
-		deleteAndRelease(publicKeyRef)
-		return nil, fmt.Errorf("keysigner: key generation returned an empty key reference")
+		err := errors.New("keysigner: key generation returned an empty key reference")
+		if cleanupErr := errors.Join(deleteAndRelease(privateKeyRef), deleteAndRelease(publicKeyRef)); cleanupErr != nil {
+			err = errors.Join(err, ErrCleanupFailed, cleanupErr)
+		}
+		return nil, err
 	}
 	defer cfRelease(publicKeyRef)
 	defer cfRelease(privateKeyRef)
@@ -1133,8 +1169,11 @@ func createKeychainKeyWithoutUI(ctx context.Context, label string, a keychainAlg
 	committed := false
 	defer func() {
 		if !committed {
-			_ = secKeychainItemDelete(privateKeyRef)
-			_ = secKeychainItemDelete(publicKeyRef)
+			for _, ref := range []uintptr{privateKeyRef, publicKeyRef} {
+				if status := secKeychainItemDelete(ref); status != errSecSuccess && status != -25300 {
+					err = errors.Join(err, ErrCleanupFailed, keychainError("roll back key", int(status)))
+				}
+			}
 		}
 	}()
 

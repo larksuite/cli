@@ -63,13 +63,15 @@ var (
 	// ErrUnavailable means this signer cannot be used on this build or host.
 	// Only new bindings may try another signer; existing bindings fail closed.
 	ErrUnavailable = errors.New("key signer is unavailable")
+	// ErrCleanupFailed prevents fallback after incomplete rollback or state restoration.
+	ErrCleanupFailed = errors.New("key signer cleanup failed")
 	// ErrKeyNotFound means the stable handle no longer resolves to its private
 	// key. Callers must never recreate a key for an existing token binding.
 	ErrKeyNotFound    = errors.New("signing key not found")
 	ErrKeyExists      = errors.New("signing key already exists")
 	ErrCorrupt        = errors.New("invalid or mismatched signing key record")
 	ErrUnlock         = errors.New("wrong unlock secret or damaged signing key ciphertext")
-	ErrUnlockRequired = errors.New("software signing requires a 16..1024-byte unlock secret")
+	ErrUnlockRequired = errors.New("software signing requires a 32-byte cryptographically random unlock secret")
 	// ErrUnsupportedAlgorithm rejects an algorithm without accessing key storage.
 	ErrUnsupportedAlgorithm = errors.New("unsupported signing algorithm")
 )
@@ -129,16 +131,29 @@ func NewPlatformSigners(directory func(string) (string, error)) []Signer {
 	return signers
 }
 
+// CanFallback reports whether a new binding may try another backend.
+// Cancellation and incomplete cleanup always take precedence over unavailability.
+func CanFallback(err error) bool {
+	return errors.Is(err, ErrUnavailable) && !errors.Is(err, ErrCleanupFailed) &&
+		!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+}
+
 // EnsureKeyWithFallback creates or opens a key with the strongest usable
 // signer. It falls through only when a backend is unavailable.
 func EnsureKeyWithFallback(ctx context.Context, signers []Signer, ref KeyRef) (Signer, crypto.PublicKey, error) {
 	var unavailable []error
 	for _, signer := range signers {
+		if ctx != nil && ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
 		public, err := signer.EnsureKey(ctx, ref)
+		if err != nil && ctx != nil && ctx.Err() != nil {
+			return nil, nil, errors.Join(ctx.Err(), err)
+		}
 		if err == nil {
 			return signer, public, nil
 		}
-		if errors.Is(err, ErrUnavailable) {
+		if CanFallback(err) {
 			unavailable = append(unavailable, err)
 			continue
 		}
@@ -149,26 +164,36 @@ func EnsureKeyWithFallback(ctx context.Context, signers []Signer, ref KeyRef) (S
 
 // ProbeSigner verifies one signer's create/sign/delete path without retaining
 // the probe key.
-func ProbeSigner(ctx context.Context, signer Signer, ref KeyRef, input []byte) error {
+func ProbeSigner(ctx context.Context, signer Signer, ref KeyRef, input []byte) (err error) {
 	if signer == nil {
 		return ErrUnavailable
 	}
 	public, err := signer.EnsureKey(ctx, ref)
 	if err != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return errors.Join(ctx.Err(), err)
+		}
 		return err
 	}
 	cleanupCtx := context.WithoutCancel(ctx)
+	defer func() {
+		if cleanupErr := signer.DeleteKey(cleanupCtx, ref); cleanupErr != nil {
+			err = errors.Join(err, ErrCleanupFailed, cleanupErr)
+		}
+		if err != nil && ctx.Err() != nil {
+			err = errors.Join(ctx.Err(), err)
+		}
+	}()
 	algorithm, err := algorithmForRef(ctx, ref)
 	if err != nil {
-		return errors.Join(err, signer.DeleteKey(cleanupCtx, ref))
+		return err
 	}
 	if err := algorithm.validatePublicKey(public); err != nil {
-		return errors.Join(err, signer.DeleteKey(cleanupCtx, ref))
+		return err
 	}
 	signature, signedAlgorithm, signErr := signer.Sign(ctx, ref, input)
-	deleteErr := signer.DeleteKey(cleanupCtx, ref)
 	if signErr != nil {
-		return errors.Join(signErr, deleteErr)
+		return signErr
 	}
 	validSize := len(signature) > 0
 	switch key := public.(type) {
@@ -180,9 +205,9 @@ func ProbeSigner(ctx context.Context, signer Signer, ref KeyRef, input []byte) e
 		validSize = len(signature) == key.Size()
 	}
 	if signedAlgorithm != algorithm.name() || !validSize {
-		return errors.Join(fmt.Errorf("keysigner: probe returned algorithm %q and %d-byte signature", signedAlgorithm, len(signature)), deleteErr)
+		return fmt.Errorf("keysigner: probe returned algorithm %q and %d-byte signature", signedAlgorithm, len(signature))
 	}
-	return deleteErr
+	return nil
 }
 
 // signingAlgorithm owns cryptography, independently of key storage.

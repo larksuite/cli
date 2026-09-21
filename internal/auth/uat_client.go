@@ -195,8 +195,7 @@ type refreshRequest struct {
 }
 
 // refreshResponse contains the OAuth token fields consumed by the refresh
-// flow. A missing code uses the success default; access_token remains the
-// authoritative success signal.
+// flow. OAuth errors may omit code.
 type refreshResponse struct {
 	Code                  int    `json:"code"`
 	AccessToken           string `json:"access_token"`
@@ -266,15 +265,17 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 	}
 	uncertain := false
 	clockRecoveryUsed := false
-	skipActiveClockSync := false
-	ordinaryAttempts := 0
-	for {
-		if proofKey != nil && !skipActiveClockSync {
-			if err := synchronizeStoredTokenClock(ctx, httpClient, opts, stored, proofKey); err != nil {
+	if proofKey != nil {
+		if err := synchronizeStoredTokenClock(ctx, httpClient, opts, stored, proofKey); err != nil {
+			problem, ok := errs.ProblemOf(err)
+			if ctx.Err() != nil || !ok || problem.Subtype != errs.SubtypeDPoPClockSyncFailed {
 				return nil, err
 			}
+			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: clock synchronization failed; continuing with the existing clock: %v\n", err)
 		}
-		skipActiveClockSync = false
+	}
+	ordinaryAttempts := 0
+	for {
 		if tokenNow(stored).UnixMilli() >= stored.RefreshExpiresAt {
 			fmt.Fprintf(errOut, "[lark-cli] uat-client: refresh_token expired for %s, clearing\n", opts.UserOpenId)
 			retained, deleted, err := compareAndDeleteStoredToken(opts.AppId, opts.UserOpenId, stored)
@@ -301,7 +302,6 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 		}
 		if result.action == refreshRetryAfterClockSync {
 			clockRecoveryUsed = true
-			skipActiveClockSync = true
 			fmt.Fprintf(errOut,
 				"[lark-cli] [WARN] uat-client: Token Endpoint rejected the DPoP proof because iat was invalid; retrying once with synchronized time\n")
 			continue
@@ -484,7 +484,7 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 		}
 	}
 	code := parsed.Code
-	if code != 0 {
+	if code != 0 || parsed.Error != "" {
 		if dpop.IsClockRecoverySignal(code, parsed.Error) && proofKey != nil {
 			if !allowClockRecovery {
 				return refreshResult{action: refreshStopAndPreserve, err: errs.NewAuthenticationError(
@@ -579,11 +579,16 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 		}
 	}
 	if proofKey != nil && !strings.EqualFold(parsed.TokenType, dpop.TokenType) {
+		hint := recovery.Join("", recovery.Command(
+			recovery.TargetAuthLogin,
+			"run `lark-cli config dpop disabled`, then `lark-cli auth login` to replace the DPoP credential with a Bearer credential",
+		)).WithFallback(
+			"configure this profile to use Bearer credentials by running `lark-cli config dpop disabled`",
+		)
 		return refreshResult{
 			action: refreshStopAndPreserve,
-			err: errs.NewAuthenticationError(errs.SubtypeDPoPRequired,
-				"Token Endpoint returned %q token_type for a DPoP request", parsed.TokenType).
-				WithHint("retry after the server supports DPoP; the refresh token was preserved"),
+			err: recovery.Attach(errs.NewAuthenticationError(errs.SubtypeDPoPRequired,
+				"Token Endpoint returned %q token_type for a DPoP request", parsed.TokenType), hint),
 		}
 	}
 	if proofKey == nil && strings.EqualFold(parsed.TokenType, dpop.TokenType) {

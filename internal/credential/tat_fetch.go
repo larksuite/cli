@@ -39,7 +39,8 @@ type FetchedToken struct {
 	ExpiresIn     int64
 	StatusMessage string
 	DPoP          *dpop.Binding
-	proofFallback bool // New issuance fell back after three explicit proof rejections.
+	proofFallback bool  // New issuance fell back after explicit proof rejections.
+	clockSyncErr  error // Initial synchronization is best-effort; the caller may warn.
 }
 
 // FetchTAT mints a tenant token using client_credentials and the supplied DPoP
@@ -76,6 +77,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	createdKey := false
 	keepKey := false
 	exchangeStarted := false
+	var clockSyncErr error
 	defer func() {
 		if createdKey && !keepKey {
 			cleanupCtx := ctx
@@ -90,7 +92,6 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 					"failed to clean up an uncommitted DPoP key: %v", cleanupErr).
 					WithCause(errors.Join(retErr, cleanupErr)).
 					WithHint("%s", dpop.KeyStoreUnavailableHint)
-				return
 			}
 		}
 		// Preferred permits fallback after local preparation failures or three
@@ -108,11 +109,8 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		if keyStore == nil {
 			keyStore = dpop.NewKeyStore(nil)
 		}
-		if err := keyStore.ProbeWritableContext(ctx); err != nil {
-			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
-				"DPoP key storage is unavailable: %v", err).
-				WithCause(err).
-				WithHint("%s", dpop.KeyStorePreExchangeUnavailableHint)
+		if err := keyStore.RequireWritableContext(ctx); err != nil {
+			return nil, err
 		}
 		var err error
 		proofKey, createdKey, err = keyStore.PrepareReplaceableContext(ctx, tatDPoPKeyID(brand, appID))
@@ -126,14 +124,17 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 				WithCause(err).
 				WithHint("%s", dpop.KeyStorePreExchangeUnavailableHint)
 		}
-		if err := dpop.SynchronizeClock(ctx, httpClient, brand, proofKey); err != nil {
-			return nil, err
+		clockSyncErr = dpop.SynchronizeClock(ctx, httpClient, brand, proofKey)
+		if clockSyncErr != nil && ctx.Err() != nil {
+			return nil, clockSyncErr
 		}
-		if err := keyStore.SaveContext(ctx, proofKey); err != nil {
-			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
-				"failed to persist synchronized DPoP clock: %v", err).
-				WithCause(err).
-				WithHint("%s", dpop.KeyStorePreExchangeUnavailableHint)
+		if clockSyncErr == nil {
+			if err := keyStore.SaveContext(ctx, proofKey); err != nil {
+				return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
+					"failed to persist synchronized DPoP clock: %v", err).
+					WithCause(err).
+					WithHint("%s", dpop.KeyStorePreExchangeUnavailableHint)
+			}
 		}
 	}
 	exchangeStarted = true
@@ -142,8 +143,9 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		invalidProofsLeft = 3
 	}
 	result, retErr = requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, false, invalidProofsLeft)
-	if retErr == nil && result != nil && result.DPoP != nil {
-		keepKey = true
+	if retErr == nil && result != nil {
+		result.clockSyncErr = clockSyncErr
+		keepKey = result.DPoP != nil
 	}
 	return result, retErr
 }
@@ -281,7 +283,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 			if !strings.EqualFold(result.TokenType, dpop.TokenType) {
 				return nil, errs.NewAuthenticationError(errs.SubtypeDPoPRequired,
 					"Token Endpoint returned %q token_type for a DPoP request", result.TokenType).
-					WithHint("retry after the server supports DPoP; fallback is forbidden after a proof was sent")
+					WithHint("run `lark-cli config dpop disabled`, then retry")
 			}
 			binding, bindErr := dpop.NewBinding(result.AccessToken, proofKey)
 			if bindErr != nil {

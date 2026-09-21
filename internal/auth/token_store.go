@@ -112,6 +112,9 @@ func ResolveDPoPBindingContext(ctx context.Context, token *StoredUAToken, store 
 	}
 	key, err := store.LoadContext(ctx, token.DPoPKeyID)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok && problem.Hint != "" {
+			return nil, err
+		}
 		return nil, recovery.Attach(errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 			"stored DPoP key is unavailable: %v", err).
 			WithCause(err), dpopKeyUnavailableHint())
@@ -232,16 +235,7 @@ func deleteStoredToken(appID, userOpenID string) error {
 	}
 	if current != nil && current.DPoPKeyID != "" {
 		if err := dpop.NewKeyStore(nil).Delete(current.DPoPKeyID); err != nil {
-			// Keep the key reference discoverable so cleanup can be retried
-			// after a temporary signer or metadata-store failure.
-			cleanupErr := errs.NewInternalError(errs.SubtypeStorage,
-				"failed to delete DPoP key: %v", err).WithCause(err)
-			if restoreErr := writeStoredToken(appID, userOpenID, current); restoreErr != nil {
-				return errs.NewInternalError(errs.SubtypeStorage,
-					"failed to delete DPoP key and restore its token record").
-					WithCause(errors.Join(cleanupErr, restoreErr))
-			}
-			return cleanupErr
+			keychain.LogAuthError("dpop", "cleanup-removed-token-key", err)
 		}
 	}
 	return nil

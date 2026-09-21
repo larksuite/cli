@@ -5,6 +5,11 @@ package credential
 
 import (
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"io"
 	"net/http"
@@ -20,7 +25,7 @@ import (
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
-const invalidProofTATResponse = `{"code":1106072,"error":"` + dpop.InvalidProofOAuthError + `"}`
+var invalidProofTATResponse = `{"code":` + strconv.Itoa(dpop.ClockSkewErrorCode) + `,"error":"` + dpop.InvalidProofOAuthError + `"}`
 
 // stubRoundTripper lets us assert request shape and return canned responses.
 type stubRoundTripper struct {
@@ -74,12 +79,82 @@ func newTATDPoPStore(t *testing.T) *dpop.KeyStore {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	signer, err := keysigner.NewSoftwareSigner(t.TempDir(), func(context.Context) ([]byte, error) {
-		return []byte("placeholder-placeholder"), nil
+		return []byte("0123456789abcdef0123456789abcdef"), nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return dpop.NewKeyStoreWithSigner(tatDPoPMetadata{}, signer)
+}
+
+type tatTestSigner struct {
+	keys      map[string]*ecdsa.PrivateKey
+	deleteErr error
+}
+
+func newTATTestSigner() *tatTestSigner {
+	return &tatTestSigner{keys: map[string]*ecdsa.PrivateKey{}}
+}
+
+func (*tatTestSigner) Name() string { return "tat-test" }
+
+func (*tatTestSigner) SecurityLevel() keysigner.SecurityLevel {
+	return keysigner.SecurityLevelL3
+}
+
+func (s *tatTestSigner) EnsureKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s.keys[ref.Label] == nil {
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+		s.keys[ref.Label] = key
+	}
+	return &s.keys[ref.Label].PublicKey, nil
+}
+
+func (s *tatTestSigner) PublicKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	key := s.keys[ref.Label]
+	if key == nil {
+		return nil, keysigner.ErrKeyNotFound
+	}
+	return &key.PublicKey, nil
+}
+
+func (s *tatTestSigner) Sign(ctx context.Context, ref keysigner.KeyRef, input []byte) ([]byte, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	key := s.keys[ref.Label]
+	if key == nil {
+		return nil, "", keysigner.ErrKeyNotFound
+	}
+	digest := sha256.Sum256(input)
+	r, value, err := ecdsa.Sign(rand.Reader, key, digest[:])
+	if err != nil {
+		return nil, "", err
+	}
+	signature := make([]byte, 64)
+	r.FillBytes(signature[:32])
+	value.FillBytes(signature[32:])
+	return signature, keysigner.AlgES256, nil
+}
+
+func (s *tatTestSigner) DeleteKey(ctx context.Context, ref keysigner.KeyRef) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.deleteErr != nil {
+		return errors.Join(keysigner.ErrCleanupFailed, s.deleteErr)
+	}
+	delete(s.keys, ref.Label)
+	return nil
 }
 
 func TestFetchTAT_Success(t *testing.T) {
@@ -122,8 +197,8 @@ func TestFetchTATDPoPPolicyAndKeyLifetime(t *testing.T) {
 		wantErrSubtype errs.Subtype
 	}{
 		{name: "required", mode: core.DPoPModeRequired, heartbeat: heartbeat, wantDPoP: true, wantTokenCalls: 1},
-		{name: "preferred fallback before proof", mode: core.DPoPModePreferred, heartbeat: `{}`, wantTokenCalls: 1},
-		{name: "required clock failure", mode: core.DPoPModeRequired, heartbeat: `{}`, wantErrSubtype: errs.SubtypeDPoPClockSyncFailed},
+		{name: "preferred clock failure keeps DPoP", mode: core.DPoPModePreferred, heartbeat: `{}`, wantDPoP: true, wantTokenCalls: 1},
+		{name: "required clock failure", mode: core.DPoPModeRequired, heartbeat: `{}`, wantDPoP: true, wantTokenCalls: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newTATDPoPStore(t)
@@ -170,6 +245,9 @@ func TestFetchTATDPoPPolicyAndKeyLifetime(t *testing.T) {
 			if err != nil || token == nil || (token.DPoP != nil) != tc.wantDPoP ||
 				heartbeatCalls != 1 || tokenCalls != tc.wantTokenCalls {
 				t.Fatalf("fetchTAT() = (%+v, %v), heartbeat=%d token=%d", token, err, heartbeatCalls, tokenCalls)
+			}
+			if (token.clockSyncErr != nil) != (tc.heartbeat == `{}`) {
+				t.Fatal("clock synchronization warning was lost")
 			}
 			keyID := tatDPoPKeyID(core.BrandFeishu, "cli-dpop") + "-" + keysigner.SoftwareSignerName
 			_, loadErr := store.LoadContext(context.Background(), keyID)
@@ -572,7 +650,7 @@ func TestFetchTATRepeatedProofFallback(t *testing.T) {
 						}
 						proofs[proof] = true
 					}
-					body = `{"error":"` + response + `","code":1106072}`
+					body = `{"error":"` + response + `","code":` + strconv.Itoa(dpop.ClockSkewErrorCode) + `}`
 					if response == "Bearer" || response == "DPoP" {
 						body = `{"access_token":"token","expires_in":7200,"token_type":"` + response + `"}`
 					}
@@ -584,7 +662,7 @@ func TestFetchTATRepeatedProofFallback(t *testing.T) {
 				if tc.name != "without Date" {
 					header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 				} else {
-					body = strings.ReplaceAll(body, `,"code":1106072`, "")
+					body = strings.ReplaceAll(body, `,"code":`+strconv.Itoa(dpop.ClockSkewErrorCode), "")
 				}
 				return &http.Response{StatusCode: 200, Header: header, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 			})}
@@ -596,5 +674,53 @@ func TestFetchTATRepeatedProofFallback(t *testing.T) {
 				t.Fatalf("unexpected token: %+v", token)
 			}
 		})
+	}
+}
+
+func TestFetchTATCleanupFailureDoesNotBlockBearerFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	signer := newTATTestSigner()
+	store := dpop.NewKeyStoreWithSigner(tatDPoPMetadata{}, signer)
+	calls := 0
+	client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"code":0,"data":{"now":"` + strconv.FormatInt(time.Now().Unix(), 10) + `"}}`
+		if req.URL.Path == core.OAuthTokenV3Path {
+			calls++
+			proof := req.Header.Get(dpop.ProofHeader)
+			switch calls {
+			case 1, 2, 3:
+				if proof == "" {
+					t.Fatal("DPoP retry omitted proof")
+				}
+				body = invalidProofTATResponse
+				if calls == 3 {
+					signer.deleteErr = errors.New("cleanup denied")
+				}
+			case 4:
+				if proof != "" {
+					t.Fatal("Bearer fallback carried proof")
+				}
+				if len(signer.keys) == 0 {
+					t.Fatal("test did not exercise cleanup failure")
+				}
+				body = `{"code":0,"access_token":"bearer-token","expires_in":7200,"token_type":"Bearer"}`
+			default:
+				t.Fatal("unexpected extra token request")
+			}
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Date": []string{time.Now().UTC().Format(http.TimeFormat)}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	})}
+
+	token, err := fetchTAT(context.Background(), client, core.BrandFeishu, "cleanup", "secret", core.DPoPModePreferred, store)
+	if err != nil || token == nil || token.AccessToken != "bearer-token" || token.DPoP != nil || !token.proofFallback {
+		t.Fatalf("fetchTAT cleanup fallback = (%+v, %v)", token, err)
+	}
+	if calls != 4 {
+		t.Fatalf("token requests = %d, want 4", calls)
 	}
 }

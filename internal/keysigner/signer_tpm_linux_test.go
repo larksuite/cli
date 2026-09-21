@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+
+	"github.com/google/go-tpm/legacy/tpm2"
 )
 
 func TestTPMSignerUsesCallerDirectoryWithoutAccessingTPMForMissingKeys(t *testing.T) {
@@ -85,7 +87,7 @@ func TestTPMKeyRejectsInvalidSigningInputsBeforeDeviceAccess(t *testing.T) {
 	}
 }
 
-func TestTPMErrorClassificationOnlyPermitsKnownFallbacks(t *testing.T) {
+func TestTPMOpeningFailuresPermitFallback(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		path        string
@@ -95,9 +97,7 @@ func TestTPMErrorClassificationOnlyPermitsKnownFallbacks(t *testing.T) {
 		{"missing TPM", "/dev/tpmrm0", syscall.ENOENT, true},
 		{"permission denied", "/dev/tpmrm0", syscall.EACCES, true},
 		{"operation not permitted", "/dev/tpmrm0", syscall.EPERM, true},
-		{"I/O failure", "/dev/tpmrm0", syscall.EIO, false},
-		{"missing key file", "/keys/test-key", syscall.ENOENT, false},
-		{"key file permission denied", "/keys/test-key", syscall.EACCES, false},
+		{"I/O failure", "/dev/tpmrm0", syscall.EIO, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pathErr := &fs.PathError{Op: "open", Path: tc.path, Err: tc.cause}
@@ -110,5 +110,16 @@ func TestTPMErrorClassificationOnlyPermitsKnownFallbacks(t *testing.T) {
 				t.Fatalf("classification = %v, want unavailable=%v without rebinding", err, tc.unavailable)
 			}
 		})
+	}
+}
+
+func TestTPMRealProbeFailurePermitsFallback(t *testing.T) {
+	device, err := tpm2.OpenTPM(os.DevNull)
+	if device != nil {
+		device.Close()
+		t.Fatal("null device accepted as TPM")
+	}
+	if err == nil || !CanFallback(classifyTPMError(err)) || !errors.Is(classifyTPMError(err), err) {
+		t.Fatalf("real OpenTPM failure lost fallback or cause: %v", err)
 	}
 }

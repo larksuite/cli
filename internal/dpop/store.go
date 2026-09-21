@@ -16,7 +16,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/validate"
@@ -57,13 +56,17 @@ func withKeyStoreLockContext(ctx context.Context, fn func() error) (err error) {
 	}
 	defer cancel()
 
-	lockDir, err := validate.SafeEnvDirPath(filepath.Join(core.GetConfigDir(), "locks"), "DPoP store lock directory")
+	directory, err := signerStorageDir()
 	if err != nil {
 		return err
 	}
-	// ponytail: one lock serializes this workspace's store; partition only if
+	lockDir, err := validate.SafeEnvDirPath(filepath.Join(directory, "keysigner"), "key store lock directory")
+	if err != nil {
+		return err
+	}
+	// ponytail: one lock serializes the shared credential store; partition only if
 	// contention warrants it. A fixed filename avoids accumulating probe locks.
-	lockPath := filepath.Join(lockDir, "dpop_store.lock")
+	lockPath := filepath.Join(lockDir, "key_store.lock")
 	candidate := make(chan struct{}, 1)
 	candidate <- struct{}{}
 	value, _ := keyStoreProcessLocks.LoadOrStore(lockPath, candidate)
@@ -79,26 +82,26 @@ func withKeyStoreLockContext(ctx context.Context, fn func() error) (err error) {
 	}
 
 	if err := vfs.MkdirAll(lockDir, 0700); err != nil {
-		return errs.NewInternalError(errs.SubtypeFileIO, "failed to prepare DPoP key storage lock").
+		return errs.NewInternalError(errs.SubtypeFileIO, "failed to prepare key storage lock").
 			WithCause(err).
 			WithHint("Check whether local CLI storage is accessible, then retry.")
 	}
 	fileLock := flock.New(lockPath)
 	locked, err := fileLock.TryLockContext(lockContext, keyStoreLockRetryDelay)
 	if errors.Is(err, context.DeadlineExceeded) || (err == nil && !locked) {
-		return errs.NewInternalError(errs.SubtypeStorage, "timed out waiting for DPoP key storage lock").
+		return errs.NewInternalError(errs.SubtypeStorage, "timed out waiting for key storage lock").
 			WithRetryable().
 			WithCause(context.DeadlineExceeded).
 			WithHint("Retry the command.")
 	}
 	if err != nil {
-		return errs.NewInternalError(errs.SubtypeFileIO, "failed to acquire DPoP key storage lock").
+		return errs.NewInternalError(errs.SubtypeFileIO, "failed to acquire key storage lock").
 			WithCause(err).
 			WithHint("Check whether local CLI storage is accessible, then retry.")
 	}
 	defer func() {
 		if unlockErr := fileLock.Unlock(); err == nil && unlockErr != nil {
-			err = errs.NewInternalError(errs.SubtypeFileIO, "failed to release DPoP key storage lock").
+			err = errs.NewInternalError(errs.SubtypeFileIO, "failed to release key storage lock").
 				WithCause(unlockErr).
 				WithHint("Retry the command. If this persists, check whether local CLI storage is accessible.")
 		}
@@ -180,7 +183,10 @@ func (s *KeyStore) ProbeWritableContext(ctx context.Context) error {
 			if err == nil {
 				return nil
 			}
-			if errors.Is(err, keysigner.ErrUnavailable) {
+			if err != nil && ctx != nil && ctx.Err() != nil {
+				return errors.Join(ctx.Err(), err)
+			}
+			if keysigner.CanFallback(err) {
 				unavailable = append(unavailable, err)
 				continue
 			}
@@ -213,6 +219,41 @@ func (s *KeyStore) RequireWritableContext(ctx context.Context) error {
 	return wrapKeyStoreProbeError(s.ProbeWritableContext(ctx))
 }
 
+// RequireWritableForReauthorizationContext performs the ordinary writable
+// probe and repairs a definitively lost software unlock secret once. The
+// repair deletes software keys that can no longer be decrypted, so callers
+// must use it only while explicitly issuing a replacement credential.
+func (s *KeyStore) RequireWritableForReauthorizationContext(ctx context.Context) (bool, error) {
+	err := s.RequireWritableContext(ctx)
+	if err == nil || !errors.Is(err, keysigner.ErrUnlockRequired) {
+		return false, err
+	}
+	var found, removed bool
+	recoveryErr := withKeyStoreLockContext(ctx, func() error {
+		for _, signer := range s.signers {
+			software, ok := signer.(softwareSigner)
+			if !ok {
+				continue
+			}
+			found = true
+			var resetErr error
+			removed, resetErr = software.resetUnrecoverableKeys(ctx)
+			return resetErr
+		}
+		return nil
+	})
+	if recoveryErr != nil {
+		return removed, wrapKeyStoreProbeError(fmt.Errorf(
+			"remove unrecoverable DPoP software keys: %w",
+			errors.Join(keysigner.ErrUnlockRequired, recoveryErr),
+		))
+	}
+	if !found {
+		return false, err
+	}
+	return removed, s.RequireWritableContext(ctx)
+}
+
 // RequireKeyWritableContext validates metadata persistence and the exact signer
 // already owned by a binding, returning the token-flow error shape on failure.
 func (s *KeyStore) RequireKeyWritableContext(ctx context.Context, key *Key) error {
@@ -225,7 +266,7 @@ func wrapKeyStoreProbeError(err error) error {
 	}
 	hint := KeyStorePreExchangeUnavailableHint
 	if problem, ok := errs.ProblemOf(err); ok && problem.Hint != "" {
-		hint = problem.Hint + "; " + KeyStorePreExchangeUnavailableHint
+		hint = problem.Hint
 	}
 	return errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 		"DPoP key storage is unavailable: %v", err).
@@ -352,7 +393,10 @@ func (s *KeyStore) PrepareReplaceableContext(ctx context.Context, id string) (*K
 				}
 				key, err = s.ensureContext(ctx, keyID, []keysigner.Signer{signer})
 			}
-			if errors.Is(err, keysigner.ErrUnavailable) {
+			if err != nil && ctx != nil && ctx.Err() != nil {
+				return errors.Join(ctx.Err(), err)
+			}
+			if keysigner.CanFallback(err) {
 				unavailable = append(unavailable, err)
 				continue
 			}
@@ -530,11 +574,13 @@ func (s *KeyStore) DeleteKeyContext(ctx context.Context, key *Key) error {
 	return withKeyStoreLockContext(ctx, func() error {
 		if err := key.signer.DeleteKey(ctx, keysigner.KeyRef{Label: key.ID(), Algorithm: keysigner.AlgES256}); err != nil &&
 			!errors.Is(err, keysigner.ErrKeyNotFound) {
-			return fmt.Errorf("delete uncommitted DPoP key with signer %q: %w", key.Provider(), err)
+			return errors.Join(keysigner.ErrCleanupFailed,
+				fmt.Errorf("delete uncommitted DPoP key with signer %q: %w", key.Provider(), err))
 		}
 		if s.keychain != nil {
 			if err := s.keychain.Remove(keychain.LarkCliService, keyAccountPrefix+key.ID()); err != nil {
-				return fmt.Errorf("delete DPoP public key metadata: %w", err)
+				return errors.Join(keysigner.ErrCleanupFailed,
+					fmt.Errorf("delete DPoP public key metadata: %w", err))
 			}
 		}
 		s.pending.Delete(key.ID())
@@ -577,7 +623,7 @@ func (s *KeyStore) deleteContext(ctx context.Context, id string) error {
 		if err == nil || errors.Is(err, keysigner.ErrKeyNotFound) {
 			continue
 		}
-		if errors.Is(err, keysigner.ErrUnavailable) {
+		if keysigner.CanFallback(err) {
 			unavailable = errors.Join(unavailable, err)
 			continue
 		}

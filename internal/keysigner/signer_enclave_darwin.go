@@ -14,8 +14,8 @@ import (
 	"unsafe"
 )
 
-// Keep the application tag stable so existing native keys remain discoverable.
-const hardwareKeyTag = "com.larksuite.cli"
+// Labels supplied by callers identify keys within this signer namespace.
+const hardwareKeyTag = "keysigner"
 
 // These bindings are resolved by loadFFI alongside the L2 Keychain bindings.
 var (
@@ -67,7 +67,10 @@ func (secureEnclaveSigner) EnsureKey(ctx context.Context, ref KeyRef) (public cr
 			key, err = createSecureEnclaveKey(ref.Label)
 		}
 		if err != nil {
-			return err
+			if errors.Is(err, ErrCorrupt) {
+				return err
+			}
+			return fmt.Errorf("%w: %w", ErrUnavailable, err)
 		}
 		defer cfRelease(key)
 		public, err = secureEnclavePublicKey(key)
@@ -75,13 +78,13 @@ func (secureEnclaveSigner) EnsureKey(ctx context.Context, ref KeyRef) (public cr
 			// Roll back only the key this call created, never a reused identity.
 			query := cfDictCreateMutable(0, 0, cbDictKey, cbDictValue)
 			if query == 0 {
-				return errors.Join(err, errors.New("keysigner: create Secure Enclave cleanup query failed"))
+				return errors.Join(err, ErrCleanupFailed, errors.New("keysigner: create Secure Enclave cleanup query failed"))
 			}
 			defer cfRelease(query)
 			cfDictSetValue(query, kSecValueRef, key)
 			cfDictSetValue(query, kSecUseAuthenticationUI, kSecUseAuthenticationUIFail)
 			if status := secItemDelete(query); status != 0 && status != -25300 {
-				return errors.Join(err, &secureEnclaveError{operation: "roll back key", code: int(status), osStatus: true})
+				return errors.Join(err, ErrCleanupFailed, &secureEnclaveError{operation: "roll back key", code: int(status), osStatus: true})
 			}
 		}
 		return err
@@ -303,6 +306,8 @@ func (e *secureEnclaveError) Is(target error) bool {
 		return false
 	}
 	switch e.code {
+	case -128:
+		return target == context.Canceled
 	case -25300:
 		return target == ErrKeyNotFound
 	case -4, -25291, -34018:

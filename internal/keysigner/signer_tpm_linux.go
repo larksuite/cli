@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"math/big"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -98,20 +97,17 @@ func (s tpmSigner) withKey(ctx context.Context, ref KeyRef, create bool, operati
 		if err != nil {
 			return err
 		}
-		defer func() { err = errors.Join(err, key.Close()) }()
+		defer func() {
+			if cleanupErr := key.Close(); cleanupErr != nil {
+				err = errors.Join(err, ErrCleanupFailed, cleanupErr)
+			}
+		}()
 		return operation(key, algorithm)
 	})
 }
 
-func classifyTPMError(err error) error {
-	var pathErr *fs.PathError
-	// A missing or inaccessible TPM is unavailable to make downgrades possible; I/O and key-file errors stay hard failures.
-	if errors.As(err, &pathErr) && pathErr.Path == "/dev/tpmrm0" &&
-		(errors.Is(pathErr.Err, fs.ErrNotExist) || errors.Is(pathErr.Err, fs.ErrPermission)) {
-		return fmt.Errorf("%w: %w", ErrUnavailable, err)
-	}
-	return err
-}
+// Called only for device opening/probing, never for key-file errors.
+func classifyTPMError(err error) error { return fmt.Errorf("%w: %w", ErrUnavailable, err) }
 
 // Private is an integrity-protected TPM blob, never a software private key.
 // FixedTPM and FixedParent prevent duplication to a different TPM or parent.
@@ -166,26 +162,21 @@ func openTPMKey(ctx context.Context, path string, ref KeyRef, algorithm signingA
 	key := &tpmKey{device: device, path: path}
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, key.Close())
+			if cleanupErr := key.Close(); cleanupErr != nil {
+				err = errors.Join(err, ErrCleanupFailed, cleanupErr)
+			}
 		}
 	}()
 	// Recreate this deterministic storage parent per operation. No persistent
 	// TPM handles are allocated or evicted, so unrelated applications are untouched.
-	key.parent, _, err = tpm2.CreatePrimary(device, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", tpm2.Public{
-		Type: tpm2.AlgRSA, NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagStorageDefault | tpm2.FlagNoDA,
-		RSAParameters: &tpm2.RSAParams{
-			KeyBits:   2048,
-			Symmetric: &tpm2.SymScheme{Alg: tpm2.AlgAES, KeyBits: 128, Mode: tpm2.AlgCFB},
-		},
-	})
+	key.parent, _, err = tpm2.CreatePrimary(device, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", tpmStorageParentTemplate())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	if errors.Is(readErr, ErrKeyNotFound) {
 		blob.Private, blob.Public, _, _, _, err = tpm2.CreateKey(device, key.parent, tpm2.PCRSelection{}, "", "", template)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 		}
 	}
 	area, err := tpm2.DecodePublic(blob.Public)
@@ -225,6 +216,18 @@ func openTPMKey(ctx context.Context, path string, ref KeyRef, algorithm signingA
 		}
 	}
 	return key, nil
+}
+
+// Use an ECC storage parent because it is recreated for every key operation.
+func tpmStorageParentTemplate() tpm2.Public {
+	return tpm2.Public{
+		Type: tpm2.AlgECC, NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagStorageDefault | tpm2.FlagNoDA,
+		ECCParameters: &tpm2.ECCParams{
+			CurveID:   tpm2.CurveNISTP256,
+			Symmetric: &tpm2.SymScheme{Alg: tpm2.AlgAES, KeyBits: 128, Mode: tpm2.AlgCFB},
+		},
+	}
 }
 
 func (k *tpmKey) Public() crypto.PublicKey { return k.public }

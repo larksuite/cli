@@ -11,6 +11,6 @@ func signerStorageDir() (string, error) {
 	return keychain.StorageDir(keychain.LarkCliService), nil
 }
 
-func softwareUnlockLockDir(directory string) (string, error) {
+func unlockSecretLockDirectory(directory string) (string, error) {
 	return directory, nil
 }

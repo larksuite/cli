@@ -55,7 +55,7 @@ key regardless of the configured mode.`,
 					WithCause(err)
 			}
 			if mode == core.DPoPModeRequired {
-				if err := dpop.NewKeyStore(f.Keychain).ProbeWritableContext(cmd.Context()); err != nil {
+				if err := dpop.NewKeyStore(nil).ProbeWritableContext(cmd.Context()); err != nil {
 					return errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 						"DPoP key storage is unavailable: %v", err).
 						WithCause(err).

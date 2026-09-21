@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -131,7 +130,7 @@ func (s *testStoreSigner) DeleteKey(ctx context.Context, ref keysigner.KeyRef) e
 }
 
 func TestKeyStoreCommitsRestoresAndDeletesExactBinding(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	ctx := context.Background()
 	kc := &testMetadataStore{values: map[string]string{}}
 	signer := newTestStoreSigner("original", keysigner.SecurityLevelL2)
@@ -176,7 +175,7 @@ func TestKeyStoreCommitsRestoresAndDeletesExactBinding(t *testing.T) {
 }
 
 func TestKeyStoreFallbackOnlyForUnavailableNewKeys(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	denied := errors.New("injected access denied")
 	for _, cause := range []error{keysigner.ErrUnavailable, denied, keysigner.ErrCorrupt} {
 		t.Run(cause.Error(), func(t *testing.T) {
@@ -198,7 +197,7 @@ func TestKeyStoreFallbackOnlyForUnavailableNewKeys(t *testing.T) {
 }
 
 func TestKeyStoreRejectsTamperingAndNeverRecreatesBoundKey(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	for _, change := range []string{"provider", "security_level", "jwk", "jkt", "version", "missing_private_key", "backend_replaced_key"} {
 		t.Run(change, func(t *testing.T) {
 			kc := &testMetadataStore{values: map[string]string{}}
@@ -257,7 +256,7 @@ func TestKeyStoreRejectsTamperingAndNeverRecreatesBoundKey(t *testing.T) {
 }
 
 func TestKeyStoreFailedCommitKeepsRollbackOwnership(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	kc := &testMetadataStore{values: map[string]string{}}
 	signer := newTestStoreSigner("selected", keysigner.SecurityLevelL2)
 	other := newTestStoreSigner("other", keysigner.SecurityLevelL1)
@@ -289,7 +288,7 @@ func TestKeyStoreFailedCommitKeepsRollbackOwnership(t *testing.T) {
 }
 
 func TestKeyStoreProbeCleansUpAfterCancellationAndPreservesErrors(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	kc := &testMetadataStore{values: map[string]string{}}
 	signer := newTestStoreSigner("selected", keysigner.SecurityLevelL2)
 	store := NewKeyStoreWithSigner(kc, signer)
@@ -310,14 +309,18 @@ func TestKeyStoreProbeCleansUpAfterCancellationAndPreservesErrors(t *testing.T) 
 	if !errors.Is(err, signErr) || !errors.Is(err, deleteErr) {
 		t.Fatalf("probe lost operation or cleanup failure: %v", err)
 	}
-	entries, err := os.ReadDir(filepath.Join(core.GetConfigDir(), "locks"))
-	if err != nil || len(entries) != 1 || entries[0].Name() != "dpop_store.lock" {
+	directory, err := signerStorageDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(directory, "keysigner"))
+	if err != nil || len(entries) != 1 || entries[0].Name() != "key_store.lock" {
 		t.Fatalf("probes must reuse one store lock: entries = %v, err = %v", entries, err)
 	}
 }
 
 func TestKeyStoreOnlyReplaceableKeysRecoverFromMissingPrivateKey(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	ctx := context.Background()
 	kc := &testMetadataStore{values: map[string]string{}}
 	signer := newTestStoreSigner("selected", keysigner.SecurityLevelL2)
@@ -345,7 +348,7 @@ func TestKeyStoreOnlyReplaceableKeysRecoverFromMissingPrivateKey(t *testing.T) {
 }
 
 func TestReplaceableKeysAreIsolatedByBackend(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	ctx := context.Background()
 	kc := &testMetadataStore{values: map[string]string{}}
 	first := newTestStoreSigner("hardware", keysigner.SecurityLevelL1)
@@ -395,7 +398,7 @@ func TestReplaceableKeysAreIsolatedByBackend(t *testing.T) {
 }
 
 func TestKeyStoreMetadataProbeFailsBeforeNativeKeyCreation(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	cause := errors.New("metadata backend failed")
 	for _, operation := range []string{"read", "write", "remove"} {
 		t.Run(operation, func(t *testing.T) {
@@ -428,7 +431,7 @@ func TestKeyStoreMetadataProbeFailsBeforeNativeKeyCreation(t *testing.T) {
 }
 
 func TestKeyStoreBoundProbeAndDeletionCannotSwitchProvider(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	kc := &testMetadataStore{values: map[string]string{}}
 	signer := newTestStoreSigner("original", keysigner.SecurityLevelL2)
 	store := NewKeyStoreWithSigner(kc, signer)
@@ -465,7 +468,7 @@ func TestKeyStoreBoundProbeAndDeletionCannotSwitchProvider(t *testing.T) {
 }
 
 func TestKeyStoreCommitRejectsKeyChangedAfterIssuance(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	kc := &testMetadataStore{values: map[string]string{}}
 	signer := newTestStoreSigner("selected", keysigner.SecurityLevelL2)
 	store := NewKeyStoreWithSigner(kc, signer)
@@ -493,7 +496,7 @@ func TestKeyStoreCommitRejectsKeyChangedAfterIssuance(t *testing.T) {
 }
 
 func TestKeyStoreOperationsWaitForSharedLock(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	kc := &testMetadataStore{values: map[string]string{}}
 	signer := newTestStoreSigner("selected", keysigner.SecurityLevelL2)
 	store := NewKeyStoreWithSigner(kc, signer)
@@ -571,7 +574,7 @@ func TestKeyStoreFileLockAcrossProcesses(t *testing.T) {
 		}
 		return
 	}
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateSoftwareStorage(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestKeyStoreFileLockAcrossProcesses$")
@@ -600,6 +603,7 @@ func TestKeyStoreFileLockAcrossProcesses(t *testing.T) {
 	if line, err := bufio.NewReader(stdout).ReadString('\n'); err != nil || line != "LOCKED\n" {
 		t.Fatalf("helper readiness = %q, err = %v", line, err)
 	}
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir()) // Different config, same shared native keychain.
 	signer := newTestStoreSigner("selected", keysigner.SecurityLevelL2)
 	store := NewKeyStoreWithSigner(&testMetadataStore{values: map[string]string{}}, signer)
 	waitCtx, stop := context.WithTimeout(ctx, 30*time.Millisecond)
@@ -634,13 +638,20 @@ func TestKeyStoreFileLockAcrossProcesses(t *testing.T) {
 }
 
 func TestKeyStoreLockDirectoryFailure(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	if err := os.WriteFile(filepath.Join(core.GetConfigDir(), "locks"), nil, 0600); err != nil {
+	isolateSoftwareStorage(t)
+	directory, err := signerStorageDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "keysigner"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
 	signer := newTestStoreSigner("selected", keysigner.SecurityLevelL2)
 	store := NewKeyStoreWithSigner(&testMetadataStore{values: map[string]string{}}, signer)
-	_, err := store.Generate()
+	_, err = store.Generate()
 	problem, ok := errs.ProblemOf(err)
 	var pathErr *os.PathError
 	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeFileIO ||

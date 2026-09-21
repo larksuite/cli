@@ -30,7 +30,7 @@ const (
 	ProofHeader            = "DPoP"
 	Scheme                 = "DPoP"
 	TokenType              = "DPoP"
-	ClockSkewErrorCode     = 1106072
+	ClockSkewErrorCode     = 20153
 	InvalidProofOAuthError = "invalid_dpop_proof"
 )
 

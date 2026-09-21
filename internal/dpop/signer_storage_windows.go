@@ -29,7 +29,7 @@ func signerStorageDir() (string, error) {
 	return filepath.Join(directory, keychain.LarkCliService), nil
 }
 
-func softwareUnlockLockDir(_ string) (string, error) {
+func unlockSecretLockDirectory(_ string) (string, error) {
 	// HKCU shares one secret even when callers override the private-key directory.
 	directory, err := os.UserCacheDir()
 	if err != nil {

@@ -14,7 +14,6 @@ import (
 	"errors"
 	"math/big"
 	"os"
-	"path/filepath"
 	"testing"
 	"unsafe"
 
@@ -26,7 +25,7 @@ func TestSecureEnclaveLifecycleAndNativeFailures(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("HOME", root)
 	t.Cleanup(func() {
-		if _, err := os.Stat(filepath.Join(root, "Library", "Application Support", "lark-cli", "keysigner")); !errors.Is(err, os.ErrNotExist) {
+		if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
 			t.Fatalf("Secure Enclave operations created local state: %v", err)
 		}
 	})
@@ -62,7 +61,7 @@ func TestSecureEnclaveLifecycleAndNativeFailures(t *testing.T) {
 	signer := secureEnclaveSigner{}
 	name := cfStringCreate(0, cstr(ref.Label), cfStringEncodingUTF8)
 	defer cfRelease(name)
-	tag := cfBytes([]byte("com.larksuite.cli"))
+	tag := cfBytes([]byte("keysigner"))
 	defer cfRelease(tag)
 	bits := int32(256)
 	size := cfNumberCreate(0, 3, &bits)
@@ -204,10 +203,16 @@ func TestSecureEnclaveLifecycleAndNativeFailures(t *testing.T) {
 		t.Fatalf("non-hardware key accepted or existing key mutated: %v", err)
 	}
 	wrongToken = false
-	findStatus = -34018
 	beforeCreates := creates
-	if _, err := signer.EnsureKey(ctx, ref); !errors.Is(err, ErrUnavailable) || creates != beforeCreates {
-		t.Fatalf("entitlement failure must permit fallback without replacing the key: %v", err)
+	for _, status := range []int32{-34018, -25308, -25293, -99999, -128} {
+		findStatus = status
+		_, err := signer.EnsureKey(ctx, ref)
+		if CanFallback(err) != (status != -128) || creates != beforeCreates {
+			t.Fatalf("status %d fallback=%v error=%v", status, CanFallback(err), err)
+		}
+		if status == -128 && !errors.Is(err, context.Canceled) {
+			t.Fatal("user cancellation lost")
+		}
 	}
 	findStatus = 0
 	found, badPublic = false, true

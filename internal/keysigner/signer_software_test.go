@@ -16,12 +16,14 @@ import (
 	"testing"
 )
 
-const testUnlockSecret = "placeholder-placeholder"
+func newTestUnlockSecret() []byte {
+	return bytes.Repeat([]byte{0x42}, 32)
+}
 
 func TestSoftwareSignerLifecycle(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	unlock := func(context.Context) ([]byte, error) { return []byte(testUnlockSecret), nil }
+	unlock := func(context.Context) ([]byte, error) { return newTestUnlockSecret(), nil }
 	signer, err := NewSoftwareSigner(dir, unlock)
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +86,7 @@ func TestSoftwareSignerLifecycle(t *testing.T) {
 func TestSoftwareSignerRejectsKeyFileTampering(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	unlock := func(context.Context) ([]byte, error) { return []byte(testUnlockSecret), nil }
+	unlock := func(context.Context) ([]byte, error) { return newTestUnlockSecret(), nil }
 	signer, err := NewSoftwareSigner(dir, unlock)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +108,7 @@ func TestSoftwareSignerRejectsKeyFileTampering(t *testing.T) {
 	if err := json.Unmarshal(record.Data, &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if envelope.KDF != softwareKDF || len(envelope.Salt) != 16 || len(envelope.Nonce) != 12 {
+	if envelope.KDF != "hkdf-sha256-aes256gcm" || len(envelope.Salt) != 16 || len(envelope.Nonce) != 12 {
 		t.Fatalf("unexpected encrypted envelope: %+v", envelope)
 	}
 	if _, err := x509.ParsePKCS8PrivateKey(envelope.Ciphertext); err == nil {
@@ -114,7 +116,7 @@ func TestSoftwareSignerRejectsKeyFileTampering(t *testing.T) {
 	}
 
 	wrong, err := NewSoftwareSigner(dir, func(context.Context) ([]byte, error) {
-		return []byte("different-synthetic-unlock-secret"), nil
+		return bytes.Repeat([]byte{0x24}, 32), nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +157,10 @@ func TestSoftwareSignerRejectsKeyFileTampering(t *testing.T) {
 		{"backend", func(changed *keyFileRecord) { changed.Backend = "other" }, ErrCorrupt},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			changed := record
+			var changed keyFileRecord
+			if err := json.Unmarshal(original, &changed); err != nil {
+				t.Fatal(err)
+			}
 			tc.mutate(&changed)
 			payload, err := json.Marshal(changed)
 			if err != nil {
@@ -205,10 +210,10 @@ func TestSoftwareSignerClearsAndValidatesUnlockSecret(t *testing.T) {
 		err    error
 		want   error
 	}{
-		{name: "success", secret: []byte(testUnlockSecret)},
-		{name: "provider error", secret: []byte(testUnlockSecret), err: cause, want: cause},
-		{name: "too short", secret: make([]byte, 15), want: ErrUnlockRequired},
-		{name: "too long", secret: make([]byte, 1025), want: ErrUnlockRequired},
+		{name: "success", secret: newTestUnlockSecret()},
+		{name: "provider error", secret: newTestUnlockSecret(), err: cause, want: cause},
+		{name: "too short", secret: make([]byte, 31), want: ErrUnlockRequired},
+		{name: "too long", secret: make([]byte, 33), want: ErrUnlockRequired},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			signer, err := NewSoftwareSigner(t.TempDir(), func(context.Context) ([]byte, error) {
@@ -227,7 +232,7 @@ func TestSoftwareSignerClearsAndValidatesUnlockSecret(t *testing.T) {
 		t.Fatalf("nil unlock provider: %v", err)
 	}
 	if _, err := NewSoftwareSigner("caller/keys", func(context.Context) ([]byte, error) {
-		return []byte(testUnlockSecret), nil
+		return newTestUnlockSecret(), nil
 	}); err != nil {
 		t.Fatalf("caller-selected relative directory: %v", err)
 	}

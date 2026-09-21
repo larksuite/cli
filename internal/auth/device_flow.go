@@ -173,7 +173,10 @@ func pollDeviceTokenWithKeyStore(ctx context.Context, httpClient *http.Client, a
 	}
 	requestSent := false
 	var key *dpop.Key
-	err := keyStore.RequireWritableContext(ctx)
+	recoveredSoftwareKeys, err := keyStore.RequireWritableForReauthorizationContext(ctx)
+	if recoveredSoftwareKeys && errOut != nil {
+		fmt.Fprintln(errOut, "[lark-cli] [WARN] auth login: removed unrecoverable DPoP software keys after their unlock secret was lost")
+	}
 	var result *DeviceFlowResult
 	if err != nil {
 		result = &DeviceFlowResult{
@@ -199,22 +202,30 @@ func pollDeviceTokenWithKeyStore(ctx context.Context, httpClient *http.Client, a
 		}
 		if !result.OK || result.Token == nil || result.Token.DPoP == nil {
 			if cleanupErr := keyStore.DeleteKeyContext(context.WithoutCancel(ctx), key); cleanupErr != nil {
-				result = &DeviceFlowResult{
-					OK:      false,
-					Error:   deviceFlowErrorDPoPKeyCleanupFailed,
-					Message: "failed to clean up uncommitted DPoP key",
-					Err: errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
-						"failed to clean up an uncommitted DPoP key: %v", cleanupErr).
-						WithCause(errors.Join(result.Err, cleanupErr)).
-						WithHint("%s", dpop.KeyStoreUnavailableHint),
+				cleanupProblem := errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
+					"failed to clean up an uncommitted DPoP key: %v", cleanupErr).
+					WithCause(errors.Join(result.Err, cleanupErr)).
+					WithHint("%s", dpop.KeyStoreUnavailableHint)
+				if result == nil {
+					result = &DeviceFlowResult{
+						OK:      false,
+						Error:   deviceFlowErrorDPoPKeyCleanupFailed,
+						Message: "failed to clean up uncommitted DPoP key",
+						Err:     cleanupProblem,
+					}
+				} else {
+					result.Err = errors.Join(result.Err, cleanupProblem)
 				}
 			}
 		}
 	}
 	if mode == core.DPoPModePreferred && ctx.Err() == nil && ((!requestSent && deviceFlowFallbackAllowed(result)) ||
-		(result.Error != deviceFlowErrorDPoPKeyCleanupFailed && errors.Is(result.Err, dpop.ErrRepeatedInvalidProof))) {
+		errors.Is(result.Err, dpop.ErrRepeatedInvalidProof)) {
 		if errors.Is(result.Err, dpop.ErrRepeatedInvalidProof) && errOut != nil {
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] three consecutive %s responses; retrying new token issuance as Bearer\n", dpop.InvalidProofOAuthError)
+		}
+		if errors.Is(result.Err, keysigner.ErrCleanupFailed) && errOut != nil {
+			fmt.Fprintln(errOut, "[lark-cli] [WARN] DPoP key cleanup failed; retrying new token issuance as Bearer")
 		}
 		return PollDeviceToken(ctx, httpClient, appId, appSecret, brand, deviceCode, interval, expiresIn, errOut)
 	}
@@ -228,13 +239,14 @@ func deviceFlowFallbackAllowed(result *DeviceFlowResult) bool {
 	if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
 		return false
 	}
+	if errors.Is(result.Err, keysigner.ErrCleanupFailed) {
+		return true
+	}
 	switch result.Error {
 	case deviceFlowErrorDPoPKeyUnavailable, deviceFlowErrorDPoPKeyGenerationFailed:
 		return true
-	case deviceFlowErrorDPoPKeyCleanupFailed:
-		return false
 	}
-	if errors.Is(result.Err, keysigner.ErrUnavailable) {
+	if keysigner.CanFallback(result.Err) {
 		return true
 	}
 	problem, ok := errs.ProblemOf(result.Err)
@@ -259,7 +271,6 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 	attempts := 0
 	invalidProofs := 0
 	clockRecoveryUsed := false
-	skipActiveClockSync := false
 
 	for time.Now().Before(deadline) && attempts < maxPollAttempts {
 		attempts++
@@ -270,17 +281,14 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 			return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Polling was cancelled"}, nil
 		}
 
-		if proofKey != nil && !skipActiveClockSync {
+		if proofKey != nil && attempts == 1 {
 			if err := dpop.SynchronizeClock(ctx, httpClient, brand, proofKey); err != nil {
-				return &DeviceFlowResult{
-					OK:      false,
-					Error:   string(errs.SubtypeDPoPClockSyncFailed),
-					Message: "failed to synchronize DPoP clock",
-					Err:     err,
-				}, nil
+				if ctx.Err() != nil {
+					return &DeviceFlowResult{Error: string(errs.SubtypeDPoPClockSyncFailed), Err: err, Message: "Polling was cancelled"}, nil
+				}
+				fmt.Fprintf(errOut, "[lark-cli] [WARN] device-flow: clock synchronization failed; continuing with the existing clock: %v\n", err)
 			}
 		}
-		skipActiveClockSync = false
 
 		form := url.Values{}
 		form.Set("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
@@ -358,7 +366,6 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 					clockRecoveryUsed = true
 				}
 			}
-			skipActiveClockSync = true
 			continue
 		}
 		invalidProofs = 0
@@ -380,7 +387,6 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 			}
 			proofKey.Clock().SetServerTime(serverTime, localReceiveTime)
 			clockRecoveryUsed = true
-			skipActiveClockSync = true
 			continue
 		}
 
@@ -389,7 +395,7 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 			if proofKey != nil && !strings.EqualFold(tokenType, dpop.TokenType) {
 				return &DeviceFlowResult{OK: false, Error: string(errs.SubtypeDPoPRequired), Message: "Token Endpoint returned a Bearer token for a DPoP request", Err: errs.NewAuthenticationError(
 					errs.SubtypeDPoPRequired, "Token Endpoint returned %q token_type for a DPoP request", tokenType).
-					WithHint("retry after the server supports DPoP; fallback is forbidden after a proof was sent")}, nil
+					WithHint("run `lark-cli config dpop disabled`, then restart authorization")}, nil
 			}
 			if proofKey == nil && strings.EqualFold(tokenType, dpop.TokenType) {
 				return &DeviceFlowResult{OK: false, Error: string(errs.SubtypeDPoPKeyMissing), Message: "Token Endpoint returned a DPoP token without a local key", Err: errs.NewAuthenticationError(

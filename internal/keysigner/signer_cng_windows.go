@@ -91,39 +91,36 @@ func (es256Algorithm) cngPublicKey(key windows.Handle) (crypto.PublicKey, error)
 	return P256PublicKey(public)
 }
 
+// Keep native pointer conversion at the syscall boundary.
+var cngSignECDSA = func(key windows.Handle, digest, signature []byte, size *uint32) uintptr {
+	var output *byte
+	if len(signature) != 0 {
+		output = &signature[0]
+	}
+	status, _, _ := ncryptSignHash.Call(uintptr(key), 0,
+		uintptr(unsafe.Pointer(&digest[0])), uintptr(len(digest)),
+		uintptr(unsafe.Pointer(output)), uintptr(len(signature)),
+		uintptr(unsafe.Pointer(size)), 0)
+	return status
+}
+
 func (a es256Algorithm) signCNG(key windows.Handle, signingInput []byte) ([]byte, error) {
 	digest := a.common().digest(signingInput)
 	var size uint32
-	status, _, _ := ncryptSignHash.Call(
-		uintptr(key),
-		0,
-		uintptr(unsafe.Pointer(&digest[0])),
-		uintptr(len(digest)),
-		0,
-		0,
-		uintptr(unsafe.Pointer(&size)),
-		0,
-	)
+	status := cngSignECDSA(key, digest, nil, &size)
 	if status != 0 {
 		return nil, cngError("measure ECDSA signature", status)
 	}
+	if size != 64 {
+		return nil, fmt.Errorf("%w: CNG reported %d-byte P-256 signature", ErrCorrupt, size)
+	}
 	signature := make([]byte, size)
-	status, _, _ = ncryptSignHash.Call(
-		uintptr(key),
-		0,
-		uintptr(unsafe.Pointer(&digest[0])),
-		uintptr(len(digest)),
-		uintptr(unsafe.Pointer(&signature[0])),
-		uintptr(len(signature)),
-		uintptr(unsafe.Pointer(&size)),
-		0,
-	)
+	status = cngSignECDSA(key, digest, signature, &size)
 	if status != 0 {
 		return nil, cngError("sign digest", status)
 	}
-	signature = signature[:size]
-	if len(signature) != 64 {
-		return nil, fmt.Errorf("keysigner: CNG returned %d-byte P-256 signature", len(signature))
+	if size != 64 {
+		return nil, fmt.Errorf("%w: CNG returned %d-byte P-256 signature", ErrCorrupt, size)
 	}
 	return signature, nil
 }
@@ -234,6 +231,12 @@ func (s cngSigner) SecurityLevel() SecurityLevel {
 }
 
 func (s cngSigner) EnsureKey(ctx context.Context, ref KeyRef) (_ crypto.PublicKey, retErr error) {
+	defer func() {
+		var native cngStatusError
+		if errors.As(retErr, &native) {
+			retErr = fmt.Errorf("%w: %w", ErrUnavailable, retErr)
+		}
+	}()
 	selected, err := s.algorithmForRef(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -288,7 +291,7 @@ func (s cngSigner) EnsureKey(ctx context.Context, ref KeyRef) (_ crypto.PublicKe
 			if status == 0 {
 				return
 			}
-			retErr = errors.Join(retErr, cngError(fmt.Sprintf("clean up new key %q", ref.Label), status))
+			retErr = errors.Join(retErr, ErrCleanupFailed, cngError(fmt.Sprintf("clean up new key %q", ref.Label), status))
 		}
 		freeCNGObject(key)
 	}()
@@ -475,12 +478,9 @@ func openCNGKey(provider windows.Handle, name *uint16) (windows.Handle, error) {
 	return key, nil
 }
 
-func (s cngSigner) containerName(label string) string {
-	if !s.software {
-		return label
-	}
+func (cngSigner) containerName(label string) string {
 	digest := sha256.Sum256([]byte(label))
-	return "lark-cli-keysigner-" + base64.RawURLEncoding.EncodeToString(digest[:])
+	return "keysigner-" + base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
 func isCNGNotFound(err error) bool {
@@ -509,6 +509,8 @@ func (e cngStatusError) Unwrap() error { return syscall.Errno(e.code) }
 func cngError(operation string, status uintptr) error {
 	err := cngStatusError{operation: operation, code: uint32(status)}
 	switch uint32(status) {
+	case 0x80090036, 0x800704C7, 1223: // NTE_USER_CANCELLED and ERROR_CANCELLED.
+		return fmt.Errorf("%w: %w", context.Canceled, err)
 	case 0x80090029, 0x80090030, 0x8028400F, 0x80290401:
 		// NTE_NOT_SUPPORTED, NTE_DEVICE_NOT_READY, TBS_E_TPM_NOT_FOUND,
 		// TPM_E_PCP_DEVICE_NOT_READY: preserve the previous L1 fallback contract.

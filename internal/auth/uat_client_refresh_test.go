@@ -25,6 +25,8 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -35,7 +37,7 @@ type refreshHTTPTestStep struct {
 	beforeReply func() error
 }
 
-const invalidProofRefreshResponse = `{"code":1106072,"error":"` + dpop.InvalidProofOAuthError + `"}`
+var invalidProofRefreshResponse = `{"code":` + strconv.Itoa(dpop.ClockSkewErrorCode) + `,"error":"` + dpop.InvalidProofOAuthError + `"}`
 
 func newRefreshTestToken() *StoredUAToken {
 	now := time.Now()
@@ -328,6 +330,15 @@ func TestRefreshDPoPTokenRecoversClockAndKeepsBinding(t *testing.T) {
 			problem := requireRefreshProblem(t, result.err, errs.CategoryAuthentication, tc.subtype, false)
 			if result.action != refreshStopAndPreserve || problem.Hint == "" {
 				t.Fatalf("refresh result = %+v", result)
+			}
+			if tc.subtype == errs.SubtypeDPoPRequired {
+				concealed := recovery.Render(result.err, surface.NewPlan(map[surface.CommandID]surface.CommandState{
+					surface.CommandAuthLogin: surface.CommandConcealed,
+				}))
+				concealedProblem := requireRefreshProblem(t, concealed, errs.CategoryAuthentication, tc.subtype, false)
+				if strings.Contains(concealedProblem.Hint, "auth login") || concealedProblem.Hint == "" {
+					t.Fatalf("concealed hint = %q, want target-free recovery", concealedProblem.Hint)
+				}
 			}
 		})
 	}

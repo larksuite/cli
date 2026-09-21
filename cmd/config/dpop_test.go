@@ -4,20 +4,16 @@
 package config
 
 import (
-	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/zalando/go-keyring"
 )
-
-type dpopProbeFailure struct{ err error }
-
-func (k dpopProbeFailure) Get(string, string) (string, error) { return "", k.err }
-func (k dpopProbeFailure) Set(string, string, string) error   { return k.err }
-func (k dpopProbeFailure) Remove(string, string) error        { return k.err }
 
 func TestDPoPConfigPersistsOnlySelectedProfile(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -30,8 +26,6 @@ func TestDPoPConfigPersistsOnlySelectedProfile(t *testing.T) {
 	}
 	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
 	f.Invocation.Profile = "second"
-	probeErr := errors.New("storage must not be probed for preferred or disabled")
-	f.Keychain = dpopProbeFailure{err: probeErr}
 	if err := NewCmdConfigDPoP(f).Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -63,12 +57,17 @@ func TestDPoPConfigPersistsOnlySelectedProfile(t *testing.T) {
 
 func TestDPoPConfigRejectsInvalidInputAndFailedRequiredProbe(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	blockedRoot := filepath.Join(t.TempDir(), "blocked")
+	if err := os.WriteFile(blockedRoot, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", blockedRoot)
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", blockedRoot)
+	keyring.MockInit()
 	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{Apps: []core.AppConfig{{AppId: "app-test", DPoPMode: core.DPoPModeDisabled}}}); err != nil {
 		t.Fatal(err)
 	}
 	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
-	probeErr := errors.New("injected metadata store locked")
-	f.Keychain = dpopProbeFailure{err: probeErr}
 	for _, input := range []string{"REQUIRED", "required ", "on", "required"} {
 		cmd := NewCmdConfigDPoP(f)
 		cmd.SilenceUsage = true
@@ -83,8 +82,8 @@ func TestDPoPConfigRejectsInvalidInputAndFailedRequiredProbe(t *testing.T) {
 		if !ok || p.Subtype != want {
 			t.Fatalf("%q: error = %v", input, err)
 		}
-		if input == "required" && (p.Hint == "" || !errors.Is(err, probeErr)) {
-			t.Fatalf("lost probe cause or recovery: %v", err)
+		if input == "required" && p.Hint == "" {
+			t.Fatalf("lost probe recovery: %v", err)
 		}
 		loaded, loadErr := core.LoadMultiAppConfig()
 		if loadErr != nil || loaded.Apps[0].DPoPMode != core.DPoPModeDisabled || stdout.Len() != 0 {

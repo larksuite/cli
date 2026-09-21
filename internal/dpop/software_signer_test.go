@@ -153,6 +153,43 @@ func TestSoftwareSignerDoesNotReplaceMissingOrCorruptUnlockSecret(t *testing.T) 
 	}
 }
 
+func TestReauthorizationReplacesKeysAfterSoftwareUnlockSecretIsLost(t *testing.T) {
+	directory := isolateSoftwareStorage(t)
+	kc := &testMetadataStore{values: map[string]string{}}
+	store := newKeyStoreWithSigners(kc, []keysigner.Signer{softwareSigner{keychain: kc}})
+	ctx := context.Background()
+
+	oldKey, err := store.GenerateContext(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveContext(ctx, oldKey); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := filepath.Join(directory, "notes.json")
+	if err := os.WriteFile(unrelated, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	delete(kc.values, softwareUnlockAccount)
+
+	removed, err := store.RequireWritableForReauthorizationContext(ctx)
+	if err != nil || !removed {
+		t.Fatalf("reauthorization recovery = (%v, %v), want key removal", removed, err)
+	}
+	if _, err := os.Stat(unrelated); err != nil {
+		t.Fatalf("recovery removed unrelated file: %v", err)
+	}
+	if kc.values[softwareUnlockAccount] == "" {
+		t.Fatal("reauthorization did not establish a new software unlock secret")
+	}
+	if _, err := store.LoadContext(ctx, oldKey.ID()); !errors.Is(err, ErrKeyNotFound) {
+		t.Fatalf("old key remained loadable after recovery: %v", err)
+	}
+	if _, err := store.GenerateContext(ctx); err != nil {
+		t.Fatalf("new key generation failed after recovery: %v", err)
+	}
+}
+
 func TestSoftwareSignerConcurrentInitialization(t *testing.T) {
 	directory := isolateSoftwareStorage(t)
 	kc := &testMetadataStore{values: map[string]string{}}
