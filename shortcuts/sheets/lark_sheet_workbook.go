@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -586,8 +587,9 @@ var WorkbookCreate = common.Shortcut{
 	HasFormat:   true,
 	Flags:       flagsFor("+workbook-create"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("title")) == "" {
-			return common.ValidationErrorf("--title is required")
+		if resolveWorkbookCreateTitle(runtime) == "" {
+			return common.ValidationErrorf("--title is required").
+				WithHint(`name the workbook with --title, or carry the name in the --sheets payload as a top-level "title" — a single-sheet payload also takes its sub-sheet's name`)
 		}
 		// --sheets (typed JSON) is the typed data entry, mutually exclusive
 		// with the untyped --values. Gating on Changed (not just non-empty)
@@ -609,7 +611,7 @@ var WorkbookCreate = common.Shortcut{
 			if err != nil {
 				return err
 			}
-			if err := payload.checkCellBudgetWithStyles(styles); err != nil {
+			if err := payload.checkCellBudgetWithStyles(styles, false); err != nil {
 				return err
 			}
 			return checkStylesAnchors(payload, styles, true)
@@ -629,7 +631,7 @@ var WorkbookCreate = common.Shortcut{
 		return checkStylesAnchors(payload, sheetStyles, true)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		body := map[string]interface{}{"title": strings.TrimSpace(runtime.Str("title"))}
+		body := map[string]interface{}{"title": resolveWorkbookCreateTitle(runtime)}
 		if v := strings.TrimSpace(runtime.Str("folder-token")); v != "" {
 			body["folder_token"] = v
 		}
@@ -654,9 +656,9 @@ var WorkbookCreate = common.Shortcut{
 		}
 		for i := range payload.Sheets {
 			s := &payload.Sheets[i]
-			matrix, _ := buildSheetMatrix(s, headerOn(s))
+			matrix, _, _ := buildSheetMatrix(s, headerOn(s))
 			_, col0, row0, _ := sheetAnchor(s)
-			matrix, _ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
+			matrix, col0, row0, _ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
 			if len(matrix) == 0 {
 				// Nothing to write (a column-less sheet, or header:false with
 				// no data rows): Execute skips the set_cell_range entirely, so
@@ -685,7 +687,7 @@ var WorkbookCreate = common.Shortcut{
 		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		body := map[string]interface{}{"title": strings.TrimSpace(runtime.Str("title"))}
+		body := map[string]interface{}{"title": resolveWorkbookCreateTitle(runtime)}
 		if v := strings.TrimSpace(runtime.Str("folder-token")); v != "" {
 			body["folder_token"] = v
 		}
@@ -922,6 +924,9 @@ func parseValuesRows(runtime flagView) ([][]interface{}, error) {
 	if err != nil {
 		repaired, ok := repairLooseJSON(raw)
 		if !ok {
+			repaired, ok = repairMistypedCloser(raw, err)
+		}
+		if !ok {
 			verr := common.ValidationErrorf("--values: invalid JSON: %v", err).WithCause(err)
 			if where := jsonSyntaxContext(raw, err); where != "" {
 				verr = verr.WithHint("%s", where)
@@ -999,6 +1004,110 @@ func (s *workbookCreateSheetStyles) styleFor(index int) *workbookCreateStylePayl
 	return nil
 }
 
+// ─── the styles section carried inside --sheets ───────────────────────
+//
+// --sheets' envelope is {"sheets":[…]}, and a caller who holds ONE document
+// puts the styles in it as a sibling key rather than repeating the whole
+// document on a second flag:
+//
+//	{"sheets": [ … ], "styles": [ … ]}
+//
+// The sheets parser decodes into a struct that declares only `sheets`, so that
+// sibling used to be dropped without a word: the call succeeded, the data
+// landed, and the formatting silently did not. A payload that named its styles
+// and got none back is a worse answer than any error, so the section is read
+// here and handed to --styles' own parser unchanged.
+
+// stylesSource names where a styles payload came from, so that every message
+// about it points at bytes the caller actually wrote. A caller who never typed
+// --styles must not be told their --styles is wrong.
+type stylesSource struct {
+	array string // path of the styles array, for per-item messages
+	whole string // path of the payload as a whole
+}
+
+var (
+	stylesFromFlag   = stylesSource{array: "--styles.styles", whole: "--styles"}
+	stylesFromSheets = stylesSource{array: "--sheets.styles", whole: "--sheets.styles"}
+)
+
+// sheetsEnvelopeStyles returns the `styles` section sitting next to `sheets`
+// in the --sheets payload, as the JSON text --styles would have carried.
+//
+// Silent about every shape it cannot use: a bare [...] sub-sheet list has no
+// room for a sibling, and a payload that does not decode at all is --sheets'
+// own to report with position and hint. This helper never produces the first
+// error a caller sees.
+func sheetsEnvelopeStyles(runtime flagView) (string, bool) {
+	raw := strings.TrimSpace(runtime.Str("sheets"))
+	if !strings.HasPrefix(raw, "{") {
+		return "", false
+	}
+	var envelope map[string]json.RawMessage
+	if json.Unmarshal([]byte(canonicalPayloadJSON(raw)), &envelope) != nil {
+		return "", false
+	}
+	section := strings.TrimSpace(string(envelope["styles"]))
+	if section == "" || section == "null" {
+		return "", false
+	}
+	return section, true
+}
+
+// effectiveStylesText picks the styles payload to parse: the --styles flag
+// when it was given, the --sheets sibling when it was not.
+//
+// When BOTH are present they must agree. Two different style lists in one call
+// is the caller describing the same sheets twice and differently, and there is
+// no reading of that which is safe to guess — picking either one formats a
+// sheet the way half the payload asked for.
+func effectiveStylesText(runtime flagView) (string, stylesSource, error) {
+	flagText := strings.TrimSpace(runtime.Str("styles"))
+	sibling, carried := sheetsEnvelopeStyles(runtime)
+	switch {
+	case !carried:
+		return flagText, stylesFromFlag, nil
+	case flagText == "":
+		return sibling, stylesFromSheets, nil
+	}
+	same, comparable := sameStylesPayload(runtime, flagText, sibling)
+	if comparable && same {
+		return flagText, stylesFromFlag, nil
+	}
+	return "", stylesFromFlag, common.ValidationErrorf(
+		"--styles and the styles section inside --sheets describe different styles; a call carries one of them").
+		WithParam("--styles").
+		WithHint("drop --styles to use the section already in --sheets, or remove that section from --sheets to use --styles")
+}
+
+// sameStylesPayload reports whether two styles payloads say the same thing.
+// The second bool is false when either side does not parse — a disagreement
+// cannot be established against bytes that have no meaning yet, so the caller
+// lets the real parser report them.
+func sameStylesPayload(runtime flagView, a, b string) (same, comparable bool) {
+	parse := func(text string) ([]map[string]interface{}, bool) {
+		v, err := parseJSONText(runtime, "styles", text)
+		if err != nil {
+			return nil, false
+		}
+		// No v == nil guard: an interface holding a typed nil is not nil, so
+		// the comparison would not catch the case it looks like it catches.
+		// parseWorkbookCreateStylesItems already refuses every shape that is
+		// not a list or an envelope, a nil among them.
+		items, err := parseWorkbookCreateStylesItems(v, stylesFromFlag)
+		if err != nil {
+			return nil, false
+		}
+		return items, true
+	}
+	ia, oka := parse(a)
+	ib, okb := parse(b)
+	if !oka || !okb {
+		return false, false
+	}
+	return reflect.DeepEqual(ia, ib), true
+}
+
 // parseWorkbookCreateStyles parses --styles for +workbook-create's untyped
 // initial-fill path. The outer protocol is always {"styles":[...]}; untyped
 // initial fill consumes exactly one item from that array.
@@ -1010,7 +1119,7 @@ func parseWorkbookCreateStyles(runtime flagView) (*workbookCreateStylePayload, e
 	if err != nil {
 		return nil, err
 	}
-	items, err := parseWorkbookCreateStylesItems(v)
+	items, err := parseWorkbookCreateStylesItems(v, stylesFromFlag)
 	if err != nil {
 		return nil, err
 	}
@@ -1031,19 +1140,27 @@ func parseWorkbookCreateStyles(runtime flagView) (*workbookCreateStylePayload, e
 // (+table-put) rather than one being created (+workbook-create) — it gates
 // whether an all-zero freeze may express "unfreeze both axes".
 func parseWorkbookCreateSheetStyles(runtime flagView, payload *tablePayload, existingSheet bool) (*workbookCreateSheetStyles, error) {
-	if strings.TrimSpace(runtime.Str("styles")) == "" {
-		return nil, nil
-	}
-	v, err := parseJSONFlag(runtime, "styles")
+	text, src, err := effectiveStylesText(runtime)
 	if err != nil {
 		return nil, err
 	}
-	items, err := parseWorkbookCreateStylesItems(v)
+	if text == "" {
+		return nil, nil
+	}
+	// Parsed as --styles whatever route the bytes took: the schema and the
+	// normalizers are chosen by flag name, and a styles list checked against
+	// --sheets' schema is rejected for lacking columns/data. src only labels
+	// the structural messages below, where the caller's own path belongs.
+	v, err := parseJSONText(runtime, "styles", text)
+	if err != nil {
+		return nil, err
+	}
+	items, err := parseWorkbookCreateStylesItems(v, src)
 	if err != nil {
 		return nil, err
 	}
 	if len(items) != len(payload.Sheets) {
-		return nil, common.ValidationErrorf("--styles.styles has %d items, want %d to match --sheets.sheets", len(items), len(payload.Sheets))
+		return nil, common.ValidationErrorf("%s has %d items, want %d to match --sheets.sheets", src.array, len(items), len(payload.Sheets))
 	}
 	out := &workbookCreateSheetStyles{ByName: map[string]*workbookCreateStylePayload{}}
 	out.ByIndex = make([]*workbookCreateStylePayload, len(payload.Sheets))
@@ -1051,14 +1168,14 @@ func parseWorkbookCreateSheetStyles(runtime flagView, payload *tablePayload, exi
 	for i, item := range items {
 		name, _ := item["name"].(string)
 		if strings.TrimSpace(name) == "" {
-			probs = append(probs, common.ValidationErrorf("--styles.styles[%d].name is required", i))
+			probs = append(probs, common.ValidationErrorf("%s[%d].name is required", src.array, i))
 			continue
 		}
 		if name != payload.Sheets[i].Name {
-			probs = append(probs, common.ValidationErrorf("--styles.styles[%d].name %q must match --sheets.sheets[%d].name %q", i, name, i, payload.Sheets[i].Name))
+			probs = append(probs, common.ValidationErrorf("%s[%d].name %q must match --sheets.sheets[%d].name %q", src.array, i, name, i, payload.Sheets[i].Name))
 			continue
 		}
-		style, itemProbs := parseWorkbookCreateStyleItem(item, fmt.Sprintf("--styles.styles[%d]", i), existingSheet)
+		style, itemProbs := parseWorkbookCreateStyleItem(item, fmt.Sprintf("%s[%d]", src.array, i), existingSheet)
 		if len(itemProbs) > 0 {
 			probs = append(probs, itemProbs...)
 			continue
@@ -1081,7 +1198,7 @@ const (
 	maxStyleProblems     = 9 // eight displayed plus one truncation marker
 )
 
-func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, error) {
+func parseWorkbookCreateStylesItems(v interface{}, src stylesSource) ([]map[string]interface{}, error) {
 	// A bare list at the top level can only be the items the envelope would
 	// have held — the same reading --sheets takes of its own bare list, and
 	// the two flags travel together in one call often enough that accepting
@@ -1093,23 +1210,23 @@ func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, er
 	case map[string]interface{}:
 		var present bool
 		if rawItems, present = shaped["styles"]; !present {
-			return nil, common.ValidationErrorf("--styles.styles is required")
+			return nil, common.ValidationErrorf("%s is required", src.array)
 		}
 	default:
-		return nil, common.ValidationErrorf("--styles must be the object {\"styles\":[...]} or the bare [...] item list")
+		return nil, common.ValidationErrorf("%s must be the object {\"styles\":[...]} or the bare [...] item list", src.whole)
 	}
 	arr, ok := rawItems.([]interface{})
 	if !ok {
-		return nil, common.ValidationErrorf("--styles.styles must be an array")
+		return nil, common.ValidationErrorf("%s must be an array", src.array)
 	}
 	if len(arr) > maxStyleItems {
-		return nil, common.ValidationErrorf("--styles.styles accepts at most %d items; got %d", maxStyleItems, len(arr))
+		return nil, common.ValidationErrorf("%s accepts at most %d items; got %d", src.array, maxStyleItems, len(arr))
 	}
 	items := make([]map[string]interface{}, len(arr))
 	for i, raw := range arr {
 		item, ok := raw.(map[string]interface{})
 		if !ok {
-			return nil, common.ValidationErrorf("--styles.styles[%d] must be an object", i)
+			return nil, common.ValidationErrorf("%s[%d] must be an object", src.array, i)
 		}
 		// Folded here rather than in the item parser: the sheet selector is
 		// read off the item by its callers before that parser runs.
@@ -2007,25 +2124,34 @@ func padMatrixForStyles(rows [][]interface{}, styles *workbookCreateStylePayload
 // workbook and then fail the fill). Anchor / range parse errors are skipped —
 // the payload and styles parsers already report those with richer context.
 //
-// For append mode against a sheet that may already hold data, only the COLUMN
-// is checked at Validate time: the contract ignores start_cell's row (the base
-// row is resolved from the sheet's existing data at execute time), so
-// comparing style rows against the ignored static row misfires — data ending
-// at row 5 with start_cell B10 appends at row 6, making a B6 style legal even
-// though it sits "above B10". newSheets says every payload sheet writes into a
-// KNOWN-EMPTY sheet (+workbook-create: the workbook is being created), where
-// append resolves its base row to the static anchor — the row check then
-// applies to append too. For +table-put (newSheets false) the missing-target
-// case is covered pre-creation by checkSheetStyleAnchors in writeTypedSheets;
-// existing sheets keep the write-phase check with the real base row.
+// Existing-sheet append is skipped entirely at Validate time: its real row comes
+// from live data, and that row changes both vertical and horizontal rectangle
+// area when a style starts left of the data. writeTypedSheets resolves that
+// placement and validates the exact geometry before mutation. New sheets have a
+// known-empty grid, so their static anchor remains exact.
 func checkStylesAnchors(payload *tablePayload, styles *workbookCreateSheetStyles, newSheets bool) error {
 	if payload == nil || styles == nil {
 		return nil
 	}
 	for i := range payload.Sheets {
 		s := &payload.Sheets[i]
-		checkRow := newSheets || s.Mode != "append"
-		if err := checkSheetStyleAnchors(s, styles.styleFor(i), checkRow); err != nil {
+		if !newSheets && s.Mode == "append" {
+			// Both row and column geometry depend on the live append placement. A
+			// style left of start_cell can still form a tiny rectangle at the actual
+			// append row. Only reject a placement-independent lower bound here;
+			// writeTypedSheets checks the exact placement before mutation.
+			_, col0, _, err := sheetAnchor(s)
+			if err == nil {
+				cols, rows := appendStyleMinimumRect(s, styles.styleFor(i), col0)
+				if sp := styles.styleFor(i); sp != nil && len(sp.CellStyles) > 0 && !rectangleFitsCellLimit(cols, rows, int64(styleGrowthCellCap)) {
+					return common.ValidationErrorf("--styles for sheet %q cover at least a %d×%d write rectangle, over the %d-cell safety cap",
+						s.Name, cols, rows, styleGrowthCellCap).
+						WithHint("narrow the cell_styles ranges or split the write into smaller payloads")
+				}
+			}
+			continue
+		}
+		if err := checkSheetStyleAnchors(s, styles.styleFor(i), true); err != nil {
 			return err
 		}
 	}
@@ -2046,6 +2172,13 @@ func checkSheetStyleAnchors(s *tableSheetSpec, sp *workbookCreateStylePayload, c
 	if err != nil {
 		return nil //nolint:nilerr // a malformed start_cell is the payload parser's to report with row/column context; this check only compares bounds
 	}
+	// A range starting before the anchor is no longer rejected outright: the
+	// write matrix grows its origin to cover it (style_anchor_growth.go). The
+	// final rectangle is bounded in every direction; otherwise a style that only
+	// grows down/right would evade the old start-position-specific error.
+	if styleAnchorGrowthFits(s, sp, col0, row0) {
+		return nil
+	}
 	for j, op := range sp.CellStyles {
 		startCol, startRow, _, _, err := workbookCreateStyleRangeBounds(op.Range)
 		if err != nil {
@@ -2053,29 +2186,64 @@ func checkSheetStyleAnchors(s *tableSheetSpec, sp *workbookCreateStylePayload, c
 		}
 		if startCol < col0 {
 			return common.ValidationErrorf("--styles for sheet %q[%d].range %q starts left of the write range (its column must be at or after %s)",
-				s.Name, j, op.Range, columnIndexToLetter(col0))
+				s.Name, j, op.Range, columnIndexToLetter(col0)).
+				WithHint("covering it would add more than %d blank cells to the write; move the data anchor up instead (start_cell)", styleGrowthCellCap)
 		}
 		if checkRow && startRow < row0 {
 			return common.ValidationErrorf("--styles for sheet %q[%d].range %q starts outside the write range (its top-left must be at or after %s%d)",
-				s.Name, j, op.Range, columnIndexToLetter(col0), row0+1)
+				s.Name, j, op.Range, columnIndexToLetter(col0), row0+1).
+				WithHint("covering it would add more than %d blank cells to the write; move the data anchor up instead (start_cell)", styleGrowthCellCap)
 		}
 	}
-	return nil
+	if !checkRow {
+		// Existing-sheet append resolves its row from live data during Execute.
+		// A static row-based verdict here can reject a placement that becomes
+		// small once the real append row is known; writeTypedSheets performs the
+		// exact per-sheet and aggregate checks before any mutation.
+		return nil
+	}
+	cols, rows := styleBoundingRect(s, sp, col0, row0)
+	return common.ValidationErrorf("--styles for sheet %q cover a %d×%d write rectangle, over the %d-cell safety cap",
+		s.Name, cols, rows, styleGrowthCellCap).
+		WithHint("narrow the cell_styles ranges or split the write into smaller payloads")
 }
 
 // applyWorkbookCreateStylesToMatrix pads the matrix to cover the cell_styles
 // ranges (see padMatrixForStyles), merges each op's style into the covered
 // cells, and returns the padded matrix. A range that starts left of / above the
 // write anchor can't be padded to and is rejected.
-func applyWorkbookCreateStylesToMatrix(rows [][]interface{}, styles *workbookCreateStylePayload, baseCol, baseRow int, label string) ([][]interface{}, error) {
+func applyWorkbookCreateStylesToMatrix(rows [][]interface{}, styles *workbookCreateStylePayload, baseCol, baseRow int, label string) ([][]interface{}, int, int, error) {
 	if styles == nil {
-		return rows, nil
+		return rows, baseCol, baseRow, nil
 	}
+	dataCols := 0
+	if len(rows) > 0 {
+		dataCols = len(rows[0])
+	}
+	cols, height := styleBoundingRectForSize(dataCols, len(rows), styles, baseCol, baseRow)
+	if len(styles.CellStyles) > 0 && !rectangleFitsCellLimit(cols, height, int64(styleGrowthCellCap)) {
+		for i, op := range styles.CellStyles {
+			startCol, startRow, _, _, err := workbookCreateStyleRangeBounds(op.Range)
+			if err == nil && (startCol < baseCol || startRow < baseRow) {
+				// Preserve the established anchor diagnosis, but return it before
+				// padMatrixForStyles can allocate a different large right/down range.
+				return rows, baseCol, baseRow, common.ValidationErrorf("%s[%d].range %q starts outside the write range (its top-left must be at or after %s%d)",
+					label, i, op.Range, columnIndexToLetter(baseCol), baseRow+1)
+			}
+		}
+		return rows, baseCol, baseRow, common.ValidationErrorf("%s cover a %d×%d write rectangle, over the %d-cell safety cap",
+			label, cols, height, styleGrowthCellCap).
+			WithHint("narrow the cell_styles ranges or split the write into smaller payloads")
+	}
+	// A style above or left of the anchor is a title row, not an error: the
+	// origin moves up to cover it and the data keeps its absolute position
+	// (see style_anchor_growth.go).
+	rows, baseCol, baseRow = growMatrixOriginForStyles(rows, styles, baseCol, baseRow)
 	rows = padMatrixForStyles(rows, styles, baseCol, baseRow)
 	for i, op := range styles.CellStyles {
 		startCol, startRow, endCol, endRow, err := workbookCreateStyleRangeBounds(op.Range)
 		if err != nil {
-			return rows, common.ValidationErrorf("%s[%d].range %q: %v", label, i, op.Range, err)
+			return rows, baseCol, baseRow, common.ValidationErrorf("%s[%d].range %q: %v", label, i, op.Range, err)
 		}
 		// After padding, the matrix reaches every range that starts at or after
 		// the anchor; a start left of / above it can't be covered. The endRow /
@@ -2083,7 +2251,7 @@ func applyWorkbookCreateStylesToMatrix(rows [][]interface{}, styles *workbookCre
 		// them unreachable).
 		if startCol < baseCol || startRow < baseRow || len(rows) == 0 ||
 			endRow-baseRow >= len(rows) || endCol-baseCol >= len(rows[0]) {
-			return rows, common.ValidationErrorf("%s[%d].range %q starts outside the write range (its top-left must be at or after %s%d)",
+			return rows, baseCol, baseRow, common.ValidationErrorf("%s[%d].range %q starts outside the write range (its top-left must be at or after %s%d)",
 				label, i, op.Range,
 				columnIndexToLetter(baseCol), baseRow+1)
 		}
@@ -2093,7 +2261,7 @@ func applyWorkbookCreateStylesToMatrix(rows [][]interface{}, styles *workbookCre
 			}
 		}
 	}
-	return rows, nil
+	return rows, baseCol, baseRow, nil
 }
 
 func appendWorkbookCreateVisualOpsDryRun(dry *common.DryRunAPI, token, sheetID, sheetName string, styles *workbookCreateStylePayload) {

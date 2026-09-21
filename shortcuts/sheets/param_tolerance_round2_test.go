@@ -297,7 +297,9 @@ func TestTable_ColumnsFitToRows(t *testing.T) {
 func TestPayloadFlags_SyntaxErrorNamesThePlace(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, cells string }{
-		{"a bracket that does not match", `[["a","b"]}`},
+		// Not a single mistyped closer (repairMistypedCloser fixes those,
+		// verified by re-parsing) — a structure only a guess could resolve.
+		{"a bracket that does not match", `[["a","b"]}]`},
 		{"a payload cut short", `[["a","b"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -399,13 +401,15 @@ func TestDomainFlagAliases(t *testing.T) {
 
 	t.Run("a command with its own meaning keeps it", func(t *testing.T) {
 		t.Parallel()
-		// +cells-unmerge takes ONE span per call, so --ranges there is a
-		// caller asking for several and the answer is how to send several.
+		// +cells-unmerge takes ONE span per call. A --ranges holding exactly
+		// one IS that span and resolves (TestReconcile_SingletonRanges);
+		// several is still the caller asking for something the command does
+		// not do, and the tailored prescription survives.
 		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-unmerge"), []string{
-			"--url", testURL, "--sheet-name", "s", "--ranges", "A1:B2", "--dry-run",
+			"--url", testURL, "--sheet-name", "s", "--ranges", `["A1:B2","D1:E2"]`, "--dry-run",
 		})
-		ve := requireValidation(t, err, "unknown flag")
-		if !strings.Contains(ve.Hint, "one span per call") {
+		ve := requireValidation(t, err, "takes one span per call")
+		if !strings.Contains(ve.Hint, "one call per span") {
 			t.Errorf("the tailored prescription should survive, got %q", ve.Hint)
 		}
 	})

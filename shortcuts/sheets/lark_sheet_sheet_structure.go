@@ -866,7 +866,11 @@ func parseA1Position(s string) (dimension string, idx int, err error) {
 		return "row", n - 1, nil
 	}
 	if isLetters {
-		return "column", letterToColumnIndex(s), nil
+		idx := letterToColumnIndex(s)
+		if idx < 0 {
+			return "", 0, fmt.Errorf("column position %q exceeds the supported A1 coordinate range", s) //nolint:forbidigo // intermediate error; callers wrap it into a typed flag validation error
+		}
+		return "column", idx, nil
 	}
 	return "", 0, fmt.Errorf("expected pure digits (row number) or letters (column letter), got %q", s) //nolint:forbidigo // intermediate error; callers wrap it into a typed flag validation error
 }

@@ -281,7 +281,10 @@ var stylesPriorCorpus = []struct {
 	{name: "text_color is font_color", fields: map[string]interface{}{"text_color": "#000000"},
 		check: wantStyle("font_color", "#000000")},
 	// prescriptions (ambiguous / unsupported / typo)
-	{name: "fore_color prescribed", fields: map[string]interface{}{"fore_color": "#F00"}, wantErr: "ambiguous"},
+	{name: "fore_color is font_color", fields: map[string]interface{}{"fore_color": "#F00"},
+		check: wantStyle("font_color", "#F00")},
+	{name: "back_color is background_color", fields: map[string]interface{}{"back_color": "#EEE"},
+		check: wantStyle("background_color", "#EEE")},
 	{name: "indent rejected not ignored", fields: map[string]interface{}{"indent": float64(2)}, wantErr: "not a supported style field"},
 	{name: "unknown field carries did-you-mean and the field list",
 		fields: map[string]interface{}{"fontcolor": "#000000"}, wantErr: `did you mean "font_color"`},

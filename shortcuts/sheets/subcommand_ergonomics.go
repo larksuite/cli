@@ -76,6 +76,92 @@ var unknownSubcommandHints = map[string]prescription{
 		Command: "+workbook-info",
 		Hint:    `workbook metadata (title, sub-sheets, grid sizes, merged regions) comes from +workbook-info`,
 	},
+	// 09-11..15 catalog, unknown-subcommand rows. Each of these outranks every
+	// entry above it in frequency and none is reachable by the distance ranker:
+	// the answer either shares no prefix with what was typed (+merge-cells →
+	// +cells-merge is a word SWAP, which Levenshtein scores as far apart) or is
+	// crowded out by same-prefix siblings (+sheet-update sits among eleven
+	// +sheet-* commands).
+	"+sheet-update": {
+		Command: "+sheet-rename",
+		Hint:    `there is no single "update a sheet" command — rename with +sheet-rename --title "…", resize with +cols-resize / +rows-resize, freeze with +dim-freeze, hide with +sheet-hide`,
+	},
+	"+dropdown-create": {
+		Command: "+dropdown-set",
+		Hint:    `create a dropdown with +dropdown-set --range A1:A10 --options '["Yes","No"]' — the same command also replaces an existing one`,
+	},
+	"+workbook-rename": {
+		Command: "+sheet-rename",
+		Hint:    `+sheet-rename renames a SUB-SHEET; the workbook's own title is a Drive property — rename it with ` + "`lark-cli drive +file-rename`",
+	},
+	"+merge-cells": {
+		Command: "+cells-merge",
+		Hint:    `merge with +cells-merge --range A1:D1 — this domain puts the object first and the verb second (+cells-merge, +cells-clear, +cells-set)`,
+	},
+	"+unmerge-cells": {
+		Command: "+cells-unmerge",
+		Hint:    `unmerge with +cells-unmerge --range A1:D1 — this domain puts the object first and the verb second`,
+	},
+	"+create": {
+		Command: "+workbook-create",
+		Hint:    `create a spreadsheet with +workbook-create --title "…"; create a sub-sheet inside an existing one with +sheet-create`,
+	},
+	"+workbook-get": {
+		Command: "+workbook-info",
+		Hint:    `+workbook-info reads the workbook: its sub-sheets with ids, titles, and grid sizes. Cell data comes from +csv-get / +cells-get`,
+	},
+	"+workbook-update": {
+		Command: "+cells-set",
+		Hint:    `there is no single "update a workbook" command — write cells with +cells-set, write a whole typed table with +table-put, restyle with +styles-put`,
+	},
+	"+read": {
+		Command: "+csv-get",
+		Hint:    `read a range as CSV with +csv-get --range A1:F50 (omit --range for the whole sheet); +cells-get returns per-cell values, formulas and styles instead`,
+	},
+	"+range-read": {
+		Command: "+csv-get",
+		Hint:    `read a range as CSV with +csv-get --range A1:F50; +cells-get returns per-cell values, formulas and styles instead`,
+	},
+	"+range-clear": {
+		Command: "+cells-clear",
+		Hint:    `clear a range with +cells-clear --range A1:F50 --yes; several ranges in one call go through +cells-batch-clear`,
+	},
+	"+sheet-freeze": {
+		Command: "+dim-freeze",
+		Hint:    `freeze with +dim-freeze --rows N (add --cols M to hold columns too — one call states the whole freeze state)`,
+	},
+	"+cells-write": {
+		Command: "+cells-set",
+		Hint:    `write cell values with +cells-set --range A1:B2 --cells '[["a","b"],["c","d"]]'`,
+	},
+	"+cells-update": {
+		Command: "+cells-set",
+		Hint:    `write cell values with +cells-set --range A1:B2 --cells '[["a","b"],["c","d"]]'`,
+	},
+	"+values-update": {
+		Command: "+cells-set",
+		Hint:    `write cell values with +cells-set --range A1:B2 --cells '[["a","b"],["c","d"]]'`,
+	},
+	"+cells-copy": {
+		Command: "+range-copy",
+		Hint:    `copy a range with +range-copy --source-range A1:D10 --target-range F1 (both may name a sheet as an A1 prefix)`,
+	},
+	"+cols-hide": {
+		Command: "+dim-hide",
+		Hint:    `hide with +dim-hide --range C:E for columns, --range 3:5 for rows; +dim-unhide reverses it`,
+	},
+	"+rows-hide": {
+		Command: "+dim-hide",
+		Hint:    `hide with +dim-hide --range 3:5 for rows, --range C:E for columns; +dim-unhide reverses it`,
+	},
+	"+data-validation-create": {
+		Command: "+dropdown-set",
+		Hint:    `the only validation this surface carries is the dropdown: +dropdown-set --range A1:A10 --options '["Yes","No"]'`,
+	},
+	"+dimension-set": {
+		Command: "+cols-resize",
+		Hint:    colsResizeForm,
+	},
 }
 
 // InstallUnknownSubcommandHints hooks the sheets group's Args validator, which

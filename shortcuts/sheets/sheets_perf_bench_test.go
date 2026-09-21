@@ -93,7 +93,7 @@ func benchBuildSheetMatrix(b *testing.B, rows, cols int) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		m, err := buildSheetMatrix(spec, true)
+		m, _, err := buildSheetMatrix(spec, true)
 		if err != nil || len(m) != rows+1 {
 			b.Fatalf("bad matrix")
 		}
@@ -120,7 +120,7 @@ func TestTablePutMatrixPeakMemory(t *testing.T) {
 		var before, after runtime.MemStats
 		runtime.GC()
 		runtime.ReadMemStats(&before)
-		m, _ := buildSheetMatrix(spec, true)
+		m, _, _ := buildSheetMatrix(spec, true)
 		runtime.ReadMemStats(&after)
 		runtime.KeepAlive(m)
 		t.Logf("%-24s buildSheetMatrix heap +%6.1f MB  (%d total allocs)",
@@ -202,7 +202,7 @@ func TestTablePutCellBudgetIncludesStylePadding(t *testing.T) {
 	styles := &workbookCreateSheetStyles{ByIndex: []*workbookCreateStylePayload{{
 		CellStyles: []workbookCreateCellStyleOp{{Range: "A1:AX25000"}},
 	}}}
-	if err := payload.checkCellBudgetWithStyles(styles); err == nil {
+	if err := payload.checkCellBudgetWithStyles(styles, false); err == nil {
 		t.Fatal("1x1 data padded by styles to 1.25M cells should be rejected before allocation")
 	}
 
@@ -211,7 +211,7 @@ func TestTablePutCellBudgetIncludesStylePadding(t *testing.T) {
 		{Columns: make([]tableColumnSpec, 1), Rows: make([][]interface{}, 1)},
 	}}
 	style := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{{Range: "A1:Z20000"}}}
-	if err := twoSheets.checkCellBudgetWithStyles(&workbookCreateSheetStyles{ByIndex: []*workbookCreateStylePayload{style, style}}); err == nil {
+	if err := twoSheets.checkCellBudgetWithStyles(&workbookCreateSheetStyles{ByIndex: []*workbookCreateStylePayload{style, style}}, false); err == nil {
 		t.Fatal("style-padded cells should be summed across sheets")
 	}
 }

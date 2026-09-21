@@ -132,7 +132,10 @@ func TestPayloadFlags_LooseJSONAccepted(t *testing.T) {
 		t.Parallel()
 		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
 			"--url", testURL, "--sheet-name", "s", "--range", "A1:B1",
-			"--cells", `[["a","b"]}`, "--dry-run",
+			// A single mistyped closer IS repaired (see
+			// TestRepairMistypedCloser_FixesASingleWrongBracket); this shape
+			// needs a guess about where the data ended, so it must not be.
+			"--cells", `[["a","b"]}]`, "--dry-run",
 		})
 		// The message describes the payload as WRITTEN, not the repair
 		// attempt: the caller has to find the bracket in their own text.

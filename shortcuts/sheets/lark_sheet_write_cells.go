@@ -1372,18 +1372,24 @@ func splitCellRef(s string) (col, row int, ok bool) {
 }
 
 // letterToColumnIndex converts spreadsheet letter notation to a 0-based
-// column index ("A" → 0, "Z" → 25, "AA" → 26). Returns -1 on bad input.
+// column index ("A" → 0, "Z" → 25, "AA" → 26). Returns -1 on bad input or
+// when the coordinate exceeds the host int range.
 func letterToColumnIndex(letters string) int {
 	letters = strings.ToUpper(strings.TrimSpace(letters))
 	if letters == "" {
 		return -1
 	}
 	n := 0
+	maxInt := int(^uint(0) >> 1)
 	for _, c := range letters {
 		if c < 'A' || c > 'Z' {
 			return -1
 		}
-		n = n*26 + int(c-'A'+1)
+		digit := int(c - 'A' + 1)
+		if n > (maxInt-digit)/26 {
+			return -1
+		}
+		n = n*26 + digit
 	}
 	return n - 1
 }

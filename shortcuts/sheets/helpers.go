@@ -578,7 +578,15 @@ func sheetSelectorPlaceholder(sheetID, sheetName string) string {
 // flag is empty (caller decides if that's acceptable). Used by --data /
 // --style / --options / --ranges / --colors and friends.
 func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
-	raw := strings.TrimSpace(runtime.Str(name))
+	return parseJSONText(runtime, name, runtime.Str(name))
+}
+
+// parseJSONText parses one flag's JSON text, split from parseJSONFlag so a
+// payload that reached the flag by another route gets the identical repair
+// chain and the identical --<name> error vocabulary. The `styles` section
+// carried inside a --sheets envelope is the one such route today.
+func parseJSONText(runtime flagView, name, text string) (interface{}, error) {
+	raw := strings.TrimSpace(text)
 	if raw == "" {
 		return nil, nil
 	}
@@ -599,6 +607,13 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 			return finishParsedJSONFlag(runtime, name, wrapped)
 		}
 		if repaired, ok := repairLooseJSON(raw); ok {
+			var fixed interface{}
+			if json.Unmarshal([]byte(repaired), &fixed) == nil {
+				return finishParsedJSONFlag(runtime, name, fixed)
+			}
+		}
+		// A single closing bracket of the wrong kind, verified by re-parsing.
+		if repaired, ok := repairMistypedCloser(raw, err); ok {
 			var fixed interface{}
 			if json.Unmarshal([]byte(repaired), &fixed) == nil {
 				return finishParsedJSONFlag(runtime, name, fixed)

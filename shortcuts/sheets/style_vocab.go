@@ -134,6 +134,12 @@ var cellStyleAliases = []struct{ alias, canonical string }{
 	// text_color names the same thing font_color does; the prescription it
 	// used to get said exactly that and nothing else.
 	{"text_color", "font_color"},
+	// back_color is fore_color's counterpart in the same Lark vocabulary (the
+	// conditional-format schema's one fill slot) and already has its flag-side
+	// alias in domainFlagAliases (--back-color → --background-color). Accepting
+	// only one half of a pair is a rule no caller can infer — the same argument
+	// that admitted bare "wrap" above. 09-11..15: 586 rejections.
+	{"back_color", "background_color"},
 }
 
 // cellStyleValueAliases carries the style words that name a field this
@@ -427,11 +433,35 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 		style[a.canonical] = word
 		delete(style, a.alias)
 	}
-	// fore_color is deliberately NOT aliased: in openpyxl vocabulary fgColor
-	// is the FILL color while a plain reading suggests the font color — a
-	// silent pick could color the wrong thing. Prescribe both options.
-	if _, has := style["fore_color"]; has {
-		return common.ValidationErrorf("%s.fore_color is ambiguous — use font_color for text color or background_color for the cell fill", path)
+	// fore_color is the font color.
+	//
+	// It used to be rejected as ambiguous: openpyxl spells the FILL color
+	// fgColor, so a caller arriving from that vocabulary might mean the
+	// background. Three things settle it the other way:
+	//
+	//  1. Lark's own vocabulary. The conditional-format schema in this same
+	//     CLI has exactly one text-color slot and spells it fore_color — its
+	//     own description reads 前景色/字体颜色 — which is why
+	//     condFormatStyleAliases maps font_color / text_color / color ONTO
+	//     fore_color. One product cannot mean two things by one word, and the
+	//     backend has already said which one it means.
+	//  2. Volume. 36,240 calls in the 09-11..15 catalog (1.34% of all sheets
+	//     failures) were refused over this single name.
+	//  3. The collision the rejection was protecting against does not occur:
+	//     across 2,714,042 failing calls there is not ONE payload carrying
+	//     fore_color and font_color together. The openpyxl reader who means
+	//     the fill writes fgColor or background_color, not both slots at once.
+	//
+	// The conflict case is still refused rather than picked, so the guarantee
+	// that no caller silently loses a colour they did spell out survives even
+	// though the traffic never exercises it.
+	if v, has := style["fore_color"]; has {
+		if _, taken := style["font_color"]; taken {
+			return common.ValidationErrorf(
+				"%s carries both font_color and fore_color, which name the same text-color slot; keep font_color, and use background_color if fore_color meant the cell fill", path)
+		}
+		style["font_color"] = v
+		delete(style, "fore_color")
 	}
 	// Boolean wrap habit: true unambiguously means wrap on, false means off.
 	if b, isBool := style["word_wrap"].(bool); isBool {
@@ -743,6 +773,15 @@ func normalizeBorderStylesFlagValue(_ flagView, v interface{}) interface{} {
 	// documents; one value can only mean all four sides, which is the reading
 	// the payload path's own shorthand takes (setSideScalar). 09-01..08
 	// backflow: 1491 rows arrived on the three aliases.
+	// A borderType WORD names which edges, not which line: FULL_BORDER is all
+	// four sides solid, TOP_BORDER is the top one. Read it before the scalar
+	// shorthand, which would otherwise take the word as the line style and
+	// land it in the enum ("value \"FULL_BORDER\" is not in enum" — 1,461
+	// calls in the 09-11..15 catalog, all of them --border-type). The payload
+	// path has folded these since foldBorderTypeValue; this closes the flag.
+	if sides, ok := borderSidesFromTypeWord(v); ok {
+		return sides
+	}
 	if side, ok := borderSpecFromScalar(v); ok {
 		v = map[string]interface{}{"all": side}
 	}
@@ -750,6 +789,31 @@ func normalizeBorderStylesFlagValue(_ flagView, v interface{}) interface{} {
 		expandBorderAllShorthand(m)
 	}
 	return v
+}
+
+// borderSidesFromTypeWord reads a Lark borderType word — the vocabulary
+// +cells-set-style's own backend uses — into the sides it selects. ok is false
+// for anything else, including the interior-only words, which a per-cell style
+// spec cannot express and which keep their prescription on the payload path.
+func borderSidesFromTypeWord(v interface{}) (map[string]interface{}, bool) {
+	word, isStr := v.(string)
+	if !isStr {
+		return nil, false
+	}
+	key := strings.ToUpper(strings.TrimSpace(word))
+	key = strings.ReplaceAll(strings.ReplaceAll(key, "-", "_"), " ", "_")
+	if key == "NO_BORDER" {
+		return map[string]interface{}{"all": map[string]interface{}{"style": "none"}}, true
+	}
+	side, ok := borderTypeSideValues[key]
+	if !ok {
+		return nil, false
+	}
+	out := map[string]interface{}{side: map[string]interface{}{"style": "solid"}}
+	if side == "all" {
+		expandBorderAllShorthand(out)
+	}
+	return out, true
 }
 
 // borderSpecFromScalar reads one value as a side spec: a thickness word or a

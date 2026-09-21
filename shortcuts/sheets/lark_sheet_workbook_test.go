@@ -651,7 +651,7 @@ func TestApplyWorkbookCreateStylesToMatrix(t *testing.T) {
 		styles := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{
 			{Range: "A1:C3", Style: map[string]interface{}{"cell_styles": map[string]interface{}{"background_color": "#FFEEAA"}}},
 		}}
-		out, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 0, 0, "--styles")
+		out, _, _, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 0, 0, "--styles")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -672,7 +672,7 @@ func TestApplyWorkbookCreateStylesToMatrix(t *testing.T) {
 		styles := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{
 			{Range: "A1:B2", Style: map[string]interface{}{"cell_styles": map[string]interface{}{"font_weight": "bold"}}},
 		}}
-		out, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 0, 0, "--styles")
+		out, _, _, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 0, 0, "--styles")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -681,13 +681,54 @@ func TestApplyWorkbookCreateStylesToMatrix(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects a range up/left of the anchor", func(t *testing.T) {
+	// 29,284 calls in the 09-11..15 catalog styled a title row above their
+	// data anchor. The origin grows to cover it; the data keeps its absolute
+	// position because the prepended cells are `{}`, the wire's "leave this
+	// cell alone".
+	t.Run("grows the origin to cover a range up/left of the anchor", func(t *testing.T) {
 		t.Parallel()
-		matrix := [][]interface{}{{cell()}} // anchored at C3 (col 2, row 2)
+		// A distinguishable cell, so the assertion below proves the data did
+		// not move rather than just that some map is present.
+		matrix := [][]interface{}{{map[string]interface{}{"value": "data"}}} // anchored at C3
 		styles := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{
 			{Range: "A1", Style: map[string]interface{}{"cell_styles": map[string]interface{}{"font_weight": "bold"}}},
 		}}
-		_, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 2, 2, "--styles")
+		out, col, row, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 2, 2, "--styles")
+		if err != nil {
+			t.Fatalf("a title-row style was rejected: %v", err)
+		}
+		if col != 0 || row != 0 {
+			t.Errorf("anchor = (%d,%d), want (0,0) — the write must start where the style does", col, row)
+		}
+		if len(out) != 3 || len(out[0]) != 3 {
+			t.Fatalf("matrix = %dx%d, want 3x3 (C3 is two rows and two columns in)", len(out), len(out[0]))
+		}
+		// A1 carries the style...
+		a1 := out[0][0].(map[string]interface{})
+		cs, _ := a1["cell_styles"].(map[string]interface{})
+		if cs["font_weight"] != "bold" {
+			t.Errorf("A1 cell_styles = %v, want the style applied", a1)
+		}
+		// ...and carries no value, so it cannot overwrite anything there.
+		if _, hasValue := a1["value"]; hasValue {
+			t.Errorf("A1 = %v, want no value (a grown cell must not write content)", a1)
+		}
+		// The data cell is still at C3, now at matrix position [2][2].
+		if got := out[2][2].(map[string]interface{})["value"]; got != "data" {
+			t.Errorf("the data cell moved: out[2][2] = %v", out[2][2])
+		}
+	})
+
+	// The gap can be large enough that the style and the data are not
+	// describing one table; past the cap the original rejection stands.
+	t.Run("a gap over the cap keeps the rejection", func(t *testing.T) {
+		t.Parallel()
+		matrix := [][]interface{}{{cell()}}
+		styles := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{
+			{Range: "A1", Style: map[string]interface{}{"cell_styles": map[string]interface{}{"font_weight": "bold"}}},
+		}}
+		// Anchored far enough down that covering A1 would exceed the cap.
+		_, _, _, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 0, styleGrowthCellCap+10, "--styles")
 		if err == nil || !strings.Contains(err.Error(), "starts outside the write range") {
 			t.Errorf("err = %v, want 'starts outside the write range'", err)
 		}

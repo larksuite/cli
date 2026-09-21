@@ -309,3 +309,65 @@ func alignRuneStart(raw string, index int) int {
 	}
 	return index
 }
+
+// ─── one mistyped closing bracket ─────────────────────────────────────
+//
+// `invalid character '}' after array element` is 24,559 calls in the
+// 09-11..15 catalog, on --cells / --writes / --sheets. At that position JSON
+// allows only `,` or `]`, so a `}` there is a closer of the wrong KIND — the
+// array's `]` typed or mangled as `}` (and the mirror case, an object closed
+// with `]`).
+//
+// This is not the truncation the module refuses above. Nothing is guessed
+// about where the caller's data ended: the byte is already there, the parser
+// already reached it, and the only question is which of the two closers it
+// was meant to be. The answer is checked rather than assumed — the rewritten
+// document has to parse strictly, which a wrong guess cannot.
+//
+// Exactly one substitution is allowed. A document needing two is one where
+// the structure, not a keystroke, is wrong, and repairing it would be the
+// compounding guesswork the rest of this file exists to avoid.
+
+// repairMistypedCloser substitutes the closing bracket at the offset the
+// decoder failed on, when that makes the whole document parse. ok is false for
+// any other failure, for a byte that is not a closer, and when the result
+// still does not parse.
+//
+// Substitution ONLY. Inserting a missing closer was tried and withdrawn: it
+// can produce a document that parses and yet is not the one the caller meant.
+// `[[1,[2]]` accepts an inserted closer as the single row [1,[2]], while two
+// rows [[1],[2]] is an equally good reading of the same typo — and the write
+// that follows would put a different table on the sheet either way. Parsing
+// proves a candidate is well-formed; it does not prove it is the caller's
+// structure, and only substitution has a position the decoder already fixed.
+//
+// So `[{"a":1}}` (the array's ] typed as }) is repaired, and
+// `{"s":[{"a":1}}` (the ] never typed at all) keeps its error.
+func repairMistypedCloser(raw string, decodeErr error) (string, bool) {
+	var syn *json.SyntaxError
+	if !errors.As(decodeErr, &syn) {
+		return "", false
+	}
+	// Offset is 1-based past the offending byte, so the byte itself is at
+	// Offset-1. Guard both ends: a malformed Offset must cost the repair, not
+	// panic.
+	i := int(syn.Offset) - 1
+	if i < 0 || i >= len(raw) {
+		return "", false
+	}
+	var other byte
+	switch raw[i] {
+	case '}':
+		other = ']'
+	case ']':
+		other = '}'
+	default:
+		return "", false
+	}
+	candidate := raw[:i] + string(other) + raw[i+1:]
+	var probe interface{}
+	if json.Unmarshal([]byte(candidate), &probe) != nil {
+		return "", false
+	}
+	return candidate, true
+}

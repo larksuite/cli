@@ -289,8 +289,8 @@ func TestNormalize_DefaultsAndFormatOverride(t *testing.T) {
 	in := &tableSheetIn{
 		Name:    "S",
 		Columns: headingNames("id", "amt", "d", "raw"),
-		Dtypes:  labelsByName(map[string]string{"amt": "float64", "d": "datetime64[ns]"}), // id, raw left unspecified
-		Formats: labelsByName(map[string]string{"amt": "#,##0.00"}),                       // override float default ("")
+		Dtypes:  dtypeLabels{labelsByName(map[string]string{"amt": "float64", "d": "datetime64[ns]"})}, // id, raw left unspecified
+		Formats: formatLabels{labelsByName(map[string]string{"amt": "#,##0.00"})},                      // override float default ("")
 		Data:    [][]interface{}{},
 	}
 	spec, err := in.normalize(0)
@@ -334,12 +334,14 @@ func TestTablePut_PayloadValidation(t *testing.T) {
 		{"empty sheets", `{"sheets":[]}`, "at least one sheet"},
 		{"missing name", `{"sheets":[{"columns":["a"],"data":[]}]}`, "name is required"},
 		{"duplicate name", `{"sheets":[{"name":"S","columns":["a"],"data":[]},{"name":"S","columns":["a"],"data":[]}]}`, "duplicate sheet name"},
-		{"dtypes key on a blank column", `{"sheets":[{"name":"S","columns":["a",""],"dtypes":{"":"int64"},"data":[]}]}`, `dtypes references unknown column ""`},
-		{"dtypes refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"dtypes":{"b":"int64"}}]}`, "dtypes references unknown column"},
-		{"formats refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"formats":{"b":"0.0"}}]}`, "formats references unknown column"},
+		// A dtypes / formats key naming no column is dropped and reported on
+		// the receipt rather than failing the payload — see
+		// TestTablePut_UnmatchedLabelsAreReportedNotFatal.
 		{"bad start_cell", `{"sheets":[{"name":"S","start_cell":"A","columns":["a"],"data":[]}]}`, "start_cell"},
-		{"bad date value", `{"sheets":[{"name":"S","columns":["d"],"dtypes":{"d":"datetime64[ns]"},"data":[["2025/03/31"]]}]}`, "must be ISO"},
-		{"number expects numeric", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"int64"},"data":[["abc"]]}]}`, "number expects"},
+		// A value that does not fit its column's declared dtype is no longer a
+		// payload rejection — it is written as the text it is (see
+		// buildTypedCell). Both shapes are covered by
+		// TestTablePut_OffDtypeValuesLandAsText below.
 		{"invalid json", `{not json`, "invalid JSON"},
 	}
 	for _, tt := range cases {
@@ -684,22 +686,44 @@ func TestTablePut_ExecuteCreatesWideSheetWithDims(t *testing.T) {
 }
 
 // TestWorkbookCreate_StylesAnchorFailsBeforeCreate pins that a cell_styles
-// range left of / above the write anchor fails in Validate — with NO API call.
-// The check used to live only in the write phase, after the workbook-create
-// call, stranding an orphan workbook (live-verified 2026-08-06: the envelope
-// read "spreadsheet … created but initial fill failed"). No stubs are
-// registered, so reaching Execute would fail with "no stub" instead of the
-// validation message this test requires.
+// range the write CANNOT be grown to cover still fails in Validate — with NO
+// API call. The check used to live only in the write phase, after the
+// workbook-create call, stranding an orphan workbook (live-verified
+// 2026-08-06: the envelope read "spreadsheet … created but initial fill
+// failed"). No stubs are registered, so reaching Execute would fail with "no
+// stub" instead of the validation message this test requires.
+//
+// A small gap is no longer a rejection at all — the origin grows to cover it
+// (TestWorkbookCreate_StylesAboveTheAnchorGrowTheWrite). What still has to
+// fail early is a gap past styleGrowthCellCap.
 func TestWorkbookCreate_StylesAnchorFailsBeforeCreate(t *testing.T) {
 	t.Parallel()
 	// Only the typed --sheets path can move the anchor (per-sheet start_cell);
 	// --values always writes from A1, where no range can be left of / above.
 	_, _, err := runShortcutCapturingErr(t, WorkbookCreate, []string{
 		"--title", "T",
-		"--sheets", `{"sheets":[{"name":"S","start_cell":"B2","columns":["a"],"data":[["x"]]}]}`,
+		"--sheets", `{"sheets":[{"name":"S","start_cell":"B300000","columns":["a"],"data":[["x"]]}]}`,
 		"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`,
 	})
 	requireValidation(t, err, "starts left of the write range")
+}
+
+// The 09-11..15 shape: data anchored below a title row the caller styles.
+// 29,284 calls were refused for it; the write now grows to cover it.
+func TestWorkbookCreate_StylesAboveTheAnchorGrowTheWrite(t *testing.T) {
+	t.Parallel()
+	stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+workbook-create"), []string{
+		"--title", "T", "--dry-run",
+		"--sheets", `{"sheets":[{"name":"报价单","start_cell":"A3","columns":["品名","单价"],"data":[["A",1]]}]}`,
+		"--styles", `{"styles":[{"name":"报价单","cell_styles":[{"range":"A1:B1","font_weight":"bold"}]}]}`,
+	})
+	if err != nil {
+		t.Fatalf("a styled title row above the data was rejected: %v", err)
+	}
+	// The write must start at A1 now, not A3, or the styles land elsewhere.
+	if !strings.Contains(stdout, `A1:B`) {
+		t.Errorf("write range did not grow to the style's origin:\n%s", stdout)
+	}
 }
 
 // TestTablePut_StylesAnchorFailsBeforeWrite pins that +table-put rejects an
@@ -712,7 +736,7 @@ func TestTablePut_StylesAnchorFailsBeforeWrite(t *testing.T) {
 	t.Parallel()
 	_, _, err := runShortcutCapturingErr(t, TablePut, []string{
 		"--url", testURL,
-		"--sheets", `{"sheets":[{"name":"S","start_cell":"B2","columns":["a"],"data":[["x"]]}]}`,
+		"--sheets", `{"sheets":[{"name":"S","start_cell":"B300000","columns":["a"],"data":[["x"]]}]}`,
 		"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`,
 	})
 	requireValidation(t, err, "starts left of the write range")
@@ -737,14 +761,27 @@ func TestTablePut_AppendStylesAnchorSkipsRowCheck(t *testing.T) {
 			t.Fatal("append payload with a legal style range must produce a dry-run plan, not a validation error")
 		}
 	})
-	t.Run("column left of the anchor still rejected", func(t *testing.T) {
+	t.Run("a column left of the anchor is covered by growing the write", func(t *testing.T) {
 		t.Parallel()
-		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
-			"--url", testURL,
+		calls := parseDryRunAPI(t, TablePut, []string{"--url", testURL,
 			"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
 			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A6","font_weight":"bold"}]}]}`,
 		})
-		requireValidation(t, err, "starts left of the write range")
+		if len(calls) == 0 {
+			t.Fatal("a style one column left of the anchor must now grow the write, not fail it")
+		}
+	})
+
+	t.Run("leftward geometry waits for the live append row", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"ZZ300000","columns":["a"],"data":[["x"]]}]}`,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A6","font_weight":"bold"}]}]}`,
+		})
+		if len(calls) == 0 {
+			t.Fatal("existing-sheet append geometry must wait for the resolved live row")
+		}
 	})
 
 	t.Run("missing append target fails before the sheet is created", func(t *testing.T) {
@@ -758,7 +795,7 @@ func TestTablePut_AppendStylesAnchorSkipsRowCheck(t *testing.T) {
 		structure := toolOutputStub(testToken, "read", `{"sheets":[{"sheet_id":"`+testSheetID+`","sheet_name":"Other","index":0}]}`)
 		out, err := runShortcutWithStubs(t, TablePut,
 			[]string{"--url", testURL,
-				"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
+				"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B300000","columns":["a"],"data":[["x"]]}]}`,
 				"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"B6","font_weight":"bold"}]}]}`},
 			structure)
 		if err == nil {
@@ -1130,10 +1167,10 @@ func TestTablePut_HeaderAndMode(t *testing.T) {
 	}
 	// buildSheetMatrix header toggle
 	s := &tableSheetSpec{Columns: []tableColumnSpec{{Name: "a", Type: "string"}}, Rows: [][]interface{}{{"x"}}}
-	if m, _ := buildSheetMatrix(s, false); len(m) != 1 {
+	if m, _, _ := buildSheetMatrix(s, false); len(m) != 1 {
 		t.Errorf("header off → 1 data row, got %d", len(m))
 	}
-	if m, _ := buildSheetMatrix(s, true); len(m) != 2 {
+	if m, _, _ := buildSheetMatrix(s, true); len(m) != 2 {
 		t.Errorf("header on → header + 1 data row, got %d", len(m))
 	}
 }
@@ -1987,12 +2024,23 @@ func TestPositionalColumnLabels(t *testing.T) {
 		}
 	})
 
-	t.Run("an unknown key in the map form still errors", func(t *testing.T) {
+	t.Run("an unknown key in the map form is dropped and reported", func(t *testing.T) {
 		t.Parallel()
-		_, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+		// A stray key costs its own column's formatting, not the table.
+		p, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
 			"sheets": `{"sheets":[{"name":"S","columns":["id"],"data":[["001"]],"dtypes":{"nope":"float64"}}]}`,
 		}))
-		requireValidation(t, err, `dtypes references unknown column "nope"`)
+		if err != nil {
+			t.Fatalf("a stray dtypes key killed the payload: %v", err)
+		}
+		notes := strings.Join(p.Sheets[0].UnmatchedLabels, " | ")
+		if !strings.Contains(notes, "nope") {
+			t.Errorf("UnmatchedLabels = %q, want it to name the stray key", notes)
+		}
+		// The column that DOES exist keeps its own handling.
+		if got := p.Sheets[0].Columns[0].Name; got != "id" {
+			t.Errorf("columns[0].Name = %q", got)
+		}
 	})
 }
 
@@ -2104,14 +2152,19 @@ func TestTablePut_ReflowLeniency(t *testing.T) {
 		}
 	})
 
-	t.Run("a dtypes key naming nothing still fails", func(t *testing.T) {
+	t.Run("a dtypes key naming nothing costs its column, not the table", func(t *testing.T) {
 		t.Parallel()
-		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
 			"--url", testURL,
 			"--sheets", `{"sheets":[{"name":"S","columns":["营收"],"dtypes":{"利润":"float64"},"data":[[1]]}]}`,
 			"--dry-run",
 		})
-		requireValidation(t, err, "dtypes references unknown column")
+		if err != nil {
+			t.Fatalf("a stray dtypes key killed the payload: %v", err)
+		}
+		if !strings.Contains(stdout, "营收") {
+			t.Errorf("the sheet that WAS declared is missing from the plan:\n%s", stdout)
+		}
 	})
 
 	t.Run("+workbook-create names the sub-sheets the caller left unnamed", func(t *testing.T) {
@@ -2144,30 +2197,66 @@ func TestTablePut_ReflowLeniency(t *testing.T) {
 		}
 	})
 
-	t.Run("a non-numeric string in a numeric column still fails", func(t *testing.T) {
+	t.Run("a non-numeric string in a numeric column lands as text", func(t *testing.T) {
 		t.Parallel()
-		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+		// A thousands separator is either one number or two cells that lost
+		// their split, so it is still not PARSED as a number — stripping it
+		// would guess at a locale. It is written as the text the caller sent,
+		// which guesses nothing and loses nothing. Refusing the payload over
+		// it was the largest --sheets rejection in the 09-11..15 catalog.
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
 			"--url", testURL,
 			"--sheets", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"Int64"},"data":[["1,234"]]}]}`,
 			"--dry-run",
 		})
-		// A thousands separator is either one number or two cells that lost
-		// their split — stripping it would guess at a locale.
-		requireValidation(t, err, "non-numeric string")
+		if err != nil {
+			t.Fatalf("off-dtype value rejected the payload: %v", err)
+		}
+		if !strings.Contains(stdout, `1,234`) {
+			t.Errorf("the caller's value is missing from the plan:\n%s", stdout)
+		}
 	})
 
-	t.Run(`the literal "null" is not a number`, func(t *testing.T) {
+	t.Run(`the literal "null" is written as text, never as 0`, func(t *testing.T) {
 		t.Parallel()
 		// "null" decodes into a json.Number without an error and leaves it
 		// empty, which then marshals back out as 0 — a zero written into the
-		// cell under a success exit code. A blank cell is JSON null, not the
-		// four-letter word.
-		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+		// cell under a success exit code. That silent zero is what must not
+		// happen; the word itself is fine to write as the word.
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
 			"--url", testURL,
 			"--sheets", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"Int64"},"data":[["null"]]}]}`,
 			"--dry-run",
 		})
-		requireValidation(t, err, "non-numeric string")
+		if err != nil {
+			t.Fatalf("off-dtype value rejected the payload: %v", err)
+		}
+		if strings.Contains(stdout, `\"value\":0`) {
+			t.Errorf("the word \"null\" became a numeric zero:\n%s", stdout)
+		}
+		if !strings.Contains(stdout, `null`) {
+			t.Errorf("the caller's value is missing from the plan:\n%s", stdout)
+		}
+	})
+
+	t.Run("off-dtype values land as text and the receipt says how many", func(t *testing.T) {
+		t.Parallel()
+		// The catalog's shape: a real table with a placeholder in one cell and
+		// a 备注 line under the last row. Every other cell keeps its type.
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["n","d"],"dtypes":{"n":"float64","d":"datetime64[ns]"},` +
+				`"data":[[1.5,"2026-03-31"],["—","待定"]]}]}`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("placeholders rejected the payload: %v", err)
+		}
+		for _, want := range []string{"1.5", "—", "待定"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("value %q missing from the plan:\n%s", want, stdout)
+			}
+		}
 	})
 
 	t.Run("append with cell_styles plans the style-only write", func(t *testing.T) {

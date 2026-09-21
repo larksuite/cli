@@ -54,6 +54,9 @@ var StylesPut = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		if err := checkEchoedSheetName(runtime, "styles"); err != nil {
+			return err
+		}
 		// Pre-flight runs offline, so it cannot know how far a whole-column
 		// range reaches; the execute path asks the workbook. Everything else
 		// about the item is still checked, against a stand-in rectangle.
@@ -91,10 +94,7 @@ var StylesPut = common.Shortcut{
 		chunks := chunkOperations(ops, maxBatchOperations)
 		var out interface{}
 		for i, chunk := range chunks {
-			out, err = callTool(ctx, runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
-				"excel_id":   token,
-				"operations": chunk,
-			})
+			out, err = callBatchDroppingRedundantMerges(ctx, runtime, token, chunk)
 			if err != nil {
 				if len(chunks) == 1 {
 					return err
@@ -155,7 +155,7 @@ func stylesPutOperations(runtime flagView, token string, bound sheetRangeBounder
 	if err != nil {
 		return nil, err
 	}
-	items, err := parseWorkbookCreateStylesItems(v)
+	items, err := parseWorkbookCreateStylesItems(v, stylesFromFlag)
 	if err != nil {
 		return nil, err
 	}

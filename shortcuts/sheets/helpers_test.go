@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -63,6 +65,21 @@ func runShortcut(t *testing.T, sc common.Shortcut, args []string) (string, error
 func runShortcutCapturingErr(t *testing.T, sc common.Shortcut, args []string) (stdoutStr, stderrStr string, err error) {
 	t.Helper()
 	parent, stdout, stderr, _ := newTestRig(t, sc)
+	parent.SetArgs(append([]string{sc.Command}, args...))
+	err = parent.Execute()
+	return stdout.String(), stderr.String(), err
+}
+
+// runShortcutCapturingErrWithStdin is runShortcutCapturingErr with a fixed
+// stdin document, for shared-input routing tests.
+func runShortcutCapturingErrWithStdin(t *testing.T, sc common.Shortcut, args []string, stdin string) (stdoutStr, stderrStr string, err error) {
+	t.Helper()
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, testConfig(t))
+	f.IOStreams.In = strings.NewReader(stdin)
+	parent := &cobra.Command{Use: "sheets"}
+	sc.Mount(parent, f)
+	parent.SilenceErrors = true
+	parent.SilenceUsage = true
 	parent.SetArgs(append([]string{sc.Command}, args...))
 	err = parent.Execute()
 	return stdout.String(), stderr.String(), err
@@ -465,3 +482,24 @@ func TestCollapseAggregatedIssues(t *testing.T) {
 		}
 	})
 }
+
+// jsonUnmarshalSheet decodes one sub-sheet through its real wire type, so a
+// test exercises the same UnmarshalJSON the parser uses.
+func jsonUnmarshalSheet(t *testing.T, raw string, out *tableSheetIn) error {
+	t.Helper()
+	return json.Unmarshal([]byte(raw), out)
+}
+
+// writeTempPayload drops a payload under dir and returns a path usable as
+// @file (relative to the working directory the test runs in).
+func writeTempPayload(t *testing.T, dir, body string) string {
+	t.Helper()
+	path := filepath.Join(dir, "payload.json")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+	return path
+}
+
+// joinAny renders dry-run call records for substring assertions.
+func joinAny(calls []interface{}) string { return fmt.Sprint(calls...) }

@@ -4,11 +4,14 @@
 package sheets
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/internal/suggest"
+	"github.com/larksuite/cli/internal/util"
 )
 
 // ─── +batch-update sub-op dispatch ─────────────────────────────────────
@@ -401,6 +404,12 @@ func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
 	vocab := subOpKeyVocabulary(sc)
 	if vocab == nil {
 		return nil
+	}
+	// Before the key walk, so the pair is gone by the time `count` would be
+	// judged against the vocabulary — and so a sub-op means exactly what the
+	// standalone command means.
+	if err := foldSubOpPositionCount(sc, vocab, input); err != nil {
+		return err
 	}
 	keys := make([]string, 0, len(input))
 	for k := range input {
@@ -866,4 +875,68 @@ func translatedCellCount(op map[string]interface{}) int64 {
 	default:
 		return 0
 	}
+}
+
+// foldSubOpPositionCount gives a +dim-delete sub-op the same --position /
+// --count pair the standalone command takes, folding it into the one A1 span
+// the sub-op vocabulary has.
+//
+// Without it the two surfaces disagree on the same input: standalone
+// `--position V --count 2` deletes V:W, while the sub-op
+// {"position":"V","count":2} answered `unknown input key "count"`. A caller
+// who batches a call that worked on its own should not have to re-learn it.
+func foldSubOpPositionCount(sc string, vocab map[string]bool, input map[string]interface{}) error {
+	if sc != "+dim-delete" || !vocab["range"] {
+		return nil
+	}
+	rawCount, given := input["count"]
+	if !given {
+		return nil
+	}
+	n, ok := util.ToFloat64(rawCount)
+	if !ok || n != float64(int(n)) || int(n) < 1 {
+		return fmt.Errorf("%s: \"count\" must be a whole number of at least 1", sc) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+	}
+	spanKey := ""
+	for _, k := range []string{"range", "position"} {
+		if _, has := input[k]; has {
+			spanKey = k
+			break
+		}
+	}
+	if spanKey == "" {
+		return fmt.Errorf("%s: \"count\" needs a starting row or column — give \"range\" (\"3\" or \"C\"), or state the whole span at once (\"3:5\")", sc) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+	}
+	// Scalars, not strings only: a sub-op may write {"position":3}, which
+	// mapFlagView.Str already renders for every other flag, and rejecting it
+	// here left `count` to be reported as an unknown key.
+	start, isScalar := subOpScalarText(input[spanKey])
+	if !isScalar {
+		return nil // a non-scalar span is the sub-op validator's to report
+	}
+	prefix, start := splitDimSpanSheetPrefix(start)
+	span, err := expandDimSpan(start, int(n))
+	if err != nil {
+		return err
+	}
+	delete(input, spanKey)
+	delete(input, "count")
+	input["range"] = prefix + span
+	return nil
+}
+
+// subOpScalarText renders a sub-op value the way mapFlagView.Str does, so the
+// batch surface reads the same scalars the standalone flags accept.
+func subOpScalarText(v interface{}) (string, bool) {
+	switch value := v.(type) {
+	case string:
+		return strings.TrimSpace(value), true
+	case json.Number:
+		return value.String(), true
+	case float64:
+		return strconv.FormatFloat(value, 'f', -1, 64), true
+	case int:
+		return strconv.Itoa(value), true
+	}
+	return "", false
 }

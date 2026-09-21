@@ -41,6 +41,12 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 			prev(cmd)
 		}
 		cmd.SetFlagErrorFunc(sheetsFlagErrorFunc)
+		// Registers a flag, so it must run before chainFlagAliases: that stage
+		// indexes every registered name once and installs a pflag normalizer
+		// over the result, and a flag added afterwards is missing from the
+		// index — which makes pflag fail to resolve the command's OWN flags.
+		chainDimDeleteCount(cmd)
+		chainPayloadEchoedFlags(cmd)
 		chainEnumNormalization(cmd)
 		chainFlagAliases(cmd)
 		chainRangeSheetPrefix(cmd)
@@ -128,8 +134,13 @@ var commandFlagAliases = map[string]map[string]string{
 	// --csv's own value semantics (inline text, @file or -), so they are pure
 	// renames. csv-file joins file on the path-valued side. 08-29..31 reflow:
 	// 8 of +csv-put's 29 rejections were one of these four names.
-	"+csv-put":      {"file": "csv", "csv-file": "csv", "data": "csv", "content": "csv", "csv-data": "csv", "text": "csv"},
+	"+csv-put":      {"file": "csv", "csv-file": "csv", "data": "csv", "content": "csv", "csv-data": "csv", "text": "csv", "values": "csv", "rows": "csv"},
 	"+sheet-create": {"name": "title", "sheet-name": "title"},
+	// Same one name-valued input as +sheet-create, so the same rename is the
+	// only reading. 09-11..15: 616 rejections on --name for +workbook-create
+	// alone, plus 5,142 on --title for +workbook-import, whose own name-valued
+	// flag is --file-name.
+	"+workbook-create": {"name": "title", "workbook-name": "title", "workbook-title": "title", "spreadsheet-title": "title"},
 	// The new name is the only name-valued input a rename takes, so the
 	// habitual spellings are unambiguous (unlike +sheet-copy, where a name
 	// could mean the copy's title or the source selector and gets a
@@ -262,6 +273,7 @@ var domainFlagAliases = map[string]string{
 	"bg-color":              "background-color",
 	"fill-color":            "background-color",
 	"text-color":            "font-color",
+	"fore-color":            "font-color",
 	"query":                 "find",
 	"search":                "find",
 	"items":                 "options",
@@ -285,9 +297,7 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"target-sheet-name": "the copy's name goes in --title; --sheet-name / --sheet-id selects the source sheet",
 		"new-name":          "the copy's name goes in --title; --sheet-name / --sheet-id selects the source sheet",
 	},
-	"+dim-insert": {
-		"dimension": "+dim-insert infers rows vs columns from --position: a row number like 3 inserts rows, a column letter like C inserts columns; pair with --count N",
-	},
+
 	// Not a silent rename despite naming the same integer: +dim-freeze sends
 	// the whole freeze state every call, so --frozen-rows 2 alone would ship
 	// freeze_rows:2 with no freeze_columns and quietly unfreeze a column
@@ -314,9 +324,7 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"italic":    "use --font-style italic",
 		"underline": "use --font-line underline",
 		"font-bold": "use --font-weight bold",
-		// There is no composite style flag here: the OpenAPI's {style:{…}}
-		// envelope is one flat flag per field on this command.
-		"style": "there is no single --style flag — pass each field on its own: --font-weight, --font-style, --font-color, --background-color, --font-size, --border-styles",
+
 		// The border family: the only border flag is --border-styles (composite
 		// JSON); color and per-side variants ride inside it.
 		"border-color":  `border color rides inside --border-styles JSON, e.g. --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}'`,
@@ -386,11 +394,8 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"index":       `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
 		"start-index": `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
 		"end-index":   `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
-		"dimension":   `+dim-delete infers rows vs columns from --range: "3:5" is rows, "C:E" is columns`,
 	},
-	"+cells-unmerge": {
-		"ranges": `+cells-unmerge takes one span per call: --range "A1:B2"; unmerge several regions with several calls (or one +batch-update carrying them all)`,
-	},
+
 	// The --ranges commands name their sheet inside each entry, as a bare A1
 	// prefix. Without these the generic locator answers instead, and it only
 	// says which OTHER commands take --sheet-name -- never where the sheet
@@ -1263,6 +1268,11 @@ func chainEnumNormalization(cmd *cobra.Command) {
 var payloadBorneRequiredFlags = map[string]map[string]string{
 	"+cond-format-create": {"ranges": "properties", "rule-type": "properties"},
 	"+cond-format-update": {"ranges": "properties", "rule-type": "properties"},
+	// The largest command-error cluster in the 09-11..15 catalog (72,353
+	// calls): a complete {"sheets":[{"name":…}]} payload refused because the
+	// workbook's name was not ALSO repeated on the command line. See
+	// workbook_title_from_payload.go for which name the payload supplies.
+	"+workbook-create": {"title": "sheets"},
 }
 
 // chainDefensiveConfirmFlag accepts --yes on the commands that do not need it.

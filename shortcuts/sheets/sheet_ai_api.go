@@ -73,7 +73,7 @@ func callTool(
 		return nil, err
 	}
 
-	data, err := callToolWithTransientRetry(ctx, runtime, token, kind, body)
+	data, err := callToolWithTransientRetry(ctx, runtime, token, kind, toolName, input, body)
 	if err != nil {
 		// A classified business error (non-zero API code) carries the tool's
 		// own code and raw msg. Rewrite the typed error in place: the Message
@@ -192,21 +192,26 @@ const (
 	readRetryBackoff = 1 * time.Second
 )
 
-// callToolWithTransientRetry reissues a READ tool call that failed for a
-// transient reason. Writes are never retried: this API has no idempotency
-// key, so a create that timed out after the backend committed it would be
-// committed twice — which is why the transport-level RetryTransport is
-// installed with MaxRetries at 0 and why this sits here, where the read/write
-// classification is already known, rather than in the shared transport.
+// callToolWithTransientRetry reissues a tool call that failed for a transient
+// reason: every read, and the one write that is idempotent by construction
+// (see idempotentWriteTool).
+//
+// Most writes are still never retried. This API has no idempotency key, so a
+// create that timed out after the backend committed it would be committed
+// twice — which is why the transport-level RetryTransport is installed with
+// MaxRetries at 0 and why this sits here, where the tool is known, rather
+// than in the shared transport.
 func callToolWithTransientRetry(
 	ctx context.Context,
 	runtime *common.RuntimeContext,
 	token string,
 	kind ToolKind,
+	toolName string,
+	input map[string]interface{},
 	body map[string]interface{},
 ) (map[string]interface{}, error) {
 	attempts := 1
-	if kind == ToolKindRead {
+	if kind == ToolKindRead || idempotentWriteTool(toolName, input) {
 		attempts = readRetryAttempts
 	}
 	backoff := readRetryBackoff
@@ -227,6 +232,37 @@ func callToolWithTransientRetry(
 		}
 	}
 	return data, err
+}
+
+// idempotentWriteTool reports whether reissuing this exact write leaves the
+// sheet in the same state as issuing it once.
+//
+// Only set_cell_range qualifies, and the reason is structural rather than a
+// judgement call: its input names an ABSOLUTE range and the ABSOLUTE contents
+// for it, so replaying the identical body overwrites the same cells with the
+// same values whether or not the first attempt landed. Nothing else on this
+// surface has that property — modify_workbook_structure creates a sheet,
+// batch_update may carry insert_dimension or merge_cells, and a second run of
+// either changes the result.
+//
+// The one exception inside set_cell_range is allow_overwrite:false, where the
+// caller asked the backend to refuse occupied cells: a retry after a write
+// that DID land would then fail on the caller's own data, turning a timeout
+// into a misleading conflict. Those keep the single attempt.
+//
+// 09-11..15: "API call failed: server time out error" is 74,033 calls, and
+// 42,018 of them are +workbook-create reporting that the workbook was created
+// and the FILL timed out — a set_cell_range, on a spreadsheet that now exists
+// and is empty. The CLI's own hint tells the caller to reissue that write by
+// hand; doing it here costs one second and removes the turn.
+func idempotentWriteTool(toolName string, input map[string]interface{}) bool {
+	if toolName != "set_cell_range" {
+		return false
+	}
+	if v, ok := input["allow_overwrite"].(bool); ok && !v {
+		return false
+	}
+	return true
 }
 
 // isTransientToolFailure reports whether an error is worth reissuing an

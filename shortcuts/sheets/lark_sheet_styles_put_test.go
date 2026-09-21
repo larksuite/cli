@@ -292,10 +292,43 @@ func TestStylesPayloadVocabularyForgiveness(t *testing.T) {
 		}
 	})
 
-	t.Run("fore_color prescribes instead of guessing", func(t *testing.T) {
+	t.Run("fore_color is the font color", func(t *testing.T) {
 		t.Parallel()
-		_, err := stamp(map[string]interface{}{"fore_color": "#FF0000"})
-		requireValidation(t, err, "fore_color is ambiguous")
+		// Lark's own conditional-format schema spells its one text-color slot
+		// fore_color (前景色/字体颜色), which is why condFormatStyleAliases maps
+		// font_color ONTO it. 36,240 calls in the 09-11..15 catalog were
+		// refused over the name.
+		ops, err := stamp(map[string]interface{}{"fore_color": "#FF0000"})
+		if err != nil {
+			t.Fatalf("fore_color rejected: %v", err)
+		}
+		cs := cellProto(t, ops)["cell_styles"].(map[string]interface{})
+		if cs["font_color"] != "#FF0000" {
+			t.Errorf("font_color = %v, want #FF0000 (cell_styles = %v)", cs["font_color"], cs)
+		}
+		if _, leftover := cs["fore_color"]; leftover {
+			t.Errorf("fore_color survived into the wire payload: %v", cs)
+		}
+	})
+
+	t.Run("fore_color alongside font_color is refused, not picked", func(t *testing.T) {
+		t.Parallel()
+		// The collision never occurs in the 2.7M-call catalog, but a caller who
+		// DID spell both must not silently lose one of them.
+		_, err := stamp(map[string]interface{}{"fore_color": "#FF0000", "font_color": "#000000"})
+		requireValidation(t, err, "same text-color slot")
+	})
+
+	t.Run("back_color is the cell fill", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stamp(map[string]interface{}{"back_color": "#EEEEEE"})
+		if err != nil {
+			t.Fatalf("back_color rejected: %v", err)
+		}
+		cs := cellProto(t, ops)["cell_styles"].(map[string]interface{})
+		if cs["background_color"] != "#EEEEEE" {
+			t.Errorf("background_color = %v, want #EEEEEE (cell_styles = %v)", cs["background_color"], cs)
+		}
 	})
 
 	t.Run("bare string cell_merges accepted", func(t *testing.T) {

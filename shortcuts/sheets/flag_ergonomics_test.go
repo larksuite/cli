@@ -571,12 +571,6 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 		rejectHint []string
 	}{
 		{
-			command:  "+dim-insert",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--dimension", "row"},
-			wrong:    "--dimension",
-			wantHint: []string{"--position", "--count"},
-		},
-		{
 			command:  "+cells-set-style",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--bold", "true"},
 			wrong:    "--bold",
@@ -1113,23 +1107,15 @@ func TestReflowFlagVocabulary(t *testing.T) {
 
 	t.Run("wrap and style spellings get prescriptions", func(t *testing.T) {
 		t.Parallel()
-		for _, tc := range []struct{ flag, want string }{
-			// The wrap spellings are renames now (the enum normalizer already
-			// reads their values); --style still names no single flag.
-			{"--style", "there is no single --style flag"},
-		} {
-			t.Run(tc.flag, func(t *testing.T) {
-				t.Parallel()
-				_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
-					"--url", testURL, "--sheet-name", "s", "--range", "A1:A10",
-					tc.flag, "x", "--dry-run",
-				})
-				ve := requireValidation(t, err, "unknown flag")
-				if !strings.Contains(ve.Hint, tc.want) {
-					t.Errorf("hint should carry %q, got %q", tc.want, ve.Hint)
-				}
-			})
-		}
+		// The wrap spellings are renames (the enum normalizer reads their
+		// values). --style is the OpenAPI's {style:{…}} envelope and is now
+		// UNPACKED onto the flat flags (see TestReconcile_StyleEnvelopeUnpacks);
+		// what still gets an answer is a value that is not that envelope.
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:A10",
+			"--style", "x", "--dry-run",
+		})
+		requireValidation(t, err, "--style must be a JSON object of style fields")
 	})
 }
 
@@ -1175,12 +1161,13 @@ func TestReflowLongTailVocabulary(t *testing.T) {
 			// prescription.
 			{"dim-delete has no start-index", "+dim-delete", `--range: "3:5" deletes rows`,
 				[]string{"--url", testURL, "--sheet-name", "s", "--start-index", "3"}},
-			{"cells-unmerge takes one span", "+cells-unmerge", "one span per call",
-				[]string{"--url", testURL, "--sheet-name", "s", "--ranges", `["A1:B2"]`}},
+			// A single-span --ranges resolves now; several is still the
+			// caller asking for what the command does not do, and the
+			// prescription is checked in TestReconcile_SingletonRanges.
 			{"csv-get returns values only", "+csv-get", "+cells-get --include",
 				[]string{"--url", testURL, "--sheet-name", "s", "--range", "A1:B2", "--include", "formula"}},
-			{"styles-put has no sheet selector", "+styles-put", "no sheet selector",
-				[]string{"--url", testURL, "--sheet-name", "s", "--styles", `{"styles":[]}`}},
+			// --sheet-name on +styles-put is reconciled against the payload
+			// rather than refused (TestReconcile_SheetSelectorEchoingThePayload).
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()

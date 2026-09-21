@@ -214,7 +214,11 @@ var fixedAllowRoots = sync.OnceValue(func() []policyEntry {
 // share ~/files' one limit as well: when the home directory is itself a deny
 // root (running as root, where it is /root), deny wins and the roots are
 // unavailable.
-var agentStateDirNames = []string{".doubao", ".super_doubao", "Doubao"}
+// "doubao" (lowercase, no dot) joins its three siblings from the 09-11..15
+// catalog: 3,595 rejections name paths under ~/doubao/chats/<id>/, the same
+// sandbox layout as ~/Doubao/chats/<id>/ on a case-sensitive filesystem where
+// the two are different directories.
+var agentStateDirNames = []string{".doubao", ".super_doubao", "Doubao", "doubao"}
 
 // tmpRoot is the temporary-directory allow root: literal /tmp on Unix-like
 // systems (macOS resolves it to /private/tmp via realpath). Windows has no

@@ -1292,7 +1292,11 @@ func TestExecute_TransientReadRetry(t *testing.T) {
 		}
 	})
 
-	t.Run("a write is never reissued", func(t *testing.T) {
+	// The write rule is about IDEMPOTENCE, not about writes. set_cell_range
+	// names an absolute range and its absolute contents, so replaying it
+	// lands the same state whether or not the first attempt committed;
+	// anything that creates does not.
+	t.Run("an idempotent write is reissued", func(t *testing.T) {
 		t.Parallel()
 		parent, _, _, reg := newTestRig(t, CellsSet)
 		calls := 0
@@ -1305,12 +1309,45 @@ func TestExecute_TransientReadRetry(t *testing.T) {
 		err := parent.Execute()
 		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "server time out error")
 		if p.Code != 1310299 {
-			t.Errorf("Code = %d, want 1310299 (the backend's own code must reach the caller unretried)", p.Code)
+			t.Errorf("Code = %d, want 1310299 (the backend's own code must survive the retries)", p.Code)
 		}
+		if calls != readRetryAttempts {
+			t.Errorf("calls = %d, want %d (set_cell_range is idempotent)", calls, readRetryAttempts)
+		}
+	})
+
+	t.Run("allow_overwrite:false keeps its single attempt", func(t *testing.T) {
+		t.Parallel()
+		// A retry after a write that DID land would be refused by the
+		// backend on the caller's own freshly written data, turning a
+		// timeout into a misleading conflict.
+		if idempotentWriteTool("set_cell_range", map[string]interface{}{"allow_overwrite": false}) {
+			t.Error("a no-overwrite write was classified idempotent")
+		}
+		if !idempotentWriteTool("set_cell_range", map[string]interface{}{}) {
+			t.Error("a plain set_cell_range was not classified idempotent")
+		}
+	})
+
+	t.Run("a non-idempotent write is never reissued", func(t *testing.T) {
+		t.Parallel()
+		for _, tool := range []string{"modify_workbook_structure", "batch_update", "modify_sheet_structure"} {
+			if idempotentWriteTool(tool, map[string]interface{}{}) {
+				t.Errorf("%s was classified idempotent; a second run changes the result", tool)
+			}
+		}
+		parent, _, _, reg := newTestRig(t, SheetCreate)
+		calls := 0
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+			Body: timeoutBody, Reusable: true, OnMatch: func(*http.Request) { calls++ },
+		})
+		parent.SetArgs([]string{"+sheet-create", "--url", testURL, "--title", "New"})
+		_ = parent.Execute()
 		// A create that timed out after the backend committed it must not be
 		// committed twice.
 		if calls != 1 {
-			t.Errorf("calls = %d, want 1 (writes are not retried)", calls)
+			t.Errorf("calls = %d, want 1 (a create is not retried)", calls)
 		}
 	})
 }
