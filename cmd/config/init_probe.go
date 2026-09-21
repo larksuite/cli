@@ -59,7 +59,7 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 
-	token, statusMessage, err := credential.FetchTATWithStatusMessage(ctx, httpClient, brand, appID, appSecret)
+	result, err := credential.FetchTAT(ctx, httpClient, brand, appID, appSecret)
 	if err != nil {
 		// A typed error from FetchTAT is a deterministic credential rejection
 		// (classifyTATResponseCode). Propagate it so config init exits with the
@@ -71,8 +71,8 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 		}
 		return nil
 	}
-	if statusMessage != "" && factory.IOStreams != nil && factory.IOStreams.ErrOut != nil {
-		fmt.Fprintln(factory.IOStreams.ErrOut, statusMessage)
+	if result.StatusMessage != "" && factory.IOStreams != nil && factory.IOStreams.ErrOut != nil {
+		fmt.Fprintf(factory.IOStreams.ErrOut, "[lark-cli] tat-client: %s\n", result.StatusMessage)
 	}
 
 	// TAT succeeded — fire the probe call. Only typed policy errors propagate.
@@ -82,7 +82,7 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	if err != nil {
 		return nil
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+result.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := httpClient.Do(req)

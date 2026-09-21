@@ -249,7 +249,7 @@ func TestRunProbe_ProbeRequestShape(t *testing.T) {
 	if err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := errBuf.String(); got != statusMessage+"\n" {
+	if got := errBuf.String(); got != "[lark-cli] tat-client: "+statusMessage+"\n" {
 		t.Fatalf("stderr = %q, want status_message", got)
 	}
 

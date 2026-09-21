@@ -205,8 +205,8 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 			if err != nil {
 				return nil, err
 			}
-			if result.response.StatusMessage != "" && errOut != nil {
-				fmt.Fprintln(errOut, result.response.StatusMessage)
+			if result.response.StatusMessage != "" {
+				fmt.Fprintf(errOut, "[lark-cli] uat-client: %s\n", result.response.StatusMessage)
 			}
 			return refreshed, nil
 		}

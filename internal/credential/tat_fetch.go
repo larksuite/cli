@@ -27,14 +27,7 @@ type tatResponse struct {
 	StatusMessage    string `json:"status_message"`
 }
 
-// FetchTAT preserves the established token-only API for callers that do not
-// render OAuth success advisories.
-func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (string, error) {
-	result, err := fetchTAT(ctx, httpClient, brand, appID, appSecret)
-	return result.AccessToken, err
-}
-
-// FetchTATWithStatusMessage performs a single HTTP POST to mint a tenant access
+// FetchTAT performs a single HTTP POST to mint a tenant access
 // token via the unified OAuth 2.0 Token Endpoint ({accounts}/oauth/v3/token)
 // using the client_credentials grant with client_secret_post authentication.
 // It does not read configuration or keychain, so callers that already hold
@@ -52,12 +45,7 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 // credential rejection.
 //
 // The caller owns the context timeout.
-func FetchTATWithStatusMessage(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (string, string, error) {
-	result, err := fetchTAT(ctx, httpClient, brand, appID, appSecret)
-	return result.AccessToken, result.StatusMessage, err
-}
-
-func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (tatResponse, error) {
+func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (tatResponse, error) {
 	ep := core.ResolveEndpoints(brand)
 	endpoint := ep.Accounts + core.OAuthTokenV3Path
 
