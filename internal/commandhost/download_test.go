@@ -154,7 +154,7 @@ func mountDownloadCommand(t *testing.T, declaration command.Command) (*cobra.Com
 	root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
 	service := &cobra.Command{Use: "drive"}
 	root.AddCommand(service)
-	compiled[0].Mount(service, factory)
+	compiled.Shortcuts[0].Mount(service, factory)
 	return root, factory
 }
 
@@ -244,7 +244,7 @@ func TestExternalDownloadDryRunReportsFileWithoutWriting(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
 	service := &cobra.Command{Use: "drive"}
 	root.AddCommand(service)
-	compiled[0].Mount(service, factory)
+	compiled.Shortcuts[0].Mount(service, factory)
 	root.SetArgs([]string{"drive", "+external-backup", "--file-token", "file_1", "--output", "reports/file.bin", "--as", "user", "--dry-run"})
 	if _, err := root.ExecuteC(); err != nil {
 		t.Fatal(err)

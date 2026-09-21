@@ -97,7 +97,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 	}
 	available := resolver.sorted(helpBrand)
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
-		fmt.Sprintf("domain (repeatable or comma-separated, e.g. --domain calendar,task)\navailable: %s, all", strings.Join(available, ", ")))
+		fmt.Sprintf("domain (repeatable or comma-separated, e.g. --domain calendar,task)\navailable: %s, %s", strings.Join(available, ", "), registry.AllDomainsKeyword))
 	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", nil,
 		"scopes to exclude from the request (repeatable or comma-separated, e.g. --exclude drive:file:download)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
@@ -189,8 +189,8 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		// a scope universe the remote scopes.json — generated from the standard
 		// CLI — does not cover, so it resolves locally instead of remote-first:
 		// trusting the remote would silently drop the custom scopes such a build
-		// added to existing domains (WithCommandSets can only extend existing
-		// domains, never add new ones). Standard builds keep remote-first.
+		// added to existing domains and the domains it declared with NewDomain.
+		// Standard builds keep remote-first.
 		if !resolver.hasExternal {
 			// Pull the remote scopes.json once for this login (not cached); any
 			// read failure (network/timeout/non-2xx/malformed) silently falls
@@ -201,7 +201,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 
 		// Expand --domain all against the resolved legal domain set.
 		for _, d := range selectedDomains {
-			if strings.EqualFold(d, "all") {
+			if strings.EqualFold(d, registry.AllDomainsKeyword) {
 				selectedDomains = allLegalDomains
 				break
 			}
@@ -613,10 +613,10 @@ func newDomainResolver(catalog apicatalog.Catalog, registered []common.Shortcut)
 // scopes.json (generated from the standard CLI) covers, so auth login must
 // resolve locally rather than remote-first.
 //
-// It compares command paths rather than counts: a business command mounts onto
-// an existing domain (WithCommandSets cannot create new domains) and only ever
-// adds to the built-in set, so any registered path absent from the built-in
-// snapshot came from an injected command. A build that instead forks the
+// It compares command paths rather than counts: a business command only ever
+// adds to the built-in set, whether it extends a built-in domain or declares a
+// new one, so any registered path absent from the built-in snapshot came from
+// an injected command. A build that instead forks the
 // registry to change scopes without adding commands is not detected here — no
 // supported build option does that, and every current custom build extends via
 // WithCommandSets. Activating a build-tag feature that swaps only the credential

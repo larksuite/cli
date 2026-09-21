@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"embed"
+	"io/fs"
 	"os"
 
 	"github.com/larksuite/cli/cmd"
@@ -144,11 +146,78 @@ var noteCommand = command.Define(command.Definition[noteArgs, noteData]{
 	},
 })
 
+// domainAcmeHR is a domain lark-cli does not ship. Every command in its set
+// names it as Metadata.Service, and the set declares it with NewDomain.
+const domainAcmeHR = command.DomainName("acme-hr")
+
+type employeeArgs struct {
+	ID string `flag:"id" schema:"required;minLength=1" doc:"employee open ID"`
+}
+
+type employeeData struct {
+	ID   string `json:"id" schema:"required" doc:"employee open ID"`
+	Name string `json:"name" schema:"required" doc:"employee name"`
+}
+
+// employeeWire holds the OpenAPI response fields this command projects.
+type employeeWire struct {
+	User struct {
+		Name string `json:"name"`
+	} `json:"user"`
+}
+
+func employeeRequest(args *employeeArgs) command.Request {
+	return command.GET("/open-apis/contact/v3/users/" + command.PathSegment(args.ID))
+}
+
+var employeeCommand = command.Define(command.Definition[employeeArgs, employeeData]{
+	Metadata: command.CommandMetadata{
+		Service: domainAcmeHR, Command: "+wrapper-employee", Description: "Read one employee record", Risk: command.RiskRead,
+		Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
+			command.IdentityUser: {RequiredScopes: []string{"contact:user.base:readonly"}},
+		}},
+	},
+	Hooks: command.Hooks[employeeArgs, employeeData]{
+		DryRun: func(_ context.Context, _ command.CommandContext, args *employeeArgs) *command.DryRun {
+			return command.NewDryRun(employeeRequest(args))
+		},
+		Execute: func(ctx context.Context, commandContext command.CommandContext, args *employeeArgs) (command.Result[employeeData], error) {
+			user, err := command.CallJSON[employeeWire](ctx, commandContext, employeeRequest(args))
+			if err != nil {
+				return command.Result[employeeData]{}, err
+			}
+			return command.Success(employeeData{ID: args.ID, Name: user.User.Name}), nil
+		},
+	},
+})
+
+// distributionContent is the guidance for the new domain: its affordance file
+// and its skill. lark-cli ships neither for a domain it does not know, and a
+// wrapper main does not compile the repository's root content_embed.go, so the
+// distribution embeds and wires both trees itself.
+//
+//go:embed affordance skills
+var distributionContent embed.FS
+
 func main() {
+	affordanceTree, err := fs.Sub(distributionContent, "affordance")
+	if err != nil {
+		panic(err)
+	}
+	skillTree, err := fs.Sub(distributionContent, "skills")
+	if err != nil {
+		panic(err)
+	}
+	cmd.SetEmbeddedAffordanceContent(affordanceTree)
+	cmd.SetEmbeddedSkillContent(skillTree)
 	os.Exit(cmd.ExecuteWithOptions(
 		cmd.WithCommandSets(
 			command.Set{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{readCommand, noteCommand}},
 			command.Set{Domain: command.ExtendDomain(command.DomainDrive), Commands: []command.Command{backupCommand}},
+			command.Set{
+				Domain:   command.NewDomain(command.DomainSpec{Name: domainAcmeHR, Description: "Acme HR employee records"}),
+				Commands: []command.Command{employeeCommand},
+			},
 		),
 		cmd.WithoutPlugins(),
 		cmd.WithoutStrictMode(),

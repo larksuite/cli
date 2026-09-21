@@ -228,8 +228,24 @@ func TestBusinessDefinitionsCompileTogether(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(compiled) != 4 {
-		t.Fatalf("compiled commands = %d", len(compiled))
+	if len(compiled.Shortcuts) != 4 {
+		t.Fatalf("compiled commands = %d", len(compiled.Shortcuts))
+	}
+}
+
+// ValidateSets runs the compiler the host runs, so a declaration it refuses
+// fails here rather than at startup.
+func TestValidateSetsRunsTheHostCompiler(t *testing.T) {
+	sets := []command.Set{
+		{Domain: command.ExtendDomain(command.DomainDocs), Commands: []command.Command{command.Define(documentGetDefinition())}},
+		{Domain: command.NewDomain(command.DomainSpec{Name: command.DomainIm, Description: "Shadow"}), Commands: []command.Command{command.Define(chatListDefinition())}},
+	}
+	err := commandtest.ValidateSets(sets...)
+	if err == nil || !strings.Contains(err.Error(), "use ExtendDomain") {
+		t.Fatalf("ValidateSets() error = %v, want the built-in domain rejection", err)
+	}
+	if err := commandtest.ValidateSets(sets[0]); err != nil {
+		t.Fatalf("ValidateSets() rejected a valid set: %v", err)
 	}
 }
 

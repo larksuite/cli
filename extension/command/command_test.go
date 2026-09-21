@@ -480,3 +480,13 @@ func TestCollectPagesRejectsAmbiguousPageShapes(t *testing.T) {
 		}
 	}
 }
+
+func TestInspectDomainProjectsBothDeclarations(t *testing.T) {
+	if got := InspectDomain(ExtendDomain(DomainIm)); got != (HostDomain{Name: "im"}) {
+		t.Fatalf("ExtendDomain projection = %#v", got)
+	}
+	declared := InspectDomain(NewDomain(DomainSpec{Name: "acme-hr", Description: "Acme HR records"}))
+	if declared != (HostDomain{Name: "acme-hr", New: true, Description: "Acme HR records"}) {
+		t.Fatalf("NewDomain projection = %#v", declared)
+	}
+}

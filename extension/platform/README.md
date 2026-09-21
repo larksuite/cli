@@ -357,3 +357,5 @@ defines its exit code, wire fields, and consumer behavior.
 - Inventory diagnostic: run `lark-cli config plugins show` after
   installing your plugin to see hooks/rules attributed to your plugin
   name.
+- Business commands and domains (`cmd.WithCommandSets`, `ExtendDomain`,
+  `NewDomain`): see [`extension/command/README.md`](../command/README.md).

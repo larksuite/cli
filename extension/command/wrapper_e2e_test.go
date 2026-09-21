@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -100,6 +101,44 @@ func TestExternalWrapperCommandSurface(t *testing.T) {
 	completion := run("__complete", "im", "+wrap")
 	if !strings.Contains(completion, "+wrapper-read") {
 		t.Fatalf("wrapper completion = %s", completion)
+	}
+
+	// A domain lark-cli does not ship is a first-class root: its commands mount
+	// under it, root help lists it with the Lark domains, auth login accepts it,
+	// and the distribution's own affordance and skill supply its guidance.
+	employeeDryRun := run("acme-hr", "+wrapper-employee", "--id", "ou_1", "--as", "user", "--dry-run")
+	if !strings.Contains(employeeDryRun, `"dry_run": true`) || !strings.Contains(employeeDryRun, "/open-apis/contact/v3/users/ou_1") {
+		t.Fatalf("new domain dry-run = %s", employeeDryRun)
+	}
+	rootHelp := run("--help")
+	// A help group runs from its title to the blank line before the next one.
+	_, domains, _ := strings.Cut(rootHelp, "\nLark domains:\n")
+	domains, _, _ = strings.Cut(domains, "\n\n")
+	if !regexp.MustCompile(`(?m)^\s+acme-hr\s+Acme HR employee records$`).MatchString(domains) {
+		t.Fatalf("root help does not list the new domain with its description under Lark domains:\n%s", rootHelp)
+	}
+	domainHelp := run("acme-hr", "--help")
+	for _, want := range []string{
+		"Acme HR employee records",
+		"+wrapper-employee",
+		"lark-cli skills read acme-hr",
+	} {
+		if !strings.Contains(domainHelp, want) {
+			t.Fatalf("new domain help lacks %q:\n%s", want, domainHelp)
+		}
+	}
+	employeeHelp := run("acme-hr", "+wrapper-employee", "--help")
+	if !strings.Contains(employeeHelp, "Pass the employee's open_id as --id.") {
+		t.Fatalf("new domain command help lacks its affordance tip:\n%s", employeeHelp)
+	}
+	if skill := run("skills", "read", "acme-hr"); !strings.Contains(skill, "name: acme-hr") {
+		t.Fatalf("new domain skill is not served: %s", skill)
+	}
+	if loginHelp := run("auth", "login", "--help"); !strings.Contains(loginHelp, "acme-hr") {
+		t.Fatalf("auth login --domain does not offer the new domain:\n%s", loginHelp)
+	}
+	if completion := run("__complete", "acme-hr", "+wrap"); !strings.Contains(completion, "+wrapper-employee") {
+		t.Fatalf("new domain completion = %s", completion)
 	}
 }
 

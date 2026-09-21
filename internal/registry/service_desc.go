@@ -49,6 +49,10 @@ func AllServiceNames() []string {
 	return names
 }
 
+// AllDomainsKeyword is the domain-list value that stands for every known domain,
+// as in `auth login --domain all`, so no domain may take the name.
+const AllDomainsKeyword = "all"
+
 func getServiceLocale(name, lang string) *serviceDescLocale {
 	m := loadServiceDescriptions()
 	entry, ok := m[name]

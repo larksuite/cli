@@ -170,6 +170,17 @@ func compileForTest[Args any, Data any](definition command.Definition[Args, Data
 	return command.InspectCommand(declaration), nil
 }
 
+// ValidateSets runs the host compiler's whole-contribution checks over sets:
+// domain declarations, Metadata.Service consistency, and command path
+// collisions with built-in and sibling commands. A distribution's unit tests
+// call it so those failures surface before its binary refuses to start. Only a
+// declared domain that shadows a lark-cli root command such as auth waits for
+// startup, where the root builder checks the assembled tree.
+func ValidateSets(sets ...command.Set) error {
+	_, err := commandhost.CompileSets(sets)
+	return err
+}
+
 func Execute[Args any, Data any](ctx context.Context, recorder *Recorder, identity command.Identity, definition command.Definition[Args, Data], args *Args) (Execution[Data], error) {
 	var execution Execution[Data]
 	declaration, err := compileForTest(definition)

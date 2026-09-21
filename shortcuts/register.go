@@ -210,8 +210,9 @@ func RegisterShortcutSnapshotForDomainsWithContext(
 			svc = &cobra.Command{Use: service}
 			program.AddCommand(svc)
 		}
-		// A pre-mounted routing stub carries no description yet; a service
-		// command registered by cmd/service keeps its own.
+		// A routing stub pre-mounted by the root builder is described only when
+		// a command set declared its domain; a service command registered by
+		// cmd/service keeps its own.
 		if svc.Short == "" {
 			desc := registry.GetServiceDescription(service, "en")
 			if desc == "" {

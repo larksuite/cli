@@ -7,8 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -19,6 +24,7 @@ import (
 	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -58,11 +64,14 @@ func TestCompileSetsCompilesTypedShortcut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(compiled) != 1 || compiled[0].Service != "im" || compiled[0].Command != "+external-fixture" {
+	if len(compiled.Shortcuts) != 1 || compiled.Shortcuts[0].Service != "im" || compiled.Shortcuts[0].Command != "+external-fixture" {
 		t.Fatalf("compiled shortcuts = %#v", compiled)
 	}
-	if len(compiled[0].AuthTypes) != 1 || compiled[0].AuthTypes[0] != "user" {
-		t.Fatalf("auth types = %#v", compiled[0].AuthTypes)
+	if len(compiled.Shortcuts[0].AuthTypes) != 1 || compiled.Shortcuts[0].AuthTypes[0] != "user" {
+		t.Fatalf("auth types = %#v", compiled.Shortcuts[0].AuthTypes)
+	}
+	if len(compiled.DeclaredDomains) != 0 {
+		t.Fatalf("extending a built-in domain declared %#v", compiled.DeclaredDomains)
 	}
 }
 
@@ -130,7 +139,7 @@ func TestCompileSetsExtendsDomainsWithoutShortcuts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(compiled) != 1 || compiled[0].Service != string(domain) {
+			if len(compiled.Shortcuts) != 1 || compiled.Shortcuts[0].Service != string(domain) {
 				t.Fatalf("compiled shortcuts = %#v", compiled)
 			}
 		})
@@ -170,7 +179,7 @@ func TestCompileSetsIsAtomicAcrossDuplicatePaths(t *testing.T) {
 		fixtureCommand("+external-duplicate"), fixtureCommand("+external-duplicate"),
 	}}
 	compiled, err := CompileSets([]command.Set{set})
-	if err == nil || len(compiled) != 0 || !strings.Contains(err.Error(), "conflicts") {
+	if err == nil || len(compiled.Shortcuts) != 0 || !strings.Contains(err.Error(), "conflicts") {
 		t.Fatalf("CompileSets() = %#v, %v", compiled, err)
 	}
 }
@@ -181,11 +190,10 @@ func TestCompileSetsRejectsUnsupportedAndUnknownDomains(t *testing.T) {
 		domain command.Domain
 		want   string
 	}{
-		// A reserved host namespace is not a business domain, so it fails the
-		// same way any other non-existent domain does: ExtendDomain is the only
-		// way to name a domain, and these are not extendable domains.
-		{name: "reserved host namespace", domain: command.ExtendDomain(command.DomainName("auth")), want: "does not exist"},
-		{name: "unknown extension", domain: command.ExtendDomain(command.DomainName("missing")), want: "does not exist"},
+		// A reserved host namespace is not a built-in domain, so ExtendDomain
+		// refuses it like any unknown name and points at NewDomain.
+		{name: "reserved host namespace", domain: command.ExtendDomain(command.DomainName("auth")), want: "is not a built-in domain"},
+		{name: "unknown extension", domain: command.ExtendDomain(command.DomainName("missing")), want: "declare it with NewDomain"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -246,7 +254,7 @@ func TestCompileSetsCarriesFileInputSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	var sources []string
-	for _, flag := range compiled[0].Flags {
+	for _, flag := range compiled.Shortcuts[0].Flags {
 		if flag.Name == "id" {
 			sources = flag.Input
 		}
@@ -281,7 +289,7 @@ func TestCompileSetsAddsPaginationFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	flags := make(map[string]bool)
-	for _, flag := range compiled[0].Flags {
+	for _, flag := range compiled.Shortcuts[0].Flags {
 		flags[flag.Name] = true
 	}
 	for _, name := range []string{"page-all", "page-limit", "page-delay"} {
@@ -341,7 +349,7 @@ func TestExternalDryRunContextSendsNothing(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
 	service := &cobra.Command{Use: "im"}
 	root.AddCommand(service)
-	compiled[0].Mount(service, factory)
+	compiled.Shortcuts[0].Mount(service, factory)
 	root.SetArgs([]string{"im", "+external-preview", "--id", "chat_1", "--as", "user", "--dry-run"})
 	if _, err := root.ExecuteC(); err != nil {
 		t.Fatal(err)
@@ -396,7 +404,7 @@ func TestExternalDryRunSurfacesValidateError(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
 	service := &cobra.Command{Use: "im"}
 	root.AddCommand(service)
-	compiled[0].Mount(service, factory)
+	compiled.Shortcuts[0].Mount(service, factory)
 	root.SetArgs([]string{"im", "+external-dry-run-error", "--id", "chat_1", "--as", "user", "--dry-run"})
 	_, err = root.ExecuteC()
 	if !errors.Is(err, sentinel) {
@@ -438,7 +446,7 @@ func TestExternalPageDryRunRendersOnlyTheBusinessDescription(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
 	service := &cobra.Command{Use: "im"}
 	root.AddCommand(service)
-	compiled[0].Mount(service, factory)
+	compiled.Shortcuts[0].Mount(service, factory)
 	root.SetArgs([]string{"im", "+external-page-note", "--id", "chat_1", "--as", "user", "--dry-run"})
 	if _, err := root.ExecuteC(); err != nil {
 		t.Fatal(err)
@@ -498,5 +506,116 @@ func TestQueryProjectionIsSharedByLiveAndPreview(t *testing.T) {
 	}
 	if got := projected["items"]; got != "x" {
 		t.Errorf("items preview = %#v, want the nil element dropped as live drops it", got)
+	}
+}
+
+func TestCompileSetsDeclaresNewDomain(t *testing.T) {
+	const domain command.DomainName = "acme-hr"
+	compiled, err := CompileSets([]command.Set{{
+		Domain:   command.NewDomain(command.DomainSpec{Name: domain, Description: "Acme HR records"}),
+		Commands: []command.Command{fixtureCommandIn(domain, "+employee-get")},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Shortcuts) != 1 || compiled.Shortcuts[0].Service != string(domain) || compiled.Shortcuts[0].Command != "+employee-get" {
+		t.Fatalf("compiled shortcuts = %#v", compiled.Shortcuts)
+	}
+	if len(compiled.DeclaredDomains) != 1 || compiled.DeclaredDomains[string(domain)] != "Acme HR records" {
+		t.Fatalf("declared domains = %#v", compiled.DeclaredDomains)
+	}
+}
+
+// Every rejection drops the whole contribution: a domain that fails to declare
+// must not leave its commands, or the other sets' commands, mounted.
+func TestCompileSetsRejectsInvalidNewDomains(t *testing.T) {
+	newDomain := func(name command.DomainName, description string) command.Set {
+		return command.Set{
+			Domain:   command.NewDomain(command.DomainSpec{Name: name, Description: description}),
+			Commands: []command.Command{fixtureCommandIn(name, "+external-new")},
+		}
+	}
+	tests := []struct {
+		name string
+		sets []command.Set
+		want string
+	}{
+		{name: "empty name", sets: []command.Set{newDomain("", "Acme")}, want: "must match"},
+		{name: "uppercase", sets: []command.Set{newDomain("Acme", "Acme")}, want: "must match"},
+		{name: "space", sets: []command.Set{newDomain("acme hr", "Acme")}, want: "must match"},
+		{name: "shortcut prefix", sets: []command.Set{newDomain("+acme", "Acme")}, want: "must match"},
+		{name: "leading digit", sets: []command.Set{newDomain("3hr", "Acme")}, want: "must match"},
+		{name: "trailing hyphen", sets: []command.Set{newDomain("acme-", "Acme")}, want: "must match"},
+		{name: "doubled hyphen", sets: []command.Set{newDomain("acme--hr", "Acme")}, want: "must match"},
+		{name: "built-in domain", sets: []command.Set{newDomain(command.DomainIm, "Acme")}, want: "use ExtendDomain"},
+		{name: "built-in domain alias", sets: []command.Set{newDomain("slide", "Acme")}, want: `alias of the built-in domain "slides"`},
+		// The tree check sees neither name: Cobra mounts help only when the CLI
+		// executes, and all is a --domain keyword.
+		{name: "help command", sets: []command.Set{newDomain("help", "Acme")}, want: `shadows the lark-cli "help" command`},
+		{name: "every-domain keyword", sets: []command.Set{newDomain("all", "Acme")}, want: "auth login --domain keyword"},
+		{name: "declared twice", sets: []command.Set{newDomain("acme-hr", "Acme"), newDomain("acme-hr", "Acme")}, want: "declared more than once"},
+		{name: "empty description", sets: []command.Set{newDomain("acme-hr", "")}, want: "one-line Description"},
+		{name: "untrimmed description", sets: []command.Set{newDomain("acme-hr", " Acme ")}, want: "one-line Description"},
+		{name: "multi-line description", sets: []command.Set{newDomain("acme-hr", "Acme\nHR")}, want: "one-line Description"},
+		// The extending set comes first so the message cannot depend on the
+		// declaration having been seen already.
+		{name: "extending a new domain", sets: []command.Set{
+			{Domain: command.ExtendDomain("acme-hr"), Commands: []command.Command{fixtureCommandIn("acme-hr", "+external-extend")}},
+			newDomain("acme-hr", "Acme"),
+		}, want: "declared by NewDomain"},
+		{name: "command declared for another domain", sets: []command.Set{{
+			Domain:   command.NewDomain(command.DomainSpec{Name: "acme-hr", Description: "Acme"}),
+			Commands: []command.Command{fixtureCommand("+external-fixture")},
+		}}, want: "does not match domain"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			compiled, err := CompileSets(test.sets)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("CompileSets() error = %v, want %q", err, test.want)
+			}
+			if len(compiled.Shortcuts) != 0 || len(compiled.DeclaredDomains) != 0 {
+				t.Fatalf("rejected contribution leaked %#v", compiled)
+			}
+		})
+	}
+}
+
+// The public Domain* constants and the service registry decide the same thing
+// from two sides: which names ExtendDomain accepts and NewDomain refuses. Pin
+// them to each other so a domain added to one cannot be missing from the other.
+func TestDomainConstantsMatchServiceRegistry(t *testing.T) {
+	source := filepath.Join("..", "..", "extension", "command", "domains.go")
+	file, err := parser.ParseFile(token.NewFileSet(), source, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var constants []string
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			value := spec.(*ast.ValueSpec)
+			if ident, ok := value.Type.(*ast.Ident); !ok || ident.Name != "DomainName" {
+				continue
+			}
+			for _, expr := range value.Values {
+				literal, ok := expr.(*ast.BasicLit)
+				if !ok || literal.Kind != token.STRING {
+					t.Fatalf("%s: DomainName constant %v is not a string literal", source, value.Names)
+				}
+				name, err := strconv.Unquote(literal.Value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				constants = append(constants, name)
+			}
+		}
+	}
+	slices.Sort(constants)
+	if want := registry.AllServiceNames(); !slices.Equal(constants, want) {
+		t.Fatalf("%s declares %v\nservice registry has %v", source, constants, want)
 	}
 }

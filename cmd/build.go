@@ -22,6 +22,7 @@ import (
 	"github.com/larksuite/cli/cmd/skill"
 	cmdupdate "github.com/larksuite/cli/cmd/update"
 	"github.com/larksuite/cli/cmd/whoami"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/affordance"
@@ -312,14 +313,19 @@ func frozenPlugins(cfg *buildConfig) []platform.Plugin {
 }
 
 // resolveShortcutSnapshot compiles this build's business command sets and returns
-// one snapshot carrying built-in and external shortcuts together. On failure the
+// one snapshot carrying built-in and external shortcuts together, plus the
+// description of every domain the contribution declared. On failure the
 // built-in snapshot is returned so assembly can install a fail-closed guard.
-func resolveShortcutSnapshot(sets []command.Set) ([]common.Shortcut, error) {
-	external, err := commandhost.CompileSets(sets)
+func resolveShortcutSnapshot(sets []command.Set) (registered []common.Shortcut, declared map[string]string, err error) {
+	contribution, err := commandhost.CompileSets(sets)
 	if err != nil {
-		return shortcuts.AllShortcuts(), err
+		return shortcuts.AllShortcuts(), nil, err
 	}
-	return shortcuts.AllShortcutsWithExternal(external)
+	registered, err = shortcuts.AllShortcutsWithExternal(contribution.Shortcuts)
+	if err != nil {
+		return shortcuts.AllShortcuts(), nil, err
+	}
+	return registered, contribution.DeclaredDomains, nil
 }
 
 // buildInternalWithConfig assembles the complete command tree from an
@@ -405,7 +411,7 @@ func assembleInternal(
 	// cannot be bypassed by a target-only assembly; the version-only path is
 	// the one exception, since it never opens the Catalog at all.
 	plugins := frozenPlugins(cfg)
-	registeredShortcuts, commandSetErr := resolveShortcutSnapshot(cfg.commandSets)
+	registeredShortcuts, declaredDomains, commandSetErr := resolveShortcutSnapshot(cfg.commandSets)
 
 	f := cmdutil.NewDefault(cfg.streams, inv)
 	if cfg.keychain != nil {
@@ -484,26 +490,27 @@ func assembleInternal(
 	}
 	installTipsHelpFunc(rootCmd, runtime.help)
 
-	rootCmd.AddCommand(cmdconfig.NewCmdConfigWithRecovery(f, runtime.recovery))
-	rootCmd.AddCommand(auth.NewCmdAuthWithRecoveryAndShortcuts(f, runtime.recovery, registeredShortcuts))
-	rootCmd.AddCommand(profile.NewCmdProfile(f))
-	rootCmd.AddCommand(doctor.NewCmdDoctorWithRecovery(f, runtime.recovery))
-	rootCmd.AddCommand(whoami.NewCmdWhoamiWithRecovery(f, runtime.recovery))
-	rootCmd.AddCommand(api.NewCmdApiWithContext(ctx, f, nil))
-	rootCmd.AddCommand(schema.NewCmdSchemaWithVisibility(f, func(path []string) bool {
-		return runtime.surface.CanReference(surface.CommandID(strings.Join(path, "/")))
-	}, nil))
-	rootCmd.AddCommand(completion.NewCmdCompletion(f))
-	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
-	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))
-	rootCmd.AddCommand(skill.NewCmdSkill(f))
+	framework := mountFrameworkCommands(ctx, rootCmd, f, runtime, registeredShortcuts)
+	// Root command names exist only once the framework commands do, so declared
+	// domains are checked against the tree here rather than in the compiler. A
+	// rejected contribution leaves no trace: the build goes on with the built-in
+	// snapshot, as after a compile failure, and the framework commands are
+	// rebuilt from it so auth's --domain vocabulary forgets the rejected domain.
+	if commandSetErr == nil {
+		if err := rejectShadowingDomains(rootCmd, declaredDomains); err != nil {
+			commandSetErr = err
+			registeredShortcuts, declaredDomains = shortcuts.AllShortcuts(), nil
+			rootCmd.RemoveCommand(framework...)
+			mountFrameworkCommands(ctx, rootCmd, f, runtime, registeredShortcuts)
+		}
+	}
 
 	var catalogNames []string
 	if !cfg.skipService {
 		catalogNames = catalog.Names()
 	}
 	shortcutDomains := shortcuts.ServiceNamesOf(registeredShortcuts)
-	stubs := mountDomainStubs(rootCmd, catalogNames, shortcutDomains)
+	stubs := mountDomainStubs(rootCmd, catalogNames, shortcutDomains, declaredDomains)
 
 	selected := selectAllDomains
 	switch {
@@ -756,12 +763,60 @@ func (s domainSelection) shortcutSelection() []string {
 	return out
 }
 
+// mountFrameworkCommands adds the hand-authored root commands and returns them.
+// Declared domains are checked against the tree right after, so a root command
+// belongs here rather than in a later assembly step. auth is the one built from
+// the shortcut snapshot: the snapshot's domains are its --domain vocabulary.
+func mountFrameworkCommands(ctx context.Context, root *cobra.Command, f *cmdutil.Factory, runtime *buildRuntime, registered []common.Shortcut) []*cobra.Command {
+	commands := []*cobra.Command{
+		cmdconfig.NewCmdConfigWithRecovery(f, runtime.recovery),
+		auth.NewCmdAuthWithRecoveryAndShortcuts(f, runtime.recovery, registered),
+		profile.NewCmdProfile(f),
+		doctor.NewCmdDoctorWithRecovery(f, runtime.recovery),
+		whoami.NewCmdWhoamiWithRecovery(f, runtime.recovery),
+		api.NewCmdApiWithContext(ctx, f, nil),
+		schema.NewCmdSchemaWithVisibility(f, func(path []string) bool {
+			return runtime.surface.CanReference(surface.CommandID(strings.Join(path, "/")))
+		}, nil),
+		completion.NewCmdCompletion(f),
+		cmdupdate.NewCmdUpdate(f),
+		cmdevent.NewCmdEvents(f),
+		skill.NewCmdSkill(f),
+	}
+	root.AddCommand(commands...)
+	return commands
+}
+
+// rejectShadowingDomains refuses a declared domain whose name is a root command
+// or one of its aliases; Cobra routes aliases exactly like names.
+// mountDomainStubs treats an existing root as a shared root (the event
+// convention), so without this check the contribution's commands would hang
+// under the framework command. Reading the assembled tree rather than a list of
+// names covers a new framework command the moment it is mounted.
+func rejectShadowingDomains(root *cobra.Command, declared map[string]string) error {
+	if len(declared) == 0 {
+		return nil
+	}
+	for _, cmd := range root.Commands() {
+		for _, name := range append([]string{cmd.Name()}, cmd.Aliases...) {
+			if _, ok := declared[name]; ok {
+				return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+					"NewDomain name %q shadows the lark-cli %q command", name, cmd.Name())
+			}
+		}
+	}
+	return nil
+}
+
 // mountDomainStubs adds one empty command per targetable domain so Cobra can
 // route to it. A domain whose name is already a hand-authored root command
 // (event) is a shared root: the shortcuts expand onto the existing command, so
 // no stub is needed. Stubs carry only routing identity (name and aliases);
 // expansion fills description and children, and unselected stubs are removed.
-func mountDomainStubs(root *cobra.Command, catalogNames, shortcutDomains []string) map[string]*cobra.Command {
+// The one exception is a declared domain's description: expansion reads
+// descriptions from the service registry, which knows nothing of a domain a
+// command set declared, so the stub carries the declared one.
+func mountDomainStubs(root *cobra.Command, catalogNames, shortcutDomains []string, declaredDomains map[string]string) map[string]*cobra.Command {
 	existing := make(map[string]struct{})
 	for _, cmd := range root.Commands() {
 		existing[cmd.Name()] = struct{}{}
@@ -772,7 +827,7 @@ func mountDomainStubs(root *cobra.Command, catalogNames, shortcutDomains []strin
 			return
 		}
 		existing[name] = struct{}{}
-		stub := &cobra.Command{Use: name, Aliases: shortcuts.ServiceAliases(name)}
+		stub := &cobra.Command{Use: name, Aliases: shortcuts.ServiceAliases(name), Short: declaredDomains[name]}
 		root.AddCommand(stub)
 		stubs[name] = stub
 	}

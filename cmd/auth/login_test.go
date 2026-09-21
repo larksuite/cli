@@ -66,6 +66,23 @@ type businessData struct {
 	ChatID string `json:"chat_id" schema:"required" doc:"chat identifier"`
 }
 
+// businessDeclaration is one external command declaring a single user scope.
+func businessDeclaration(service command.DomainName, name, scope string) command.Command {
+	return command.Define(command.Definition[businessArgs, businessData]{
+		Metadata: command.CommandMetadata{
+			Service: service, Command: name, Description: "Business command", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
+				command.IdentityUser: {RequiredScopes: []string{scope}},
+			}},
+		},
+		Hooks: command.Hooks[businessArgs, businessData]{
+			Execute: func(_ context.Context, _ command.CommandContext, args *businessArgs) (command.Result[businessData], error) {
+				return command.Success(businessData{ChatID: args.ChatID}), nil
+			},
+		},
+	})
+}
+
 func TestSuggestDomain_PrefixMatch(t *testing.T) {
 	known := map[string]bool{
 		"calendar": true,
@@ -354,27 +371,14 @@ func TestExternalShortcutScopesParticipateInAuthDomainResolution(t *testing.T) {
 func TestCompiledBusinessScopesReachLoginDomainResolution(t *testing.T) {
 	const businessScope = "im:business.compiled:read"
 
-	declaration := command.Define(command.Definition[businessArgs, businessData]{
-		Metadata: command.CommandMetadata{
-			Service: "im", Command: "+business-compiled", Description: "Business command", Risk: command.RiskRead,
-			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
-				command.IdentityUser: {RequiredScopes: []string{businessScope}},
-			}},
-		},
-		Hooks: command.Hooks[businessArgs, businessData]{
-			Execute: func(_ context.Context, _ command.CommandContext, args *businessArgs) (command.Result[businessData], error) {
-				return command.Success(businessData{ChatID: args.ChatID}), nil
-			},
-		},
-	})
 	compiled, err := commandhost.CompileSets([]command.Set{{
 		Domain:   command.ExtendDomain(command.DomainIm),
-		Commands: []command.Command{declaration},
+		Commands: []command.Command{businessDeclaration(command.DomainIm, "+business-compiled", businessScope)},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	registered, err := shortcuts.AllShortcutsWithExternal(compiled)
+	registered, err := shortcuts.AllShortcutsWithExternal(compiled.Shortcuts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1251,5 +1255,35 @@ func TestApplyExcludeScopes_ValidatesAgainstUniverse(t *testing.T) {
 	}
 	if kept, unknown := applyExcludeScopes("im:message calendar:calendar:read", []string{"im:message"}, nil); len(unknown) != 0 || kept != "calendar:calendar:read" {
 		t.Errorf("nil universe removal: kept=%q unknown=%v", kept, unknown)
+	}
+}
+
+// A domain lark-cli does not ship reaches auth login through the same snapshot
+// as any business command: --domain accepts it, and its declared scopes are the
+// scopes it resolves to. The chain is the real one -- command.Define,
+// commandhost.CompileSets, shortcuts.AllShortcutsWithExternal -- so a snapshot
+// dropped anywhere along it fails here.
+func TestNewDomainReachesLoginDomainResolution(t *testing.T) {
+	const domain, scope = "acme-hr", "acme:hr:read"
+	compiled, err := commandhost.CompileSets([]command.Set{{
+		Domain:   command.NewDomain(command.DomainSpec{Name: domain, Description: "Acme HR records"}),
+		Commands: []command.Command{businessDeclaration(domain, "+employee-get", scope)},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered, err := shortcuts.AllShortcutsWithExternal(compiled.Shortcuts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := newDomainResolver(authTestCatalog(t), registered)
+	if !resolver.hasExternal {
+		t.Fatal("a build declaring a new domain must resolve scopes locally, not from the remote scopes.json")
+	}
+	if !resolver.allKnown("")[domain] {
+		t.Fatalf("--domain vocabulary omits the new domain: %v", resolver.sorted(""))
+	}
+	if scopes := resolver.scopesFor([]string{domain}, "user", ""); !slices.Equal(scopes, []string{scope}) {
+		t.Fatalf("new domain scopes = %v, want [%s]", scopes, scope)
 	}
 }

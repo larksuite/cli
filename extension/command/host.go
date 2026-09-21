@@ -51,6 +51,10 @@ type HostPagination struct {
 // HostDomain is the copied domain declaration consumed by lark-cli's host adapter.
 type HostDomain struct {
 	Name string
+	// New reports whether the domain was declared with NewDomain.
+	New bool
+	// Description is a NewDomain's summary; it is empty for ExtendDomain.
+	Description string
 }
 
 type hostDefinition struct {
@@ -179,7 +183,7 @@ func InspectCommand(command Command) HostDefinition {
 
 // InspectDomain returns a copied declaration for lark-cli's host adapter.
 func InspectDomain(domain Domain) HostDomain {
-	return HostDomain{Name: domain.name}
+	return HostDomain{Name: domain.name, New: domain.kind == domainNew, Description: domain.description}
 }
 
 // CloneSets copies set slices and immutable command declarations for BuildOption

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"regexp"
 	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -21,49 +22,63 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// CompileSets validates and compiles a complete external contribution without registration.
-func CompileSets(sets []command.Set) ([]common.Shortcut, error) {
+// Contribution is the compiled form of a build's command sets.
+type Contribution struct {
+	// Shortcuts are the compiled commands, ready to merge into the build's
+	// shortcut snapshot.
+	Shortcuts []common.Shortcut
+	// DeclaredDomains maps each domain the contribution declared with NewDomain
+	// to its description. The host mounts a root command for each and has no
+	// other source for the summary it shows in help.
+	DeclaredDomains map[string]string
+}
+
+// CompileSets validates and compiles a complete external contribution without
+// registration. It checks everything that does not depend on the assembled
+// tree; the lark-cli root commands a declared domain could shadow are the root
+// builder's to check, since only the tree knows them.
+func CompileSets(sets []command.Set) (Contribution, error) {
 	sets = command.CloneSets(sets)
 	if len(sets) == 0 {
-		return nil, nil
+		return Contribution{}, nil
 	}
 
+	declared, err := declareDomains(sets)
+	if err != nil {
+		return Contribution{}, err
+	}
 	builtins := shortcuts.AllShortcuts()
 	paths := make(map[string]string, len(builtins))
 	for _, shortcut := range builtins {
 		paths[shortcut.Service+" "+shortcut.Command] = "built-in command"
 	}
-	existingDomains := businessDomains()
 
 	compiled := make([]common.Shortcut, 0)
 	for setIndex, set := range sets {
 		domain := command.InspectDomain(set.Domain)
-		if err := validateDomain(domain, existingDomains); err != nil {
-			return nil, fmt.Errorf("command set %d: %w", setIndex+1, err)
-		}
 		if len(set.Commands) == 0 {
-			return nil, fmt.Errorf("command set %d for domain %q has no commands", setIndex+1, domain.Name)
+			return Contribution{}, fmt.Errorf("command set %d for domain %q has no commands", setIndex+1, domain.Name)
 		}
 		for commandIndex, declaration := range set.Commands {
 			definition := command.InspectCommand(declaration)
 			if string(definition.Metadata.Service) != domain.Name {
-				return nil, fmt.Errorf("command set %d command %d: Metadata.Service %q does not match domain %q",
+				return Contribution{}, fmt.Errorf("command set %d command %d: Metadata.Service %q does not match domain %q",
 					setIndex+1, commandIndex+1, definition.Metadata.Service, domain.Name)
 			}
 			shortcutPath := string(definition.Metadata.Service) + " " + definition.Metadata.Command
 			if owner, duplicate := paths[shortcutPath]; duplicate {
-				return nil, fmt.Errorf("command set %d command %d: command path %q conflicts with %s",
+				return Contribution{}, fmt.Errorf("command set %d command %d: command path %q conflicts with %s",
 					setIndex+1, commandIndex+1, shortcutPath, owner)
 			}
 			shortcut, err := compileCommand(definition)
 			if err != nil {
-				return nil, fmt.Errorf("command set %d command %d (%s): %w", setIndex+1, commandIndex+1, shortcutPath, err)
+				return Contribution{}, fmt.Errorf("command set %d command %d (%s): %w", setIndex+1, commandIndex+1, shortcutPath, err)
 			}
 			paths[shortcutPath] = fmt.Sprintf("command set %d command %d", setIndex+1, commandIndex+1)
 			compiled = append(compiled, shortcut)
 		}
 	}
-	return compiled, nil
+	return Contribution{Shortcuts: compiled, DeclaredDomains: declared}, nil
 }
 
 // ValidateDeclaration compiles one declaration through the production compiler
@@ -101,13 +116,86 @@ func businessDomains() map[string]struct{} {
 	return domains
 }
 
-func validateDomain(domain command.HostDomain, existing map[string]struct{}) error {
+// domainNamePattern is the grammar of a new domain name: lowercase words joined
+// by single hyphens, one segment in `lark-cli <name>` and in a Rule path glob.
+var domainNamePattern = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+
+// declareDomains validates every set's domain before any command compiles and
+// returns the NewDomain declarations by name. New domains are collected first
+// so an ExtendDomain that names one is reported as such wherever the two sets
+// appear, rather than as an unknown domain.
+func declareDomains(sets []command.Set) (map[string]string, error) {
+	builtin := businessDomains()
+	taken := takenDomainNames(builtin)
+	declared := make(map[string]string)
+	for index, set := range sets {
+		domain := command.InspectDomain(set.Domain)
+		if !domain.New {
+			continue
+		}
+		if err := validateNewDomain(domain, taken, declared); err != nil {
+			return nil, fmt.Errorf("command set %d: %w", index+1, err)
+		}
+		declared[domain.Name] = domain.Description
+	}
+	for index, set := range sets {
+		domain := command.InspectDomain(set.Domain)
+		if domain.New {
+			continue
+		}
+		if err := validateExtendedDomain(domain, builtin, declared); err != nil {
+			return nil, fmt.Errorf("command set %d: %w", index+1, err)
+		}
+	}
+	return declared, nil
+}
+
+// takenDomainNames maps each name a new domain may not use to the reason: the
+// built-in domains and their aliases (slides -> slide), the help command Cobra
+// mounts only when the CLI executes, and registry.AllDomainsKeyword. The other
+// root commands are checked against the assembled tree.
+func takenDomainNames(builtin map[string]struct{}) map[string]string {
+	taken := map[string]string{
+		"help":                     `shadows the lark-cli "help" command`,
+		registry.AllDomainsKeyword: "is the auth login --domain keyword for every domain",
+	}
+	for name := range builtin {
+		taken[name] = "is a built-in domain; use ExtendDomain to add commands to it"
+		for _, alias := range shortcuts.ServiceAliases(name) {
+			taken[alias] = fmt.Sprintf("is an alias of the built-in domain %q", name)
+		}
+	}
+	return taken
+}
+
+func validateNewDomain(domain command.HostDomain, taken, declared map[string]string) error {
+	name := domain.Name
+	if !domainNamePattern.MatchString(name) {
+		return fmt.Errorf("NewDomain name %q must match %s", name, domainNamePattern)
+	}
+	if reason, ok := taken[name]; ok {
+		return fmt.Errorf("NewDomain name %q %s", name, reason)
+	}
+	if _, ok := declared[name]; ok {
+		return fmt.Errorf("NewDomain %q is declared more than once; one set owns a new domain", name)
+	}
+	description := strings.TrimSpace(domain.Description)
+	if description == "" || description != domain.Description || strings.ContainsAny(description, "\r\n") {
+		return fmt.Errorf("NewDomain %q needs a trimmed one-line Description", name)
+	}
+	return nil
+}
+
+func validateExtendedDomain(domain command.HostDomain, builtin map[string]struct{}, declared map[string]string) error {
 	name := strings.TrimSpace(domain.Name)
 	if name == "" || name != domain.Name {
 		return fmt.Errorf("domain name must be non-empty and trimmed")
 	}
-	if _, ok := existing[name]; !ok {
-		return fmt.Errorf("ExtendDomain target %q does not exist", name)
+	if _, ok := declared[name]; ok {
+		return fmt.Errorf("ExtendDomain target %q is declared by NewDomain in this build; add the commands to that set", name)
+	}
+	if _, ok := builtin[name]; !ok {
+		return fmt.Errorf("ExtendDomain target %q is not a built-in domain; declare it with NewDomain", name)
 	}
 	return nil
 }
