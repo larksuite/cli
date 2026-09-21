@@ -245,5 +245,5 @@ func addSlideBody(slideXML, beforeSlideID string, runtime *common.RuntimeContext
 	if id := strings.TrimSpace(beforeSlideID); id != "" {
 		body["before_slide_id"] = id
 	}
-	return withLintXML(body, runtime)
+	return withLintParams(body, runtime)
 }

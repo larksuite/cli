@@ -89,9 +89,7 @@ var SlidesXMLGet = common.Shortcut{
 		} else {
 			dry.Desc("Fetch presentation XML")
 		}
-		params := map[string]interface{}{
-			"revision_id": runtime.Int("revision-id"),
-		}
+		params := xmlGetBaseParams(runtime)
 		slideID := strings.TrimSpace(runtime.Str("slide-id"))
 		slideNumber := runtime.Int("slide-number")
 		if slideID != "" {
@@ -129,9 +127,7 @@ var SlidesXMLGet = common.Shortcut{
 		if err := validateSlidesXMLGetSelector(runtime); err != nil {
 			return err
 		}
-		params := map[string]interface{}{
-			"revision_id": runtime.Int("revision-id"),
-		}
+		params := xmlGetBaseParams(runtime)
 
 		slideID := strings.TrimSpace(runtime.Str("slide-id"))
 		slideNumber := runtime.Int("slide-number")
@@ -142,6 +138,21 @@ var SlidesXMLGet = common.Shortcut{
 		outputPath := strings.TrimSpace(runtime.Str("output"))
 		return outputSlidesXMLGetContent(runtime, content, outputPath, out)
 	},
+}
+
+// xmlGetBaseParams builds the query both read paths start from — the whole
+// presentation and the single page — and is shared by dry-run and execute so the
+// previewed request and the sent one cannot drift apart. The selector keys
+// (slide_id, slide_number, remove_attr_id) are added by whichever path applies.
+//
+// enable_lint rides the query here because a GET has no body to put it in. See
+// enableLintKey: it is always true, --no-lint does not reach it, and the gateway
+// is expected to drop it until these two endpoints declare it in their api meta.
+func xmlGetBaseParams(runtime *common.RuntimeContext) map[string]interface{} {
+	return map[string]interface{}{
+		"revision_id": runtime.Int("revision-id"),
+		enableLintKey: true,
+	}
 }
 
 func validateSlidesXMLGetSelector(runtime *common.RuntimeContext) error {

@@ -691,3 +691,107 @@ func TestSlidesXMLGetKeepsIssuesWhenWritingToFile(t *testing.T) {
 		t.Fatalf("expected the XML file to exist: %v", err)
 	}
 }
+
+// TestSlidesXMLGetSendsEnableLint pins that the read asks for the lint on both
+// paths it can take — the whole presentation and the single page.
+//
+// The two paths build their query in different places, and only the page path
+// goes through fetchSlidesXMLGetContent's extra appends, so covering one proves
+// nothing about the other.
+//
+// This asserts what the CLI sends, and that is all it can assert. Neither GET
+// declares enable_lint in its api meta, so the gateway is expected to drop the
+// parameter before the server sees it; a green test here is not evidence the
+// read was linted. See enableLintKey.
+func TestSlidesXMLGetSendsEnableLint(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		extra []string
+		url   string
+		data  map[string]interface{}
+	}{
+		{
+			name: "full presentation",
+			url:  "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+			data: map[string]interface{}{
+				"xml_presentation": map[string]interface{}{"content": `<presentation/>`},
+			},
+		},
+		{
+			name:  "single page",
+			extra: []string{"--slide-id", "slide_1"},
+			url:   "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide",
+			data: map[string]interface{}{
+				"slide": map[string]interface{}{"slide_id": "slide_1", "content": `<slide id="slide_1"/>`},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withSlidesTestWorkingDir(t, t.TempDir())
+
+			var capturedQuery url.Values
+			f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    tc.url,
+				Body:   map[string]interface{}{"code": 0, "data": tc.data},
+				OnMatch: func(req *http.Request) {
+					capturedQuery = req.URL.Query()
+				},
+			})
+
+			args := append([]string{"+xml-get", "--presentation", "pres_abc", "--as", "user"}, tc.extra...)
+			if err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, args); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := capturedQuery.Get(enableLintKey); got != "true" {
+				t.Fatalf("%s query = %q, want true", enableLintKey, got)
+			}
+			// The parameter is added to the query, not substituted for it.
+			if got := capturedQuery.Get("revision_id"); got != "-1" {
+				t.Fatalf("revision_id query = %q, want -1 alongside %s", got, enableLintKey)
+			}
+		})
+	}
+}
+
+// TestSlidesXMLGetDryRunPreviewsEnableLint keeps the preview honest. The dry-run
+// query and the executed one are built from the same helper precisely so they
+// cannot disagree; this is what would catch it if someone split them again and
+// only updated one side.
+func TestSlidesXMLGetDryRunPreviewsEnableLint(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		extra []string
+		url   string
+	}{
+		{
+			name: "full presentation",
+			url:  "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		},
+		{
+			name:  "single page",
+			extra: []string{"--slide-id", "slide_1"},
+			url:   "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withSlidesTestWorkingDir(t, t.TempDir())
+
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			args := append([]string{
+				"+xml-get", "--presentation", "pres_abc", "--dry-run", "--as", "user",
+			}, tc.extra...)
+			if err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, args); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			steps := decodeShortcutDryRunAPI(t, stdout)
+			step := assertDryRunStep(t, steps, 0, "GET", tc.url)
+			params, _ := step["params"].(map[string]interface{})
+			if params[enableLintKey] != true {
+				t.Fatalf("previewed params[%s] = %v, want true", enableLintKey, params[enableLintKey])
+			}
+		})
+	}
+}

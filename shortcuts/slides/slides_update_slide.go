@@ -331,7 +331,7 @@ func updateSlideQuery(runtime *common.RuntimeContext, slideID string) map[string
 // updateSlideBody builds the request body shared by dry-run and execute, so the
 // two cannot disagree about the lint switch.
 func updateSlideBody(slideID, content string, runtime *common.RuntimeContext) map[string]interface{} {
-	return withLintXML(map[string]interface{}{"parts": updateSlideParts(slideID, content)}, runtime)
+	return withLintParams(map[string]interface{}{"parts": updateSlideParts(slideID, content)}, runtime)
 }
 
 // updateSlideParts builds the one part the command ever sends. block_id is the

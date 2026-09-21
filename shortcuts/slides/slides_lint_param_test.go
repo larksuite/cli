@@ -46,8 +46,12 @@ func captureLintBody(t *testing.T, into *map[string]interface{}) func(*http.Requ
 	}
 }
 
-// assertLintSwitch checks the switch is in the body, carries the expected
-// value, and left the query alone.
+// assertLintSwitch checks both lint parameters are in the body, carry the
+// expected values, and left the query alone.
+//
+// want applies to lint_xml only. enable_lint is asserted true in every case on
+// purpose: it is not wired to --no-lint, so the --no-lint subtests are what pin
+// that it survives the flag rather than quietly following it.
 func assertLintSwitch(t *testing.T, body map[string]interface{}, query url.Values, want bool) {
 	t.Helper()
 	got, ok := body[lintXMLBodyKey]
@@ -60,6 +64,18 @@ func assertLintSwitch(t *testing.T, body map[string]interface{}, query url.Value
 	if q := query.Get(lintXMLBodyKey); q != "" {
 		t.Fatalf("query carried %s = %q; the gateway does not bind it there, so a value in the query is a silent no-op",
 			lintXMLBodyKey, q)
+	}
+
+	enable, ok := body[enableLintKey]
+	if !ok {
+		t.Fatalf("body = %v, want an %s key", body, enableLintKey)
+	}
+	if enable != true {
+		t.Fatalf("body[%s] = %v, want true on every write regardless of --no-lint", enableLintKey, enable)
+	}
+	if q := query.Get(enableLintKey); q != "" {
+		t.Fatalf("query carried %s = %q; on a write it belongs in the body, where nothing can drop it",
+			enableLintKey, q)
 	}
 }
 
@@ -236,6 +252,9 @@ func TestCreateLintXMLTravels(t *testing.T) {
 			}
 			if v, ok := createBody[lintXMLBodyKey]; ok {
 				t.Fatalf("create body carried %s = %v, want it absent on a shell with no page in it", lintXMLBodyKey, v)
+			}
+			if v, ok := createBody[enableLintKey]; ok {
+				t.Fatalf("create body carried %s = %v, want it absent on a shell with no page in it", enableLintKey, v)
 			}
 
 			// Every page carries it, not just the first.

@@ -381,7 +381,7 @@ func createSlideQuery() map[string]interface{} {
 // title-only <presentation> shell from buildPresentationXML, and there is no
 // page in it for the server to lint.
 func createSlideBody(slideXML string, runtime *common.RuntimeContext) map[string]interface{} {
-	return withLintXML(map[string]interface{}{
+	return withLintParams(map[string]interface{}{
 		"slide": map[string]interface{}{"content": slideXML},
 	}, runtime)
 }

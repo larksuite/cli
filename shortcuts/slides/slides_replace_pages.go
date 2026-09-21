@@ -294,7 +294,7 @@ func appendReplacePagesDryRunCalls(dry *common.DryRunAPI, resolved *replacePages
 // execute, so the previewed request and the sent one cannot drift apart on
 // whether the page gets linted.
 func replacePageCreateBody(item replacePagePlanItem, runtime *common.RuntimeContext) map[string]interface{} {
-	return withLintXML(map[string]interface{}{
+	return withLintParams(map[string]interface{}{
 		"slide":           map[string]interface{}{"content": item.Content},
 		"before_slide_id": item.OldSlideID,
 	}, runtime)

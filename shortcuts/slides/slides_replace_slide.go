@@ -207,7 +207,7 @@ var SlidesReplaceSlide = common.Shortcut{
 // two cannot disagree about the lint switch — the failure mode being a --dry-run
 // that shows a linted request and an execute that sends an unlinted one.
 func replaceSlideBody(parts []map[string]interface{}, runtime *common.RuntimeContext) map[string]interface{} {
-	return withLintXML(map[string]interface{}{"parts": parts}, runtime)
+	return withLintParams(map[string]interface{}{"parts": parts}, runtime)
 }
 
 // replacePart is the normalized (post-JSON) representation of one entry in the
