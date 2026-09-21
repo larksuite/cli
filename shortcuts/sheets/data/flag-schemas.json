@@ -2961,18 +2961,23 @@
                                   "description": "数据标签配置（覆盖单系列，样式项同 plotArea.plot.labels，但 overlap 仅支持全局设置）。不覆盖该系列数据标签时省略整个 labels 字段；未指定内容时默认显示 value，显式将 value/category/series/percentage 全部设为 false 时保留空标签内容。"
                                 },
                                 "invertIfNegative": {
-                                  "description": "负值反色；true 表示使用 Office 缺省反色，也可指定填充颜色",
-                                  "oneOf": [
-                                    {
-                                      "type": "string"
-                                    },
-                                    {
+                                  "type": "object",
+                                  "description": "负值反色配置；enable 控制开关，color 指定反色填充，省略 color 时使用 Office 缺省反色",
+                                  "properties": {
+                                    "enable": {
                                       "type": "boolean",
-                                      "enum": [
-                                        true
-                                      ]
+                                      "description": "是否启用负值反色"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "负值反色填充颜色；省略时使用 Office 缺省反色",
+                                      "format": "color"
                                     }
-                                  ]
+                                  },
+                                  "required": [
+                                    "enable"
+                                  ],
+                                  "additionalProperties": false
                                 },
                                 "waterfall": {
                                   "type": "object",
@@ -5757,18 +5762,23 @@
                                   "description": "数据标签配置（覆盖单系列，样式项同 plotArea.plot.labels，但 overlap 仅支持全局设置）。不覆盖该系列数据标签时省略整个 labels 字段；未指定内容时默认显示 value，显式将 value/category/series/percentage 全部设为 false 时保留空标签内容。"
                                 },
                                 "invertIfNegative": {
-                                  "description": "负值反色；true 表示使用 Office 缺省反色，也可指定填充颜色",
-                                  "oneOf": [
-                                    {
-                                      "type": "string"
-                                    },
-                                    {
+                                  "type": "object",
+                                  "description": "负值反色配置；enable 控制开关，color 指定反色填充，省略 color 时使用 Office 缺省反色",
+                                  "properties": {
+                                    "enable": {
                                       "type": "boolean",
-                                      "enum": [
-                                        true
-                                      ]
+                                      "description": "是否启用负值反色"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "负值反色填充颜色；省略时使用 Office 缺省反色",
+                                      "format": "color"
                                     }
-                                  ]
+                                  },
+                                  "required": [
+                                    "enable"
+                                  ],
+                                  "additionalProperties": false
                                 },
                                 "waterfall": {
                                   "type": "object",
