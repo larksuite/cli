@@ -12,7 +12,7 @@ import (
 )
 
 func TestOpenAPIKeyGetExecute_Redacts(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+	rctx, stdoutBuf, reg := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "key-id": "string"},
 		map[string]string{"app-id": "app_x", "key-id": "1"})
 	reg.Register(&httpmock.Stub{
@@ -40,7 +40,7 @@ func TestOpenAPIKeyGetExecute_Redacts(t *testing.T) {
 }
 
 func TestOpenAPIKeyGetExecute_MissingKeyID(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t,
+	rctx, _, _ := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "key-id": "string"},
 		map[string]string{"app-id": "app_x"})
 	if err := AppsOpenAPIKeyGet.Validate(context.Background(), rctx); err == nil {

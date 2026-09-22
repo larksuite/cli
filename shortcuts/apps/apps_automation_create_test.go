@@ -24,7 +24,7 @@ func automationCreateFlagDefs() map[string]string {
 }
 
 func TestAutomationCreateCron_BuildsBody(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, stdoutBuf, reg := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "daily", "trigger-type": "cron", "cron": "0 9 * * *"})
 	// Real backend response wraps the created trigger under `trigger` (a live
 	// test-env probe confirmed the shape, same as GET/PUT). The Execute pretty
@@ -48,7 +48,7 @@ func TestAutomationCreateCron_BuildsBody(t *testing.T) {
 }
 
 func TestAutomationCreate_MissingType(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n"})
 	err := AppsAutomationCreate.Validate(context.Background(), rctx)
 	assertValidationParamError(t, err, "--trigger-type")
@@ -89,7 +89,7 @@ func TestAutomationCreate_CrossFamilyFlagsRejected(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(), tc.flags)
+			rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(), tc.flags)
 			err := AppsAutomationCreate.Validate(context.Background(), rctx)
 			assertValidationParamError(t, err, tc.wantParam)
 		})
@@ -101,28 +101,28 @@ func TestAutomationCreate_CrossFamilyFlagsRejected(t *testing.T) {
 // (buildAutomationCreateBody caught it, but only after the cross-family guard
 // would otherwise fire with a misleading "belongs to type" message).
 func TestAutomationCreate_UnknownTriggerTypeRejected(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n", "trigger-type": "bogus"})
 	err := AppsAutomationCreate.Validate(context.Background(), rctx)
 	assertValidationParamError(t, err, "--trigger-type")
 }
 
 func TestAutomationCreateCron_Sub30MinRejected(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n", "trigger-type": "cron", "cron": "*/5 * * * *"})
 	err := AppsAutomationCreate.Validate(context.Background(), rctx)
 	assertValidationParamError(t, err, "--cron")
 }
 
 func TestAutomationCreateRecordChange_MissingEvent(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n", "trigger-type": "record-change", "table": "tbl"})
 	err := AppsAutomationCreate.Validate(context.Background(), rctx)
 	assertValidationParamError(t, err, "--event")
 }
 
 func TestAutomationCreateApproval_CodeOptional(t *testing.T) {
-	rctx, _, reg := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, reg := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n", "trigger-type": "feishu-approval",
 			"event-type": "approval_instance", "instance-status": "APPROVED"})
 	reg.Register(&httpmock.Stub{
@@ -142,7 +142,7 @@ func TestAutomationCreateApproval_CodeOptional(t *testing.T) {
 // before it reaches the backend (foundation review: buildApprovalCondition stores
 // the raw statuses, so create must uppercase them itself).
 func TestAutomationCreateApproval_StatusUppercased(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n", "trigger-type": "feishu-approval",
 			"event-type": "approval_instance", "instance-status": "approved"})
 	body, err := buildAutomationCreateBody(rctx)
@@ -171,7 +171,7 @@ func TestAutomationCreateApproval_StatusUppercased(t *testing.T) {
 // token. Defense-in-depth: CLI create must also redact so every read-shaped
 // output path is consistently scrubbed.
 func TestAutomationCreate_RedactsWebhookToken(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, stdoutBuf, reg := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "trigger-type": "webhook"})
 	reg.Register(&httpmock.Stub{
 		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/triggers",
@@ -198,7 +198,7 @@ func TestAutomationCreate_RedactsWebhookToken(t *testing.T) {
 // POST body when set. Backend supports create+enable in one call via the
 // optional status field; CLI passes it through unchanged.
 func TestAutomationCreate_StatusPassthrough(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "n", "trigger-type": "cron",
 			"cron": "0 9 * * *", "status": "enabled",
@@ -214,7 +214,7 @@ func TestAutomationCreate_StatusPassthrough(t *testing.T) {
 
 // TestAutomationCreate_StatusInvalid: only enabled/disabled accepted.
 func TestAutomationCreate_StatusInvalid(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "n", "trigger-type": "cron",
 			"cron": "0 9 * * *", "status": "bogus",
@@ -226,7 +226,7 @@ func TestAutomationCreate_StatusInvalid(t *testing.T) {
 // TestAutomationCreate_StatusOmitted: when --status is not set, body must not
 // carry a status field — backend applies its default (disabled).
 func TestAutomationCreate_StatusOmitted(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "n", "trigger-type": "cron",
 			"cron": "0 9 * * *",
@@ -243,7 +243,7 @@ func TestAutomationCreate_StatusOmitted(t *testing.T) {
 // TestAutomationCreate_NameTooLong: --name > 100 chars is rejected locally with
 // a typed --name error, sparing the round trip to the backend.
 func TestAutomationCreate_NameTooLong(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": strings.Repeat("n", automationNameMaxLen+1),
 			"trigger-type": "cron", "cron": "0 9 * * *",
@@ -255,7 +255,7 @@ func TestAutomationCreate_NameTooLong(t *testing.T) {
 // TestAutomationCreate_DescriptionTooLong: --description > 50 chars is rejected
 // locally with a typed --description error.
 func TestAutomationCreate_DescriptionTooLong(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationCreateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "n", "trigger-type": "cron",
 			"cron": "0 9 * * *", "description": strings.Repeat("d", automationDescriptionMaxLen+1),

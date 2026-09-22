@@ -23,7 +23,7 @@ func automationListFlagDefs() map[string]string {
 // error branch: an unknown --trigger-type is rejected before any API call, with
 // a typed error naming the failing flag.
 func TestAutomationList_InvalidTriggerTypeFilter(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x", "trigger-type": "bogus"})
 	err := AppsAutomationList.Validate(context.Background(), rctx)
 	assertValidationParamError(t, err, "--trigger-type")
@@ -34,7 +34,7 @@ func TestAutomationList_InvalidTriggerTypeFilter(t *testing.T) {
 // which points at +list rather than +automation-list because the recovery for
 // a failing collection GET is "check your app-id", not "check trigger names".
 func TestAutomationListExecute_APIErrorAttachesAppIDHint(t *testing.T) {
-	rctx, _, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+	rctx, _, reg := newAppsRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x"})
 	reg.Register(&httpmock.Stub{
 		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers",
@@ -62,7 +62,7 @@ func TestAutomationListExecute_APIErrorAttachesAppIDHint(t *testing.T) {
 // TestAutomationList_DryRunPreview exercises the DryRun closure — pins the GET
 // method + collection URL + trigger_type param pushdown.
 func TestAutomationList_DryRunPreview(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x", "trigger-type": "webhook"})
 	preview := AppsAutomationList.DryRun(context.Background(), rctx)
 	if preview == nil {
@@ -90,7 +90,7 @@ func TestAutomationListMeta(t *testing.T) {
 }
 
 func TestAutomationListExecute_SinglePage(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+	rctx, stdoutBuf, reg := newAppsRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x"})
 	reg.Register(&httpmock.Stub{
 		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers",
@@ -116,7 +116,7 @@ func TestAutomationListExecute_SinglePage(t *testing.T) {
 // first request (page_token empty) hits page 1, the second (page_token=2) hits
 // page 2. See registry.match — a matched non-reusable stub is not reused.
 func TestAutomationListExecute_AllAggregatesPages(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+	rctx, stdoutBuf, reg := newAppsRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x", "all": "true"})
 	// page 1: has_more=true, page_token="2"
 	reg.Register(&httpmock.Stub{
@@ -144,7 +144,7 @@ func TestAutomationListExecute_AllAggregatesPages(t *testing.T) {
 }
 
 func TestAutomationListParams_TriggerTypePushdown(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x", "trigger-type": "webhook"})
 	params := buildAutomationListParams(rctx)
 	if params["trigger_type"] != "webhook" {
@@ -155,7 +155,7 @@ func TestAutomationListParams_TriggerTypePushdown(t *testing.T) {
 // list/get 恒不返回明文 Bearer Token。webhook item 的
 // trigger_condition.token_value 必须逐条脱敏，token_enabled 保留。
 func TestAutomationListExecute_RedactsWebhookToken(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+	rctx, stdoutBuf, reg := newAppsRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x"})
 	reg.Register(&httpmock.Stub{
 		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers",
@@ -188,7 +188,7 @@ func TestAutomationListExecute_RedactsWebhookToken(t *testing.T) {
 // same page_token. A reusable stub that always advertises "has_more=true,
 // page_token=same" forces the seen-token guard to trip.
 func TestAutomationListExecute_All_DetectsRepeatedPageToken(t *testing.T) {
-	rctx, _, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+	rctx, _, reg := newAppsRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x", "all": "true"})
 	reg.Register(&httpmock.Stub{
 		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers",

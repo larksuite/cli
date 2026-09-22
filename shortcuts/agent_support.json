@@ -194,6 +194,14 @@
     "apps +log-list": {
       "agentSupport": "denied"
     },
+    "apps +mcp-get": {
+      "agentSupport": "denied",
+      "note": "2026-09-21: feature maintainer confirmed that these MCP endpoints do not support Agent Employee accessTokens (AAT); user authorization only. This is a per-entry confirmation, not a full registry reconciliation."
+    },
+    "apps +mcp-key-create": {
+      "agentSupport": "denied",
+      "note": "2026-09-21: feature maintainer confirmed that these MCP endpoints do not support Agent Employee accessTokens (AAT); user authorization only. This is a per-entry confirmation, not a full registry reconciliation."
+    },
     "apps +member-add": {
       "agentSupport": "denied"
     },

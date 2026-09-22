@@ -14,7 +14,7 @@ import (
 )
 
 func TestAutomationUpdate_PatchCronOnly(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, stdoutBuf, reg := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "t1", "trigger-type": "cron", "cron": "0 10 * * *"})
 	reg.Register(&httpmock.Stub{
 		Method: "PUT", URL: "/open-apis/spark/v1/apps/app_x/triggers/t1",
@@ -33,14 +33,14 @@ func TestAutomationUpdate_PatchCronOnly(t *testing.T) {
 // failing flag (--reset-url in this fixture), per AGENTS.md: Param names only
 // actual failed user input.
 func TestAutomationUpdate_MutuallyExclusiveWebhookFlags(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "t1", "reset-url": "true", "reset-token": "true"})
 	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
 	assertValidationParamError(t, err, "--reset-url")
 }
 
 func TestAutomationUpdate_WhiteIPListPatch(t *testing.T) {
-	rctx, _, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, reg := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "trigger-type": "webhook", "white-ip-list": `["1.1.1.1"]`})
 	reg.Register(&httpmock.Stub{
 		Method: "PUT", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1",
@@ -52,14 +52,14 @@ func TestAutomationUpdate_WhiteIPListPatch(t *testing.T) {
 }
 
 func TestAutomationUpdate_InvalidCronRejected(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "t1", "trigger-type": "cron", "cron": "*/5 * * * *"})
 	err := runAutomationUpdate(rctx)
 	assertValidationParamError(t, err, "--cron")
 }
 
 func TestAutomationUpdate_InvalidWhiteIPListRejected(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "trigger-type": "webhook", "white-ip-list": "{bad json"})
 	err := runAutomationUpdate(rctx)
 	assertValidationParamError(t, err, "--white-ip-list")
@@ -73,7 +73,7 @@ func TestAutomationUpdate_InvalidWhiteIPListRejected(t *testing.T) {
 // Param-less (no single user flag failed); recovery candidates are structured
 // in Params + Hint, matching the +update precedent.
 func TestAutomationUpdate_NoFieldsRejected(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "t1"})
 	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
 	if err == nil {
@@ -104,7 +104,7 @@ func TestAutomationUpdate_NoFieldsRejected(t *testing.T) {
 // TestAutomationUpdate_ResetURLRequiresAppEnv exercises the Validate-time check
 // that --reset-url requires --app-env.
 func TestAutomationUpdate_ResetURLRequiresAppEnv(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "reset-url": "true"})
 	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
 	assertValidationParamError(t, err, "--app-env")
@@ -131,7 +131,7 @@ func TestAutomationUpdate_AppEnvRequiresResetURL(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(), tc.flags)
+			rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(), tc.flags)
 			err := AppsAutomationUpdate.Validate(context.Background(), rctx)
 			assertValidationParamError(t, err, "--app-env")
 		})
@@ -144,7 +144,7 @@ func TestAutomationUpdate_AppEnvRequiresResetURL(t *testing.T) {
 // that a real invocation would reject — a dry-run/execute divergence.
 // Validate now catches invalid values so dry-run and execute agree.
 func TestAutomationUpdate_AppEnvInvalidValueRejected(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "reset-url": "true", "app-env": "invalid"})
 	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
 	assertValidationParamError(t, err, "--app-env")
@@ -156,7 +156,7 @@ func TestAutomationUpdate_AppEnvInvalidValueRejected(t *testing.T) {
 // TestAutomationUpdate_PatchRecordChange covers A5: --trigger-type record-change
 // with --table/--event dispatches to record_change_condition rebuild.
 func TestAutomationUpdate_PatchRecordChange(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, stdoutBuf, reg := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "rc1", "trigger-type": "record-change",
 			"table": "tbl_1", "event": "UPDATE", "fields": `["fld1"]`,
@@ -176,7 +176,7 @@ func TestAutomationUpdate_PatchRecordChange(t *testing.T) {
 // TestAutomationUpdate_PatchRecordChange_MissingEvent covers A5 error path:
 // --table without --event surfaces a typed error keyed on --event.
 func TestAutomationUpdate_PatchRecordChange_MissingEvent(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "rc1", "trigger-type": "record-change",
 			"table": "tbl_1",
@@ -188,7 +188,7 @@ func TestAutomationUpdate_PatchRecordChange_MissingEvent(t *testing.T) {
 // TestAutomationUpdate_PatchRecordChange_InvalidFieldsJSON covers A5: bad JSON
 // in --fields is rejected up-front by parseFieldsFlag with Param=--fields.
 func TestAutomationUpdate_PatchRecordChange_InvalidFieldsJSON(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "rc1", "trigger-type": "record-change",
 			"table": "tbl_1", "event": "UPDATE", "fields": "{bad json",
@@ -199,7 +199,7 @@ func TestAutomationUpdate_PatchRecordChange_InvalidFieldsJSON(t *testing.T) {
 
 // TestAutomationUpdate_PatchApproval covers A5: feishu-approval dispatch.
 func TestAutomationUpdate_PatchApproval(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, stdoutBuf, reg := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "apv", "trigger-type": "feishu-approval",
 			"event-type": "approval_instance", "instance-status": "approved",
@@ -219,7 +219,7 @@ func TestAutomationUpdate_PatchApproval(t *testing.T) {
 // TestAutomationUpdate_PatchApproval_TaskEventStatuses verifies that
 // approval_task pulls its statuses from --task-status (not --instance-status).
 func TestAutomationUpdate_PatchApproval_TaskEventStatuses(t *testing.T) {
-	rctx, _, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, reg := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "apv", "trigger-type": "feishu-approval",
 			"event-type": "approval_task", "task-status": "DONE",
@@ -237,7 +237,7 @@ func TestAutomationUpdate_PatchApproval_TaskEventStatuses(t *testing.T) {
 // --instance-status / --task-status surfaces a typed error keyed on the status
 // flag matching the event-type.
 func TestAutomationUpdate_PatchApproval_MissingStatuses(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "apv", "trigger-type": "feishu-approval",
 			"event-type": "approval_instance",
@@ -255,7 +255,7 @@ func TestAutomationUpdate_PatchApproval_MissingStatuses(t *testing.T) {
 // it before stdout, mirroring get/list behaviour. Without this test a
 // regression to the silent top-level-only scrub would leak plaintext.
 func TestAutomationUpdate_PatchRedactsWebhookToken(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, stdoutBuf, reg := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "wh1", "trigger-type": "webhook",
 			"white-ip-list": `["1.1.1.1"]`,
@@ -290,7 +290,7 @@ func TestAutomationUpdate_PatchRedactsWebhookToken(t *testing.T) {
 // now catches this up-front and names the actually-provided condition flag as
 // the failing Param.
 func TestAutomationUpdate_WebhookActionRejectsConditionFlag(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "wh1",
 			"reset-token": "true", "cron": "0 9 * * *",
@@ -328,7 +328,7 @@ func TestAutomationUpdate_SubordinateFlagsRequireParent(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(), tc.flags)
+			rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(), tc.flags)
 			err := AppsAutomationUpdate.Validate(context.Background(), rctx)
 			assertValidationParamError(t, err, tc.wantParam)
 			if !strings.Contains(err.Error(), tc.wantSubstr) {
@@ -368,7 +368,7 @@ func TestAutomationUpdate_MismatchedStatusArrayWithEventType(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(), tc.flags)
+			rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(), tc.flags)
 			err := AppsAutomationUpdate.Validate(context.Background(), rctx)
 			assertValidationParamError(t, err, tc.wantParam)
 			if !strings.Contains(err.Error(), tc.wantSubstr) {
@@ -385,7 +385,7 @@ func TestAutomationUpdate_MismatchedStatusArrayWithEventType(t *testing.T) {
 // "--trigger-type bogus" was silently accepted. Validate now runs mapTriggerType
 // on any non-empty --trigger-type.
 func TestAutomationUpdate_UnknownTriggerTypeRejected(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "t1", "trigger-type": "bogus",
 			"cron": "0 9 * * *",
@@ -400,7 +400,7 @@ func TestAutomationUpdate_UnknownTriggerTypeRejected(t *testing.T) {
 // every condition_* key present, sending a PUT with mixed conditions that no
 // legitimate trigger could ever want (a trigger has exactly one type).
 func TestAutomationUpdate_CrossFamilyConditionFlagsRejected(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "t1", "trigger-type": "cron",
 			"cron": "0 9 * * *", "white-ip-list": `["1.1.1.1"]`,
@@ -415,7 +415,7 @@ func TestAutomationUpdate_CrossFamilyConditionFlagsRejected(t *testing.T) {
 // Param names --trigger-type since resolving the ambiguity requires
 // specifying which family the caller intended.
 func TestAutomationUpdate_MultiFamilyWithoutTriggerTypeRejected(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "t1",
 			"cron": "0 9 * * *", "white-ip-list": `["1.1.1.1"]`,
@@ -428,7 +428,7 @@ func TestAutomationUpdate_MultiFamilyWithoutTriggerTypeRejected(t *testing.T) {
 }
 
 func TestAutomationUpdate_DescriptionTooLong(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+	rctx, _, _ := newAppsRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
 			"app-id": "app_x", "name": "t1",
 			"description": strings.Repeat("d", automationDescriptionMaxLen+1),

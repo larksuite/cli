@@ -17,9 +17,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newOpenAPIKeyRCtx 构造带指定 flag 的 RuntimeContext。flags 是 name->value，
+// newAppsRCtx 构造带指定 flag 的 RuntimeContext。flags 是 name->value，
 // bool flag 传 "true"/"false"。被本组所有命令测试复用。
-func newOpenAPIKeyRCtx(t *testing.T, flagDefs map[string]string, flags map[string]string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
+func newAppsRCtx(t *testing.T, flagDefs map[string]string, flags map[string]string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	cfg := &core.CliConfig{
 		AppID:      "test-app-" + strings.ToLower(t.Name()),
@@ -28,7 +28,7 @@ func newOpenAPIKeyRCtx(t *testing.T, flagDefs map[string]string, flags map[strin
 		UserOpenId: "ou_test",
 	}
 	factory, stdoutBuf, _, reg := cmdutil.TestFactory(t, cfg)
-	cmd := &cobra.Command{Use: "test-openapi-key"}
+	cmd := &cobra.Command{Use: "test-apps"}
 	cmd.SetContext(context.Background())
 	for name, typ := range flagDefs {
 		switch typ {
@@ -59,7 +59,7 @@ func TestOpenAPIKeyListMeta(t *testing.T) {
 }
 
 func TestOpenAPIKeyListExecute_Redacts(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+	rctx, stdoutBuf, reg := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "limit": "int", "offset": "int"},
 		map[string]string{"app-id": "app_x"})
 	reg.Register(&httpmock.Stub{

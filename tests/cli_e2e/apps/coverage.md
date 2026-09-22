@@ -62,3 +62,32 @@ Blocked: General app create live E2E is intentionally not implemented yet. Apps 
 | ✓ | apps +member-settings-get | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun | `--app-id`; GET without body | BOE live verified with all six returned settings |
 | ✓ | apps +member-settings-set | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun; ../dryrun/apps_member_dryrun_test.go::TestAppsMemberHighRiskWritesRequireYesButDryRunDoesNot; ../dryrun/apps_member_dryrun_test.go::TestAppsMemberUnsupportedWriteFlagsAreNotRegistered | partial PATCH of external access, link sharing, collaborator management, and comments; unsupported `--external-invite` and `--copy-download-by` flags are not registered | BOE live verified for four-field combined write/readback/rollback, no-op, invalid enum, and server-side read-only errors |
 | ✓ | apps +export | shortcut | apps_export_content_type_test.go::TestAppsExportContentTypeE2E | `--app-id`; `--output`; response Content-Type gate (JSON blacklist, not archive whitelist) | added outside the 25-command denominator above; covers response handling only, request shapes remain uncovered |
+
+## MCP connections
+
+- `apps +mcp-get` and `apps +mcp-key-create`: `TestAppsMCPDryRun` covers CLI registration, required app ID and whitespace normalization, exact HTTP method/path, no body/query and explicit secret flag acceptance without network requests.
+- `shortcuts/apps/apps_mcp_test.go` covers successful responses, secret visibility, complete config preservation, invalid responses and typed permission errors.
+- Manual live acceptance passed in the test environment with user authorization. The commands declare `spark:app:read` for GET connection and `spark:app:write` for POST credential; this acceptance did not isolate grants to prove minimum required scopes. Both agreed routes return the expected fields; repeated credential requests preserve the credential ID, and the plaintext key matches the connection header. No real credentials or application identifiers are included in this report.
+- Both endpoints may create a persistent runtime credential. There is no documented deletion API, so an automatic create/use/delete live fixture cannot yet be implemented safely. Use a designated disposable app with developer access, a user token with the confirmed scopes, and a pre-provisioned runtime credential. Check connection/key consistency across repeated calls, redacted versus explicit output, and MCP client authorization separately; do not print secrets in test reports.
+
+### Internal port acceptance (2026-09-21)
+
+The rebuilt internal CLI was exercised in BOE with a designated existing app
+credential and user authorization (no `--include-secret`). Both commands accepted
+an app ID with surrounding whitespace and exited 0 with `ok=true` and
+`redacted=true`. Connection output contained only the URL origin and redacted
+header values; credential output contained `credential_id`, no `plain_key`, and
+preserved the credential ID from the previous acceptance run. No credential was
+rotated, and no plaintext credential was logged.
+
+Declared scopes remain `spark:app:read` for GET connection and `spark:app:write`
+for POST credential. These successful user-token calls do not independently prove
+that a read-only grant can create a first credential. Minimum scopes for first
+creation still require provider confirmation. The feature maintainer confirmed on
+2026-09-21 that neither endpoint supports Agent Employee accessTokens (AAT). Both
+`agent_support.json` entries record that confirmation and remain `denied`; the
+table-wide registry reconciliation timestamp is unchanged.
+
+Both commands remain `write`: repeated calls reuse the existing credential and
+do not rotate it. Lack of a public deletion command alone is not treated as
+proof of an irreversible operation. No new confirmation flag is introduced.

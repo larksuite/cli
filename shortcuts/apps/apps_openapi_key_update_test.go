@@ -25,7 +25,7 @@ func updateFlagDefs() map[string]string {
 }
 
 func TestOpenAPIKeyUpdate_RequiresOneField(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t,
+	rctx, _, _ := newAppsRCtx(t,
 		updateFlagDefs(),
 		map[string]string{"app-id": "app_x", "key-id": "1"})
 	err := AppsOpenAPIKeyUpdate.Validate(context.Background(), rctx)
@@ -38,7 +38,7 @@ func TestOpenAPIKeyUpdate_RequiresOneField(t *testing.T) {
 }
 
 func TestOpenAPIKeyUpdateExecute_Redacts(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+	rctx, stdoutBuf, reg := newAppsRCtx(t,
 		updateFlagDefs(),
 		map[string]string{"app-id": "app_x", "key-id": "1", "name": "partner-prod"})
 	reg.Register(&httpmock.Stub{

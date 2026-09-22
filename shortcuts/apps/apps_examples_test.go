@@ -4,21 +4,41 @@
 package apps
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/affordance"
+	"github.com/larksuite/cli/internal/apicatalog"
+	"github.com/larksuite/cli/internal/meta"
 )
 
 func TestAppsShortcutsHaveExamples(t *testing.T) {
 	realAppID := regexp.MustCompile(`app_[a-z0-9]{6,}`)
 	email := regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
 	phone := regexp.MustCompile(`\b1[3-9]\d{9}\b`)
+	resolver := affordance.NewResolver(os.DirFS("../../affordance"), apicatalog.Catalog{})
 	for _, s := range Shortcuts() {
 		if s.Hidden {
 			continue
 		}
+		tips := s.Tips
+		if raw, ok := resolver.For("apps", s.Command); ok {
+			guidance, valid := (meta.Method{Affordance: raw}).ParsedAffordance()
+			if !valid {
+				t.Fatalf("%s has invalid affordance", s.Command)
+			}
+			if len(s.Tips) != 0 {
+				t.Errorf("%s: affordance owns guidance; remove duplicate Go Tips", s.Command)
+			}
+			tips = append([]string(nil), guidance.Tips...)
+			for _, example := range guidance.Examples {
+				tips = append(tips, "Example: "+example.Command)
+			}
+		}
 		hasExample := false
-		for _, tip := range s.Tips {
+		for _, tip := range tips {
 			if strings.HasPrefix(tip, "Example: lark-cli apps +") {
 				hasExample = true
 			}

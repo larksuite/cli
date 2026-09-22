@@ -24,7 +24,7 @@ func createFlagDefs() map[string]string {
 }
 
 func TestOpenAPIKeyCreateExecute_ReturnsRawOnce(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+	rctx, stdoutBuf, reg := newAppsRCtx(t,
 		createFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "partner-test"})
 	reg.Register(&httpmock.Stub{
@@ -59,7 +59,7 @@ func TestOpenAPIKeyCreateExecute_ReturnsRawOnce(t *testing.T) {
 }
 
 func TestOpenAPIKeyCreate_MissingName(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t,
+	rctx, _, _ := newAppsRCtx(t,
 		createFlagDefs(),
 		map[string]string{"app-id": "app_x"})
 	if err := AppsOpenAPIKeyCreate.Validate(context.Background(), rctx); err == nil {
@@ -68,7 +68,7 @@ func TestOpenAPIKeyCreate_MissingName(t *testing.T) {
 }
 
 func TestOpenAPIKeyCreate_InvalidScope(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t,
+	rctx, _, _ := newAppsRCtx(t,
 		createFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n", "scope": "{bad"})
 	if err := AppsOpenAPIKeyCreate.Validate(context.Background(), rctx); err == nil {
@@ -77,7 +77,7 @@ func TestOpenAPIKeyCreate_InvalidScope(t *testing.T) {
 }
 
 func TestOpenAPIKeyCreate_ScopeRawAndFriendlyMutuallyExclusive(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t,
+	rctx, _, _ := newAppsRCtx(t,
 		createFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n", "scope": `{"allowAll":true}`, "scope-all": "true"})
 	if err := AppsOpenAPIKeyCreate.Validate(context.Background(), rctx); err == nil {

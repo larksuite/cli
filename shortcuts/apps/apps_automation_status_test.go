@@ -13,7 +13,7 @@ import (
 )
 
 func TestAutomationEnable_PostsEnabledStatus(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+	rctx, stdoutBuf, reg := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x", "name": "t1"})
 	rctx.Format = "pretty"
@@ -33,7 +33,7 @@ func TestAutomationEnable_PostsEnabledStatus(t *testing.T) {
 }
 
 func TestAutomationDisable_PostsDisabledStatus(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+	rctx, stdoutBuf, reg := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x", "name": "t1"})
 	rctx.Format = "pretty"
@@ -63,7 +63,7 @@ func TestAutomationEnableDisableMeta(t *testing.T) {
 // the typed error and attach automationNotFoundHint so callers wiring
 // enable/disable know to run +automation-list to verify the trigger name.
 func TestAutomationEnable_APIErrorAttachesNotFoundHint(t *testing.T) {
-	rctx, _, reg := newOpenAPIKeyRCtx(t,
+	rctx, _, reg := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x", "name": "missing"})
 	reg.Register(&httpmock.Stub{
@@ -102,7 +102,7 @@ func TestAutomationEnable_APIErrorAttachesNotFoundHint(t *testing.T) {
 // against the disable Execute closure. Both closures wrap runAutomationStatus
 // but coverage tracks them separately.
 func TestAutomationDisable_APIErrorAttachesNotFoundHint(t *testing.T) {
-	rctx, _, reg := newOpenAPIKeyRCtx(t,
+	rctx, _, reg := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x", "name": "missing"})
 	reg.Register(&httpmock.Stub{
@@ -134,7 +134,7 @@ func TestAutomationDisable_APIErrorAttachesNotFoundHint(t *testing.T) {
 // TestAutomationEnable_DryRunPreview exercises the DryRun closure so it appears
 // in coverage and pins the request shape (PATCH + status body).
 func TestAutomationEnable_DryRunPreview(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t,
+	rctx, _, _ := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x", "name": "t1"})
 	preview := AppsAutomationEnable.DryRun(context.Background(), rctx)
@@ -154,7 +154,7 @@ func TestAutomationEnable_DryRunPreview(t *testing.T) {
 }
 
 func TestAutomationDisable_DryRunPreview(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t,
+	rctx, _, _ := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x", "name": "t1"})
 	preview := AppsAutomationDisable.DryRun(context.Background(), rctx)

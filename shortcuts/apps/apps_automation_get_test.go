@@ -20,7 +20,7 @@ import (
 // here — this test would fail the moment someone reverts to top-level-only
 // scrubbing.
 func TestAutomationGetExecute_RedactsWebhookToken(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+	rctx, stdoutBuf, reg := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x", "name": "wh1"})
 	reg.Register(&httpmock.Stub{
@@ -48,7 +48,7 @@ func TestAutomationGetExecute_RedactsWebhookToken(t *testing.T) {
 }
 
 func TestAutomationGet_MissingName(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t,
+	rctx, _, _ := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x"})
 	err := AppsAutomationGet.Validate(context.Background(), rctx)
@@ -58,7 +58,7 @@ func TestAutomationGet_MissingName(t *testing.T) {
 // TestAutomationGet_MissingAppID covers the sibling branch of Validate:
 // automationValidateName rejects an empty --app-id before checking --name.
 func TestAutomationGet_MissingAppID(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t,
+	rctx, _, _ := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"name": "t1"})
 	err := AppsAutomationGet.Validate(context.Background(), rctx)
@@ -69,7 +69,7 @@ func TestAutomationGet_MissingAppID(t *testing.T) {
 // Execute: a business error on GET must surface typed and carry the
 // automation-list hint so the caller has a next step.
 func TestAutomationGet_APIErrorAttachesNotFoundHint(t *testing.T) {
-	rctx, _, reg := newOpenAPIKeyRCtx(t,
+	rctx, _, reg := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x", "name": "missing"})
 	reg.Register(&httpmock.Stub{
@@ -98,7 +98,7 @@ func TestAutomationGet_APIErrorAttachesNotFoundHint(t *testing.T) {
 // TestAutomationGet_DryRunPreview exercises the DryRun closure and pins the
 // GET method + URL pattern that agents inspect before committing.
 func TestAutomationGet_DryRunPreview(t *testing.T) {
-	rctx, _, _ := newOpenAPIKeyRCtx(t,
+	rctx, _, _ := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x", "name": "t1"})
 	preview := AppsAutomationGet.DryRun(context.Background(), rctx)

@@ -18,7 +18,7 @@ func TestOpenAPIKeyResetMeta_HighRisk(t *testing.T) {
 }
 
 func TestOpenAPIKeyResetExecute_ReturnsNewRaw(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+	rctx, stdoutBuf, reg := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "key-id": "string", "yes": "bool"},
 		map[string]string{"app-id": "app_x", "key-id": "1", "yes": "true"})
 	reg.Register(&httpmock.Stub{

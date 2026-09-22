@@ -12,7 +12,7 @@ import (
 )
 
 func TestOpenAPIKeyEnableExecute_StatusOne(t *testing.T) {
-	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+	rctx, stdoutBuf, reg := newAppsRCtx(t,
 		map[string]string{"app-id": "string", "key-id": "string"},
 		map[string]string{"app-id": "app_x", "key-id": "1"})
 	reg.Register(&httpmock.Stub{
