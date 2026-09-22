@@ -2,7 +2,9 @@
 
 围绕一场正在进行的会议执行只读查询或用户明确授权的会中写操作。真实入会/离会使用应用机器人入会场景；已结束会议和会后产物使用会议查询场景。
 
-如果任务包含“应用机器人入会后继续拉取事件或互动”，只读取并执行 [应用机器人参会与会中互动](live-meeting-attend.md) 的完整流程，不要在两个场景之间来回切换。
+各节是按目标选择的分支，不是依次执行的步骤。已有 `meeting_id` 时跳过会议发现；用户要会议绑定群时直接进入 [获取或创建会议群聊](#获取或创建会议群聊)，不要先拉取事件。“会里刚才发了什么”指会中聊天事件，“会议绑定群里发了什么”指 IM 消息；上下文无法区分时先确认消息位置。
+
+任务需要应用机器人新入会时，先按 [机器人参会场景](live-meeting-attend.md) 确认入会成功；从该场景转入本节时复用传入的 `meeting_id` 和 `--as bot`，不重复发现或入会。
 
 ## 发现进行中的会议
 
@@ -62,6 +64,32 @@ lark-cli vc +meeting-screenshot --as <same_identity> --meeting-id <meeting_id>
 
 身份、会议 ID、输出文件和失败处理见 [`lark-vc-meeting-screenshot`](../references/lark-vc-meeting-screenshot.md)。
 
+## 获取或创建会议群聊
+
+使用已确定的 `meeting_id` 和来源身份；已有 `chat_id` 且只需消息操作时直接执行本节末尾的 IM 步骤。根据用户意图选择查询或创建，不把两者默认串行执行。
+
+**查询已有绑定，或需要先找到群再读写消息：**
+
+已有详情结果时直接复用其中的绑定，批量结果按 [详情参考](../references/lark-vc-detail.md#聊天绑定结果) 解析对应项；否则只查询会议基础信息：
+
+```bash
+lark-cli vc meeting get --meeting-id "<meeting_id>" --as <same_identity> --format json
+```
+
+成功后读取 `data.meeting.chat_id`；查询失败按实际错误处理，字段缺失、为空或为 `"0"` 则说明未取得绑定并停止，不自动创建。
+
+**用户明确要求创建或复用：**
+
+会议正在进行且调用主体当前在会时执行；详情可读不能证明在会。服务端决定新建或复用，无需先查绑定，也不额外创建普通 IM 群。
+
+```bash
+lark-cli vc +meeting-chat --meeting-id <meeting_id> --as <same_identity> --format json
+```
+
+成功读取 `data.chat_id`。不在会中或会议已结束时说明创建条件不满足；不为了创建自动入会、发起会议或切换身份。参数、权限及失败恢复按需读取 [创建参考](../references/lark-vc-meeting-chat.md)。
+
+只要聊天 ID 时返回后停止。只有用户要求消息操作时，才携带 `chat_id`、同一身份、消息范围或待发送内容，进入 [IM 消息读取](../../lark-im/references/lark-im-chat-messages-list.md) 或 [IM 消息发送](../../lark-im/references/lark-im-messages-send.md)。返回 ID 可能是复用的私聊，不保证正式入群或 IM 访问权限；IM 拒绝访问时报告实际错误，不重新建群或换身份。
+
 ## 发送会中文本或表情
 
 只有用户明确要求发送并确认目标会议与内容时执行：
@@ -73,7 +101,7 @@ lark-cli vc +meeting-message-send --as <same_identity> --meeting-id <meeting_id>
 - 发送沿用 `meeting_id` 的来源身份；不要为了发送自动入会或先查会议详情。
 - reaction 使用 Reference 中大小写敏感的完整 emoji key；不要编造 key。
 - 发送失败时停止并报告，不自动换身份或重复发送，避免重复可见副作用。
-- 用户要发送绑定群或 IM 消息时改用 `lark-im`，不要把会中消息命令当作群消息能力。
+- 用户要发送绑定群消息且尚无 `chat_id` 时，先进入 [本场景的群聊步骤](#获取或创建会议群聊)；已有 `chat_id` 时转 IM，不要把会中消息命令当作群消息能力。
 
 文本、reaction 和权限规则见 [`lark-vc-meeting-message-send`](../references/lark-vc-meeting-message-send.md)。
 

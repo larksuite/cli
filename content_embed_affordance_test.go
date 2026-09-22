@@ -139,3 +139,43 @@ func TestEmbeddedDocsAffordanceComplementsShortcutMetadata(t *testing.T) {
 func normalizedCopy(value string) string {
 	return strings.ToLower(strings.TrimRight(strings.TrimSpace(value), "."))
 }
+
+func TestEmbeddedMeetingChatWorkflowReachable(t *testing.T) {
+	main, err := embeddedContentFS.ReadFile("skills/lark-meeting/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scene := range []string{"query-meeting-and-artifacts.md", "live-meeting-interact.md", "live-meeting-attend.md"} {
+		if !strings.Contains(string(main), "scenes/"+scene) {
+			t.Errorf("main skill missing scene %s", scene)
+		}
+		data, err := embeddedContentFS.ReadFile("skills/lark-meeting/scenes/" + scene)
+		if err != nil {
+			t.Fatal(err)
+		}
+		refs := []string{"lark-vc-detail.md", "lark-im-chat-messages-list.md", "lark-im-messages-send.md"}
+		if scene == "live-meeting-attend.md" {
+			refs = []string{"live-meeting-interact.md#获取或创建会议群聊"}
+		} else if scene == "live-meeting-interact.md" {
+			refs = append(refs, "lark-vc-meeting-chat.md")
+			if !strings.Contains(string(data), "\n## 获取或创建会议群聊\n") {
+				t.Error("meeting chat handoff anchor is missing")
+			}
+		}
+		for _, ref := range refs {
+			if !strings.Contains(string(data), ref) {
+				t.Errorf("%s missing reference %s", scene, ref)
+			}
+		}
+	}
+	for _, ref := range []string{
+		"skills/lark-meeting/references/lark-vc-detail.md",
+		"skills/lark-meeting/references/lark-vc-meeting-chat.md",
+		"skills/lark-im/references/lark-im-chat-messages-list.md",
+		"skills/lark-im/references/lark-im-messages-send.md",
+	} {
+		if _, err := embeddedContentFS.ReadFile(ref); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

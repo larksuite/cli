@@ -13,13 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 func newMeetingEventsRuntime() *common.RuntimeContext {
@@ -1952,7 +1951,7 @@ func TestVCShortcuts_RegistersMeetingAgentCommands(t *testing.T) {
 	for _, shortcut := range got {
 		commands = append(commands, shortcut.Command)
 	}
-	want := []string{"+search", "+notes", "+recording", "+meeting-recording-start", "+meeting-recording-stop", "+detail", "+meeting-join", "+meeting-invite", "+meeting-end", "+meeting-leave", "+meeting-list-active", "+meeting-events", "+meeting-message-send", "+meeting-screenshot", "+meeting-countdown", "+meeting-participant-kickout", "+meeting-participant-mute", "+meeting-participant-unmute"}
+	want := []string{"+search", "+notes", "+recording", "+meeting-recording-start", "+meeting-recording-stop", "+detail", "+meeting-join", "+meeting-invite", "+meeting-end", "+meeting-leave", "+meeting-list-active", "+meeting-events", "+meeting-message-send", "+meeting-chat", "+meeting-screenshot", "+meeting-countdown", "+meeting-participant-kickout", "+meeting-participant-mute", "+meeting-participant-unmute"}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("shortcut commands = %#v, want %#v", commands, want)
 	}

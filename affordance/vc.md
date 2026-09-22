@@ -8,6 +8,11 @@
 
 ## +detail
 
+查询会议当前聊天绑定时使用；会后也可按既有详情权限查询。
+
+### Tips
+- 从对应会议结果读取可选 chat_id；未返回绑定不自动创建聊天。
+
 ### Skills
 - lark-meeting/references/lark-vc-detail.md
 
@@ -47,6 +52,22 @@
 
 ### Skills
 - lark-meeting/references/lark-vc-meeting-message-send.md
+
+## +meeting-chat
+
+需要显式创建或复用当前会议的 Chat 时使用。
+
+### Avoid when
+- 只查询现有绑定 → [[+detail]]。
+
+### Prerequisites
+- 会议进行中，调用主体已经在会；沿用取得 meeting_id 时的身份。
+
+### Tips
+- 返回 Chat ID 不保证正式入群或 IM 消息权限；不自动入会或切换身份重试。
+
+### Skills
+- lark-meeting/references/lark-vc-meeting-chat.md
 
 ## +meeting-countdown
 

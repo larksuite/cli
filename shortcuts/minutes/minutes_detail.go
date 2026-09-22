@@ -66,6 +66,7 @@ type minuteDetailItem struct {
 	Status      string         `json:"status,omitempty"`
 	Title       string         `json:"title"`
 	NoteID      string         `json:"note_id"`
+	MeetingID   string         `json:"meeting_id,omitempty"`
 	Artifacts   map[string]any `json:"artifacts,omitempty"`
 	Retryable   bool           `json:"retryable,omitempty"`
 	Error       string         `json:"error,omitempty"`
@@ -106,6 +107,12 @@ func fetchMinuteDetail(ctx context.Context, runtime *common.RuntimeContext, minu
 	}
 	if v, ok := minute["note_id"].(string); ok && v != "" {
 		result.NoteID = v
+	}
+	// meeting_id links the minute back to its originating meeting. The OAPI
+	// carries it inside generated_source (source_type == "meeting"); read it
+	// defensively and only surface it when the source is a meeting.
+	if id := extractMinuteMeetingID(minute); id != "" {
+		result.MeetingID = id
 	}
 
 	// Fetch artifacts selectively based on flags
@@ -181,6 +188,21 @@ func fetchMinuteDetail(ctx context.Context, runtime *common.RuntimeContext, minu
 
 	applyMinutesDetailArtifactStatus(result, statusMap, requestedKeys, minuteToken, artifactFlags, waitReady)
 	return result
+}
+
+// extractMinuteMeetingID reads generated_source and returns the originating
+// meeting id. The source only carries a meeting id when source_type is
+// "meeting"; any other source (or a missing generated_source) yields an empty
+// string so callers can omit the field cleanly.
+func extractMinuteMeetingID(minute map[string]any) string {
+	src, ok := minute["generated_source"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if common.GetString(src, "source_type") != "meeting" {
+		return ""
+	}
+	return common.GetString(src, "source_entity_id")
 }
 
 func isMinutesDetailProcessingError(err error) bool {
@@ -564,6 +586,9 @@ var MinutesDetail = common.Shortcut{
 					row["status"] = "OK"
 					row["title"] = r.Title
 					row["note_id"] = r.NoteID
+					if r.MeetingID != "" {
+						row["meeting_id"] = r.MeetingID
+					}
 					if len(r.Artifacts) > 0 {
 						var parts []string
 						if _, ok := r.Artifacts["summary"]; ok {

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-17T21:40:00+08:00",
+  "updatedAt": "2026-09-22T15:10:00+08:00",
   "commands": {
     "application +slash-command-create": {
       "agentSupport": "denied"
@@ -692,6 +692,12 @@
       "agentSupport": "allowed"
     },
     "calendar +meeting": {
+      "agentSupport": "allowed"
+    },
+    "calendar +meeting-chat-create": {
+      "agentSupport": "allowed"
+    },
+    "calendar +meeting-chat-get": {
       "agentSupport": "allowed"
     },
     "calendar +room-find": {
@@ -1547,6 +1553,9 @@
       "agentSupport": "allowed"
     },
     "vc +detail": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-chat": {
       "agentSupport": "allowed"
     },
     "vc +meeting-countdown": {

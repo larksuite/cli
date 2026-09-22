@@ -147,6 +147,95 @@ func TestDetailToMap_OmitsEmptySharedDocTokens(t *testing.T) {
 	}
 }
 
+func TestDetailToMap_NoteSourceMeeting(t *testing.T) {
+	got := (&Detail{NoteID: "note_1", MeetingID: "meeting_9"}).ToMap()
+	if got["meeting_id"] != "meeting_9" {
+		t.Fatalf("ToMap[meeting_id] = %#v, want meeting_9", got["meeting_id"])
+	}
+}
+
+func TestDetailToMap_OmitsEmptyNoteSource(t *testing.T) {
+	got := (&Detail{NoteID: "note_1"}).ToMap()
+	if _, ok := got["meeting_id"]; ok {
+		t.Fatalf("ToMap should omit empty meeting_id, got %#v", got)
+	}
+}
+
+func TestNoteDetailSurfacesNoteSource(t *testing.T) {
+	factory, stdout, _, reg := noteShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/notes/note_src",
+		Body: map[string]any{
+			"code": 0,
+			"data": map[string]any{
+				"note": map[string]any{
+					"note_display_type": float64(1),
+					"creator_id":        "ou_1",
+					"create_time":       "1710000000",
+					"note_source": map[string]any{
+						"source_type":      "meeting",
+						"source_entity_id": "meeting_from_note",
+					},
+				},
+			},
+		},
+	})
+
+	err := runNoteShortcut(t, NoteDetail, []string{"+detail", "--note-id", "note_src", "--as", "user"}, factory, stdout)
+	if err != nil {
+		t.Fatalf("note +detail failed: %v", err)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		t.Fatalf("parse output: %v\nstdout=%s", err, stdout.String())
+	}
+	data, _ := resp["data"].(map[string]any)
+	note, _ := data["note"].(map[string]any)
+	if note["meeting_id"] != "meeting_from_note" {
+		t.Fatalf("note payload meeting_id = %#v, want meeting_from_note", note["meeting_id"])
+	}
+}
+
+// TestNoteDetailOmitsMeetingIDForNonMeetingSource pins that a non-meeting
+// note_source never surfaces a meeting_id: only source_type == "meeting" links
+// a note back to a meeting.
+func TestNoteDetailOmitsMeetingIDForNonMeetingSource(t *testing.T) {
+	factory, stdout, _, reg := noteShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/notes/note_other",
+		Body: map[string]any{
+			"code": 0,
+			"data": map[string]any{
+				"note": map[string]any{
+					"note_display_type": float64(1),
+					"creator_id":        "ou_1",
+					"create_time":       "1710000000",
+					"note_source": map[string]any{
+						"source_type":      "doc",
+						"source_entity_id": "should_be_ignored",
+					},
+				},
+			},
+		},
+	})
+
+	err := runNoteShortcut(t, NoteDetail, []string{"+detail", "--note-id", "note_other", "--as", "user"}, factory, stdout)
+	if err != nil {
+		t.Fatalf("note +detail failed: %v", err)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		t.Fatalf("parse output: %v\nstdout=%s", err, stdout.String())
+	}
+	data, _ := resp["data"].(map[string]any)
+	note, _ := data["note"].(map[string]any)
+	if _, ok := note["meeting_id"]; ok {
+		t.Fatalf("note payload should omit meeting_id for non-meeting source, got %#v", note["meeting_id"])
+	}
+}
+
 func TestMapNoteError_NoReadPermission(t *testing.T) {
 	err := &errs.PermissionError{
 		Problem: errs.Problem{

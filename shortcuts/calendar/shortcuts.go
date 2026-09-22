@@ -22,5 +22,7 @@ func Shortcuts() []common.Shortcut {
 		CalendarTransfer,
 		CalendarJoinEvent,
 		CalendarListAttendees,
+		CalendarMeetingChatCreate,
+		CalendarMeetingChatGet,
 	}
 }

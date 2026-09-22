@@ -6,7 +6,7 @@
 
 | 当前条件 | 起点 |
 |---|---|
-| 已有应用身份取得的 `meeting_id` | 直接拉取事件，不重复查询或入会 |
+| 已有应用身份取得的 `meeting_id`，只需查询或互动 | 进入 [会中事件与会中互动](live-meeting-interact.md)，不重复发现会议或入会 |
 | 应用机器人可能已在会中 | 已知目标用户 `user_open_id` 时，先用 `+meeting-list-active --as bot --user-id <user_open_id>` 发现会议 |
 | 用户明确要求机器人入会、旁听或代参会 | 使用 `+meeting-join --as bot` |
 | 用户明确要求机器人发起日程会议 | 使用 `+meeting-join --as bot --action start` |
@@ -94,6 +94,10 @@ lark-cli vc +meeting-events --as bot --meeting-id <meeting_id> --page-all --form
 
 事件类型、分页、会后产物替代路径和文档上下文处理见 [`lark-vc-meeting-events`](../references/lark-vc-meeting-events.md)。
 
+## 获取或创建会议群聊
+
+只有任务包含群聊需求时，携带已取得的 `meeting_id` 和 `source_identity=bot`，进入 [会中互动的群聊步骤](live-meeting-interact.md#获取或创建会议群聊)。只读取该章节，不重复发现会议、入会或先拉取事件。入会成功不等于需要创建群聊；查询、创建和后续 IM 操作由该章节统一编排。
+
 ## 发送会中文本或表情
 
 每次发送都是对会中参会人可见的写操作。只有用户明确要求发送，并已确认目标会议和内容时才执行。
@@ -109,7 +113,7 @@ lark-cli vc +meeting-message-send --as bot --meeting-id <meeting_id> --msg-type 
 - 始终沿用产生 `meeting_id` 的应用身份；不要切换成用户身份。
 - reaction 必须使用 Reference 中大小写敏感的完整 `emoji_type` 列表；不编造 key。
 - 发送失败时停止并报告；不自动重试或换身份，避免产生重复可见消息。
-- 用户要发绑定群或 IM 消息时改用 `lark-im`，不使用会中消息命令。
+- 用户要发绑定群消息且尚无 `chat_id` 时，先进入 [本场景的群聊步骤](#获取或创建会议群聊)；已有 `chat_id` 时转 IM，不使用会中消息命令。
 
 文本、reaction 语义、完整 emoji key 和幂等参数见 [`lark-vc-meeting-message-send`](../references/lark-vc-meeting-message-send.md)。
 
@@ -183,4 +187,4 @@ lark-cli vc +meeting-leave --as user --meeting-id <meeting_id>
 ## 会后边界
 
 - 已结束会议的搜索、参会人快照、智能纪要、逐字稿、妙记或录制，转入 [查询会议及其产物](query-meeting-and-artifacts.md)。
-- 会后要把产物发到群或私聊，先使用会议产物场景获取结果，再转 `lark-im`。
+- 会后要把产物发到群或私聊，先使用会议产物场景获取结果；目标为会议绑定群且缺少 `chat_id` 时，按 [会议查询场景](query-meeting-and-artifacts.md#获取会议群聊) 获取绑定后再转 IM。

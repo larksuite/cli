@@ -367,3 +367,77 @@ func TestFetchMeetingDetail_MeetingInProgress(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+// TestFetchMeetingDetail_CalendarEventID pins the forward-compatible
+// calendar_event_id passthrough: when the meeting.get response carries the
+// field, +detail surfaces it verbatim so callers can trace the meeting back to
+// its originating calendar event.
+func TestFetchMeetingDetail_CalendarEventID(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m_cal",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"meeting": map[string]interface{}{
+				"id":                "m_cal",
+				"topic":             "Linked Meeting",
+				"note_id":           "note_cal",
+				"calendar_event_id": "evt_from_meeting",
+				"start_time":        "1752000000",
+				"end_time":          "1752003600",
+			}},
+		},
+	})
+	reg.Register(recordingErrStub("m_cal", 121004, "not found"))
+
+	if err := botExec(t, "detail-cal", f, func(_ context.Context, rctx *common.RuntimeContext) error {
+		result := fetchMeetingDetail(context.Background(), rctx, "m_cal")
+		if result.CalendarEventID != "evt_from_meeting" {
+			t.Errorf("calendar_event_id = %q, want evt_from_meeting", result.CalendarEventID)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDetail_OptionalChatBinding(t *testing.T) {
+	for _, chatID := range []any{nil, "", "0", 0, "oc_test"} {
+		t.Run(fmt.Sprint(chatID), func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+			meeting := map[string]any{"id": "7651377260537433044", "topic": "Test Meeting", "start_time": "1700000000"}
+			if chatID != nil {
+				meeting["chat_id"] = chatID
+			}
+			reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/vc/v1/meetings/7651377260537433044", Body: map[string]any{"code": 0, "data": map[string]any{"meeting": meeting}}})
+			// Only a GET is registered: no chat creation or other write is allowed.
+			if err := mountAndRun(t, VCDetail, []string{"+detail", "--as", "user", "--meeting-ids", "7651377260537433044"}, f, stdout); err != nil {
+				t.Fatal(err)
+			}
+			reg.Verify(t)
+			var env struct {
+				OK   bool `json:"ok"`
+				Data struct {
+					Meetings []map[string]any `json:"meetings"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+				t.Fatal(err)
+			}
+			if !env.OK || len(env.Data.Meetings) != 1 {
+				t.Fatalf("output: %s", stdout.String())
+			}
+			got, present := env.Data.Meetings[0]["chat_id"]
+			if chatID == "oc_test" {
+				if got != chatID {
+					t.Fatalf("chat_id: %v", got)
+				}
+			} else if present {
+				t.Fatalf("chat_id should be omitted: %v", got)
+			}
+		})
+	}
+}

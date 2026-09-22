@@ -1,6 +1,6 @@
 # 查询会议及其产物
 
-围绕目标会议执行查询：先取得唯一 `meeting_id`，再按用户目标查询参会人、智能纪要、妙记或录制。已有 `note_id` 或 `minute_token` 时从对应产物直接开始，不要绕回会议搜索。
+围绕目标会议执行查询：先取得唯一 `meeting_id`，再按用户目标查询群聊绑定、参会人、智能纪要、妙记或录制。各节按需执行；只要群聊时跳到 [获取会议群聊](#获取会议群聊)。已有 `note_id` 或 `minute_token` 时从对应产物直接开始，不要绕回会议搜索。
 
 ## 定位会议
 
@@ -19,6 +19,16 @@
 | Calendar `event_id` | 用 `calendar +meeting` 获取 `meeting_id` 和用户绑定的 `meeting_note` |
 | `note_id` | 直接进入 [智能纪要场景](query-note-and-artifacts.md) |
 | `minute_token` / 妙记 URL | 直接进入 [妙记场景](query-minutes-and-artifacts.md)；URL 取路径最后一段并去掉 query 参数 |
+
+反向定位（从产物 / 会议回溯上一跳）：
+
+| 已有信息 | 反查操作 |
+|---|---|
+| 妙记 `meeting_id`（`minutes +detail` 返回） | 用 `vc +detail --meeting-ids <meeting_id>` 回到会议 |
+| 纪要 `meeting_id`（`note +detail` 返回） | 用 `vc +detail --meeting-ids <meeting_id>` 回到会议 |
+| 会议 `calendar_event_id`（`vc +detail` 返回） | 用 `calendar +get --event-id <calendar_event_id>` 回到日程 |
+
+> 反查前先检查命令及目标条目的错误和状态；查询失败或仍在生成不代表没有来源。成功取得基础信息后仍缺少关联 ID 时，只说明未取得上一跳，不据此断言产物来源，也不猜测 ID。妙记的逐条状态处理见 [详情参考](../references/lark-minutes-detail.md#反查关联会议)。
 
 没有标识时，用 `vc +search` 搜索已经结束的会议：
 
@@ -51,6 +61,20 @@ lark-cli vc meeting get --params '{"meeting_id":"<meeting_id>","with_participant
 ```
 
 这是服务端快照，不要求应用机器人入会，会议结束后也可以查询。不要用会中事件代替完整参会人快照。
+
+## 获取会议群聊
+
+取得唯一 `meeting_id` 后，已有详情结果时直接复用其中的绑定；否则只查询会议基础信息：
+
+```bash
+lark-cli vc meeting get --meeting-id "<meeting_id>" --as <source_identity> --format json
+```
+
+成功后读取 `data.meeting.chat_id`；查询失败按实际错误处理，字段缺失、为空或为 `"0"` 则说明未取得绑定，不自动创建。只要群聊 ID 时到此结束，不继续读取纪要、录制或消息。复用 `vc +detail` 的已有批量结果时，按 [详情参考](../references/lark-vc-detail.md#聊天绑定结果) 解析对应项。
+
+会后或会议状态未知时，仍按详情权限查询当前绑定，不先查在会状态，也不为了查询让机器人入会。用户明确要为进行中的会议创建/复用聊天时，转 [会中互动](live-meeting-interact.md#获取或创建会议群聊)。
+
+需要群消息时，携带 `chat_id`、来源身份及用户要求的范围或内容，转 [IM 消息读取](../../lark-im/references/lark-im-chat-messages-list.md) 或 [IM 消息发送](../../lark-im/references/lark-im-messages-send.md)。已有 `chat_id` 可直接转 IM。返回绑定不保证群有效或消息访问权限，IM 拒绝访问时按实际错误处理，不通过创建替代群或更换身份兜底。
 
 ## 获取会议产物标识
 

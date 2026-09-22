@@ -51,6 +51,11 @@ type Detail struct {
 	NoteDocToken     string
 	VerbatimDocToken string
 	SharedDocTokens  []string
+	// MeetingID is the originating meeting id, parsed from note_source when the
+	// note comes from a meeting (source_type == "meeting"). It lets Agents trace
+	// a note back to its meeting directly. Empty when the note has no meeting
+	// origin.
+	MeetingID string
 }
 
 // FetchDetail queries GET /open-apis/vc/v1/notes/{note_id} and parses the note
@@ -74,7 +79,23 @@ func FetchDetail(_ context.Context, runtime *common.RuntimeContext, noteID strin
 		NoteDocToken:     noteDoc,
 		VerbatimDocToken: verbatimDoc,
 		SharedDocTokens:  extractDocTokens(common.GetSlice(noteObj, "references")),
+		MeetingID:        extractNoteMeetingID(noteObj),
 	}, nil
+}
+
+// extractNoteMeetingID reads note_source and returns the originating meeting id.
+// The source only carries a meeting id when source_type is "meeting"; any other
+// source (or a missing note_source) yields an empty string so callers can omit
+// the field cleanly.
+func extractNoteMeetingID(note map[string]any) string {
+	src, ok := note["note_source"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if common.GetString(src, "source_type") != "meeting" {
+		return ""
+	}
+	return common.GetString(src, "source_entity_id")
 }
 
 // ToMap renders the detail as the field map consumed by `vc +notes`, keeping
@@ -91,6 +112,11 @@ func (d *Detail) ToMap() map[string]any {
 	}
 	if len(d.SharedDocTokens) > 0 {
 		m["shared_doc_tokens"] = d.SharedDocTokens
+	}
+	// meeting_id links the note back to its originating meeting. Only meeting
+	// notes carry it; omit it entirely otherwise so the payload stays lean.
+	if d.MeetingID != "" {
+		m["meeting_id"] = d.MeetingID
 	}
 	return m
 }
