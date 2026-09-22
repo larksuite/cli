@@ -4,10 +4,13 @@
 package common
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/spf13/cobra"
@@ -188,8 +191,11 @@ func TestResolveInputFlags_FileNotFound(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 	vErr := assertValidationParam(t, err, "--markdown")
-	if !strings.Contains(vErr.Message, "cannot read file") {
-		t.Errorf("unexpected error message: %q", vErr.Message)
+	if vErr.Category != errs.CategoryValidation {
+		t.Errorf("Category = %q, want %q", vErr.Category, errs.CategoryValidation)
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("missing-file cause is not preserved: %v", err)
 	}
 }
 

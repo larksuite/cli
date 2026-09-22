@@ -121,6 +121,9 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Update\n\n- item 1\n
 # Send a plain one-line message
 lark-cli im +messages-send --chat-id oc_xxx --text "Hello"
 
+# Read Markdown from a local file
+lark-cli im +messages-send --chat-id oc_xxx --markdown @./update.md
+
 # Equivalent manual JSON
 lark-cli im +messages-send --chat-id oc_xxx --content '{"text":"Hello"}'
 

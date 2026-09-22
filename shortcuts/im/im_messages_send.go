@@ -5,7 +5,6 @@ package im
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
@@ -29,9 +28,9 @@ var ImMessagesSend = common.Shortcut{
 		{Name: "chat-id", Desc: "(required, mutually exclusive with --user-id) chat ID (oc_xxx)"},
 		{Name: "user-id", Desc: "(required, mutually exclusive with --chat-id) user open_id (ou_xxx)"},
 		{Name: "msg-type", Default: "text", Desc: "message type for --content JSON; when using --text/--markdown/--image/--file/--video/--audio, the effective type is inferred automatically", Enum: []string{"text", "post", "image", "file", "audio", "media", "interactive", "share_chat", "share_user"}},
-		{Name: "content", Desc: "(one of --content/--text/--markdown/--image/--file/--video/--audio required) message content JSON"},
-		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)"},
-		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)"},
+		{Name: "content", Desc: "(one of --content/--text/--markdown/--image/--file/--video/--audio required) message content JSON", Input: []string{common.File, common.Stdin}},
+		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)", Input: []string{common.File, common.Stdin}},
+		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)", Input: []string{common.File, common.Stdin}},
 		{Name: "idempotency-key", Desc: "idempotency key, max 50 characters (prevents duplicate sends)"},
 		{Name: "image", Desc: "image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
 		{Name: "file", Desc: "file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
@@ -174,8 +173,10 @@ var ImMessagesSend = common.Shortcut{
 		if err := validateIdempotencyKey(idempotencyKey); err != nil {
 			return err
 		}
-		if content != "" && !json.Valid([]byte(content)) {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'", content).WithParam("--content")
+		if content != "" {
+			if err := validateMessageContentJSON(content); err != nil {
+				return err
+			}
 		}
 		if msg := validateExplicitMsgType(runtime.Cmd, msgType, text, markdown, imageKey, fileKey, videoKey, audioKey); msg != "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, msg).WithParam("--msg-type")

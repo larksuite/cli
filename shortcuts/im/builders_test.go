@@ -6,14 +6,75 @@ package im
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
+
+func TestValidateMessageContentJSONDoesNotEchoContent(t *testing.T) {
+	t.Parallel()
+
+	const sensitiveContent = `{"text":"QA_SYNTHETIC_PRIVATE_MARKER_93827",bad}`
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		flags    map[string]string
+	}{
+		{name: "send", shortcut: ImMessagesSend, flags: map[string]string{"chat-id": "oc_123", "content": sensitiveContent}},
+		{name: "reply", shortcut: ImMessagesReply, flags: map[string]string{"message-id": "om_123", "content": sensitiveContent}},
+		{name: "edit", shortcut: ImMessagesEdit, flags: map[string]string{"message-id": "om_123", "content": sensitiveContent}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := tt.shortcut.Validate(context.Background(), newTestRuntimeContext(t, tt.flags, nil))
+			if err == nil {
+				t.Fatal("Validate() error = nil, want validation error")
+			}
+
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("Validate() error = %T, want typed error", err)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("Validate() error = %T, want *errs.ValidationError", err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--content" {
+				t.Fatalf("problem = %#v, want validation/invalid_argument attributed to --content", problem)
+			}
+			if strings.Contains(problem.Message, sensitiveContent) || strings.Contains(problem.Message, "QA_SYNTHETIC_PRIVATE_MARKER_93827") {
+				t.Fatalf("error message leaked content: %q", problem.Message)
+			}
+			var syntaxErr *json.SyntaxError
+			if !errors.As(err, &syntaxErr) {
+				t.Fatalf("error = %v, want preserved *json.SyntaxError cause", err)
+			}
+			wantMessage := fmt.Sprintf(
+				"--content is not valid JSON near byte %d\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'",
+				syntaxErr.Offset,
+			)
+			if problem.Message != wantMessage {
+				t.Fatalf("problem.Message = %q, want %q", problem.Message, wantMessage)
+			}
+		})
+	}
+}
+
+func TestValidateMessageContentJSONAcceptsLargeNumber(t *testing.T) {
+	t.Parallel()
+
+	if err := validateMessageContentJSON(`{"value":1e400}`); err != nil {
+		t.Fatalf("validateMessageContentJSON() error = %v, want nil", err)
+	}
+}
 
 // mustMarshalDryRun marshals v to a JSON string, calling t.Fatalf on error.
 func mustMarshalDryRun(t *testing.T, v interface{}) string {

@@ -36,7 +36,7 @@ var AppsFileDelete = common.Shortcut{
 		{Name: "path", Type: "string_slice", Desc: "remote file path to delete (repeatable)", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+		if _, err := requireFileAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
 		if len(cleanDeletePaths(rctx)) == 0 {

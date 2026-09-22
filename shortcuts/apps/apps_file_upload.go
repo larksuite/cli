@@ -33,7 +33,7 @@ var AppsFileUpload = common.Shortcut{
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +file-upload --app-id <app_id> --file ./logo.png",
-		"Example: lark-cli apps +file-upload --app-id <app_id> --file ./report.pdf -q '.path'   # print the platform-generated file path",
+		"Example: lark-cli apps +file-upload --app-id <app_id> --file ./report.pdf -q '.data.path'   # print the platform-generated file path",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
@@ -43,7 +43,7 @@ var AppsFileUpload = common.Shortcut{
 		{Name: "file", Desc: "local file to upload (file_name = basename)", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+		if _, err := requireFileAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
 		return rctx.ValidateLocalFileFlag("file", fileUploadMaxBytes)

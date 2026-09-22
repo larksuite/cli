@@ -75,6 +75,8 @@ lark-cli apps +db-env-create --app-id app_xxx --environment dev --sync-data --ye
 
 > 预览与发布同一端点，故 `+db-env-diff` 也需 `spark:app:write` scope（不是纯只读权限）。
 
+**发布审批拦截**：若应用的发布配置了审批，`+db-env-migrate` 会被服务端拒绝（`feature_not_available`，exit 1）。这**不是**参数问题：换 flag、重试都不会成功，也不要去跑 `+db-env-create`。改走应用发布：`lark-cli apps +release-create --app-id <app_id>`，或让用户在页面上发布。只有真发布被拦，`+db-env-diff` 预览照常可用。
+
 ```bash
 lark-cli apps +db-env-diff --app-id app_xxx
 lark-cli apps +db-env-migrate --app-id app_xxx --yes

@@ -118,6 +118,9 @@ lark-cli im +messages-reply --message-id om_xxx --markdown $'## Reply\n\n- item 
 # Reply with a plain one-line message
 lark-cli im +messages-reply --message-id om_xxx --text "Received"
 
+# Read Markdown from a local file
+lark-cli im +messages-reply --message-id om_xxx --markdown @./reply.md
+
 # Equivalent manual JSON
 lark-cli im +messages-reply --message-id om_xxx --content '{"text":"Received"}'
 

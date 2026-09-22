@@ -58,7 +58,7 @@ var AppsFileList = common.Shortcut{
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+		if _, err := requireFileAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
 		// page_size 前置校验：对齐后端 checkMaxKeys 的 (0, 200] 契约，避免 >200 触发服务端 ErrInvalidRequest。

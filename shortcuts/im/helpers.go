@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -49,6 +50,23 @@ func flagMessageID(rt *common.RuntimeContext) (string, error) {
 
 func normalizeAtMentions(content string) string {
 	return mentionFixRe.ReplaceAllString(content, `<at user_id="$3">`)
+}
+
+func validateMessageContentJSON(content string) error {
+	var value json.RawMessage
+	if err := json.Unmarshal([]byte(content), &value); err != nil {
+		message := "--content is not valid JSON"
+		var syntaxErr *json.SyntaxError
+		if errors.As(err, &syntaxErr) {
+			message = fmt.Sprintf("%s near byte %d", message, syntaxErr.Offset)
+		}
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"%s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'",
+			message,
+		).WithParam("--content").WithCause(err)
+	}
+	return nil
 }
 
 // buildMGetURL constructs the mget query URL for batch-fetching messages.

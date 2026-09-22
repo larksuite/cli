@@ -25,9 +25,9 @@ var ImMessagesEdit = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "message ID (om_xxx)", Required: true},
 		{Name: "msg-type", Default: "text", Desc: "message type for --content JSON; when using --markdown/--text the effective type is inferred automatically", Enum: []string{"text", "post"}},
-		{Name: "content", Desc: "(one of --content/--text/--markdown/--set-attachments required) message content JSON"},
-		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)"},
-		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)"},
+		{Name: "content", Desc: "(one of --content/--text/--markdown/--set-attachments required) message content JSON", Input: []string{common.File, common.Stdin}},
+		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)", Input: []string{common.File, common.Stdin}},
+		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)", Input: []string{common.File, common.Stdin}},
 		{Name: "set-attachments", Type: "string_slice", Desc: "file/folder key (file_xxx), repeatable; sets the post message's attachment zone (requires --markdown or --msg-type post)"},
 		{Name: "clear-attachments", Type: "bool", Desc: "clear the post message attachment zone (sets files:[]); cannot be used with --set-attachments"},
 	},
@@ -130,8 +130,10 @@ var ImMessagesEdit = common.Shortcut{
 		if msg := validateEditContentFlags(text, markdown, content, attachments, clearAttachments); msg != "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg)
 		}
-		if content != "" && !json.Valid([]byte(content)) {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'", content).WithParam("--content")
+		if content != "" {
+			if err := validateMessageContentJSON(content); err != nil {
+				return err
+			}
 		}
 		if msg := validateExplicitMsgType(runtime.Cmd, msgType, text, markdown, "", "", "", ""); msg != "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg).WithParam("--msg-type")
