@@ -48,42 +48,8 @@ func TestIM_FlagWorkflowAsUser(t *testing.T) {
 	})
 
 	t.Run("list flags as user", func(t *testing.T) {
-		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
-			Args: []string{
-				"im", "+flag-list",
-				"--page-size", "10",
-				"--page-all",
-			},
-			DefaultAs: "user",
-		}, clie2e.RetryOptions{
-			ShouldRetry: func(result *clie2e.Result) bool {
-				if result == nil || result.ExitCode != 0 {
-					return true
-				}
-				// Check if our message is in the list
-				for _, item := range gjson.Get(result.Stdout, "data.flag_items").Array() {
-					if item.Get("item_id").String() == messageID {
-						return false
-					}
-				}
-				return true
-			},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		// Verify our flagged message is in the list
-		var found bool
-		for _, item := range gjson.Get(result.Stdout, "data.flag_items").Array() {
-			if item.Get("item_id").String() == messageID {
-				found = true
-				// Verify it's a message-type flag (flag_type=2)
-				require.Equal(t, "2", item.Get("flag_type").String(), "expected flag_type=2 (message)")
-				break
-			}
-		}
-		require.True(t, found, "expected message %s in flag list", messageID)
+		item := waitForFlagState(t, ctx, messageID, true)
+		require.Equal(t, "2", item.Get("flag_type").String(), "expected flag_type=2 (message)")
 	})
 
 	t.Run("cancel flag as user", func(t *testing.T) {
@@ -101,35 +67,7 @@ func TestIM_FlagWorkflowAsUser(t *testing.T) {
 	})
 
 	t.Run("verify flag removed", func(t *testing.T) {
-		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
-			Args: []string{
-				"im", "+flag-list",
-				"--page-size", "10",
-				"--page-all",
-			},
-			DefaultAs: "user",
-		}, clie2e.RetryOptions{
-			ShouldRetry: func(result *clie2e.Result) bool {
-				if result == nil || result.ExitCode != 0 {
-					return true
-				}
-				// Check if our message is still in the list
-				for _, item := range gjson.Get(result.Stdout, "data.flag_items").Array() {
-					if item.Get("item_id").String() == messageID {
-						return true // Still there, retry
-					}
-				}
-				return false // Not found, success
-			},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		// Verify our message is NOT in the list
-		for _, item := range gjson.Get(result.Stdout, "data.flag_items").Array() {
-			require.NotEqual(t, messageID, item.Get("item_id").String(), "message should not be in flag list after cancel")
-		}
+		waitForFlagState(t, ctx, messageID, false)
 	})
 }
 
@@ -170,41 +108,9 @@ func TestIM_FlagCreateWithExplicitTypeAsUser(t *testing.T) {
 	})
 
 	t.Run("list flags to verify explicit types as user", func(t *testing.T) {
-		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
-			Args: []string{
-				"im", "+flag-list",
-				"--page-size", "10",
-				"--page-all",
-			},
-			DefaultAs: "user",
-		}, clie2e.RetryOptions{
-			ShouldRetry: func(result *clie2e.Result) bool {
-				if result == nil || result.ExitCode != 0 {
-					return true
-				}
-				for _, item := range gjson.Get(result.Stdout, "data.flag_items").Array() {
-					if item.Get("item_id").String() == messageID {
-						return false
-					}
-				}
-				return true
-			},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		// Verify explicit types were applied
-		var found bool
-		for _, item := range gjson.Get(result.Stdout, "data.flag_items").Array() {
-			if item.Get("item_id").String() == messageID {
-				found = true
-				require.Equal(t, "0", item.Get("item_type").String(), "expected item_type=0 (default)")
-				require.Equal(t, "2", item.Get("flag_type").String(), "expected flag_type=2 (message)")
-				break
-			}
-		}
-		require.True(t, found, "expected message %s in flag list", messageID)
+		item := waitForFlagState(t, ctx, messageID, true)
+		require.Equal(t, "0", item.Get("item_type").String(), "expected item_type=0 (default)")
+		require.Equal(t, "2", item.Get("flag_type").String(), "expected flag_type=2 (message)")
 	})
 
 	t.Run("cancel flag with explicit types as user", func(t *testing.T) {
