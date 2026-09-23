@@ -6,6 +6,8 @@
 
 `formula` / `lookup` 创建前读取对应 guide；涉及跨表引用时同时读取目标表结构。
 
+需要从现有单值人员或创建人字段生成部门、直属上级、工号等通讯录信息列时，不用普通 `+field-create`，读取 [contact-field-enrichment](lark-base-contact-field-enrichment.md)。
+
 ## 推荐命令
 
 ```bash

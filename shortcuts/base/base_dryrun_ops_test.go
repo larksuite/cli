@@ -64,6 +64,19 @@ func TestBaseTableAndFieldListDryRunDefaultsToMaximumPageSize(t *testing.T) {
 	}
 }
 
+func TestDryRunBaseUpdate(t *testing.T) {
+	rt := newBaseTestRuntime(map[string]string{
+		"base-token": "app_x",
+		"time-zone":  " Asia/Shanghai ",
+	}, nil, nil)
+	assertDryRunContains(
+		t,
+		dryRunBaseUpdate(context.Background(), rt),
+		"PATCH /open-apis/base/v3/bases/app_x",
+		`"time_zone":"Asia/Shanghai"`,
+	)
+}
+
 func TestDryRunTemplateCenterOps(t *testing.T) {
 	ctx := context.Background()
 

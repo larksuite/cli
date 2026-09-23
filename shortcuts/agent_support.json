@@ -385,6 +385,9 @@
     "base +base-get": {
       "agentSupport": "allowed"
     },
+    "base +base-update": {
+      "agentSupport": "allowed"
+    },
     "base +button-rule-bind": {
       "agentSupport": "allowed"
     },
@@ -392,6 +395,12 @@
       "agentSupport": "allowed"
     },
     "base +button-rule-unbind": {
+      "agentSupport": "allowed"
+    },
+    "base +contact-field-enrichment-create": {
+      "agentSupport": "allowed"
+    },
+    "base +contact-field-enrichment-list": {
       "agentSupport": "allowed"
     },
     "base +dashboard-arrange": {
