@@ -74,9 +74,18 @@ lark-cli calendar +update \
 
 ## 高级用法（完整 API 命令）
 
-`+update` 只覆盖标题、描述、时间、重复规则，以及参会人/会议室的增量添加或移除。
+`+update` 覆盖：标题、描述、时间、重复规则，以及参会人/会议室的增量添加或移除。
 
-如需更新 `location`（地理位置，不含会议室位置）、`visibility`（日程公开范围）、自定义 `reminders`（提醒设置）、自定义 `attendee_ability`（参与人权限）、自定义 `free_busy_status`（日程忙闲状态）、`color`（颜色）、附件、视频会议信息、全天日程，或在新增参会人时配置可选参加状态 等高级参数，请改用完整的 API 命令。建议先通过 `lark-cli schema calendar.events.patch`、`lark-cli schema calendar.event.attendees.create`、`lark-cli schema calendar.event.attendees.batch_delete` 查看完整参数定义。
+需要更新 `location`（地理位置，不含会议室位置）、`visibility`（日程公开范围）、自定义 `reminders`（提醒设置）、自定义 `attendee_ability`（参与人权限）、自定义 `free_busy_status`（日程忙闲状态）、`color`（颜色）、附件、视频会议 `vchat`（含关闭视频会议）、`is_all_day` 全天日程，或在新增参会人时配置可选参加 `is_optional`、会议室审批 `approval_reason` 等 `+update` 未暴露的字段时，**直接使用完整 API 一次改到位**。
+
+```bash
+lark-cli schema calendar.events.patch                # 查完整字段定义
+lark-cli calendar events patch --as user --params '{"calendar_id":"...","event_id":"..."}' --data '{...}'
+
+# 增删参会人的完整 API
+lark-cli schema calendar.event.attendees.create
+lark-cli schema calendar.event.attendees.batch_delete
+```
 
 > 完整 API 命令的时间参数是 **Unix 秒字符串**（非 ISO 8601）。换算时**禁止依赖容器默认时区**（常为 UTC，会导致 8 小时偏移），必须显式指定目标时区。
 

@@ -44,28 +44,30 @@ lark-cli calendar +create --summary "..." --start "..." --end "..." \
 > 自动设置 `attendee_ability: "can_modify_event"`，参会人可查看彼此并编辑日程。
 > 自动设置 `free_busy_status: "busy"`，默认日程忙闲状态为忙碌。
 > 自动设置 `reminders: [{"minutes": 5}]`，默认日程开始前 5 分钟提醒。
-> 自动设置 `vchat: {"vc_type": "vc"}`，默认日程包含飞书视频会议。如需其他视频会议类型或不含视频会议，请使用完整 API 命令。
+> 自动设置 `vchat: {"vc_type": "vc"}`，默认日程包含飞书视频会议。
 > 失败保护：若添加参会人失败（如 open_id 错误），CLI 会自动删除刚创建的空日程（回滚，不通知参会人）。
-> 审批会议室：`+create` 不暴露低频字段 `attendees[].approval_reason`。如果会议室要求审批，请使用用户身份先创建日程，再用完整 API `calendar event.attendees create --as user` 添加会议室并传 `approval_reason`。
 
 ## 高级用法（完整 API 命令）
 
-> 优先策略：创建日程优先走 `+create`。遇到 `+create` 不支持的高级参数（如 `location`（地理位置，不含会议室位置）、`visibility`（日程公开范围）、自定义 `reminders`（提醒设置）、自定义 `attendee_ability`（参与人权限）、自定义 `free_busy_status`（日程忙闲状态）、参与人可选参加状态或全天日程等），**优先先用 `+create` 创建成功，再用完整 API update 对这些字段做编辑补齐**，而非整体改用完整 API 从零创建。
+`+create` 覆盖：日程标题、描述、开始/结束时间（含时区）、rrule、参会人（用户 `ou_` / 群 `oc_` / 会议室 `omm_` / 外部邮箱）。
 
-**注意**：
-- 全天日程的开始日期和结束日期必须分别是日程开始的第一天和结束的最后一天。如果只有一天的话，开始日期和结束日期是相同。
+`+create` 会自动写入并**无法通过 shortcut 关闭或修改**的默认值：
+- `vchat.vc_type = vc`（含飞书视频会议）
+- `reminders = [{"minutes": 5}]`
+- `free_busy_status = busy`
+- `attendee_ability = can_modify_event`
+
+需要覆盖上述任一默认值，或使用 `+create` 未暴露的字段（如 `location`、`visibility`、自定义 `reminders`、自定义 `attendee_ability`、自定义 `free_busy_status`、`is_all_day`、附件、颜色、会议室审批 `approval_reason`、参与人可选参加 `is_optional` 等）时，**直接使用完整 API 一次建成**。
+
+**不要先 `+create` 再用完整 API patch 补齐**：`+create` 会立即向参会人发送通知，二次修改会造成可见的字段/通知抖动，且中间失败没有自动回滚。
 
 ```bash
-## 添加需要审批的会议室（approval_reason 最大 200 字符）
-lark-cli calendar event.attendees create \
-  --as user \
-  --params '{"calendar_id":"<CALENDAR_ID>","event_id":"<EVENT_ID>"}' \
-  --data '{"attendees": [{"type": "resource", "room_id": "omm_xxx", "approval_reason": "申请原因"}]}'
+lark-cli schema calendar.events.create        # 查完整字段定义
+lark-cli calendar events create --data '{...}'
+```
 
-完整 API 命令的关键差异和处理策略：
-- 时间参数是 **Unix 秒字符串**（非 ISO 8601）。换算时**禁止依赖容器默认时区**（常为 UTC，会导致 8 小时偏移），必须显式指定目标时区。
-- 全天日程的开始日期和结束日期必须分别是日程开始的第一天和结束的最后一天；单日全天日程两者相同。
-- 手动拆成“创建日程 + 添加参会人”两步时，若第二步失败，建议删除刚创建的空日程，避免遗留无参会人的日程。
+> 完整 API 命令的时间参数是 **Unix 秒字符串**（非 ISO 8601）。换算时**禁止依赖容器默认时区**（常为 UTC，会导致 8 小时偏移），必须显式指定目标时区。
+> 全天日程的开始日期和结束日期必须分别是日程开始的第一天和结束的最后一天；单日全天日程两者相同。
 
 ## 参会人类型
 
