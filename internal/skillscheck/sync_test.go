@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/selfupdate"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 func TestParseSkillsListIgnoresUnsupportedFormat(t *testing.T) {
@@ -185,17 +186,20 @@ func TestPlanForceRestoresAllOfficial(t *testing.T) {
 }
 
 type fakeSkillsRunner struct {
-	sources       []string
-	indexes       map[string]string
-	indexErrors   map[string]error
-	installErrors map[string]error
-	stageErrors   map[string]error
-	stageChildren map[string][]string
-	globalJSON    string
-	installs      []string
-	removals      [][]string
-	localSuite    string
-	stages        []string
+	sources           []string
+	indexes           map[string]string
+	indexErrors       map[string]error
+	installErrors     map[string]error
+	stageErrors       map[string]error
+	stageChildren     map[string][]string
+	stageNestedGuides bool
+	globalJSON        string
+	installs          []string
+	removals          [][]string
+	localSuite        string
+	localGuide        bool
+	localRoot         string
+	stages            []string
 }
 
 func officialSkillsIndexOutput(names ...string) string {
@@ -261,14 +265,29 @@ func (f *fakeSkillsRunner) StageSuite(source, dir string) *selfupdate.NpmResult 
 		if err := os.MkdirAll(filepath.Join(suite, "references", name), 0o755); err != nil {
 			return &selfupdate.NpmResult{Err: err}
 		}
+		if f.stageNestedGuides {
+			if err := vfs.WriteFile(filepath.Join(suite, "references", name, "SKILL.md"), []byte("read SKILL.md"), 0o644); err != nil {
+				return &selfupdate.NpmResult{Err: err}
+			}
+		}
 	}
-	if err := os.WriteFile(filepath.Join(suite, "SKILL.md"), []byte(suiteFixture), 0o644); err != nil {
+	fixture := suiteFixture
+	if f.stageNestedGuides {
+		fixture += "Read references/lark-calendar/SKILL.md.\n"
+	}
+	if err := vfs.WriteFile(filepath.Join(suite, "SKILL.md"), []byte(fixture), 0o644); err != nil {
 		return &selfupdate.NpmResult{Err: err}
 	}
 	return &selfupdate.NpmResult{}
 }
 func (f *fakeSkillsRunner) InstallLocalSuite(path string) *selfupdate.NpmResult {
 	f.localSuite = path
+	root, err := vfs.ReadFile(filepath.Join(path, "SKILL.md"))
+	if err == nil {
+		f.localRoot = string(root)
+	}
+	_, err = vfs.Stat(filepath.Join(path, "references", "lark-calendar", "GUIDE.md"))
+	f.localGuide = err == nil
 	return &selfupdate.NpmResult{}
 }
 func (f *fakeSkillsRunner) RemoveGlobalSkills(names []string) *selfupdate.NpmResult {
@@ -592,6 +611,26 @@ func TestSyncSkillsSuiteStagesCropsAndRemovesSeparate(t *testing.T) {
 	assertStrings(t, state.SkippedDeletedSkills, []string{"lark-mail"})
 }
 
+func TestSyncSkillsSuiteNormalizesStagedArchiveBeforeInstall(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	runner := &fakeSkillsRunner{
+		sources:     []string{"primary"},
+		indexes:     map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors: map[string]error{}, installErrors: map[string]error{}, stageErrors: map[string]error{},
+		globalJSON: globalSkillsJSONOutput(), stageNestedGuides: true,
+	}
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSuite, Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	if !runner.localGuide {
+		t.Fatal("staged nested guide was not renamed before installation")
+	}
+	if !strings.Contains(runner.localRoot, "references/lark-calendar/GUIDE.md") || strings.Contains(runner.localRoot, "references/lark-calendar/SKILL.md") {
+		t.Fatalf("staged router references = %q", runner.localRoot)
+	}
+}
+
 func TestSyncSkillsSwitchToSuiteRemovesPreviouslyOfficialSkillMissingFromIndex(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if err := WriteState(SkillsState{
@@ -686,6 +725,97 @@ func TestPrepareSuiteCropsRoutesKeywordsAndReferences(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(suite, "references", "lark-mail")); !os.IsNotExist(err) {
 		t.Fatalf("removed reference still exists: %v", err)
+	}
+}
+
+func TestNormalizeSuiteGuidesRenamesNestedEntrypointsAndReferences(t *testing.T) {
+	suite := t.TempDir()
+	guideDir := filepath.Join(suite, "references", "lark-calendar", "references")
+	if err := vfs.MkdirAll(guideDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{
+		filepath.Join(suite, "references", "lark-calendar", "SKILL.md"),
+		filepath.Join(guideDir, "SKILL.md"),
+		filepath.Join(suite, "references", "lark-mail", "SKILL.md"),
+	}
+	if err := vfs.MkdirAll(filepath.Dir(paths[2]), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.WriteFile(filepath.Join(suite, "SKILL.md"), []byte("read references/lark-calendar/SKILL.md and references/<skill-name>/SKILL.md; keep references/not-renamed/SKILL.md"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		content := "read SKILL.md and ./SKILL.md and .\\SKILL.md and ../../SKILL.md"
+		if path == paths[0] {
+			content += " and ../lark-mail/SKILL.md and ./../lark-mail/SKILL.md and .\\..\\lark-mail\\SKILL.md"
+		}
+		if err := vfs.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readme := filepath.Join(suite, "references", "lark-calendar", "README.md")
+	if err := vfs.WriteFile(readme, []byte("read ../lark-mail/SKILL.md and ./../lark-mail/SKILL.md"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	skillMaker := filepath.Join(suite, "references", "lark-skill-maker", "SKILL.md")
+	shared := filepath.Join(suite, "references", "lark-shared", "SKILL.md")
+	for _, path := range []string{skillMaker, shared} {
+		if err := vfs.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := vfs.WriteFile(skillMaker, []byte("Skill = a `SKILL.md`.\n## SKILL.md template\nFile: `skills/lark-<name>/SKILL.md`.\nRead ../lark-shared/SKILL.md.\nPaths: ./SKILL.md.template, ./SKILL.md.bak, ./SKILL.md-old, ./SKILL.md, and ./SKILL.md."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.WriteFile(shared, []byte("shared guide"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := normalizeSuiteGuides(suite); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("nested SKILL.md still exists at %s: %v", path, err)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(suite, "references", "lark-calendar", "GUIDE.md"),
+		filepath.Join(guideDir, "GUIDE.md"),
+		filepath.Join(suite, "references", "lark-mail", "GUIDE.md"),
+	} {
+		content, err := vfs.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "read SKILL.md and ./GUIDE.md and .\\GUIDE.md and ../../SKILL.md"
+		if strings.Contains(path, "lark-calendar"+string(filepath.Separator)+"GUIDE.md") {
+			want += " and ../lark-mail/GUIDE.md and ./../lark-mail/GUIDE.md and .\\..\\lark-mail\\GUIDE.md"
+		}
+		if string(content) != want {
+			t.Fatalf("content at %s = %q", path, content)
+		}
+	}
+	rootContent, err := vfs.ReadFile(filepath.Join(suite, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(rootContent) != "read references/lark-calendar/GUIDE.md and references/<skill-name>/GUIDE.md; keep references/not-renamed/SKILL.md" {
+		t.Fatalf("root router content = %q", rootContent)
+	}
+	readmeContent, err := vfs.ReadFile(readme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(readmeContent) != "read ../lark-mail/GUIDE.md and ./../lark-mail/GUIDE.md" {
+		t.Fatalf("README.md content = %q", readmeContent)
+	}
+	skillMakerContent, err := vfs.ReadFile(filepath.Join(suite, "references", "lark-skill-maker", "GUIDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(skillMakerContent) != "Skill = a `SKILL.md`.\n## SKILL.md template\nFile: `skills/lark-<name>/SKILL.md`.\nRead ../lark-shared/GUIDE.md.\nPaths: ./SKILL.md.template, ./SKILL.md.bak, ./SKILL.md-old, ./GUIDE.md, and ./GUIDE.md." {
+		t.Fatalf("skill-maker guide content = %q", skillMakerContent)
 	}
 }
 
