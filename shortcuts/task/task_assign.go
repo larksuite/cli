@@ -18,7 +18,7 @@ import (
 var AssignTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+assign",
-	Description: "assign or remove task members",
+	Description: "add, remove, or replace task assignees",
 	Risk:        "write",
 	Scopes:      []string{"task:task:write"},
 	AuthTypes:   []string{"user", "bot"},
