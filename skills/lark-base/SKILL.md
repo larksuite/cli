@@ -100,6 +100,13 @@ Record 是 Table 中的一行数据，包含该记录在各个 Field 下的 Cell
 {
   "logic": "and", // 全部条件成立；任一条件成立改为 "or"
   "conditions": [
+    {
+      "logic": "or",
+      "conditions": [
+        ["优先级", "intersects", ["P0"]],
+        ["负责人", "non_empty"]
+      ]
+    }, // 嵌套条件组：优先级是 P0 或负责人非空
     ["状态", "intersects", ["进行中", "暂停"]], // Select 命中任一选项
     ["标题", "intersects", "urgent"], // 文本包含
     ["备注", "non_empty"], // 非空；判断为空改用 "empty"，两者都不传 value
@@ -111,6 +118,8 @@ Record 是 Table 中的一行数据，包含该记录在各个 Field 下的 Cell
   ]
 }
 ```
+
+嵌套条件组仅支持 `+record-list` / `+record-search` 的 `--filter-json`。其他使用 Filter 条件的场景支持且仅支持单层 `conditions`，不得传入嵌套条件组。
 
 完整操作符和各字段取值结构读取 [Filter 条件结构](references/lark-base-filter-condition.md)。
 

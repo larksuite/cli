@@ -8,6 +8,8 @@
 
 `--json` 就是一个 filter 条件对象，结构见公共协议 SSOT [lark-base-filter-condition.md](lark-base-filter-condition.md)，即 `{logic?, conditions?}`。此处 `conditions` 中的 `field` 引用**数据表字段名或字段 id**。
 
+`+view-set-filter` 不支持嵌套条件组，`conditions` 只能包含单层 tuple 条件。
+
 - 支持 `filter` 的视图类型：`grid`、`kanban`、`gallery`、`calendar`、`gantt`。
 
 ## 2. 推荐命令
