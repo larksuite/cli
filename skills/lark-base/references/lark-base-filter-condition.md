@@ -10,7 +10,7 @@ Filter 是一组「字段/操作符/值」条件的组合，用 `logic`（`and` 
 - `+record-list --filter-json` / `+record-search --filter-json` 的结构化记录筛选。
 - `+form-questions-create` / `+form-questions-update` 中的 `visible_rule` 显隐条件。
 
-本协议**不适用于 `+data-query`**。`+data-query` 支持过滤，但使用的是 LiteQuery DSL 的 `filters` 对象结构：`{"type":1,"conjunction":"and","conditions":[{"field_name":"状态","operator":"is","value":["有效"]}]}`，不是这里的 tuple 条件 `["状态","==","有效"]`。需要聚合查询时先返回 [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) 选路；SOP 选定 `+data-query` 后再读取 guide 和完整 DSL reference。
+本协议**不适用于 `+data-query`**。`+data-query` 支持过滤，但使用的是 LiteQuery DSL 的 `filters` 对象结构：`{"type":1,"conjunction":"and","conditions":[{"field_name":"状态","operator":"is","value":["有效"]}]}`，不是这里的 tuple 条件 `["状态","==","有效"]`。需要聚合查询时先返回 [记录分析](../SKILL.md#记录分析) 选路；选定 `+data-query` 后再读取 guide 和完整 DSL reference。
 
 ## 1. 顶层结构
 

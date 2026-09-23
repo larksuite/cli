@@ -279,7 +279,7 @@ func TestDryRunRecordOps(t *testing.T) {
 		dryRunRecordList(ctx, listNDJSONRT),
 		"GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records",
 		"offset=0",
-		"limit=500",
+		"limit=2000",
 	)
 
 	listFieldNamesAliasRT := newBaseTestRuntimeWithArrays(
@@ -356,7 +356,7 @@ func TestDryRunRecordOps(t *testing.T) {
 		t,
 		dryRunRecordSearch(ctx, searchNDJSONRT),
 		"POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/search",
-		`"limit":500`,
+		`"limit":2000`,
 	)
 
 	searchFlagRT := newBaseTestRuntimeWithArrays(

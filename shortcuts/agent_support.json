@@ -556,6 +556,12 @@
     "base +role-update": {
       "agentSupport": "allowed"
     },
+    "base +sql-catalog": {
+      "agentSupport": "allowed"
+    },
+    "base +sql-query": {
+      "agentSupport": "allowed"
+    },
     "base +table-copy": {
       "agentSupport": "allowed"
     },

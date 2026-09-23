@@ -202,7 +202,7 @@ lark-cli base +dashboard-arrange \
 
 1. 图表或指标卡：使用方式 D 读取计算结果。
 2. `text`：使用方式 C，正文位于 `data_config.text`；text 没有计算结果，但属于完整仪表盘内容。
-3. get-data 返回不支持的图表类型：先用方式 C 读取真实 `data_config`，确认 `table_name`、维度、指标、聚合与筛选，再按 [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) 使用 `+data-query` 重建同口径结果。字段必须来自真实配置和表结构，不得猜测；无法等价重建时明确报告限制，不能静默省略该 block。
+3. get-data 返回不支持的图表类型：先用方式 C 读取真实 `data_config`，确认 `table_name`、维度、指标、聚合与筛选，再按 [记录分析](../SKILL.md#记录分析) 使用 `+data-query` 重建同口径结果。字段必须来自真实配置和表结构，不得猜测；无法等价重建时明确报告限制，不能静默省略该 block。
 
 ```bash
 # 第 1 步：列出仪表盘，定位到当前仪表盘

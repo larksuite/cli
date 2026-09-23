@@ -27,7 +27,7 @@ var BaseRecordList = common.Shortcut{
 		recordFilterFlag(),
 		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "maximum records to return; range 1-200, or 1-2000 for ndjson; omitted limit uses 2000 for ndjson"},
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "maximum records to return; range 1-200, or 1-10000 for ndjson; omitted limit uses 10000 for ndjson"},
 		recordReadFormatFlag(),
 		recordOutputFlag(),
 		recordMinimalStdoutFlag(),

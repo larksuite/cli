@@ -72,11 +72,11 @@ Block 的 `id` 按类型直接作为对应模块坐标：
 
 ## Table Block（The Core）
 
-Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Record、View 和 Form 是 Table 内部对象，不是 Base Block。业务数据查询、写入、关联、统计和分析都从 Table 开始。先用 `+table-list` 定位 Table；字段名和目标已知的普通读取可直接进入 Record 命令，只有写入、筛选或关联等依赖字段类型/schema 的任务才补 `+field-list`。多表的 `+field-list` 可以并发执行。基础的 Record / CellValue 读写直接按下方路径；reference 只承载高级分析、完整协议和边界细节。
+Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Record、View 和 Form 是 Table 内部对象，不是 Base Block。业务数据查询、写入、关联、统计和分析都从 Table 开始。先用 `+table-list` 定位 Table；字段名和目标已知的普通读取可直接进入 Record 命令，只有写入、筛选或关联等依赖字段类型/schema 的任务才补 `+field-list`。多表的 `+field-list` 可以并发执行。基础的 Record / CellValue 读写直接按下方路径。
 
 **读取 Table：** `+table-list` 定位表，`+table-get` 读取详情。Table 专属复制使用 `+table-copy`，异步状态用 `+table-copy-status`；schema 和 records 由下方内部对象操作。
 
-Table 下的大多数更新通过异步链路生效，接口成功返回后立即读取可能暂时看不到最新状态。优先以写入成功响应作为操作结果；任务必须确认最终状态时，先完成本轮相关变更，再统一读取验收，避免逐项写后立即读回。
+Table 下的实体更新均异步生效。更新接口返回成功即表示变更成功，应以该响应为准；立即回读可能仍返回旧状态，不能据此判定更新失败或重复提交。部分失败只处理未成功项。
 
 ### Field
 
@@ -114,42 +114,78 @@ Record 是 Table 中的一行数据，包含该记录在各个 Field 下的 Cell
 
 完整操作符和各字段取值结构读取 [Filter 条件结构](references/lark-base-filter-condition.md)。
 
-所有读取都重复传 `--field-id` 做最小字段投影，并统一写入 NDJSON artifact：`--format ndjson --output <path>.ndjson`。每行是一条 Record JSON，stdout 摘要包含 `records_count` 和 `has_more` 用于分页判断。
-
 ```bash
-# Example: 行数较大时先筛选 Status 包含 Doing 的记录，再导出 20 条作为局部预览
+# Record 读取统一使用 --format ndjson --output <path>.ndjson；stdout 摘要中的 records_count / has_more 用于分页判断。
+# 按条件读取记录；--limit 最大值为 10000
 lark-cli base +record-list \
   --base-token <base_token> --table-id <table_id> \
   --filter-json '{"logic":"and","conditions":[["Status","intersects",["Doing"]]]}' \
-  --field-id Name --field-id Status --field-id Score --limit 20 \
-  --format ndjson --output ./records-preview.ndjson --as user
+  --limit 10000 \
+  --format ndjson --output ./records.ndjson --as user
 
-PREVIEW_ROWS=5
-head -n "$PREVIEW_ROWS" ./records-preview.ndjson
-tail -n "$PREVIEW_ROWS" ./records-preview.ndjson
+# 按关键词搜索记录；--limit 最大值为 10000
+lark-cli base +record-search \
+  --base-token <base_token> --table-id <table_id> \
+  --keyword <keyword> --search-field <field> \
+  --limit 10000 \
+  --format ndjson --output ./search.ndjson --as user
 ```
 
-预计记录数少于 500 行时，建议不做谓词下推，直接拉取到本地用 jq 或 Python 处理；行数较大时可用 `--filter-json` 下推可表达的条件，正则、派生等无法下推的条件继续在本地处理。
+优先拉取到本地用 jq 或 Python 分析；行数较大时可用 `--filter-json` 下推可表达的条件，或按下方“记录分析”选择云端聚合。
 
-```bash
-# jq：对服务端筛选结果追加名称格式筛选，再投影必要字段
-jq -c 'select((.Name // "") | test("^Task-[0-9]+$")) | {record_id, Name}' ./records-preview.ndjson
+局部数据示例（JSONC 注释仅用于说明；实际 NDJSON 每行一个完整 JSON 对象，无注释，以下展开其中一条）：
 
-# Python：按行读取并做简单汇总
-python3 - <<'PY'
-import json
+`records.ndjson`：
 
-with open("records-preview.ndjson", encoding="utf-8") as stream:
-    rows = (json.loads(line) for line in stream if line.strip())
-    print(sum((row.get("Score") or 0) for row in rows))
-PY
+```jsonc
+{
+  "record_id": "rec_a", // 表内唯一主键；写回时保留所属表和 record_id
+  // 其余 key 是字段名；不假设非空或唯一，未排序时不依赖记录顺序
+  // 单元格采用下方 Record Cell Schema；标量空值通常为 null，多值空值为 []
+  "标题": "任务 A",
+  "工时": null, // 空值不等于零
+  "状态": ["Todo"], // 单选也返回数组
+  "标签": [], // 多值展开会改变粒度，同时展开多个数组会产生笛卡尔积
+  "负责人": [{"id": "ou_123", "name": "张三"}], // 人员 / 群组读取可带 name；按 ID 连接、去重，名称不代表唯一身份
+  "关联任务": [{"id": "rec_target"}], // 目标表由 Field schema 指定，id 是该表的 record_id
+  "附件": [{"file_token": "file_example", "size": 128, "name": "sample.txt"}],
+  "日期": "2026-09-17T10:00:00+08:00", // RFC3339；绝对时刻比较用完整时间，本地日历分组用 Base 时区
+  "计算结果": "16" // Formula / Lookup 读取为文本，运算前验证转换规则
+}
 ```
 
-`--limit` 的缺省值是 2000，最大值是 2000，通常无需手动指定 limit 参数；支持 `--offset` 参数；只有 `has_more=false` 且查询范围符合问题时，才能当作完整结果。大表完整读取、View 范围读取、复杂 JOIN、集合/多值、时序、语义或专业统计分析时，读取 [Record 查询与分析 SOP](references/lark-base-record-query-and-analysis-sop.md)。
+配套 `records.manifest.json`（部分字段）：
+
+```jsonc
+{
+  // 结合 NDJSON 解析；manifest 另有来源、时区等元数据
+  // 整表读取省略 --view-id；指定 View 则传 --view-id，结论限于该 View
+  // --filter-json / --sort-json 分别覆盖 View 筛选 / 排序，覆盖后不是原 View 口径
+  "rev": 42,
+  "records_count": 10000, // 本页条数
+  "has_more": true, // 完整读取从 --offset 0 开始，直到 has_more=false；每页保存到不同文件
+  "next_offset": 10000, // has_more=true 时使用返回值继续，不自行推算
+  // 翻页保持同一表、View、筛选、排序和字段投影；多表分别完成读取
+  // 预览、固定前 N 条或未到末页不能支持全局结论；交付时说明范围与完整性
+  "columns": { // 字段名 → 稳定 ID 和类型；字段改名后通过这里核对映射
+    "标题": {"field_id": "fld_title", "field_type": "text"},
+    "工时": {"field_id": "fld_hours", "field_type": "number"},
+    "负责人": {"field_id": "fld_owner", "field_type": "user"}
+  }
+}
+```
+
+#### 记录分析
+
+1. **默认用本地分析** 用 record-list 完整拉取分析依赖的数据，然后用 Python / jq 处理 ndjson，这是功能最强大的分析方式，但在数据量较大时效率不高（比如分析范围超过 10000 行）。
+2. **行数大且只需单表简单聚合时，可用 `+data-query`。** 支持筛选、分组、计数、数值汇总、去重计数、排序和 Top-K；读取 [data-query DSL](references/lark-base-data-query.md) 并按其流程使用。
+3. **Base SQL：仅显式启用后可用。** 当上下文提供 `BASE_SQL_ENABLED=true` 时，读取 [Base SQL](references/lark-base-sql.md) 并按其流程使用；标记缺失或不为 true 时，沿用上述路径。
+
+SQL / data-query 无法表达的计算转完整明细本地处理。
 
 #### 2. 新增记录或更新记录单元格
 
-一条 Record 是 `{字段名或 field_id: CellValue}`，常见 CellValue：
+**Record Cell Schema** 用于 Record 读取的单元格及记录写入值。写入字段映射为 `{字段名或 field_id: CellValue}`，常见 CellValue：
 
 ```jsonc
 {
@@ -174,7 +210,7 @@ PY
 }
 ```
 
-附件使用专用 shortcut 上传、下载或移除。created_at, updated_at, created_by, updated_by, auto_number, formula, lookup 类型字段只读，若误写入单元格会返回 `ignored_fields` 表示这些字段被静默过滤，其余字段正常写入。
+附件使用专用 shortcut 上传、下载或移除。created_at, updated_at, created_by, updated_by, auto_number, formula, lookup 类型字段只读，写入时会跳过不可写字段，`ignored_fields` 返回字段及原因，其余合法字段正常写入；向用户说明未能写入的字段及原因。
 
 ```bash
 # 新增：成功时返回 record_id_list
@@ -182,7 +218,7 @@ lark-cli base +record-batch-create \
   --base-token <base_token> --table-id <table_id> \
   --json '{"create_records":[{"Name":"Task A","Status":["Todo"]},{"Name":"Task B","Score":20}]}' --as user
 
-# 更新：每条记录只提交要改变的字段
+# 更新：提交值替换单元格，未提交字段不变；数组整体替换，不自动追加或合并。
 lark-cli base +record-batch-update \
   --base-token <base_token> --table-id <table_id> \
   --json '{"update_records":{"<record_id_a>":{"Status":["Done"]},"<record_id_b>":{"Score":100}}}' --as user
@@ -275,7 +311,7 @@ Folder Block 只承担 Base 目录分组和层级组织。用 `+base-block-list 
 ## 通用执行契约
 
 - Update 先确认命令是完整替换还是 delta：完整替换使用可信当前配置做 read-modify-write，delta 只提交目标变更。
-- 优先用写入返回确认结果；返回不足以确认或任务明确要求核验时再读回目标。
+- 以写入响应确认成功项；检查失败项和 `ignored_fields`，只处理未成功项并说明原因。
 - 命令具有 confirmation gate 时，确认目标和影响后使用 `--yes`。
 
 ## 不在本 Skill 范围

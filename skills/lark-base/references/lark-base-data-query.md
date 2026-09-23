@@ -1,7 +1,7 @@
 
 # Base data-query DSL reference
 
-> **前置路由**: [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) | **认证或授权问题**: [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)
+> **前置路由**: [记录分析](../SKILL.md#记录分析) | **认证或授权问题**: [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)
 
 ## 限制
 
@@ -433,7 +433,7 @@ CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identit
 5. 若候选记录包含 link 字段，提取关联 `record_id` 后到关联表用 `+record-get` 批量读取展示字段。
 6. 最终回答展示真实业务字段；内部 `record_id` 用于连接或定位。
 
-不要把 `data-query pagination.limit` 理解为分页扫描；它只限制 Base 云端查询服务返回的聚合结果行数，不支持 offset。需要逐条原始记录时按 [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) 的完整读取或回查路径处理。
+不要把 `data-query pagination.limit` 理解为分页扫描；它只限制 Base 云端查询服务返回的聚合结果行数，不支持 offset。需要逐条原始记录时按 [记录分析](../SKILL.md#记录分析) 的完整读取或回查路径处理。
 
 ## 坑点
 

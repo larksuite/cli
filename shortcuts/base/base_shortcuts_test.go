@@ -166,6 +166,7 @@ func TestViewSetVisibleFieldsValidateHook(t *testing.T) {
 func TestShortcutsCatalog(t *testing.T) {
 	shortcuts := Shortcuts()
 	want := []string{
+		"+sql-catalog", "+sql-query",
 		"+url-resolve", "+title-resolve",
 		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete", "+table-copy", "+table-copy-status",
@@ -486,7 +487,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"view ID or name; omit for reading all table records, or set to read a user-specified or temporary filtered/sorted view",
 				`filter JSON object or @file`,
 				`sort JSON array or @file`,
-				"maximum records to return; range 1-200, or 1-2000 for ndjson",
+				"maximum records to return; range 1-200, or 1-10000 for ndjson",
 				"json raw matrix (current inline behavior may be deprecated",
 				"ndjson artifact (records file plus manifest summary and column schema/stats",
 				"preferred analysis output: relative .ndjson output path",
@@ -501,7 +502,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"prefer --format ndjson --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
-				"Follow lark-base-record-query-and-analysis-sop.md",
+				"Follow lark-base/SKILL.md",
 				"Use --field-id repeatedly to keep output small",
 			},
 		},
@@ -529,7 +530,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"prefer --format ndjson --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
-				"Follow lark-base-record-query-and-analysis-sop.md",
+				"Follow lark-base/SKILL.md",
 			},
 		},
 		{
@@ -549,7 +550,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"prefer --format ndjson --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
-				"Follow lark-base-record-query-and-analysis-sop.md",
+				"Follow lark-base/SKILL.md",
 				"projection boundary",
 				"record_id is already known",
 			},
@@ -590,27 +591,22 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 	}
 }
 
-func TestBaseDataQueryHelpRoutesThroughAnalysisSOP(t *testing.T) {
+func TestBaseDataQueryHelpRoutesThroughSkill(t *testing.T) {
 	parent := &cobra.Command{Use: "base"}
 	BaseDataQuery.Mount(parent, &cmdutil.Factory{})
 	cmd := parent.Commands()[0]
-
-	help := cmd.Flags().FlagUsages()
-	if !strings.Contains(help, "first follow lark-base-record-query-and-analysis-sop.md") {
-		t.Fatalf("flag help should route through the analysis SOP:\n%s", help)
+	if help := cmd.Flags().FlagUsages(); strings.Contains(help, "+sql-query") {
+		t.Fatalf("flag help must not bypass skill routing: %s", help)
 	}
-
 	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
-	for _, want := range []string{
-		"Read lark-base-record-query-and-analysis-sop.md before using this command",
-		"use +data-query only when that SOP selects the Cloud aggregation path",
-		"After the SOP selects +data-query, read lark-base-data-query.md",
-	} {
+	if strings.Contains(tips, "prefer +sql-query") {
+		t.Fatalf("tips must not unconditionally recommend SQL: %s", tips)
+	}
+	for _, want := range []string{"Follow the record analysis routing", "lark-base/SKILL.md", "lark-base-data-query.md", "dimensions"} {
 		if !strings.Contains(tips, want) {
-			t.Fatalf("tips missing %q:\n%s", want, tips)
+			t.Fatalf("tips missing %q: %s", want, tips)
 		}
 	}
-	assertHelpOrder(t, tips, "lark-base-record-query-and-analysis-sop.md", "lark-base-data-query.md")
 }
 
 func TestBasePaginationHelpShowsDefaults(t *testing.T) {
@@ -624,7 +620,7 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 		{name: "template list", shortcut: BaseTemplateList, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
 		{name: "template search", shortcut: BaseTemplateSearch, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
 		{name: "field search options", shortcut: BaseFieldSearchOptions, flag: "limit", defaultVal: "30", help: "pagination size, range 1-200"},
-		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "100", help: "maximum records to return; range 1-200, or 1-2000 for ndjson"},
+		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "100", help: "maximum records to return; range 1-200, or 1-10000 for ndjson"},
 		{name: "view list", shortcut: BaseViewList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
 		{name: "form list", shortcut: BaseFormsList, flag: "page-size", defaultVal: "100", help: "page size per request, range 1-100"},
 		{name: "workflow list", shortcut: BaseWorkflowList, flag: "page-size", defaultVal: "100", help: "page size per request, range 1-100"},

@@ -20,11 +20,10 @@ var BaseDataQuery = common.Shortcut{
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
-		{Name: "dsl", Desc: "query JSON DSL; first follow lark-base-record-query-and-analysis-sop.md, then read lark-base-data-query.md only if that SOP selects +data-query", Required: true},
+		{Name: "dsl", Desc: "query JSON DSL", Required: true},
 	},
 	Tips: []string{
-		"Read lark-base-record-query-and-analysis-sop.md before using this command; use +data-query only when that SOP selects the Cloud aggregation path.",
-		"After the SOP selects +data-query, read lark-base-data-query.md for its fewshots and DSL contract.",
+		"Follow the record analysis routing in lark-base/SKILL.md; read lark-base-data-query.md for the DSL contract.",
 		"`dimensions` and `measures` cannot both be empty.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

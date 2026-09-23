@@ -23,10 +23,11 @@ import (
 )
 
 const (
-	maxInlineRecordReadLimit = 200
-	ndjsonRecordPageSize     = 500
-	maxNDJSONRecordReadLimit = 2000
-	recordAnalysisOutputTip  = "If file I/O is available, prefer --format ndjson --output ./records.ndjson for analysis, parsing, or comparison to keep long user data out of model context; process the records file with Python or another data analysis engine. Follow lark-base-record-query-and-analysis-sop.md for engine selection and complete-data checks. Ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result."
+	maxInlineRecordReadLimit     = 200
+	ndjsonRecordPageSize         = 2000
+	defaultNDJSONRecordReadLimit = 10000
+	maxNDJSONRecordReadLimit     = 10000
+	recordAnalysisOutputTip      = "If file I/O is available, prefer --format ndjson --output ./records.ndjson for analysis, parsing, or comparison to keep long user data out of model context; process the records file with Python or another data analysis engine. Follow lark-base/SKILL.md for analysis routing and Record pagination rules. Ndjson defaults to limit 10000, so set a smaller --limit only for probes, previews, or an explicitly bounded result."
 )
 
 var recordExportNow = time.Now
@@ -95,7 +96,7 @@ func normalizeRecordNDJSONLimit(_ context.Context, flags *common.FlagContext) er
 	if flags.Str("format") != recordexport.FormatNDJSON || flags.Changed("limit") {
 		return nil
 	}
-	return flags.SetCanonical("limit", strconv.Itoa(maxNDJSONRecordReadLimit))
+	return flags.SetCanonical("limit", strconv.Itoa(defaultNDJSONRecordReadLimit))
 }
 
 func normalizeRecordSearchOutput(ctx context.Context, flags *common.FlagContext) error {
@@ -107,7 +108,7 @@ func normalizeRecordSearchOutput(ctx context.Context, flags *common.FlagContext)
 	}
 	limit := 10
 	if flags.Str("format") == recordexport.FormatNDJSON {
-		limit = maxNDJSONRecordReadLimit
+		limit = defaultNDJSONRecordReadLimit
 	}
 	return flags.SetCanonical("limit", strconv.Itoa(limit))
 }
@@ -158,7 +159,7 @@ func validateRecordExportFlags(runtime *common.RuntimeContext) error {
 }
 
 // validateRecordReadLimit intentionally runs after format normalization so an
-// inferred ndjson format receives the 2000-row bound instead of the inline
+// inferred ndjson format receives the 10000-row bound instead of the inline
 // 200-row bound.
 func validateRecordReadLimit(runtime *common.RuntimeContext, defaultLimit int) error {
 	maximum := maxInlineRecordReadLimit

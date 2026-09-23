@@ -208,7 +208,7 @@ func recordSearchJSONBody(runtime *common.RuntimeContext) (map[string]interface{
 		return nil, err
 	}
 	if _, exists := body["limit"]; !exists && runtime.Str("format") == recordexport.FormatNDJSON {
-		body["limit"] = maxNDJSONRecordReadLimit
+		body["limit"] = defaultNDJSONRecordReadLimit
 	}
 	return body, applyRecordQueryToBody(runtime, body)
 }
