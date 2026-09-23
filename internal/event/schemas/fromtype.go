@@ -85,7 +85,7 @@ func reflectSchema(t reflect.Type, visiting map[reflect.Type]bool, cache map[ref
 		node = &schemaNode{Type: "number"}
 	case reflect.Slice, reflect.Array:
 		elem := t.Elem()
-		if elem.Kind() == reflect.Uint8 {
+		if t.Kind() == reflect.Slice && elem.Kind() == reflect.Uint8 {
 			node = &schemaNode{Type: "string"} // []byte → string
 		} else {
 			node = &schemaNode{

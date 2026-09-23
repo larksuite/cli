@@ -73,6 +73,26 @@ func TestFromType_ScalarAndOptional(t *testing.T) {
 	}
 }
 
+func TestFromType_ByteSequences(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{"slice", []byte{1, 2}, `{"type":"string"}`},
+		{"array", [2]byte{1, 2}, `{"type":"array","items":{"type":"integer"}}`},
+		{"empty array", [0]byte{}, `{"type":"array","items":{"type":"integer"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseSchema(t, string(FromType(reflect.TypeOf(tc.value))))
+			want := parseSchema(t, tc.want)
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("schema = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 type descSharedInner struct {
 	V string `json:"v"`
 }
