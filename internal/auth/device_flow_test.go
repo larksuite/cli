@@ -435,43 +435,48 @@ func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
 		networkError bool
 	}
 	for _, tc := range []struct {
-		name    string
-		mode    core.DPoPMode
-		steps   []step
-		subtype errs.Subtype
+		name       string
+		mode       core.DPoPMode
+		steps      []step
+		subtype    errs.Subtype
+		wantBearer bool
 	}{
 		{"preferred_clock_failure_before_request", core.DPoPModePreferred, []step{
 			{path: dpop.HeartbeatPath, body: `{}`},
 			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
 			{path: core.OAuthTokenV3Path, body: bound, proof: true},
-		}, ""},
+		}, "", false},
 		{"required_clock_failure", core.DPoPModeRequired, []step{
 			{path: dpop.HeartbeatPath, body: `{}`},
 			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
 			{path: core.OAuthTokenV3Path, body: bound, proof: true},
-		}, ""},
+		}, "", false},
 		{"preferred_pending_then_success", core.DPoPModePreferred, []step{
 			{path: dpop.HeartbeatPath, body: heartbeat},
 			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
 			{path: core.OAuthTokenV3Path, body: bound, proof: true},
-		}, ""},
+		}, "", false},
 		{"required_clock_network_failure", core.DPoPModeRequired, []step{
 			{path: dpop.HeartbeatPath, networkError: true},
 			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
 			{path: core.OAuthTokenV3Path, body: bound, proof: true},
-		}, ""},
-		{"preferred_rejects_bearer_response", core.DPoPModePreferred, []step{
+		}, "", false},
+		{"preferred_accepts_bearer_response", core.DPoPModePreferred, []step{
 			{path: dpop.HeartbeatPath, body: heartbeat},
 			{path: core.OAuthTokenV3Path, body: bearer, proof: true},
-		}, errs.SubtypeDPoPRequired},
+		}, "", true},
+		{"required_rejects_bearer_response", core.DPoPModeRequired, []step{
+			{path: dpop.HeartbeatPath, body: heartbeat},
+			{path: core.OAuthTokenV3Path, body: bearer, proof: true},
+		}, errs.SubtypeDPoPRequired, false},
 		{"preferred_cancellation", core.DPoPModePreferred, []step{
 			{path: dpop.HeartbeatPath, cancel: true},
-		}, errs.SubtypeDPoPClockSyncFailed},
+		}, errs.SubtypeDPoPClockSyncFailed, false},
 		{"required_pending_then_success", core.DPoPModeRequired, []step{
 			{path: dpop.HeartbeatPath, body: heartbeat},
 			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
 			{path: core.OAuthTokenV3Path, body: bound, proof: true},
-		}, ""},
+		}, "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -538,6 +543,10 @@ func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
 				}()
 				if len(proofs) != 2 || proofs[0] == proofs[1] || strings.Split(proofs[0], ".")[0] != strings.Split(proofs[1], ".")[0] {
 					t.Fatal("polls must use fresh proofs with the same public key")
+				}
+			} else if tc.wantBearer {
+				if len(proofs) != 1 {
+					t.Fatalf("Bearer downgrade proofs = %d, want 1", len(proofs))
 				}
 			} else if tc.subtype == "" && len(proofs) != 0 {
 				t.Fatal("DPoP exchange succeeded without a key binding")

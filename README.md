@@ -191,11 +191,11 @@ lark-cli auth login --domain calendar --no-wait
 lark-cli auth login --device-code <DEVICE_CODE>
 
 # DPoP (Demonstrating Proof of Possession) is enabled in preferred mode by default for new local credentials
-lark-cli config dpop preferred
+lark-cli config set dpop preferred
 # Or disable DPoP
-lark-cli config dpop disabled
+lark-cli config set dpop disabled
 # Or require DPoP without Bearer fallback
-lark-cli config dpop required
+lark-cli config set dpop required
 # Re-authorize after choosing a different policy
 lark-cli auth login
 

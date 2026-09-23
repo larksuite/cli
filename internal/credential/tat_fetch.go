@@ -87,6 +87,9 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 				cleanupCtx = context.WithoutCancel(cleanupCtx)
 			}
 			if cleanupErr := keyStore.DeleteKeyContext(cleanupCtx, proofKey); cleanupErr != nil {
+				if mode == core.DPoPModePreferred && result != nil && result.DPoP == nil && ctx.Err() == nil {
+					return
+				}
 				result = nil
 				retErr = errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 					"failed to clean up an uncommitted DPoP key: %v", cleanupErr).
@@ -280,10 +283,13 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 			StatusMessage: result.StatusMessage,
 		}
 		if proofKey != nil {
+			if strings.EqualFold(result.TokenType, larkauth.StoredTokenTypeBearer) && invalidProofsLeft > 0 {
+				return fetched, nil
+			}
 			if !strings.EqualFold(result.TokenType, dpop.TokenType) {
 				return nil, errs.NewAuthenticationError(errs.SubtypeDPoPRequired,
 					"Token Endpoint returned %q token_type for a DPoP request", result.TokenType).
-					WithHint("run `lark-cli config dpop disabled`, then retry")
+					WithHint("run `lark-cli config set dpop disabled`, then retry")
 			}
 			binding, bindErr := dpop.NewBinding(result.AccessToken, proofKey)
 			if bindErr != nil {

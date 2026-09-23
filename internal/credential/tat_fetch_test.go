@@ -318,6 +318,44 @@ func TestRequestTATRecoversClockOnceAndRejectsBindingDowngrade(t *testing.T) {
 	}
 }
 
+func TestFetchTATAcceptsBearerTokenTypeInPreferred(t *testing.T) {
+	store := newTATDPoPStore(t)
+	var heartbeatCalls, tokenCalls int
+	client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"code":0,"data":{"now":"` + strconv.FormatInt(time.Now().Unix(), 10) + `"}}`
+		switch req.URL.Path {
+		case dpop.HeartbeatPath:
+			heartbeatCalls++
+		case core.OAuthTokenV3Path:
+			tokenCalls++
+			if req.Header.Get(dpop.ProofHeader) == "" {
+				t.Fatal("DPoP request omitted proof before Bearer downgrade")
+			}
+			body = `{"code":0,"access_token":"bearer-token","token_type":"Bearer","expires_in":7200}`
+		default:
+			t.Fatalf("unexpected request path %q", req.URL.Path)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	})}
+
+	token, err := fetchTAT(context.Background(), client, core.BrandFeishu, "server-bearer", "secret", core.DPoPModePreferred, store)
+	if err != nil || token == nil || token.AccessToken != "bearer-token" || token.DPoP != nil || token.proofFallback {
+		t.Fatalf("fetchTAT server Bearer downgrade = (%+v, %v)", token, err)
+	}
+	if heartbeatCalls != 1 || tokenCalls != 1 {
+		t.Fatalf("requests: heartbeat=%d token=%d", heartbeatCalls, tokenCalls)
+	}
+	keyID := tatDPoPKeyID(core.BrandFeishu, "server-bearer") + "-" + keysigner.SoftwareSignerName
+	if _, err := store.LoadContext(context.Background(), keyID); !errors.Is(err, dpop.ErrKeyNotFound) {
+		t.Fatalf("uncommitted key was retained after Bearer downgrade: %v", err)
+	}
+}
+
 // invalid_client (wrong app_id/app_secret on the client_credentials grant) is a
 // deterministic client-side rejection that FetchTAT routes to
 // classifyTATResponseCode as CategoryConfig / SubtypeInvalidClient — the same

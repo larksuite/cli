@@ -202,6 +202,12 @@ func pollDeviceTokenWithKeyStore(ctx context.Context, httpClient *http.Client, a
 		}
 		if !result.OK || result.Token == nil || result.Token.DPoP == nil {
 			if cleanupErr := keyStore.DeleteKeyContext(context.WithoutCancel(ctx), key); cleanupErr != nil {
+				if result != nil && result.OK && result.Token != nil && result.Token.DPoP == nil {
+					if errOut != nil {
+						fmt.Fprintln(errOut, "[lark-cli] [WARN] DPoP key cleanup failed after Bearer token issuance")
+					}
+					return result, nil
+				}
 				cleanupProblem := errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 					"failed to clean up an uncommitted DPoP key: %v", cleanupErr).
 					WithCause(errors.Join(result.Err, cleanupErr)).
@@ -393,9 +399,11 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 		if errStr == "" && getStr(data, "access_token") != "" {
 			tokenType := getStr(data, "token_type")
 			if proofKey != nil && !strings.EqualFold(tokenType, dpop.TokenType) {
-				return &DeviceFlowResult{OK: false, Error: string(errs.SubtypeDPoPRequired), Message: "Token Endpoint returned a Bearer token for a DPoP request", Err: errs.NewAuthenticationError(
-					errs.SubtypeDPoPRequired, "Token Endpoint returned %q token_type for a DPoP request", tokenType).
-					WithHint("run `lark-cli config dpop disabled`, then restart authorization")}, nil
+				if !allowProofFallback || !strings.EqualFold(tokenType, StoredTokenTypeBearer) {
+					return &DeviceFlowResult{OK: false, Error: string(errs.SubtypeDPoPRequired), Message: "Token Endpoint returned a Bearer token for a DPoP request", Err: errs.NewAuthenticationError(
+						errs.SubtypeDPoPRequired, "Token Endpoint returned %q token_type for a DPoP request", tokenType).
+						WithHint("run `lark-cli config set dpop disabled`, then restart authorization")}, nil
+				}
 			}
 			if proofKey == nil && strings.EqualFold(tokenType, dpop.TokenType) {
 				return &DeviceFlowResult{OK: false, Error: string(errs.SubtypeDPoPKeyMissing), Message: "Token Endpoint returned a DPoP token without a local key", Err: errs.NewAuthenticationError(
@@ -405,7 +413,7 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 			fmt.Fprintf(errOut, "[lark-cli] device-flow: token response received\n")
 			accessToken := getStr(data, "access_token")
 			var binding *dpop.Binding
-			if proofKey != nil {
+			if proofKey != nil && strings.EqualFold(tokenType, dpop.TokenType) {
 				binding, err = dpop.NewBinding(accessToken, proofKey)
 				if err != nil {
 					return &DeviceFlowResult{OK: false, Error: "dpop_binding_failed", Message: "failed to bind DPoP token", Err: errs.NewAuthenticationError(

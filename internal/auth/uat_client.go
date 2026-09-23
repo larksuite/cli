@@ -581,9 +581,9 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 	if proofKey != nil && !strings.EqualFold(parsed.TokenType, dpop.TokenType) {
 		hint := recovery.Join("", recovery.Command(
 			recovery.TargetAuthLogin,
-			"run `lark-cli config dpop disabled`, then `lark-cli auth login` to replace the DPoP credential with a Bearer credential",
+			"run `lark-cli config set dpop disabled`, then `lark-cli auth login` to replace the DPoP credential with a Bearer credential",
 		)).WithFallback(
-			"configure this profile to use Bearer credentials by running `lark-cli config dpop disabled`",
+			"configure this profile to use Bearer credentials by running `lark-cli config set dpop disabled`",
 		)
 		return refreshResult{
 			action: refreshStopAndPreserve,
