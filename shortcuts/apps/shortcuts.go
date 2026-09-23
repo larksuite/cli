@@ -94,6 +94,9 @@ func Shortcuts() []common.Shortcut {
 		AppsPluginInstall,
 		AppsPluginUninstall,
 		AppsPluginList,
+		// MCP runtime connections
+		AppsMCPGet,
+		AppsMCPKeyCreate,
 		// open API key management
 		AppsOpenAPIKeyList,
 		AppsOpenAPIKeyGet,
