@@ -1615,6 +1615,49 @@ func TestAgenda_FiltersCancelledEvents(t *testing.T) {
 	}
 }
 
+// TestAgenda_OmitsAppLink pins that the raw event app_link is stripped from the
+// agenda output; the shortcut surfaces the share link path, not the applink.
+func TestAgenda_OmitsAppLink(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"event_id":   "evt_link",
+						"summary":    "Has AppLink",
+						"status":     "confirmed",
+						"app_link":   "https://applink.feishu.cn/client/calendar/event/detail?xxx",
+						"start_time": map[string]interface{}{"timestamp": "1742515200"},
+						"end_time":   map[string]interface{}{"timestamp": "1742518800"},
+					},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarAgenda, []string{
+		"+agenda",
+		"--start", "2025-03-21",
+		"--end", "2025-03-21",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "evt_link") {
+		t.Errorf("stdout should contain the event, got: %s", out)
+	}
+	if strings.Contains(out, "app_link") {
+		t.Errorf("app_link must not appear in agenda output, got: %s", out)
+	}
+}
+
 func TestAgenda_ExplicitCalendarId(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(&httpmock.Stub{

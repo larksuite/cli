@@ -230,6 +230,7 @@ var CalendarAgenda = common.Shortcut{
 			if status != "cancelled" {
 				delete(e, "status")
 				delete(e, "attendees")
+				delete(e, "app_link")
 
 				// Replace timestamp with datetime (RFC3339, device timezone)
 				if startMap, ok := e["start_time"].(map[string]interface{}); ok {
