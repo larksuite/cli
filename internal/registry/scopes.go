@@ -70,10 +70,9 @@ func FilterForStrictMode(mode core.StrictMode) apicatalog.MethodFilter {
 
 // CollectScopesForProjects collects the effective scopes for each API method in
 // the specified from_meta projects. It uses DeclaredScopesForMethod so a
-// method's full requiredScopes conjunction is honored (e.g. reading a mail
-// message needs the subject/address/body scopes together, not just the umbrella
-// readonly scope), falling back to the single recommended scope when a method
-// declares no requiredScopes.
+// method's recommended base scope and full requiredScopes conjunction are
+// honored (e.g. reading a mail message needs the umbrella readonly scope plus
+// its subject/address/body scopes).
 func CollectScopesForProjects(catalog apicatalog.Catalog, projects []string, identity string) []string {
 	scopeSet := make(map[string]bool)
 	for _, ref := range methodsForProjects(catalog, projects, identity) {
@@ -102,8 +101,8 @@ type CommandEntry struct {
 // returns one CommandEntry per API method, sorted by command label.
 //
 // Scope selection per method:
-//   - If the method has a "requiredScopes" field, all of those scopes are needed (conjunction).
-//   - Otherwise, only the highest-priority scope from "scopes" is shown (minimum privilege).
+//   - The highest-priority scope from "scopes" is the base permission.
+//   - Every entry in "requiredScopes" is an additional required permission.
 func CollectCommandScopes(catalog apicatalog.Catalog, projects []string, identity string) []CommandEntry {
 	var entries []CommandEntry
 
