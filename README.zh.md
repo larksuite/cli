@@ -6,14 +6,14 @@
 
 [中文版](./README.zh.md) | [English](./README.md)
 
-飞书官方 CLI 工具，由 [larksuite](https://github.com/larksuite) 团队维护 — 让人类和 AI Agent 都能在终端中操作飞书。覆盖消息、文档、多维表格、电子表格、幻灯片、日历、邮箱、任务、会议、Markdown 等核心业务域，提供 200+ 命令及 26 个 AI Agent [Skills](./skills/)。
+飞书官方 CLI 工具，由 [larksuite](https://github.com/larksuite) 团队维护 — 让人类和 AI Agent 都能在终端中操作飞书。覆盖消息、文档、多维表格、电子表格、幻灯片、日历、邮箱、任务、会议、Markdown 等核心业务域，提供 200+ 命令及 28 个 AI Agent [Skills](./skills/)。
 
 [安装](#安装与快速开始) · [AI Agent Skills](#agent-skills) · [认证](#认证) · [命令](#三层命令调用) · [进阶用法](#进阶用法) · [企业接入](#个人使用还是企业集成) · [安全](#安全与风险提示使用前必读) · [贡献](#贡献)
 
 ## 为什么选 lark-cli？
 
-- **为 Agent 原生设计** — 26 个 [Skills](./skills/) 开箱即用，适配主流 AI 工具，Agent 无需额外适配即可操作飞书
-- **覆盖面广** — 18 大业务域、200+ 精选命令、26 个 AI Agent [Skills](./skills/)
+- **为 Agent 原生设计** — 28 个 [Skills](./skills/) 开箱即用，适配主流 AI 工具，Agent 无需额外适配即可操作飞书
+- **覆盖面广** — 18 大业务域、200+ 精选命令、28 个 AI Agent [Skills](./skills/)
 - **AI 友好调优** — 每条命令经过 Agent 实测验证，提供更友好的参数、智能默认值和结构化输出，大幅提升 Agent 调用成功率
 - **开源零门槛** — MIT 协议，开箱即用，`npm install` 即可使用
 - **三分钟上手** — 一键创建应用、交互式登录授权，从安装到第一次 API 调用只需三步
@@ -153,7 +153,12 @@ lark-cli auth status
 | `lark-wiki`                     | 知识空间、节点、文档                                |
 | `lark-event`                    | 实时事件订阅（WebSocket），支持正则路由与 Agent 友好格式      |
 | `lark-meeting`                  | 查询进行中或历史会议、参会人和会议产物，分析逐字稿，管理妙记并提供会中协助 |
+| `lark-minutes`                  | 兼容入口：仅在显式指定时将请求转交 `lark-meeting`            |
+| `lark-note`                     | 兼容入口：仅在显式指定时将请求转交 `lark-meeting`            |
+| `lark-vc`                       | 兼容入口：仅在显式指定时将请求转交 `lark-meeting`            |
+| `lark-vc-agent`                 | 兼容入口：仅在显式指定时将请求转交 `lark-meeting`            |
 | `lark-whiteboard`               | 画板/图表 DSL 渲染                              |
+| `lark-apps`                     | 妙搭应用开发、设计、托管、部署、可观测性与自动化                 |
 | `lark-openapi-explorer`         | 从官方文档探索底层 API                             |
 | `lark-skill-maker`              | 自定义 skill 创建框架                            |
 | `lark-attendance`               | 查询个人考勤打卡记录                                |
