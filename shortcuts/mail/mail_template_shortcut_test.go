@@ -1212,7 +1212,7 @@ func TestMailSend_TemplatePlainTextIgnoresExplicitInline(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/user_mailboxes/me@example.com/templates/70",
+		URL:    "/user_mailboxes/me/templates/70",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -1227,7 +1227,7 @@ func TestMailSend_TemplatePlainTextIgnoresExplicitInline(t *testing.T) {
 	})
 	draftStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/user_mailboxes/me@example.com/drafts",
+		URL:    "/user_mailboxes/me/drafts",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{"draft_id": "draft_plain_send"},
@@ -1262,7 +1262,7 @@ func TestMailDraftCreate_TemplatePlainTextIgnoresExplicitInline(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/user_mailboxes/me@example.com/templates/71",
+		URL:    "/user_mailboxes/me/templates/71",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -1277,7 +1277,7 @@ func TestMailDraftCreate_TemplatePlainTextIgnoresExplicitInline(t *testing.T) {
 	})
 	draftStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/user_mailboxes/me@example.com/drafts",
+		URL:    "/user_mailboxes/me/drafts",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{"draft_id": "draft_plain_create"},

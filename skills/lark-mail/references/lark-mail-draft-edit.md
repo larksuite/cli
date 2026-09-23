@@ -71,7 +71,8 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。优先于 `--from`。可通过 `accessible_mailboxes` 查询可用邮箱 |
+| `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认 `me`）。操作公共邮箱草稿时必须显式传这个参数，可通过 `accessible_mailboxes` 查询可用邮箱 |
+| `--from <email>` | 否 | 草稿最终的发件人地址，即 EML 的 `From` 头。使用别名或 send_as 地址时，`--from` 填发件人，`--mailbox` 填草稿所属邮箱 |
 | `--draft-id <id>` | 是 | 目标草稿 ID。仅当单独使用 `--print-patch-template` 时可省略 |
 | `--set-subject <text>` | 否 | 用此值替换主题 |
 | `--set-to <emails>` | 否 | 用此处提供的地址替换整个 To 收件人列表 |
@@ -88,7 +89,7 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 | `--patch-file <path>` | 否 | typed body op（`set_body` / `set_reply_body`）、增量收件人编辑、邮件头编辑、附件变更和内嵌图片变更的入口。相对路径。先运行 `--print-patch-template` 查看 JSON 结构 |
 | `--print-patch-template` | 否 | 打印 `--patch-file` 的 JSON 模板和支持的操作。建议在生成补丁文件前先运行此命令。不会读取或写入草稿 |
 | `--inspect` | 否 | 查看草稿但不修改。返回包含 `has_quoted_content`（是否有引用区）、`attachments_summary`（普通附件，含 `part_id`/`cid`/`filename`）、`large_attachments_summary`（超大附件，含 `token`/`filename`/`size_bytes`）和 `inline_summary` 的草稿投影 |
-| `--request-receipt` | 否 | 在草稿上追加 `Disposition-Notification-To: <草稿的 From 地址>` 头，请求已读回执（RFC 3798）。本质上是在 patch 中注入一个 `set_header` op；已有的 DNT 值会被覆盖。可以与其他 `--set-*` / `--patch-file` 编辑组合，也可以单独使用 |
+| `--request-receipt` | 否 | 在草稿上追加 `Disposition-Notification-To: <最终 From 地址>` 头，请求已读回执（RFC 3798）。本质上是在 patch 中注入一个 `set_header` op；已有的 DNT 值会被覆盖。可以与其他 `--set-*` / `--from` / `--patch-file` 编辑组合，也可以单独使用 |
 | `--format <mode>` | 否 | 输出格式：`json`（默认）/ `pretty` / `table` / `ndjson` / `csv` |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
 

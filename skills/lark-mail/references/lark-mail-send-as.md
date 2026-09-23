@@ -8,7 +8,8 @@
 
 - `--mailbox` 指定邮件归属邮箱（如 `shared@example.com` 或 `me`），可通过 `accessible_mailboxes` 查询可用值。
 - `--from` 指定 EML From 头里的发件人地址（别名、邮件组等），可通过 `send_as` 查询可用值。
-- 不使用公共邮箱或别名时无需指定 `--mailbox`，行为与默认发信一致。
+- 省略 `--from` 时，`+send` / `+draft-create` 按 `--mailbox != me`、`send_as.is_default`、主邮箱地址的顺序选择发件人；旧服务端无默认标记或接口失败时回退到主邮箱地址，不把第一项伪装成默认地址。
+- `+reply` / `+reply-all` / `+forward` / `+send-receipt` 省略 `--from` 时，按 `--mailbox != me`、原邮件 To/Cc 中命中的我的可发信地址、默认发信地址、主邮箱地址的顺序选择发件人。
 
 ## 查询可用邮箱和发信地址
 
@@ -23,7 +24,7 @@ lark-cli mail user_mailbox.settings send_as --params '{"user_mailbox_id":"me"}'
 ## 公共邮箱发信
 
 ```bash
-# --mailbox 指定公共邮箱，From 头自动使用该邮箱地址
+# --mailbox 指定公共邮箱且省略 --from 时，From 头优先使用该邮箱身份
 lark-cli mail +send --mailbox shared@example.com \
   --to bob@example.com --subject '通知' --body '<p>你好</p>'
 ```
