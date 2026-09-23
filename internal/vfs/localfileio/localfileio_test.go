@@ -6,12 +6,14 @@ package localfileio
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // testChdir temporarily changes the working directory for a test.
@@ -352,4 +354,198 @@ func TestLocalFileIO_RejectsControlCharsInPath(t *testing.T) {
 			t.Errorf("Save(%q) should reject control/dangerous chars", p)
 		}
 	}
+}
+
+func TestAppendToCreatesAndAppends(t *testing.T) {
+	io := &LocalFileIO{}
+	dir := t.TempDir()
+	testChdir(t, dir)
+	p := "partial.bin"
+
+	res, err := io.AppendTo(p, fileio.SaveOptions{}, strings.NewReader("hello "))
+	if err != nil {
+		t.Fatalf("AppendTo() error = %v", err)
+	}
+	if res.Size() != 6 {
+		t.Fatalf("first append size = %d, want 6", res.Size())
+	}
+	res, err = io.AppendTo(p, fileio.SaveOptions{}, strings.NewReader("world"))
+	if err != nil {
+		t.Fatalf("AppendTo() error = %v", err)
+	}
+	if res.Size() != 5 {
+		t.Fatalf("second append size = %d, want 5", res.Size())
+	}
+	got, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(got) != "hello world" {
+		t.Fatalf("content = %q, want %q", got, "hello world")
+	}
+}
+
+func TestAppendToRejectsUnsafePath(t *testing.T) {
+	io := &LocalFileIO{}
+	_, err := io.AppendTo("/absolute/unsafe", fileio.SaveOptions{}, strings.NewReader("x"))
+	if err == nil {
+		t.Fatal("expected unsafe path error")
+	}
+	var pathErr *fileio.PathValidationError
+	if !errors.As(err, &pathErr) {
+		t.Fatalf("error = %T %v, want *fileio.PathValidationError", err, err)
+	}
+	if pathErr.Err == nil || !errors.Is(pathErr.Err, fs.ErrPermission) && pathErr.Err.Error() == "" {
+		t.Fatalf("path validation error lacks a wrapped cause: %+v", pathErr)
+	}
+}
+
+// TestAppendToKeepsWrittenBytesOnFailure verifies that a reader which fails
+// mid-stream leaves the bytes it already wrote on disk, so a resumable
+// download can continue from the same offset on the next attempt.
+func TestAppendToKeepsWrittenBytesOnFailure(t *testing.T) {
+	io := &LocalFileIO{}
+	dir := t.TempDir()
+	testChdir(t, dir)
+	p := "partial.bin"
+	boom := errors.New("boom")
+	body := &prefixErrReader{prefix: strings.NewReader("persisted-"), err: boom}
+	_, err := io.AppendTo(p, fileio.SaveOptions{}, body)
+	if err == nil {
+		t.Fatal("expected append error")
+	}
+	var writeErr *fileio.WriteError
+	if !errors.As(err, &writeErr) {
+		t.Fatalf("error = %T %v, want *fileio.WriteError", err, err)
+	}
+	if !errors.Is(writeErr.Err, boom) {
+		t.Fatalf("WriteError.Err = %v, want the underlying reader error to be preserved", writeErr.Err)
+	}
+	got, rerr := vfs.ReadFile(p)
+	if rerr != nil {
+		t.Fatalf("ReadFile() error = %v", rerr)
+	}
+	if string(got) != "persisted-" {
+		t.Fatalf("content = %q, want the prefix written before the failure", got)
+	}
+}
+
+func TestLocalFileIO_ResumableArtifactsAndCommit(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+
+	fio := &LocalFileIO{}
+	if err := fio.WriteResumeArtifact("out.bin.partial.meta", []byte(`{"size":5,"etag":"\"v1\""}`)); err != nil {
+		t.Fatalf("WriteResumeArtifact() error = %v", err)
+	}
+	data, err := fio.ReadResumeArtifact("out.bin.partial.meta")
+	if err != nil {
+		t.Fatalf("ReadResumeArtifact() error = %v", err)
+	}
+	if string(data) != `{"size":5,"etag":"\"v1\""}` {
+		t.Fatalf("checkpoint = %q", data)
+	}
+	if _, err := fio.AppendTo("out.bin.partial", fileio.SaveOptions{}, strings.NewReader("new")); err != nil {
+		t.Fatalf("AppendTo() error = %v", err)
+	}
+	if err := fio.CommitResumeArtifact("out.bin.partial", "out.bin", false); err != nil {
+		t.Fatalf("CommitResumeArtifact() error = %v", err)
+	}
+	got, err := os.ReadFile("out.bin")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(got) != "new" {
+		t.Fatalf("committed content = %q, want new", got)
+	}
+	if _, err := os.Stat("out.bin.partial"); !os.IsNotExist(err) {
+		t.Fatalf("partial still exists after commit: %v", err)
+	}
+	if err := fio.RemoveResumeArtifact("out.bin.partial.meta"); err != nil {
+		t.Fatalf("RemoveResumeArtifact() error = %v", err)
+	}
+
+	if _, err := fio.AppendTo("out.bin.partial", fileio.SaveOptions{}, strings.NewReader("replacement")); err != nil {
+		t.Fatalf("AppendTo(replacement) error = %v", err)
+	}
+	if err := fio.CommitResumeArtifact("out.bin.partial", "out.bin", false); !errors.Is(err, fs.ErrExist) {
+		t.Fatalf("no-overwrite commit error = %v, want fs.ErrExist", err)
+	}
+	if err := fio.CommitResumeArtifact("out.bin.partial", "out.bin", true); err != nil {
+		t.Fatalf("overwrite commit error = %v", err)
+	}
+	got, err = os.ReadFile("out.bin")
+	if err != nil {
+		t.Fatalf("ReadFile(overwrite) error = %v", err)
+	}
+	if string(got) != "replacement" {
+		t.Fatalf("overwritten content = %q, want replacement", got)
+	}
+
+	if err := os.WriteFile("out.bin", []byte("keep"), 0600); err != nil {
+		t.Fatalf("WriteFile(keep) error = %v", err)
+	}
+	if err := fio.CommitResumeArtifact("missing.bin.partial", "out.bin", true); err == nil {
+		t.Fatal("CommitResumeArtifact() unexpectedly succeeded with a missing partial")
+	}
+	got, err = os.ReadFile("out.bin")
+	if err != nil {
+		t.Fatalf("ReadFile(after failed overwrite) error = %v", err)
+	}
+	if string(got) != "keep" {
+		t.Fatalf("target after failed overwrite = %q, want keep", got)
+	}
+}
+
+type failingRemoveFS struct {
+	vfs.OsFs
+	err error
+}
+
+func (f failingRemoveFS) Remove(string) error { return f.err }
+
+func TestLocalFileIO_CommitPublishesWhenPartialCleanupFails(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+	if err := os.WriteFile("out.bin.partial", []byte("published"), 0600); err != nil {
+		t.Fatalf("WriteFile(partial) error = %v", err)
+	}
+
+	cleanupErr := errors.New("cleanup unavailable")
+	previous := vfs.DefaultFS
+	vfs.DefaultFS = failingRemoveFS{err: cleanupErr}
+	t.Cleanup(func() { vfs.DefaultFS = previous })
+
+	if err := (&LocalFileIO{}).CommitResumeArtifact("out.bin.partial", "out.bin", false); err != nil {
+		t.Fatalf("CommitResumeArtifact() error = %v, want publication success", err)
+	}
+	got, err := os.ReadFile("out.bin")
+	if err != nil {
+		t.Fatalf("ReadFile(target) error = %v", err)
+	}
+	if string(got) != "published" {
+		t.Fatalf("target content = %q, want published", got)
+	}
+	if _, err := os.Stat("out.bin.partial"); err != nil {
+		t.Fatalf("partial should remain after injected cleanup failure: %v", err)
+	}
+}
+
+// prefixErrReader yields prefix bytes first, then reports err.
+type prefixErrReader struct {
+	prefix io.Reader
+	err    error
+}
+
+// Read yields the prefix bytes first and then reports the configured error.
+func (r *prefixErrReader) Read(b []byte) (int, error) {
+	if r.prefix != nil {
+		n, err := r.prefix.Read(b)
+		if err == io.EOF {
+			r.prefix = nil
+			return n, nil
+		}
+		return n, err
+	}
+	return 0, r.err
 }

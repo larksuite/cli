@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
 	"github.com/larksuite/cli/errs"
+	extdownload "github.com/larksuite/cli/extension/download"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/downloadtransport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -330,6 +330,8 @@ var DrivePull = common.Shortcut{
 	},
 }
 
+// drivePullFailedItem builds the pull item reported when one file of a pull
+// run fails, keeping the original error for the JSON envelope.
 func drivePullFailedItem(relPath, fileToken, sourceID, action, phase string, err error) (drivePullItem, bool) {
 	decision := driveClassifyBatchFailure(err)
 	item := drivePullItem{
@@ -348,20 +350,27 @@ func drivePullFailedItem(relPath, fileToken, sourceID, action, phase string, err
 }
 
 // drivePullDownload streams one Drive file into the local mirror target and
-// then best-effort aligns the local mtime to Drive's modified_time.
+// then best-effort aligns the local mtime to Drive's modified_time. The
+// transfer uses the chunked ranged downloader, so a transient stream failure
+// is retried per part instead of restarting the whole file from byte 0.
 func drivePullDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken, target, remoteModifiedTime string) error {
-	resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
-		HttpMethod: "GET",
-		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
+	dlSource := extdownload.MutableSource(
+		downloadtransport.NewOAPI(runtime.DoAPIStream).Get(
+			"/open-apis/drive/v1/files/:file_token/download",
+			downloadtransport.PathParam("file_token", fileToken),
+		),
+	)
+	stream, err := extdownload.Open(ctx, dlSource, extdownload.Options{
+		PartSize: driveDownloadPartSize,
 	})
 	if err != nil {
 		return wrapDriveNetworkErr(err, "download %s: %s", common.MaskToken(fileToken), err)
 	}
-	defer resp.Body.Close()
+	defer stream.Body.Close()
 	if _, err := runtime.FileIO().Save(target, fileio.SaveOptions{
-		ContentType:   resp.Header.Get("Content-Type"),
-		ContentLength: resp.ContentLength,
-	}, resp.Body); err != nil {
+		ContentType:   stream.Header.Get("Content-Type"),
+		ContentLength: stream.ContentLength,
+	}, stream.Body); err != nil {
 		return driveSaveError(err)
 	}
 	if err := drivePullApplyRemoteModifiedTime(target, remoteModifiedTime, runtime); err != nil {
