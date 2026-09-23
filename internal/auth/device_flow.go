@@ -156,9 +156,9 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 }
 
 // PollDeviceTokenWithMode applies the local three-state DPoP policy. Preferred
-// mode may fall back for local key preparation or clock synchronization errors,
-// before polling sends a Token Endpoint request, or after three consecutive
-// dpop.InvalidProofOAuthError responses. Cancellation never permits fallback.
+// mode may fall back for local DPoP failures before polling sends a Token
+// Endpoint request, or after three consecutive dpop.InvalidProofOAuthError
+// responses. Cancellation never permits fallback.
 func PollDeviceTokenWithMode(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, mode core.DPoPMode) (*DeviceFlowResult, error) {
 	return pollDeviceTokenWithKeyStore(ctx, httpClient, appId, appSecret, brand, deviceCode,
 		interval, expiresIn, errOut, mode, dpop.NewKeyStore(nil))
@@ -256,7 +256,7 @@ func deviceFlowFallbackAllowed(result *DeviceFlowResult) bool {
 		return true
 	}
 	problem, ok := errs.ProblemOf(result.Err)
-	return ok && problem.Subtype == errs.SubtypeDPoPClockSyncFailed
+	return ok && (problem.Subtype == errs.SubtypeDPoPProofFailed || problem.Subtype == errs.SubtypeDPoPClockSyncFailed)
 }
 
 func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, proofKey *dpop.Key, requestSent *bool, allowProofFallback bool) (*DeviceFlowResult, error) {
@@ -290,7 +290,7 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 		if proofKey != nil && attempts == 1 {
 			if err := dpop.SynchronizeClock(ctx, httpClient, brand, proofKey); err != nil {
 				if ctx.Err() != nil {
-					return &DeviceFlowResult{Error: string(errs.SubtypeDPoPClockSyncFailed), Err: err, Message: "Polling was cancelled"}, nil
+					return &DeviceFlowResult{Error: string(errs.SubtypeDPoPClockSyncFailed), Err: err, Message: "Polling was cancelled"}, nil //nolint:nilerr // DPoP failures stay in DeviceFlowResult.Err for centralized key cleanup and fallback.
 				}
 				fmt.Fprintf(errOut, "[lark-cli] [WARN] device-flow: clock synchronization failed; continuing with the existing clock: %v\n", err)
 			}
@@ -328,7 +328,7 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 				return nil, err
 			}
 			if ctx.Err() != nil {
-				return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Polling was cancelled"}, nil
+				return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Polling was cancelled"}, nil //nolint:nilerr // Cancellation is a device-flow result so callers preserve polling cleanup and output semantics.
 			}
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] device-flow: poll network error: %v\n", err)
 			currentInterval = minInt(currentInterval+1, maxPollInterval)

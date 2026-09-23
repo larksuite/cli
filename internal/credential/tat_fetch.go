@@ -76,7 +76,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	var proofKey *dpop.Key
 	createdKey := false
 	keepKey := false
-	exchangeStarted := false
+	dpopRequestSent := false
 	var clockSyncErr error
 	defer func() {
 		if createdKey && !keepKey {
@@ -97,12 +97,12 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 					WithHint("%s", dpop.KeyStoreUnavailableHint)
 			}
 		}
-		// Preferred permits fallback after local preparation failures or three
-		// explicit proof rejections, after rollback and without cancellation.
-		if mode == core.DPoPModePreferred && (!exchangeStarted || errors.Is(retErr, dpop.ErrRepeatedInvalidProof)) && retErr != nil && ctx.Err() == nil &&
+		// Preferred permits fallback after local DPoP failures before a Token
+		// Endpoint request is sent, or after three explicit proof rejections.
+		if mode == core.DPoPModePreferred && (!dpopRequestSent || errors.Is(retErr, dpop.ErrRepeatedInvalidProof)) && retErr != nil && ctx.Err() == nil &&
 			!errors.Is(retErr, context.Canceled) && !errors.Is(retErr, context.DeadlineExceeded) {
 			repeatedProofRejection := errors.Is(retErr, dpop.ErrRepeatedInvalidProof)
-			result, retErr = requestTAT(ctx, httpClient, brand, appID, appSecret, nil, keyStore, false, 0)
+			result, retErr = requestTAT(ctx, httpClient, brand, appID, appSecret, nil, keyStore, nil, false, 0)
 			if retErr == nil && result != nil {
 				result.proofFallback = repeatedProofRejection
 			}
@@ -140,12 +140,11 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 			}
 		}
 	}
-	exchangeStarted = true
 	invalidProofsLeft := 0
 	if mode == core.DPoPModePreferred {
 		invalidProofsLeft = 3
 	}
-	result, retErr = requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, false, invalidProofsLeft)
+	result, retErr = requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, &dpopRequestSent, false, invalidProofsLeft)
 	if retErr == nil && result != nil {
 		result.clockSyncErr = clockSyncErr
 		keepKey = result.DPoP != nil
@@ -158,7 +157,7 @@ func tatDPoPKeyID(brand core.LarkBrand, appID string) string {
 	return "tat-" + base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
-func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string, proofKey *dpop.Key, keyStore *dpop.KeyStore, clockRetried bool, invalidProofsLeft int) (*FetchedToken, error) {
+func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string, proofKey *dpop.Key, keyStore *dpop.KeyStore, dpopRequestSent *bool, clockRetried bool, invalidProofsLeft int) (*FetchedToken, error) {
 	ep := core.ResolveEndpoints(brand)
 	endpoint := ep.Accounts + core.OAuthTokenV3Path
 
@@ -182,6 +181,9 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 		req.Header.Set(dpop.ProofHeader, proof)
 	}
 
+	if proofKey != nil && dpopRequestSent != nil {
+		*dpopRequestSent = true
+	}
 	resp, err := httpClient.Do(req)
 	localReceiveTime := time.Now()
 	if err != nil {
@@ -246,7 +248,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 				clockRetried = true
 			}
 		}
-		return requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, clockRetried, invalidProofsLeft)
+		return requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, dpopRequestSent, clockRetried, invalidProofsLeft)
 	}
 	if dpop.IsClockRecoverySignal(result.Code, result.Error) && proofKey != nil {
 		if clockRetried {
@@ -270,7 +272,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 				WithCause(err).
 				WithHint("%s", dpop.KeyStoreUnavailableHint)
 		}
-		return requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, true, invalidProofsLeft)
+		return requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, dpopRequestSent, true, invalidProofsLeft)
 	}
 
 	if result.Code == 0 && result.AccessToken != "" {

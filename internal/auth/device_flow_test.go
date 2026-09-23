@@ -358,6 +358,7 @@ func (s deviceFlowMetadata) Remove(_, account string) error { delete(s, account)
 type authDPoPTestSigner struct {
 	keys      map[string]*ecdsa.PrivateKey
 	ensureErr func(keysigner.KeyRef) error
+	signErr   error
 	deleteErr error
 }
 
@@ -398,6 +399,9 @@ func (s *authDPoPTestSigner) PublicKey(ctx context.Context, ref keysigner.KeyRef
 func (s *authDPoPTestSigner) Sign(ctx context.Context, ref keysigner.KeyRef, input []byte) ([]byte, string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, "", err
+	}
+	if s.signErr != nil && !strings.HasPrefix(ref.Label, "probe-") {
+		return nil, "", s.signErr
 	}
 	key := s.keys[ref.Label]
 	if key == nil {
@@ -555,6 +559,38 @@ func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
 				t.Fatalf("retained keys = %d, want %d", len(signer.keys), wantKeys)
 			}
 		})
+	}
+}
+
+func TestDeviceFlowProofFailureBeforeRequestFallsBack(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	signer := newAuthDPoPTestSigner()
+	signer.signErr = errors.New("sign denied")
+	store := dpop.NewKeyStoreWithSigner(deviceFlowMetadata{}, signer)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	tokenCalls := 0
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := fmt.Sprintf(`{"data":{"now":"%d"}}`, time.Now().Unix())
+		if req.URL.Path == core.OAuthTokenV3Path {
+			tokenCalls++
+			if req.Header.Get(dpop.ProofHeader) != "" {
+				t.Fatal("fallback request carried proof")
+			}
+			body = `{"access_token":"bearer-token","token_type":"Bearer"}`
+		}
+		return refreshHTTPResponse(req, body), nil
+	})}
+
+	result, err := pollDeviceTokenWithKeyStore(ctx, client, "app", "secret", core.BrandFeishu, "device", 1, 5, nil, core.DPoPModePreferred, store)
+	if err != nil {
+		t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
+	}
+	if !result.OK || result.Token == nil || result.Token.AccessToken != "bearer-token" || result.Token.DPoP != nil {
+		t.Fatalf("device flow proof failure fallback = %+v", result)
+	}
+	if tokenCalls != 1 {
+		t.Fatalf("token requests = %d, want one Bearer fallback request", tokenCalls)
 	}
 }
 
