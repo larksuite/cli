@@ -46,20 +46,38 @@ var (
 	}
 )
 
-// MailAllowSendersList lists/searches a user's mailbox-level allow sender list.
+// MailAllowSendersList lists a user's mailbox-level allow sender list.
 var MailAllowSendersList = newMailSenderListShortcut(mailAllowSenderKind, "+allow-senders-list")
+
+// MailAllowSendersSearch searches a user's mailbox-level allow sender list.
+var MailAllowSendersSearch = newMailSenderListShortcut(mailAllowSenderKind, "+allow-senders-search")
+
+// MailAllowSendersSet sets entries in a user's mailbox-level allow sender list.
+var MailAllowSendersSet = newMailSenderWriteShortcut(mailAllowSenderKind, "+allow-senders-set", mailSenderActionAdd)
 
 // MailAllowSendersAdd adds entries to a user's mailbox-level allow sender list.
 var MailAllowSendersAdd = newMailSenderWriteShortcut(mailAllowSenderKind, "+allow-senders-add", mailSenderActionAdd)
 
+// MailAllowSendersDelete deletes entries from a user's mailbox-level allow sender list.
+var MailAllowSendersDelete = newMailSenderWriteShortcut(mailAllowSenderKind, "+allow-senders-delete", mailSenderActionRemove)
+
 // MailAllowSendersRemove removes entries from a user's mailbox-level allow sender list.
 var MailAllowSendersRemove = newMailSenderWriteShortcut(mailAllowSenderKind, "+allow-senders-remove", mailSenderActionRemove)
 
-// MailBlockedSendersList lists/searches a user's mailbox-level blocked sender list.
+// MailBlockedSendersList lists a user's mailbox-level blocked sender list.
 var MailBlockedSendersList = newMailSenderListShortcut(mailBlockedSenderKind, "+blocked-senders-list")
+
+// MailBlockedSendersSearch searches a user's mailbox-level blocked sender list.
+var MailBlockedSendersSearch = newMailSenderListShortcut(mailBlockedSenderKind, "+blocked-senders-search")
+
+// MailBlockedSendersSet sets entries in a user's mailbox-level blocked sender list.
+var MailBlockedSendersSet = newMailSenderWriteShortcut(mailBlockedSenderKind, "+blocked-senders-set", mailSenderActionAdd)
 
 // MailBlockedSendersAdd adds entries to a user's mailbox-level blocked sender list.
 var MailBlockedSendersAdd = newMailSenderWriteShortcut(mailBlockedSenderKind, "+blocked-senders-add", mailSenderActionAdd)
+
+// MailBlockedSendersDelete deletes entries from a user's mailbox-level blocked sender list.
+var MailBlockedSendersDelete = newMailSenderWriteShortcut(mailBlockedSenderKind, "+blocked-senders-delete", mailSenderActionRemove)
 
 // MailBlockedSendersRemove removes entries from a user's mailbox-level blocked sender list.
 var MailBlockedSendersRemove = newMailSenderWriteShortcut(mailBlockedSenderKind, "+blocked-senders-remove", mailSenderActionRemove)

@@ -18,8 +18,8 @@ func TestMailSenderShortcuts_MetadataScopesAndRegistration(t *testing.T) {
 	if MailAllowSendersList.Command != "+allow-senders-list" {
 		t.Fatalf("allow list command = %q", MailAllowSendersList.Command)
 	}
-	if MailBlockedSendersRemove.Command != "+blocked-senders-remove" {
-		t.Fatalf("blocked remove command = %q", MailBlockedSendersRemove.Command)
+	if MailBlockedSendersDelete.Command != "+blocked-senders-delete" {
+		t.Fatalf("blocked delete command = %q", MailBlockedSendersDelete.Command)
 	}
 	for _, sc := range []struct {
 		name      string
@@ -30,10 +30,16 @@ func TestMailSenderShortcuts_MetadataScopesAndRegistration(t *testing.T) {
 		wantRisk  string
 	}{
 		{"allow list", MailAllowSendersList.Risk, MailAllowSendersList.AuthTypes, MailAllowSendersList.Scopes, "mail:user_mailbox.message:readonly", "read"},
+		{"allow search", MailAllowSendersSearch.Risk, MailAllowSendersSearch.AuthTypes, MailAllowSendersSearch.Scopes, "mail:user_mailbox.message:readonly", "read"},
+		{"allow set", MailAllowSendersSet.Risk, MailAllowSendersSet.AuthTypes, MailAllowSendersSet.Scopes, "mail:user_mailbox.message:modify", "write"},
 		{"blocked list", MailBlockedSendersList.Risk, MailBlockedSendersList.AuthTypes, MailBlockedSendersList.Scopes, "mail:user_mailbox.message:readonly", "read"},
+		{"blocked search", MailBlockedSendersSearch.Risk, MailBlockedSendersSearch.AuthTypes, MailBlockedSendersSearch.Scopes, "mail:user_mailbox.message:readonly", "read"},
+		{"blocked set", MailBlockedSendersSet.Risk, MailBlockedSendersSet.AuthTypes, MailBlockedSendersSet.Scopes, "mail:user_mailbox.message:modify", "write"},
 		{"allow add", MailAllowSendersAdd.Risk, MailAllowSendersAdd.AuthTypes, MailAllowSendersAdd.Scopes, "mail:user_mailbox.message:modify", "write"},
+		{"allow delete", MailAllowSendersDelete.Risk, MailAllowSendersDelete.AuthTypes, MailAllowSendersDelete.Scopes, "mail:user_mailbox.message:modify", "write"},
 		{"allow remove", MailAllowSendersRemove.Risk, MailAllowSendersRemove.AuthTypes, MailAllowSendersRemove.Scopes, "mail:user_mailbox.message:modify", "write"},
 		{"blocked add", MailBlockedSendersAdd.Risk, MailBlockedSendersAdd.AuthTypes, MailBlockedSendersAdd.Scopes, "mail:user_mailbox.message:modify", "write"},
+		{"blocked delete", MailBlockedSendersDelete.Risk, MailBlockedSendersDelete.AuthTypes, MailBlockedSendersDelete.Scopes, "mail:user_mailbox.message:modify", "write"},
 		{"blocked remove", MailBlockedSendersRemove.Risk, MailBlockedSendersRemove.AuthTypes, MailBlockedSendersRemove.Scopes, "mail:user_mailbox.message:modify", "write"},
 	} {
 		t.Run(sc.name, func(t *testing.T) {
@@ -52,7 +58,10 @@ func TestMailSenderShortcuts_MetadataScopesAndRegistration(t *testing.T) {
 	for _, sc := range Shortcuts() {
 		registered[sc.Command] = true
 	}
-	for _, command := range []string{"+allow-senders-list", "+allow-senders-add", "+allow-senders-remove", "+blocked-senders-list", "+blocked-senders-add", "+blocked-senders-remove"} {
+	for _, command := range []string{
+		"+allow-senders-list", "+allow-senders-search", "+allow-senders-set", "+allow-senders-add", "+allow-senders-delete", "+allow-senders-remove",
+		"+blocked-senders-list", "+blocked-senders-search", "+blocked-senders-set", "+blocked-senders-add", "+blocked-senders-delete", "+blocked-senders-remove",
+	} {
 		if !registered[command] {
 			t.Fatalf("shortcut %s is not registered", command)
 		}
@@ -92,7 +101,30 @@ func TestMailSenderList_PaginationAndKeywordUseUserMailboxPath(t *testing.T) {
 	}
 }
 
-func TestMailSenderAdd_NormalizesAndReportsPartialFailures(t *testing.T) {
+func TestMailSenderSearch_UsesListEndpointWithKeyword(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	stub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/blocked_senders?keyword=spam&page_size=20",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"items": []interface{}{}, "has_more": false}},
+	}
+	reg.Register(stub)
+
+	err := runMountedMailShortcut(t, MailBlockedSendersSearch, []string{
+		"+blocked-senders-search",
+		"--keyword", "spam",
+		"--format", "json",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["list"] != "blocked" || data["keyword"] != "spam" {
+		t.Fatalf("unexpected output data: %#v", data)
+	}
+}
+
+func TestMailSenderSet_NormalizesAndReportsPartialFailures(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	stub := &httpmock.Stub{
 		Method: "POST",
@@ -103,8 +135,8 @@ func TestMailSenderAdd_NormalizesAndReportsPartialFailures(t *testing.T) {
 	}
 	reg.Register(stub)
 
-	err := runMountedMailShortcut(t, MailBlockedSendersAdd, []string{
-		"+blocked-senders-add",
+	err := runMountedMailShortcut(t, MailBlockedSendersSet, []string{
+		"+blocked-senders-set",
 		"--sender", "Alice@Example.COM,example.org",
 		"--sender", "alice@example.com",
 		"--format", "json",
@@ -137,7 +169,29 @@ func TestMailSenderAdd_NormalizesAndReportsPartialFailures(t *testing.T) {
 	}
 }
 
-func TestMailSenderRemove_PreservesMixedCaseSenderValues(t *testing.T) {
+func TestMailSenderAdd_RemainsCompatibilityEntryPoint(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me/allow_senders/batch_create",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"failed_items": []interface{}{}}},
+	})
+
+	err := runMountedMailShortcut(t, MailAllowSendersAdd, []string{
+		"+allow-senders-add",
+		"--sender", "Alice@Example.COM",
+		"--format", "json",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["requested_cnt"].(float64) != 1 {
+		t.Fatalf("requested_cnt = %#v", data["requested_cnt"])
+	}
+}
+
+func TestMailSenderDelete_PreservesMixedCaseSenderValues(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	stub := &httpmock.Stub{
 		Method: "POST",
@@ -146,8 +200,8 @@ func TestMailSenderRemove_PreservesMixedCaseSenderValues(t *testing.T) {
 	}
 	reg.Register(stub)
 
-	err := runMountedMailShortcut(t, MailAllowSendersRemove, []string{
-		"+allow-senders-remove",
+	err := runMountedMailShortcut(t, MailAllowSendersDelete, []string{
+		"+allow-senders-delete",
 		"--sender", "Alice@Example.COM,example.org",
 		"--format", "json",
 	}, f, stdout)

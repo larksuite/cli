@@ -9,19 +9,19 @@
 lark-cli mail +allow-senders-list --as user --format json
 
 # 搜索拒收发件人
-lark-cli mail +blocked-senders-list --as user \
+lark-cli mail +blocked-senders-search --as user \
   --mailbox shared@example.com \
   --keyword spam \
   --page-size 50 \
   --format json
 
 # 添加邮箱地址或域名，逗号分隔或重复 --sender 均可
-lark-cli mail +allow-senders-add --as user \
+lark-cli mail +allow-senders-set --as user \
   --mailbox me \
   --sender alice@example.com,example.org
 
 # 删除拒收发件人；传入值会原样发送，便于删除历史混合大小写记录
-lark-cli mail +blocked-senders-remove --as user \
+lark-cli mail +blocked-senders-delete --as user \
   --sender Alice@Example.COM \
   --sender example.org
 ```
@@ -31,10 +31,10 @@ lark-cli mail +blocked-senders-remove --as user \
 | 参数 | 适用命令 | 默认 | 说明 |
 |---|---|---|---|
 | `--mailbox` | 全部 | `me` | `user_mailbox_id`，可传 `me`、邮箱地址或可访问邮箱 ID |
-| `--keyword` | `*-list` | 空 | 按发件人邮箱或域名搜索 |
-| `--page-size` | `*-list` | `20` | 分页大小，范围 1-100 |
-| `--page-token` | `*-list` | 空 | 上一页返回的分页 token |
-| `--sender` | `*-add` / `*-remove` | 必填 | 邮箱地址或域名；支持逗号分隔或重复传参 |
+| `--keyword` | `*-list` / `*-search` | 空 | 按发件人邮箱或域名搜索 |
+| `--page-size` | `*-list` / `*-search` | `20` | 分页大小，范围 1-100 |
+| `--page-token` | `*-list` / `*-search` | 空 | 上一页返回的分页 token |
+| `--sender` | `*-set` / `*-delete` / `*-add` / `*-remove` | 必填 | 邮箱地址或域名；支持逗号分隔或重复传参 |
 
 ## Scope 和身份
 
@@ -46,9 +46,10 @@ lark-cli mail +blocked-senders-remove --as user \
 ## 行为说明
 
 - allow 和 block 是用户邮箱级列表，不要使用租户级 allow/block sender API 代替。
-- add 会对输入做 trim、lowercase、大小写不敏感去重，并为每项推断 `sender_type`：包含 `@` 的值按邮箱地址提交，否则按域名提交。
-- remove 会 trim 并按大小写不敏感去重，但保留原始大小写值提交给服务端，兼容历史混合大小写记录。
-- add 返回的 `failed_items[]` 是后端逐项失败结果；这类部分失败不会伪装成全部成功，调用方应展示给用户。
+- set/add 会对输入做 trim、lowercase、大小写不敏感去重，并为每项推断 `sender_type`：包含 `@` 的值按邮箱地址提交，否则按域名提交。
+- delete/remove 会 trim 并按大小写不敏感去重，但保留原始大小写值提交给服务端，兼容历史混合大小写记录。
+- set/add 返回的 `failed_items[]` 是后端逐项失败结果；这类部分失败不会伪装成全部成功，调用方应展示给用户。
+- `*-add` 与 `*-remove` 是兼容入口；新流程优先使用 `*-set` 与 `*-delete`。
 
 ## 原生 API fallback
 
