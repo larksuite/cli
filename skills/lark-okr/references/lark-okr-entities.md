@@ -20,6 +20,22 @@ Alignment (对齐关系): Objective ↔ Objective
 Category (分类): Objective 的分组标签
 ```
 
+## 常用用户表述
+
+以下是部分用户可能会使用的指令表述，以及它们对应的实体与字段。
+
+- "进度 / 完成度 / 进展值"，当用户提到量化的进度或进展这样的概念时
+  - 对应实体: Indicator, 通常主要关注进度的当前值(Indicator.current_value)
+- "进展 / 更新 / Check-in"，当用户提到泛化的进度更新，尤其是有明确的文本化内容时
+  - 对应实体: Progress
+- "Objective 或 KeyResult 的状态"
+  - 对应字段: Indicator.indicator_status
+  - 注意，虽然 Objective/KeyResult 下的 Progress 中也有 ProgressRate 字段，但这一字段仅代表这条 Progress 的进度状态（创建 Progress 时的状态），而非 Objective/KeyResult 的当前进度
+- "打分 / 评分 / 分数"
+  - 对应字段: Objective.score, KeyResult.score, Cycle.score
+- "对齐 / 挂靠"
+  - 对应实体: Alignment
+
 ---
 
 ## Owner (所有者)
