@@ -484,10 +484,22 @@
     "base +form-detail": {
       "agentSupport": "allowed"
     },
+    "base +form-display-settings-get": {
+      "agentSupport": "allowed"
+    },
+    "base +form-display-settings-update": {
+      "agentSupport": "allowed"
+    },
     "base +form-get": {
       "agentSupport": "allowed"
     },
     "base +form-list": {
+      "agentSupport": "allowed"
+    },
+    "base +form-query-page-create": {
+      "agentSupport": "allowed"
+    },
+    "base +form-query-page-get": {
       "agentSupport": "allowed"
     },
     "base +form-questions-create": {
@@ -503,6 +515,12 @@
       "agentSupport": "allowed"
     },
     "base +form-share-get": {
+      "agentSupport": "allowed"
+    },
+    "base +form-share-qrcode-download": {
+      "agentSupport": "allowed"
+    },
+    "base +form-share-qrcode-get": {
       "agentSupport": "allowed"
     },
     "base +form-share-update": {

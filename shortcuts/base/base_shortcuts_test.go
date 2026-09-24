@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -185,6 +186,9 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+form-create", "+form-delete", "+form-list", "+form-update", "+form-get", "+form-detail",
 		"+form-questions-create", "+form-questions-delete", "+form-questions-update", "+form-questions-list",
 		"+form-submit", "+form-share-get", "+form-share-update",
+		"+form-query-page-get", "+form-query-page-create",
+		"+form-display-settings-get", "+form-display-settings-update",
+		"+form-share-qrcode-get", "+form-share-qrcode-download",
 		"+dashboard-list", "+dashboard-get", "+dashboard-share-get", "+dashboard-share-update", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
 		"+dashboard-block-list", "+dashboard-block-get", "+dashboard-block-get-data", "+dashboard-block-create", "+dashboard-block-update", "+dashboard-block-delete",
 		"+workspace-create", "+workspace-entity-list", "+workspace-move-in",
@@ -1399,7 +1403,7 @@ func TestBaseFormQuestionsUpdateHelpGuidesFullOverwrite(t *testing.T) {
 	wantTips := []string{
 		"full question overwrite semantics, not a patch",
 		"Run +form-questions-list first",
-		"title/description/required/option_display_mode/visible_rule",
+		"title/description/required/option_display_mode/visible_rule/input_range_limit",
 		"Omitted fields reset to defaults",
 		"empty strings, null, and empty arrays are written as empty/clear",
 	}
@@ -1418,6 +1422,9 @@ func TestBaseViewSetVisibleFieldsHelpIncludesFormInSharedContract(t *testing.T) 
 		"JSON object",
 		"controls both visibility and order",
 		"include every field that should remain visible",
+		// 两条本地拒绝规则：Tips 是唯一跟着二进制走、不依赖 skill 同步的清单。
+		"Entries must be unique",
+		"leading/trailing whitespace",
 	} {
 		if !strings.Contains(setTips, want) {
 			t.Fatalf("set-visible-fields tips missing %q:\n%s", want, setTips)
@@ -2013,6 +2020,44 @@ func TestValidateFormSubmit(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+
+	for _, tz := range []string{"Asia/Shanghai", "America/New_York", "America/Port-au-Prince", "Etc/GMT+8", "EST5EDT", "UTC", " Asia/Tokyo "} {
+		t.Run("timezone accepted "+tz, func(t *testing.T) {
+			rt := newBaseTestRuntime(map[string]string{
+				"share-token": "shr_test",
+				"json":        `{"fields":{"Rating":5}}`,
+				"timezone":    tz,
+			}, nil, nil)
+			if err := validateFormSubmit(rt); err != nil {
+				t.Fatalf("valid --timezone %q rejected: %v", tz, err)
+			}
+		})
+	}
+
+	// asia/shanghai 在 macOS（不区分大小写的文件系统）上能被 LoadLocation 读到，
+	// 在 Linux 上不能；本地规则必须让它在所有平台上都被拒。
+	for _, tz := range []string{"Not/AZone", "Tokyo", "GMT+8x", "Local", "asia/shanghai", "Asia/shanghai", "asia/Shanghai", "utc", "Asia//Shanghai", "北京时间", "+08:00", "8"} {
+		t.Run("timezone rejected "+tz, func(t *testing.T) {
+			rt := newBaseTestRuntime(map[string]string{
+				"share-token": "shr_test",
+				"json":        `{"fields":{"Rating":5}}`,
+				"timezone":    tz,
+			}, nil, nil)
+			err := validateFormSubmit(rt)
+			var verr *errs.ValidationError
+			if !errors.As(err, &verr) {
+				t.Fatalf("invalid --timezone %q should be a validation error, got %T %v", tz, err, err)
+			}
+			if verr.Param != "--timezone" {
+				t.Fatalf("param = %q, want --timezone (%v)", verr.Param, err)
+			}
+			// 大小写错误与非 IANA 输入共用一句报错，调用方才会去换正确的名字而不只改大小写。
+			want := fmt.Sprintf("--timezone %q is not a valid IANA time zone name (case-sensitive), e.g. Asia/Shanghai", strings.TrimSpace(tz))
+			if verr.Message != want {
+				t.Fatalf("message = %q, want %q", verr.Message, want)
+			}
+		})
+	}
 }
 
 func TestParseFormSubmitJSON(t *testing.T) {
@@ -2151,6 +2196,18 @@ func TestBuildFormSubmitBody(t *testing.T) {
 	}
 	if gotContent["Rating"] != float64(5) || gotContent["Review"] != "Good" {
 		t.Fatalf("content=%v want Rating=5 Review=Good", gotContent)
+	}
+	// 不传 --timezone 时不发 client_timezone，由服务端按文档时区 / 默认时区决定。
+	if _, ok := body["client_timezone"]; ok {
+		t.Fatalf("client_timezone must be omitted without --timezone: %v", body)
+	}
+
+	withTZ := newBaseTestRuntime(map[string]string{
+		"share-token": "shr_abc123",
+		"timezone":    " Asia/Tokyo ",
+	}, nil, nil)
+	if got := buildFormSubmitBody(withTZ, content)["client_timezone"]; got != "Asia/Tokyo" {
+		t.Fatalf("client_timezone=%v want trimmed Asia/Tokyo", got)
 	}
 }
 

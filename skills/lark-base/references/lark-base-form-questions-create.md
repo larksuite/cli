@@ -97,6 +97,7 @@ lark-cli base +form-questions-create \
 | `options`             | 否 | 选项列表（仅 `select` 有效）：`[{"name":"选项1","hue":"Blue"}]`，hue 可选：`Red`/`Orange`/`Yellow`/`Green`/`Blue`/`Purple`/`Gray` |
 | `style`               | 否 | 字段样式配置（见下方说明） |
 | `visible_rule`        | 否 | 题目显隐条件（见下方「`visible_rule` 显隐条件」） |
+| `input_range_limit`   | 否 | 输入范围限制：限制填写的字数 / 数值区间 / 可选日期区间（见下方「`input_range_limit` 输入范围限制」） |
 
 ### 形态 B：已有字段题目
 
@@ -111,6 +112,7 @@ lark-cli base +form-questions-create \
 | `required`            | 否 | 是否必填（true/false），默认 false |
 | `option_display_mode` | 否 | 选项展示方式（仅已有字段为 `select` 时有效）：`0`=下拉，`1`=纵向（默认），`2`=横向 |
 | `visible_rule`        | 否 | 题目显隐条件（见下方「`visible_rule` 显隐条件」） |
+| `input_range_limit`   | 否 | 输入范围限制。本形态推荐分两步：先把字段加进表单，再用 `+form-questions-update` 按题目 `id` 设置，见「`input_range_limit` 输入范围限制」末尾 |
 
 已有字段题目不要携带字段定义属性，例如 `type`、`style`、`options`、`multiple`、`name`。服务端使用 strict schema，误传不属于该形态的字段会被拒绝。
 
@@ -146,6 +148,109 @@ lark-cli base +form-questions-create \
 ```
 
 详细的 `visible_rule` 结构（顶层规则、operator 列表、各题目类型的 value 写法）请阅读 [lark-base-filter-condition.md](lark-base-filter-condition.md)。
+
+### `input_range_limit` 输入范围限制
+
+> **仅当用户明确要求限制填写内容的范围（字数、数值区间、可选日期区间）时，才需要读下面的结构说明；否则忽略本节。**
+
+用户提出「最多/至少 N 个字、只能填 0~100、只能选今天起 7 天内」这类填写范围要求时，交付物就是这里的 `input_range_limit`：写进 `description` 描述文案、改成 `required`、或提交后再人工核对，都不构成实现——前端不会据此拦截填写。
+
+`input_range_limit` 是**题目级**配置，与 `required`、`visible_rule` 同级，不是字段定义属性。创建题目时把规则放进**同一个 question 对象**里，不要另起一次调用。清除已有限制传 `"input_range_limit": null`。
+
+三类限制用 `type` 判别：
+
+| type | 参数 | 规则 |
+|---|---|---|
+| `text_length` | `min_length`?、`max_length`? | 用户说了哪一侧就只写哪一侧；边界是正整数（不接受 0），两侧都给时 `min_length <= max_length` |
+| `number_range` | `min_value`?、`max_value`? | 至少给一个有限数字边界，允许 0 及负数，`min_value <= max_value` |
+| `date_range` | `earliest`?、`latest`? | 每个边界写成 `{"fixed_ms":整数毫秒}` 或 `{"dynamic":{"anchor":...,"offset_days":...}}`，**二者互斥**；至少给一个边界 |
+
+三类的最小 JSON 形状：
+
+```json
+{"type":"text_length","min_length":1,"max_length":100}
+{"type":"number_range","min_value":0,"max_value":100}
+{"type":"date_range","earliest":{"dynamic":{"anchor":"today","offset_days":0}},"latest":{"dynamic":{"anchor":"today","offset_days":7}}}
+{"type":"date_range","earliest":{"fixed_ms":1790784000000},"latest":{"fixed_ms":1791302400000}}
+```
+
+上面这个固定区间例子换算成北京时间是 `2026-10-01 00:00:00` ~ `2026-10-07 00:00:00`，也就是**允许选 10 月 1 日到 10 月 7 日**——`latest` 取的是 10-07 当天零点，而不是 10-08 零点。
+
+硬规则：
+
+- **用户只说了一侧就只写一侧**：「至少 N 个字」只写 `min_length`，「最多 N 个字」只写 `max_length`，不要补全另一侧。缺省的那一侧表示不限制，擅自补上会把用户没要求的限制写进表单。`number_range` 的 `min_value` / `max_value`、`date_range` 的 `earliest` / `latest` 同理。
+- **不写就是省略该键，不要传 `null`**：边界键只接受数字，传 `null` 在 CLI 本地就会被拒（`--questions item N.input_range_limit.min_length must be a JSON number, not null`），请求不会发出。`null` 只用在整个 `input_range_limit` 上，表示清除该题的全部限制。
+- 字段名不接受别名，一律 snake_case；`min_length` / `max_length` / `min_value` / `max_value` / `fixed_ms` 都必须是 JSON **数字**，不要转成字符串。
+- `anchor` 只能取 `today` / `monday` / `friday` / `saturday` / `sunday` / `month_start` / `month_end`；`offset_days` 是整数天，可正可负。
+- **`fixed_ms` 就填那一天的 00:00:00，不要 +1 天**：两个边界都是**闭区间**，`latest` 填当天零点就已经包含当天全天。用户说「最晚 9 月 30 日」就写 9-30 的 00:00:00，不要写成 10-01 的零点，也不要写 9-30 的 23:59:59——这两种写法都会把可选范围多放一天，表单上显示成能选到 10 月 1 日。`earliest` 同理，填当天零点即可。
+- 同一个边界里 `fixed_ms` 和 `dynamic` 只能出现一个。
+- 两端**都**写 `fixed_ms` 时，CLI 本地就会比较先后，`earliest` 晚于 `latest` 直接被拒。一端 `dynamic` 时不比较——相对日期要到运行期才知道落在哪天。
+- `+form-questions-list` 会对每个题目回显 `input_range_limit`，没有配置的题目返回 `null`；这是唯一的验收证据。
+
+#### 相对日期怎么算：anchor + offset_days 映射表
+
+协议里**没有**「7 天前」「30 天后」这类具名枚举，所有相对日期都只能由 `anchor` 加 `offset_days` 组合出来。按下表把用户口语翻译成写法，不要发明 anchor 名：
+
+| 用户说法 | 写法 |
+|---|---|
+| 今天 | `{"anchor":"today","offset_days":0}` |
+| 昨天 | `{"anchor":"today","offset_days":-1}` |
+| 明天 | `{"anchor":"today","offset_days":1}` |
+| 7 天前 / 7 天后 | `{"anchor":"today","offset_days":-7}` / `{"anchor":"today","offset_days":7}` |
+| 30 天前 / 30 天后 | `{"anchor":"today","offset_days":-30}` / `{"anchor":"today","offset_days":30}` |
+| 本周一 / 本周五 / 本周六 / 本周日 | `{"anchor":"monday","offset_days":0}` / `{"anchor":"friday","offset_days":0}` / `{"anchor":"saturday","offset_days":0}` / `{"anchor":"sunday","offset_days":0}`（自然周：周一开始、周日结束） |
+| 月初 / 月末 | `{"anchor":"month_start","offset_days":0}` / `{"anchor":"month_end","offset_days":0}` |
+
+用户说的是固定的绝对日期（如「只能选 2026 年 10 月 1 日到 10 月 7 日」）才用 `fixed_ms`；说的是「从今天起 / 未来 N 天 / 本周内」这类跟着运行日期滚动的范围，必须用 `dynamic`，不得把当天换算成 `fixed_ms` 固化。
+
+#### 产品侧边界值
+
+| 限制 | 边界 |
+|---|---|
+| 文本字数 | 最小字数下限 1，最大字数上限 100000 |
+| 数字范围 | 可负、可小数；缺省的那一侧即不限 |
+| 日期范围 | **只到日，不支持时分秒** |
+
+#### 可直接运行的完整命令
+
+```bash
+# 文本题限制 10~200 字
+lark-cli base +form-questions-create \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id> \
+  --questions '[{"type":"text","title":"意见反馈","required":true,"input_range_limit":{"type":"text_length","min_length":10,"max_length":200}}]'
+
+# 数字题限制 0~150（允许 0）
+lark-cli base +form-questions-create \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id> \
+  --questions '[{"type":"number","title":"年龄","required":true,"input_range_limit":{"type":"number_range","min_value":0,"max_value":150}}]'
+
+# 日期题限制「今天起 7 天内」（相对日期，跟着运行日期滚动）
+lark-cli base +form-questions-create \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id> \
+  --questions '[{"type":"datetime","title":"预约日期","required":true,"input_range_limit":{"type":"date_range","earliest":{"dynamic":{"anchor":"today","offset_days":0}},"latest":{"dynamic":{"anchor":"today","offset_days":7}}}}]'
+
+# 日期题限制固定区间（用户点名了绝对日期时才用 fixed_ms）
+lark-cli base +form-questions-create \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id> \
+  --questions '[{"type":"datetime","title":"活动日期","input_range_limit":{"type":"date_range","earliest":{"fixed_ms":1790784000000},"latest":{"fixed_ms":1791302400000}}}]'
+
+
+# 回读验收：确认每道题的 input_range_limit 与要求一致
+lark-cli base +form-questions-list \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id>
+```
+
+已有字段题目（形态 B）要加限制时，先用 `use_existing_field:true` + `field_id` 把字段加进表单，再用 `+form-questions-update` 按题目 `id` 设置 `input_range_limit`；`+form-questions-update` 是全量覆盖，写法和保留规则见 [lark-base-form-questions-update.md](lark-base-form-questions-update.md)。
 
 ## 输出格式
 

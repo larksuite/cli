@@ -82,10 +82,11 @@ lark-cli base +form-questions-update \
 | `required` | 否 | 目标是否必填；省略会回落为 `false` |
 | `option_display_mode` | 否 | 目标选项展示方式（仅 `select` 有效）：`0`=下拉，`1`=纵向（默认），`2`=横向；省略会回落默认展示方式 |
 | `visible_rule` | 否 | 目标题目显隐条件；传完整 `{logic, conditions}` 对象覆盖，传 `null` 或省略都会清空（见下方说明） |
+| `input_range_limit` | 否 | 目标输入范围限制（字数 / 数值区间 / 可选日期区间）；传完整对象覆盖，传 `null` 清除限制（见下方说明） |
 
 ## 全量覆盖语义
 
-- 先执行 `+form-questions-list`，读取被更新题目的当前 `id`、`title`、`description`、`required`、`option_display_mode`、`visible_rule`。
+- 先执行 `+form-questions-list`，读取被更新题目的当前 `id`、`title`、`description`、`required`、`option_display_mode`、`visible_rule`、`input_range_limit`。
 - 构造 `--questions` 时，只改用户明确要求变化的字段；所有仍要保留的字段必须按当前值一并传回。
 - 不要用“只传要改的字段”的方式更新题目。比如只传 `{"id":"q_002","title":"新标题"}` 会让 `description` 清空、`required` 回落为 `false`、`visible_rule` 清空。
 - 用户明确要求清空时才传空值：`description:""` 清空描述，`visible_rule:null` 清空显隐条件，`conditions:[]` 也表示无条件显示。
@@ -112,6 +113,77 @@ lark-cli base +form-questions-update \
 ```
 
 详细的 `visible_rule` 结构（顶层规则、operator 列表、各题目类型的 value 写法）请阅读 [lark-base-filter-condition.md](lark-base-filter-condition.md)。
+
+### `input_range_limit` 输入范围限制
+
+> **仅当用户明确要求限制或解除填写范围（字数、数值区间、可选日期区间）时，才需要读下面的说明；否则忽略本节。**
+
+`input_range_limit` 是题目级配置，与 `required`、`visible_rule` 同级。三类结构（`text_length` / `number_range` / `date_range`）、字段名、`anchor` 取值、相对日期映射表和产品侧边界值都在 [lark-base-form-questions-create.md](lark-base-form-questions-create.md) 的「`input_range_limit` 输入范围限制」，构造 JSON 前读那一节，不要凭印象拼字段名。
+
+本命令特有的三条：
+
+- 按本命令的**全量覆盖**语义，要保留题目现有限制，必须把 `+form-questions-list` 读回的 `input_range_limit` 原样带回；不要靠省略它来「保持不变」。
+- 用户明确要求取消限制时才传 `"input_range_limit": null`。
+- 改限制和改标题是两件事：本轮没被授权改名时，`title` 仍必须逐字沿用读回值。
+
+```bash
+# 1) 先读回现状，拿到 id 和要保留的属性（含 input_range_limit）
+lark-cli base +form-questions-list \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id>
+
+# 2) 把「预约日期」限制成今天起 7 天内，同时带回要保留的 title / required
+lark-cli base +form-questions-update \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id> \
+  --questions '[{"id":"fldBookDate","title":"预约日期","required":true,"input_range_limit":{"type":"date_range","earliest":{"dynamic":{"anchor":"today","offset_days":0}},"latest":{"dynamic":{"anchor":"today","offset_days":7}}}}]'
+
+# 3) 写后回读验收：确认 input_range_limit 与要求一致，且 title 未被改动
+lark-cli base +form-questions-list \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id>
+```
+
+## 调整题目顺序
+
+题目顺序不由 `+form-questions-update` 控制，也没有表单专用的排序命令，不要因此声称不支持排序。复用视图可见字段命令：Form 在 `visible_fields` 接口中作为 View，`--view-id` 传**表单的 ID**。`+view-get-visible-fields` 读、`+view-set-visible-fields` 写，两者读写的是同一份 `visible_fields`，数组顺序就是表单里题目的顺序。
+
+- **取数**：先用 `+view-get-visible-fields` 读出当前可见题目的有序列表，在本地调整后整体提交。只排序时不增删成员；要隐藏或重新显示题目时，按下一条的整体覆盖规则从数组里去掉或加回；`+view-get-visible-fields` 读不到已隐藏的题，要加回的题 ID 从 `+form-questions-list` 取，列表里没有的话向用户确认。除此之外，`+form-questions-list` 只用来对照每个 ID 对应的题目标题，不作为提交或回读的依据。
+- **整体覆盖**：这个数组既是**可见集合**也是顺序。只传被移动的那一题，会把其余题目都隐藏。被省略的题目仍是 Form 成员，写回 `visible_fields` 即可恢复，不要用 `+form-questions-create` 重加。**空列表会隐藏全部题目**；把已隐藏的 Form 成员写进来会重新展示它。
+- 目标只能包含**已经是该 Form 成员**的题目；非表单成员的字段 ID 不能靠这条命令加进表单，那要走 `+form-questions-create`。
+- 数组里**不能有重复项**，也不能带首尾空格：两者都会被 CLI 本地拒绝（重复项让最终顺序无法确定；值是原样发给服务端的，不会替你 trim）。
+- 重排后，仍显示的题目上的 `visible_rule` 只能引用排在它之前的可见题目，提交后要逐题复查。
+- **回读**：只用 `+view-get-visible-fields`，返回数组必须与提交的数组一致，不要靠写命令的成功响应判定。服务端可能把主字段强制排到第一位；如果只在这一点上对不上，以回读结果为准并如实告诉用户，不要反复重提。
+- `--json` 在两条命令上同名不同义，不要互相套用：`+view-set-visible-fields --json` 是**输入**（string，传 `{"visible_fields":[...]}`）；`+form-questions-create` / `+form-questions-update` 的 `--json` 是**输出格式简写**（bool，等价 `--format json`），不接受值。套错的表现是 `+view-set-visible-fields --json` 不带值报 `flag needs an argument`，或给 `+form-questions-update --json '{...}'` 传值报错。
+
+```bash
+# 1) 读出当前可见题目及顺序（提交以它为底）；需要对照标题时再看 +form-questions-list
+lark-cli base +view-get-visible-fields \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --view-id <form_id>
+
+lark-cli base +form-questions-list \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id>
+
+# 2) 按目标顺序整体提交（数组即最终顺序，必须列全所有可见题目）
+lark-cli base +view-set-visible-fields \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --view-id <form_id> \
+  --json '{"visible_fields":["fldC","fldA","fldB"]}'
+
+# 3) 回读核验：返回数组必须与提交的数组一致
+lark-cli base +view-get-visible-fields \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --view-id <form_id>
+```
 
 ## 输出格式
 

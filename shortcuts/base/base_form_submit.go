@@ -9,7 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
+
+	// 内嵌 IANA 时区库：--timezone 在本地用 time.LoadLocation 校验，宿主缺少
+	// zoneinfo（如 Windows、精简容器）时不能把合法时区误判为非法。
+	_ "time/tzdata"
 
 	"golang.org/x/sync/errgroup"
 
@@ -34,6 +40,7 @@ var BaseFormSubmit = common.Shortcut{
 		{Name: "share-token", Desc: "Form share token (required), extracted from the form share link", Required: true},
 		{Name: "base-token", Desc: "Base token (required when --json contains attachments, used for uploading attachments to Base Drive Media)"},
 		{Name: "json", Desc: `JSON object containing "fields" (field values) and "attachments" (attachment file paths). Example: '{"fields":{"Rating":5,"Review":"Good"},"attachments":{"Attachment":["./a.pdf","./b.png"]}}'`, Required: true},
+		{Name: "timezone", Desc: `IANA time zone of the person filling the form, e.g. "Asia/Shanghai". Only needed when the form has a date question whose allowed range uses a relative anchor (today / this week / this month); it decides where those day boundaries fall. Ignored when the Base has its own document time zone. Use the canonical IANA capitalization (Asia/Shanghai, not asia/shanghai); names that are not valid IANA zones are rejected locally.`},
 	},
 	Tips: []string{
 		`Example (no attachments): --share-token shrXXXX --json '{"fields":{"Service Rating":5,"Review":"Good service"}}'`,
@@ -51,6 +58,10 @@ var BaseFormSubmit = common.Shortcut{
 }
 
 func validateFormSubmit(runtime *common.RuntimeContext) error {
+	if err := validateFormSubmitTimezone(runtime.Str("timezone")); err != nil {
+		return err
+	}
+
 	// 校验 --json 结构：提取 "fields" 和 "attachments"
 	pc := newParseCtx(runtime)
 	raw, err := parseJSONObject(pc, runtime.Str("json"), "json")
@@ -177,11 +188,58 @@ func dryRunFormSubmit(_ context.Context, runtime *common.RuntimeContext) *common
 		Body(body)
 }
 
+// validateFormSubmitTimezone 在本地拦下非法的 --timezone。服务端对一个认不出的
+// 时区是否报错没有保证，而错一天的相对日期边界不会报错、只会静默判错，
+// 所以拼错的名字必须在发请求前失败。
+func validateFormSubmitTimezone(raw string) error {
+	tz := strings.TrimSpace(raw)
+	if tz == "" {
+		return nil
+	}
+	// LoadLocation 把 "Local" 解析成本机时区，它不是 IANA 名字，发给服务端没有意义。
+	if tz == "Local" {
+		return invalidFormSubmitTimezoneError(tz)
+	}
+	// LoadLocation 对大小写的处理随平台而变：macOS 默认文件系统不区分大小写，
+	// "asia/shanghai" 能从系统 zoneinfo 读到；Linux 和内嵌 tzdata 则拒绝。IANA 名字
+	// 的每一段都以大写字母开头（Go 自带时区库的全部名字都满足），先按这一点拒掉
+	// 小写开头的段，常见的全小写写法在各平台上结果一致。
+	// 大小写不对与根本不是 IANA 名字（如「北京时间」「+08:00」）报同一句：分开报会让
+	// 调用方只去改大小写，而不是换成真正的 IANA 名字。
+	if !ianaSegmentsCapitalized(tz) {
+		return invalidFormSubmitTimezoneError(tz)
+	}
+	if _, err := time.LoadLocation(tz); err != nil {
+		return invalidFormSubmitTimezoneError(tz)
+	}
+	return nil
+}
+
+func invalidFormSubmitTimezoneError(tz string) error {
+	return baseFlagErrorf("--timezone %q is not a valid IANA time zone name (case-sensitive), e.g. Asia/Shanghai", tz)
+}
+
+// ianaSegmentsCapitalized 判断 name 按 "/" 切开后每一段是否都以 ASCII 大写字母开头。
+func ianaSegmentsCapitalized(name string) bool {
+	for _, segment := range strings.Split(name, "/") {
+		if segment == "" || segment[0] < 'A' || segment[0] > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
 func buildFormSubmitBody(runtime *common.RuntimeContext, content map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{
+	body := map[string]interface{}{
 		"share_token": runtime.Str("share-token"),
 		"content":     content,
 	}
+	// 只在显式给了 --timezone 时带上：服务端优先用 Base 的文档时区，两者都没有才回落默认时区。
+	// 省略比瞎猜一个好——传错时区会让相对日期（今天/本周）的边界整体偏一天，且不会报错。
+	if tz := strings.TrimSpace(runtime.Str("timezone")); tz != "" {
+		body["client_timezone"] = tz
+	}
+	return body
 }
 
 func executeFormSubmit(runtime *common.RuntimeContext) error {

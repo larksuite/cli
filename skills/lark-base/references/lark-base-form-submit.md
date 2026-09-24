@@ -75,6 +75,7 @@ lark-cli base +form-submit \
 | `--share-token <token>` | 是 | 表单分享 Token（必填），从表单分享链接中提取 |
 | `--base-token <token>` | 条件必填 | Base token；**当 `--json` 包含 `attachments` 时必须提供**，用于将附件上传到 Base Drive Media |
 | `--json <json>` | 是 | JSON 对象，包含 `"fields"`（普通字段值）和 `"attachments"`（附件上传），详见下方说明 |
+| `--timezone <IANA>` | 否 | 填写人所在时区，如 `Asia/Shanghai`。**只有当表单里的日期题设了「相对日期」范围（今天 / 本周 / 本月）时才需要**，它决定这些边界算在哪一天。详见下方「什么时候要传 --timezone」 |
 | `--yes` | 是 | 确认高风险写操作。本命令为 high-risk-write，不带 `--yes` 会返回 `confirmation_required` |
 | `--format` | 否 | 输出格式：json（默认）\| pretty \| table \| ndjson \| csv |
 | `--as` | 否 | 身份：user（默认）\| bot |
@@ -127,6 +128,25 @@ CLI 收到路径后会自动完成以下流程：
 3. 获取 `file_token` 后合并到最终表单提交内容中
 
 > Record 写入时附件走独立的 `+record-upload-attachment` 命令；`+form-submit` 则在 `attachments` 中传本地路径，由 CLI 自动上传。
+
+### 什么时候要传 --timezone
+
+只有同时满足这两点才需要传：
+
+1. 表单里有日期题，且该题的填写范围用的是**相对日期**（今天 / 本周一 / 本月初这类会随当天变化的边界）——用 `+form-detail` 或 `+form-questions-list` 看该题的 `input_range_limit.earliest/latest` 是否为 `dynamic`；如果是 `fixed_ms`（写死的具体日期），不需要传
+2. 你确切知道填写人在哪个时区
+
+不传时服务端按这个顺序决定：Base 自己设了文档时区就用文档时区（这时传了也会被忽略）；都没有则回落东八区。
+
+`--timezone` 接受 IANA 时区名，按规范大小写书写，例如 `Asia/Shanghai`、`America/New_York`、`UTC`；CLI 会在本地校验这个名字，报错时照提示改成规范写法即可。
+
+```bash
+lark-cli base +form-submit \
+  --share-token <share_token> \
+  --timezone Asia/Shanghai \
+  --json '{"fields":{"交付日期":"2026-09-16 12:00:00"}}' \
+  --yes
+```
 
 ### 从分享链接提取 share-token
 

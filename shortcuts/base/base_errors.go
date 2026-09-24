@@ -4,6 +4,7 @@
 package base
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -181,8 +182,30 @@ func baseAPIErrorFromResult(resultMap map[string]interface{}, cc errclass.Classi
 	if err == nil {
 		return nil
 	}
-	if p, ok := errs.ProblemOf(err); ok && hint != "" {
-		p.Hint = hint
+	if p, ok := errs.ProblemOf(err); ok {
+		// 最终 hint 由两步决定：服务端 hint 覆盖分类器给出的 hint，再追加恢复标识。
+		// 在局部量上拼完再写回一次，两步的先后关系集中在这里一眼可见。
+		merged := p.Hint
+		// 注意服务端 hint 覆盖分类器结果，与 errclass 的 buildPermissionErrorFromFacts
+		// 声明的优先级相反——那里写明 PermissionHint 要压过服务端细节，而这里 hint
+		// 非空时会把它整段换掉。属已知待收口，此处不改变这一行为。
+		if hint != "" {
+			merged = hint
+		}
+		// CLI 的错误信封只有固定字段，data 整块在错误分支被丢弃；但部分端点（如
+		// +form-query-page-create）把恢复所需的 ID 放在 data.error.value 里。不透出来，
+		// 调用方只能看到「没有 ID」而误判为可以重新创建，把上一次建出的资源变成孤儿。
+		//
+		// 恢复标识只追加、绝不参与「是否覆盖」的判定：权限类错误的 PermissionHint
+		// 是权威恢复指引（要授哪个 scope、开发者控制台链接），classify.go 明确声明
+		// 它压过服务端细节。拿 error.value 当覆盖依据会把整段授权步骤挤成一串裸 JSON。
+		if recovery := extractDataErrorValue(resultMap); recovery != "" {
+			if merged != "" {
+				merged += "; "
+			}
+			merged += "error.value=" + recovery
+		}
+		p.Hint = merged
 	}
 	return err
 }
@@ -260,6 +283,73 @@ func extractDataErrorMessage(resultMap map[string]interface{}) string {
 		}
 	}
 	return ""
+}
+
+// dataErrorValueRecoveryKeys 是允许从 data.error.value 透出到 hint 的键。
+// 用白名单而不是整块序列化：这条路径是 base 包所有 API 错误的公共出口
+// （helpers.go 的 baseV3Call 等），+form-submit / +record-batch-* 的失败也走它，
+// 服务端在 value 里回带用户填写的原值时，整块透出会把这些内容复制进 hint，
+// 而 hint 会进终端输出和日志。
+var dataErrorValueRecoveryKeys = []string{"query_view_id", "completed_steps", "failed_step"}
+
+// dataErrorValueMaxLen 给并进 hint 的恢复标识封顶。这三个键正常只有一个 ID、
+// 一个短枚举和一个短数组，超出就说明服务端回带了别的东西。
+// 超限时退回到只带 query_view_id（恢复真正需要的那个），而不是截断字符串——
+// 文档教调用方把 error.value= 后面那段按 JSON 解析，截断出来的半个 JSON 解不动。
+const dataErrorValueMaxLen = 512
+
+// extractDataErrorValue 从 data.error.value 里挑出恢复所需的标识并序列化成紧凑 JSON，
+// 供调用方从 hint 读回（如 +form-query-page-create 失败后要带回的 query_view_id）。
+// 非对象、无白名单命中或空值一律返回空串，不污染 hint。
+func extractDataErrorValue(resultMap map[string]interface{}) string {
+	data, _ := resultMap["data"].(map[string]interface{})
+	detail, ok := data["error"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	// 恢复字段的落点见过两种形状：在 data.error.value 里，或与 value 平级挂在
+	// data.error 上。两处都取、value 优先——少取一个 failed_step，调用方就没有
+	// 分支依据（associate/readback 必须带 ID 重试，只有 create 才可以重建），
+	// 只能猜，猜成「可以重建」正好留下这个流程要防的孤儿资源。
+	value, _ := detail["value"].(map[string]interface{})
+	recovery := map[string]interface{}{}
+	for _, key := range dataErrorValueRecoveryKeys {
+		if raw, ok := firstNonNullValue(key, value, detail); ok {
+			recovery[key] = raw
+		}
+	}
+	if len(recovery) == 0 {
+		return ""
+	}
+	encoded, err := json.Marshal(recovery)
+	if err != nil {
+		return ""
+	}
+	if len(encoded) > dataErrorValueMaxLen {
+		id, ok := recovery["query_view_id"]
+		if !ok {
+			return ""
+		}
+		encoded, err = json.Marshal(map[string]interface{}{"query_view_id": id})
+		if err != nil || len(encoded) > dataErrorValueMaxLen {
+			return ""
+		}
+	}
+	return string(encoded)
+}
+
+// firstNonNullValue 按 sources 的顺序返回 key 对应的第一个非 null 值。
+// 键缺失与 JSON 显式 null 解码后都是 nil interface，由 case nil 一并跳过。
+func firstNonNullValue(key string, sources ...map[string]interface{}) (interface{}, bool) {
+	for _, src := range sources {
+		switch raw := src[key].(type) {
+		case nil:
+			continue
+		default:
+			return raw, true
+		}
+	}
+	return nil, false
 }
 
 func consumeStringField(src map[string]interface{}, key string) string {

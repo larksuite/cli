@@ -1,9 +1,9 @@
 # Base CLI E2E Coverage
 
 ## Metrics
-- Denominator: 99 leaf commands
-- Covered: 49
-- Coverage: 49.5%
+- Denominator: 105 leaf commands
+- Covered: 55
+- Coverage: 52.4%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
@@ -14,6 +14,8 @@
 - TestBaseFieldExtensionDryRun: proves `+field-extension-get`, `+field-extension-update`, and `+field-extension-update-cells` request shapes, including row-vs-column update bodies; TestBaseFieldExtensionUpdateCellsDryRunRejectsRowWithoutRecordID proves row updates require an explicit record.
 - TestBaseFormQuestionsCreateDryRun: proves `+form-questions-create` preserves its POST body and renders the existing-question guard in command help.
 - TestBaseFormDetailDryRun / TestBaseFormSubmitDryRun: prove shared-form detail and submission request shapes.
+- TestBaseFormQueryPageDryRun / TestBaseFormDisplaySettingsDryRun / TestBaseFormShareQRCodeDryRun: prove the six form sub-resource shortcuts' method, URL and body — empty create body vs. `query_view_id` restore, `revision` sent only when passed (including `0`), the shared share-qrcode GET, and local rejection of a blank `--query-view-id`, an unknown `--display-mode` and an out-of-allowlist `--output` before any request. TestBaseFormSubmitTimezoneDryRun proves `--timezone` becomes `client_timezone` only when passed and that non-IANA names are rejected locally.
+- Blocked area: live coverage for query-page / display-settings / share-qrcode waits on a confirmed deployment signal for those OpenAPIs; see the note at the top of base_form_subresource_dryrun_test.go.
 - TestBaseDashboardBlockGetDataDryRun: proves dashboard block data request shapes and identifier handling.
 - TestBaseDashboardBlockLayoutPrecisionWorkflow: creates a temporary Base/table/dashboard, creates a statistics block with `position` and omitted `number_format`, asserts the server default, updates to a custom format, then verifies a precision-only update preserves `formatName`, and cleans up the block/dashboard/base. `+dashboard-create`, `+dashboard-delete`, `+dashboard-block-get` and `+dashboard-block-delete` have no dry-run coverage and rest on this test alone. This workflow was executed successfully against a live tenant on 2026-08-20 while validating PR #2118.
 - TestBaseDashboardBlockRankingCreateDryRun / TestBaseDashboardBlockRankingUpdateDryRunPreservesPatch / TestBaseDashboardBlockRankingDryRunRejectsInvalidConfig: prove ranking create defaults, top-level patch preservation, and typed validation failures for unsupported fields and malformed filters.
@@ -75,16 +77,22 @@
 | ✕ | base +field-update | shortcut |  | none | field workflows not covered |
 | ✕ | base +form-create | shortcut |  | none | form workflows not covered |
 | ✕ | base +form-delete | shortcut |  | none | form workflows not covered |
+| ✓ | base +form-display-settings-get | shortcut | base_form_subresource_dryrun_test.go::TestBaseFormDisplaySettingsDryRun/get | `--base-token`; `--table-id`; `--form-id`; dry-run only | request shape only; live blocked on deployment signal |
+| ✓ | base +form-display-settings-update | shortcut | base_form_subresource_dryrun_test.go::TestBaseFormDisplaySettingsDryRun | `--display-mode`; optional `--revision` (incl. `0`); dry-run only | PATCH body, revision omission, enum rejection; live blocked on deployment signal |
 | ✓ | base +form-detail | shortcut | base_form_detail_dryrun_test.go::TestBaseFormDetailDryRun | `--share-token`; dry-run only | shared-form request shape |
 | ✕ | base +form-get | shortcut |  | none | form workflows not covered |
+| ✓ | base +form-query-page-create | shortcut | base_form_subresource_dryrun_test.go::TestBaseFormQueryPageDryRun | no `--query-view-id` (body `{}`); `--query-view-id`; blank id; dry-run only | create vs. restore body and blank-id rejection; live blocked on deployment signal |
+| ✓ | base +form-query-page-get | shortcut | base_form_subresource_dryrun_test.go::TestBaseFormQueryPageDryRun/get | `--base-token`; `--table-id`; `--form-id`; dry-run only | request shape only; live blocked on deployment signal |
 | ✓ | base +form-list | shortcut | base_form_detail_dryrun_test.go::TestBaseFormListDryRun_UsesBaseAndTableIdentifiers | `--base-token`; `--table-id`; dry-run only | request shape only |
 | ✓ | base +form-share-get | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/form get; base_share_workflow_test.go::TestBaseShareWorkflow/form share update and get | `--base-token`; `--table-id`; `--form-id`; dry-run + deployment-gated live | live requires `LARK_CLI_E2E_BASE_SHARE_READY=1` |
+| ✓ | base +form-share-qrcode-download | shortcut | base_form_subresource_dryrun_test.go::TestBaseFormShareQRCodeDryRun | `--output`; `--overwrite`; out-of-allowlist `--output`; dry-run only | shared GET and dry-run `--output` rejection; write path covered by shortcuts/base unit tests |
+| ✓ | base +form-share-qrcode-get | shortcut | base_form_subresource_dryrun_test.go::TestBaseFormShareQRCodeDryRun/get | `--base-token`; `--table-id`; `--form-id`; dry-run only | request shape only; live needs share enabled and a deployment signal |
 | ✓ | base +form-share-update | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/form settings update; base_share_workflow_test.go::TestBaseShareWorkflow/form share update and get | one of share enablement; `access-scope=invite`; anonymous/login settings per request | single-field updates, login-plus-anonymous across separate requests, explicit false, and live read-back covered |
 | ✓ | base +form-questions-create | shortcut | TestBaseFormQuestionsCreateVisibleRuleDryRun; base_form_questions_create_dryrun_test.go | questions[].visible_rule; dry-run | request body, visible_rule passthrough, and help guard covered |
 | ✓ | base +form-questions-delete | shortcut | base_form_questions_dryrun_test.go::TestBaseFormQuestionsDeleteDefaultDryRun; TestBaseFormQuestionsDeleteKeepFieldDryRun | `question_ids`; optional `keep_field=true` | default destructive body and opt-in field-preserving body covered |
 | ✕ | base +form-questions-list | shortcut |  | none | form workflows not covered |
 | ✓ | base +form-questions-update | shortcut | TestBaseFormQuestionsUpdateVisibleRuleDryRun | questions[].visible_rule | dry-run: request shape + visible_rule body passthrough |
-| ✓ | base +form-submit | shortcut | base_form_submit_dryrun_test.go::TestBaseFormSubmitDryRun | `--share-token`; `--json`; dry-run only | submission request shape |
+| ✓ | base +form-submit | shortcut | base_form_submit_dryrun_test.go::TestBaseFormSubmitDryRun; base_form_subresource_dryrun_test.go::TestBaseFormSubmitTimezoneDryRun | `--share-token`; `--json`; optional `--timezone`; dry-run only | submission request shape; `client_timezone` only when passed; invalid IANA name rejected |
 | ✕ | base +form-update | shortcut |  | none | form workflows not covered |
 | ✓ | base +record-batch-create | shortcut | base_record_batch_update_workflow_test.go::TestBaseRecordBatchUpdatePerRecordWorkflow | `--base-token`; `--table-id`; `--json.create_records` | seeds heterogeneous live workflow records |
 | ✓ | base +record-batch-update | shortcut | base_record_batch_update_dryrun_test.go::TestBaseRecordBatchUpdatePerRecordDryRun; base_record_batch_update_workflow_test.go::TestBaseRecordBatchUpdatePerRecordWorkflow | `--base-token`; `--table-id`; `--json.update_records`; dry-run + live | heterogeneous select/number update with write-back verification |

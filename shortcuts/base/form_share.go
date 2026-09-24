@@ -9,6 +9,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const formShareSegment = "share"
+
 var formShareUpdateFlagNames = []string{
 	"enabled",
 	"access-scope",
@@ -23,22 +25,15 @@ var BaseFormShareGet = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"base:form:update"},
 	AuthTypes:   authTypes(),
-	Flags: []common.Flag{
-		baseTokenFlag(true),
-		{Name: "table-id", Desc: "table ID", Required: true},
-		{Name: "form-id", Desc: "form ID", Required: true},
-	},
+	Flags:       formRefFlags(),
 	DryRun: func(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().
-			GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/share").
-			Set("base_token", runtime.Str("base-token")).
-			Set("table_id", runtime.Str("table-id")).
-			Set("form_id", runtime.Str("form-id"))
+		return setFormRefDryRun(
+			common.NewDryRunAPI().GET(formSubDryRunPath(formShareSegment)),
+			runtime,
+		)
 	},
 	Execute: func(_ context.Context, runtime *common.RuntimeContext) error {
-		data, err := baseV3Call(runtime, "GET", baseV3Path(
-			"bases", runtime.Str("base-token"), "tables", runtime.Str("table-id"), "forms", runtime.Str("form-id"), "share",
-		), nil, nil)
+		data, err := baseV3Call(runtime, "GET", formSubPath(runtime, formShareSegment), nil, nil)
 		if err != nil {
 			return err
 		}
@@ -54,15 +49,12 @@ var BaseFormShareUpdate = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"base:form:update"},
 	AuthTypes:   authTypes(),
-	Flags: []common.Flag{
-		baseTokenFlag(true),
-		{Name: "table-id", Desc: "table ID", Required: true},
-		{Name: "form-id", Desc: "form ID", Required: true},
-		{Name: "enabled", Type: "bool", Desc: "enable or disable form sharing"},
-		{Name: "access-scope", Desc: "share access scope", Enum: shareAccessScopeEnums},
-		{Name: "allow-anonymous", Type: "bool", Desc: "anonymize the submitter identity"},
-		{Name: "require-login", Type: "bool", Desc: "require submitters to sign in before submitting"},
-	},
+	Flags: append(formRefFlags(),
+		common.Flag{Name: "enabled", Type: "bool", Desc: "enable or disable form sharing"},
+		common.Flag{Name: "access-scope", Desc: "share access scope", Enum: shareAccessScopeEnums},
+		common.Flag{Name: "allow-anonymous", Type: "bool", Desc: "anonymize the submitter identity"},
+		common.Flag{Name: "require-login", Type: "bool", Desc: "require submitters to sign in before submitting"},
+	),
 	Tips: []string{
 		"Boolean settings use PATCH semantics: pass --allow-anonymous=false or another boolean flag with =false to explicitly turn it off.",
 		"--allow-anonymous controls submitter identity and --require-login controls sign-in; run separate update commands to change both settings.",
@@ -72,17 +64,16 @@ var BaseFormShareUpdate = common.Shortcut{
 		return validateFormShareUpdate(runtime)
 	},
 	DryRun: func(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().
-			PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/share").
-			Body(buildFormShareUpdateBody(runtime)).
-			Set("base_token", runtime.Str("base-token")).
-			Set("table_id", runtime.Str("table-id")).
-			Set("form_id", runtime.Str("form-id"))
+		return setFormRefDryRun(
+			common.NewDryRunAPI().
+				PATCH(formSubDryRunPath(formShareSegment)).
+				Body(buildFormShareUpdateBody(runtime)),
+			runtime,
+		)
 	},
 	Execute: func(_ context.Context, runtime *common.RuntimeContext) error {
-		data, err := baseV3Call(runtime, "PATCH", baseV3Path(
-			"bases", runtime.Str("base-token"), "tables", runtime.Str("table-id"), "forms", runtime.Str("form-id"), "share",
-		), nil, buildFormShareUpdateBody(runtime))
+		data, err := baseV3Call(runtime, "PATCH", formSubPath(runtime, formShareSegment),
+			nil, buildFormShareUpdateBody(runtime))
 		if err != nil {
 			return err
 		}

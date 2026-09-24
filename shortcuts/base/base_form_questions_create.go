@@ -26,7 +26,7 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		{Name: "base-token", Desc: "Base token (base_token)", Required: true},
 		{Name: "table-id", Desc: "table ID", Required: true},
 		{Name: "form-id", Desc: "form ID", Required: true},
-		{Name: "questions", Desc: `questions JSON array, max 10 items. Supports two shapes: create a new field question with "title"(field title) and "type"(text/number/select/datetime/user/attachment/location), or add an existing field as a question with "use_existing_field":true and "field_id"(field ID/name). Optional form fields: "description"(plain text or markdown link like [text](https://example.com)),"required","option_display_mode"(0=dropdown/1=vertical/2=horizontal,select only),"visible_rule"(display condition; same shape as view filter {"logic":"and","conditions":[["前序题目","==","是"]]}, field references another question's title/id, empty/absent = always shown). New field questions also support "multiple","options","style". E.g. '[{"type":"text","title":"Your name","required":true}]' or '[{"use_existing_field":true,"field_id":"fldEmail","title":"Email"}]'`, Required: true},
+		{Name: "questions", Desc: `questions JSON array, max 10 items. Supports two shapes: create a new field question with "title"(field title) and "type"(text/number/select/datetime/user/attachment/location), or add an existing field as a question with "use_existing_field":true and "field_id"(field ID/name). Optional form fields: "description"(plain text or markdown link like [text](https://example.com)),"required","option_display_mode"(0=dropdown/1=vertical/2=horizontal,select only),"visible_rule"(display condition; same shape as view filter {"logic":"and","conditions":[["前序题目","==","是"]]}, field references another question's title/id, empty/absent = always shown), "input_range_limit"(fill-range rule; object keyed by "type": text_length{min_length?,max_length?} / number_range{min_value?,max_value?} / date_range{earliest?,latest?} where each bound is {"fixed_ms":int} or {"dynamic":{"anchor":today|monday|friday|saturday|sunday|month_start|month_end,"offset_days"?:int}} (mutually exclusive); field names are snake_case only; pass null to clear). New field questions also support "multiple","options","style". E.g. '[{"type":"text","title":"Your name","required":true}]' or '[{"use_existing_field":true,"field_id":"fldEmail","title":"Email"}]'`, Required: true},
 	},
 	Tips: []string{
 		"If the form may already contain questions and has not been checked, run +form-questions-list for the same --base-token, --table-id, and --form-id. A verified empty form can create directly.",
@@ -84,6 +84,9 @@ var BaseFormQuestionsCreate = common.Shortcut{
 	},
 }
 
+// formQuestionsMaxItems 单次提交的题目条数上限，create 与 update 共用同一限制。
+const formQuestionsMaxItems = 10
+
 func parseFormQuestionsCreate(raw string) ([]interface{}, error) {
 	var questions []interface{}
 	if err := json.Unmarshal([]byte(raw), &questions); err != nil {
@@ -92,8 +95,8 @@ func parseFormQuestionsCreate(raw string) ([]interface{}, error) {
 	if questions == nil {
 		return nil, baseValidationErrorf("--questions must be a non-null JSON array")
 	}
-	if len(questions) > 10 {
-		return nil, baseValidationErrorf("--questions must contain at most 10 items")
+	if len(questions) > formQuestionsMaxItems {
+		return nil, baseValidationErrorf("--questions must contain at most %d items", formQuestionsMaxItems)
 	}
 	for i, question := range questions {
 		item, ok := question.(map[string]interface{})
@@ -116,5 +119,27 @@ func parseFormQuestionsCreate(raw string) ([]interface{}, error) {
 			return nil, baseValidationErrorf("--questions item %d must include a non-empty string \"type\"", i+1)
 		}
 	}
+	if err := validateQuestionsInputRangeLimit(questions); err != nil {
+		return nil, err
+	}
 	return questions, nil
+}
+
+// validateQuestionsInputRangeLimit 对每个题目上的 input_range_limit 做结构校验。
+// create 与 update 共用同一套规则结构，传 null 清除限制两条命令都接受。
+func validateQuestionsInputRangeLimit(questions []interface{}) error {
+	for i, question := range questions {
+		item, ok := question.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		raw, ok := item["input_range_limit"]
+		if !ok {
+			continue
+		}
+		if err := validateInputRangeLimit(fmt.Sprintf("--questions item %d", i+1), raw); err != nil {
+			return err
+		}
+	}
+	return nil
 }

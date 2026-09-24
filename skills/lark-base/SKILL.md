@@ -254,9 +254,15 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 1. **读取 Table 中的表单配置：** 使用 `+form-list` / `+form-get` 读取表单，使用 `+form-questions-list` 读取题目配置；这些命令使用表单所属的 `base_token + table_id`。
 2. **创建或修改 Table 中的表单配置：** 使用 `+form-create` / `+form-update` / `+form-delete` 管理表单；题目由 Table Field 承载，question ID 对应 `field_id`，创建和更新分别读取 [questions create](references/lark-base-form-questions-create.md) / [questions update](references/lark-base-form-questions-update.md)，删除使用 `+form-questions-delete`。
-3. **调整表单题目显隐和顺序：** Form 在 `visible_fields` 接口中作为 View，`form_id` 传给 `--view-id`。用 `+view-get-visible-fields` 读取当前可见题目，再用 `+view-set-visible-fields` 提交最终需要展示的完整有序题目 ID 列表；省略当前可见题目会隐藏它，加入已有隐藏 Form 成员会重新展示，空列表会隐藏全部题目。目标只能包含已有 Form 成员；仍显示题目的 `visible_rule` 只能引用位于它之前的可见题目。
-4. **管理表单分享：** 使用 `+form-share-get` / `+form-share-update` 管理启停、访问范围和匿名/登录要求；更新前先读取现状，每次只修改一个字段，布尔值显式传 `true` 或 `false`。
-5. **填写分享表单并提交：** 对表单分享链接使用 `+url-resolve` 取得 `share_token`，按 [Form detail](references/lark-base-form-detail.md) 执行 `+form-detail` 读取真实题目、必填项和显示条件，再按 [Form submit](references/lark-base-form-submit.md) 构造字段与附件并执行 `+form-submit`。
+3. **调整表单题目显隐和顺序：** Form 在 `visible_fields` 接口中作为 View，`form_id` 传给 `--view-id`；用 `+view-get-visible-fields` 读、`+view-set-visible-fields` 写。提交语义、回读核验与题序调整步骤读取 [questions update](references/lark-base-form-questions-update.md) 的「调整题目顺序」一节。
+4. **设置题目输入范围限制：** 题目支持限制填写的字数、数值区间和可选日期区间，配置项是题目上的 `input_range_limit`，写在 `+form-questions-create` / `+form-questions-update` 的 `--questions` 里。三类 `type` 的字段名、相对日期与固定日期的写法，构造 JSON 前读取 [questions create](references/lark-base-form-questions-create.md) 的「`input_range_limit` 输入范围限制」一节。
+5. **管理表单分享：** 表单可以开启/关闭分享，并控制谁能填写（组织内 / 任何人）、是否允许匿名、是否要求登录。读写用 `+form-share-get` / `+form-share-update`，字段含义、命令写法、访问范围取值与回读验收读取 [Form share](references/lark-base-form-share.md)。
+6. **填写分享表单并提交：** 对表单分享链接使用 `+url-resolve` 取得 `share_token`，按 [Form detail](references/lark-base-form-detail.md) 执行 `+form-detail` 读取真实题目、必填项和显示条件，再按 [Form submit](references/lark-base-form-submit.md) 构造字段与附件并执行 `+form-submit`。
+7. **配置提交后回查（查询页）：** 表单可以配一个查询入口，让填写人提交后凭自己的提交记录回查、修改已填内容。读写用 `+form-query-page-get` / `+form-query-page-create`，创建流程与失败后的恢复方式读取 [Form query page](references/lark-base-form-query-page.md)。
+8. **切换填写页布局：** 填写页支持两种模式——题目列表（默认，一页展示全部题目，信息密度高、便于通览和回改）和一页一题（每屏只显示一道题，减少长表单的压迫感，移动端填写和逐题引导更友好），适合不同风格的收集场景。读写用 `+form-display-settings-get` / `+form-display-settings-update --display-mode`，取值与使用方法读取 [Form display settings](references/lark-base-form-display-settings.md)。
+9. **获取分享二维码：** 表单的分享入口除链接外还有二维码，便于线下张贴或群内扫码填写。用 `+form-share-qrcode-get` 查看二维码结构（响应含 `share_url` 与 base64 图片），用 `+form-share-qrcode-download` 把二维码存成 PNG 文件；只要分享链接本身用第 5 条的 `+form-share-get`。具体用法读取 [Form share QR code](references/lark-base-form-share-qrcode.md)。
+
+上面几条是相互独立的能力，选错命令会答非所问：题目显隐和顺序只在第 3 条，输入范围限制只在第 4 条，分享开关和访问范围只在第 5 条，回查入口只在第 7 条，填写页布局只在第 8 条，二维码只在第 9 条；`+form-update` 不负责其中任何一项。
 
 表单题目和字段的关系：
 
