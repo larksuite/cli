@@ -36,7 +36,7 @@ var SearchTask = common.Shortcut{
 		{Name: "creator", Desc: "creator open_ids, comma-separated"},
 		{Name: "assignee", Desc: "assignee open_ids, comma-separated"},
 		{Name: "completed", Type: "bool", Desc: "set true for completed or false for incomplete tasks"},
-		{Name: "due", Desc: "due time range: start,end (supports ISO/date/relative/ms)"},
+		{Name: "due", Desc: "due time range: start,end (ISO/date/relative/Unix seconds/milliseconds with 13+ digits)"},
 		{Name: "follower", Desc: "follower open_ids, comma-separated"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
