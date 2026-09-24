@@ -27,13 +27,14 @@ const (
 )
 
 var ImMessagesSearch = common.Shortcut{
-	Service:     "im",
-	Command:     "+messages-search",
-	Description: "Search messages across chats (supports keyword, sender, time range filters) with user or bot identity; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
-	Risk:        "read",
-	Scopes:      []string{"search:message", "im:message.reactions:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "im",
+	Command:           "+messages-search",
+	Description:       "Search messages across chats (supports keyword, sender, time range filters) with user or bot identity; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
+	Risk:              "read",
+	Scopes:            []string{"search:message"},
+	ConditionalScopes: []string{messageReactionReadScope},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		{Name: "query", Aliases: []string{"keyword"}, Desc: "search keyword"},
 		{Name: "chat-id", Desc: "limit to chat IDs, comma-separated"},
@@ -83,8 +84,10 @@ var ImMessagesSearch = common.Shortcut{
 		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		_, err := buildMessagesSearchRequest(runtime)
-		return err
+		if _, err := buildMessagesSearchRequest(runtime); err != nil {
+			return err
+		}
+		return ensureMessageReactionScope(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		req, err := buildMessagesSearchRequest(runtime)
