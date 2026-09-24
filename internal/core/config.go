@@ -45,6 +45,7 @@ type AppConfig struct {
 	Lang       i18n.Lang   `json:"lang,omitempty"`
 	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
 	StrictMode *StrictMode `json:"strictMode,omitempty"`
+	DPoPMode   DPoPMode    `json:"dpopMode,omitempty"`
 	Users      []AppUser   `json:"users"`
 }
 
@@ -55,6 +56,22 @@ func (a *AppConfig) ProfileName() string {
 		return a.Name
 	}
 	return a.AppId
+}
+
+// EffectiveDPoPMode resolves the local credential policy.
+func (c *AppConfig) EffectiveDPoPMode() (DPoPMode, error) {
+	if c == nil {
+		return DPoPModePreferred, nil
+	}
+	if c.DPoPMode == "" {
+		return DPoPModePreferred, nil
+	}
+	return ParseDPoPMode(string(c.DPoPMode))
+}
+
+// SetDPoPMode stores the canonical three-state policy.
+func (c *AppConfig) SetDPoPMode(mode DPoPMode) {
+	c.DPoPMode = mode
 }
 
 // MultiAppConfig is the multi-app config file format.
@@ -187,6 +204,8 @@ type CliConfig struct {
 	UserOpenId          string
 	UserName            string
 	Lang                i18n.Lang
+	DPoPMode            DPoPMode
+	CredentialSource    CredentialSource
 	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 }
 
@@ -238,6 +257,19 @@ func LoadMultiAppConfig() (*MultiAppConfig, error) {
 
 // SaveMultiAppConfig saves config to disk.
 func SaveMultiAppConfig(config *MultiAppConfig) error {
+	if config == nil {
+		return errors.New("cannot save nil config")
+	}
+	for i := range config.Apps {
+		if config.Apps[i].DPoPMode == "" {
+			continue
+		}
+		mode, err := config.Apps[i].EffectiveDPoPMode()
+		if err != nil {
+			return err
+		}
+		config.Apps[i].SetDPoPMode(mode)
+	}
 	dir := GetConfigDir()
 	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return err
@@ -275,11 +307,15 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	if err != nil {
 		return nil, err
 	}
+	dpopMode, err := app.EffectiveDPoPMode()
+	if err != nil {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "%s", err.Error()).WithCause(err)
+	}
 
-	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
+	if validateErr := ValidateSecretKeyMatch(app.AppId, app.AppSecret); validateErr != nil {
 		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "appId and appSecret keychain key are out of sync").
-			WithHint("%s", err.Error()).
-			WithCause(err)
+			WithHint("%s", validateErr.Error()).
+			WithCause(validateErr)
 	}
 
 	secret, err := ResolveSecretInput(app.AppSecret, kc)
@@ -294,12 +330,14 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
 	}
 	cfg := &CliConfig{
-		ProfileName: app.ProfileName(),
-		AppID:       app.AppId,
-		AppSecret:   secret,
-		Brand:       ParseBrand(string(app.Brand)),
-		Lang:        app.Lang,
-		DefaultAs:   app.DefaultAs,
+		ProfileName:      app.ProfileName(),
+		AppID:            app.AppId,
+		AppSecret:        secret,
+		Brand:            ParseBrand(string(app.Brand)),
+		Lang:             app.Lang,
+		DefaultAs:        app.DefaultAs,
+		DPoPMode:         dpopMode,
+		CredentialSource: CredentialSourceLocal,
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId

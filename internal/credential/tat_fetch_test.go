@@ -5,16 +5,27 @@ package credential
 
 import (
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/dpop"
+	"github.com/larksuite/cli/internal/keysigner"
 )
+
+var invalidProofTATResponse = `{"code":` + strconv.Itoa(dpop.ClockSkewErrorCode) + `,"error":"` + dpop.InvalidProofOAuthError + `"}`
 
 // stubRoundTripper lets us assert request shape and return canned responses.
 type stubRoundTripper struct {
@@ -46,6 +57,110 @@ func (s *stubRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	}, nil
 }
 
+type tatRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f tatRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type tatDPoPMetadata map[string]string
+
+func (m tatDPoPMetadata) Get(_, account string) (string, error) { return m[account], nil }
+func (m tatDPoPMetadata) Set(_, account, value string) error {
+	m[account] = value
+	return nil
+}
+func (m tatDPoPMetadata) Remove(_, account string) error {
+	delete(m, account)
+	return nil
+}
+
+func newTATDPoPStore(t *testing.T) *dpop.KeyStore {
+	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	signer, err := keysigner.NewSoftwareSigner(t.TempDir(), func(context.Context) ([]byte, error) {
+		return []byte("0123456789abcdef0123456789abcdef"), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dpop.NewKeyStoreWithSigner(tatDPoPMetadata{}, signer)
+}
+
+type tatTestSigner struct {
+	keys      map[string]*ecdsa.PrivateKey
+	signErr   error
+	deleteErr error
+}
+
+func newTATTestSigner() *tatTestSigner {
+	return &tatTestSigner{keys: map[string]*ecdsa.PrivateKey{}}
+}
+
+func (*tatTestSigner) Name() string { return "tat-test" }
+
+func (*tatTestSigner) SecurityLevel() keysigner.SecurityLevel {
+	return keysigner.SecurityLevelL3
+}
+
+func (s *tatTestSigner) EnsureKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s.keys[ref.Label] == nil {
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+		s.keys[ref.Label] = key
+	}
+	return &s.keys[ref.Label].PublicKey, nil
+}
+
+func (s *tatTestSigner) PublicKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	key := s.keys[ref.Label]
+	if key == nil {
+		return nil, keysigner.ErrKeyNotFound
+	}
+	return &key.PublicKey, nil
+}
+
+func (s *tatTestSigner) Sign(ctx context.Context, ref keysigner.KeyRef, input []byte) ([]byte, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	if s.signErr != nil && !strings.HasPrefix(ref.Label, "probe-") {
+		return nil, "", s.signErr
+	}
+	key := s.keys[ref.Label]
+	if key == nil {
+		return nil, "", keysigner.ErrKeyNotFound
+	}
+	digest := sha256.Sum256(input)
+	r, value, err := ecdsa.Sign(rand.Reader, key, digest[:])
+	if err != nil {
+		return nil, "", err
+	}
+	signature := make([]byte, 64)
+	r.FillBytes(signature[:32])
+	value.FillBytes(signature[32:])
+	return signature, keysigner.AlgES256, nil
+}
+
+func (s *tatTestSigner) DeleteKey(ctx context.Context, ref keysigner.KeyRef) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.deleteErr != nil {
+		return errors.Join(keysigner.ErrCleanupFailed, s.deleteErr)
+	}
+	delete(s.keys, ref.Label)
+	return nil
+}
+
 func TestFetchTAT_Success(t *testing.T) {
 	const statusMessage = "Some scopes were silently trimmed"
 	rt := &stubRoundTripper{
@@ -54,12 +169,12 @@ func TestFetchTAT_Success(t *testing.T) {
 	}
 	hc := &http.Client{Transport: rt}
 
-	result, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	token, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.AccessToken != "t-abc" || result.StatusMessage != statusMessage {
-		t.Errorf("result = (%q, %q), want token and status message", result.AccessToken, result.StatusMessage)
+	if token.AccessToken != "t-abc" || token.StatusMessage != statusMessage {
+		t.Errorf("result = (%q, %q), want token and status message", token.AccessToken, token.StatusMessage)
 	}
 	if rt.gotReq.URL.String() != "https://accounts.feishu.cn/oauth/v3/token" {
 		t.Errorf("url = %s", rt.gotReq.URL.String())
@@ -75,6 +190,221 @@ func TestFetchTAT_Success(t *testing.T) {
 	}
 }
 
+func TestFetchTATDPoPPolicyAndKeyLifetime(t *testing.T) {
+	heartbeat := `{"code":0,"data":{"now":"` + strconv.FormatInt(time.Now().Unix(), 10) + `"}}`
+	for _, tc := range []struct {
+		name           string
+		mode           core.DPoPMode
+		heartbeat      string
+		wantDPoP       bool
+		wantTokenCalls int
+		wantErrSubtype errs.Subtype
+	}{
+		{name: "required", mode: core.DPoPModeRequired, heartbeat: heartbeat, wantDPoP: true, wantTokenCalls: 1},
+		{name: "preferred clock failure keeps DPoP", mode: core.DPoPModePreferred, heartbeat: `{}`, wantDPoP: true, wantTokenCalls: 1},
+		{name: "required clock failure", mode: core.DPoPModeRequired, heartbeat: `{}`, wantDPoP: true, wantTokenCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newTATDPoPStore(t)
+			var heartbeatCalls, tokenCalls int
+			client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				body := tc.heartbeat
+				switch req.URL.Path {
+				case dpop.HeartbeatPath:
+					heartbeatCalls++
+					if req.Header.Get(dpop.ProofHeader) != "" {
+						t.Fatal("clock synchronization sent a DPoP proof")
+					}
+				case core.OAuthTokenV3Path:
+					tokenCalls++
+					hasProof := req.Header.Get(dpop.ProofHeader) != ""
+					if hasProof != tc.wantDPoP {
+						t.Fatalf("token request proof present = %v, want %v", hasProof, tc.wantDPoP)
+					}
+					tokenType := "Bearer"
+					if tc.wantDPoP {
+						tokenType = dpop.TokenType
+					}
+					body = `{"code":0,"access_token":"tenant-token","token_type":"` + tokenType + `","expires_in":7200}`
+				default:
+					t.Fatalf("unexpected request path %q", req.URL.Path)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Request:    req,
+				}, nil
+			})}
+
+			token, err := fetchTAT(context.Background(), client, core.BrandFeishu,
+				"cli-dpop", "secret", tc.mode, store)
+			if tc.wantErrSubtype != "" {
+				problem, ok := errs.ProblemOf(err)
+				if token != nil || !ok || problem.Subtype != tc.wantErrSubtype || tokenCalls != 0 {
+					t.Fatalf("fetchTAT() = (%+v, %v), token calls = %d", token, err, tokenCalls)
+				}
+				return
+			}
+			if err != nil || token == nil || (token.DPoP != nil) != tc.wantDPoP ||
+				heartbeatCalls != 1 || tokenCalls != tc.wantTokenCalls {
+				t.Fatalf("fetchTAT() = (%+v, %v), heartbeat=%d token=%d", token, err, heartbeatCalls, tokenCalls)
+			}
+			if (token.clockSyncErr != nil) != (tc.heartbeat == `{}`) {
+				t.Fatal("clock synchronization warning was lost")
+			}
+			keyID := tatDPoPKeyID(core.BrandFeishu, "cli-dpop") + "-" + keysigner.SoftwareSignerName
+			_, loadErr := store.LoadContext(context.Background(), keyID)
+			if tc.wantDPoP && loadErr != nil {
+				t.Fatalf("committed DPoP key was not retained: %v", loadErr)
+			}
+			if !tc.wantDPoP && !errors.Is(loadErr, dpop.ErrKeyNotFound) {
+				t.Fatalf("uncommitted fallback key was retained: %v", loadErr)
+			}
+		})
+	}
+}
+
+func TestRequestTATRecoversClockOnceAndRejectsBindingDowngrade(t *testing.T) {
+	store := newTATDPoPStore(t)
+	key, err := store.EnsureContext(context.Background(), "clock-recovery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveContext(context.Background(), key); err != nil {
+		t.Fatal(err)
+	}
+	serverTime := time.Now().Add(2 * time.Minute).UTC().Format(http.TimeFormat)
+	var proofs []string
+	client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		proofs = append(proofs, req.Header.Get(dpop.ProofHeader))
+		body := invalidProofTATResponse
+		header := http.Header{"Date": []string{serverTime}}
+		if len(proofs) == 2 {
+			body = `{"code":0,"access_token":"tenant-token","token_type":"DPoP","expires_in":7200}`
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     header,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	})}
+	token, err := requestTAT(context.Background(), client, core.BrandFeishu,
+		"cli-dpop", "secret", key, store, nil, false, 0)
+	if err != nil || token == nil || token.DPoP == nil || len(proofs) != 2 ||
+		proofs[0] == "" || proofs[0] == proofs[1] || key.Clock().State().SyncedAtMillis == 0 {
+		t.Fatalf("clock recovery = (%+v, %v), proofs=%d state=%+v", token, err, len(proofs), key.Clock().State())
+	}
+
+	for _, tc := range []struct {
+		name      string
+		tokenType string
+		key       *dpop.Key
+		subtype   errs.Subtype
+	}{
+		{name: "proof cannot yield bearer", tokenType: "Bearer", key: key, subtype: errs.SubtypeDPoPRequired},
+		{name: "unbound request cannot accept DPoP", tokenType: dpop.TokenType, subtype: errs.SubtypeDPoPKeyMissing},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				body := `{"code":0,"access_token":"tenant-token","token_type":"` + tc.tokenType + `","expires_in":7200}`
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header),
+					Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+			})}
+			token, err := requestTAT(context.Background(), client, core.BrandFeishu,
+				"cli-dpop", "secret", tc.key, store, nil, false, 0)
+			problem, ok := errs.ProblemOf(err)
+			if token != nil || !ok || problem.Subtype != tc.subtype {
+				t.Fatalf("requestTAT() = (%+v, %v), want %s", token, err, tc.subtype)
+			}
+		})
+	}
+}
+
+func TestFetchTATAcceptsBearerTokenTypeInPreferred(t *testing.T) {
+	store := newTATDPoPStore(t)
+	var heartbeatCalls, tokenCalls int
+	client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"code":0,"data":{"now":"` + strconv.FormatInt(time.Now().Unix(), 10) + `"}}`
+		switch req.URL.Path {
+		case dpop.HeartbeatPath:
+			heartbeatCalls++
+		case core.OAuthTokenV3Path:
+			tokenCalls++
+			if req.Header.Get(dpop.ProofHeader) == "" {
+				t.Fatal("DPoP request omitted proof before Bearer downgrade")
+			}
+			body = `{"code":0,"access_token":"bearer-token","token_type":"Bearer","expires_in":7200}`
+		default:
+			t.Fatalf("unexpected request path %q", req.URL.Path)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	})}
+
+	token, err := fetchTAT(context.Background(), client, core.BrandFeishu, "server-bearer", "secret", core.DPoPModePreferred, store)
+	if err != nil || token == nil || token.AccessToken != "bearer-token" || token.DPoP != nil || token.proofFallback {
+		t.Fatalf("fetchTAT server Bearer downgrade = (%+v, %v)", token, err)
+	}
+	if heartbeatCalls != 1 || tokenCalls != 1 {
+		t.Fatalf("requests: heartbeat=%d token=%d", heartbeatCalls, tokenCalls)
+	}
+	keyID := tatDPoPKeyID(core.BrandFeishu, "server-bearer") + "-" + keysigner.SoftwareSignerName
+	if _, err := store.LoadContext(context.Background(), keyID); !errors.Is(err, dpop.ErrKeyNotFound) {
+		t.Fatalf("uncommitted key was retained after Bearer downgrade: %v", err)
+	}
+}
+
+func TestFetchTATProofFailureBeforeRequestFallsBack(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		signErr   error
+		deleteErr error
+	}{
+		{name: "unavailable", signErr: keysigner.ErrUnavailable},
+		{name: "hard failure", signErr: errors.New("sign denied")},
+		{name: "hard failure with cleanup failure", signErr: errors.New("sign denied"), deleteErr: errors.New("cleanup denied")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			signer := newTATTestSigner()
+			signer.signErr = tc.signErr
+			signer.deleteErr = tc.deleteErr
+			store := dpop.NewKeyStoreWithSigner(tatDPoPMetadata{}, signer)
+			tokenCalls := 0
+			client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				body := `{"code":0,"data":{"now":"` + strconv.FormatInt(time.Now().Unix(), 10) + `"}}`
+				if req.URL.Path == core.OAuthTokenV3Path {
+					tokenCalls++
+					if req.Header.Get(dpop.ProofHeader) != "" {
+						t.Fatal("fallback request carried proof")
+					}
+					body = `{"code":0,"access_token":"bearer-token","expires_in":7200,"token_type":"Bearer"}`
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Request:    req,
+				}, nil
+			})}
+
+			token, err := fetchTAT(context.Background(), client, core.BrandFeishu, "proof-failure", "secret", core.DPoPModePreferred, store)
+			if err != nil || token == nil || token.AccessToken != "bearer-token" || token.DPoP != nil || token.proofFallback {
+				t.Fatalf("fetchTAT proof failure fallback = (%+v, %v)", token, err)
+			}
+			if tokenCalls != 1 {
+				t.Fatalf("token requests = %d, want one Bearer fallback request", tokenCalls)
+			}
+		})
+	}
+}
+
 // invalid_client (wrong app_id/app_secret on the client_credentials grant) is a
 // deterministic client-side rejection that FetchTAT routes to
 // classifyTATResponseCode as CategoryConfig / SubtypeInvalidClient — the same
@@ -85,12 +415,12 @@ func TestFetchTAT_InvalidClient_ConfigInvalidClient(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"error":"invalid_client","error_description":"The client secret is invalid.","code":20002}`}
 	hc := &http.Client{Transport: rt}
 
-	result, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	token, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for invalid_client")
 	}
-	if result.AccessToken != "" {
-		t.Errorf("token = %q, want empty", result.AccessToken)
+	if token != nil {
+		t.Errorf("token = %+v, want nil", token)
 	}
 	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
@@ -112,7 +442,7 @@ func TestFetchTAT_OtherClientError_Typed(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"code":20068,"error":"invalid_scope","error_description":"unauthorized scope"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for invalid_scope")
 	}
@@ -126,19 +456,19 @@ func TestFetchTAT_OtherClientError_Typed(t *testing.T) {
 }
 
 // A deterministic OAuth error that arrives WITHOUT a numeric code (code defaults to
-// 0) must still surface as a non-nil typed error — never the ("", nil) success pair.
+// 0) must still surface as a non-nil typed error — never the (nil, nil) success pair.
 // Guards the code-0 backstop in classifyTATResponseCode: BuildAPIError returns nil
 // for code 0, which would otherwise swallow this rejection into an empty-token success.
 func TestFetchTAT_OtherClientError_CodeZero_Typed(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"error":"invalid_scope","error_description":"the requested scope is not granted"}`}
 	hc := &http.Client{Transport: rt}
 
-	result, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	tok, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected non-nil error for code-0 invalid_scope (must not return empty token + nil error)")
 	}
-	if result.AccessToken != "" {
-		t.Errorf("token = %q, want empty", result.AccessToken)
+	if tok != nil {
+		t.Errorf("token = %+v, want nil", tok)
 	}
 	if !errs.IsTyped(err) {
 		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
@@ -152,7 +482,7 @@ func TestFetchTAT_LarkStyleMsg_FallsBackOnTypedError(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"code":99999,"msg":"app ticket invalid"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for {code, msg} response")
 	}
@@ -171,7 +501,7 @@ func TestFetchTAT_ServerError_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 500, respBody: `{"code":20050,"error":"server_error","error_description":"please retry"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for server_error")
 	}
@@ -221,7 +551,7 @@ func TestFetchTAT_HTTP429_TypedRateLimit(t *testing.T) {
 			}
 			hc := &http.Client{Transport: rt}
 
-			_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+			_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 			var apiErr *errs.APIError
 			if !errors.As(err, &apiErr) {
 				t.Fatalf("HTTP 429 error = %T %v, want *errs.APIError", err, err)
@@ -248,7 +578,7 @@ func TestFetchTAT_OAuthSlowDown_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 200, respBody: `{"error":"slow_down","error_description":"polling too fast"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for slow_down")
 	}
@@ -264,7 +594,7 @@ func TestFetchTAT_HTTPNon200_Untyped(t *testing.T) {
 	for _, code := range []int{401, 403, 500, 503} {
 		rt := &stubRoundTripper{respCode: code, respBody: `whatever`}
 		hc := &http.Client{Transport: rt}
-		_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+		_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 		if err == nil {
 			t.Fatalf("HTTP %d: expected error", code)
 		}
@@ -279,7 +609,7 @@ func TestFetchTAT_TransportError_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{err: sentinel}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -295,7 +625,7 @@ func TestFetchTAT_ParseError_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 200, respBody: `not json`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected parse error")
 	}
@@ -314,9 +644,9 @@ func TestFetchTAT_BrandRouting(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(string(tc.brand), func(t *testing.T) {
-			rt := &stubRoundTripper{respCode: 200, respBody: `{"code":0,"access_token":"t","token_type":"Bearer"}`}
+			rt := &stubRoundTripper{respCode: 200, respBody: `{"code":0,"access_token":"t","token_type":"Bearer","expires_in":7200}`}
 			hc := &http.Client{Transport: rt}
-			if _, err := FetchTAT(context.Background(), hc, tc.brand, "a", "b"); err != nil {
+			if _, err := FetchTAT(context.Background(), hc, tc.brand, "a", "b", core.DPoPModeDisabled); err != nil {
 				t.Fatal(err)
 			}
 			if got := rt.gotReq.URL.String(); got != tc.wantURL {
@@ -338,7 +668,7 @@ func TestFetchTAT_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // pre-canceled
 
-	_, err := FetchTAT(ctx, hc, core.BrandFeishu, "a", "b")
+	_, err := FetchTAT(ctx, hc, core.BrandFeishu, "a", "b", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for canceled context")
 	}
@@ -361,4 +691,123 @@ func (r *urlRewriteRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	req2.Header = req.Header
 	return http.DefaultTransport.RoundTrip(req2)
+}
+
+func TestFetchTATRepeatedProofFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		mode       core.DPoPMode
+		responses  []string
+		cancel     bool
+		wantBearer bool
+		wantError  bool
+	}{
+		{"preferred", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "Bearer"}, false, true, false},
+		{"without Date", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "Bearer"}, false, true, false},
+		{"required", core.DPoPModeRequired, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError}, false, false, true},
+		{"recovered", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, "DPoP"}, false, false, false},
+		{"other rejection", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, "invalid_client"}, false, false, true},
+		{"canceled", core.DPoPModePreferred, []string{dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError, dpop.InvalidProofOAuthError}, true, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newTATDPoPStore(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			calls := 0
+			proofs := map[string]bool{}
+			client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				body := `{"data":{"now":"` + strconv.FormatInt(time.Now().Unix(), 10) + `"}}`
+				if req.URL.Path == core.OAuthTokenV3Path {
+					if calls >= len(tc.responses) {
+						t.Fatal("unexpected extra token request")
+					}
+					response := tc.responses[calls]
+					calls++
+					proof := req.Header.Get(dpop.ProofHeader)
+					if response == "Bearer" {
+						if proof != "" {
+							t.Fatal("Bearer fallback carried proof")
+						}
+						if _, err := store.LoadContext(ctx, tatDPoPKeyID(core.BrandFeishu, "fallback")+"-"+keysigner.SoftwareSignerName); !errors.Is(err, dpop.ErrKeyNotFound) {
+							t.Fatalf("key not rolled back before fallback: %v", err)
+						}
+					} else {
+						if proof == "" || proofs[proof] {
+							t.Fatal("missing or reused proof")
+						}
+						proofs[proof] = true
+					}
+					body = `{"error":"` + response + `","code":` + strconv.Itoa(dpop.ClockSkewErrorCode) + `}`
+					if response == "Bearer" || response == "DPoP" {
+						body = `{"access_token":"token","expires_in":7200,"token_type":"` + response + `"}`
+					}
+					if tc.cancel && calls == len(tc.responses) {
+						cancel()
+					}
+				}
+				header := http.Header{}
+				if tc.name != "without Date" {
+					header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+				} else {
+					body = strings.ReplaceAll(body, `,"code":`+strconv.Itoa(dpop.ClockSkewErrorCode), "")
+				}
+				return &http.Response{StatusCode: 200, Header: header, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+			})}
+			token, err := fetchTAT(ctx, client, core.BrandFeishu, "fallback", "secret", tc.mode, store)
+			if calls != len(tc.responses) || (err != nil) != tc.wantError {
+				t.Fatalf("calls=%d token=%+v err=%v", calls, token, err)
+			}
+			if !tc.wantError && (token == nil || (token.DPoP == nil) != tc.wantBearer || token.proofFallback != tc.wantBearer) {
+				t.Fatalf("unexpected token: %+v", token)
+			}
+		})
+	}
+}
+
+func TestFetchTATCleanupFailureDoesNotBlockBearerFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	signer := newTATTestSigner()
+	store := dpop.NewKeyStoreWithSigner(tatDPoPMetadata{}, signer)
+	calls := 0
+	client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"code":0,"data":{"now":"` + strconv.FormatInt(time.Now().Unix(), 10) + `"}}`
+		if req.URL.Path == core.OAuthTokenV3Path {
+			calls++
+			proof := req.Header.Get(dpop.ProofHeader)
+			switch calls {
+			case 1, 2, 3:
+				if proof == "" {
+					t.Fatal("DPoP retry omitted proof")
+				}
+				body = invalidProofTATResponse
+				if calls == 3 {
+					signer.deleteErr = errors.New("cleanup denied")
+				}
+			case 4:
+				if proof != "" {
+					t.Fatal("Bearer fallback carried proof")
+				}
+				if len(signer.keys) == 0 {
+					t.Fatal("test did not exercise cleanup failure")
+				}
+				body = `{"code":0,"access_token":"bearer-token","expires_in":7200,"token_type":"Bearer"}`
+			default:
+				t.Fatal("unexpected extra token request")
+			}
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Date": []string{time.Now().UTC().Format(http.TimeFormat)}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	})}
+
+	token, err := fetchTAT(context.Background(), client, core.BrandFeishu, "cleanup", "secret", core.DPoPModePreferred, store)
+	if err != nil || token == nil || token.AccessToken != "bearer-token" || token.DPoP != nil || !token.proofFallback {
+		t.Fatalf("fetchTAT cleanup fallback = (%+v, %v)", token, err)
+	}
+	if calls != 4 {
+		t.Fatalf("token requests = %d, want 4", calls)
+	}
 }
