@@ -74,7 +74,10 @@ function readChangedFiles() {
   const baseRef = process.env.GITHUB_BASE_REF || "main";
   try {
     execFileSync("git", ["rev-parse", "--verify", `origin/${baseRef}`], { stdio: "ignore" });
-    return execLines("git", ["diff", "--name-only", `origin/${baseRef}...HEAD`]).map(normalizeRepoPath);
+    return execFileSync("git", ["diff", "--name-only", "-z", `origin/${baseRef}...HEAD`], { encoding: "utf8" })
+      .split("\0")
+      .map(normalizeRepoPath)
+      .filter(Boolean);
   } catch {
     return null;
   }
