@@ -676,10 +676,10 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailboxes.search` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.allow_senders.batch_create` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.allow_senders.batch_remove` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.allow_senders.list` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.allow_senders.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.blocked_senders.batch_create` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.blocked_senders.batch_remove` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.blocked_senders.list` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.blocked_senders.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.drafts.cancel_scheduled_send` | `mail:user_mailbox.message:send` |
 | `user_mailbox.drafts.create` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.drafts.delete` | `mail:user_mailbox.message:modify` |
