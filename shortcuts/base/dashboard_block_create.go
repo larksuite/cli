@@ -24,7 +24,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 		{Name: "name", Desc: "block name", Required: true},
-		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|ranking(排行榜)|statistics(指标卡)|nps(NPS 图)|text(文本). Read lark-base-dashboard-block-config.md before creating.", Required: true},
+		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|ranking(排行榜)|statistics(指标卡)|nps(NPS 图)|pivotTable(透视表)|text(文本). Read lark-base-dashboard-block-config.md before creating.", Required: true},
 		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-config.md for the SSOT"},
 		{Name: "position", Desc: `optional. component position+size in 12-col grid, JSON {"x","y","w","h"}; all four keys required and numeric (position is submitted whole, so a partial object cannot express a complete placement). Advisory bounds x/y>=0, 1<=w<=12 and x+w<=12, h>=1 — coordinate VALUES are not validated locally and pass through as given; the server auto-arranges out-of-range or overlapping positions. Omit for server auto-layout`},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
@@ -61,6 +61,8 @@ var BaseDashboardBlockCreate = common.Shortcut{
 					return errs.NewValidationError(errs.SubtypeInvalidArgument, "nps 类型组件必须提供 data-config，包含必填字段 table_name 与 group_by").WithParam("--data-config")
 				case "ranking":
 					return errs.NewValidationError(errs.SubtypeInvalidArgument, "ranking 类型组件必须提供 data-config").WithParam("--data-config")
+				case "pivottable":
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "pivotTable 类型组件必须提供 data-config，包含必填字段 table_name").WithParam("--data-config")
 				}
 			}
 			return nil
@@ -71,7 +73,11 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		}
 		effective := cfg
 		if !runtime.Bool("no-validate") {
-			effective = normalizeDataConfigForCreate(runtime.Str("type"), cfg)
+			if isPivotTableBlockType(runtime.Str("type")) {
+				effective = normalizePivotTableDataConfig(cfg, true)
+			} else {
+				effective = normalizeDataConfigForCreate(runtime.Str("type"), cfg)
+			}
 			if errs := validateBlockDataConfig(runtime.Str("type"), effective); len(errs) > 0 {
 				return formatDataConfigErrors(errs)
 			}

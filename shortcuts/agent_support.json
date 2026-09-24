@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-22T15:10:00+08:00",
+  "updatedAt": "2026-09-22T17:00:36+08:00",
   "commands": {
     "application +slash-command-create": {
       "agentSupport": "denied"
@@ -496,6 +496,18 @@
     "base +form-list": {
       "agentSupport": "allowed"
     },
+    "base +form-lottery-action": {
+      "agentSupport": "allowed"
+    },
+    "base +form-lottery-get": {
+      "agentSupport": "allowed"
+    },
+    "base +form-notifications-get": {
+      "agentSupport": "allowed"
+    },
+    "base +form-notifications-update": {
+      "agentSupport": "allowed"
+    },
     "base +form-query-page-create": {
       "agentSupport": "allowed"
     },
@@ -526,7 +538,19 @@
     "base +form-share-update": {
       "agentSupport": "allowed"
     },
+    "base +form-submission-settings-get": {
+      "agentSupport": "allowed"
+    },
+    "base +form-submission-settings-update": {
+      "agentSupport": "allowed"
+    },
     "base +form-submit": {
+      "agentSupport": "allowed"
+    },
+    "base +form-submit-actions-get": {
+      "agentSupport": "allowed"
+    },
+    "base +form-submit-actions-update": {
       "agentSupport": "allowed"
     },
     "base +form-update": {

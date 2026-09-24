@@ -56,7 +56,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		}
 		effective := cfg
 		if !runtime.Bool("no-validate") {
-			effective = normalizeDataConfig(cfg)
+			effective = normalizePivotTableDataConfig(normalizeDataConfig(cfg), false)
 			// Update 不传 type，因此只执行与组件类型无关的局部校验；全量校验
 			// 会误报局部 patch 未提交的 table_name/series 等字段。
 			problems := validateBlockFilter(effective, "filter", true)
@@ -65,6 +65,11 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 			}
 			if len(problems) > 0 {
 				return formatDataConfigErrors(problems)
+			}
+			if isPivotTableDataConfig(effective) {
+				if problems := validatePivotTableDataConfig(effective, false); len(problems) > 0 {
+					return formatDataConfigErrors(problems)
+				}
 			}
 		}
 		// Fold @file input into inline JSON after the first successful parse.

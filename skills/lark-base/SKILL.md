@@ -261,8 +261,7 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 7. **配置提交后回查（查询页）：** 表单可以配一个查询入口，让填写人提交后凭自己的提交记录回查、修改已填内容。读写用 `+form-query-page-get` / `+form-query-page-create`，创建流程与失败后的恢复方式读取 [Form query page](references/lark-base-form-query-page.md)。
 8. **切换填写页布局：** 填写页支持两种模式——题目列表（默认，一页展示全部题目，信息密度高、便于通览和回改）和一页一题（每屏只显示一道题，减少长表单的压迫感，移动端填写和逐题引导更友好），适合不同风格的收集场景。读写用 `+form-display-settings-get` / `+form-display-settings-update --display-mode`，取值与使用方法读取 [Form display settings](references/lark-base-form-display-settings.md)。
 9. **获取分享二维码：** 表单的分享入口除链接外还有二维码，便于线下张贴或群内扫码填写。用 `+form-share-qrcode-get` 查看二维码结构（响应含 `share_url` 与 base64 图片），用 `+form-share-qrcode-download` 把二维码存成 PNG 文件；只要分享链接本身用第 5 条的 `+form-share-get`。具体用法读取 [Form share QR code](references/lark-base-form-share-qrcode.md)。
-
-上面几条是相互独立的能力，选错命令会答非所问：题目显隐和顺序只在第 3 条，输入范围限制只在第 4 条，分享开关和访问范围只在第 5 条，回查入口只在第 7 条，填写页布局只在第 8 条，二维码只在第 9 条；`+form-update` 不负责其中任何一项。
+10. **管理提交与通知配置：** 使用 `+form-submission-settings-get/update` 管理提交时间、次数和修改权限，使用 `+form-notifications-get/update` 管理提交或定时通知，使用 `+form-submit-actions-get/update` 管理结果页和跳转，使用 `+form-lottery-get/action` 管理抽奖；每组都先 get，再只更新用户要求的配置。执行前读取 [表单配置](references/lark-base-form-config.md)。
 
 表单题目和字段的关系：
 

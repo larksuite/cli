@@ -20,6 +20,7 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 Dashboar
 | `ranking` | 排行榜 |
 | `statistics` | 指标卡 |
 | `nps` | NPS 图 |
+| `pivotTable` | 透视表 |
 | `text` | 文本（支持 Markdown） |
 
 ## 字段类型与操作符速查（AI 决策用）
@@ -73,6 +74,32 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | 无序列表 | `- 项目` | - 项目 |
 
 > **注意**：以上未提及的 Markdown 语法（如链接、图片、代码块、表格等）均不支持。
+
+### pivotTable 类型特殊结构
+
+透视表使用独立的行、列和值协议，不使用 `series` / `group_by` / `count_all`。Create 必须传 `table_name`；`rows`、`columns`、`values` 缺省为空数组。字段名必须来自真实表结构。
+
+```json
+{
+  "table_name": "订单",
+  "rows": [{"field_name":"地区","group_type":"RAW"}],
+  "columns": [{"field_name":"日期","group_type":"DATE_YEAR_MONTH"}],
+  "values": [{"field_name":"销售额","rollup":"SUM","name":"销售额合计"}],
+  "sort": [{
+    "group_ref":{"area":"rows","index":0},
+    "sort_type":"VALUE",
+    "value_ref":{"area":"values","index":0},
+    "order":"desc"
+  }]
+}
+```
+
+- `group_type` 支持 `RAW` 及 `DATE_YEAR`、`DATE_YEAR_QUARTER`、`DATE_YEAR_MONTH`、`DATE_YEAR_MONTH_DAY`、`DATE_YEAR_WEEK`、`DATE_MONTH_DAY`、`DATE_QUARTER`、`DATE_MONTH`、`DATE_WEEKDAY`。
+- `rollup` 支持 `SUM`、`COUNT`、`COUNT_DISTINCT`、`AVERAGE`、`MAX`、`MIN`、`MEDIAN`。
+- `field_key` 是透视表配置项的稳定标识，不替代 `field_name`。Create 的 `rows` / `columns` / `values` 只传 `field_name`，禁止提交 `field_key`。Update 保留已有配置项时，同时携带 Get 返回的 `field_key`、`field_name` 以及当前 `group_type` 或 `rollup`；需要替换字段、分组方式或聚合方式时省略原 `field_key`，由服务端生成新的配置项标识。
+- `sort` 是排序数组，可同时声明多条字段或指标排序；传 `[]` 清空排序。Create 使用 `{area,index}` 引用本次请求中的数组项。Update 可使用 `group_field_key` / `value_field_key` 引用更新后的配置项，也可使用 `{area,index}`；同一引用位置只能选择一种方式。
+- Update 顶层字段是局部更新，但显式传入的 `rows` / `columns` / `values` 各自整体替换。切换 `table_name` 时三组数组必须全部显式提供。
+- `view_name` 与 `filter` 互斥；传 `null` 可清除对应的数据源约束。
 
 ## group_by 详细说明
 
@@ -217,6 +244,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   - text 类型必填：`text`
   - 互斥：`series` 与 `count_all` 二选一，且至少提供其一（仅图表类型）
   - nps 类型必填：`table_name`、长度为 1 的 `group_by`；`group_by[0].mode` 可省略，省略时按 `integrated` 处理，显式传入时也只能为 `integrated`；不支持 `group_by[0].sort` 和 `series`；`count_all` 可省略，出现时只能为 `true`
+  - pivotTable 类型必填：`table_name`；使用 `rows` / `columns` / `values`，不使用普通图表的 `group_by` / `series` / `count_all`
   - text 类型**不支持**：`series`、`count_all`、`group_by`、`filter`
 - 长度/结构
   - `group_by` 最多 2 个；每项 `field_name` 必填
@@ -227,7 +255,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   - `group_by[].sort.type` 为 `group` 或 `view` 且缺少 `order` 时，自动补 `order:"asc"`；`value` 排序不会自动补方向
 - 本地校验（可通过 `--no-validate` 跳过）
   - `+dashboard-block-create` 默认对 `data_config` 做轻量校验；失败会聚合错误并给出修复建议
-  - `+dashboard-block-update` 不带 `--type`，所以不做按组件类型的强校验；但会对可解析的 `filter` 条件做轻量校验，包括 `conjunction`、字段引用、`operator` 和必需的 `value`，并与 create 一样拦截非法 `number_format` 子字段（见下方 number_format 小节）
+  - `+dashboard-block-update` 不带 `--type`，所以一般不做按组件类型的强校验；检测到透视表专属字段时会校验行列、指标和排序引用。所有更新都会对可解析的 `filter` 条件做轻量校验，包括 `conjunction`、字段引用、`operator` 和必需的 `value`，并与 create 一样拦截非法 `number_format` 子字段（见下方 number_format 小节）
   - 仅需传入合法 JSON；CLI 不会擅自改写你的业务含义
 
 ## 可复制模板
@@ -242,6 +270,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 - 看多维度评分 → 雷达图
 - 显示单个指标 → 指标卡（统计数字或记录数）
 - 统计满意度评分分布 → NPS 图（一个 Rating 字段 + 可选分段）
+- 按行列维度交叉汇总多个指标 → 透视表
 - 查看单维度 Top N → 排行榜
 
 最小柱状图：
