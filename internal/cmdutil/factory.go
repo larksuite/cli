@@ -48,6 +48,10 @@ type Factory struct {
 	LarkClient func() (*lark.Client, error)    // Lark SDK client for all Open API calls
 	IOStreams  *IOStreams                      // stdin/stdout/stderr streams
 
+	// LoginCommandAllowed is the build-local command-policy snapshot used for
+	// login scope collection. Nil preserves remote-first scope discovery.
+	LoginCommandAllowed func([]string) bool
+
 	Invocation           InvocationContext       // Immutable call context; do not mutate after Factory construction.
 	Keychain             keychain.KeychainAccess // secret storage (real keychain in prod, mock in tests)
 	IdentityAutoDetected bool                    // set by ResolveAs when identity was auto-detected

@@ -171,6 +171,13 @@ observers still fire so audit plugins see the rejected dispatch.
   widen another's policy). YAML policy at `~/.lark-cli/policy.yml` (which
   may itself list several rules under `rules:`) is shadowed by any plugin
   Restrict.
+- When a plugin contributes `Restrict` rules, `auth login` collects user
+  scopes locally from the retained API commands and shortcuts instead of the
+  remote domain-wide scope list. Denied commands contribute no scopes; scopes
+  shared with retained commands remain. `--domain` narrows that collection,
+  while explicit `--scope` requests and `offline_access` retain their existing
+  behavior. Removing a Skill alone does not restrict commands or login scopes.
+  This controls authorization requests, not grants already held by the user.
 - A plugin may call `EmbeddedSkills()` at most once to customize the embedded
   skill tree — `Allow` keeps only the listed skills (the allow-list
   counterpart of `Rule.Allow`, so a CLI upgrade cannot widen the build;

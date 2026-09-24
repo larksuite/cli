@@ -136,6 +136,9 @@ var fetchRemoteScopes = larkauth.FetchRemoteScopes
 // authLoginRun executes the login command logic.
 func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	f := opts.Factory
+	// Policy is installed after auth commands are constructed. Read this build's
+	// completed snapshot at execution time, never the process-global policy.
+	resolver.commandAllowed = f.LoginCommandAllowed
 
 	config, err := f.Config()
 	if err != nil {
@@ -187,8 +190,10 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		// CLI — does not cover, so it resolves locally instead of remote-first:
 		// trusting the remote would silently drop the custom scopes such a build
 		// added to existing domains (WithCommandSets can only extend existing
-		// domains, never add new ones). Standard builds keep remote-first.
-		if !resolver.hasExternal {
+		// domains, never add new ones). A command-policy snapshot also requires
+		// local collection: remote domain lists cannot remove denied commands.
+		// Standard builds keep remote-first.
+		if !resolver.hasExternal && resolver.commandAllowed == nil {
 			// Pull the remote scopes.json once for this login (not cached); any
 			// read failure (network/timeout/non-2xx/malformed) silently falls
 			// back to the local full computation — no warning, no telemetry.
@@ -606,8 +611,9 @@ func filterBatchExcludedScopes(scopes []string) []string {
 // every method here reads the snapshot it was constructed with instead of the
 // built-in set.
 type domainResolver struct {
-	catalog    apicatalog.Catalog
-	registered []common.Shortcut
+	catalog        apicatalog.Catalog
+	registered     []common.Shortcut
+	commandAllowed func([]string) bool
 	// hasExternal is true when this build carries business commands injected via
 	// WithCommandSets beyond the built-in set. Such a build's domain/scope
 	// universe is not reflected in the remote scopes.json (generated from the
@@ -660,7 +666,7 @@ func (r domainResolver) scopesFor(domains []string, identity string, brand core.
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
-	for _, s := range registry.CollectScopesForProjects(r.catalog, domains, identity) {
+	for _, s := range registry.CollectAllowedScopesForProjects(r.catalog, domains, identity, r.commandAllowed) {
 		scopeSet[s] = true
 	}
 
@@ -675,6 +681,9 @@ func (r domainResolver) scopesFor(domains []string, identity string, brand core.
 
 	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
 	for _, sc := range r.registered {
+		if r.commandAllowed != nil && !r.commandAllowed(append([]string{sc.Service}, strings.Fields(sc.Command)...)) {
+			continue
+		}
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/transport"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -200,7 +201,7 @@ type npmLatestResponse struct {
 }
 
 func fetchLatestVersion() (string, error) {
-	resp, err := httpClient().Get(registryURL)
+	resp, err := httpClient().Get(urlrewrite.Rewrite(registryURL))
 	if err != nil {
 		return "", err
 	}

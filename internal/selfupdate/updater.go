@@ -18,6 +18,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/transport"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -343,7 +344,7 @@ func (u *Updater) InstallAllSkills(source string) *NpmResult {
 
 func (u *Updater) StageSuite(source, dir string) *NpmResult {
 	suiteSource := strings.TrimSuffix(strings.TrimRight(source, "/"), "/regular") + "/isolated"
-	return u.runSkillsCommandInDir(dir, "-y", "skills", "add", suiteSource, "-s", "lark-suite", "-y")
+	return u.runSkillsCommandInDir(dir, "-y", "skills", "add", urlrewrite.Rewrite(suiteSource), "-s", "lark-suite", "-y")
 }
 
 func (u *Updater) InstallLocalSuite(path string) *NpmResult {
@@ -358,7 +359,9 @@ func (u *Updater) RemoveGlobalSkills(names []string) *NpmResult {
 }
 
 func (u *Updater) runSkillsAdd(source string) *NpmResult {
-	return u.runSkillsCommand("-y", "skills", "add", source, "-g", "-y")
+	// Sources include GitHub shorthand (e.g. larksuite/cli), not just URLs;
+	// rewriting here lets extensions replace the Skills source in either form.
+	return u.runSkillsCommand("-y", "skills", "add", urlrewrite.Rewrite(source), "-g", "-y")
 }
 
 func (u *Updater) runSkillsListGlobal() *NpmResult {
@@ -366,7 +369,8 @@ func (u *Updater) runSkillsListGlobal() *NpmResult {
 }
 
 func (u *Updater) runSkillsInstall(source string, nameList []string) *NpmResult {
-	args := []string{"-y", "skills", "add", source, "-s"}
+	// Like runSkillsAdd, rewrite source identifiers as well as full URLs.
+	args := []string{"-y", "skills", "add", urlrewrite.Rewrite(source), "-s"}
 	args = append(args, nameList...)
 	args = append(args, "-g", "-y")
 	return u.runSkillsCommand(args...)
