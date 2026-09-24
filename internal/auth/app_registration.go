@@ -24,6 +24,31 @@ var (
 	ErrRegistrationTimedOut = errors.New("app registration timed out, please try again")
 )
 
+const (
+	AppRegistrationCodeInvalidPublicKey = 1108026
+	AppRegistrationCodePublicKeyLimit   = 1107010
+)
+
+// AppRegistrationRemoteError preserves structured registration failures that
+// need command-specific recovery guidance.
+type AppRegistrationRemoteError struct {
+	Code        int
+	Description string
+}
+
+func (e *AppRegistrationRemoteError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Description != "" {
+		return e.Description
+	}
+	if e.Code != 0 {
+		return fmt.Sprintf("app registration failed with code %d", e.Code)
+	}
+	return "app registration failed"
+}
+
 // Protocol defaults, mirroring the official SDK registration flow.
 const (
 	registrationBootstrapBrand = core.BrandFeishu
@@ -65,6 +90,7 @@ type AppRegistrationResponse struct {
 	VerificationUriComplete string
 	ExpiresIn               int
 	Interval                int
+	RequestedAuthMethod     string
 }
 
 // AppRegistrationResult is the result of a successful app registration poll.
@@ -85,10 +111,100 @@ func appRegistrationEndpoint(brand core.LarkBrand) string {
 	return core.ResolveEndpoints(brand).Accounts + PathAppRegistration
 }
 
-// RequestAppRegistration initiates the device flow. The registration protocol
-// always bootstraps on Feishu; brand selects the user-facing verification host.
-// The request is bounded by ctx and a begin timeout.
-func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, errOut io.Writer) (*AppRegistrationResponse, error) {
+// AppRegistrationInit is the response from the app registration init endpoint.
+type AppRegistrationInit struct {
+	Nonce                string
+	SupportedAuthMethods []string // e.g. ["client_secret", "private_key_jwt", "private_key_jwt_local_keypair"]
+}
+
+// AppRegistrationBeginOptions parametrizes the registration begin request.
+// A zero value selects the legacy client_secret flow, preserving prior behavior.
+type AppRegistrationBeginOptions struct {
+	AuthMethod      string // "" => client_secret; either private-key JWT method
+	AuthAttestation string // local key-pair attestation JWT
+	TargetAppID     string // existing app to update; empty creates a new app
+}
+
+func appRegistrationRemoteError(data map[string]interface{}) *AppRegistrationRemoteError {
+	code := getInt(data, "code", 0)
+	if code == 0 {
+		return nil
+	}
+	description := getStr(data, "msg")
+	return &AppRegistrationRemoteError{
+		Code:        code,
+		Description: description,
+	}
+}
+
+// RequestAppRegistrationInit performs the init step of the registration flow,
+// returning a server nonce (to be embedded in a TEE-signed attestation JWT) and
+// the auth methods the server supports for this archetype.
+func RequestAppRegistrationInit(ctx context.Context, httpClient *http.Client) (*AppRegistrationInit, error) {
+	// Registration always begins against the feishu accounts host (mirrors begin).
+	endpoint := appRegistrationEndpoint(registrationBootstrapBrand)
+	ctx, cancel := context.WithTimeout(ctx, beginRequestTimeout)
+	defer cancel()
+
+	form := url.Values{}
+	form.Set("action", "init")
+	form.Set("archetype", "PersonalAgent")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	logHTTPResponse(resp)
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("app registration init failed: read body: %w", err)
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, fmt.Errorf("app registration init failed: HTTP %d – response not JSON", resp.StatusCode)
+	}
+	if remoteErr := appRegistrationRemoteError(data); remoteErr != nil {
+		return nil, remoteErr
+	}
+
+	if _, hasError := data["error"]; resp.StatusCode >= 400 || hasError {
+		msg := getStr(data, "error_description")
+		if msg == "" {
+			msg = getStr(data, "error")
+		}
+		if msg == "" {
+			msg = "Unknown error"
+		}
+		return nil, fmt.Errorf("app registration init failed: %s", msg)
+	}
+
+	out := &AppRegistrationInit{Nonce: getStr(data, "nonce")}
+	if methods, ok := data["supported_auth_methods"].([]interface{}); ok {
+		for _, m := range methods {
+			if s, ok := m.(string); ok {
+				out.SupportedAuthMethods = append(out.SupportedAuthMethods, s)
+			}
+		}
+	}
+	if out.Nonce == "" {
+		return nil, fmt.Errorf("app registration init failed: server returned no nonce")
+	}
+	return out, nil
+}
+
+// RequestAppRegistration initiates the app registration device flow (begin step).
+// The registration protocol always bootstraps on Feishu; brand selects the
+// user-facing verification host. The request is bounded by ctx and a timeout.
+func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, opts AppRegistrationBeginOptions, errOut io.Writer) (*AppRegistrationResponse, error) {
 	if errOut == nil {
 		errOut = io.Discard
 	}
@@ -99,11 +215,22 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 	ep := core.ResolveEndpoints(brand)
 	endpoint := appRegistrationEndpoint(registrationBootstrapBrand)
 
+	authMethod := opts.AuthMethod
+	if authMethod == "" {
+		authMethod = core.AuthMethodClientSecret
+	}
+
 	form := url.Values{}
 	form.Set("action", "begin")
 	form.Set("archetype", "PersonalAgent")
-	form.Set("auth_method", "client_secret")
+	form.Set("auth_method", authMethod)
 	form.Set("request_user_info", "open_id tenant_brand")
+	if opts.AuthAttestation != "" {
+		form.Set("auth_attestation", opts.AuthAttestation)
+	}
+	if opts.TargetAppID != "" {
+		form.Set("client_id", opts.TargetAppID)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -126,6 +253,9 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
 		return nil, fmt.Errorf("app registration failed: HTTP %d – response not JSON", resp.StatusCode)
+	}
+	if remoteErr := appRegistrationRemoteError(data); remoteErr != nil {
+		return nil, remoteErr
 	}
 
 	_, hasError := data["error"]
@@ -156,7 +286,24 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 
 	userCode := getStr(data, "user_code")
 	verificationUri := getStr(data, "verification_uri")
-	verificationUriComplete := fmt.Sprintf("%s/page/cli?user_code=%s", ep.Open, userCode)
+	// Prefer the server-provided complete URL (currently /page/launcher); fall
+	// back to building it from verification_uri, then to /page/launcher. The old
+	// hard-coded /page/cli is stale — the server now returns /page/launcher.
+	verificationUriComplete := getStr(data, "verification_uri_complete")
+	if verificationUriComplete == "" {
+		base := verificationUri
+		if base == "" {
+			base = ep.Open + "/page/launcher"
+		}
+		// The server may return verification_uri with its own query (e.g.
+		// client_id when registering against an existing app), so join with
+		// the same ?/& logic as BuildVerificationURL.
+		sep := "?"
+		if strings.Contains(base, "?") {
+			sep = "&"
+		}
+		verificationUriComplete = base + sep + "user_code=" + url.QueryEscape(userCode)
+	}
 
 	return &AppRegistrationResponse{
 		DeviceCode:              deviceCode,
@@ -165,18 +312,56 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 		VerificationUriComplete: verificationUriComplete,
 		ExpiresIn:               expiresIn,
 		Interval:                interval,
+		RequestedAuthMethod:     authMethod,
 	}, nil
 }
 
+func registrationResultComplete(result *AppRegistrationResult, requestedAuthMethod string) bool {
+	if result.ClientID == "" {
+		return false
+	}
+	return result.ClientSecret != "" ||
+		requestedAuthMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair ||
+		requestedAuthMethod == core.AuthMethodPrivateKeyJWT
+}
+
 // BuildVerificationURL appends CLI tracking parameters to the verification URL.
-func BuildVerificationURL(baseURL, cliVersion string) string {
+// When targetAppID is non-empty, it is also included so the launcher can lock
+// authorization to that existing app.
+func BuildVerificationURL(baseURL, cliVersion, targetAppID string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return appendVerificationURLFallback(baseURL, cliVersion, targetAppID)
+	}
+	q := u.Query()
+	if q.Get("lpv") == "" {
+		q.Set("lpv", cliVersion)
+	}
+	if q.Get("ocv") == "" {
+		q.Set("ocv", cliVersion)
+	}
+	if q.Get("from") == "" {
+		q.Set("from", "cli")
+	}
+	if targetAppID != "" && q.Get("client_id") == "" {
+		q.Set("client_id", targetAppID)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func appendVerificationURLFallback(baseURL, cliVersion, targetAppID string) string {
 	sep := "&"
 	if !strings.Contains(baseURL, "?") {
 		sep = "?"
 	}
-	return baseURL + sep + "lpv=" + url.QueryEscape(cliVersion) +
+	out := baseURL + sep + "lpv=" + url.QueryEscape(cliVersion) +
 		"&ocv=" + url.QueryEscape(cliVersion) +
 		"&from=cli"
+	if targetAppID != "" && !strings.Contains(baseURL, "client_id=") {
+		out += "&client_id=" + url.QueryEscape(targetAppID)
+	}
+	return out
 }
 
 // pollOnce performs one ctx-bound poll request and decodes the payload.
@@ -250,6 +435,13 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 			interval = minInt(interval+1, maxPollIntervalSeconds)
 			continue
 		}
+		remoteErr := appRegistrationRemoteError(data)
+		if remoteErr != nil {
+			switch remoteErr.Code {
+			case AppRegistrationCodeInvalidPublicKey, AppRegistrationCodePublicKeyLimit:
+				return nil, effectiveBrand, remoteErr
+			}
+		}
 
 		// A cross-brand tenant report switches the polled domain (once,
 		// immediately) regardless of the accompanying status — the signal can
@@ -267,8 +459,13 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 				}
 			}
 		}
+		if remoteErr != nil {
+			continue
+		}
 
 		errStr := getStr(data, "error")
+		// A successful response carries the client/app id in client_id. Empty, non-error
+		// responses are incomplete rather than terminal, so keep polling below.
 		if errStr == "" {
 			result := &AppRegistrationResult{
 				ClientID:     getStr(data, "client_id"),
@@ -281,7 +478,9 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 				}
 			}
 
-			if result.ClientID != "" && result.ClientSecret != "" {
+			// Private-key JWT succeeds without returning a client secret.
+			// Completion therefore also depends on the requested auth method.
+			if registrationResultComplete(result, resp.RequestedAuthMethod) {
 				// The issuing domain is authoritative; a contradictory final
 				// tenant report is a protocol violation, not a brand override.
 				if result.UserInfo != nil && result.UserInfo.TenantBrand != "" &&
@@ -302,6 +501,9 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 			fmt.Fprintf(errOut, "[lark-cli] app-registration: slow_down, interval increased to %ds\n", interval)
 			continue
 		case "access_denied":
+			if status := getStr(data, "status_message"); status != "" {
+				return nil, effectiveBrand, fmt.Errorf("%w: %s", ErrRegistrationDenied, status)
+			}
 			return nil, effectiveBrand, ErrRegistrationDenied
 		case "expired_token", "invalid_grant":
 			return nil, effectiveBrand, ErrRegistrationExpired

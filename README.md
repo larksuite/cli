@@ -94,6 +94,15 @@ npx skills add larksuite/cli -y -g
 # 1. Configure app credentials (one-time, interactive guided setup)
 lark-cli config init
 
+# Configure private_key_jwt interactively.
+lark-cli config init --private-key-jwt
+
+# Register with private_key_jwt using a CLI-managed signing key.
+lark-cli config init --new --private-key-jwt
+
+# Configure private_key_jwt_local_keypair using an already-registered PEM file.
+lark-cli config init --app-id cli_xxx --private-key-file ./private.pem
+
 # 2. Log in (--recommend auto-selects commonly used scopes)
 lark-cli auth login --recommend
 

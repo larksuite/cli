@@ -15,9 +15,18 @@ import (
 // SecretRef references a secret stored externally.
 type SecretRef struct {
 	Source   string `json:"source"`             // "file" | "keychain"
-	Provider string `json:"provider,omitempty"` // optional, reserved
+	Provider string `json:"provider,omitempty"` // optional provider/backend selector
 	ID       string `json:"id"`                 // env var name / file path / command / keychain key
 }
+
+// KeylessProviderLarkSuite identifies the external OpenClaw signer route.
+// Built-in platform signers persist their keysigner backend name instead.
+const KeylessProviderLarkSuite = "larksuite.keyless"
+
+const (
+	SecretSourceTEE     = "tee"
+	SecretSourceKeyFile = "file" // user-owned private key, ID is its FileIO-resolved path
+)
 
 // ---------------------------------------------------------------------------
 // SecretInput — union type: plain string or SecretRef

@@ -1,26 +1,61 @@
 version: 2
 
 builds:
-  - id: lark-cli
+  # Linux ships the pure-Go TPM 2.0 signer. Windows ships the native CNG
+  # platform/software KSP signers on both amd64 and arm64. All are selected by
+  # GOOS build constraints and cross-compile with CGO disabled.
+  - id: linux
     binary: lark-cli
+    main: .
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     ldflags:
       - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
     goos:
-      - darwin
       - linux
-      - windows
     goarch:
       - amd64
       - arm64
       - riscv64
+  - id: windows
+    binary: lark-cli
+    main: .
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
+    goos:
+      - windows
+    goarch:
+      - amd64
+      - arm64
+  # macOS: the keychain signer calls Security.framework via runtime FFI (purego),
+  # so it is CGO-free, needs no custom feature tag, and cross-compiles from the
+  # same ubuntu runner as linux/windows.
+  - id: darwin
+    binary: lark-cli
+    main: .
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
 
 notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
       ids:
-        - lark-cli
+        - darwin
       sign:
         certificate: "{{ .Env.MACOS_SIGN_P12 }}"
         password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
