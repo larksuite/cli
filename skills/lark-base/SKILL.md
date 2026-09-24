@@ -281,7 +281,7 @@ Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主�
 2. **写入配置：** `+dashboard-block-create` / `+dashboard-block-update` / `+dashboard-block-delete` 管理组件，`data_config` 定义数据源、维度、指标、聚合或文本内容。
 3. **读取内容：** `+dashboard-block-get-data` 读取图表、指标卡等数据组件的计算结果。
 
-操作内部 Block 前先读 [Dashboard](references/lark-base-dashboard.md)，由该入口继续路由组件配置和结果协议。
+仪表盘及内部组件操作前先读 [Dashboard](references/lark-base-dashboard.md)，由该入口按任务继续读取对应专项文档。
 
 ## 应用模式与 Workspace 心智模型
 

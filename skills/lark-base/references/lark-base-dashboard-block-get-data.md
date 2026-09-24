@@ -15,6 +15,7 @@
 > - 本命令返回的是**图表结果协议**，不是 block 元数据；
 > - 如果你需要 `name`、`type`、`layout`、`data_config` 等配置，请先用 `+dashboard-block-get`；
 > - 文本组件（`text`）不涉及计算，不适用本命令；
+> - 视图组件（`view`）通过详情中的 `tableId / viewId` 调用 `+record-list --view-id` 读取记录，见 [视图组件数据读取](lark-base-dashboard-view.md#读取视图组件数据)。
 
 ## 一句话理解
 
@@ -73,7 +74,9 @@ lark-cli base +dashboard-block-get-data \
   --block-id chtxxxxxxxx
 ```
 
-如果用户要读取多个组件，先通过 `+dashboard-block-list --page-size 100` 取得真实 ID；若返回 `has_more=true`，继续把本页返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`。收齐目标组件并跳过没有计算结果的文本组件后，再在**一个 shell 工具调用**内串行执行。每条命令会依次输出一个完整 JSON envelope；不要把每个 block 拆成独立模型轮次。
+如果用户要读取多个组件，先通过 `+dashboard-block-list --page-size 100` 取得真实 ID 和类型；若返回 `has_more=true`，继续把本页返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`。按类型选择读取路径：图表使用本命令；`view` 按 [视图组件数据读取](lark-base-dashboard-view.md#读取视图组件数据) 获取记录；`text` 用 `+dashboard-block-get` 读取 `data_config.text`。读取全部仪表盘内容时保留这三类结果。
+
+下面的循环仅放入支持计算结果的图表 ID，在**一个 shell 工具调用**内串行执行。每条命令会依次输出一个完整 JSON envelope；不要把每个 block 拆成独立模型轮次。
 
 ```bash
 set -euo pipefail

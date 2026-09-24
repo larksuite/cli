@@ -25,9 +25,10 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		blockIDFlag(true),
 		{Name: "name", Desc: "new block name"},
 		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-config.md for the SSOT"},
+		{Name: "linkage", Desc: `same-datasource chart linkage JSON or @file: {"target_block_ids":["<block_id>"]}. Replaces the source's complete target list; [] clears it; omit to preserve. field_mappings is not supported. Datasource equality is validated by the API`},
 		{Name: "position", Desc: `optional. component position+size in 12-col grid, JSON {"x","y","w","h"}; all four keys required and numeric (position is submitted whole, so a partial object cannot express a complete placement). Advisory bounds x/y>=0, 1<=w<=12 and x+w<=12, h>=1 — coordinate VALUES are not validated locally and pass through as given; the server auto-arranges out-of-range or overlapping positions. Omit to leave layout unchanged`},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
-		{Name: "no-validate", Type: "bool", Desc: "skip local SEMANTIC validation: data_config checks + normalization, and the --position x/y/w/h completeness check. JSON syntax is still parsed (a malformed value never silently vanishes from the preview). Sends data_config and position as-is"},
+		{Name: "no-validate", Type: "bool", Desc: "skip local SEMANTIC validation: data_config checks + normalization, and the --position x/y/w/h completeness check. JSON syntax and linkage constraints are always checked. Sends data_config and position as-is"},
 	},
 	Tips: []string{
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
@@ -35,14 +36,26 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"number_format":{"formatName":"dollar_rounded","precision":0}}'`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --position '{"x":6,"y":0,"w":6,"h":4}'`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <ranking_block_id> --data-config '{"limit_size":20}'`,
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <slicer_block_id> --data-config '{"order":"desc"}'`,
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <slicer_block_id> --data-config '{"filter":null}'`,
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <countdown_block_id> --data-config '{"targetTime":1798732800000}'`,
 		"Read lark-base-dashboard-block-config.md as the SSOT for data_config templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
-		"Use +dashboard-block-get first to inspect the current data_config before replacing nested values.",
-		"Block type cannot be changed; delete and recreate the block to change chart type.",
-		"data_config update merges top-level keys; each provided key is normally replaced as a whole, except number_format, whose subfields merge server-side.",
+		"For non-view blocks, use +dashboard-block-get first to inspect the current data_config before replacing nested values. For view blocks, GET returns tableId/viewId/viewType references; use the view configuration getters described below.",
+		"For chart linkage, read lark-base-dashboard-linkage.md first. Update the source block with the complete target list; adding one target also requires retaining the existing targets. Targets must use the same datasource; dry-run checks the request shape only.",
+		"Block type cannot be changed; countdown data_config.type can switch between fixed and field with a complete target-mode configuration.",
+		"Ordinary chart data_config updates merge top-level keys; nested values replace as a whole except number_format, whose subfields merge server-side.",
+		"Slicer updates preserve omitted fields and never add create defaults. On the same table, omit filter to preserve it or send filter:null to clear it. Changing tables requires a new group_by and clears the old filter unless a new filter is supplied.",
+		"Countdown patches keep omitted fields and merge the sole additionalDatasources entry by field. groupBy and series replace whole arrays; same-mode/same-table filter omission keeps it, an object replaces it, and null clears it. Changing tableName requires a complete new datasource. Read the countdown section of lark-base-dashboard-block-config.md.",
+		`For progress, {"progress":{"target":{"value":200}}} updates an existing custom target. current/target subfields merge server-side and arrays replace whole. Omitted fields are preserved; field-source filter:null clears a filter. Source or mode changes require complete target configuration. See lark-base-dashboard-progress.md.`,
+		"For view blocks, pass the returned tableId/viewId as --table-id/--view-id to +view-get-filter, +view-get-sort, +view-get-group, or +view-get-visible-fields to inspect persisted configuration. Submit only the changed data_config fields, such as sort_by or visible_fields; do not resend the full configuration because block GET omits the write fields. The server validates the patch against the existing component. Read lark-base-dashboard-view.md for update and readback guidance.",
+		"Dashboard block create/update reject top-level data_config.timebar and data_config.card, including null, unless --no-validate is set. This does not restrict view_type or change reads of existing blocks.",
 		"--position is optional precise layout in a 12-col grid; omit it to leave the current layout unchanged. Coordinate values are not validated locally; the server auto-arranges out-of-range or overlapping positions. To re-tidy an existing dashboard use +dashboard-arrange instead.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pc := newParseCtx(runtime)
+		if err := validateDashboardChartLinkage(pc, runtime); err != nil {
+			return err
+		}
 		if err := validateDashboardBlockPosition(pc, runtime); err != nil {
 			return err
 		}
@@ -56,6 +69,9 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		}
 		effective := cfg
 		if !runtime.Bool("no-validate") {
+			if err := validateDashboardBlockWriteConfig(cfg); err != nil {
+				return err
+			}
 			effective = normalizePivotTableDataConfig(normalizeDataConfig(cfg), false)
 			// Update 不传 type，因此只执行与组件类型无关的局部校验；全量校验
 			// 会误报局部 patch 未提交的 table_name/series 等字段。

@@ -138,6 +138,9 @@ func normalizeDataConfigForCreate(blockType string, cfg map[string]interface{}) 
 	if normalizeDashboardBlockType(blockType) == "nps" {
 		return cloneMap(cfg)
 	}
+	if matchesBlockType(blockType, []string{"slicer"}) {
+		return normalizeSlicerDataConfigForCreate(cfg)
+	}
 	out := normalizeDataConfig(cfg)
 	if !matchesBlockType(blockType, []string{"ranking"}) || out == nil {
 		return out
@@ -156,25 +159,39 @@ func normalizeDataConfigForCreate(blockType string, cfg map[string]interface{}) 
 }
 
 // validateBlockDataConfig validates data_config based on block type.
-// Text blocks only need a text field; everything else falls through to the
-// dashboard chart rules. BaseApp list validation lives in
+// NPS, text, button, pivotTable, ranking, slicer, countdown, progress, and view
+// have dedicated contracts.
+// Other types use the dashboard chart rules. BaseApp list validation lives in
 // app_list_block_data_config.go and never enters this dashboard path.
 func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []string {
 	blockType = strings.ToLower(normalizeDashboardBlockType(blockType))
+	if blockType == "nps" {
+		return validateNPSDataConfig(cfg)
+	}
+	if _, hasNumberFormat := cfg["number_format"]; hasNumberFormat && blockType != "statistics" {
+		return []string{"number_format 仅支持 statistics 类型组件"}
+	}
 	switch {
 	case isTextBlockType(blockType):
 		return append(validateNonNPSDataConfig(cfg), validateTextDataConfig(blockType, cfg)...)
-	case blockType == "nps":
-		return validateNPSDataConfig(cfg)
+	case blockType == "button":
+		// Buttons do not require chart data sources or measures.
+		// Button-specific field validation is handled by the server.
+		return validateNonNPSDataConfig(cfg)
 	case isPivotTableBlockType(blockType):
 		return append(validateNonNPSDataConfig(cfg), validatePivotTableDataConfig(cfg, true)...)
 	case matchesBlockType(blockType, []string{"ranking"}):
 		return validateRankingDataConfig(cfg)
+	case matchesBlockType(blockType, []string{"slicer"}):
+		return validateSlicerDataConfig(cfg)
+	case matchesBlockType(blockType, []string{"countdown"}):
+		return validateCountdownDataConfig(cfg)
+	case matchesBlockType(blockType, []string{"progress"}):
+		return validateProgressDataConfig(cfg)
+	case blockType == "view":
+		return validateDashboardViewConfig(cfg)
 	default:
 		problems := validateNonNPSDataConfig(cfg)
-		if _, hasNumberFormat := cfg["number_format"]; hasNumberFormat && blockType != "statistics" {
-			return append(problems, "number_format 仅支持 statistics 类型组件")
-		}
 		problems = append(problems, validateChartDataConfig(cfg)...)
 		if matchesBlockType(blockType, []string{"statistics"}) {
 			if rawNumberFormat, hasNumberFormat := cfg["number_format"]; hasNumberFormat {

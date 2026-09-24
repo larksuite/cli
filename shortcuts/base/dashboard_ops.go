@@ -30,6 +30,19 @@ const (
 	omitBlockType    = false
 )
 
+// validateDashboardBlockWriteConfig rejects unsupported top-level write fields.
+// This applies to both commands because update has no block type. Callers keep
+// it inside semantic validation so --no-validate retains its passthrough contract.
+func validateDashboardBlockWriteConfig(cfg map[string]interface{}) error {
+	var problems []string
+	for _, key := range []string{"timebar", "card"} {
+		if _, exists := cfg[key]; exists {
+			problems = append(problems, "data_config."+key+" 不支持创建或更新")
+		}
+	}
+	return formatDataConfigErrors(problems)
+}
+
 // buildDashboardBlockBody assembles the request body shared by the dashboard
 // block create and update commands. It is the single source of truth for body
 // shape so DryRun and Execute stay isomorphic across all call sites.
@@ -64,6 +77,14 @@ func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, inclu
 			return nil, err
 		}
 		body["position"] = parsed
+	}
+	// Linkage is an update-only top-level sibling, never part of data_config.
+	if !includeType && runtime.Cmd.Flags().Changed("linkage") {
+		linkage, err := parseDashboardChartLinkage(pc, runtime.Str("linkage"), runtime.Str("block-id"))
+		if err != nil {
+			return nil, err
+		}
+		body["linkage"] = linkage
 	}
 	return body, nil
 }

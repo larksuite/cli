@@ -97,6 +97,10 @@
 
 ## 仪表盘权限 (DashboardRule)
 
+本节配置某个角色对仪表盘的访问权限。仪表盘跟随访问者权限统计开关
+`is_adv_perm_enable` 通过 [仪表盘跟随访问者权限统计开关](lark-base-dashboard-advperm.md)
+单独管理；修改 `dashboard_rule_map` 不代表该开关已开启。
+
 ```json
 {
   "dashboard_rule_map": {

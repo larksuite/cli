@@ -14,13 +14,27 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 
 | 你想做什么 | 用这些命令 | 关键文档 |
 |------|-----------|---------|
-| 创建/删除/改名称 | `+dashboard-create/delete/update` | 本页下方「仪表盘管理」 |
+| 创建/删除/修改名称或主题 | `+dashboard-create/delete/update` | 本页下方「仪表盘管理」 |
+| 管理仪表盘分享 | `+dashboard-share-get` / `+dashboard-share-update` | 本页下方「仪表盘管理」 |
 | 在仪表盘里添加组件 | `+dashboard-block-create` | 先定位 dashboard、表和字段，再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 构造 `data_config` |
+| 在仪表盘里展示数据明细、甘特图或画册 | `+dashboard-block-create --type view`；更新/获取用组件命令 | [视图组件](lark-base-dashboard-view.md)，筛选、分组、排序、可见字段四类配置直接放在 `data_config` |
 | 修改组件 | `+dashboard-block-update` | 先读 block 现状，再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 决定替换哪些顶层 key |
+| 删除组件 | `+dashboard-block-delete` | 先定位仪表盘和目标组件 |
+| 配置、替换或清除同源图表联动 | `+dashboard-block-update --linkage`；Get 回读 | [图表联动](lark-base-dashboard-linkage.md)，提交源组件的完整目标列表 |
 | 创建/更新时指定组件精确位置大小 | `+dashboard-block-create/update --position` | 本页下方「精确布局 --position vs +dashboard-arrange」 |
 | 查看仪表盘有哪些组件 | `+dashboard-get` 或 `+dashboard-block-list` | 本页下方「查看仪表盘」 |
+| 查询或设置仪表盘跟随访问者权限统计开关 | 按目标环境已发布的接口调用 | [仪表盘跟随访问者权限统计开关](lark-base-dashboard-advperm.md) |
+| 读取、设置或清空仪表盘全局筛选 | 按目标环境已发布的接口调用 | [仪表盘全局筛选](lark-base-dashboard-global-filter.md) |
+| 按钮组件绑定、解绑或查询工作流 | 专用 `button_rule` GET/PUT；完整定义复用 `+workflow-get` | [仪表盘按钮绑定工作流](lark-base-dashboard-button-rule.md) |
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |
+| 读取视图组件的记录明细 | `+dashboard-block-get` 取得 `tableId / viewId`，再用 `+record-list --view-id` | [视图组件数据读取](lark-base-dashboard-view.md#读取视图组件数据)；继承视图配置并按需分页 |
 | 智能重排组件布局 | `+dashboard-arrange` | 用户明确要求重排，或本次会话新建仪表盘的收尾整理；无法指定 `x/y/w/h`、精确位置或尺寸 |
+
+## 仪表盘管理
+
+使用 `+dashboard-list` 定位仪表盘，`+dashboard-get` 读取详情；`+dashboard-create` / `+dashboard-delete` 创建或删除仪表盘，`+dashboard-update` 修改名称或主题。
+
+使用 `+dashboard-share-get` / `+dashboard-share-update` 管理分享启停、访问范围和返回源 Base 入口；更新前先读取现状，每次只修改一个字段，显式 `false` 会被保留。
 
 ## 精确布局 --position vs +dashboard-arrange
 
@@ -130,7 +144,7 @@ lark-cli base +dashboard-block-create \
 ### 场景 3：编辑已有组件
 
 > [!IMPORTANT]
-> `+dashboard-block-update` **不能修改组件的 `type`**（图表类型），只能更新 `name`、`data_config` 和可选的 `position`。
+> `+dashboard-block-update` **不能修改组件的 `type`**（图表类型），可以更新 `name`、`data_config`、`linkage` 和可选的 `position`。
 > 如需更换组件类型，必须先删除再重新创建。
 
 ```bash
@@ -197,12 +211,14 @@ lark-cli base +dashboard-arrange \
 - 只想快速查看有哪些组件 → 用 **方式 B**
 - 想看某个组件的详细 data_config 配置 → 用 **方式 C**
 - 想看某个图表/指标卡实际算出来的数据 → 用 **方式 D**
+- 想看视图组件中的记录 → 用 **方式 C** 取得 `tableId / viewId`，按 [视图组件数据读取](lark-base-dashboard-view.md#读取视图组件数据) 调用 `+record-list --view-id`
 
 用户要求读取“全部图表”或“完整仪表盘”时，先用方式 B 分页枚举所有 block：使用 `--page-size 100`；若返回 `has_more=true`，继续把本页返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`。收齐后再对每个 block 收口，不能只返回 get-data 成功的子集：
 
 1. 图表或指标卡：使用方式 D 读取计算结果。
-2. `text`：使用方式 C，正文位于 `data_config.text`；text 没有计算结果，但属于完整仪表盘内容。
-3. get-data 返回不支持的图表类型：先用方式 C 读取真实 `data_config`，确认 `table_name`、维度、指标、聚合与筛选，再按 [记录分析](../SKILL.md#记录分析) 使用 `+data-query` 重建同口径结果。字段必须来自真实配置和表结构，不得猜测；无法等价重建时明确报告限制，不能静默省略该 block。
+2. `view`：使用方式 C 取得真实视图引用，再用 `+record-list --view-id` 读取记录，继承视图配置并按需分页。
+3. `text`：使用方式 C，正文位于 `data_config.text`；text 没有计算结果，但属于完整仪表盘内容。
+4. get-data 返回不支持的图表类型：先用方式 C 读取真实 `data_config`，确认 `table_name`、维度、指标、聚合与筛选，再按 [记录分析](../SKILL.md#记录分析) 使用 `+data-query` 重建同口径结果。字段必须来自真实配置和表结构，不得猜测；无法等价重建时明确报告限制，不能静默省略该 block。
 
 ```bash
 # 第 1 步：列出仪表盘，定位到当前仪表盘
@@ -228,7 +244,7 @@ lark-cli base +dashboard-block-get-data --base-token xxx --block-id chtxxxxxxxx
 # 最后：把获取到的现状信息整理好告诉用户
 ```
 
-需要读取多个组件的计算结果时，先用方式 B 获取真实 `block_id`（使用 `--page-size 100`；若 `has_more=true`，继续把返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`），再按 [lark-base-dashboard-block-get-data.md](lark-base-dashboard-block-get-data.md) 的多组件范式，在一个 shell 工具调用内串行读取；不要把每个 block 拆成独立模型轮次。文本组件没有计算结果，应跳过。
+需要读取多个组件的数据时，先用方式 B 获取真实 `block_id` 和类型（使用 `--page-size 100`；若 `has_more=true`，继续把返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`），再按 [lark-base-dashboard-block-get-data.md](lark-base-dashboard-block-get-data.md) 的多组件范式分流：图表读取计算结果，视图组件读取记录，文本组件读取 `data_config.text`。同类读取可在一个 shell 工具调用内串行执行。
 
 ## 组件类型选择
 
@@ -266,17 +282,19 @@ A: 常见原因：
 A: 不可以，必须串行执行。等上一个 `+dashboard-block-create` 完成后再执行下一个。
 
 **Q: 组件的 `type` 创建后能改吗？**
-A: 不能。`+dashboard-block-update` 只能修改 `name`、`data_config` 和 `position`，不能修改 `type`。
+A: 外层组件 `type` 不能修改。`+dashboard-block-update` 可以修改 `name`、`data_config`、`linkage` 和 `position`；倒计时内部的 `data_config.type` 可以在 fixed / field 之间切换，但必须提交完整目标模式配置。
 
 **Q: 更新组件的命令和 data_config 怎么写？**
 A:
 1. 先读取当前 block，确认 `block_id`、当前 `type` 和已有 `data_config`
 2. 再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 了解 data_config 结构
 
-**data_config 更新策略（顶层 key merge）**：
+**普通图表 data_config 更新策略（顶层 key merge）**：
 - 只传入需要修改的顶层字段（如 `series`、`filter`）
 - 未传的顶层字段（如 `group_by`）自动保留原值
 - 但每个传入的字段内部通常是**全量替换**（如传新 `filter` 会完整覆盖旧 `filter`）；`number_format` 例外，按子字段合并，见 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 的 number_format 小节
+
+**倒计时**使用 camelCase 的 fixed/field 专属配置：更新时省略 type 沿用当前模式，唯一 additionalDatasources 对象按字段合并，groupBy/series 数组整体替换。同模式同表下 filter 省略保留、对象替换、null 清空。切换模式要求完整目标配置，换表要求完整新数据源；获取和写入响应均返回当前模式完整配置。构造 JSON 前读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 的 countdown 小节。
 
 **Q: 查看已有组件有什么用？**
 A: 在「添加新组件」或「编辑组件」前查看已有组件可以：
@@ -286,6 +304,8 @@ A: 在「添加新组件」或「编辑组件」前查看已有组件可以：
 
 **Q: 我想直接拿图表算好的结果给 AI 分析，应该用什么？**
 A: 用 `+dashboard-block-get-data`。它返回图表协议 JSON（常见字段包括 `dimensions`、`measures`、`main_data`，指标卡可能还有 `comparison_data`、`trend_data`），不返回 block 名称、类型、布局或 `data_config`；需要这些元数据时先用 `+dashboard-block-get`。
+
+图表联动使用独立顶层 `linkage`，更新按完整目标列表替换；省略保留、空数组清除。操作前读 [图表联动](lark-base-dashboard-linkage.md)。只改联动时验收保存的目标列表，要求点击效果时再做页面交互验证；`get-data` 不模拟点击。
 
 ## 写入前检查
 

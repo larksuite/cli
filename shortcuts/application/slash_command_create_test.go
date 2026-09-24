@@ -33,6 +33,8 @@ func createConflictStub() *httpmock.Stub {
 		URL:    "/open-apis/application/v7/app_slash_commands",
 		Body: map[string]interface{}{
 			"code": 40000000, "msg": "Invalid Param 'command'. command already exists.",
+			// Nested diagnostics must not hide the name-collision signal.
+			"data": map[string]interface{}{"error": map[string]interface{}{"message": "invalid request"}},
 		},
 	}
 }

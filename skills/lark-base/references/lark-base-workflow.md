@@ -5,6 +5,7 @@
 > **配套文档**:
 > - Workflow 的数据结构参考：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)
 > - 创建/更新时重点构造 `title` 和 `steps`；复杂度集中在 `steps[].type/data/next`。启停使用 `+workflow-enable` / `+workflow-disable`，请求体中的 `status` 不负责切换运行态。
+> - 仪表盘按钮绑定与查询：[仪表盘按钮绑定工作流](lark-base-dashboard-button-rule.md)。先读 `bound + target`，仅在 `target.type=workflow` 时按 `target.id` 获取定义；触发器使用 `buttonElement`。
 
 ## 检查与实际运行
 

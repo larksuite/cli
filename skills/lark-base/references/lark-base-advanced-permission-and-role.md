@@ -2,6 +2,11 @@
 
 This is the module entry point for Base advanced permissions and roles. Use it to choose commands and understand safety boundaries. For the permission JSON itself, use [Role Permission Schema](lark-base-role-config.md).
 
+Whether dashboard statistics follow the visitor's permissions is controlled by
+`is_adv_perm_enable`. Use [仪表盘跟随访问者权限统计开关](lark-base-dashboard-advperm.md)
+for that setting. `+advperm-enable/disable` controls advanced permissions for the containing Base, while
+`dashboard_rule_map` controls a role's access to dashboards.
+
 ## Command selection
 
 | Goal | Command | Notes |
