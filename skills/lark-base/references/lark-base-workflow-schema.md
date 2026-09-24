@@ -41,8 +41,11 @@
 | `children` | StepChildren | 否 | 子关系边，承担所有分支/循环 |
 | `next` | string | null | 否 | 线性后继节点 ID；`null` 表示流程结束 |
 | `data` | object | 是 | 步骤详细配置，按 `type` 区分，见后续各节 |
+| `meta` | object | APIHubAction / AIAgentMCPAction 必填 | `component_id` 指定二方组件或 MCP 工具包，见 [二方节点](lark-base-workflow-apihub.md) / [AI Agent](lark-base-workflow-ai-agent.md) |
 
 > **总原则**：连线写 `children`，扩展标识写 `meta`，输入参数写 `data`。
+
+普通 Action/APIHubAction 作为 Agent 工具时，可在 `data.tool_info.description` 写调用说明，与业务参数并列；更新时先 get 并保留原值。完整语义见 [工具调用说明](lark-base-workflow-ai-agent.md#工具调用说明)。
 
 ---
 
@@ -83,7 +86,7 @@
 | `if_false` | IfElseBranch | 条件为假时跳转 |
 | `case` | SwitchBranch / AIClassificationBranch | 多路分支，`label` 建议用 `branch_1` 等中性标签，`desc` 写语义 |
 | `loop_start` | Loop | 循环体入口 |
-| `slot` | AIAgentAction | 挂载 LLM / 工具 / 记忆子节点，`label` 为 `llm` / `tool` / `memory` |
+| `slot` | AIAgentAction | 工具通过 `label: tool` 挂载；LLM/记忆由根节点配置，回读的空 `llm/memory` 链接可保留 |
 
 ---
 
@@ -93,9 +96,9 @@
 
 | type | 说明 |
 |------|------|
-| `AddRecordTrigger` | 新增记录时触发 |
-| `SetRecordTrigger` | 记录被修改时触发 |
-| `ChangeRecordTrigger` | 记录满足条件时触发 |
+| `AddRecordTrigger` | 新增记录且关注字段非空时触发 |
+| `SetRecordTrigger` | 指定字段发生修改时触发 |
+| `ChangeRecordTrigger` | 新增记录，或条件字段修改后满足条件时触发 |
 | `TimerTrigger` | 定时触发 |
 | `ReminderTrigger` | 日期提醒触发 |
 | `ButtonTrigger` | 按钮点击触发 |
@@ -103,15 +106,14 @@
 
 > 所有 Trigger 节点**请勿设置** `children` ，通过 `next` 串联后继。
 
-### 触发器选型指南
+### 记录触发器对比
 
-| 需求描述 | 触发器 |
-|---------|--------|
-| 新增记录时 | `AddRecordTrigger` |
-| 指定字段发生修改时（仅修改，可限定修改后的值） | `SetRecordTrigger` |
-| 新增或修改记录，且满足配置的筛选条件时 | `ChangeRecordTrigger` |
-
-> ⚠️ `SetRecordTrigger` 仅监听修改，`ChangeRecordTrigger` 同时监听新增 + 修改。
+| 触发器 | 事件 | 监听配置 | 修改前条件 | 当前/修改后条件 |
+|---|---|---|---|---|
+| `AddRecordTrigger` | 仅新增 | `watched_field_name` 必填，且新增值须非空 | 不支持 | `condition_list` 可选，筛选新增值 |
+| `SetRecordTrigger` | 仅修改 | `field_watch_info` 必填；任一项匹配即可 | `record_watch_info` 可选 | `condition_list` 可选，筛选修改后值 |
+| `ChangeRecordTrigger` | 新增记录；或 `condition_list` 中的字段发生修改 | 自动监听 `condition_list` 中的字段，不监听其他字段 | 不支持 | `condition_list` 必填，筛选新增值或修改后值 |
+| `AddRecordTrigger` + `SetRecordTrigger`（两条 Workflow） | 新增记录；或任意可监听字段发生修改 | Add 指定关注字段；Set 监听当前环境支持的全部字段 | Set 可选 | 两条 `condition_list` 均可选；有条件时配置相同条件 |
 
 ### Action 类型
 
@@ -123,10 +125,14 @@
 | `HTTPClientAction` | HTTP 请求 |
 | `Delay` | 延迟 |
 | `LarkMessageAction` | 发送飞书消息 |
+| `LarkEmailAction` | 发送飞书邮件，见 [节点参数](#larkemailaction) |
 | `GenerateAiTextAction` | AI 生成文本 |
+| `APIHubAction` | 当前仅支持飞书任务／日程／群组的 9 个动作；组件、参数和输出仅使用 [二方节点清单](lark-base-workflow-apihub.md) 所列内容 |
 | `AIAnalysisAction` | AI 分析 |
+| `AIAgentAction` | AI Agent 根节点，见 [配置与工具](lark-base-workflow-ai-agent.md) |
+| `AIAgentMCPAction` | AI Agent 的 MCP 工具包步骤，必须通过 `slot/tool` 挂载 |
 
-> 所有 Action 节点**请勿设置** `children` ，通过 `next` 串联后继。
+> 普通 Action 通过 `next` 串联后继；`AIAgentAction` 用 `children.links` 挂工具、`next` 接执行后的动作。作为 Agent 工具的步骤不设置 `next`。
 
 ### Branch 类型
 
@@ -167,6 +173,8 @@
 
 ### ChangeRecordTrigger
 
+处理新增记录及条件字段的修改，按 `condition_list` 筛选当前值。需求同时包含新增与任意可监听字段修改时，使用 `AddRecordTrigger` + `SetRecordTrigger`，见[记录触发器对比](#记录触发器对比)。
+
 ```json
 {
   "table_name": "任务表",
@@ -197,8 +205,10 @@
 ```json
 {
   "table_name": "订单表",
-  "record_watch_conjunction": "and",
-  "record_watch_info": [ /* FieldCondition[] */ ],
+  "record_watch_info": {
+    "conjunction": "and",
+    "conditions": [ /* FieldCondition[] */ ]
+  },
   "field_watch_info": [
     { "field_name": "状态", "operator": "is", "value": [{ "value_type": "text", "value": "已发货" }] }
   ],
@@ -210,11 +220,12 @@
 | 字段 | 必填 | 说明 |
 |------|----|------|
 | `table_name` | 是  | 监控的数据表名 |
-| `record_watch_conjunction` | 否  | 记录筛选组合方式：`and` / `or`，默认 `and` |
-| `record_watch_info` | 否  | 记录级过滤条件（修改前值匹配），为空则监听全部 |
-| `field_watch_info` | 是  | 字段级监控条件列表，至少一个 |
+| `record_watch_info` | 否  | 记录级过滤对象，匹配修改前的值；不筛选时省略 |
+| `record_watch_info.conjunction` | 否  | 记录筛选组合方式：`and` / `or`，默认 `and` |
+| `record_watch_info.conditions` | 是* | 使用记录过滤时填写 `FieldCondition[]`；不要把数组直接赋给 `record_watch_info` |
+| `field_watch_info` | 是  | 至少一个监听字段；仅监听变化时每项只填 `field_name` |
 | `trigger_control_list` | 否  | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
-| `condition_list` | 否  | 数组中的每个元素表示一个条件组，条件组之间为 OR，组内 conditions 之间必须为 AND |
+| `condition_list` | 否  | 筛选修改后的值；条件组之间为 OR，组内 conditions 之间为 AND |
 
 `FieldWatchItem`：
 
@@ -240,7 +251,7 @@
 | `rule` | 是 | `NO_REPEAT` / `DAILY` / `WEEKLY` / `MONTHLY` / `YEARLY` / `WORKDAY` / `CUSTOM` |
 | `start_time` | 否 | 开始时间，格式 `yyyy-MM-dd HH:mm` |
 | `interval` | 否 | 自定义间隔 [1,30]（仅 CUSTOM） |
-| `unit` | 否 | 自定义单位：`SECOND` / `MINUTE` / `HOUR` / `DAY` / `WEEK` / `MONTH` / `YEAR` |
+| `unit` | 否 | 自定义重复单位（当前页面可选）：`DAY` / `WEEK` / `MONTH` / `YEAR`；仅 `rule=CUSTOM` 时填写 |
 | `sub_unit` | 否 | 子单位（`WEEKLY` 时为星期几数组 0-6，`MONTHLY` 时为几号数组 1-31） |
 | `end_time` | 否 | 结束时间 |
 | `is_never_end` | 否 | 是否永不结束 |
@@ -283,6 +294,7 @@
 |------|------|------|
 | `button_type` | 是 | 按钮类型：`buttonField`（表格里的按钮，可操作当前记录数据）/ `buttonElement`（仪表盘、应用页面上的按钮，可执行整体操作） |
 | `table_name` | 否 | 绑定的数据表名，仅 `button_type=buttonField` 时填写 |
+| `condition_list` | 否 | 仅 `buttonField` 可用；用户明确要求按当前记录筛选时才填，条件组之间为 OR、组内为 AND；否则省略 |
 
 > `buttonField` 和 `buttonElement` 的输出能力不同，详见下方「ButtonTrigger（按钮触发器）」输出说明。
 
@@ -469,6 +481,20 @@
 | `link` | ValueInfo[] | 跳转链接（`openLink` 时使用） |
 | `table_name` | string | 操作表名（`addRecord` 时使用） |
 | `record_values` | RecordFieldValue[] | 记录赋值（`addRecord` / `setRecord` 时使用） |
+
+### LarkEmailAction
+
+发送飞书邮件，与 `LarkMessageAction` 同属普通 Action，可通过 `next` 串联到工作流主链，也可作为 AI Agent 工具。发件人由服务端按工作流创建者初始化，不提供切换发件人的 CLI 参数。
+
+| data 字段 | 说明 |
+|---|---|
+| `to` | 收件人数组；邮箱使用 `{"value_type":"text","value":"name@example.com"}`；也支持已解析的 user/group 或合法 ref |
+| `cc` / `bcc` | 抄送 / 密送，格式同 `to` |
+| `subject` / `content` | 主题 / 纯文本正文，text/ref 数组 |
+| `attachments` | 附件值数组；使用已确认的附件值或上游附件引用，不填本地文件路径 |
+| `show_source` | 布尔值，是否展示来源 |
+
+先解析实际收件人并完整配置主题、正文。收件范围、附件类型、邮箱授权和额度由服务端校验。作为 Agent 工具时，挂载和调用说明见 [普通 Action 工具](lark-base-workflow-ai-agent.md#普通-action-工具)。
 
 ### GenerateAiTextAction
 
@@ -864,6 +890,10 @@ HTTPClientAction 的输出取决于 `response_type`：
 | pathId | 说明 | 引用示例 |
 |--------|------|----------|
 | `analysisResult` | AI 分析结果字符串 | `$.{stepId}.analysisResult` |
+
+##### AIAgentAction
+
+文本模式引用整体 `$.{stepId}`；JSON/form 按配置字段引用 `$.{stepId}.字段名`；JSON 对象中的数组字段可接 Loop（例如 `$.{stepId}.items`）；顶层数组不能直接用根引用接 Loop。配置与示例见 [AI Agent](lark-base-workflow-ai-agent.md)。不引用内部 LLM/记忆步骤，也不假定任一工具必定被调用。
 
 ##### 无输出的操作节点
 

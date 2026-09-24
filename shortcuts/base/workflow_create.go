@@ -18,6 +18,7 @@ var BaseWorkflowCreate = common.Shortcut{
 	Scopes:      []string{"base:workflow:create"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
+		{Name: "no-validate", Type: "bool", Desc: "skip local Workflow semantic validation when the server supports a configuration not yet recognized by this CLI; JSON object parsing and required flags are still checked; server validation still applies"},
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow.md and lark-base-workflow-schema.md before constructing steps", Required: true},
 	},

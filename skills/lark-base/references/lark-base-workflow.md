@@ -4,7 +4,15 @@
 
 > **配套文档**:
 > - Workflow 的数据结构参考：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)
-> - 创建/更新时重点构造 `title`、`status` 和 `steps`；复杂度集中在 `steps[].type/data/next`
+> - 创建/更新时重点构造 `title` 和 `steps`；复杂度集中在 `steps[].type/data/next`。启停使用 `+workflow-enable` / `+workflow-disable`，请求体中的 `status` 不负责切换运行态。
+
+## 检查与实际运行
+
+1. **核对资源**：用 `+base-get`、`+table-list`、`+field-list` 及通讯录或群聊查询，确认目标 Base、表、字段和接收人的真实 ID 与类型。
+2. **预览请求**：在 `+workflow-create` / `+workflow-update` 前用 `--dry-run` 预览请求并运行本地校验。它不调用服务端，不能证明资源存在、接收人有效或实际执行成功。
+3. **保存回读**：保存后用 `+workflow-get` 读取同一 Workflow，核对步骤和参数；记录触发器还需核对新增/修改事件范围、监听字段及修改前后的筛选条件。
+4. **核对状态**：按用户要求启用或停用，再用 `+workflow-get` 确认运行态。
+5. **按需实测**：只有用户要求验证实际执行时，才在已授权的资源、收件人和动作范围内触发测试事件，并检查目标记录或外部动作的业务结果。
 
 ---
 
@@ -52,15 +60,22 @@
 
 ## 场景速查表
 
-| 场景 | 步骤组合 | 示例 |
+| 场景 | 步骤组合 | 参考 |
 |------|---------|------|
-| 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例1-新增记录触发--发送消息) |
+| 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例-1-新增记录触发--发送消息) |
 | 按钮点击+调用外部接口+写入日志 | ButtonTrigger → HTTPClientAction → AddRecordAction | [下方](#示例-6-按钮触发--调用外部接口--写入同步日志) |
-| 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例2-定时触发--查找记录--循环遍历--发送消息) |
-| 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例3-条件分支ifelsebranch) |
-| 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例4-多路分支switchbranch) |
-| 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例5-组合场景定时查找循环分支消息) |
-| AI 分类 | ... → AIClassificationBranch → 分类后处理 | [下方](#示例7-ai-分类用户反馈自动分流) |
+| 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例-2-定时触发--查找记录--循环遍历--发送消息) |
+| 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例-3-条件分支ifelsebranch) |
+| 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例-4-多路分支switchbranch) |
+| 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例-5-组合场景定时查找循环分支消息) |
+| 生成、总结、改写、提取文本或分类标签 | ... → GenerateAiTextAction | [节点参数](lark-base-workflow-schema.md#generateaitextaction) |
+| 分析 Base 数据 | ... → AIAnalysisAction | [节点参数](lark-base-workflow-schema.md#aianalysisaction) |
+| AI 智能体、附件理解、工具调用或结构化输出 | ... → AIAgentAction | [配置与工具](lark-base-workflow-ai-agent.md) |
+| 按文本语义分类并分流 | ... → AIClassificationBranch → 分类后处理 | [下方](#示例-7-ai-分类用户反馈自动分流) |
+| 飞书任务、日程、群组自动化 | ... → APIHubAction | [组件与参数](lark-base-workflow-apihub.md#当前支持的组件) |
+
+- “发给我/通知我/本人”指当前用户：用 `lark-cli contact +get-user`（不传 `--user-id`）获取 `.data.user.open_id`。其他人员、群组需按用户指定对象解析，不能用当前用户或示例 ID 兜底。
+- 条件无法原样回读时，只在用户授权修改表结构的前提下考虑派生字段；否则保持 disabled 并说明未完成项。
 
 ---
 
@@ -851,7 +866,7 @@
 1. **IfElseBranch**:
    - 适合二元判断（是/否、大于/小于）
    - `children.links` 必须包含 `if_true` 和 `if_false`
-   - 可以用 `next` 指向汇合点
+   - 不使用公共 `next` 指向汇合点；两个分支分别维护后续链路
 
 2. **SwitchBranch**:
    - 适合多路分类（3路及以上）
