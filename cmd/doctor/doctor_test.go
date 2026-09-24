@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -100,6 +101,20 @@ func TestNetworkChecks_Offline(t *testing.T) {
 		if c.Status != "skip" {
 			t.Errorf("expected skip, got %s for %s", c.Status, c.Name)
 		}
+	}
+}
+
+// TestProbeEndpoint_AnyHTTPStatusCountsAsReachable locks the connectivity
+// semantics: the probe proves the host answers (TCP+TLS+HTTP round-trip),
+// not that a specific path serves content. A root-path 404 or 5xx must
+// still report reachable — otherwise every healthy API host would fail.
+func TestProbeEndpoint_AnyHTTPStatusCountsAsReachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	if err := probeEndpoint(context.Background(), srv.Client(), srv.URL); err != nil {
+		t.Fatalf("5xx response must still count as reachable (connectivity probe), got %v", err)
 	}
 }
 

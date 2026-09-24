@@ -4,6 +4,7 @@
 package cmdupdate
 
 import (
+	"errors"
 	"fmt"
 	stdio "io"
 	"runtime"
@@ -38,15 +39,6 @@ var (
 )
 
 func isWindows() bool { return currentOS == osWindows }
-
-// normalizeVersion canonicalizes a version string for state comparison.
-// Strips a leading "v" so versions written from Makefile (git describe →
-// "v1.0.0") and npm (no prefix → "1.0.0") compare equal.
-func normalizeVersion(s string) string {
-	s = strings.TrimSpace(s)
-	s = strings.TrimPrefix(s, "v")
-	return strings.TrimPrefix(s, "V")
-}
 
 func releaseURL(version string) string {
 	return repoURL + "/releases/tag/v" + strings.TrimPrefix(version, "v")
@@ -413,7 +405,7 @@ func verificationFailureHint(updater *selfupdate.Updater, latest, pm string) str
 func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool, requestedLayout string) *skillscheck.SyncResult {
 	layout, _ := skillscheck.ParseLayout(requestedLayout)
 	if !force {
-		if state, ok, err := skillscheck.ReadState(); err == nil && ok && normalizeVersion(state.Version) == normalizeVersion(stateVersion) {
+		if state, ok, err := skillscheck.ReadState(); err == nil && ok && skillscheck.NormalizeVersion(state.Version) == skillscheck.NormalizeVersion(stateVersion) {
 			if !state.OfficialSkillsUnknown && (layout == "" || skillscheck.EffectiveLayout(state) == layout) {
 				return nil
 			}
@@ -425,7 +417,7 @@ func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, state
 		Force:   force,
 		Runner:  updater,
 	})
-	if result.Err != nil && strings.Contains(result.Err.Error(), "state not written") {
+	if result.Err != nil && errors.Is(result.Err, skillscheck.ErrStateNotWritten) {
 		fmt.Fprintf(io.ErrOut, "warning: %v\n", result.Err)
 	}
 	return result
@@ -480,7 +472,7 @@ func applySkillsStatus(env map[string]interface{}, target string) {
 	status := map[string]interface{}{
 		"current": state.Version,
 		"target":  target,
-		"in_sync": normalizeVersion(state.Version) == normalizeVersion(target) && !state.OfficialSkillsUnknown,
+		"in_sync": skillscheck.NormalizeVersion(state.Version) == skillscheck.NormalizeVersion(target) && !state.OfficialSkillsUnknown,
 	}
 	if state.OfficialSkillsUnknown {
 		status["official_unknown"] = true
