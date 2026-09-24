@@ -165,8 +165,8 @@ var dbSubcodeTable = map[string]dbSubcodeMeta{
 	"k_dl_4000052": {
 		Category: errs.CategoryAPI,
 		Subtype:  errs.SubtypeFeatureNotAvailable,
-		Hint: "this app requires approval to release. Release it through the app release flow instead — " +
-			"`lark-cli apps +release-create --app-id <app_id>` or the web console; " +
+		Hint: "this app requires approval to release. Confirm the release reason with the user, then use the app release flow — " +
+			"`lark-cli apps +release-create --app-id <app_id> --apply-reason \"<confirmed release reason>\"` or the web console; " +
 			"`+db-env-diff` still previews the pending changes.",
 		Message: "publishing the database requires release approval in this tenant",
 	},

@@ -294,8 +294,8 @@ func ensureHTMLPublishable(ctx context.Context, rctx *common.RuntimeContext, app
 		"app %s has app_type %q, which +html-publish cannot deploy (only html and modern_html apps are supported)",
 		appID, appType).
 		WithHint(fmt.Sprintf(
-			"a %s app ships through its own build/deploy chain; publish it with `lark-cli apps +release-create --app-id %s` instead",
-			appType, appID))
+			"a %s app ships through its own build/deploy chain; run `lark-cli apps +release-create --help` and follow the %s example instead (app ID: %s)",
+			appType, appType, appID))
 }
 
 // isAppTypeReleaseError reports whether a release-create failure is the backend
@@ -384,7 +384,7 @@ func runHTMLPublishTOS(ctx context.Context, rctx *common.RuntimeContext, spec ap
 		// opaque code — translate it into the actionable +release-create hint.
 		if isAppTypeReleaseError(err) {
 			return nil, withAppsHint(err, fmt.Sprintf(
-				"this app_type cannot be published via +html-publish; use `lark-cli apps +release-create --app-id %s` instead",
+				"this app_type cannot be published via +html-publish; run `lark-cli apps +release-create --help`, confirm the current app type, and follow the matching example instead (app ID: %s)",
 				spec.AppID))
 		}
 		return nil, err
