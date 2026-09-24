@@ -13,7 +13,7 @@ import (
 )
 
 // StaleNotice signals that the locally synced skills need attention because
-// their version is stale or their official completeness is unknown. Current
+// their version or source differs, or their official completeness is unknown. Current
 // is the last successfully synced version (always non-empty — Init does not
 // emit a notice on cold start). Target is the running binary version. Mirrors
 // internal/update.UpdateInfo's pending-notice pattern.
@@ -21,6 +21,7 @@ type StaleNotice struct {
 	Current         string `json:"current"`
 	Target          string `json:"target"`
 	OfficialUnknown bool   `json:"official_unknown,omitempty"`
+	SourceChanged   bool   `json:"-"`
 }
 
 // Message returns a single-line, AI-agent-parseable description of the
@@ -30,6 +31,9 @@ type StaleNotice struct {
 func (s *StaleNotice) Message() string {
 	if s.OfficialUnknown {
 		return "lark-cli skills were installed from a fallback source; official completeness is unknown, run: lark-cli update"
+	}
+	if s.SourceChanged {
+		return "lark-cli skills were installed from a different distribution source, run: lark-cli update"
 	}
 	return fmt.Sprintf(
 		"lark-cli skills %s out of sync with binary %s, run: lark-cli update",

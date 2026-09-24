@@ -4,6 +4,7 @@
 package event
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/appmeta"
 	"github.com/larksuite/cli/internal/core"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/testutil"
 )
 
 func newPreflightCtx(appID string, brand core.LarkBrand, identity core.Identity, keyDef *eventlib.KeyDefinition, appVer *appmeta.AppVersion) *preflightCtx {
@@ -114,19 +116,20 @@ func TestPreflightScopes_Bot_NoAppVer_SkipsCheck(t *testing.T) {
 	}
 }
 
-func TestPreflightScopes_Bot_AllGranted_Passes(t *testing.T) {
+func TestPreflightScopes_Bot_MissingTokenTypes_Passes(t *testing.T) {
 	def := &eventlib.KeyDefinition{
 		Key:    "im.message.text",
 		Scopes: []string{"im:message", "im:message.group_at_msg"},
 	}
-	appVer := &appmeta.AppVersion{TenantScopes: []string{
-		"im:message",
-		"im:message.group_at_msg",
-		"contact:user:readonly",
-	}}
-	_, err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, appVer))
+	appVer, err := appmeta.FetchCurrentPublished(context.Background(), &testutil.StubAPIClient{Body: `{"data":{"items":[{"status":1,"publish_time":"1776684746","scopes":[
+		{"scope":"im:message"},{"scope":"im:message.group_at_msg"},{"scope":"contact:user:readonly"}
+		]}]}}`}, "cli_x")
 	if err != nil {
-		t.Fatalf("all scopes granted, unexpected error: %v", err)
+		t.Fatal(err)
+	}
+	checked, err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, appVer))
+	if !checked || err != nil {
+		t.Fatalf("scopes without token_types must pass preflight, got checked=%v, err=%v", checked, err)
 	}
 }
 

@@ -259,6 +259,14 @@ Errors go to **stderr**, non-zero exit code:
 
 To check whether a command succeeded, test `ok == true` (or the exit code) — **not** `code == 0`. Unlike raw OpenAPI responses (`{"code": 0, "msg": "ok", ...}`), the success envelope carries no `code` or `msg` field; `code` appears only inside `error` as the upstream OpenAPI code. See [errs/ERROR_CONTRACT.md](errs/ERROR_CONTRACT.md) for the full error taxonomy.
 
+`auth scopes` returns a standalone object with `appId`, `brand`, and `count`.
+Normally it includes `tokenType: "user"` and `userScopes`. When the API returns
+a non-empty scope list in which every `token_types` field is missing, `null`,
+or `[]`, it instead includes `scopes` and omits `tokenType` and `userScopes`.
+These scopes are not classified by identity; they do not establish user or bot
+authorization. Mixed metadata and empty lists retain the user-filtered format.
+Consumers must handle both shapes; `count` always counts the returned list.
+
 ### Pagination
 
 ```bash
