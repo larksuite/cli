@@ -116,6 +116,8 @@ Record 是 Table 中的一行数据，包含该记录在各个 Field 下的 Cell
 
 所有读取都重复传 `--field-id` 做最小字段投影，并统一写入 NDJSON artifact：`--format ndjson --output <path>.ndjson`。每行是一条 Record JSON，stdout 摘要包含 `records_count` 和 `has_more` 用于分页判断。
 
+`+record-list` 默认输出 Markdown 表格，不是 JSON：直接把 stdout 喂给 `json.load` 会失败。需要机器可读输出时用 `--format ndjson`（可配 `--output`）或 `--json`（即 `--format json`），也可以改用 `+record-search`。
+
 ```bash
 # Example: 行数较大时先筛选 Status 包含 Doing 的记录，再导出 20 条作为局部预览
 lark-cli base +record-list \
@@ -196,6 +198,10 @@ lark-cli base +record-batch-update \
 - `+record-share-link-create --base-token <base_token> --table-id <table_id> --record-id <id1> --record-id <id2>` 创建记录分享链接
 - `+record-history-list` 查询单条记录的变更事件，读取 [历史记录协议](references/lark-base-record-history-list.md)
 - 附件必须使用 `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` 操作。
+
+`+record-upsert` 按 `--record-id` 是否存在决定语义，不按业务键判断新增还是更新：不带 `--record-id` 时发 `POST .../records`，带 `--record-id` 时发 `PATCH .../records/<record_id>`（1.0.96 `--dry-run` 实测）。即使写入的字段值在表中已存在（例如既有的 `orderId`），不带 `--record-id` 仍然只发一条 POST，不会查找或合并已有记录，结果是多出一条重复行。要按业务键去重，先用 `+record-search` 查到 `record_id` 再决定；批量场景用 `+record-batch-create` / `+record-batch-update`，不要循环调用单条命令。
+
+批量写入的 `--json` 必须是 JSON 对象，不是数组：传 `[{...}]` 会被拒绝，报 `--json must be a JSON object`。`+record-batch-update` 的形状是 `{"update_records":{"<record_id>":{...}}}`。CLI 不在本地校验这个形状，不匹配的对象也会被原样发往服务端，错误要到服务端才暴露。
 
 ### View
 
