@@ -6,6 +6,7 @@ package common
 import (
 	"context"
 
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/spf13/cobra"
 )
 
@@ -66,6 +67,7 @@ type Shortcut struct {
 	DryRun    func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
 	Validate  func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
 	Execute   func(ctx context.Context, runtime *RuntimeContext) error      // main logic
+	Citation  *CitationDefinition                                           // optional JSON-envelope citations for successful output
 
 	// OnInvoke, when non-nil, runs from the command's cobra PreRunE — before
 	// cobra validates required flags — so its side effect fires even when the
@@ -100,6 +102,12 @@ type Shortcut struct {
 	// typed is the private executable contract produced by the internal command
 	// host from extension/command. It never forms a second authoring surface.
 	typed *compiledCommand
+}
+
+// CitationDefinition describes how a shortcut derives citations from the data it already outputs.
+type CitationDefinition struct {
+	SourceTypes []citation.SourceType
+	Build       func(data interface{}) []citation.Citation
 }
 
 // ScopesForIdentity returns the scopes applicable for the given identity.
