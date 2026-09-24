@@ -70,7 +70,10 @@ var MailTriage = common.Shortcut{
 		{Name: "print-filter-schema", Type: "bool", Desc: "print --filter field reference and exit"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return validateBotMailboxNotMe(runtime)
+		if err := validateBotMailboxNotMe(runtime); err != nil {
+			return err
+		}
+		return validateUserMailboxID("--mailbox", resolveMailboxID(runtime))
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailbox := resolveMailboxID(runtime)
