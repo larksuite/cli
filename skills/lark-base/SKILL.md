@@ -252,9 +252,11 @@ BaseApp、Workspace、Page 或组件任务开始前完整读取 [应用模式与
 
 Workflow 本身是 Base Block，其内部是一张由 `next` / `children` 连接的 steps 执行图；触发器、动作、条件分支和循环都是 step 类型。它适合定时执行、Record 新增或变更联动、消息通知、记录读写和跨系统调用。Workflow 分为三条操作路径：
 
-1. **读取配置：** `+workflow-list` 定位流程，`+workflow-get` 读取 `title`、`status` 和完整 `steps` 执行图。
+1. **读取配置：** `+workflow-list` 定位流程，`+workflow-get` 读取 API 返回的 `title`、`status` 和 `steps`；返回步骤不等于原生编辑器配置的无损备份。
 2. **写入配置：** `+workflow-create` 创建完整定义，`+workflow-update` 更新完整定义；构造或修改配置前读取 [Workflow](references/lark-base-workflow.md)，由该入口继续路由 step 类型和 schema。
 3. **运行状态控制：** `+workflow-enable` / `+workflow-disable` 启用或停用已有 Workflow，不修改 steps 执行图。
+
+含工作流内嵌公式时，审计或整份回写前先核对原生编辑器中的已保存表达式；空值可能是导出缺失，不应直接判为死条件。存在缺失时保留原生编辑路径，不将不完整导出用于替换。详见 [Workflow 读取完整性与回写边界](references/lark-base-workflow.md#读取完整性与回写边界)。
 
 ## Advanced Permission（AdvPerm）
 
