@@ -368,6 +368,49 @@ func resolveComposeSenderEmail(runtime *common.RuntimeContext) string {
 	return email
 }
 
+// validateComposeSenderForMailbox verifies that an explicitly selected From
+// address is one of the addresses the target mailbox is allowed to send as.
+// The check is intentionally performed before drafts.create: accepting an
+// arbitrary From header and relying on the send endpoint to reject it would
+// still leave an unauthorized draft behind.
+//
+// Commands that omit --from keep their existing mailbox/profile resolution.
+// This preserves the default "me" path and shared-mailbox owner path while
+// still allowing aliases and mail groups returned by settings.send_as.
+func validateComposeSenderForMailbox(runtime *common.RuntimeContext, mailboxID string) error {
+	from := strings.TrimSpace(runtime.Str("from"))
+	if from == "" {
+		return nil
+	}
+	explicitMailbox := strings.TrimSpace(runtime.Str("mailbox"))
+	if explicitMailbox == "" || strings.EqualFold(explicitMailbox, from) {
+		return nil
+	}
+	if mailboxID == "" {
+		mailboxID = "me"
+	}
+
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "settings", "send_as"), nil, nil)
+	if err != nil {
+		return mailDecorateProblemMessage(err, "failed to validate --from for mailbox %s", mailboxID)
+	}
+	addrs, _ := data["sendable_addresses"].([]interface{})
+	for _, raw := range addrs {
+		addr, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		email, _ := addr["email_address"].(string)
+		if strings.EqualFold(strings.TrimSpace(email), from) {
+			return nil
+		}
+	}
+
+	return mailValidationParamError("--from",
+		"--from %q is not a sendable address for mailbox %q; query mail user_mailbox.settings send_as for the allowed addresses",
+		from, mailboxID)
+}
+
 // fetchSelfEmailSet returns a set of addresses to exclude as "self" in
 // reply-all. It always tries profile("me"); when mailboxID or senderEmail
 // differ from "me", those are added to the set as well so that shared-
@@ -2293,6 +2336,44 @@ func normalizeRecipientFlagValues(values []string) string {
 	return strings.Join(parts, ", ")
 }
 
+// validateRecipientFlagValues validates every repeated recipient flag
+// occurrence before Execute can perform any remote or upload side effects.
+// The existing normalization remains deliberately separate so dry-run and
+// Execute continue to preserve the original ordering and display names.
+func validateRecipientFlagValues(flagName string, values []string) error {
+	for occurrence, raw := range values {
+		parts := splitAddressList(raw)
+		foundAddress := false
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			foundAddress = true
+			if _, err := netmail.ParseAddress(part); err != nil {
+				return mailValidationParamError(flagName,
+					"%s occurrence %d: invalid recipient address %q: %v",
+					flagName, occurrence+1, part, err).WithCause(err)
+			}
+		}
+		if !foundAddress {
+			return mailValidationParamError(flagName,
+				"%s occurrence %d: recipient address must not be empty",
+				flagName, occurrence+1)
+		}
+	}
+	return nil
+}
+
+func validateRepeatedRecipientFlags(runtime *common.RuntimeContext) error {
+	for _, name := range []string{"to", "cc", "bcc"} {
+		if err := validateRecipientFlagValues("--"+name, runtime.StrArray(name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func normalizeCommaListFlagValues(values []string) []string {
 	var out []string
 	for _, raw := range values {
@@ -2307,8 +2388,11 @@ func normalizeCommaFlagValues(values []string) string {
 
 func normalizeInlineFlagValues(values []string) (string, error) {
 	var all []InlineSpec
-	for _, raw := range values {
-		specs, err := parseInlineSpecs(raw)
+	for i, raw := range values {
+		if strings.TrimSpace(raw) == "" {
+			return "", mailValidationParamError("--inline", "--inline occurrence %d: value must not be empty", i+1)
+		}
+		specs, err := parseInlineSpecsOccurrence(raw, i+1)
 		if err != nil {
 			return "", err
 		}
@@ -2341,37 +2425,46 @@ func countInlineSpecsForLog(values []string) int {
 }
 
 // parseInlineSpecs parses one --inline flag value as either a JSON array or a
-// single JSON object. Returns an empty slice when raw is empty.
+// single JSON object. Returns an empty slice when raw is empty because an
+// empty normalized value represents an omitted --inline flag.
 func parseInlineSpecs(raw string) ([]InlineSpec, error) {
+	return parseInlineSpecsOccurrence(raw, 0)
+}
+
+func parseInlineSpecsOccurrence(raw string, occurrence int) ([]InlineSpec, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
+	prefix := ""
+	if occurrence > 0 {
+		prefix = fmt.Sprintf("--inline occurrence %d: ", occurrence)
+	}
 	if raw == "null" {
-		return nil, nil
+		return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, not null", prefix)
 	}
 	var specs []InlineSpec
 	switch raw[0] {
 	case '{':
 		var spec InlineSpec
 		if err := json.Unmarshal([]byte(raw), &spec); err != nil {
-			return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", err).WithCause(err)
+			return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", prefix, err).WithCause(err)
 		}
 		specs = []InlineSpec{spec}
 	case '[':
 		if err := json.Unmarshal([]byte(raw), &specs); err != nil {
-			return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", err).WithCause(err)
+			return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", prefix, err).WithCause(err)
 		}
 	default:
-		return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]'")
+		return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]'", prefix)
 	}
 	for i, s := range specs {
 		cid := normalizeInlineCID(s.CID)
 		if cid == "" {
-			return nil, mailValidationParamError("--inline", "--inline entry %d: \"cid\" must not be empty", i)
+			return nil, mailValidationParamError("--inline", "%s--inline entry %d: \"cid\" must not be empty", prefix, i+1)
 		}
 		if strings.TrimSpace(s.FilePath) == "" {
-			return nil, mailValidationParamError("--inline", "--inline entry %d: \"file_path\" must not be empty", i)
+			return nil, mailValidationParamError("--inline", "%s--inline entry %d: \"file_path\" must not be empty", prefix, i+1)
 		}
 		specs[i].CID = cid
 	}
