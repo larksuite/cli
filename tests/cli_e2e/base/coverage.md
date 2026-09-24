@@ -1,9 +1,9 @@
 # Base CLI E2E Coverage
 
 ## Metrics
-- Denominator: 99 leaf commands
-- Covered: 49
-- Coverage: 49.5%
+- Denominator: 100 leaf commands
+- Covered: 50
+- Coverage: 50.0%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
@@ -15,6 +15,8 @@
 - TestBaseFormQuestionsCreateDryRun: proves `+form-questions-create` preserves its POST body and renders the existing-question guard in command help.
 - TestBaseFormDetailDryRun / TestBaseFormSubmitDryRun: prove shared-form detail and submission request shapes.
 - TestBaseDashboardBlockGetDataDryRun: proves dashboard block data request shapes and identifier handling.
+- TestBaseDashboardPushCreateDryRun: proves the exact two-call `+dashboard-push-create` plan (workflow POST then enable PATCH), strict one-time user and daily mixed user/group schedule bodies, image-only dashboard content, and validation failures that emit no API plan.
+- TestBaseDashboardPushWorkflow: deployment- and receiver-fixture-gated by `LARK_CLI_E2E_BASE_DASHBOARD_PUSH_READY=1` plus `LARK_CLI_E2E_BASE_DASHBOARD_PUSH_RECEIVER`; creates a temporary Base/dashboard, creates and enables a one-time dashboard screenshot workflow, reads it back, disables it, and deletes all owned state with the Base cleanup.
 - TestBaseDashboardBlockLayoutPrecisionWorkflow: creates a temporary Base/table/dashboard, creates a statistics block with `position` and omitted `number_format`, asserts the server default, updates to a custom format, then verifies a precision-only update preserves `formatName`, and cleans up the block/dashboard/base. `+dashboard-create`, `+dashboard-delete`, `+dashboard-block-get` and `+dashboard-block-delete` have no dry-run coverage and rest on this test alone. This workflow was executed successfully against a live tenant on 2026-08-20 while validating PR #2118.
 - TestBaseDashboardBlockRankingCreateDryRun / TestBaseDashboardBlockRankingUpdateDryRunPreservesPatch / TestBaseDashboardBlockRankingDryRunRejectsInvalidConfig: prove ranking create defaults, top-level patch preservation, and typed validation failures for unsupported fields and malformed filters.
 - TestBaseShareDryRun: proves dashboard/form share GET and PATCH routes, one-field update requests, explicit false preservation, and nested form settings without touching live data.
@@ -30,7 +32,7 @@
 - TestBaseTableCopyWorkflow: feature-gated by `LARK_CLI_E2E_BASE_TABLE_COPY_READY=1` until the OpenAPI is deployed; creates a source table and record, proves schema-only copy, all no-wait plus status, all wait, record inclusion, and cleanup.
 - TestBaseTemplateCenterDryRun: proves `+template-categories`, `+template-list`, and `+template-search` request shapes; the list case covers category, limit, and offset parameters.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
-- Blocked area: table-copy live integration remains deployment-gated; remaining dashboard, field, most record operations, most form operations, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
+- Blocked area: table-copy live integration remains deployment-gated. Dashboard push live integration is also gated until Dashboard image workflow segments are deployed and a tenant-valid receiver ID is supplied; the Base and dashboard fixtures themselves are deterministic and self-cleaning. Remaining dashboard, field, most record operations, most form operations, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
 
 ## Command Table
 
@@ -60,6 +62,7 @@
 | ✓ | base +dashboard-delete | shortcut | base_dashboard_block_layout_precision_workflow_test.go::TestBaseDashboardBlockLayoutPrecisionWorkflow (cleanup) | `--base-token`; `--dashboard-id`; `--yes`; live cleanup | deletes the temporary dashboard |
 | ✕ | base +dashboard-get | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-list | shortcut |  | none | dashboard workflows not covered |
+| ✓ | base +dashboard-push-create | shortcut | base_dashboard_push_dryrun_test.go::TestBaseDashboardPushCreateDryRun; base_dashboard_push_workflow_test.go::TestBaseDashboardPushWorkflow | strict `--send-at`; `NO_REPEAT`/`DAILY`; repeated `ou_`/`oc_` `--receiver`; `--content-mode=image`; POST create + PATCH enable | exact dry-run plan and zero-plan invalid input coverage; live requires deployment gate and tenant-valid receiver fixture |
 | ✓ | base +dashboard-share-get | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/dashboard get; base_share_workflow_test.go::TestBaseShareWorkflow/dashboard share update and get | `--base-token`; `--dashboard-id`; dry-run + deployment-gated live | live requires `LARK_CLI_E2E_BASE_SHARE_READY=1` |
 | ✓ | base +dashboard-share-update | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/dashboard partial update, dashboard auto analysis is not exposed; base_share_workflow_test.go::TestBaseShareWorkflow/dashboard share update and get | one of `--enabled`; `--access-scope=invite`; `--show-source` per request; unsupported auto-analysis flag | single-field updates, explicit false, invite-only scope, live read-back, and backend-gated setting exclusion covered |
 | ✕ | base +dashboard-update | shortcut |  | none | dashboard workflows not covered |
