@@ -5,6 +5,8 @@ package output
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 )
@@ -209,6 +211,55 @@ func TestValidateJqExpression(t *testing.T) {
 			}
 			if !tt.wantErr && err != nil {
 				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestJqFilter_NumberPrecision(t *testing.T) {
+	filters := []struct {
+		name string
+		run  func(io.Writer, interface{}, string) error
+	}{
+		{"normal", JqFilter},
+		{"raw", JqFilterRaw},
+	}
+	tests := []struct {
+		name string
+		data interface{}
+		expr string
+		want string
+	}{
+		{"int64 maximum", json.Number("9223372036854775807"), ".", "9223372036854775807\n"},
+		{"int64 minimum", json.Number("-9223372036854775808"), ".", "-9223372036854775808\n"},
+		{"above int64 maximum", json.Number("9223372036854775809"), ".", "9223372036854775809\n"},
+		{"below int64 minimum", json.Number("-9223372036854775809"), ".", "-9223372036854775809\n"},
+		{"large integer arithmetic", json.Number("18446744073709551615"), ". + 1", "18446744073709551616\n"},
+		{"typed unsigned integer", uint64(18446744073709551615), ".", "18446744073709551615\n"},
+		{
+			name: "nested integers",
+			data: map[string]interface{}{"values": []interface{}{
+				json.Number("9223372036854775809"),
+				json.Number("9223372036854775810"),
+			}},
+			expr: ".values | add",
+			want: "18446744073709551619\n",
+		},
+		{"fractional number", json.Number("1.25"), ".", "1.25\n"},
+		{"exponent notation", json.Number("1.25e2"), ".", "125\n"},
+	}
+	for _, filter := range filters {
+		t.Run(filter.name, func(t *testing.T) {
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					var buf bytes.Buffer
+					if err := filter.run(&buf, tt.data, tt.expr); err != nil {
+						t.Fatalf("unexpected error: %v", err)
+					}
+					if got := buf.String(); got != tt.want {
+						t.Errorf("got %q, want %q", got, tt.want)
+					}
+				})
 			}
 		})
 	}
