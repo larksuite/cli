@@ -41,7 +41,9 @@ lark-cli docs +media-download --type whiteboard --token "wbcnxxxxxxxx" --output 
 
 ## 排障
 
-- 如果返回 `permission_denied`，或最终下载返回 `HTTP 403`，按错误 `hint` 改用 [`docs +media-preview`](lark-doc-media-preview.md) 预览内容。
+- 对素材下载，CLI 会先调用权限接口，以 `type=file`、`action=export` 校验当前身份能否导出该素材，再调用素材下载接口；画板下载不执行该预检。
+- 如果权限预检返回 `1063001 Invalid parameter`，不要继续重试同一输入。重新获取文档内容并使用当前 `<img token>` 或 `<source token>`；不要传文档 token、block ID、画板 token 或已失效的旧素材 token。
+- 如果下载返回 `permission_denied` 或 `HTTP 403`，按错误 `hint` 改用 [`docs +media-preview`](lark-doc-media-preview.md) 预览内容。
 - 如果返回限流错误，停止立即重试，稍后按指数退避重试。
 
 ## 参考
