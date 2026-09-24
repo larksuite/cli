@@ -39,6 +39,17 @@
 
 `npx -y @larksuite/whiteboard-cli@^0.2.13 --check` 检测 `text-overflow` 和 `node-overlap`, 并结合视觉效果(查看 PNG)进行调整
 
+## Artifact Contract
+
+本 route 交回 [`lark-whiteboard-workflow.md`](../references/lark-whiteboard-workflow.md#渲染--写入画板)：
+
+- `diagram.svg`：SVG source。
+- `diagram.png`：本地 preview。
+- 本地 `--check` 结果和人工视觉审查结论。
+- 可选 `diagram.json`：同一 source 转换出的 OpenAPI 创建 payload。
+
+本 route 不读取目标画板、不决定 mutation semantics，也不执行远端写入。Workflow 决定 initialize、append 或 replace，并负责本地请求预览、确认、远端写入和读回。
+
 ## 画板怎么处理 SVG
 
 画板的 svg-parser 把可识别元素转成可编辑节点, 其余降级为内嵌图片(渲染没问题, 虽然不可编辑, 但是可以正常显示)；但非阴影用途的 `<filter>` / `<clipPath>` 等装饰特性画板不支持（见下方⚠️）
