@@ -227,25 +227,134 @@ func TestReplaceSlideBlockInsertPassthrough(t *testing.T) {
 	}
 }
 
-// TestReplaceSlideRejectsStrReplace verifies str_replace is blocked at the
-// CLI even though the backend supports it (product decision).
-func TestReplaceSlideRejectsStrReplace(t *testing.T) {
+// TestReplaceSlideStrReplacePassthrough verifies str_replace parts are sent
+// byte-for-byte: pattern/replacement/is_multiple forwarded, and no block_id or
+// id/<content/> injection (the pattern must match the stored XML verbatim).
+func TestReplaceSlideStrReplacePassthrough(t *testing.T) {
 	t.Parallel()
 
-	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
-	parts := `[{"action":"str_replace","pattern":"old","replacement":"new"}]`
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/slide/replace",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"revision_id": 11}},
+	}
+	reg.Register(stub)
+
+	parts := `[{"action":"str_replace","pattern":"width=\"560\"","replacement":"width=\"600\"","is_multiple":true}]`
 	err := runSlidesShortcut(t, f, stdout, SlidesReplaceSlide, []string{
 		"+replace-slide",
 		"--presentation", "pres_abc",
-		"--slide-id", "s",
+		"--slide-id", "slide_xyz",
 		"--parts", parts,
 		"--as", "user",
 	})
-	if err == nil {
-		t.Fatal("expected error for str_replace action")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "str_replace") || !strings.Contains(err.Error(), "block_replace") {
-		t.Fatalf("err = %v, want mention of both str_replace and block_replace", err)
+
+	var body struct {
+		Parts []map[string]interface{} `json:"parts"`
+	}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	got := body.Parts[0]
+	if got["action"] != "str_replace" {
+		t.Fatalf("action = %v", got["action"])
+	}
+	if got["pattern"] != `width="560"` {
+		t.Fatalf("pattern mutated: %v", got["pattern"])
+	}
+	if got["replacement"] != `width="600"` {
+		t.Fatalf("replacement mutated: %v", got["replacement"])
+	}
+	if got["is_multiple"] != true {
+		t.Fatalf("is_multiple = %v, want true", got["is_multiple"])
+	}
+	if _, hasID := got["block_id"]; hasID {
+		t.Fatalf("str_replace should not carry block_id, got %v", got)
+	}
+	if _, hasContent := got["insertion"]; hasContent {
+		t.Fatalf("str_replace should not carry insertion, got %v", got)
+	}
+}
+
+// TestReplaceSlideStrReplaceEmptyReplacementDeletes verifies an empty
+// replacement is accepted (empty = delete the matched text) and forwarded,
+// while is_multiple is omitted when the caller doesn't set it.
+func TestReplaceSlideStrReplaceEmptyReplacementDeletes(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/slide/replace",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"revision_id": 12}},
+	}
+	reg.Register(stub)
+
+	parts := `[{"action":"str_replace","pattern":"<undefined/>","replacement":""}]`
+	err := runSlidesShortcut(t, f, stdout, SlidesReplaceSlide, []string{
+		"+replace-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "slide_xyz",
+		"--parts", parts,
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var body struct {
+		Parts []map[string]interface{} `json:"parts"`
+	}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	got := body.Parts[0]
+	if got["replacement"] != "" {
+		t.Fatalf("replacement = %v, want empty string", got["replacement"])
+	}
+	if _, ok := got["is_multiple"]; ok {
+		t.Fatalf("is_multiple should be omitted when unset, got %v", got["is_multiple"])
+	}
+}
+
+// TestReplaceSlideStrReplaceMissingFields checks str_replace required-field
+// rules: pattern must be non-empty; replacement must be present (but may be "").
+func TestReplaceSlideStrReplaceMissingFields(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		parts   string
+		wantErr string
+	}{
+		{"missing pattern", `[{"action":"str_replace","replacement":"new"}]`, "requires non-empty pattern"},
+		{"empty pattern", `[{"action":"str_replace","pattern":"","replacement":"new"}]`, "requires non-empty pattern"},
+		{"missing replacement", `[{"action":"str_replace","pattern":"old"}]`, "requires replacement"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			err := runSlidesShortcut(t, f, stdout, SlidesReplaceSlide, []string{
+				"+replace-slide",
+				"--presentation", "pres_abc",
+				"--slide-id", "s",
+				"--parts", tt.parts,
+				"--as", "user",
+			})
+			if err == nil {
+				t.Fatalf("expected error for %s", tt.name)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("err = %v, want substring %q", err, tt.wantErr)
+			}
+			assertValidationProblem(t, err, "--parts", nil)
+		})
 	}
 }
 
@@ -781,7 +890,7 @@ func TestReplaceSlideValidationParam(t *testing.T) {
 		{"parts non-string field", "s", `[{"action":123}]`, "--parts"},
 		{"parts empty array", "s", `[]`, "--parts"},
 		{"parts missing required field", "s", `[{"action":"block_insert"}]`, "--parts"},
-		{"parts str_replace rejected", "s", `[{"action":"str_replace","pattern":"a","replacement":"b"}]`, "--parts"},
+		{"parts str_replace missing pattern", "s", `[{"action":"str_replace","replacement":"b"}]`, "--parts"},
 		{"parts unknown action", "s", `[{"action":"nuke","block_id":"b"}]`, "--parts"},
 		{"parts replacement without root", "s", `[{"action":"block_replace","block_id":"b","replacement":"plain text"}]`, "--parts"},
 	}
@@ -1170,7 +1279,7 @@ func TestReplaceSlideAcceptsDuplicateAliasValues(t *testing.T) {
 func TestReplaceSlideRejectsSemanticallyDifferentActions(t *testing.T) {
 	t.Parallel()
 
-	for _, action := range []string{"str_replace", "replace_all", "page_replace", "slide_replace"} {
+	for _, action := range []string{"replace_all", "page_replace", "slide_replace"} {
 		t.Run(action, func(t *testing.T) {
 			t.Parallel()
 			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
