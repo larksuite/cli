@@ -15,6 +15,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
+	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher/callback"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 
 	"github.com/larksuite/cli/internal/event"
@@ -36,9 +37,7 @@ func (s *FeishuSource) Start(ctx context.Context, eventTypes []string, emit func
 
 	rawHandler := s.buildRawHandler(emit)
 
-	for _, et := range eventTypes {
-		d.OnCustomizedEvent(et, rawHandler)
-	}
+	s.registerHandlers(d, eventTypes, rawHandler)
 
 	opts := []larkws.ClientOption{larkws.WithEventHandler(d)}
 	if s.Domain != "" {
@@ -62,6 +61,28 @@ func (s *FeishuSource) Start(ctx context.Context, eventTypes []string, emit func
 		return ctx.Err()
 	case err := <-errCh:
 		return err
+	}
+}
+
+func (s *FeishuSource) registerHandlers(
+	d *dispatcher.EventDispatcher,
+	eventTypes []string,
+	rawHandler func(context.Context, *larkevent.EventReq) error,
+) {
+	for _, et := range eventTypes {
+		if et == "card.action.trigger" {
+			d.OnP2CardActionTrigger(func(
+				ctx context.Context,
+				event *callback.CardActionTriggerEvent,
+			) (*callback.CardActionTriggerResponse, error) {
+				if err := rawHandler(ctx, event.EventReq); err != nil {
+					return nil, err
+				}
+				return &callback.CardActionTriggerResponse{}, nil
+			})
+			continue
+		}
+		d.OnCustomizedEvent(et, rawHandler)
 	}
 }
 
