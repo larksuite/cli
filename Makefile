@@ -23,7 +23,7 @@ PREFIX   ?= /usr/local
 TEST_GOARCH := $(or $(GOARCH),$(shell go env GOARCH))
 RACE_FLAG := $(if $(filter riscv64,$(TEST_GOARCH)),,-race)
 
-.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean gitleaks sidecar-test
+.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean gitleaks sidecar-test test-scopeexport
 
 all: test
 
@@ -116,6 +116,21 @@ sidecar-test:
 	go test $(RACE_FLAG) -count=1 -tags authsidecar ./extension/credential/sidecar/ ./extension/transport/sidecar/ ./internal/cmdutil/
 	go test $(RACE_FLAG) -count=1 -tags authsidecar_demo ./sidecar/server-demo/
 	go test $(RACE_FLAG) -count=1 -tags authsidecar ./tests/sidecar_e2e/
+
+# test-scopeexport compiles and runs the standalone scopes-export build tool
+# (cmd/scopes-export, //go:build scopeexport) that the default CI matrix never
+# builds, plus its byte-exact golden contract tests. It builds the same small
+# main the downstream scopes build compiles (not the whole CLI), and invokes it
+# through the real `--brand <brand>` path so a rename of a flag breaks here, in
+# this repo's CI, rather than in the downstream build. The resolver it shares
+# with auth login lives in internal/apiscopes and is already covered by the
+# default `go test ./internal/...`.
+test-scopeexport:
+	go build -tags scopeexport -o $${TMPDIR:-/tmp}/lark-cli-scopes-export ./cmd/scopes-export
+	$${TMPDIR:-/tmp}/lark-cli-scopes-export --brand feishu >/dev/null
+	$${TMPDIR:-/tmp}/lark-cli-scopes-export --brand lark >/dev/null
+	rm -f $${TMPDIR:-/tmp}/lark-cli-scopes-export
+	go test $(RACE_FLAG) -count=1 -tags scopeexport ./cmd/scopes-export/
 
 # Run secret-leak checks locally before pushing.
 # Step 1: check-doc-tokens catches realistic-looking example tokens in reference

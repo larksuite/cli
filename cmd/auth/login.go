@@ -15,14 +15,13 @@ import (
 
 	"github.com/larksuite/cli/errs"
 
-	"github.com/larksuite/cli/internal/apicatalog"
+	"github.com/larksuite/cli/internal/apiscopes"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
-	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -53,7 +52,7 @@ func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.
 // end positional literals for every caller outside this module.
 func newCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error, registered []common.Shortcut) *cobra.Command {
 	opts := &LoginOptions{Factory: f}
-	resolver := newDomainResolver(f.APICatalog, registered)
+	resolver := apiscopes.NewResolver(f.APICatalog, registered)
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -92,7 +91,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 			helpBrand = cfg.Brand
 		}
 	}
-	available := resolver.sorted(helpBrand)
+	available := resolver.Sorted(helpBrand)
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
 		fmt.Sprintf("domain (repeatable or comma-separated, e.g. --domain calendar,task)\navailable: %s, all", strings.Join(available, ", ")))
 	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", nil,
@@ -102,30 +101,10 @@ to generate QR codes (supports ASCII and PNG formats).`,
 	cmd.Flags().StringVar(&opts.DeviceCode, "device-code", "", "poll and complete authorization with a device code from a previous --no-wait call")
 
 	cmdutil.RegisterFlagCompletion(cmd, "domain", func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return resolver.complete(toComplete, helpBrand), cobra.ShellCompDirectiveNoFileComp
+		return resolver.Complete(toComplete, helpBrand), cobra.ShellCompDirectiveNoFileComp
 	})
 
 	return cmd
-}
-
-// complete returns completions for comma-separated domain values.
-func (r domainResolver) complete(toComplete string, brand core.LarkBrand) []string {
-	allDomains := r.sorted(brand)
-	parts := strings.Split(toComplete, ",")
-	prefix := parts[len(parts)-1]
-	base := strings.Join(parts[:len(parts)-1], ",")
-
-	var completions []string
-	for _, d := range allDomains {
-		if strings.HasPrefix(d, prefix) {
-			if base == "" {
-				completions = append(completions, d)
-			} else {
-				completions = append(completions, base+","+d)
-			}
-		}
-	}
-	return completions
 }
 
 // fetchRemoteScopes is the remote scopes.json fetch, indirected through a
@@ -134,7 +113,7 @@ func (r domainResolver) complete(toComplete string, brand core.LarkBrand) []stri
 var fetchRemoteScopes = larkauth.FetchRemoteScopes
 
 // authLoginRun executes the login command logic.
-func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
+func authLoginRun(opts *LoginOptions, resolver apiscopes.Resolver) error {
 	f := opts.Factory
 
 	config, err := f.Config()
@@ -188,7 +167,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		// trusting the remote would silently drop the custom scopes such a build
 		// added to existing domains (WithCommandSets can only extend existing
 		// domains, never add new ones). Standard builds keep remote-first.
-		if !resolver.hasExternal {
+		if !resolver.HasExternal {
 			// Pull the remote scopes.json once for this login (not cached); any
 			// read failure (network/timeout/non-2xx/malformed) silently falls
 			// back to the local full computation — no warning, no telemetry.
@@ -253,7 +232,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		// A corrupt Catalog shard fails the login typed, exactly as it fails a
 		// command build, instead of silently dropping that domain's API scopes
 		// from the authorization request that is about to be persisted.
-		if err := resolver.catalog.Preload(selectedDomains...); err != nil {
+		if err := resolver.Preload(selectedDomains...); err != nil {
 			return err
 		}
 		candidateScopes := resolveScopesForDomains(selectedDomains, remote, remoteOK, resolver, config.Brand)
@@ -273,13 +252,13 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		// it, but --domain im --exclude im:message.send_as_user must stay a valid
 		// no-op. The local set still declares it under im; a domain that never had
 		// it (e.g. calendar) still rejects it as unknown.
-		for _, s := range resolver.scopesFor(selectedDomains, "user", config.Brand) {
+		for _, s := range resolver.ScopesFor(selectedDomains, "user", config.Brand) {
 			excludeUniverse[s] = true
 		}
 
 		// Withhold batch-excluded scopes (e.g. im:message.send_as_user) from the
 		// effective set; an explicit --scope re-adds them below.
-		candidateScopes = filterBatchExcludedScopes(candidateScopes)
+		candidateScopes = apiscopes.FilterBatchExcludedScopes(candidateScopes)
 
 		if len(candidateScopes) == 0 && opts.Scope == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "no matching scopes found, check domain/scope options")
@@ -577,130 +556,13 @@ func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.App
 	return nil
 }
 
-// batchExcludedScopes lists scopes deliberately withheld from the aggregate
-// batch sets that --domain / --recommend / bare `auth login` compute. In some
-// tenants im:message.send_as_user requires admin review even for a personal
-// assistant, so requesting it in bulk blocks users on approval. It stays
-// available through an explicit --scope and through the on-demand grant flow
-// when a command actually needs it.
-var batchExcludedScopes = map[string]bool{
-	"im:message.send_as_user": true,
-}
-
-// filterBatchExcludedScopes drops batchExcludedScopes entries from a
-// domain-derived scope slice, preserving order.
-func filterBatchExcludedScopes(scopes []string) []string {
-	out := scopes[:0:0]
-	for _, s := range scopes {
-		if !batchExcludedScopes[s] {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-// domainResolver answers auth domain and scope questions against one build's
-// shortcut snapshot. The snapshot is a build-local input rather than a constant:
-// a distribution assembled with cmd.WithCommandSets contributes business
-// commands whose declared scopes must participate in --domain resolution, so
-// every method here reads the snapshot it was constructed with instead of the
-// built-in set.
-type domainResolver struct {
-	catalog    apicatalog.Catalog
-	registered []common.Shortcut
-	// hasExternal is true when this build carries business commands injected via
-	// WithCommandSets beyond the built-in set. Such a build's domain/scope
-	// universe is not reflected in the remote scopes.json (generated from the
-	// standard CLI), so auth login must resolve locally instead of remote-first.
-	hasExternal bool
-}
-
-func newDomainResolver(catalog apicatalog.Catalog, registered []common.Shortcut) domainResolver {
-	return domainResolver{
-		catalog:     catalog,
-		registered:  registered,
-		hasExternal: hasExternalCommands(registered),
-	}
-}
-
-// hasExternalCommands reports whether registered carries any command beyond the
-// built-in set — the mark of a build that injected business commands via
-// WithCommandSets. Such a build's scope universe reaches past what the remote
-// scopes.json (generated from the standard CLI) covers, so auth login must
-// resolve locally rather than remote-first.
-//
-// It compares command paths rather than counts: a business command mounts onto
-// an existing domain (WithCommandSets cannot create new domains) and only ever
-// adds to the built-in set, so any registered path absent from the built-in
-// snapshot came from an injected command. A build that instead forks the
-// registry to change scopes without adding commands is not detected here — no
-// supported build option does that, and every current custom build extends via
-// WithCommandSets. Activating a build-tag feature that swaps only the credential
-// provider or transport (e.g. the auth sidecar) registers no commands, so it is
-// correctly treated as standard.
-func hasExternalCommands(registered []common.Shortcut) bool {
-	builtin := shortcuts.AllShortcuts()
-	paths := make(map[string]struct{}, len(builtin))
-	for _, sc := range builtin {
-		paths[sc.Service+" "+sc.Command] = struct{}{}
-	}
-	for _, sc := range registered {
-		if _, ok := paths[sc.Service+" "+sc.Command]; !ok {
-			return true
-		}
-	}
-	return false
-}
-
-// scopesFor collects API scopes (from from_meta projects) and shortcut scopes
-// for the given domain names.
-// Domains with auth_domain children are automatically expanded to include
-// their children's scopes.
-func (r domainResolver) scopesFor(domains []string, identity string, brand core.LarkBrand) []string {
-	scopeSet := make(map[string]bool)
-
-	// 1. API scopes from from_meta projects
-	for _, s := range registry.CollectScopesForProjects(r.catalog, domains, identity) {
-		scopeSet[s] = true
-	}
-
-	// 2. Expand domains: include auth_domain children
-	domainSet := make(map[string]bool, len(domains))
-	for _, d := range domains {
-		domainSet[d] = true
-		for _, child := range registry.GetAuthChildren(d) {
-			domainSet[child] = true
-		}
-	}
-
-	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
-	for _, sc := range r.registered {
-		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
-			continue
-		}
-		if domainSet[sc.Service] && shortcutSupportsIdentity(sc, identity) {
-			for _, s := range sc.DeclaredScopesForIdentity(identity) {
-				scopeSet[s] = true
-			}
-		}
-	}
-
-	// 4. Deduplicate and sort
-	result := make([]string, 0, len(scopeSet))
-	for s := range scopeSet {
-		result = append(result, s)
-	}
-	sort.Strings(result)
-	return result
-}
-
 // resolveScopesForDomains resolves the scope set for the given domains. When
 // the remote scopes.json is available it takes the union of each domain's
 // user_scopes from the remote result (remote is authoritative, including
 // domains this CLI build doesn't know about locally); otherwise it falls back
-// to the local synthesis via resolver.scopesFor. Always returns a
+// to the local synthesis via resolver.ScopesFor. Always returns a
 // deduplicated, alphabetically sorted slice.
-func resolveScopesForDomains(domains []string, remote map[string][]string, remoteOK bool, resolver domainResolver, brand core.LarkBrand) []string {
+func resolveScopesForDomains(domains []string, remote map[string][]string, remoteOK bool, resolver apiscopes.Resolver, brand core.LarkBrand) []string {
 	if remoteOK {
 		set := make(map[string]bool)
 		for _, d := range domains {
@@ -715,45 +577,7 @@ func resolveScopesForDomains(domains []string, remote map[string][]string, remot
 		sort.Strings(out)
 		return out
 	}
-	return resolver.scopesFor(domains, "user", brand)
-}
-
-// allKnownDomains returns all valid auth domain names (from_meta projects +
-// shortcut services), excluding domains that have auth_domain set (they are
-// folded into their parent domain).
-func (r domainResolver) allKnown(brand core.LarkBrand) map[string]bool {
-	domains := make(map[string]bool)
-	// The manifest name list is the --domain vocabulary: it is cheap (no shard
-	// is parsed) and a corrupt shard stays addressable so that selecting it
-	// fails typed in Preload instead of being reported as an unknown domain.
-	for _, p := range r.catalog.Names() {
-		if !registry.HasAuthDomain(p) {
-			domains[p] = true
-		}
-	}
-	for _, sc := range r.registered {
-		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
-			continue
-		}
-		// No scope filter here: matching main, a scope-less domain (e.g.
-		// event) stays addressable via --domain and the --help list, and
-		// fails later with "no matching scopes found".
-		if !registry.HasAuthDomain(sc.Service) {
-			domains[sc.Service] = true
-		}
-	}
-	return domains
-}
-
-// sortedKnownDomains returns all valid domain names sorted alphabetically.
-func (r domainResolver) sorted(brand core.LarkBrand) []string {
-	m := r.allKnown(brand)
-	domains := make([]string, 0, len(m))
-	for d := range m {
-		domains = append(domains, d)
-	}
-	sort.Strings(domains)
-	return domains
+	return resolver.ScopesFor(domains, "user", brand)
 }
 
 // legalDomainsFor returns the authoritative domain set for this login: the
@@ -761,7 +585,7 @@ func (r domainResolver) sorted(brand core.LarkBrand) []string {
 // this CLI build is still legal), otherwise the local known-domain set.
 // Returns both a membership set (for --domain validation) and a sorted slice
 // (for `all` expansion and the bare-login/--recommend-without-domain default).
-func legalDomainsFor(remote map[string][]string, remoteOK bool, resolver domainResolver, brand core.LarkBrand) (map[string]bool, []string) {
+func legalDomainsFor(remote map[string][]string, remoteOK bool, resolver apiscopes.Resolver, brand core.LarkBrand) (map[string]bool, []string) {
 	if remoteOK {
 		set := make(map[string]bool, len(remote))
 		sorted := make([]string, 0, len(remote))
@@ -772,22 +596,7 @@ func legalDomainsFor(remote map[string][]string, remoteOK bool, resolver domainR
 		sort.Strings(sorted)
 		return set, sorted
 	}
-	return resolver.allKnown(brand), resolver.sorted(brand)
-}
-
-// shortcutSupportsIdentity checks if a shortcut supports the given identity ("user" or "bot").
-// Empty AuthTypes defaults to ["user"].
-func shortcutSupportsIdentity(sc common.Shortcut, identity string) bool {
-	authTypes := sc.AuthTypes
-	if len(authTypes) == 0 {
-		authTypes = []string{"user"}
-	}
-	for _, t := range authTypes {
-		if t == identity {
-			return true
-		}
-	}
-	return false
+	return resolver.AllKnown(brand), resolver.Sorted(brand)
 }
 
 // normalizeScopeInput accepts a user-supplied --scope value that may use
