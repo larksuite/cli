@@ -113,6 +113,7 @@ Each message contains:
 | `updated` | Whether the message has been edited after sending |
 | `mentions` | Array of @mentions in the message; each item contains `{id, key, name}`. Present only when the message contains @mentions |
 | `thread_id` | Thread ID (`omt_xxx`) if the message has replies in a thread. Present only when replies exist |
+| `synced_from_thread_reply` | Present only on the chat-level copy of a thread reply the sender also sent to the chat; value is the original reply's `message_id` (its thread is in `synced_from_thread`). The original may also appear under its root's `thread_replies` in the same response — dedupe on this ID only when that message is actually present. See [lark-im-message-enrichment.md](lark-im-message-enrichment.md). |
 
 ## Pagination (`has_more` / `page_token`)
 
