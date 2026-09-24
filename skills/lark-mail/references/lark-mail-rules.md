@@ -39,8 +39,8 @@ lark-cli mail +rule-enable --as user --rule-id "<rule_id>"
 lark-cli mail +rule-delete --as user --rule-id "<rule_id>" --dry-run
 lark-cli mail +rule-delete --as user --rule-id "<rule_id>" --yes
 
-# 调整顺序：完整顺序或单条移动二选一
-lark-cli mail +rule-reorder --as user --rule-ids "<rule_id_1>,<rule_id_2>,<rule_id_3>"
+# 调整顺序：显式 ID 会排在最前，未指定规则按当前相对顺序追加；也可移动单条规则
+lark-cli mail +rule-reorder --as user --rule-ids "<rule_id_3>,<rule_id_1>"
 lark-cli mail +rule-reorder --as user --move-rule-id "<rule_id_3>" --before-rule-id "<rule_id_1>"
 ```
 
