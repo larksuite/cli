@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -50,10 +51,12 @@ type fakeWikiNodeCreateClient struct {
 	createErrs    []error // consumed in order; takes precedence over createErr
 	getSpaceErr   error
 	getNodeErr    error
+	getNodeCalled []string
 	createInvoked []fakeWikiNodeCreateCall
 }
 
 func (fake *fakeWikiNodeCreateClient) GetNode(ctx context.Context, token string) (*wikiNodeRecord, error) {
+	fake.getNodeCalled = append(fake.getNodeCalled, token)
 	if fake.getNodeErr != nil {
 		return nil, fake.getNodeErr
 	}
@@ -1015,6 +1018,149 @@ func TestRunWikiNodeCreateNoRetryOnNonContentionError(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "retrying") {
 		t.Fatalf("stderr = %q, should not contain retry log for non-contention error", stderr.String())
+	}
+}
+
+func TestRunWikiNodeCreateDiagnosesShortcutToShortcutInvalidParam(t *testing.T) {
+	t.Parallel()
+
+	invalidParamErr := errs.NewAPIError(errs.SubtypeInvalidParameters, "invalid param").
+		WithCode(131002).
+		WithRetryable().
+		WithHint("upstream recovery hint")
+	client := &fakeWikiNodeCreateClient{
+		nodes: map[string]*wikiNodeRecord{
+			"wik_shortcut": {
+				NodeToken:       "wik_shortcut",
+				NodeType:        wikiNodeTypeShortcut,
+				ObjType:         "docx",
+				OriginNodeToken: "wik_origin",
+			},
+		},
+		createErr: invalidParamErr,
+	}
+
+	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+		SpaceID:         "space_target",
+		NodeType:        wikiNodeTypeShortcut,
+		ObjType:         "docx",
+		OriginNodeToken: "wik_shortcut",
+	}, io.Discard)
+	if err == nil {
+		t.Fatal("expected invalid-parameter error")
+	}
+	if len(client.createInvoked) != 1 {
+		t.Fatalf("create invoked %d times, want 1", len(client.createInvoked))
+	}
+	if want := []string{"wik_shortcut"}; !slices.Equal(client.getNodeCalled, want) {
+		t.Fatalf("get node calls = %v, want %v", client.getNodeCalled, want)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T, want typed problem", err)
+	}
+	if problem.Code != 131002 || problem.Retryable {
+		t.Fatalf("problem = %#v, want code 131002 and retryable=false", problem)
+	}
+	for _, fragment := range []string{
+		"upstream recovery hint",
+		"points to another Wiki shortcut",
+		"Do not retry with the same parameters",
+		"--origin-node-token wik_origin",
+		"--obj-type docx",
+	} {
+		if !strings.Contains(problem.Hint, fragment) {
+			t.Fatalf("hint = %q, want fragment %q", problem.Hint, fragment)
+		}
+	}
+}
+
+func TestRunWikiNodeCreateKeepsGenericInvalidParamWhenSourceIsNotShortcut(t *testing.T) {
+	t.Parallel()
+
+	invalidParamErr := errs.NewAPIError(errs.SubtypeInvalidParameters, "invalid param").
+		WithCode(131002).
+		WithHint("upstream recovery hint")
+	client := &fakeWikiNodeCreateClient{
+		nodes: map[string]*wikiNodeRecord{
+			"wik_origin": {
+				NodeToken: "wik_origin",
+				NodeType:  wikiNodeTypeOrigin,
+				ObjType:   "docx",
+			},
+		},
+		createErr: invalidParamErr,
+	}
+
+	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+		SpaceID:         "space_target",
+		NodeType:        wikiNodeTypeShortcut,
+		ObjType:         "docx",
+		OriginNodeToken: "wik_origin",
+	}, io.Discard)
+	if err == nil {
+		t.Fatal("expected invalid-parameter error")
+	}
+	if want := []string{"wik_origin"}; !slices.Equal(client.getNodeCalled, want) {
+		t.Fatalf("get node calls = %v, want %v", client.getNodeCalled, want)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T, want typed problem", err)
+	}
+	if problem.Hint != "upstream recovery hint" {
+		t.Fatalf("hint = %q, want original upstream hint", problem.Hint)
+	}
+}
+
+func TestRunWikiNodeCreatePreservesCreateErrorWhenShortcutDiagnosisFails(t *testing.T) {
+	t.Parallel()
+
+	invalidParamErr := errs.NewAPIError(errs.SubtypeInvalidParameters, "invalid param").
+		WithCode(131002).
+		WithHint("upstream recovery hint")
+	client := &fakeWikiNodeCreateClient{
+		createErr: invalidParamErr,
+		getNodeErr: errs.NewPermissionError(
+			errs.SubtypePermissionDenied,
+			"cannot inspect source node",
+		),
+	}
+
+	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+		SpaceID:         "space_target",
+		NodeType:        wikiNodeTypeShortcut,
+		ObjType:         "docx",
+		OriginNodeToken: "wik_shortcut",
+	}, io.Discard)
+	if err == nil {
+		t.Fatal("expected invalid-parameter error")
+	}
+	if want := []string{"wik_shortcut"}; !slices.Equal(client.getNodeCalled, want) {
+		t.Fatalf("get node calls = %v, want %v", client.getNodeCalled, want)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Code != 131002 || problem.Hint != "upstream recovery hint" {
+		t.Fatalf("problem = %#v, want original 131002 problem", problem)
+	}
+}
+
+func TestRunWikiNodeCreateDoesNotInspectOriginForNonShortcutInvalidParam(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeWikiNodeCreateClient{
+		createErr: errs.NewAPIError(errs.SubtypeInvalidParameters, "invalid param").WithCode(131002),
+	}
+	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+		SpaceID:  "space_target",
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "docx",
+	}, io.Discard)
+	if err == nil {
+		t.Fatal("expected invalid-parameter error")
+	}
+	if len(client.getNodeCalled) != 0 {
+		t.Fatalf("get node calls = %v, want none", client.getNodeCalled)
 	}
 }
 
