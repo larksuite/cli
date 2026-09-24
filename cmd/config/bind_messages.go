@@ -19,6 +19,7 @@ type bindMsg struct {
 	SourceOpenClaw    string // format: resolved config path.
 	SourceHermes      string // format: resolved dotenv path.
 	SourceLarkChannel string // format: resolved config path.
+	SourceDSH         string // format: resolved config path.
 
 	// Account selection (OpenClaw multi-account).
 	// Format: source display name ("OpenClaw" | "Hermes"), brand.
@@ -103,6 +104,7 @@ var bindMsgZh = &bindMsg{
 	SourceOpenClaw:    "OpenClaw — 配置文件: %s",
 	SourceHermes:      "Hermes — 配置文件: %s",
 	SourceLarkChannel: "Lark Channel — 配置文件: %s",
+	SourceDSH:         "DeepSeek Harness — 配置文件: %s",
 
 	SelectAccount: "检测到 %s 中已配置多个%s应用，请选择一个",
 
@@ -138,6 +140,7 @@ var bindMsgEn = &bindMsg{
 	SourceOpenClaw:    "OpenClaw — config: %s",
 	SourceHermes:      "Hermes — config: %s",
 	SourceLarkChannel: "Lark Channel — config: %s",
+	SourceDSH:         "DeepSeek Harness — config: %s",
 
 	// Args order (source, brand) matches the Chinese template; %[N]s lets the
 	// English reading order differ while the caller passes args in one order.
