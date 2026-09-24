@@ -46,12 +46,12 @@ lark-cli wiki +member-list --space-id <space_id> --format table
     "space_id": "7160145948494381236",
     "members": [
       {
-        "member_id": "ou_449b53ad6aee526f7ed311b216aabcef",
+        "member_id": "ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "member_type": "openid",
         "member_role": "admin"
       },
       {
-        "member_id": "ou_67e5ecb64ce1c0bd94612c17999db411",
+        "member_id": "ou_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
         "member_type": "openid",
         "member_role": "member"
       }
