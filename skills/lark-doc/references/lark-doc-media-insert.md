@@ -108,6 +108,27 @@ lark-cli docs +media-insert --doc doxcnXXX --from-clipboard --width 800 --height
 > [!CAUTION]
 > 这是**写入操作**（会修改文档内容）—— 执行前必须确认用户意图。
 
+## 媒体 Token 与宿主文档 Domain 绑定生命周期
+
+> [!WARNING]
+> **媒体 Token 强绑定鉴权**：通过 `docs +media-insert` 上传获取的媒体 Token（返回的 `file_token`，在 XML 中表现为 `<img src="file_token">`）是与**它最初被上传时所挂载的那个文档强绑定的**。
+>
+> ❌ **常见错误场景（跨文档复制裂图）**：
+> 在试图将含有本地图片的 Markdown 内容写入一个已存在的飞书文档时，若通过 `drive +import` 临时生成一个新文档（借此自动上传图片获取 Token），然后再提取该临时文档的 XML 覆盖到最终目标文档，**会导致目标文档中的图片无法加载（裂图）**。原因是目标文档无权跨 Domain 读取临时文档域内的媒体 Token。
+>
+> ✅ **正确做法**：
+> 媒体资源必须直接在最终目标文档域内上传：调用 `lark-cli docs +media-insert --doc <目标文档ID> --file <本地图片路径>` 获取专属合法 Token 后，再将带有合法 Token 的 `<img src="token"/>` 写入目标文档。
+
+### 媒体历史孤岛与 Revision 膨胀防范（Hash 增量缓存规范）
+
+> [!WARNING]
+> **Revision 历史链媒体孤岛累积**：飞书 Docx 的版本回滚机制会永久保留每次历史提交所挂载的所有媒体副本。即使通过 `overwrite` 覆盖了最新正文，历史提交的图片资源也不会被自动垃圾回收（GC）。若在自动化同步或高频更新中无状态地重复调用 `+media-insert`，会导致底层文档空间在云盘中急剧膨胀（如单文档累积至数 GB）。
+
+✅ **最佳实践（SHA-256 Hash 增量缓存）**：
+- 在向目标文档上传本地图片前，先计算本地文件的 SHA-256 特征哈希，并在本地持久化维护 `(目标文档Token + 图片Hash) ➔ file_token` 映射；
+- **增量复用**：若本地图片内容未变（Hash 命中），一律直接复用已绑定的 `file_token` 并填入 XML，**禁止重复调用 `+media-insert`**；
+- **修改感知**：仅当本地图片内容被真正修改（Hash 变更）或需要强制重传时，才发起物理上传并更新缓存记录。
+
 ## 参考
 
 - [lark-doc-fetch](lark-doc-fetch.md) — 获取文档内容（可用于确认插入后的结果、以及提取媒体 token）
