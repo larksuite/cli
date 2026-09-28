@@ -226,6 +226,9 @@ func TestDriveInspectDryRun_DocxURL(t *testing.T) {
 	if doc["doc_type"] != "docx" {
 		t.Errorf("doc_type = %v, want docx", doc["doc_type"])
 	}
+	if withURL, _ := got.API[0].Body["with_url"].(bool); !withURL {
+		t.Errorf("with_url = %v, want true", got.API[0].Body["with_url"])
+	}
 }
 
 func TestDriveInspectDryRun_WikiURL(t *testing.T) {
@@ -271,6 +274,9 @@ func TestDriveInspectDryRun_WikiURL(t *testing.T) {
 	// Verify step 2 body contains request_docs placeholder.
 	if got.API[1].Body["request_docs"] == nil {
 		t.Error("step 2 body should contain request_docs")
+	}
+	if withURL, _ := got.API[1].Body["with_url"].(bool); !withURL {
+		t.Errorf("step 2 with_url = %v, want true", got.API[1].Body["with_url"])
 	}
 }
 

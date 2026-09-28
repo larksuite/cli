@@ -12,14 +12,15 @@ import (
 
 // CommandContext is an opaque, invocation-scoped set of safe host capabilities.
 type CommandContext struct {
-	identity        Identity
-	dryRun          bool
-	inputStage      bool
-	callJSON        func(context.Context, Request) (map[string]any, error)
-	download        func(context.Context, Request, FileTarget, DownloadOptions) (Artifact, error)
-	downloadURL     func(context.Context, string, FileTarget, DownloadOptions) (Artifact, error)
-	preflightScopes func(...string) error
-	collectPages    func(context.Context, Request, bool) ([]map[string]any, HostPagination, error)
+	identity         Identity
+	dryRun           bool
+	inputStage       bool
+	citationsEnabled bool
+	callJSON         func(context.Context, Request) (map[string]any, error)
+	download         func(context.Context, Request, FileTarget, DownloadOptions) (Artifact, error)
+	downloadURL      func(context.Context, string, FileTarget, DownloadOptions) (Artifact, error)
+	preflightScopes  func(...string) error
+	collectPages     func(context.Context, Request, bool) ([]map[string]any, HostPagination, error)
 }
 
 // PaginationOptions carries host-owned pagination controls to the public helpers.
@@ -43,6 +44,9 @@ type ContextOptions struct {
 	// side effects the user was never asked to confirm.
 	InputStage bool
 
+	// CitationsEnabled allows Execute to prepare metadata for an eligible envelope.
+	CitationsEnabled bool
+
 	CallJSON        func(context.Context, Request) (map[string]any, error)
 	Download        func(context.Context, Request, FileTarget, DownloadOptions) (Artifact, error)
 	DownloadURL     func(context.Context, string, FileTarget, DownloadOptions) (Artifact, error)
@@ -53,19 +57,26 @@ type ContextOptions struct {
 // NewCommandContext creates a restricted context from host callbacks.
 func NewCommandContext(options ContextOptions) CommandContext {
 	return CommandContext{
-		identity:        options.Identity,
-		dryRun:          options.DryRun,
-		inputStage:      options.InputStage,
-		callJSON:        options.CallJSON,
-		download:        options.Download,
-		downloadURL:     options.DownloadURL,
-		preflightScopes: options.PreflightScopes,
-		collectPages:    options.CollectPages,
+		identity:         options.Identity,
+		dryRun:           options.DryRun,
+		inputStage:       options.InputStage,
+		citationsEnabled: options.CitationsEnabled,
+		callJSON:         options.CallJSON,
+		download:         options.Download,
+		downloadURL:      options.DownloadURL,
+		preflightScopes:  options.PreflightScopes,
+		collectPages:     options.CollectPages,
 	}
 }
 
 // Identity returns the selected execution identity.
 func (c CommandContext) Identity() Identity { return c.identity }
+
+// CitationsEnabled reports whether Execute may prepare citation metadata.
+// Safety scanning and citation validation can still suppress the final citation.
+func (c CommandContext) CitationsEnabled() bool {
+	return c.citationsEnabled && !c.inputStage && !c.dryRun
+}
 
 // CallJSON executes one request and decodes its data object into T.
 func CallJSON[T any](ctx context.Context, command CommandContext, request Request) (T, error) {

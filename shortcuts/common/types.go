@@ -123,6 +123,11 @@ type Shortcut struct {
 	// typed is the private executable contract produced by the internal command
 	// host from extension/command. It never forms a second authoring surface.
 	typed *compiledCommand
+
+	// Citation declares this read command's citation capability. Declaring it
+	// requires explicit Risk "read", a non-empty allocated SourceTypes set and
+	// a Build hook; violations panic at mount time. See CitationDefinition.
+	Citation *CitationDefinition
 }
 
 // ScopesForIdentity returns the scopes applicable for the given identity.

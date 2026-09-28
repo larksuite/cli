@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -44,13 +45,14 @@ var wikiNodeGetURLObjTypes = map[string]string{
 // creator / updated_at) and is intended as the "what am I about to
 // touch?" step before +move / +node-copy / +delete-space.
 var WikiNodeGet = common.Shortcut{
-	Service:     "wiki",
-	Command:     "+node-get",
-	Description: "Get wiki node details by node_token, obj_token, or Lark URL",
-	Risk:        "read",
-	Scopes:      []string{"wiki:node:retrieve"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "wiki",
+	Command:           "+node-get",
+	Description:       "Get wiki node details by node_token, obj_token, or Lark URL",
+	Risk:              "read",
+	Scopes:            []string{"wiki:node:retrieve"},
+	ConditionalScopes: []string{wikiCitationMetadataScope},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		// --node-token is the canonical flag, matching sibling wiki commands
 		// (+node-delete / +node-copy / +move). --token is the original name
@@ -84,7 +86,7 @@ var WikiNodeGet = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		return buildWikiNodeGetDryRun(spec)
+		return appendWikiCitationDryRun(runtime, buildWikiNodeGetDryRun(spec), "<resolved_node_token>")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec, err := readWikiNodeGetSpec(runtime)
@@ -118,10 +120,18 @@ var WikiNodeGet = common.Shortcut{
 		}
 
 		out := wikiNodeGetOutput(node, raw)
-		runtime.OutFormat(out, nil, func(w io.Writer) {
+		var outputData any = out
+		if wikiCitationEnvelopeRequested(runtime) {
+			outputData = wikiOutputWithCitationURLs(runtime, out, []string{node.NodeToken})
+		}
+		runtime.OutFormat(outputData, nil, func(w io.Writer) {
 			renderWikiNodeGetPretty(w, out)
 		})
 		return nil
+	},
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceWiki},
+		Build:       wikiNodeGetCitations,
 	},
 }
 
@@ -285,8 +295,9 @@ func buildWikiNodeGetDryRun(spec wikiNodeGetSpec) *common.DryRunAPI {
 // timestamps) that callers can pipe into +move / +node-copy without rerunning
 // the lookup.
 //
-// Preserve the existing output fields, including omitting url even when the
-// API supplies one. node_token/obj_token remain the precise identifiers.
+// No synthesized `url` is emitted: get_node returns none, and the native URL
+// needed by citations is carried only in wikiCitationPayload and excluded from
+// JSON data.
 func wikiNodeGetOutput(node *wikiNodeRecord, raw map[string]interface{}) map[string]interface{} {
 	out := map[string]interface{}{
 		"space_id":          node.SpaceID,
@@ -314,6 +325,35 @@ func wikiNodeGetOutput(node *wikiNodeRecord, raw map[string]interface{}) map[str
 	out["updated_at"] = formatWikiTimestamp(objEditRaw)
 
 	return out
+}
+
+// wikiNodeCitation builds one pure citation projection. nativeURL is the
+// tenant URL already fetched by Execute; this function performs no I/O.
+// Empty URLs are silently removed by citation.Normalize.
+func wikiNodeCitation(nodeToken, title, objEditTime, nativeURL string) []citation.Citation {
+	entry := citation.Citation{
+		SourceType:  citation.SourceWiki,
+		Title:       title,
+		PublishTime: citation.Time(objEditTime),
+	}
+	if nodeToken != "" {
+		entry.URL = nativeURL
+	}
+	return []citation.Citation{entry}
+}
+
+// wikiNodeGetCitations adapts the final output payload to the node's citation
+// entry. It returns nil on any unexpected shape instead of failing the command.
+func wikiNodeGetCitations(_ *common.RuntimeContext, data any) []citation.Citation {
+	publicData, urls := wikiPayloadParts(data)
+	out, ok := publicData.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	nodeToken, _ := out["node_token"].(string)
+	title, _ := out["title"].(string)
+	objEditTime, _ := out["obj_edit_time"].(string)
+	return wikiNodeCitation(nodeToken, title, objEditTime, urls[nodeToken])
 }
 
 // formatWikiTimestamp turns a Lark unix-seconds string (the format used by

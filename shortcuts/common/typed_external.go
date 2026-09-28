@@ -10,6 +10,8 @@ import (
 	"io"
 	"reflect"
 
+	"github.com/larksuite/cli/extension/citation"
+	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/commandbridge"
 )
 
@@ -48,6 +50,18 @@ func CompileCommandDefinition(definition commandbridge.Definition, _ commandbrid
 	)
 	if err != nil {
 		return Shortcut{}, err
+	}
+	if definition.Citation != nil {
+		if err := validateCitationDeclaration(&CitationDefinition{SourceTypes: definition.Citation.SourceTypes}, string(definition.Metadata.Risk)); err != nil {
+			return Shortcut{}, err
+		}
+		if definition.Citation.Build == nil {
+			return Shortcut{}, fmt.Errorf("citation requires a Build hook")
+		}
+		compiled.citation = &command.CitationDefinition[any]{
+			SourceTypes: append([]citation.SourceType(nil), definition.Citation.SourceTypes...),
+			Build:       definition.Citation.Build,
+		}
 	}
 	if err := validateExternalFlagNamespace(compiled); err != nil {
 		return Shortcut{}, err

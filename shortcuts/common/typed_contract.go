@@ -7,6 +7,8 @@ import (
 	"context"
 	"io"
 	"reflect"
+
+	"github.com/larksuite/cli/extension/command"
 )
 
 type compiledCommand struct {
@@ -21,6 +23,7 @@ type compiledCommand struct {
 	contract    typedSchemaContract
 	hooks       compiledHooks
 	pageOutput  bool
+	citation    *command.CitationDefinition[any]
 }
 
 type compiledInputField struct {

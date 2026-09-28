@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -158,6 +159,18 @@ var DriveSearch = common.Shortcut{
 			renderDriveSearchTable(w, data, normalizedItems)
 		})
 		return nil
+	},
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{
+			citation.SourceWiki,
+			citation.SourceDoc,
+			citation.SourceBase,
+			citation.SourceSheet,
+			citation.SourceMindnote,
+			citation.SourceSlides,
+			citation.SourceFile,
+		},
+		Build: driveSearchCitations,
 	},
 }
 

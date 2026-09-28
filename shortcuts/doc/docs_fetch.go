@@ -6,6 +6,7 @@ package doc
 import (
 	"context"
 
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -39,5 +40,9 @@ var DocsFetch = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeFetchV2(ctx, runtime)
+	},
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceDoc},
+		Build:       docsFetchCitations,
 	},
 }

@@ -36,6 +36,7 @@ type RuntimeContext interface {
 	StartSpinner(label string) func()
 	PresentError(err error) error
 	IsDryRun() bool
+	CitationsEnabled() bool
 	PaginationOptions() (command.PaginationOptions, error)
 	RequireConditionalScopes(scopes ...string) error
 }
@@ -68,4 +69,5 @@ type Definition struct {
 	DataType   reflect.Type
 	Hooks      Hooks
 	PageOutput bool
+	Citation   *command.CitationDefinition[any]
 }

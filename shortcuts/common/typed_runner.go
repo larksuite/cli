@@ -9,6 +9,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -121,13 +122,11 @@ func emitTypedResult(runtime *RuntimeContext, command *compiledCommand, result c
 			pretty = func(w io.Writer, _ bool) error { return renderer(w, result.data) }
 		}
 	}
-	format := runtime.Format
-	if command.output.Mode == typedOutputFixedJSON {
-		// Compatibility for Legacy hooks that used RuntimeContext.Out: the
-		// injected --format flag existed but output was always JSON.
-		format = ""
+	options := output.EmitOptions{Format: typedOutputFormat(runtime, command), Raw: command.output.DisableHTMLEscaping, JQ: runtime.JqExpr, Pretty: pretty, Meta: outputMetaFromTyped(result.meta)}
+	if command.citation != nil {
+		options.Citations = wrapCitationBuilder(runtime.IO().ErrOut, runtime.Cmd.CommandPath(), command.citation.SourceTypes,
+			func() []citation.Citation { return command.citation.Build(result.data) })
 	}
-	options := output.EmitOptions{Format: format, Raw: command.output.DisableHTMLEscaping, JQ: runtime.JqExpr, Pretty: pretty, Meta: outputMetaFromTyped(result.meta)}
 	switch result.outcome {
 	case typedOutcomeSuccess:
 		runtime.handleEmitterError(runtime.newEmitter().Success(result.data, options))
@@ -135,6 +134,14 @@ func emitTypedResult(runtime *RuntimeContext, command *compiledCommand, result c
 	default:
 		return errs.NewInternalError(errs.SubtypeUnknown, "typed Execute returned invalid Outcome %q", result.outcome)
 	}
+}
+
+func typedOutputFormat(runtime *RuntimeContext, command *compiledCommand) string {
+	if command.output.Mode == typedOutputFixedJSON {
+		// Legacy hooks used RuntimeContext.Out, which always emitted JSON.
+		return ""
+	}
+	return runtime.Format
 }
 
 func outputMetaFromTyped(meta *typedResultMeta) *output.Meta {
@@ -183,6 +190,12 @@ func (c typedCommandContext) StartSpinner(label string) func() {
 }
 func (c typedCommandContext) PresentError(err error) error { return c.runtime.PresentError(err) }
 func (c typedCommandContext) IsDryRun() bool               { return c.runtime != nil && c.runtime.Bool("dry-run") }
+func (c typedCommandContext) CitationsEnabled() bool {
+	if c.runtime == nil || c.command == nil || c.command.citation == nil || c.IsDryRun() || !citation.Enabled() {
+		return false
+	}
+	return output.UsesEnvelope(typedOutputFormat(c.runtime, c.command), c.runtime.JqExpr, c.command.hooks.renderers["pretty"] != nil)
+}
 func (c typedCommandContext) PaginationOptions() (typedPaginationOptions, error) {
 	values, err := pageAllValues(c.runtime)
 	if err != nil {

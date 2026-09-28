@@ -10,6 +10,7 @@ import (
 	"io"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 )
 
 // NoticeProvider supplies the notice attached to a structured envelope.
@@ -51,6 +52,11 @@ type EmitOptions struct {
 	DryRun          bool
 	Pretty          PrettyRenderer
 	JQSafetyWarning bool
+
+	// Citations lazily builds the envelope citations. emitEnvelope invokes it
+	// only after dispatch selects an envelope and safety scanning passes.
+	// UsesEnvelope lets callers prepare metadata, but does not guarantee emission.
+	Citations func() []citation.Citation
 }
 
 // StreamOptions describes one streamed page's wire representation. Streaming
@@ -92,6 +98,20 @@ func NewEmitter(config EmitterConfig) *Emitter {
 		colorEnabled:   config.ColorEnabled,
 		noticeProvider: config.NoticeProvider,
 	}
+}
+
+// UsesEnvelope reports whether success output is eligible for an envelope.
+// Safety scanning may still block emission. Pretty without a renderer retains
+// its own scanning and warning path before falling back to the envelope.
+func UsesEnvelope(format, jq string, hasPrettyRenderer bool) bool {
+	if jq != "" {
+		return true
+	}
+	if format == "pretty" {
+		return !hasPrettyRenderer
+	}
+	parsed, _ := ParseFormat(format)
+	return parsed == FormatJSON
 }
 
 // Success scans and emits one command result by composing the package's leaf
@@ -202,6 +222,9 @@ func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) erro
 		Meta:     opts.Meta,
 		Notice:   e.notice(),
 	}
+	if opts.Citations != nil {
+		env.Citations = citation.EncodeXML(opts.Citations())
+	}
 	if scanResult.Alert != nil {
 		env.ContentSafetyAlert = scanResult.Alert
 	}
@@ -233,7 +256,10 @@ func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) erro
 	}
 
 	return e.emit(func(w io.Writer) error {
-		if opts.Raw {
+		// Citations are XML <document> strings consumed as raw bytes without a
+		// JSON decode, so an envelope carrying them must not HTML-escape <, >
+		// and &. Envelopes without citations keep the default escaping policy.
+		if opts.Raw || len(env.Citations) > 0 {
 			enc := json.NewEncoder(w)
 			enc.SetEscapeHTML(false)
 			enc.SetIndent("", "  ")

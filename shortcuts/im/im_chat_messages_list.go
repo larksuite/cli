@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
@@ -183,6 +184,7 @@ var ImChatMessageList = common.Shortcut{
 		// Emit: pagination completion belongs to framework metadata; the
 		// business payload remains compatible for existing consumers.
 		outData := map[string]interface{}{
+			"chat_id":    chatId,
 			"messages":   messages,
 			"total":      len(messages),
 			"has_more":   hasMore,
@@ -225,6 +227,15 @@ var ImChatMessageList = common.Shortcut{
 			fmt.Fprintf(w, "\n%d message(s)\ntip: use --format json to view full message content\n", len(messages))
 		})
 		return nil
+	},
+	// Citation declares this command's citation capability. SourceTypes is the
+	// whitelist the framework enforces at runtime: an entry Build returns with
+	// any other scene is dropped with a stderr warning. Declaring it is only
+	// legal because Risk is "read" — mountDeclarative panics otherwise. See
+	// im_citation.go for how the framework reaches Build.
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMessage},
+		Build:       chatMessagesListCitations,
 	},
 }
 
@@ -297,4 +308,40 @@ func resolveChatIDForMessagesList(runtime *common.RuntimeContext, dryRun bool) (
 		return "", errs.NewAPIError(errs.SubtypeNotFound, "P2P chat not found for this user")
 	}
 	return chatId, nil
+}
+
+// chatMessagesListCitations turns this command's output payload into one
+// citation per citable message, including text messages expanded under
+// thread_replies.
+//
+// `data` is the exact map Execute passed to runtime.OutFormat — the builder
+// runs after Execute has finished, on the finished payload. That is also why
+// chat_id is in the payload at all: every message here belongs to the one chat
+// this command resolved (from --chat-id, or from --user-id via a P2P lookup),
+// so the payload exposes it once at the top level and the per-message entries
+// may omit it. Passing it as the fallback keeps the URL complete either way.
+//
+// Non-text messages are skipped this round. A skipped parent does not suppress
+// citable replies nested under it.
+func chatMessagesListCitations(rt *common.RuntimeContext, data any) []citation.Citation {
+	items := citationItems(data, "messages")
+	if items == nil {
+		return nil
+	}
+	out, _ := data.(map[string]interface{})
+	chatID, _ := out["chat_id"].(string)
+	brand := citationBrand(rt)
+
+	citations := make([]citation.Citation, 0, len(items))
+	for _, msg := range items {
+		if entry, ok := messageCitation(brand, msg, chatID); ok {
+			citations = append(citations, entry)
+		}
+		for _, reply := range citationItems(msg, "thread_replies") {
+			if entry, ok := messageCitation(brand, reply, chatID); ok {
+				citations = append(citations, entry)
+			}
+		}
+	}
+	return citations
 }

@@ -94,6 +94,11 @@ func init() {
 	allShortcuts = append(allShortcuts, whiteboard.Shortcuts()...)
 	allShortcuts = append(allShortcuts, wiki.Shortcuts()...)
 	allShortcuts = append(allShortcuts, okr.Shortcuts()...)
+	for _, shortcut := range allShortcuts {
+		if err := common.ValidateCitationShortcut(shortcut); err != nil {
+			panic(err)
+		}
+	}
 }
 
 // AllShortcuts returns an isolated copy of all registered shortcuts.

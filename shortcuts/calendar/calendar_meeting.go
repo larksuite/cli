@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -31,6 +32,8 @@ type mgetInstanceRelationRequestBody struct {
 type meetingInfoItem struct {
 	EventID     string `json:"event_id"`
 	MeetingID   string `json:"meeting_id,omitempty"`
+	URL         string `json:"-"`
+	Topic       string `json:"-"`
 	MeetingNote string `json:"meeting_note,omitempty"`
 	Error       string `json:"error,omitempty"`
 	Hint        string `json:"hint,omitempty"`
@@ -88,10 +91,14 @@ func fetchEventMeetingInfo(ctx context.Context, runtime *common.RuntimeContext, 
 	info, _ := infos[0].(map[string]any)
 	result := &meetingInfoItem{EventID: instanceID}
 
-	// Extract meeting_id (return first if multiple) — API returns string
 	if rawIDs, _ := info["meeting_instance_ids"].([]any); len(rawIDs) > 0 {
 		if id, ok := rawIDs[0].(string); ok && id != "" {
 			result.MeetingID = id
+			if urls, _ := info["meeting_urls"].([]any); len(urls) > 0 {
+				if u, ok := urls[0].(string); ok {
+					result.URL = u
+				}
+			}
 		}
 	}
 
@@ -126,6 +133,10 @@ var CalendarMeeting = common.Shortcut{
 	Scopes:      []string{"calendar:calendar.event:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMeeting},
+		Build:       calendarMeetingCitations,
+	},
 	Flags: []common.Flag{
 		{Name: "event-ids", Desc: "calendar event instance IDs, comma-separated for batch", Required: true},
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},
@@ -168,6 +179,7 @@ var CalendarMeeting = common.Shortcut{
 			fmt.Fprintf(errOut, "%s querying event_id=%s ...\n", meetingLogPrefix, id)
 			results = append(results, fetchEventMeetingInfo(ctx, runtime, id, calendarID))
 		}
+		annotateMeetingTopics(ctx, runtime, results)
 
 		successCount := 0
 		for _, r := range results {

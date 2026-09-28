@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
@@ -257,6 +258,42 @@ var ImMessagesSearch = common.Shortcut{
 		})
 		return nil
 	},
+	// Citation: same declaration contract as +chat-messages-list; see the note
+	// there and the package overview in im_citation.go.
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMessage},
+		Build:       messagesSearchCitations,
+	},
+}
+
+// messagesSearchCitations turns this command's output payload into one
+// citation per citable message.
+//
+// Unlike +chat-messages-list, search results span many chats, so there is no
+// single chat_id to fall back on — Step 4 of Execute stamps each enriched
+// message with its own chat_id, and the fallback argument is "".
+//
+// Execute has three exits and only one of them produces citations:
+//   - no hits: "messages" is an empty list, so this yields an empty result and
+//     citation.Normalize omits the key.
+//   - mget failed: the payload carries "message_ids" instead of "messages", so
+//     citationItems finds nothing and returns nil. Degrading here is correct —
+//     without the mget details there is no title or applink to cite.
+//   - normal: enriched messages, cited below.
+func messagesSearchCitations(rt *common.RuntimeContext, data any) []citation.Citation {
+	items := citationItems(data, "messages")
+	if items == nil {
+		return nil
+	}
+	brand := citationBrand(rt)
+
+	citations := make([]citation.Citation, 0, len(items))
+	for _, msg := range items {
+		if entry, ok := messageCitation(brand, msg, ""); ok {
+			citations = append(citations, entry)
+		}
+	}
+	return citations
 }
 
 type messagesSearchRequest struct {

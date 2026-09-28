@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -250,6 +251,36 @@ var ImChatSearch = common.Shortcut{
 		})
 		return nil
 	},
+	// Citation: same declaration contract as +chat-messages-list; see the note
+	// there and the package overview in im_citation.go.
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMessage},
+		Build:       chatSearchCitations,
+	},
+}
+
+// chatSearchCitations turns this command's output payload into one citation
+// per chat.
+//
+// The cited object is the conversation, not a message, so the text-only rule
+// does not apply and every item yields an entry — no bool result to check.
+//
+// The items are the `meta_data` records that chatSearchResult.AddPage lifted
+// out of the response; they are already filtered by --exclude-muted if that
+// flag was set, because the builder sees the final payload. Citing what the
+// user was actually shown is the intended behavior.
+func chatSearchCitations(rt *common.RuntimeContext, data any) []citation.Citation {
+	items := citationItems(data, "chats")
+	if items == nil {
+		return nil
+	}
+	brand := citationBrand(rt)
+
+	citations := make([]citation.Citation, 0, len(items))
+	for _, chat := range items {
+		citations = append(citations, chatCitation(brand, chat))
+	}
+	return citations
 }
 
 // buildSearchChatBody builds the JSON request body for POST /im/v2/chats/search
