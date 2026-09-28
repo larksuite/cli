@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.97] - 2026-09-28
+
+### Features
+
+- optimize the transfer event (#2750)
+- propagate policy status_message to agents (#2384)
+- support release approval handoff (#2639)
+
+### Bug Fixes
+
+- **drive**: accept successful folder moves without a task ID (#2751)
+- **apps**: stop the db/file commands from misdirecting the caller on failure (#2719)
+- **errors**: prefer rendered OpenAPI messages (#2629)
+- support unified input for IM messages (#2760)
+- **im**: expose open IDs for calendar messages (#2752)
+
+### Documentation
+
+- remove post-meeting event grace guidance (#2749)
+
 ## [v1.0.96] - 2026-09-16
 
 ### Features
@@ -2177,6 +2197,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.97]: https://github.com/larksuite/cli/releases/tag/v1.0.97
 [v1.0.96]: https://github.com/larksuite/cli/releases/tag/v1.0.96
 [v1.0.95]: https://github.com/larksuite/cli/releases/tag/v1.0.95
 [v1.0.94]: https://github.com/larksuite/cli/releases/tag/v1.0.94
