@@ -88,6 +88,8 @@ func Shortcuts() []common.Shortcut {
 		BaseButtonRuleGet,
 		BaseButtonRuleUnbind,
 		BaseDataQuery,
+		BaseSchemaContextGet,
+		BaseDataSQLQuery,
 		BaseFormCreate,
 		BaseFormDelete,
 		BaseFormsList,
