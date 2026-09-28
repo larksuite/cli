@@ -38,7 +38,7 @@ func mergePagedResults(w io.Writer, results []interface{}) interface{} {
 		return map[string]interface{}{"pages": results}
 	}
 
-	var merged []interface{}
+	merged := make([]interface{}, 0)
 	for _, r := range results {
 		if rm, ok := r.(map[string]interface{}); ok {
 			if d, ok := rm["data"].(map[string]interface{}); ok {
