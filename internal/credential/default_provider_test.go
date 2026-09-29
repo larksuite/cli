@@ -38,12 +38,14 @@ func TestDefaultTokenProviderSharesRefreshAndCachesDefensiveCopies(t *testing.T)
 		"",
 		core.ProfileFromConfig,
 	)
+	type requestContextKey struct{}
+	const requestContextValue = "exec-123"
 	var calls atomic.Int32
-	started, release := make(chan struct{}), make(chan struct{})
+	started, release := make(chan any, 1), make(chan struct{})
 	client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		call := calls.Add(1)
 		if call == 1 {
-			close(started)
+			started <- req.Context().Value(requestContextKey{})
 			<-release
 		}
 		body := fmt.Sprintf(`{"code":0,"access_token":"token-%d","token_type":"Bearer","expires_in":3600}`, call)
@@ -62,10 +64,14 @@ func TestDefaultTokenProviderSharesRefreshAndCachesDefensiveCopies(t *testing.T)
 		token *TokenResult
 		err   error
 	}
-	first := make(chan tokenResult, 1)
+	leaderCtx, cancelLeader := context.WithCancel(
+		context.WithValue(context.Background(), requestContextKey{}, requestContextValue),
+	)
+	defer cancelLeader()
+	leader := make(chan tokenResult, 1)
 	go func() {
-		token, err := provider.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT})
-		first <- tokenResult{token: token, err: err}
+		token, err := provider.ResolveToken(leaderCtx, TokenSpec{Type: TokenTypeTAT})
+		leader <- tokenResult{token: token, err: err}
 	}()
 	released := false
 	defer func() {
@@ -74,22 +80,24 @@ func TestDefaultTokenProviderSharesRefreshAndCachesDefensiveCopies(t *testing.T)
 		}
 	}()
 	select {
-	case <-started:
+	case got := <-started:
+		if got != requestContextValue {
+			t.Fatalf("mint context value = %v, want %q", got, requestContextValue)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("initial token request did not start")
 	}
-	canceled, cancel := context.WithCancel(context.Background())
-	cancel()
-	if token, err := provider.ResolveToken(canceled, TokenSpec{Type: TokenTypeTAT}); token != nil || !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled waiter = (%+v, %v)", token, err)
+	cancelLeader()
+	if result := <-leader; result.token != nil || !errors.Is(result.err, context.Canceled) {
+		t.Fatalf("canceled leader = (%+v, %v)", result.token, result.err)
 	}
 	close(release)
 	released = true
-	initial := <-first
-	if initial.err != nil || initial.token == nil || initial.token.Token != "token-1" {
-		t.Fatalf("initial token = (%+v, %v)", initial.token, initial.err)
+	initial, err := provider.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT})
+	if err != nil || initial == nil || initial.Token != "token-1" {
+		t.Fatalf("initial token = (%+v, %v)", initial, err)
 	}
-	initial.token.Token = "mutated"
+	initial.Token = "mutated"
 	cached, err := provider.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT})
 	if err != nil || cached == nil || cached.Token != "token-1" || calls.Load() != 1 {
 		t.Fatalf("cached token = (%+v, %v), calls=%d", cached, err, calls.Load())

@@ -219,7 +219,7 @@ func (p *DefaultTokenProvider) resolveTAT(ctx context.Context) (*TokenResult, er
 		go func() {
 			// Shared work belongs to the provider, not the first caller. Bound
 			// its lifetime even when every caller stops waiting.
-			mintCtx, cancel := context.WithTimeout(context.Background(), tatRefreshTimeout)
+			mintCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), tatRefreshTimeout)
 			defer cancel()
 			result, lifetime, err := p.doResolveTAT(mintCtx)
 			p.tatMu.Lock()
@@ -292,6 +292,10 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	}
 	if token.proofFallback && p.errOut != nil {
 		fmt.Fprintf(p.errOut, "[lark-cli] [WARN] three consecutive %s responses; new tenant token issued as Bearer\n", dpop.InvalidProofOAuthError)
+	}
+	if token.localDPoPFallbackErr != nil && p.errOut != nil {
+		fmt.Fprintf(p.errOut, "[lark-cli] [WARN] local DPoP setup failed; new tenant token issued as Bearer: %v\n",
+			token.localDPoPFallbackErr)
 	}
 	lifetime := time.Duration(token.ExpiresIn) * time.Second
 	if lifetime <= 0 {

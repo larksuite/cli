@@ -118,8 +118,8 @@ func TestDefaultKeyStoreSoftwareFallbackLifecycle(t *testing.T) {
 }
 
 func TestSoftwareSignerDoesNotReplaceMissingOrCorruptUnlockSecret(t *testing.T) {
-	for _, missing := range []bool{false, true} {
-		t.Run(map[bool]string{false: "corrupt", true: "missing"}[missing], func(t *testing.T) {
+	for _, failure := range []string{"missing", "corrupt", "unreadable"} {
+		t.Run(failure, func(t *testing.T) {
 			directory := isolateSoftwareStorage(t)
 			kc := &testMetadataStore{values: map[string]string{}}
 			signer := NewKeyStore(kc).signerByName(keysigner.SoftwareSignerName)
@@ -131,12 +131,18 @@ func TestSoftwareSignerDoesNotReplaceMissingOrCorruptUnlockSecret(t *testing.T) 
 			if kc.values[softwareUnlockAccount] == "" {
 				t.Fatal("unlock secret was not stored in keychain")
 			}
-			want := keysigner.ErrCorrupt
-			kc.values[softwareUnlockAccount] = "invalid-base64"
-			if missing {
+			want := errors.New("unlock secret unavailable")
+			switch failure {
+			case "missing":
 				want = keysigner.ErrUnlockRequired
 				delete(kc.values, softwareUnlockAccount)
+			case "corrupt":
+				want = keysigner.ErrCorrupt
+				kc.values[softwareUnlockAccount] = "invalid-base64"
+			case "unreadable":
+				kc.getErr = want
 			}
+			brokenSecret := kc.values[softwareUnlockAccount]
 			if _, _, err := signer.Sign(ctx, ref, []byte("input")); !errors.Is(err, want) {
 				t.Fatalf("sign error = %v, want %v", err, want)
 			}
@@ -146,8 +152,21 @@ func TestSoftwareSignerDoesNotReplaceMissingOrCorruptUnlockSecret(t *testing.T) 
 				}
 			}
 			files, _ := filepath.Glob(filepath.Join(directory, "*.json"))
-			if len(files) != 1 || missing && len(kc.values) != 0 || !missing && kc.values[softwareUnlockAccount] != "invalid-base64" {
+			if len(files) != 1 || kc.values[softwareUnlockAccount] != brokenSecret {
 				t.Fatal("failure replaced secret or wrote another encrypted key")
+			}
+			if failure != "missing" {
+				// Windows shares this secret even with another, empty key directory.
+				_, err := (softwareSigner{keychain: kc}).unlock(ctx, t.TempDir(), true)
+				if !errors.Is(err, want) || kc.values[softwareUnlockAccount] != brokenSecret {
+					t.Fatalf("empty directory must preserve the secret and return %v: %v", want, err)
+				}
+			}
+			if failure == "unreadable" {
+				kc.getErr = nil
+				if _, _, err := signer.Sign(ctx, ref, []byte("input")); err != nil {
+					t.Fatalf("original key cannot sign after read failure: %v", err)
+				}
 			}
 		})
 	}

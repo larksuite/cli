@@ -89,6 +89,7 @@ func newTATDPoPStore(t *testing.T) *dpop.KeyStore {
 
 type tatTestSigner struct {
 	keys      map[string]*ecdsa.PrivateKey
+	probeErr  error
 	signErr   error
 	deleteErr error
 }
@@ -106,6 +107,9 @@ func (*tatTestSigner) SecurityLevel() keysigner.SecurityLevel {
 func (s *tatTestSigner) EnsureKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if s.probeErr != nil && strings.HasPrefix(ref.Label, "probe-") {
+		return nil, s.probeErr
 	}
 	if s.keys[ref.Label] == nil {
 		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -205,7 +209,10 @@ func TestFetchTATDPoPPolicyAndKeyLifetime(t *testing.T) {
 		{name: "required clock failure", mode: core.DPoPModeRequired, heartbeat: `{}`, wantDPoP: true, wantTokenCalls: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := newTATDPoPStore(t)
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			signer := newTATTestSigner()
+			signer.probeErr = keysigner.ErrUnlockRequired
+			store := dpop.NewKeyStoreWithSigner(tatDPoPMetadata{}, signer)
 			var heartbeatCalls, tokenCalls int
 			client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 				body := tc.heartbeat
@@ -253,7 +260,7 @@ func TestFetchTATDPoPPolicyAndKeyLifetime(t *testing.T) {
 			if (token.clockSyncErr != nil) != (tc.heartbeat == `{}`) {
 				t.Fatal("clock synchronization warning was lost")
 			}
-			keyID := tatDPoPKeyID(core.BrandFeishu, "cli-dpop") + "-" + keysigner.SoftwareSignerName
+			keyID := tatDPoPKeyID(core.BrandFeishu, "cli-dpop") + "-" + signer.Name()
 			_, loadErr := store.LoadContext(context.Background(), keyID)
 			if tc.wantDPoP && loadErr != nil {
 				t.Fatalf("committed DPoP key was not retained: %v", loadErr)
@@ -360,7 +367,7 @@ func TestFetchTATAcceptsBearerTokenTypeInPreferred(t *testing.T) {
 	}
 }
 
-func TestFetchTATProofFailureBeforeRequestFallsBack(t *testing.T) {
+func TestFetchTATLocalFailureBeforeRequestFallsBack(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		signErr   error
@@ -394,8 +401,24 @@ func TestFetchTATProofFailureBeforeRequestFallsBack(t *testing.T) {
 				}, nil
 			})}
 
+			if tc.deleteErr != nil {
+				key, _, err := store.PrepareReplaceableContext(context.Background(), tatDPoPKeyID(core.BrandFeishu, "proof-failure"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := store.Save(key); err != nil {
+					t.Fatal(err)
+				}
+				delete(signer.keys, key.ID())
+				_, err = fetchTAT(context.Background(), client, core.BrandFeishu, "proof-failure", "secret", core.DPoPModeRequired, store)
+				problem, ok := errs.ProblemOf(err)
+				if !ok || problem.Subtype != errs.SubtypeDPoPKeyMissing || !errors.Is(err, tc.deleteErr) ||
+					problem.Hint == "" || strings.Contains(problem.Hint, "auth login") || tokenCalls != 0 {
+					t.Fatalf("required failure = %v, token calls = %d", err, tokenCalls)
+				}
+			}
 			token, err := fetchTAT(context.Background(), client, core.BrandFeishu, "proof-failure", "secret", core.DPoPModePreferred, store)
-			if err != nil || token == nil || token.AccessToken != "bearer-token" || token.DPoP != nil || token.proofFallback {
+			if err != nil || token == nil || token.AccessToken != "bearer-token" || token.DPoP != nil || token.proofFallback || token.localDPoPFallbackErr == nil {
 				t.Fatalf("fetchTAT proof failure fallback = (%+v, %v)", token, err)
 			}
 			if tokenCalls != 1 {

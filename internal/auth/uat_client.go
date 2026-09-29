@@ -179,13 +179,19 @@ func refreshWithLock(ctx context.Context, httpClient *http.Client, opts UATCallO
 			return err
 		}
 
-		refreshed, err = doRefreshToken(ctx, httpClient, opts, freshStored)
+		// Once token rotation starts, finish it even if the caller disconnects.
+		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uatRefreshTimeout)
+		defer cancel()
+		refreshed, err = doRefreshToken(refreshCtx, httpClient, opts, freshStored)
 		return err
 	})
 	return refreshed, err
 }
 
-const refreshMaxAttempts = 2
+const (
+	refreshMaxAttempts = 2
+	uatRefreshTimeout  = 60 * time.Second
+)
 
 type refreshRequest struct {
 	GrantType    string `json:"grant_type"`

@@ -319,7 +319,7 @@ func TestKeyStoreProbeCleansUpAfterCancellationAndPreservesErrors(t *testing.T) 
 	}
 }
 
-func TestKeyStoreOnlyReplaceableKeysRecoverFromMissingPrivateKey(t *testing.T) {
+func TestKeyStoreOnlyReplaceableKeysRecoverFromUnreadablePrivateKey(t *testing.T) {
 	isolateSoftwareStorage(t)
 	ctx := context.Background()
 	kc := &testMetadataStore{values: map[string]string{}}
@@ -333,13 +333,14 @@ func TestKeyStoreOnlyReplaceableKeysRecoverFromMissingPrivateKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldJKT, _ := key.Thumbprint()
-	delete(signer.keys, key.ID())
-	if _, err := store.EnsureContext(ctx, key.ID()); !errors.Is(err, ErrKeyNotFound) {
-		t.Fatalf("existing key was recreated: %v", err)
+	signer.publicErr = keysigner.ErrUnlock
+	if _, err := store.EnsureContext(ctx, key.ID()); !errors.Is(err, keysigner.ErrUnlock) {
+		t.Fatalf("ordinary ensure replaced an unreadable existing key: %v", err)
 	}
+
 	replaced, created, err := store.PrepareReplaceableContext(ctx, "tenant-key")
 	if err != nil || !created {
-		t.Fatalf("replace missing tenant key: %v, %v", created, err)
+		t.Fatalf("replace unreadable tenant key: %v, %v", created, err)
 	}
 	newJKT, _ := replaced.Thumbprint()
 	if newJKT == oldJKT || len(kc.values) != 0 {
@@ -374,24 +375,24 @@ func TestReplaceableKeysAreIsolatedByBackend(t *testing.T) {
 			t.Fatalf("backend switch broke existing token key: %v", err)
 		}
 	}
-	for _, cause := range []error{keysigner.ErrUnavailable, errors.New("access denied")} {
-		first.publicErr = cause
-		key, created, err := store.PrepareReplaceableContext(ctx, "tenant")
-		if errors.Is(cause, keysigner.ErrUnavailable) {
-			if err != nil || created || key.ID() != softwareKey.ID() {
-				t.Fatalf("backend fallback = %v, %v, %v", key, created, err)
-			}
-			want, _ := softwareKey.Thumbprint()
-			got, _ := key.Thumbprint()
-			if want != got {
-				t.Fatal("backend fallback replaced its stored key")
-			}
-		} else if !errors.Is(err, cause) {
-			t.Fatalf("hard error triggered fallback: %v", err)
-		}
-	}
-	first.publicErr = nil
+	loadErr := errors.New("access denied")
+	deleteErr := errors.New("delete denied")
+	first.publicErr = loadErr
+	first.deleteErr = deleteErr
 	key, created, err := store.PrepareReplaceableContext(ctx, "tenant")
+	if err != nil || created || key.ID() != softwareKey.ID() {
+		t.Fatalf("backend fallback = %v, %v, %v", key, created, err)
+	}
+	want, _ := softwareKey.Thumbprint()
+	got, _ := key.Thumbprint()
+	if want != got {
+		t.Fatal("backend fallback replaced its stored key")
+	}
+	if _, found := kc.values[keyAccountPrefix+hardwareKey.ID()]; !found {
+		t.Fatal("failed cleanup removed the original backend metadata")
+	}
+	first.publicErr, first.deleteErr = nil, nil
+	key, created, err = store.PrepareReplaceableContext(ctx, "tenant")
 	if err != nil || created || key.ID() != hardwareKey.ID() || len(kc.values) != 2 {
 		t.Fatalf("return to hardware = %v, %v, %v", key, created, err)
 	}

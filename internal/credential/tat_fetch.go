@@ -35,12 +35,13 @@ type tatResponse struct {
 }
 
 type FetchedToken struct {
-	AccessToken   string
-	ExpiresIn     int64
-	StatusMessage string
-	DPoP          *dpop.Binding
-	proofFallback bool  // New issuance fell back after explicit proof rejections.
-	clockSyncErr  error // Initial synchronization is best-effort; the caller may warn.
+	AccessToken          string
+	ExpiresIn            int64
+	StatusMessage        string
+	DPoP                 *dpop.Binding
+	proofFallback        bool  // New issuance fell back after explicit proof rejections.
+	localDPoPFallbackErr error // Local DPoP setup failed before a Bearer fallback.
+	clockSyncErr         error // Initial synchronization is best-effort; the caller may warn.
 }
 
 // FetchTAT mints a tenant token using client_credentials and the supplied DPoP
@@ -102,9 +103,13 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		if mode == core.DPoPModePreferred && (!dpopRequestSent || errors.Is(retErr, dpop.ErrRepeatedInvalidProof)) && retErr != nil && ctx.Err() == nil &&
 			!errors.Is(retErr, context.Canceled) && !errors.Is(retErr, context.DeadlineExceeded) {
 			repeatedProofRejection := errors.Is(retErr, dpop.ErrRepeatedInvalidProof)
+			fallbackErr := retErr
 			result, retErr = requestTAT(ctx, httpClient, brand, appID, appSecret, nil, keyStore, nil, false, 0)
 			if retErr == nil && result != nil {
 				result.proofFallback = repeatedProofRejection
+				if !repeatedProofRejection {
+					result.localDPoPFallbackErr = fallbackErr
+				}
 			}
 		}
 	}()
@@ -112,14 +117,16 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		if keyStore == nil {
 			keyStore = dpop.NewKeyStore(nil)
 		}
-		if err := keyStore.RequireWritableContext(ctx); err != nil {
-			return nil, err
-		}
 		var err error
 		proofKey, createdKey, err = keyStore.PrepareReplaceableContext(ctx, tatDPoPKeyID(brand, appID))
 		if err != nil {
-			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPProofFailed,
-				"failed to generate DPoP key: %v", err).WithCause(err)
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
+			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
+				"failed to prepare replaceable DPoP key: %v", err).
+				WithCause(err).
+				WithHint("%s", dpop.KeyStorePreExchangeUnavailableHint)
 		}
 		if err := keyStore.SaveContext(ctx, proofKey); err != nil {
 			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,

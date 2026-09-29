@@ -359,10 +359,11 @@ func (s *KeyStore) ensureContext(ctx context.Context, id string, signers []keysi
 	return newKey(id, p256, signer, NewClock(nil)), nil
 }
 
-// PrepareReplaceableContext opens a stable key or replaces stale metadata when
-// no persisted token can still be bound to that key. This is intended for TAT,
-// whose token and Binding are process-local. UAT callers must use LoadContext
-// so a missing bound key requires re-authorization instead of silent rebinding.
+// PrepareReplaceableContext opens a stable key or replaces unreadable backend
+// state when no persisted token can still be bound to that key. This is intended
+// for TAT, whose token and Binding are process-local. UAT callers must use
+// LoadContext so an unusable bound key requires re-authorization instead of
+// silent rebinding.
 // Created is true only when the caller owns a new key and must delete it if the
 // token issuance transaction does not commit.
 // The identifier is a namespace: each backend uses its own stable key within it.
@@ -373,43 +374,82 @@ func (s *KeyStore) PrepareReplaceableContext(ctx context.Context, id string) (*K
 	if id == "" {
 		return nil, false, errors.New("cannot create DPoP key with an empty identifier")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	var key *Key
 	var created bool
 	err := withKeyStoreLockContext(ctx, func() error {
 		var unavailable []error
 		for _, signer := range s.signers {
 			keyID := id + "-" + signer.Name()
-			var err error
-			key, err = s.ensureContext(ctx, keyID, []keysigner.Signer{signer})
-			if errors.Is(err, ErrKeyNotFound) {
-				cleanupCtx := ctx
-				if cleanupCtx == nil {
-					cleanupCtx = context.Background()
-				} else {
-					cleanupCtx = context.WithoutCancel(cleanupCtx)
-				}
-				if deleteErr := s.deleteContext(cleanupCtx, keyID); deleteErr != nil {
-					return errors.Join(err, deleteErr)
-				}
+			metadata, found, err := s.readMetadata(keyID)
+			if err == nil && found {
+				key, err = s.loadFromMetadata(ctx, keyID, metadata)
+			} else if err == nil {
 				key, err = s.ensureContext(ctx, keyID, []keysigner.Signer{signer})
-			}
-			if err != nil && ctx != nil && ctx.Err() != nil {
-				return errors.Join(ctx.Err(), err)
-			}
-			if keysigner.CanFallback(err) {
-				unavailable = append(unavailable, err)
-				continue
-			}
-			if err != nil {
+				if err == nil {
+					created = true
+					return nil
+				}
+				if ctx.Err() != nil {
+					return errors.Join(ctx.Err(), err)
+				}
+				if keysigner.CanFallback(err) {
+					unavailable = append(unavailable, err)
+					continue
+				}
 				return err
 			}
-			_, found, err := s.readMetadata(keyID)
-			created = !found
-			return err
+			if err == nil {
+				return nil
+			}
+			if ctx.Err() != nil {
+				return errors.Join(ctx.Err(), err)
+			}
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			loadErr := err
+			cleanupCtx := context.WithoutCancel(ctx)
+			if deleteErr := s.deleteReplaceableContext(cleanupCtx, keyID, signer); deleteErr != nil {
+				// Backend-specific key IDs let a replaceable TAT key continue
+				// without aliasing the stale state left by failed cleanup.
+				unavailable = append(unavailable, errors.Join(loadErr, keysigner.ErrCleanupFailed, deleteErr))
+				continue
+			}
+			key, err = s.ensureContext(ctx, keyID, []keysigner.Signer{signer})
+			if err == nil {
+				created = true
+				return nil
+			}
+			if ctx.Err() != nil {
+				return errors.Join(ctx.Err(), loadErr, err)
+			}
+			if keysigner.CanFallback(err) {
+				unavailable = append(unavailable, errors.Join(loadErr, err))
+				continue
+			}
+			return errors.Join(loadErr, err)
 		}
 		return errors.Join(append([]error{keysigner.ErrUnavailable}, unavailable...)...)
 	})
 	return key, created, err
+}
+
+// deleteReplaceableContext removes backend-scoped TAT state without first
+// loading metadata that may itself be unreadable.
+func (s *KeyStore) deleteReplaceableContext(ctx context.Context, id string, signer keysigner.Signer) error {
+	ref := keysigner.KeyRef{Label: id, Algorithm: keysigner.AlgES256}
+	if err := signer.DeleteKey(ctx, ref); err != nil && !errors.Is(err, keysigner.ErrKeyNotFound) {
+		return fmt.Errorf("delete replaceable DPoP key with signer %q: %w", signer.Name(), err)
+	}
+	if err := s.keychain.Remove(keychain.LarkCliService, keyAccountPrefix+id); err != nil &&
+		!errors.Is(err, keychain.ErrNotFound) {
+		return fmt.Errorf("delete replaceable DPoP public key metadata: %w", err)
+	}
+	s.pending.Delete(id)
+	return nil
 }
 
 func (s *KeyStore) Save(key *Key) error {

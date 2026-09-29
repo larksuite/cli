@@ -226,10 +226,9 @@ func RemoveStoredToken(appId, userOpenId string) error {
 // deleteStoredToken removes the supplied account's token. The caller must hold
 // that account's token storage lock.
 func deleteStoredToken(appID, userOpenID string) error {
-	current, err := readStoredToken(appID, userOpenID)
-	if err != nil && !errors.Is(err, errStoredTokenCorrupt) {
-		return err
-	}
+	// Reading is only needed for best-effort DPoP key cleanup. The token record
+	// must remain removable when credential storage cannot read it.
+	current, _ := readStoredToken(appID, userOpenID)
 	if err := keychain.Remove(keychain.LarkCliService, accountKey(appID, userOpenID)); err != nil {
 		return err
 	}

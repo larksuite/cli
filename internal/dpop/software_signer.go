@@ -110,6 +110,11 @@ func (s softwareSigner) unlock(ctx context.Context, directory string, allowCreat
 		return nil, err
 	}
 	encoded, err := s.keychain.Get(keychain.LarkCliService, softwareUnlockAccount)
+	if ctx.Err() != nil {
+		return nil, errors.Join(ctx.Err(), err)
+	}
+	// This account may protect keys in other directories (Windows HKCU).
+	// An empty local directory cannot justify replacing an unreadable secret.
 	if err != nil && !errors.Is(err, keychain.ErrNotFound) {
 		return nil, err
 	}
@@ -128,14 +133,14 @@ func (s softwareSigner) unlock(ctx context.Context, directory string, allowCreat
 	if !allowCreate {
 		return nil, missingSoftwareUnlockSecret(directory)
 	}
-	// The key file writer creates the directory after the first successful unlock.
+
 	entries, err := vfs.ReadDir(directory)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
 	for _, entry := range entries {
-		// Losing the secret must not silently replace it while encrypted keys exist.
 		if isSoftwareKeyFile(entry.Name()) {
+			// Missing protection data must not orphan existing encrypted keys.
 			return nil, missingSoftwareUnlockSecret(directory)
 		}
 	}

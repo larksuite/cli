@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/keysigner"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/zalando/go-keyring"
 )
 
@@ -224,7 +226,7 @@ func TestStoredTokenGenerationGuard(t *testing.T) {
 	}
 }
 
-func TestSetStoredTokenReplacesCorruptEntry(t *testing.T) {
+func TestStoredTokenRecoversFromCorruptOrUnreadableEntry(t *testing.T) {
 	setupStoredTokenTest(t)
 
 	const (
@@ -255,6 +257,22 @@ func TestSetStoredTokenReplacesCorruptEntry(t *testing.T) {
 	got := mustGetStoredToken(t, appID, userOpenID)
 	if got == nil || got.AccessToken != "fresh-access" {
 		t.Fatalf("stored token after re-login = %#v, want fresh token", got)
+	}
+	if runtime.GOOS != "windows" { // Windows credentials use HKCU, not FileIO.
+		failRead := true
+		useAuthFSStub(t, authFSStub{readFile: func(path string) ([]byte, error) {
+			if failRead && filepath.Ext(path) == ".enc" {
+				return nil, errors.New("credential decryption unavailable")
+			}
+			return (vfs.OsFs{}).ReadFile(path)
+		}})
+		if err := RemoveStoredToken(appID, userOpenID); err != nil {
+			t.Fatalf("remove unreadable token: %v", err)
+		}
+		failRead = false
+		if current := mustGetStoredToken(t, appID, userOpenID); current != nil {
+			t.Fatalf("unreadable token was not removed: %#v", current)
+		}
 	}
 }
 

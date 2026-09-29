@@ -122,6 +122,8 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 		t.Fatalf("SetStoredToken() error = %v", err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	var calls atomic.Int32
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		call := calls.Add(1)
@@ -147,12 +149,19 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 		if call == 1 {
 			return refreshHTTPResponse(req, `{"code":20050,"error_description":"retry"}`), nil
 		}
+		if deadline, ok := req.Context().Deadline(); !ok || time.Until(deadline) > uatRefreshTimeout {
+			return nil, errors.New("refresh request has no independent timeout")
+		}
+		cancel()
+		if err := req.Context().Err(); err != nil {
+			return nil, err
+		}
 		// OAuth success is identified by access_token; code may be omitted.
 		return refreshHTTPResponse(req,
 			`{"access_token":"access-new","refresh_token":"refresh-new","expires_in":120,"refresh_token_expires_in":600,"status_message":"Some requested scopes were silently trimmed"}`), nil
 	})}
 
-	token, err := GetValidAccessToken(context.Background(), client, opts)
+	token, err := GetValidAccessToken(ctx, client, opts)
 	if err != nil {
 		t.Fatalf("GetValidAccessToken() error = %v", err)
 	}
