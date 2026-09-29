@@ -3,16 +3,9 @@
 
 package base
 
-import (
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
-)
+import "github.com/larksuite/cli/errs"
 
-func validateRecordReadFormat(runtime *common.RuntimeContext) error {
-	return validateRecordReadFormatValue(runtime.Str("format"))
-}
-
-func validateRecordReadFormatValue(format string) error {
+func validateRecordReadFormat(format string) error {
 	switch format {
 	case "ndjson", "json":
 		return nil

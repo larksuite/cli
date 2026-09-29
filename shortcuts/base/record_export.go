@@ -24,7 +24,6 @@ import (
 
 const (
 	maxInlineRecordReadLimit = 200
-	ndjsonRecordPageSize     = 2000
 	maxNDJSONRecordReadLimit = 2000
 	recordAnalysisOutputTip  = "Record reads default to ndjson; use --output ./records.ndjson for analysis, parsing, or comparison to keep long user data out of model context; process the records file with Python or another data analysis engine. Follow lark-base-record-query-and-analysis-sop.md for engine selection and complete-data checks. Ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result. Each list/search command makes one data request, up to 2000 records. If has_more is true, continue explicitly with --offset set to next_offset."
 )
@@ -34,7 +33,7 @@ var recordExportNow = time.Now
 func recordOutputFlag() common.Flag {
 	return common.Flag{
 		Name: "output",
-		Desc: "preferred analysis output: relative .ndjson output path; implies --format ndjson when format is omitted",
+		Desc: "preferred analysis output: relative .ndjson output path; omit to generate a filename automatically (requires ndjson)",
 	}
 }
 
@@ -60,28 +59,21 @@ func recordOverwriteFlag() common.Flag {
 }
 
 func normalizeRecordReadOutput(_ context.Context, flags *common.FlagContext) error {
-	if err := validateRecordReadFormatValue(flags.Str("format")); err != nil {
+	if err := validateRecordReadFormat(flags.Str("format")); err != nil {
 		return err
 	}
-	if strings.TrimSpace(flags.Str("output")) != "" {
-		if flags.Changed("format") && flags.Str("format") != recordexport.FormatNDJSON {
-			return errs.NewValidationError(
-				errs.SubtypeInvalidArgument,
-				"--output writes an ndjson artifact and conflicts with --format %s",
-				flags.Str("format"),
+	if strings.TrimSpace(flags.Str("output")) != "" && flags.Str("format") != recordexport.FormatNDJSON {
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--output writes an ndjson artifact and conflicts with --format %s",
+			flags.Str("format"),
+		).
+			WithParam("--output").
+			WithParams(
+				errs.InvalidParam{Name: "--output", Reason: "requires ndjson"},
+				errs.InvalidParam{Name: "--format", Reason: "conflicts with --output"},
 			).
-				WithParam("--output").
-				WithParams(
-					errs.InvalidParam{Name: "--output", Reason: "requires ndjson"},
-					errs.InvalidParam{Name: "--format", Reason: "conflicts with --output"},
-				).
-				WithHint("Remove --format or set --format ndjson.")
-		}
-		if !flags.Changed("format") {
-			if err := flags.SetCanonicalFrom("output", "format", recordexport.FormatNDJSON); err != nil {
-				return err
-			}
-		}
+			WithHint("Remove --format or set --format ndjson.")
 	}
 	if flags.Str("format") == recordexport.FormatNDJSON && strings.TrimSpace(flags.Str("jq")) != "" {
 		return errs.NewValidationError(
@@ -95,14 +87,10 @@ func normalizeRecordReadOutput(_ context.Context, flags *common.FlagContext) err
 }
 
 func normalizeRecordListLimit(_ context.Context, flags *common.FlagContext) error {
-	if flags.Changed("limit") {
+	if flags.Changed("limit") || flags.Str("format") != "json" {
 		return nil
 	}
-	limit := 100
-	if flags.Str("format") == recordexport.FormatNDJSON {
-		limit = maxNDJSONRecordReadLimit
-	}
-	return flags.SetCanonical("limit", strconv.Itoa(limit))
+	return flags.SetCanonical("limit", "100")
 }
 
 func normalizeRecordSearchOutput(ctx context.Context, flags *common.FlagContext) error {
@@ -164,9 +152,7 @@ func validateRecordExportFlags(runtime *common.RuntimeContext) error {
 	return nil
 }
 
-// validateRecordReadLimit intentionally runs after format normalization so an
-// inferred ndjson format receives the 2000-row bound instead of the inline
-// 200-row bound.
+// validateRecordReadLimit applies the artifact or inline bound for the selected format.
 func validateRecordReadLimit(runtime *common.RuntimeContext, defaultLimit int) error {
 	maximum := maxInlineRecordReadLimit
 	if runtime.Str("format") == recordexport.FormatNDJSON {
@@ -174,33 +160,6 @@ func validateRecordReadLimit(runtime *common.RuntimeContext, defaultLimit int) e
 	}
 	_, err := common.ValidatePageSizeTyped(runtime, "limit", defaultLimit, 1, maximum)
 	return err
-}
-
-type recordExportAccumulator struct {
-	dataset        recordexport.Dataset
-	rev            *int64
-	initialized    bool
-	pageCount      int
-	hasMore        bool
-	queryContext   map[string]any
-	ignoredFields  []recordexport.IgnoredField
-	recordNotFound []string
-}
-
-func (a *recordExportAccumulator) append(page recordexport.Page) error {
-	if !a.initialized {
-		a.dataset = page.Dataset
-		a.rev = page.Rev
-		a.queryContext = page.QueryContext
-		a.initialized = true
-	} else if err := a.dataset.AppendPage(page); err != nil {
-		return err
-	}
-	a.pageCount++
-	a.hasMore = page.HasMore
-	a.ignoredFields = appendUniqueIgnoredFields(a.ignoredFields, page.IgnoredFields)
-	a.recordNotFound = appendUniqueStrings(a.recordNotFound, page.RecordNotFound)
-	return nil
 }
 
 func parseRecordExportPage(data map[string]any) (recordexport.Page, error) {
@@ -211,22 +170,6 @@ func parseRecordExportPage(data map[string]any) (recordexport.Page, error) {
 	return recordexport.Page{}, errs.NewInternalError(
 		errs.SubtypeInvalidResponse, "cannot export record matrix: %v", err,
 	).WithCause(err)
-}
-
-func appendRecordExportPage(accumulator *recordExportAccumulator, page recordexport.Page) error {
-	if err := accumulator.append(page); err != nil {
-		var schemaChanged *recordexport.SchemaChangedError
-		if errors.As(err, &schemaChanged) {
-			return errs.NewValidationError(
-				errs.SubtypeFailedPrecondition,
-				"table schema changed during download; this request failed",
-			).
-				WithHint("Retry the request so every page uses one consistent schema.").
-				WithCause(err)
-		}
-		return errs.NewInternalError(errs.SubtypeInvalidResponse, "cannot append record page: %v", err).WithCause(err)
-	}
-	return nil
 }
 
 // The public CLI reads one page only. Continue explicitly with the manifest's
@@ -254,11 +197,7 @@ func executeRecordListNDJSON(
 		return errs.NewInternalError(errs.SubtypeInvalidResponse,
 			"record API returned %d rows for page limit %d", len(page.Dataset.Records), requestedLimit)
 	}
-	accumulator := &recordExportAccumulator{}
-	if err := appendRecordExportPage(accumulator, page); err != nil {
-		return err
-	}
-	return finalizeRecordExport(runtime, accumulator, startOffset, requestedLimit)
+	return finalizeRecordExport(runtime, page, startOffset, requestedLimit)
 }
 
 func executeRecordSearchNDJSON(runtime *common.RuntimeContext, requestBody map[string]any) error {
@@ -283,11 +222,7 @@ func executeRecordSearchNDJSON(runtime *common.RuntimeContext, requestBody map[s
 		return errs.NewInternalError(errs.SubtypeInvalidResponse,
 			"record search API returned %d rows for page limit %d", len(page.Dataset.Records), requestedLimit)
 	}
-	accumulator := &recordExportAccumulator{}
-	if err := appendRecordExportPage(accumulator, page); err != nil {
-		return err
-	}
-	return finalizeRecordExport(runtime, accumulator, startOffset, requestedLimit)
+	return finalizeRecordExport(runtime, page, startOffset, requestedLimit)
 }
 
 func executeRecordGetNDJSON(runtime *common.RuntimeContext, data map[string]any, requestedRecordCount int) error {
@@ -301,22 +236,15 @@ func executeRecordGetNDJSON(runtime *common.RuntimeContext, data map[string]any,
 	}
 	page.QueryContext["record_scope"] = "selected_record_ids"
 	page.QueryContext["requested_record_count"] = requestedRecordCount
-	accumulator := &recordExportAccumulator{}
-	if err := appendRecordExportPage(accumulator, page); err != nil {
-		return err
-	}
-	return finalizeRecordExport(runtime, accumulator, 0, 0)
+	return finalizeRecordExport(runtime, page, 0, 0)
 }
 
 func finalizeRecordExport(
 	runtime *common.RuntimeContext,
-	accumulator *recordExportAccumulator,
+	page recordexport.Page,
 	startOffset int,
 	requestedLimit int,
 ) error {
-	if !accumulator.initialized {
-		return errs.NewInternalError(errs.SubtypeInvalidResponse, "record export received no matrix page")
-	}
 	paths, err := resolveRecordExportPaths(runtime)
 	if err != nil {
 		return err
@@ -329,7 +257,7 @@ func finalizeRecordExport(
 		return err
 	}
 
-	scanResult := output.ScanForSafety(runtime.Cmd.CommandPath(), accumulator.dataset, runtime.IO().ErrOut)
+	scanResult := output.ScanForSafety(runtime.Cmd.CommandPath(), page.Dataset, runtime.IO().ErrOut)
 	if scanResult.Blocked {
 		return baseContentSafetyBlockError(scanResult)
 	}
@@ -337,29 +265,29 @@ func finalizeRecordExport(
 		output.WriteAlertWarning(runtime.IO().ErrOut, scanResult.Alert)
 	}
 
-	recordFileSizeBytes, err := saveRecordNDJSON(fio, paths.recordRelative, accumulator.dataset)
+	recordFileSizeBytes, err := saveRecordNDJSON(fio, paths.recordRelative, page.Dataset)
 	if err != nil {
 		return err
 	}
-	manifest := recordexport.BuildManifest(accumulator.dataset, recordexport.ManifestOptions{
+	manifest := recordexport.BuildManifest(page.Dataset, recordexport.ManifestOptions{
 		BaseToken:           runtime.Str("base-token"),
 		TableID:             baseTableID(runtime),
-		Rev:                 accumulator.rev,
-		QueryContext:        accumulator.queryContext,
+		Rev:                 page.Rev,
+		QueryContext:        page.QueryContext,
 		Offset:              startOffset,
 		RequestedLimit:      requestedLimit,
-		PageCount:           accumulator.pageCount,
-		HasMore:             accumulator.hasMore,
+		PageCount:           1,
+		HasMore:             page.HasMore,
 		RecordFile:          paths.recordAbsolute,
 		RecordFileSizeBytes: recordFileSizeBytes,
 		ManifestFile:        paths.manifestAbsolute,
-		IgnoredFields:       accumulator.ignoredFields,
-		RecordNotFound:      accumulator.recordNotFound,
+		IgnoredFields:       appendUniqueIgnoredFields(nil, page.IgnoredFields),
+		RecordNotFound:      appendUniqueStrings(nil, page.RecordNotFound),
 	})
 	if err := saveRecordManifest(fio, paths.manifestRelative, manifest); err != nil {
 		return err
 	}
-	return outputRecordExportResult(runtime, accumulator.dataset, manifest)
+	return outputRecordExportResult(runtime, page.Dataset, manifest)
 }
 
 type recordExportPaths struct {

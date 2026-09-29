@@ -33,7 +33,7 @@ var BaseRecordGet = common.Shortcut{
 	},
 	Normalize: normalizeRecordReadOutput,
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateRecordReadFormat(runtime); err != nil {
+		if err := validateRecordReadFormat(runtime.Str("format")); err != nil {
 			return err
 		}
 		if err := validateRecordExportFlags(runtime); err != nil {
