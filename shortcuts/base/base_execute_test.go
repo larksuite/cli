@@ -2811,6 +2811,54 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
+	t.Run("list repairs a silently missing number cell with batch get", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "field_id=Name&field_id=Cost&limit=1&offset=0",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":          []interface{}{"Name", "Cost"},
+					"field_id_list":   []interface{}{"fld_name", "fld_cost"},
+					"field_type_list": []interface{}{"text", "number"},
+					"record_id_list":  []interface{}{"rec_1"},
+					"data":            []interface{}{[]interface{}{"Alice", nil}},
+					"rev":             42,
+				},
+			},
+		})
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_get",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":          []interface{}{"Cost"},
+					"field_id_list":   []interface{}{"fld_cost"},
+					"field_type_list": []interface{}{"number"},
+					"record_id_list":  []interface{}{"rec_1"},
+					"data":            []interface{}{[]interface{}{500}},
+					"rev":             42,
+				},
+			},
+		}
+		reg.Register(batchStub)
+		if err := runShortcut(t, BaseRecordList, []string{
+			"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "1",
+			"--field-id", "Name", "--field-id", "Cost", "--format", "json",
+		}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `500`) || strings.Contains(got, `null`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		body := string(batchStub.CapturedBody)
+		if !strings.Contains(body, `"record_id_list":["rec_1"]`) || !strings.Contains(body, `"select_fields":["fld_cost"]`) {
+			t.Fatalf("batch_get body=%s", body)
+		}
+	})
+
 	t.Run("list json alias", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
