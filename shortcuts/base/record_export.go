@@ -27,7 +27,7 @@ const (
 	ndjsonRecordPageSize         = 2000
 	defaultNDJSONRecordReadLimit = 10000
 	maxNDJSONRecordReadLimit     = 10000
-	recordAnalysisOutputTip      = "If file I/O is available, prefer --format ndjson --output ./records.ndjson for analysis, parsing, or comparison to keep long user data out of model context; process the records file with Python or another data analysis engine. Follow lark-base/SKILL.md for analysis routing and Record pagination rules. Ndjson defaults to limit 10000, so set a smaller --limit only for probes, previews, or an explicitly bounded result."
+	recordAnalysisOutputTip      = "Record reads default to ndjson; use --output ./records.ndjson for analysis, parsing, or comparison to keep long user data out of model context; process the records file with Python or another data analysis engine. Follow lark-base/SKILL.md for analysis routing and Record pagination rules. Ndjson defaults to limit 10000, so set a smaller --limit only for probes, previews, or an explicitly bounded result. List/search automatically read pages of up to 2000 records, up to the requested limit (default and maximum 10000). If has_more is true, continue with --offset set to next_offset."
 )
 
 var recordExportNow = time.Now
@@ -35,7 +35,7 @@ var recordExportNow = time.Now
 func recordOutputFlag() common.Flag {
 	return common.Flag{
 		Name: "output",
-		Desc: "preferred analysis output: relative .ndjson output path; implies --format ndjson when format is omitted",
+		Desc: "preferred analysis output: relative .ndjson output path; omit to generate a filename automatically (requires ndjson)",
 	}
 }
 
@@ -61,25 +61,21 @@ func recordOverwriteFlag() common.Flag {
 }
 
 func normalizeRecordReadOutput(_ context.Context, flags *common.FlagContext) error {
-	if strings.TrimSpace(flags.Str("output")) != "" {
-		if flags.Changed("format") && flags.Str("format") != recordexport.FormatNDJSON {
-			return errs.NewValidationError(
-				errs.SubtypeInvalidArgument,
-				"--output writes an ndjson artifact and conflicts with --format %s",
-				flags.Str("format"),
+	if err := validateRecordReadFormat(flags.Str("format")); err != nil {
+		return err
+	}
+	if strings.TrimSpace(flags.Str("output")) != "" && flags.Str("format") != recordexport.FormatNDJSON {
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--output writes an ndjson artifact and conflicts with --format %s",
+			flags.Str("format"),
+		).
+			WithParam("--output").
+			WithParams(
+				errs.InvalidParam{Name: "--output", Reason: "requires ndjson"},
+				errs.InvalidParam{Name: "--format", Reason: "conflicts with --output"},
 			).
-				WithParam("--output").
-				WithParams(
-					errs.InvalidParam{Name: "--output", Reason: "requires ndjson"},
-					errs.InvalidParam{Name: "--format", Reason: "conflicts with --output"},
-				).
-				WithHint("Remove --format or set --format ndjson.")
-		}
-		if !flags.Changed("format") {
-			if err := flags.SetCanonicalFrom("output", "format", recordexport.FormatNDJSON); err != nil {
-				return err
-			}
-		}
+			WithHint("Remove --format or set --format ndjson.")
 	}
 	if flags.Str("format") == recordexport.FormatNDJSON && strings.TrimSpace(flags.Str("jq")) != "" {
 		return errs.NewValidationError(
@@ -92,11 +88,11 @@ func normalizeRecordReadOutput(_ context.Context, flags *common.FlagContext) err
 	return nil
 }
 
-func normalizeRecordNDJSONLimit(_ context.Context, flags *common.FlagContext) error {
-	if flags.Str("format") != recordexport.FormatNDJSON || flags.Changed("limit") {
+func normalizeRecordListLimit(_ context.Context, flags *common.FlagContext) error {
+	if flags.Changed("limit") || flags.Str("format") != "json" {
 		return nil
 	}
-	return flags.SetCanonical("limit", strconv.Itoa(defaultNDJSONRecordReadLimit))
+	return flags.SetCanonical("limit", "100")
 }
 
 func normalizeRecordSearchOutput(ctx context.Context, flags *common.FlagContext) error {

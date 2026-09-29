@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -358,4 +359,18 @@ func consumeStringField(src map[string]interface{}, key string) string {
 		delete(src, key)
 	}
 	return strings.TrimSpace(value)
+}
+
+func baseContentSafetyBlockError(scanResult output.ScanResult) error {
+	message := "content safety violation detected"
+	var rules []string
+	if scanResult.Alert != nil {
+		rules = scanResult.Alert.MatchedRules
+	}
+	if len(rules) > 0 {
+		message = fmt.Sprintf("content safety violation detected (rules: %s)", strings.Join(rules, ", "))
+	}
+	return errs.NewContentSafetyError(errs.SubtypeUnknown, "%s", message).
+		WithRules(rules...).
+		WithCause(scanResult.BlockErr)
 }

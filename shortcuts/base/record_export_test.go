@@ -745,7 +745,7 @@ func TestRecordNDJSONDefaultsRead10000InFivePages(t *testing.T) {
 				registry.Register(stub)
 			}
 			shortcut := BaseRecordList
-			args := []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--offset", "17", "--output", "full.ndjson"}
+			args := []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--offset", "17"}
 			if search {
 				shortcut = BaseRecordSearch
 				args[0] = "+record-search"
@@ -754,7 +754,8 @@ func TestRecordNDJSONDefaultsRead10000InFivePages(t *testing.T) {
 			if err := runShortcut(t, shortcut, args, factory, stdout); err != nil {
 				t.Fatal(err)
 			}
-			raw, err := os.ReadFile(filepath.Join(dir, "full.manifest.json"))
+			raw := stdout.Bytes()
+			var err error
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -765,7 +766,7 @@ func TestRecordNDJSONDefaultsRead10000InFivePages(t *testing.T) {
 			if manifest["records_count"] != float64(10000) || manifest["requested_limit"] != float64(10000) || manifest["page_count"] != float64(5) || manifest["next_offset"] != float64(10017) || manifest["has_more"] != true {
 				t.Fatalf("unexpected pagination: %#v", manifest)
 			}
-			raw, err = os.ReadFile(filepath.Join(dir, "full.ndjson"))
+			raw, err = os.ReadFile(manifest["record_file"].(string))
 			if err != nil {
 				t.Fatal(err)
 			}
