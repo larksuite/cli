@@ -91,6 +91,7 @@ var contentFlagAliases = []string{
 	"slide-xml",
 	"slide-content",
 	"content-xml",
+	"slide",
 }
 
 var updateSlideFlags = []common.Flag{

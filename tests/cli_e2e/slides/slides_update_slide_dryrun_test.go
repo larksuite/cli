@@ -62,6 +62,27 @@ func TestSlidesUpdateSlideDryRunE2E(t *testing.T) {
 		"the caller's own bytes must reach the request unchanged: %s", result.Stdout)
 }
 
+func TestSlidesUpdateSlideInputAliasDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+update-slide",
+			"--presentation", "presUpdateSlideAliasDryRun",
+			"--slide-id", "pYw",
+			"--slide", updateSlideDryRunPage,
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	require.Len(t, gjson.Get(result.Stdout, "data.api.0.body.parts").Array(), 1, result.Stdout)
+}
+
 // TestSlidesUpdateSlideImageDryRunE2E pins the @path pipeline through the built
 // binary: an <img src="@local"> placeholder plans an upload_all step ahead of
 // the slide/replace, so the whole-page swap picks up a fresh local image the

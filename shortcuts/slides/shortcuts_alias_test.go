@@ -49,7 +49,6 @@ func TestShortcutsDeclarePresentationFlagAliases(t *testing.T) {
 		}
 	}
 }
-
 func TestPresentationRefFlagReturnsIndependentAliases(t *testing.T) {
 	first := requiredPresentationRefFlag()
 	second := listModePresentationRefFlag()
@@ -100,18 +99,5 @@ func TestContentFlagAliasesAreScopedToWholePageCommands(t *testing.T) {
 	// Without a negative case the assertion above proves nothing about scoping.
 	if !sawOther {
 		t.Fatal("expected at least one other command with its own --content")
-	}
-}
-
-// TestSlideFlagIsNotAnAlias pins a deliberate omission: several slides commands
-// take --slide-id, so `--slide <id>` is a likely typo for that. Resolving it to
-// --content would turn the typo into a request carrying an id where page XML
-// belongs.
-func TestSlideFlagIsNotAnAlias(t *testing.T) {
-	if slices.Contains(contentFlagAliases, "slide") {
-		t.Fatal("--slide must not be a --content alias")
-	}
-	if slices.Contains(presentationFlagAliases, "slide") {
-		t.Fatal("--slide must not be a --presentation alias")
 	}
 }

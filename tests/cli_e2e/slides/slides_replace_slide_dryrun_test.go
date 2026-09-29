@@ -156,3 +156,25 @@ func TestSlidesReplaceSlideDryRunE2E(t *testing.T) {
 	require.Equal(t, "bUn", body[1].Get("insert_before_block_id").String(),
 		"insert_before_block_id is a valid block_insert field and must not be rejected: %s", result.Stdout)
 }
+
+func TestSlidesReplaceSlideInputAliasDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	parts := `[{"action":"block_insert","insertion":"<shape type=\"rect\"/>"}]`
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+replace-slide",
+			"--presentation", "presReplaceSlideAliasDryRun",
+			"--slide-id", "pYw",
+			"--slide", parts,
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	require.Len(t, gjson.Get(result.Stdout, "data.api.0.body.parts").Array(), 1, result.Stdout)
+}

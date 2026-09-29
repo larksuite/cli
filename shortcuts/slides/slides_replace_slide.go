@@ -52,7 +52,7 @@ var SlidesReplaceSlide = common.Shortcut{
 	Flags: []common.Flag{
 		requiredPresentationRefFlag(),
 		{Name: "slide-id", Desc: "slide page identifier (slide_id)", Required: true},
-		{Name: "parts", Desc: "JSON array of replace parts; accepts replace/insert action aliases, target_id for block_id, and block/content/shape/element for the action's XML payload; max 200", Required: true, Input: []string{common.File, common.Stdin}},
+		{Name: "parts", Aliases: []string{"slide"}, Desc: "JSON array of replace parts; accepts replace/insert action aliases, target_id for block_id, and block/content/shape/element for the action's XML payload; max 200", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "revision-id", Type: "int", Default: "-1", Desc: "presentation revision (-1 = latest; pass a specific number for optimistic locking)"},
 		{Name: "tid", Desc: "transaction id for concurrent-edit locking (usually empty)"},
 		noLintFlag(),
