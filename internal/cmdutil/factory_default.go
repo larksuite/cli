@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/riskcontrol"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
 	"github.com/larksuite/cli/internal/transport"
@@ -83,6 +84,9 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		ProfileSource: inv.ProfileSource,
 		HttpClient:    f.HttpClient,
 		ErrOut:        f.IOStreams.ErrOut,
+		ResolveSigner: func(cfg *core.CliConfig) (keysigner.Signer, error) {
+			return auth.ResolveConfigSigner(cfg, f.Keychain)
+		},
 	})
 
 	// Phase 3: Runtime config contains resolved account data only.
@@ -276,6 +280,7 @@ type credentialDeps struct {
 	ProfileSource core.ProfileSource
 	HttpClient    func() (*http.Client, error)
 	ErrOut        io.Writer
+	ResolveSigner func(*core.CliConfig) (keysigner.Signer, error)
 }
 
 func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
@@ -288,7 +293,7 @@ func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider
 		return &extcred.Token{Value: value, Source: "keychain:tenant-access-token"}, nil
 	})
 	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile, deps.ProfileSource)
-	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
+	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut, deps.ResolveSigner)
 	// NOTE: Do not pass deps.ErrOut as warnOut. Credential resolution
 	// happens before the command runs, so any plain-text warning written
 	// to stderr would break the JSON envelope contract that AI agents

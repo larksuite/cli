@@ -253,7 +253,10 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 			Hint:    "check strict mode or the active credential provider",
 		}
 	}
-	if cfg.SupportedIdentities == 0 && !credential.HasRealAppSecret(cfg.AppSecret) {
+	// Private-key JWT apps have no app secret, so absence of a secret is not
+	// enough to classify the bot identity as unconfigured.
+	if cfg.SupportedIdentities == 0 && !credential.HasRealAppSecret(cfg.AppSecret) &&
+		!core.IsPrivateKeyJWTAuthMethod(cfg.AuthMethod) {
 		return withCommandRecovery(Identity{
 			Status:  StatusNotConfigured,
 			Message: "Bot identity: not configured (missing app secret or bot token)",
@@ -370,7 +373,11 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	if err != nil {
 		return markVerifyFailed("create HTTP client: "+err.Error(), "", "")
 	}
-	token, err := larkauth.GetValidAccessToken(httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
+	signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
+	if err != nil {
+		return markVerifyFailed("resolve key signer: "+err.Error(), "run: lark-cli doctor", "")
+	}
+	token, err := larkauth.GetValidAccessToken(ctx, httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut, signer))
 	if err != nil {
 		return withPolicyError(
 			markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin),

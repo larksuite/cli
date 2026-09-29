@@ -6,8 +6,10 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -29,22 +31,49 @@ func jsonResponse(body string) *http.Response {
 // Test_BuildVerificationURL verifies that tracking parameters are correctly appended.
 func Test_BuildVerificationURL(t *testing.T) {
 	t.Run("URL不含问号则添加?分隔符", func(t *testing.T) {
-		result := BuildVerificationURL("https://example.com/verify", "1.0.0")
+		result := BuildVerificationURL("https://example.com/verify", "1.0.0", "")
+		got, err := url.Parse(result)
+		if err != nil {
+			t.Fatal(err)
+		}
 		convey.Convey("should add ? separator", t, func() {
-			convey.So(result, convey.ShouldContainSubstring, "?lpv=1.0.0")
-			convey.So(result, convey.ShouldContainSubstring, "&ocv=1.0.0")
-			convey.So(result, convey.ShouldContainSubstring, "&from=cli")
+			convey.So(got.Query().Get("lpv"), convey.ShouldEqual, "1.0.0")
+			convey.So(got.Query().Get("ocv"), convey.ShouldEqual, "1.0.0")
+			convey.So(got.Query().Get("from"), convey.ShouldEqual, "cli")
 			convey.So(result, convey.ShouldStartWith, "https://example.com/verify?")
 		})
 	})
 
 	t.Run("URL已含问号则添加&分隔符", func(t *testing.T) {
-		result := BuildVerificationURL("https://example.com/verify?code=abc", "2.0.0")
+		result := BuildVerificationURL("https://example.com/verify?code=abc", "2.0.0", "")
 		convey.Convey("should add & separator", t, func() {
 			convey.So(result, convey.ShouldContainSubstring, "&lpv=2.0.0")
 			convey.So(result, convey.ShouldContainSubstring, "&ocv=2.0.0")
 			convey.So(result, convey.ShouldContainSubstring, "&from=cli")
 			convey.So(result, convey.ShouldNotContainSubstring, "?lpv=")
+		})
+	})
+
+	t.Run("指定已有应用时添加client_id", func(t *testing.T) {
+		result := BuildVerificationURL("https://example.com/verify?user_code=abc", "2.0.0", "cli_existing")
+		got, err := url.Parse(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		convey.Convey("should include target client_id", t, func() {
+			convey.So(got.Query().Get("client_id"), convey.ShouldEqual, "cli_existing")
+			convey.So(got.Query().Get("lpv"), convey.ShouldEqual, "2.0.0")
+		})
+	})
+
+	t.Run("服务端已返回client_id时不覆盖", func(t *testing.T) {
+		result := BuildVerificationURL("https://example.com/verify?client_id=cli_server&user_code=abc", "2.0.0", "cli_existing")
+		got, err := url.Parse(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		convey.Convey("should keep server client_id", t, func() {
+			convey.So(got.Query().Get("client_id"), convey.ShouldEqual, "cli_server")
 		})
 	})
 }
@@ -80,11 +109,11 @@ func TestRequestAppRegistration_UsesFeishuBootstrapAndConfiguredVerificationBran
 				}
 				return jsonResponse(`{"device_code":"d","user_code":"TEST-CODE","expire_in":60,"interval":5}`), nil
 			})}
-			resp, err := RequestAppRegistration(context.Background(), client, c.brand, io.Discard)
+			resp, err := RequestAppRegistration(context.Background(), client, c.brand, AppRegistrationBeginOptions{}, io.Discard)
 			if err != nil {
 				t.Fatalf("RequestAppRegistration(%q) error = %v", c.brand, err)
 			}
-			if !strings.HasPrefix(resp.VerificationUriComplete, "https://"+c.verificationHost+"/page/cli?") {
+			if !strings.HasPrefix(resp.VerificationUriComplete, "https://"+c.verificationHost+"/page/launcher?") {
 				t.Errorf("verification URL = %q, want host %q", resp.VerificationUriComplete, c.verificationHost)
 			}
 		})
@@ -115,11 +144,11 @@ func TestRegisterAppWithDiscovery_LarkFlowUsesProtocolBootstrap(t *testing.T) {
 		t.Errorf("unexpected host polled: %s", r.URL.Host)
 		return jsonResponse(`{}`), nil
 	})}
-	resp, err := RequestAppRegistration(context.Background(), client, core.BrandLark, io.Discard)
+	resp, err := RequestAppRegistration(context.Background(), client, core.BrandLark, AppRegistrationBeginOptions{}, io.Discard)
 	if err != nil {
 		t.Fatalf("RequestAppRegistration error = %v", err)
 	}
-	if got, want := resp.VerificationUriComplete, "https://open.larksuite.com/page/cli?user_code=TEST-CODE"; got != want {
+	if got, want := resp.VerificationUriComplete, "https://open.larksuite.com/page/launcher?user_code=TEST-CODE"; got != want {
 		t.Errorf("verification URL = %q, want %q", got, want)
 	}
 
@@ -196,6 +225,7 @@ func TestRegisterAppWithDiscovery_DeadlineBoundsInFlightRequests(t *testing.T) {
 func TestRegisterAppWithDiscovery_PollsUntilCredentials(t *testing.T) {
 	responses := []string{
 		`{}`,
+		`{"code":1061045,"msg":"internal service error"}`,
 		`{"client_id":"cli_x","user_info":{"open_id":"ou_x","tenant_brand":"feishu"}}`,
 		`{"client_id":"cli_x","client_secret":"test-secret","user_info":{"open_id":"ou_x","tenant_brand":"feishu"}}`,
 	}
@@ -211,11 +241,31 @@ func TestRegisterAppWithDiscovery_PollsUntilCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterAppWithDiscovery error = %v, want nil", err)
 	}
-	if polls != 3 {
-		t.Errorf("polls = %d, want 3", polls)
+	if polls != 4 {
+		t.Errorf("polls = %d, want 4", polls)
 	}
 	if result.ClientSecret != "test-secret" || finalBrand != core.BrandFeishu {
 		t.Errorf("result = (%q, %q), want (test-secret, feishu)", result.ClientSecret, finalBrand)
+	}
+}
+
+func TestRegisterAppWithDiscovery_PublicKeyCodesAreTerminal(t *testing.T) {
+	for _, code := range []int{
+		AppRegistrationCodeInvalidPublicKey,
+		AppRegistrationCodePublicKeyLimit,
+	} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				return jsonResponse(fmt.Sprintf(`{"code":%d,"msg":"rejected"}`, code)), nil
+			})}
+			resp := &AppRegistrationResponse{DeviceCode: "device", Interval: 0, ExpiresIn: 5}
+
+			_, _, err := RegisterAppWithDiscovery(context.Background(), client, resp, io.Discard)
+			var remoteErr *AppRegistrationRemoteError
+			if !errors.As(err, &remoteErr) || remoteErr.Code != code {
+				t.Fatalf("error = %v, want registration code %d", err, code)
+			}
+		})
 	}
 }
 
@@ -286,7 +336,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err := RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","expire_in":60,"interval":3}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","expire_in":60,"interval":3}`), core.BrandFeishu, AppRegistrationBeginOptions{}, io.Discard)
 	if err != nil {
 		t.Fatalf("begin error = %v", err)
 	}
@@ -295,7 +345,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err = RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","expires_in":45}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","expires_in":45}`), core.BrandFeishu, AppRegistrationBeginOptions{}, io.Discard)
 	if err != nil {
 		t.Fatalf("legacy begin error = %v", err)
 	}
@@ -304,7 +354,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err = RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","interval":0}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","interval":0}`), core.BrandFeishu, AppRegistrationBeginOptions{}, io.Discard)
 	if err != nil {
 		t.Fatalf("defaults begin error = %v", err)
 	}
@@ -313,7 +363,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	if _, err := RequestAppRegistration(context.Background(),
-		serve(`{"interval":5}`), core.BrandFeishu, io.Discard); err == nil {
+		serve(`{"interval":5}`), core.BrandFeishu, AppRegistrationBeginOptions{}, io.Discard); err == nil {
 		t.Error("missing device_code: expected error, got nil")
 	}
 }
@@ -394,7 +444,7 @@ func TestRequestAppRegistration_BodyReadCancelKeepsCause(t *testing.T) {
 			Header:     make(http.Header),
 		}, nil
 	})}
-	_, err := RequestAppRegistration(context.Background(), client, core.BrandFeishu, io.Discard)
+	_, err := RequestAppRegistration(context.Background(), client, core.BrandFeishu, AppRegistrationBeginOptions{}, io.Discard)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want a context.Canceled cause", err)
 	}
@@ -403,3 +453,158 @@ func TestRequestAppRegistration_BodyReadCancelKeepsCause(t *testing.T) {
 type errReader struct{ err error }
 
 func (r *errReader) Read([]byte) (int, error) { return 0, r.err }
+
+// captureClient returns an http.Client that records the last request's form body
+// and replies with the given JSON payload.
+func captureClient(gotBody *url.Values, respJSON string) *http.Client {
+	return &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.Body != nil {
+				body, _ := io.ReadAll(req.Body)
+				values, _ := url.ParseQuery(string(body))
+				*gotBody = values
+			}
+			return jsonResponse(respJSON), nil
+		}),
+	}
+}
+
+func TestRequestAppRegistrationInit_ParsesNonceAndMethods(t *testing.T) {
+	var body url.Values
+	httpClient := captureClient(&body, `{"nonce":"n-123","supported_auth_methods":["client_secret","private_key_jwt_local_keypair"]}`)
+
+	out, err := RequestAppRegistrationInit(context.Background(), httpClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Nonce != "n-123" {
+		t.Errorf("nonce = %q, want n-123", out.Nonce)
+	}
+	if len(out.SupportedAuthMethods) != 2 || out.SupportedAuthMethods[1] != "private_key_jwt_local_keypair" {
+		t.Errorf("methods = %v", out.SupportedAuthMethods)
+	}
+	if body.Get("action") != "init" {
+		t.Errorf("action = %q, want init", body.Get("action"))
+	}
+}
+
+func TestRequestAppRegistrationInit_ErrorOnMissingNonce(t *testing.T) {
+	var body url.Values
+	httpClient := captureClient(&body, `{"supported_auth_methods":["client_secret"]}`)
+	if _, err := RequestAppRegistrationInit(context.Background(), httpClient); err == nil {
+		t.Fatal("expected error when server returns no nonce")
+	}
+}
+
+const beginRespJSON = `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify","expires_in":300,"interval":5}`
+
+func TestRequestAppRegistration_BeginDefaultsToClientSecret(t *testing.T) {
+	var body url.Values
+	httpClient := captureClient(&body, beginRespJSON)
+
+	if _, err := RequestAppRegistration(context.Background(), httpClient, core.BrandFeishu, AppRegistrationBeginOptions{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if body.Get("action") != "begin" {
+		t.Errorf("action = %q", body.Get("action"))
+	}
+	if body.Get("auth_method") != "client_secret" {
+		t.Errorf("auth_method = %q, want client_secret (default)", body.Get("auth_method"))
+	}
+	if body.Has("auth_attestation") {
+		t.Errorf("auth_attestation should be absent for client_secret, got %q", body.Get("auth_attestation"))
+	}
+	// A new-app begin must not carry an existing client_id.
+	if body.Has("client_id") {
+		t.Errorf("client_id should be absent when TargetAppID is empty, got %q", body.Get("client_id"))
+	}
+}
+
+func TestRequestAppRegistration_VerificationURICompleteFallback(t *testing.T) {
+	cases := []struct {
+		name string
+		resp string
+		want string
+	}{
+		{
+			name: "bare verification_uri",
+			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify","expires_in":300,"interval":5}`,
+			want: "https://example/verify?user_code=uc",
+		},
+		{
+			name: "verification_uri with existing query",
+			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify?client_id=cli_x","expires_in":300,"interval":5}`,
+			want: "https://example/verify?client_id=cli_x&user_code=uc",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var body url.Values
+			hc := captureClient(&body, tc.resp)
+			got, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, AppRegistrationBeginOptions{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.VerificationUriComplete != tc.want {
+				t.Errorf("VerificationUriComplete = %q, want %q", got.VerificationUriComplete, tc.want)
+			}
+		})
+	}
+}
+
+func TestRegistrationResultComplete(t *testing.T) {
+	if registrationResultComplete(&AppRegistrationResult{}, core.AuthMethodPrivateKeyJWTLocalKeyPair) {
+		t.Error("missing client_id must remain incomplete")
+	}
+	if !registrationResultComplete(&AppRegistrationResult{ClientID: "cli_x"}, core.AuthMethodPrivateKeyJWTLocalKeyPair) {
+		t.Error("private_key_jwt_local_keypair client_id without client_secret must be complete")
+	}
+	if registrationResultComplete(&AppRegistrationResult{ClientID: "cli_x"}, core.AuthMethodClientSecret) {
+		t.Error("client_secret registration without client_secret must remain incomplete")
+	}
+	if !registrationResultComplete(&AppRegistrationResult{ClientID: "cli_x", ClientSecret: "set"}, core.AuthMethodClientSecret) {
+		t.Error("client_secret registration with both credentials must be complete")
+	}
+}
+
+func TestRequestAppRegistration_BeginPrivateKeyJWT(t *testing.T) {
+	var body url.Values
+	httpClient := captureClient(&body, beginRespJSON)
+
+	opts := AppRegistrationBeginOptions{
+		AuthMethod:      core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		AuthAttestation: "header.claims.sig",
+	}
+	if _, err := RequestAppRegistration(context.Background(), httpClient, core.BrandFeishu, opts, nil); err != nil {
+		t.Fatal(err)
+	}
+	if body.Get("auth_method") != "private_key_jwt_local_keypair" {
+		t.Errorf("auth_method = %q, want private_key_jwt_local_keypair", body.Get("auth_method"))
+	}
+	if body.Get("auth_attestation") != "header.claims.sig" {
+		t.Errorf("auth_attestation = %q", body.Get("auth_attestation"))
+	}
+}
+
+func TestRequestAppRegistration_BeginPrivateKeyJWTExistingAppID(t *testing.T) {
+	var body url.Values
+	hc := captureClient(&body, beginRespJSON)
+
+	opts := AppRegistrationBeginOptions{
+		AuthMethod:      core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		AuthAttestation: "header.claims.sig",
+		TargetAppID:     "cli_existing",
+	}
+	if _, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, opts, nil); err != nil {
+		t.Fatal(err)
+	}
+	if body.Get("auth_method") != "private_key_jwt_local_keypair" {
+		t.Errorf("auth_method = %q, want private_key_jwt_local_keypair", body.Get("auth_method"))
+	}
+	if body.Get("auth_attestation") != "header.claims.sig" {
+		t.Errorf("auth_attestation = %q", body.Get("auth_attestation"))
+	}
+	if body.Get("client_id") != "cli_existing" {
+		t.Errorf("client_id = %q, want cli_existing", body.Get("client_id"))
+	}
+}

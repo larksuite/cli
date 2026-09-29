@@ -171,6 +171,73 @@ func TestDoctorRun_SplitsBotAndMissingUserIdentity(t *testing.T) {
 	assertCheck(t, got.Checks, "identity_ready", "pass")
 }
 
+// TestDoctorRun_TeeSignerWired proves the tee_signer check is part of doctorRun.
+// A client_secret app skips the signer check on every platform.
+func TestDoctorRun_TeeSignerWired(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{{
+			Name: "default", AppId: "test-app",
+			AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+	if err := doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil); err != nil {
+		t.Fatalf("doctorRun() error = %v", err)
+	}
+	var got struct {
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	var c *checkResult
+	for i := range got.Checks {
+		if got.Checks[i].Name == "tee_signer" {
+			c = &got.Checks[i]
+		}
+	}
+	if c == nil {
+		t.Fatalf("tee_signer check not present in doctor output: %#v", got.Checks)
+	}
+	if c.Status != "skip" {
+		t.Errorf("tee_signer = %s for a client_secret app; want skip (msg=%q)", c.Status, c.Message)
+	}
+}
+
+func TestRenderDoctorHuman(t *testing.T) {
+	var buf bytes.Buffer
+	checks := []checkResult{
+		pass("cli_version", "1.0.50"),
+		warn("tee_signer", "tpm2 signer present but TEE unavailable", "add your user to the 'tss' group"),
+		fail("identity_ready", "no usable identity", "run: lark-cli auth status --verify"),
+		skip("endpoint_open", "skipped (--offline)"),
+	}
+	renderDoctorHuman(&buf, "local", checks, false, false)
+	out := buf.String()
+
+	for _, want := range []string{
+		"lark-cli doctor", "workspace: local",
+		"[PASS]", "cli_version", "1.0.50",
+		"[WARN]", "tee_signer", "↳ add your user to the 'tss' group",
+		"[FAIL]", "identity_ready", "↳ run: lark-cli auth status --verify",
+		"[SKIP]", "endpoint_open",
+		"problems found", "1 passed", "1 warning(s)", "1 failed", "1 skipped",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\n---\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "\033[") {
+		t.Errorf("color=false but ANSI escapes present:\n%s", out)
+	}
+}
+
 func assertCheck(t *testing.T, checks []checkResult, name, status string) {
 	t.Helper()
 	if got := findCheck(t, checks, name); got.Status != status {

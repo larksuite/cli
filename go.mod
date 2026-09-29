@@ -7,7 +7,9 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/ebitengine/purego v0.10.1
 	github.com/gofrs/flock v0.8.1
+	github.com/google/go-tpm v0.9.0
 	github.com/google/uuid v1.6.0
 	github.com/itchyny/gojq v0.12.17
 	github.com/larksuite/oapi-sdk-go/v3 v3.7.2
@@ -19,6 +21,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
 	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/crypto v0.41.0
 	golang.org/x/net v0.43.0
 	golang.org/x/sync v0.16.0
 	golang.org/x/sys v0.35.0

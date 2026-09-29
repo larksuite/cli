@@ -20,7 +20,7 @@ func TestNewUATCallOptions(t *testing.T) {
 	}
 	errOut := &bytes.Buffer{}
 
-	opts := NewUATCallOptions(cfg, errOut)
+	opts := NewUATCallOptions(cfg, errOut, nil)
 
 	if opts.AppId != "app123" {
 		t.Errorf("AppId = %q, want app123", opts.AppId)
@@ -36,5 +36,33 @@ func TestNewUATCallOptions(t *testing.T) {
 	}
 	if opts.ErrOut != errOut {
 		t.Error("ErrOut not set correctly")
+	}
+}
+
+// TestNewUATCallOptions_PrivateKeyJWT verifies the auth-method fields propagate
+// so the refresh path can mint a client_assertion instead of sending a secret.
+func TestNewUATCallOptions_PrivateKeyJWT(t *testing.T) {
+	cfg := &core.CliConfig{
+		AppID:       "cli_pk",
+		Brand:       core.BrandFeishu,
+		UserOpenId:  "ou_test",
+		AuthMethod:  core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		KeyLabel:    "agent-key",
+		KeyProvider: core.KeylessProviderLarkSuite,
+	}
+	signer := newFakeAuthSigner(t)
+	opts := NewUATCallOptions(cfg, &bytes.Buffer{}, signer)
+
+	if opts.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair {
+		t.Errorf("AuthMethod = %q, want private_key_jwt_local_keypair", opts.AuthMethod)
+	}
+	if opts.KeyLabel != "agent-key" {
+		t.Errorf("KeyLabel = %q, want agent-key", opts.KeyLabel)
+	}
+	if opts.KeyProvider != core.KeylessProviderLarkSuite {
+		t.Errorf("KeyProvider = %q, want %q", opts.KeyProvider, core.KeylessProviderLarkSuite)
+	}
+	if opts.Signer != signer {
+		t.Fatal("Signer was not propagated")
 	}
 }
