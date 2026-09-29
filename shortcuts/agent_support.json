@@ -448,6 +448,9 @@
     "base +data-query": {
       "agentSupport": "allowed"
     },
+    "base +data-sql-query": {
+      "agentSupport": "allowed"
+    },
     "base +field-create": {
       "agentSupport": "allowed"
     },
@@ -605,6 +608,9 @@
       "agentSupport": "allowed"
     },
     "base +role-update": {
+      "agentSupport": "allowed"
+    },
+    "base +schema-context-get": {
       "agentSupport": "allowed"
     },
     "base +sql-catalog": {

@@ -5,6 +5,7 @@ package shortcuts
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"sort"
@@ -94,6 +95,54 @@ func TestEveryRegisteredShortcutHasAgentSupportVerdict(t *testing.T) {
 	if gaps := agentSupportGaps(AllShortcuts(), loadAgentSupportTable()); len(gaps) > 0 {
 		t.Fatalf("shortcuts without an agent_support.json verdict: %v\n"+
 			"decide allowed or denied against the OpenAPI dependencies and record it", gaps)
+	}
+}
+
+// The basic analysis queries are available to Agent Employees, users, and bots.
+// Exercise real command registration so the support table cannot block a preview.
+func TestAnalysisShortcutsAllowQueryAccess(t *testing.T) {
+	registered := AllShortcuts()
+	applyAgentSupport(registered, loadAgentSupportTable())
+	for _, command := range []string{"+schema-context-get", "+data-sql-query"} {
+		for _, sc := range registered {
+			if sc.Service == "base" && sc.Command == command && sc.AgentSupport != common.AgentSupportAllowed {
+				t.Fatalf("base %s: want explicit Agent support, got %q", command, sc.AgentSupport)
+			}
+		}
+		for _, identity := range []struct {
+			kind core.CredentialKind
+			as   string
+		}{
+			{core.CredentialAAT, "user"},
+			{core.CredentialUAT, "user"},
+			{core.CredentialTAT, "bot"},
+		} {
+			t.Run(command+"/"+string(identity.kind), func(t *testing.T) {
+				t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+				f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+					AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+					CredentialKind: identity.kind, PrincipalOpenID: "ou_test", UserOpenId: "ou_test",
+				})
+				program := &cobra.Command{Use: "root"}
+				RegisterShortcutsWithContext(context.Background(), program, f)
+				args := []string{"base", command, "--base-token", "app_test", "--as", identity.as, "--dry-run"}
+				if command == "+data-sql-query" {
+					args = append(args, "--sql", "SELECT 1")
+				}
+				program.SetArgs(args)
+				err := program.ExecuteContext(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				var preview struct {
+					OK     bool `json:"ok"`
+					DryRun bool `json:"dry_run"`
+				}
+				if err := json.Unmarshal(stdout.Bytes(), &preview); err != nil || !preview.OK || !preview.DryRun {
+					t.Fatalf("want successful query preview, got %s (decode error: %v)", stdout.String(), err)
+				}
+			})
+		}
 	}
 }
 

@@ -889,7 +889,7 @@ HTTPClientAction 的输出取决于 `response_type`：
 
 | pathId | 说明 | 引用示例 |
 |--------|------|----------|
-| `analysisResult` | AI 分析结果字符串 | `$.{stepId}.analysisResult` |
+| （整体出参） | AI 分析结果字符串（不支持下钻） | `$.{stepId}` |
 
 ##### AIAgentAction
 
@@ -905,6 +905,14 @@ HTTPClientAction 的输出取决于 `response_type`：
 ---
 
 #### 分支节点输出
+
+**AIClassificationBranch（AI 分类）**
+
+| pathId | 说明 | 引用示例 |
+|--------|------|----------|
+| `category` | 匹配分类名称（string） | `$.{stepId}.category` |
+
+分类子节点和 `next` 指向的公共后续节点均可引用。
 
 以下分支节点均不产生任何可引用的输出数据：
 
@@ -994,11 +1002,12 @@ $.{stepId}.{fieldId}.fileToken    → 文件 Token 列表（array<string>，仅�
 | SetRecordAction | 动作 | ✅ | 动态（用户配置的字段） |
 | HTTPClientAction | 动作 | ✅ | 动态（取决于用户配置的 HTTP 响应输出） |
 | GenerateAiTextAction | 动作 | ✅ | 静态（单 string） |
-| AIAnalysisAction | 动作 | ✅ | 静态（`analysisResult`） |
+| AIAnalysisAction | 动作 | ✅ | 静态（单 string，整体引用） |
 | Delay | 动作 | ❌ | 无输出 |
 | LarkMessageAction | 动作 | ❌ | 无输出 |
 | IfElseBranch | 分支 | ❌ | 无输出 |
 | SwitchBranch | 分支 | ❌ | 无输出 |
+| AIClassificationBranch | 分支 | ✅ | 静态（`category`） |
 | Loop | 系统 | ✅ | 动态（取决于数据源） |
 
 ---
