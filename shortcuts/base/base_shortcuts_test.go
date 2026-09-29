@@ -486,9 +486,9 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"view ID or name; omit for reading all table records, or set to read a user-specified or temporary filtered/sorted view",
 				`filter JSON object or @file`,
 				`sort JSON array or @file`,
-				"maximum records to return; range 1-200, or 1-2000 for ndjson",
-				"json raw matrix (current inline behavior may be deprecated",
-				"ndjson artifact (records file plus manifest summary and column schema/stats",
+				"maximum records to return; ndjson defaults to 2000 (range 1-2000)",
+				"json (inline raw matrix)",
+				"ndjson (default; records file plus manifest summary and column schema/stats",
 				"preferred analysis output: relative .ndjson output path",
 			},
 			wantTips: []string{
@@ -498,7 +498,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"Option intersection filter",
 				"Query priority",
 				"Example for analysis",
-				"prefer --format ndjson --output ./records.ndjson",
+				"Record reads default to ndjson; use --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
 				"Follow lark-base-record-query-and-analysis-sop.md",
@@ -514,8 +514,8 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"field ID or name to search",
 				`filter JSON object or @file`,
 				`sort JSON array or @file`,
-				"json raw matrix (current inline behavior may be deprecated",
-				"ndjson artifact (records file plus manifest summary and column schema/stats",
+				"json (inline raw matrix)",
+				"ndjson (default; records file plus manifest summary and column schema/stats",
 				"preferred analysis output: relative .ndjson output path",
 			},
 			wantTips: []string{
@@ -526,7 +526,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"For filter/sort-only reads, use +record-list",
 				"Use --json only when you need to pass the full search body directly",
 				"Example for analysis",
-				"prefer --format ndjson --output ./records.ndjson",
+				"Record reads default to ndjson; use --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
 				"Follow lark-base-record-query-and-analysis-sop.md",
@@ -538,15 +538,15 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 			wantHelp: []string{
 				"record ID (repeatable)",
 				"field ID or name to project; repeat to keep only needed columns",
-				"json raw matrix (current inline behavior may be deprecated",
-				"ndjson artifact (records file plus manifest summary and column schema/stats",
+				"json (inline raw matrix)",
+				"ndjson (default; records file plus manifest summary and column schema/stats",
 				"preferred analysis output: relative .ndjson output path",
 			},
 			wantTips: []string{
 				"lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id <record_id>",
 				"lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id rec_001 --record-id rec_002 --field-id Name --field-id Status",
 				"Example for analysis input",
-				"prefer --format ndjson --output ./records.ndjson",
+				"Record reads default to ndjson; use --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
 				"Follow lark-base-record-query-and-analysis-sop.md",
@@ -624,7 +624,7 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 		{name: "template list", shortcut: BaseTemplateList, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
 		{name: "template search", shortcut: BaseTemplateSearch, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
 		{name: "field search options", shortcut: BaseFieldSearchOptions, flag: "limit", defaultVal: "30", help: "pagination size, range 1-200"},
-		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "100", help: "maximum records to return; range 1-200, or 1-2000 for ndjson"},
+		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "2000", help: "maximum records to return; ndjson defaults to 2000 (range 1-2000)"},
 		{name: "view list", shortcut: BaseViewList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
 		{name: "form list", shortcut: BaseFormsList, flag: "page-size", defaultVal: "100", help: "page size per request, range 1-100"},
 		{name: "workflow list", shortcut: BaseWorkflowList, flag: "page-size", defaultVal: "100", help: "page size per request, range 1-100"},
@@ -1639,21 +1639,21 @@ func TestBaseRecordValidate(t *testing.T) {
 		t.Fatalf("record upsert map validate err=%v", err)
 	}
 	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
-		map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `{"logic":"and","conditions":[["Status","==","Todo"]]}`},
+		map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "filter-json": `{"logic":"and","conditions":[["Status","==","Todo"]]}`},
 		nil,
 		nil,
 	)); err != nil {
 		t.Fatalf("record list filter-json validate err=%v", err)
 	}
 	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
-		map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `[["Status","==","Todo"]]`},
+		map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "filter-json": `[["Status","==","Todo"]]`},
 		nil,
 		nil,
 	)); err == nil || !strings.Contains(err.Error(), "--filter-json must be a JSON object") {
 		t.Fatalf("err=%v", err)
 	}
 	if err := BaseRecordList.Validate(ctx, newBaseTestRuntimeWithArrays(
-		map[string]string{"base-token": "b", "table-id": "tbl_1", "sort-json": `[{"field":"F1"},{"field":"F2"},{"field":"F3"},{"field":"F4"},{"field":"F5"},{"field":"F6"},{"field":"F7"},{"field":"F8"},{"field":"F9"},{"field":"F10"},{"field":"F11"}]`},
+		map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "sort-json": `[{"field":"F1"},{"field":"F2"},{"field":"F3"},{"field":"F4"},{"field":"F5"},{"field":"F6"},{"field":"F7"},{"field":"F8"},{"field":"F9"},{"field":"F10"},{"field":"F11"}]`},
 		nil,
 		nil,
 		nil,
@@ -1665,9 +1665,9 @@ func TestBaseRecordValidate(t *testing.T) {
 		name  string
 		flags map[string]string
 	}{
-		{name: "plain", flags: map[string]string{"base-token": "b", "table-id": "tbl_1"}},
-		{name: "filter only", flags: map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `{"logic":"and","conditions":[["Status","==","Todo"]]}`}},
-		{name: "sort only", flags: map[string]string{"base-token": "b", "table-id": "tbl_1", "sort-json": `[{"field":"Updated","desc":true}]`}},
+		{name: "plain", flags: map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1"}},
+		{name: "filter only", flags: map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "filter-json": `{"logic":"and","conditions":[["Status","==","Todo"]]}`}},
+		{name: "sort only", flags: map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "sort-json": `[{"field":"Updated","desc":true}]`}},
 	}
 	for _, tt := range missingKeywordCases {
 		t.Run("record search missing keyword/"+tt.name, func(t *testing.T) {
@@ -1680,7 +1680,7 @@ func TestBaseRecordValidate(t *testing.T) {
 		})
 	}
 	missingSearchFieldErr := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
-		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
 		nil,
 		nil,
 	))
@@ -1690,7 +1690,7 @@ func TestBaseRecordValidate(t *testing.T) {
 		t.Fatalf("problem=%#v, want hint %q", missingSearchFieldProblem, wantFlagModeHint)
 	}
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
-		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
 		map[string][]string{"search-field": {"Name"}},
 		nil,
 		nil,
@@ -1698,7 +1698,7 @@ func TestBaseRecordValidate(t *testing.T) {
 		t.Fatalf("record search flag validate err=%v", err)
 	}
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
-		map[string]string{
+		map[string]string{"format": "json",
 			"base-token": "b",
 			"table-id":   "tbl_1",
 			"json":       `{"keyword":"Alice","search_fields":["Name"],"sort":{"sort_config":[{"field":"Updated","desc":true}]}}`,
@@ -1710,13 +1710,13 @@ func TestBaseRecordValidate(t *testing.T) {
 		t.Fatalf("record search json with sort-json validate err=%v", err)
 	}
 	err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
-		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "keyword": "Bob"},
+		map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "keyword": "Bob"},
 		nil,
 		nil,
 	))
 	assertInvalidArgumentValidation(t, err, "--json", []string{"--json", "--keyword"}, "mutually exclusive")
 	err = BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
-		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "fields": "Name"},
+		map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "fields": "Name"},
 		map[string][]string{"field-id": {"fld_name"}},
 		nil,
 		nil,
@@ -1732,7 +1732,7 @@ func TestBaseRecordSearchProjectionLimit(t *testing.T) {
 	}
 
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
-		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
 		map[string][]string{"search-field": {"Name"}, "field-id": fields[:50]},
 		nil,
 		nil,
@@ -1741,7 +1741,7 @@ func TestBaseRecordSearchProjectionLimit(t *testing.T) {
 	}
 
 	err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
-		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
 		map[string][]string{"search-field": {"Name"}, "field-id": fields},
 		nil,
 		nil,
@@ -1757,7 +1757,7 @@ func TestBaseRecordSearchProjectionLimit(t *testing.T) {
 		t.Fatalf("marshal search body: %v", marshalErr)
 	}
 	err = BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
-		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": string(body)},
+		map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "json": string(body)},
 		nil,
 		nil,
 	))
@@ -1783,7 +1783,7 @@ func TestRecordSearchJSONNullProjectionIsOmitted(t *testing.T) {
 func TestBaseRecordSearchJSONProjectionParamIgnoresFlagLikeFieldNames(t *testing.T) {
 	ctx := context.Background()
 	err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
-		map[string]string{
+		map[string]string{"format": "json",
 			"base-token": "b",
 			"table-id":   "tbl_1",
 			"json":       `{"keyword":"cost","search_fields":["Name"],"select_fields":["Cost--USD","Cost--USD"]}`,
@@ -1841,14 +1841,14 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 		{
 			name:     "record list",
 			shortcut: BaseRecordList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 0}),
+			runtime:  newBaseTestRuntime(map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 0}),
 			param:    "--limit",
 		},
 		{
 			name:     "record search",
 			shortcut: BaseRecordSearch,
 			runtime: newBaseTestRuntimeWithArrays(
-				map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+				map[string]string{"format": "json", "base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
 				map[string][]string{"search-field": {"Name"}},
 				nil,
 				map[string]int{"limit": 201},

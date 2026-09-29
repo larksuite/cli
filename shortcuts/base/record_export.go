@@ -24,9 +24,9 @@ import (
 
 const (
 	maxInlineRecordReadLimit = 200
-	ndjsonRecordPageSize     = 500
+	ndjsonRecordPageSize     = 2000
 	maxNDJSONRecordReadLimit = 2000
-	recordAnalysisOutputTip  = "If file I/O is available, prefer --format ndjson --output ./records.ndjson for analysis, parsing, or comparison to keep long user data out of model context; process the records file with Python or another data analysis engine. Follow lark-base-record-query-and-analysis-sop.md for engine selection and complete-data checks. Ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result."
+	recordAnalysisOutputTip  = "Record reads default to ndjson; use --output ./records.ndjson for analysis, parsing, or comparison to keep long user data out of model context; process the records file with Python or another data analysis engine. Follow lark-base-record-query-and-analysis-sop.md for engine selection and complete-data checks. Ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result. Each list/search command makes one data request, up to 2000 records. If has_more is true, continue explicitly with --offset set to next_offset."
 )
 
 var recordExportNow = time.Now
@@ -60,6 +60,9 @@ func recordOverwriteFlag() common.Flag {
 }
 
 func normalizeRecordReadOutput(_ context.Context, flags *common.FlagContext) error {
+	if err := validateRecordReadFormatValue(flags.Str("format")); err != nil {
+		return err
+	}
 	if strings.TrimSpace(flags.Str("output")) != "" {
 		if flags.Changed("format") && flags.Str("format") != recordexport.FormatNDJSON {
 			return errs.NewValidationError(
@@ -91,11 +94,15 @@ func normalizeRecordReadOutput(_ context.Context, flags *common.FlagContext) err
 	return nil
 }
 
-func normalizeRecordNDJSONLimit(_ context.Context, flags *common.FlagContext) error {
-	if flags.Str("format") != recordexport.FormatNDJSON || flags.Changed("limit") {
+func normalizeRecordListLimit(_ context.Context, flags *common.FlagContext) error {
+	if flags.Changed("limit") {
 		return nil
 	}
-	return flags.SetCanonical("limit", strconv.Itoa(maxNDJSONRecordReadLimit))
+	limit := 100
+	if flags.Str("format") == recordexport.FormatNDJSON {
+		limit = maxNDJSONRecordReadLimit
+	}
+	return flags.SetCanonical("limit", strconv.Itoa(limit))
 }
 
 func normalizeRecordSearchOutput(ctx context.Context, flags *common.FlagContext) error {
@@ -222,45 +229,34 @@ func appendRecordExportPage(accumulator *recordExportAccumulator, page recordexp
 	return nil
 }
 
+// The public CLI reads one page only. Continue explicitly with the manifest's
+// next_offset when has_more is true, including when the API returns a short page.
 func executeRecordListNDJSON(
 	runtime *common.RuntimeContext,
 	baseParams map[string]any,
 	startOffset int,
 	requestedLimit int,
 ) error {
+	params := cloneMap(baseParams)
+	params["offset"] = startOffset
+	params["limit"] = requestedLimit
+	data, err := baseV3Call(runtime, "GET", baseV3Path(
+		"bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records",
+	), params, nil)
+	if err != nil {
+		return err
+	}
+	page, err := parseRecordExportPage(data)
+	if err != nil {
+		return err
+	}
+	if len(page.Dataset.Records) > requestedLimit {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"record API returned %d rows for page limit %d", len(page.Dataset.Records), requestedLimit)
+	}
 	accumulator := &recordExportAccumulator{}
-	currentOffset := startOffset
-	remaining := requestedLimit
-	for remaining > 0 {
-		pageLimit := min(remaining, ndjsonRecordPageSize)
-		params := cloneMap(baseParams)
-		params["offset"] = currentOffset
-		params["limit"] = pageLimit
-		data, err := baseV3Call(runtime, "GET", baseV3Path(
-			"bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records",
-		), params, nil)
-		if err != nil {
-			return err
-		}
-		page, err := parseRecordExportPage(data)
-		if err != nil {
-			return err
-		}
-		if len(page.Dataset.Records) > pageLimit {
-			return errs.NewInternalError(
-				errs.SubtypeInvalidResponse,
-				"record API returned %d rows for page limit %d", len(page.Dataset.Records), pageLimit,
-			)
-		}
-		if err := appendRecordExportPage(accumulator, page); err != nil {
-			return err
-		}
-		count := len(page.Dataset.Records)
-		remaining -= count
-		currentOffset += count
-		if !page.HasMore || count == 0 {
-			break
-		}
+	if err := appendRecordExportPage(accumulator, page); err != nil {
+		return err
 	}
 	return finalizeRecordExport(runtime, accumulator, startOffset, requestedLimit)
 }
@@ -270,39 +266,26 @@ func executeRecordSearchNDJSON(runtime *common.RuntimeContext, requestBody map[s
 	if err != nil {
 		return err
 	}
+	body := cloneMap(requestBody)
+	body["offset"] = startOffset
+	body["limit"] = requestedLimit
+	data, err := baseV3Call(runtime, "POST", baseV3Path(
+		"bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "search",
+	), nil, body)
+	if err != nil {
+		return err
+	}
+	page, err := parseRecordExportPage(data)
+	if err != nil {
+		return err
+	}
+	if len(page.Dataset.Records) > requestedLimit {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"record search API returned %d rows for page limit %d", len(page.Dataset.Records), requestedLimit)
+	}
 	accumulator := &recordExportAccumulator{}
-	currentOffset := startOffset
-	remaining := requestedLimit
-	for remaining > 0 {
-		pageLimit := min(remaining, ndjsonRecordPageSize)
-		body := cloneMap(requestBody)
-		body["offset"] = currentOffset
-		body["limit"] = pageLimit
-		data, err := baseV3Call(runtime, "POST", baseV3Path(
-			"bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "search",
-		), nil, body)
-		if err != nil {
-			return err
-		}
-		page, err := parseRecordExportPage(data)
-		if err != nil {
-			return err
-		}
-		if len(page.Dataset.Records) > pageLimit {
-			return errs.NewInternalError(
-				errs.SubtypeInvalidResponse,
-				"record search API returned %d rows for page limit %d", len(page.Dataset.Records), pageLimit,
-			)
-		}
-		if err := appendRecordExportPage(accumulator, page); err != nil {
-			return err
-		}
-		count := len(page.Dataset.Records)
-		remaining -= count
-		currentOffset += count
-		if !page.HasMore || count == 0 {
-			break
-		}
+	if err := appendRecordExportPage(accumulator, page); err != nil {
+		return err
 	}
 	return finalizeRecordExport(runtime, accumulator, startOffset, requestedLimit)
 }

@@ -1864,7 +1864,7 @@ func TestBaseObjectJSONShortcutsRejectArrayInDryRun(t *testing.T) {
 		{
 			name:     "record search",
 			shortcut: BaseRecordSearch,
-			args:     []string{"+record-search", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `[]`, "--dry-run"},
+			args:     []string{"+record-search", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `[]`, "--dry-run"},
 		},
 		{
 			name:     "record upsert",
@@ -2835,51 +2835,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("list markdown format", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "field_id=Name&field_id=Age&field_id=Formula&limit=2&offset=0",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"fields":         []interface{}{"Name", "Age"},
-					"field_id_list":  []interface{}{"fld_name", "fld_age"},
-					"record_id_list": []interface{}{"rec_1", "rec_2"},
-					"data": []interface{}{
-						[]interface{}{"Alice", 18},
-						[]interface{}{"Bob", 20},
-					},
-					"has_more": false,
-					"query_context": map[string]interface{}{
-						"record_scope": "all_records",
-						"field_scope":  "selected_fields",
-					},
-					"ignored_fields": []interface{}{map[string]interface{}{
-						"id":     "fld_formula",
-						"name":   "Formula",
-						"reason": "UNSUPPORTED: formula field cannot be read through OpenAPI because this base uses an old schema version without backend formula computation.",
-					}},
-				},
-			},
-		})
-		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "2", "--field-id", "Name", "--field-id", "Age", "--field-id", "Formula"}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		got := stdout.String()
-		for _, want := range []string{
-			"`_record_id` is metadata for record operations, not a table field.",
-			"| _record_id | Name | Age |",
-			"| rec_1 | Alice | 18 |",
-			"Meta: count=2; has_more=false; record_scope=all_records; field_scope=selected_fields; ignored_fields=1",
-			`Ignored fields: {"id":"fld_formula","name":"Formula","reason":"UNSUPPORTED: formula field cannot be read through OpenAPI because this base uses an old schema version without backend formula computation."}`,
-		} {
-			if !strings.Contains(got, want) {
-				t.Fatalf("stdout missing %q:\n%s", want, got)
-			}
-		}
-	})
-
 	t.Run("search", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		searchStub := &httpmock.Stub{
@@ -3040,53 +2995,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("search markdown format", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "POST",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"fields":         []interface{}{"Title", "Owner"},
-					"field_id_list":  []interface{}{"fld_title", "fld_owner"},
-					"record_id_list": []interface{}{"rec_1"},
-					"data":           []interface{}{[]interface{}{"Created by AI", "Alice"}},
-					"has_more":       false,
-					"query_context": map[string]interface{}{
-						"record_scope": "view_filtered_records",
-						"field_scope":  "selected_fields",
-						"search_scope": "fld_title(Title)",
-					},
-				},
-			},
-		})
-		if err := runShortcut(
-			t,
-			BaseRecordSearch,
-			[]string{
-				"+record-search",
-				"--base-token", "app_x",
-				"--table-id", "tbl_x",
-				"--json", `{"keyword":"Created","search_fields":["Title"],"select_fields":["Title","Owner"],"limit":2}`,
-			},
-			factory,
-			stdout,
-		); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		got := stdout.String()
-		for _, want := range []string{
-			"| _record_id | Title | Owner |",
-			"| rec_1 | Created by AI | Alice |",
-			"Meta: count=1; has_more=false; record_scope=view_filtered_records; field_scope=selected_fields; search_scope=fld_title(Title)",
-		} {
-			if !strings.Contains(got, want) {
-				t.Fatalf("stdout missing %q:\n%s", want, got)
-			}
-		}
-	})
-
 	t.Run("list fields alias accepts JSON array projection", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -3134,7 +3042,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 	})
 
 	t.Run("list projection aliases report only supplied ambiguous inputs", func(t *testing.T) {
-		baseArgs := []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x"}
+		baseArgs := []string{"+record-list", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x"}
 		cases := []struct {
 			name       string
 			args       []string
@@ -3162,7 +3070,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 	t.Run("search json conflict reports each supplied projection parameter", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		err := runShortcut(t, BaseRecordSearch, []string{
-			"+record-search", "--base-token", "app_x", "--table-id", "tbl_x",
+			"+record-search", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x",
 			"--json", `{"keyword":"Alice","search_fields":["Name"]}`,
 			"--field-names", "Age",
 		}, factory, stdout)
@@ -3176,7 +3084,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 	t.Run("search json conflict reports canonical pagination flag", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		err := runShortcut(t, BaseRecordSearch, []string{
-			"+record-search", "--base-token", "app_x", "--table-id", "tbl_x",
+			"+record-search", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x",
 			"--json", `{"keyword":"Alice","search_fields":["Name"]}`,
 			"--limit", "10", "--page-size", "201",
 		}, factory, stdout)
@@ -3196,7 +3104,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				factory, stdout, _ := newExecuteFactory(t)
-				args := append([]string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x"}, tc.args...)
+				args := append([]string{"+record-list", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x"}, tc.args...)
 				err := runShortcut(t, BaseRecordList, args, factory, stdout)
 				assertInvalidArgumentValidation(t, err, tc.param, []string{tc.param}, "duplicate field id")
 			})
@@ -3251,42 +3159,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 		if body := string(batchStub.CapturedBody); !strings.Contains(body, `"select_fields":["Name","Age"]`) {
-			t.Fatalf("request body=%s", body)
-		}
-	})
-
-	t.Run("get", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		batchStub := &httpmock.Stub{
-			Method: "POST",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_get",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"record_id_list": []interface{}{"rec_1"},
-					"fields":         []interface{}{"Name", "Age"},
-					"data":           []interface{}{[]interface{}{"Alice", 18}},
-				},
-			},
-		}
-		reg.Register(batchStub)
-		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1"}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		got := stdout.String()
-		for _, want := range []string{
-			"`_record_id` is metadata for record operations, not a table field.",
-			"- `_record_id`: rec_1",
-			"- `Name`: Alice",
-			"- `Age`: 18",
-			"Meta: count=1",
-		} {
-			if !strings.Contains(got, want) {
-				t.Fatalf("stdout missing %q:\n%s", want, got)
-			}
-		}
-		body := string(batchStub.CapturedBody)
-		if !strings.Contains(body, `"record_id_list":["rec_1"]`) {
 			t.Fatalf("request body=%s", body)
 		}
 	})
@@ -3359,15 +3231,15 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			},
 		}
 		reg.Register(batchStub)
-		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2", "--record-id", "rec_1", "--field-id", "Name"}, factory, stdout); err != nil {
+		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2", "--record-id", "rec_1", "--field-id", "Name"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
 		got := stdout.String()
 		for _, want := range []string{
-			"| _record_id | Name |",
-			"| rec_2 | Bob |",
-			"| rec_1 | Alice |",
-			"Meta: count=2",
+			`"record_id_list"`,
+			`"rec_2"`,
+			`"Bob"`,
+			`"Alice"`,
 		} {
 			if !strings.Contains(got, want) {
 				t.Fatalf("stdout missing %q:\n%s", want, got)
@@ -3438,7 +3310,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			Body:   map[string]interface{}{"code": 404, "msg": "not found"},
 		}
 		reg.Register(batchStub)
-		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1"}, factory, stdout)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1"}, factory, stdout)
 		if err == nil {
 			t.Fatalf("expected batch_get error")
 		}
@@ -3447,42 +3319,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 		if stdout.Len() != 0 {
 			t.Fatalf("stdout=%s", stdout.String())
-		}
-	})
-
-	t.Run("get single missing record renders not found markdown", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		batchStub := &httpmock.Stub{
-			Method: "POST",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_get",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"record_id_list":   []interface{}{"rec_missing"},
-					"fields":           []interface{}{"Name"},
-					"data":             []interface{}{[]interface{}{nil}},
-					"has_more":         false,
-					"record_not_found": []interface{}{"rec_missing"},
-				},
-			},
-		}
-		reg.Register(batchStub)
-		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_missing"}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		got := stdout.String()
-		for _, want := range []string{
-			"Record not found.",
-			"- `_record_id`: rec_missing",
-			"Meta: count=1; has_more=false; record_not_found=1",
-			"Missing records: rec_missing",
-		} {
-			if !strings.Contains(got, want) {
-				t.Fatalf("stdout missing %q:\n%s", want, got)
-			}
-		}
-		if strings.Contains(got, "- `Name`:") {
-			t.Fatalf("missing record output should not render business fields:\n%s", got)
 		}
 	})
 
@@ -3495,7 +3331,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			Body:   map[string]interface{}{"code": 404, "msg": "not found"},
 		}
 		reg.Register(batchStub)
-		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2", "--record-id", "rec_1", "--field-id", "Name"}, factory, stdout)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2", "--record-id", "rec_1", "--field-id", "Name"}, factory, stdout)
 		if err == nil {
 			t.Fatalf("expected batch_get error")
 		}
@@ -3537,7 +3373,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("get rejects duplicate record ids", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--record-id", "rec_1"}, factory, stdout)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--record-id", "rec_1"}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "duplicate record id") {
 			t.Fatalf("err=%v", err)
 		}
@@ -3545,7 +3381,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("get rejects duplicate field ids", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--field-id", "Name", "--field-id", "Name"}, factory, stdout)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--field-id", "Name", "--field-id", "Name"}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "duplicate field id") {
 			t.Fatalf("err=%v", err)
 		}
@@ -3553,7 +3389,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("get rejects mixed record-id and json", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--json", `{"record_id_list":["rec_2"]}`}, factory, stdout)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--json", `{"record_id_list":["rec_2"]}`}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 			t.Fatalf("err=%v", err)
 		}
@@ -3561,7 +3397,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("get rejects mixed field-id and json select_fields", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_2"],"select_fields":["Name"]}`, "--field-id", "Age"}, factory, stdout)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_2"],"select_fields":["Name"]}`, "--field-id", "Age"}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "select_fields") || !strings.Contains(err.Error(), "mutually exclusive") {
 			t.Fatalf("err=%v", err)
 		}
@@ -3569,7 +3405,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("get rejects empty selection", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x"}, factory, stdout)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--format", "json", "--base-token", "app_x", "--table-id", "tbl_x"}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "provide at least one --record-id") {
 			t.Fatalf("err=%v", err)
 		}
