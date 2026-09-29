@@ -25,6 +25,7 @@ import (
 )
 
 const (
+	docsScriptWritingReferences     = "writing-references"
 	docsScriptParse                 = "parse"
 	docsScriptInitDraft             = "init-draft"
 	docsScriptDraftDirectoryPattern = "draft_*_folder"
@@ -52,7 +53,7 @@ const (
 var DocsScript = common.Shortcut{
 	Service:     "docs",
 	Command:     "+script",
-	Description: "Initialize a document draft workspace, or parse, preflight, and profile documents",
+	Description: "Initialize drafts, fetch writing references, or parse, preflight, and profile documents",
 	Risk:        "read",
 	AuthTypes:   []string{"user", "bot"},
 	Scopes:      []string{},
@@ -62,9 +63,9 @@ var DocsScript = common.Shortcut{
 	Flags: []common.Flag{
 		{
 			Name:     "command",
-			Desc:     "local document operation",
+			Desc:     "document operation",
 			Required: true,
-			Enum:     []string{docsScriptInitDraft, docsScriptParse},
+			Enum:     []string{docsScriptInitDraft, docsScriptParse, docsScriptWritingReferences},
 		},
 		{
 			Name:  "content",
@@ -188,13 +189,17 @@ type docsScriptFetchResponse struct {
 
 func installDocsScriptHelp(cmd *cobra.Command) {
 	installDocsContentPathCapture(cmd)
-	cmd.Example = `  lark-cli docs +script --command init-draft --presentation-decision '<JSON>'
+	cmd.Example = `  lark-cli docs +script --command writing-references --as user
+  lark-cli docs +script --command init-draft --presentation-decision '<JSON>'
   lark-cli docs +script --command parse --content "@./draft.xml"
   lark-cli docs +script --command parse --doc "https://example.larksuite.com/docx/doxcn..."`
 }
 
 func validateDocsScript(_ context.Context, runtime *common.RuntimeContext) error {
 	command := runtime.Str("command")
+	if command == docsScriptWritingReferences {
+		return validateDocsWritingReferences(runtime)
+	}
 	content := strings.TrimSpace(runtime.Str("content"))
 	doc := strings.TrimSpace(runtime.Str("doc"))
 	presentationDecision := strings.TrimSpace(runtime.Str("presentation-decision"))
@@ -254,6 +259,11 @@ func validateDocsScript(_ context.Context, runtime *common.RuntimeContext) error
 }
 
 func dryRunDocsScript(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	if runtime.Str("command") == docsScriptWritingReferences {
+		return common.NewDryRunAPI().POST(docsWritingReferencesAPIPath).
+			Body(struct{}{}).Set("command", docsScriptWritingReferences).Set("network", true).
+			Desc("Fetch the current user's writing references; selection and content are server-controlled")
+	}
 	if runtime.Str("command") == docsScriptInitDraft {
 		dry := common.NewDryRunAPI().
 			Desc("Create a unique draft workspace, preserve its Presentation Decision, and reserve a new XML path without creating the XML; no API call is made").
@@ -300,6 +310,8 @@ func executeDocsScript(_ context.Context, runtime *common.RuntimeContext) error 
 	command := runtime.Str("command")
 	content := runtime.Str("content")
 	switch command {
+	case docsScriptWritingReferences:
+		return executeDocsWritingReferences(runtime)
 	case docsScriptInitDraft:
 		return initDocsScriptDraft(runtime)
 	case docsScriptParse:
