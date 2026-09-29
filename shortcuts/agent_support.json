@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-22T17:00:36+08:00",
+  "updatedAt": "2026-09-22T17:02:00+08:00",
   "commands": {
     "application +slash-command-create": {
       "agentSupport": "denied"
@@ -319,10 +319,19 @@
     "apps +user-id-convert": {
       "agentSupport": "denied"
     },
+    "base +advperm-apply": {
+      "agentSupport": "allowed"
+    },
     "base +advperm-disable": {
       "agentSupport": "allowed"
     },
     "base +advperm-enable": {
+      "agentSupport": "allowed"
+    },
+    "base +advperm-share-get": {
+      "agentSupport": "allowed"
+    },
+    "base +advperm-share-update": {
       "agentSupport": "allowed"
     },
     "base +app-block-create": {
@@ -605,6 +614,15 @@
       "agentSupport": "allowed"
     },
     "base +role-list": {
+      "agentSupport": "allowed"
+    },
+    "base +role-member-add": {
+      "agentSupport": "allowed"
+    },
+    "base +role-member-list": {
+      "agentSupport": "allowed"
+    },
+    "base +role-member-remove": {
       "agentSupport": "allowed"
     },
     "base +role-update": {

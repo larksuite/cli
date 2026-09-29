@@ -179,7 +179,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+record-history-list",
 		"+base-get", "+base-update", "+base-copy", "+base-create",
 		"+template-categories", "+template-list", "+template-search",
-		"+role-create", "+role-delete", "+role-update", "+role-list", "+role-get", "+advperm-enable", "+advperm-disable",
+		"+role-create", "+role-delete", "+role-update", "+role-list", "+role-get", "+role-member-list", "+role-member-add", "+role-member-remove", "+advperm-share-get", "+advperm-share-update", "+advperm-apply", "+advperm-enable", "+advperm-disable",
 		"+workflow-list", "+workflow-get", "+workflow-create", "+workflow-update", "+workflow-enable", "+workflow-disable",
 		"+button-rule-bind", "+button-rule-get", "+button-rule-unbind",
 		"+data-query", "+schema-context-get", "+data-sql-query",

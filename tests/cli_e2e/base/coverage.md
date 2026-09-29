@@ -1,9 +1,9 @@
 # Base CLI E2E Coverage
 
 ## Metrics
-- Denominator: 136 leaf commands (recounted from compiled `base --help` on 2026-09-24; all shortcuts)
-- Covered: 89
-- Coverage: 65.4%
+- Denominator: 142 leaf commands (136 from `main` plus six permission shortcuts in this MR)
+- Covered: 95
+- Coverage: 66.9%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
@@ -35,6 +35,7 @@
 - TestBaseRecordBatchUpdatePerRecordWorkflow: creates two records, generates their share links using mixed `--record-id` / `--record-ids` input, updates different field types in one request, asserts the minimal response contract, reads both records back, verifies a missing record ID is not prevalidated, and cleans up the temporary Base.
 - TestBaseRecordShareLinkCreateDryRunAcceptsSingularAndPluralRecordIDFlags: proves singular and plural record ID flags compose into one deduplicated share-link request.
 - TestBaseRecordHistoryListDryRunUsesExplicitRecordID / TestBaseRecordHistoryListDryRunRejectsNonPositiveMaxVersion: prove the history request keeps the explicit record ID and rejects explicitly non-positive cursors with a typed validation error.
+- TestBasePermissionShortcutsDryRun: proves the request shapes of the six permission shortcuts (`+role-member-list/add/remove`, `+advperm-share-get/update`, `+advperm-apply`) without touching live data.
 - TestBase_RoleWorkflow: proves `+advperm-enable`, `+role-create`, `+role-list`, `+role-get`, and `+role-update`; key `t.Run(...)` proof points are `list as bot`, `get as bot`, and `update as bot`.
 - TestBaseFormListDryRun_UsesBaseAndTableIdentifiers: proves `+form-list` dry-run request shape uses Base and table identifiers in the endpoint.
 - TestBaseFormQuestionsCreateVisibleRuleDryRun / TestBaseFormQuestionsUpdateVisibleRuleDryRun: prove `+form-questions-create` / `+form-questions-update` dry-run request shape and that the optional `visible_rule` display condition is transcribed verbatim into the request body.
@@ -48,8 +49,11 @@
 
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
+| ✓ | base +advperm-apply | shortcut | base_permission_dryrun_test.go::TestBasePermissionShortcutsDryRun | `--base-token`; `--message` | dry-run request shape |
 | ✕ | base +advperm-disable | shortcut |  | none | no disable workflow yet |
 | ✓ | base +advperm-enable | shortcut | base_role_workflow_test.go::TestBase_RoleWorkflow | `--base-token` | |
+| ✓ | base +advperm-share-get | shortcut | base_permission_dryrun_test.go::TestBasePermissionShortcutsDryRun | `--base-token` | dry-run request shape |
+| ✓ | base +advperm-share-update | shortcut | base_permission_dryrun_test.go::TestBasePermissionShortcutsDryRun | `--base-token`; `--enable-share` | dry-run request shape |
 | ✕ | base +base-copy | shortcut |  | none | no copy workflow yet |
 | ✓ | base +base-create | shortcut | base/helpers_test.go::createBaseWithRetry | `--name`; `--time-zone` | helper asserts created base token |
 | ✓ | base +base-get | shortcut | base_basic_workflow_test.go::TestBase_BasicWorkflow/get base as bot | `--base-token` | |
@@ -129,6 +133,9 @@
 | ✕ | base +role-delete | shortcut |  | none | cleanup only |
 | ✓ | base +role-get | shortcut | base_role_workflow_test.go::TestBase_RoleWorkflow/get as bot | `--base-token`; `--role-id` | |
 | ✓ | base +role-list | shortcut | base_role_workflow_test.go::TestBase_RoleWorkflow/list as bot | `--base-token` | |
+| ✓ | base +role-member-add | shortcut | base_permission_dryrun_test.go::TestBasePermissionShortcutsDryRun | `--base-token`; `--role-id`; `--user-id`/`--department-id`/`--chat-id` | dry-run request shape |
+| ✓ | base +role-member-list | shortcut | base_permission_dryrun_test.go::TestBasePermissionShortcutsDryRun | `--base-token`; `--role-id`; `--page-size` | dry-run request shape |
+| ✓ | base +role-member-remove | shortcut | base_permission_dryrun_test.go::TestBasePermissionShortcutsDryRun | `--base-token`; `--role-id`; `--chat-id` | dry-run request shape |
 | ✓ | base +role-update | shortcut | base_role_workflow_test.go::TestBase_RoleWorkflow/update as bot | `--base-token`; `--role-id`; `--json` | |
 | ✕ | base +sql-catalog | shortcut |  | none | catalog has unit coverage only |
 | ✓ | base +sql-query | shortcut | base_sql_dryrun_test.go::TestBaseSQLQueryDryRun | `--base-token`; `--sql`; dry-run | POST request shape and verbatim SQL preservation |
