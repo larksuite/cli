@@ -58,6 +58,8 @@ Base
 
 每个 Base Block 都有 `id`、`type`、可修改的 `name`、所在 Folder 的 `parent_id`，并在同级目录中具有顺序。`+base-block-list` 是统一发现入口；`+base-block-create` 创建 Block，`+base-block-rename` 修改名称，`+base-block-move` 通过 `--parent-id` 调整目录并通过 `--before-id` / `--after-id` 调整顺序，`+base-block-delete` 删除 Block。类型专属内容再由对应模块命令处理。
 
+Table 类型另有专属命令：`+table-update --table-id <id|name> --name <new>` 改表名，`+table-delete --table-id <id|name> --yes` 删表。两者的 `--table-id` 都接受表 ID 或当前 Base 内的表名；传表名时该值会直接进入请求路径，删除前务必确认目标唯一。注意 `--yes` 的 confirmation gate 只在真实执行时生效：`--dry-run` 即使不带 `--yes` 也会照常打印 `DELETE` 请求，所以不能用 dry-run 判断自己是否漏掉了确认。
+
 创建时已经明确类型专属初始内容，可直接使用对应构造命令一次完成：Table 用 `+table-create --fields`，Dashboard 用 `+dashboard-create` 设置主题，Workflow 用 `+workflow-create --json` 提交完整定义；Folder 和 Docx 使用 `+base-block-create`。
 
 Block 的 `id` 按类型直接作为对应模块坐标：
