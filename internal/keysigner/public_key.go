@@ -81,6 +81,15 @@ func ecParametersForPublicKey(key *ecdsa.PublicKey) (ecKeyParameters, error) {
 	return ecKeyParameters{}, fmt.Errorf("keysigner: unsupported EC curve %q", key.Curve.Params().Name)
 }
 
+// P256PublicKey validates and projects a backend public key to P-256 ECDSA.
+func P256PublicKey(public crypto.PublicKey) (*ecdsa.PublicKey, error) {
+	ec, ok := public.(*ecdsa.PublicKey)
+	if !ok || ec == nil || ec.Curve != elliptic.P256() || ec.X == nil || ec.Y == nil || !ec.Curve.IsOnCurve(ec.X, ec.Y) {
+		return nil, fmt.Errorf("keysigner: public key is %T, want a valid P-256 ECDSA key", public)
+	}
+	return ec, nil
+}
+
 // AlgForKey returns the JOSE algorithm for a validated public signing key.
 func AlgForKey(public crypto.PublicKey) (string, error) {
 	switch key := public.(type) {
