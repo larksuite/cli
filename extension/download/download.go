@@ -80,6 +80,16 @@ type Options struct {
 	// PartSize is the maximum byte count requested per range. Zero selects
 	// DefaultPartSize.
 	PartSize int64
+	// StartOffset resumes the logical stream from an existing local offset
+	// instead of byte 0. The first range request starts at this offset, so the
+	// server must support Range (HTTP 206); when it does not and StartOffset is
+	// non-zero, Open fails instead of falling back to a full response, because
+	// a full response cannot be spliced onto bytes already written locally.
+	StartOffset int64
+	// ExpectedETag binds the first resumed range request to the representation
+	// identified by an existing checkpoint. The request carries If-Range and
+	// the first response must still report the same strong ETag.
+	ExpectedETag string
 	// MaxResponses bounds the total responses in one logical stream. Zero derives
 	// a bound from the declared object size and PartSize.
 	MaxResponses int
@@ -104,7 +114,9 @@ type Stream struct {
 	Body io.ReadCloser
 	// Header is a copy of the first successful response headers.
 	Header http.Header
-	// ContentLength is the validated total size, or -1 when unknown.
+	// ContentLength is the validated full object size, or -1 when unknown. When
+	// StartOffset is non-zero, Body yields only the remaining bytes; consumers
+	// must account for StartOffset when tracking progress or completeness.
 	ContentLength int64
 
 	_ struct{}
@@ -121,11 +133,14 @@ func Open(ctx context.Context, source Source, opts Options) (*Stream, error) {
 		return openFull(ctx, source.transport, opts, retryWait)
 	}
 
-	firstPart := ByteRange{Start: 0, End: opts.PartSize - 1}
-	resp, err := fetchWithRetry(ctx, source.transport, Request{Range: &firstPart}, opts, retryWait)
+	firstPart := ByteRange{Start: opts.StartOffset, End: opts.StartOffset + opts.PartSize - 1}
+	resp, err := fetchWithRetry(ctx, source.transport, Request{Range: &firstPart, IfRange: opts.ExpectedETag}, opts, retryWait)
 	if err != nil {
 		if !rangeProbeRejected(err) {
 			return nil, err
+		}
+		if opts.StartOffset > 0 {
+			return nil, resumeUnsupportedError(opts.StartOffset)
 		}
 		return openFull(ctx, source.transport, opts, retryWait)
 	}
@@ -135,16 +150,41 @@ func Open(ctx context.Context, source Source, opts Options) (*Stream, error) {
 
 	switch resp.StatusCode {
 	case http.StatusOK:
+		if opts.StartOffset > 0 {
+			resp.Body.Close()
+			return nil, resumeUnsupportedError(opts.StartOffset)
+		}
 		return singleStream(ctx, resp)
 	case http.StatusPartialContent:
 		return openPartial(ctx, source, opts, retryWait, firstPart, resp)
 	case http.StatusBadRequest, http.StatusRequestedRangeNotSatisfiable:
 		resp.Body.Close()
+		if opts.StartOffset > 0 {
+			return nil, resumeUnsupportedError(opts.StartOffset)
+		}
 		return openFull(ctx, source.transport, opts, retryWait)
 	default:
 		resp.Body.Close()
 		return nil, unexpectedStatus(resp.StatusCode)
 	}
+}
+
+// resumeUnsupportedError reports that a resumed download cannot proceed
+// because the server does not honor Range requests, so a full response cannot
+// be spliced onto bytes already written locally.
+func resumeUnsupportedError(offset int64) error {
+	return protocolError(
+		"cannot resume from byte %d: server does not honor Range requests; a full response cannot be spliced onto existing bytes",
+		offset).WithCause(errResumeUnsupported)
+}
+
+var errResumeUnsupported = errors.New("resumed range request is unsupported")
+
+// IsResumeUnsupported reports whether Open could not use the requested local
+// offset because the peer did not honor the resumed Range request. A caller
+// that owns the partial artifact may discard it and retry from byte zero.
+func IsResumeUnsupported(err error) bool {
+	return errors.Is(err, errResumeUnsupported)
 }
 
 func openFull(ctx context.Context, fetch Transport, opts Options, retryWait *retryWaitBudget) (*Stream, error) {
@@ -288,6 +328,8 @@ func (o Options) withDefaults() Options {
 	return o
 }
 
+// validateOptions rejects invalid transport/representation/option
+// combinations before any fetch is attempted.
 func validateOptions(source Source, opts Options) error {
 	if source.transport == nil {
 		return errs.NewInternalError(errs.SubtypeUnknown, "download requires a configured transport")
@@ -297,6 +339,26 @@ func validateOptions(source Source, opts Options) error {
 	}
 	if opts.PartSize <= 0 {
 		return errs.NewInternalError(errs.SubtypeUnknown, "download part size must be positive, got %d", opts.PartSize)
+	}
+	if opts.StartOffset < 0 {
+		return errs.NewInternalError(errs.SubtypeUnknown, "download start offset cannot be negative, got %d", opts.StartOffset)
+	}
+	if source.representation == Mutable && opts.StartOffset > 0 && opts.ExpectedETag == "" {
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"mutable download start offset requires a strong expected ETag")
+	}
+	if opts.DisableMultipart && opts.StartOffset > 0 {
+		return errs.NewInternalError(errs.SubtypeUnknown, "download start offset requires multipart range requests")
+	}
+	if opts.StartOffset > math.MaxInt64-(opts.PartSize-1) {
+		return errs.NewInternalError(errs.SubtypeUnknown, "download start offset overflows the requested range, got %d", opts.StartOffset)
+	}
+	if opts.ExpectedETag != "" {
+		etagHeader := make(http.Header)
+		etagHeader.Set("ETag", opts.ExpectedETag)
+		if _, ok := strongETag(etagHeader); !ok {
+			return errs.NewInternalError(errs.SubtypeUnknown, "download expected ETag must be one strong quoted validator")
+		}
 	}
 	if opts.MaxResponses < 0 {
 		return errs.NewInternalError(errs.SubtypeUnknown, "download max responses cannot be negative, got %d", opts.MaxResponses)
@@ -332,6 +394,8 @@ func singleStream(ctx context.Context, resp *http.Response) (*Stream, error) {
 	}, nil
 }
 
+// openPartial turns a validated 206 range response into a multipart stream,
+// continuing with further ranges until the declared total size is reached.
 func openPartial(ctx context.Context, source Source, opts Options, retryWait *retryWaitBudget, requested ByteRange, resp *http.Response) (*Stream, error) {
 	if err := validateResponseEncoding(resp); err != nil {
 		resp.Body.Close()
@@ -342,19 +406,26 @@ func openPartial(ctx context.Context, source Source, opts Options, retryWait *re
 		resp.Body.Close()
 		return nil, protocolError("invalid Content-Range header on range response: %s", err)
 	}
-	if first.start != 0 {
+	if first.start != requested.Start {
 		resp.Body.Close()
-		return nil, protocolError("range response is %s, want it to start at byte 0", first)
+		return nil, protocolError("range response is %s, want it to start at byte %d", first, requested.Start)
 	}
 	if first.end > requested.End {
 		resp.Body.Close()
 		return nil, protocolError("range response is %s, outside requested %s", first, requested.HeaderValue())
 	}
 
-	session := newRepresentationSession(source, first, resp.Header)
+	session := newRepresentationSession(source, first, resp.Header, opts.ExpectedETag)
+	if err := session.observeValidator(resp.Header); err != nil {
+		resp.Body.Close()
+		return nil, err
+	}
 	completeInFirstResponse := first.end == first.total-1
 	if !completeInFirstResponse && !session.multipartAllowed() {
 		resp.Body.Close()
+		if requested.Start > 0 {
+			return nil, resumeUnsupportedError(requested.Start)
+		}
 		return openFull(ctx, source.transport, opts, retryWait)
 	}
 
@@ -374,9 +445,10 @@ func openPartial(ctx context.Context, source Source, opts Options, retryWait *re
 		maxPartRetries: opts.MaxPartRetries,
 		retryDelay:     opts.RetryDelay,
 		retryWait:      retryWait,
+		nextOffset:     requested.Start,
 	}
 	return &Stream{
-		Body:          newExactLengthReader(body, first.total),
+		Body:          newExactLengthReader(body, first.total-requested.Start),
 		Header:        resp.Header.Clone(),
 		ContentLength: first.total,
 	}, nil
