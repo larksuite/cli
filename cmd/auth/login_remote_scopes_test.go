@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/apiscopes"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -32,7 +33,7 @@ func TestResolveScopesForDomains_RemoteSendAsUserStillBatchExcluded(t *testing.T
 	if !slices.Contains(resolved, "im:message.send_as_user") {
 		t.Fatalf("precondition: remote resolution should surface send_as_user, got %v", resolved)
 	}
-	effective := filterBatchExcludedScopes(resolved)
+	effective := apiscopes.FilterBatchExcludedScopes(resolved)
 	if slices.Contains(effective, "im:message.send_as_user") {
 		t.Errorf("send_as_user should be batch-excluded from remote-resolved scopes, got %v", effective)
 	}
@@ -114,7 +115,7 @@ func TestLegalDomainsFor_FallbackToLocal(t *testing.T) {
 		}
 	}
 	// fallback adopts the local sort order directly, which must equal resolver.sorted
-	if want := builtinResolver(t).sorted(core.BrandFeishu); !reflect.DeepEqual(sorted, want) {
+	if want := builtinResolver(t).Sorted(core.BrandFeishu); !reflect.DeepEqual(sorted, want) {
 		t.Fatalf("sorted = %v, want resolver.sorted %v", sorted, want)
 	}
 }

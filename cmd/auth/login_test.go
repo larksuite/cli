@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/apicatalog"
+	"github.com/larksuite/cli/internal/apiscopes"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/commandhost"
@@ -53,9 +54,9 @@ func (failWriter) Write([]byte) (int, error) {
 // builtinResolver resolves domains from the built-in shortcut set. Tests that
 // are not specifically about external command sets assert against exactly what
 // a distribution built without cmd.WithCommandSets sees.
-func builtinResolver(t *testing.T) domainResolver {
+func builtinResolver(t *testing.T) apiscopes.Resolver {
 	t.Helper()
-	return newDomainResolver(authTestCatalog(t), shortcuts.AllShortcuts())
+	return apiscopes.NewResolver(authTestCatalog(t), shortcuts.AllShortcuts())
 }
 
 type businessArgs struct {
@@ -133,60 +134,26 @@ func TestNormalizeScopeInput(t *testing.T) {
 	}
 }
 
-func TestShortcutSupportsIdentity_DefaultUser(t *testing.T) {
-	// Empty AuthTypes defaults to ["user"]
-	sc := common.Shortcut{AuthTypes: nil}
-	if !shortcutSupportsIdentity(sc, "user") {
-		t.Error("expected default to support 'user'")
-	}
-	if shortcutSupportsIdentity(sc, "bot") {
-		t.Error("expected default to NOT support 'bot'")
-	}
-}
-
-func TestShortcutSupportsIdentity_ExplicitTypes(t *testing.T) {
-	sc := common.Shortcut{AuthTypes: []string{"user", "bot"}}
-	if !shortcutSupportsIdentity(sc, "user") {
-		t.Error("expected to support 'user'")
-	}
-	if !shortcutSupportsIdentity(sc, "bot") {
-		t.Error("expected to support 'bot'")
-	}
-	if shortcutSupportsIdentity(sc, "tenant") {
-		t.Error("expected to NOT support 'tenant'")
-	}
-}
-
-func TestShortcutSupportsIdentity_BotOnly(t *testing.T) {
-	sc := common.Shortcut{AuthTypes: []string{"bot"}}
-	if shortcutSupportsIdentity(sc, "user") {
-		t.Error("expected bot-only to NOT support 'user'")
-	}
-	if !shortcutSupportsIdentity(sc, "bot") {
-		t.Error("expected bot-only to support 'bot'")
-	}
-}
-
 func TestCompleteDomain(t *testing.T) {
-	want := builtinResolver(t).sorted("")
+	want := builtinResolver(t).Sorted("")
 	if len(want) == 0 {
 		t.Skip("no from_meta data available")
 	}
 
 	// Complete from empty prefix
-	completions := builtinResolver(t).complete("", "")
+	completions := builtinResolver(t).Complete("", "")
 	if len(completions) == 0 {
 		t.Fatal("expected completions for empty prefix")
 	}
 	if !reflect.DeepEqual(completions, want) {
 		t.Errorf("complete() = %v, want %v", completions, want)
 	}
-	if !slices.Contains(builtinResolver(t).complete("not", ""), "note") {
+	if !slices.Contains(builtinResolver(t).Complete("not", ""), "note") {
 		t.Error("complete() omitted shortcut-only note domain")
 	}
 
 	// Complete with partial prefix
-	completions = builtinResolver(t).complete("cal", "")
+	completions = builtinResolver(t).Complete("cal", "")
 	for _, c := range completions {
 		if c != "calendar" && c[:3] != "cal" {
 			t.Errorf("unexpected completion %q for prefix 'cal'", c)
@@ -201,7 +168,7 @@ func TestCompleteDomain_CommaSeparated(t *testing.T) {
 	}
 
 	// After a comma, should complete the next segment
-	completions := builtinResolver(t).complete("calendar,", "")
+	completions := builtinResolver(t).Complete("calendar,", "")
 	for _, c := range completions {
 		if c[:9] != "calendar," {
 			t.Errorf("expected 'calendar,' prefix, got %q", c)
@@ -210,7 +177,7 @@ func TestCompleteDomain_CommaSeparated(t *testing.T) {
 }
 
 func TestAllKnownDomains(t *testing.T) {
-	domains := builtinResolver(t).allKnown("")
+	domains := builtinResolver(t).AllKnown("")
 	if len(domains) == 0 {
 		t.Fatal("expected non-empty known domains")
 	}
@@ -224,7 +191,7 @@ func TestAllKnownDomains(t *testing.T) {
 }
 
 func TestSortedKnownDomains(t *testing.T) {
-	sorted := builtinResolver(t).sorted("")
+	sorted := builtinResolver(t).Sorted("")
 	if len(sorted) == 0 {
 		t.Fatal("expected non-empty sorted domains")
 	}
@@ -234,7 +201,7 @@ func TestSortedKnownDomains(t *testing.T) {
 	}
 
 	// Should match allKnownDomains
-	known := builtinResolver(t).allKnown("")
+	known := builtinResolver(t).AllKnown("")
 	if len(sorted) != len(known) {
 		t.Errorf("sorted (%d) and known (%d) length mismatch", len(sorted), len(known))
 	}
@@ -264,7 +231,7 @@ func TestCollectScopesForDomains(t *testing.T) {
 		t.Skip("no from_meta data available")
 	}
 
-	scopes := builtinResolver(t).scopesFor([]string{"calendar"}, "user", "")
+	scopes := builtinResolver(t).ScopesFor([]string{"calendar"}, "user", "")
 	if len(scopes) == 0 {
 		t.Fatal("expected non-empty scopes for calendar domain")
 	}
@@ -291,7 +258,7 @@ func TestCollectScopesForDomains(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_NonexistentDomain(t *testing.T) {
-	scopes := builtinResolver(t).scopesFor([]string{"nonexistent_domain_xyz"}, "user", "")
+	scopes := builtinResolver(t).ScopesFor([]string{"nonexistent_domain_xyz"}, "user", "")
 	if len(scopes) != 0 {
 		t.Errorf("expected empty scopes for nonexistent domain, got %d", len(scopes))
 	}
@@ -319,12 +286,12 @@ func TestLoginHelpersUseInjectedAPICatalog(t *testing.T) {
 		},
 	})
 	catalog := apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{service})
-	resolver := newDomainResolver(catalog, nil)
+	resolver := apiscopes.NewResolver(catalog, nil)
 
-	if got := resolver.complete("", ""); !slices.Equal(got, []string{serviceName}) {
+	if got := resolver.Complete("", ""); !slices.Equal(got, []string{serviceName}) {
 		t.Fatalf("completion = %v, want [%s]", got, serviceName)
 	}
-	if scopes := resolver.scopesFor([]string{serviceName}, "user", ""); !slices.Contains(scopes, serviceScope) {
+	if scopes := resolver.ScopesFor([]string{serviceName}, "user", ""); !slices.Contains(scopes, serviceScope) {
 		t.Fatalf("scopes %v do not include injected catalog scope", scopes)
 	}
 }
@@ -334,11 +301,11 @@ func TestExternalShortcutScopesParticipateInAuthDomainResolution(t *testing.T) {
 		Service: "im", Command: "+business-auth", AuthTypes: []string{"user"},
 		UserScopes: []string{"im:business.scope:read"},
 	}}
-	domains := newDomainResolver(authTestCatalog(t), registered).allKnown("")
+	domains := apiscopes.NewResolver(authTestCatalog(t), registered).AllKnown("")
 	if !domains["im"] {
 		t.Fatal("external shortcut domain is missing from auth domains")
 	}
-	scopes := newDomainResolver(authTestCatalog(t), registered).scopesFor([]string{"im"}, "user", "")
+	scopes := apiscopes.NewResolver(authTestCatalog(t), registered).ScopesFor([]string{"im"}, "user", "")
 	if !slices.Contains(scopes, "im:business.scope:read") {
 		t.Fatalf("external shortcut scope is missing: %v", scopes)
 	}
@@ -381,10 +348,10 @@ func TestCompiledBusinessScopesReachLoginDomainResolution(t *testing.T) {
 
 	// Guard against a false positive: the scope must be absent from the
 	// built-in set, or this test would pass without the snapshot arriving.
-	if builtin := builtinResolver(t).scopesFor([]string{"im"}, "user", ""); slices.Contains(builtin, businessScope) {
+	if builtin := builtinResolver(t).ScopesFor([]string{"im"}, "user", ""); slices.Contains(builtin, businessScope) {
 		t.Fatalf("%q is a built-in im scope, so it cannot prove the snapshot arrived", businessScope)
 	}
-	if scopes := newDomainResolver(authTestCatalog(t), registered).scopesFor([]string{"im"}, "user", ""); !slices.Contains(scopes, businessScope) {
+	if scopes := apiscopes.NewResolver(authTestCatalog(t), registered).ScopesFor([]string{"im"}, "user", ""); !slices.Contains(scopes, businessScope) {
 		t.Fatalf("compiled business scope %q never reached domain resolution: %v", businessScope, scopes)
 	}
 }
@@ -401,13 +368,13 @@ func TestEachLoginBuildResolvesAgainstItsOwnSnapshot(t *testing.T) {
 		UserScopes: []string{businessScope},
 	})
 
-	first := newDomainResolver(authTestCatalog(t), withBusiness)
-	second := newDomainResolver(authTestCatalog(t), shortcuts.AllShortcuts())
+	first := apiscopes.NewResolver(authTestCatalog(t), withBusiness)
+	second := apiscopes.NewResolver(authTestCatalog(t), shortcuts.AllShortcuts())
 
-	if scopes := first.scopesFor([]string{"im"}, "user", core.BrandFeishu); !slices.Contains(scopes, businessScope) {
+	if scopes := first.ScopesFor([]string{"im"}, "user", core.BrandFeishu); !slices.Contains(scopes, businessScope) {
 		t.Fatalf("first build lost its own business scope %q: %v", businessScope, scopes)
 	}
-	if scopes := second.scopesFor([]string{"im"}, "user", core.BrandFeishu); slices.Contains(scopes, businessScope) {
+	if scopes := second.ScopesFor([]string{"im"}, "user", core.BrandFeishu); slices.Contains(scopes, businessScope) {
 		t.Fatalf("second build inherited the first build's business scope %q", businessScope)
 	}
 }
@@ -417,14 +384,14 @@ func TestEachLoginBuildResolvesAgainstItsOwnSnapshot(t *testing.T) {
 // skip the remote scopes.json — generated from the standard CLI and blind to
 // those commands — and resolve locally instead.
 func TestDomainResolverHasExternalMarksCustomBuilds(t *testing.T) {
-	if newDomainResolver(authTestCatalog(t), shortcuts.AllShortcuts()).hasExternal {
+	if apiscopes.NewResolver(authTestCatalog(t), shortcuts.AllShortcuts()).HasExternal {
 		t.Error("standard built-in snapshot must not be flagged as a custom build")
 	}
 	withBusiness := append(shortcuts.AllShortcuts(), common.Shortcut{
 		Service: "im", Command: "+business-external", AuthTypes: []string{"user"},
 		UserScopes: []string{"im:business.external:read"},
 	})
-	if !newDomainResolver(authTestCatalog(t), withBusiness).hasExternal {
+	if !apiscopes.NewResolver(authTestCatalog(t), withBusiness).HasExternal {
 		t.Error("a snapshot carrying external business commands must be flagged as a custom build")
 	}
 }
@@ -442,7 +409,7 @@ func TestLoginHelpListsDomainsFromTheGivenSnapshot(t *testing.T) {
 	})
 	f.APICatalog = authTestCatalog(t)
 	usage := newCmdAuthLogin(f, nil, registered).Flag("domain").Usage
-	for _, want := range newDomainResolver(authTestCatalog(t), registered).sorted(core.BrandFeishu) {
+	for _, want := range apiscopes.NewResolver(authTestCatalog(t), registered).Sorted(core.BrandFeishu) {
 		if !strings.Contains(usage, want) {
 			t.Fatalf("--domain usage omits %q resolved from the snapshot:\n%s", want, usage)
 		}
@@ -453,11 +420,11 @@ func TestLoginHelpListsDomainsFromTheGivenSnapshot(t *testing.T) {
 // passes domain validation and fails later on scope resolution, not with
 // "unknown domain".
 func TestScopelessDomainStaysAddressableViaDomainFlag(t *testing.T) {
-	known := builtinResolver(t).allKnown("")
+	known := builtinResolver(t).AllKnown("")
 	if !known["event"] {
 		t.Fatal("event must remain in allKnownDomains to match main behavior")
 	}
-	if scopes := builtinResolver(t).scopesFor([]string{"event"}, "user", ""); len(scopes) != 0 {
+	if scopes := builtinResolver(t).ScopesFor([]string{"event"}, "user", ""); len(scopes) != 0 {
 		t.Fatalf("event scopes = %v, want none", scopes)
 	}
 }
@@ -471,7 +438,7 @@ func TestAuthLoginHelpMatchesKnownDomains(t *testing.T) {
 	if domainFlag == nil {
 		t.Fatal("auth login --domain flag is missing")
 	}
-	names := builtinResolver(t).sorted("")
+	names := builtinResolver(t).Sorted("")
 	want := "available: " + strings.Join(names, ", ") + ", all"
 	if !strings.Contains(domainFlag.Usage, want) {
 		t.Fatalf("domain help = %q, want %q", domainFlag.Usage, want)
@@ -588,7 +555,7 @@ func TestAuthLoginRun_CorruptCatalogShardFailsBeforeAuthorization(t *testing.T) 
 			Domains: []string{domain},
 			NoWait:  true,
 			JSON:    true,
-		}, newDomainResolver(catalog, shortcuts.AllShortcuts()))
+		}, apiscopes.NewResolver(catalog, shortcuts.AllShortcuts()))
 	}
 
 	err = login("drive")
@@ -1027,7 +994,7 @@ func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *
 	}
 }
 func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
-	domains := builtinResolver(t).allKnown("")
+	domains := builtinResolver(t).AllKnown("")
 	if domains["whiteboard"] {
 		t.Error("whiteboard should not appear in known auth domains (it has auth_domain=docs)")
 	}
@@ -1037,7 +1004,7 @@ func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_ExpandsAuthDomainChildren(t *testing.T) {
-	scopes := builtinResolver(t).scopesFor([]string{"docs"}, "user", "")
+	scopes := builtinResolver(t).ScopesFor([]string{"docs"}, "user", "")
 	// docs domain should include whiteboard shortcut scopes (board:whiteboard:*)
 	found := false
 	for _, s := range scopes {
@@ -1047,36 +1014,30 @@ func TestCollectScopesForDomains_ExpandsAuthDomainChildren(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("builtinResolver(t).scopesFor([docs]) should include whiteboard scopes (board:whiteboard:*)")
+		t.Error("builtinResolver(t).ScopesFor([docs]) should include whiteboard scopes (board:whiteboard:*)")
 	}
 }
 func TestFilterBatchExcludedScopes(t *testing.T) {
-	got := filterBatchExcludedScopes([]string{"im:message", "im:message.send_as_user", "im:message:readonly"})
+	got := apiscopes.FilterBatchExcludedScopes([]string{"im:message", "im:message.send_as_user", "im:message:readonly"})
 	want := []string{"im:message", "im:message:readonly"}
 	if !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 	clean := []string{"im:message", "calendar:calendar:read"}
-	if got := filterBatchExcludedScopes(clean); !slices.Equal(got, clean) {
+	if got := apiscopes.FilterBatchExcludedScopes(clean); !slices.Equal(got, clean) {
 		t.Errorf("clean input changed: got %v, want %v", got, clean)
 	}
-	if got := filterBatchExcludedScopes(nil); len(got) != 0 {
+	if got := apiscopes.FilterBatchExcludedScopes(nil); len(got) != 0 {
 		t.Errorf("nil input: got %v, want empty", got)
 	}
 }
 
-func TestBatchExcludedScopes_ContainsSendAsUser(t *testing.T) {
-	if !batchExcludedScopes["im:message.send_as_user"] {
-		t.Fatal("batchExcludedScopes must contain im:message.send_as_user")
-	}
-}
-
 func TestFilterBatchExcludedScopes_OnImDomainSet(t *testing.T) {
-	raw := builtinResolver(t).scopesFor([]string{"im"}, "user", "")
+	raw := builtinResolver(t).ScopesFor([]string{"im"}, "user", "")
 	if !slices.Contains(raw, "im:message.send_as_user") {
 		t.Fatal("precondition: im domain set must contain im:message.send_as_user (on-demand grant source intact)")
 	}
-	filtered := filterBatchExcludedScopes(raw)
+	filtered := apiscopes.FilterBatchExcludedScopes(raw)
 	if slices.Contains(filtered, "im:message.send_as_user") {
 		t.Error("filtered set must not contain im:message.send_as_user")
 	}

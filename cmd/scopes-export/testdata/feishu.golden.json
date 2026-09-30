@@ -1,0 +1,765 @@
+{
+  "version": "GOLDEN_VERSION",
+  "scopes": {
+    "application": {
+      "i18n_name": {
+        "zh_cn": "应用管理",
+        "en_us": "Application"
+      },
+      "i18n_desc": {
+        "zh_cn": "开放平台应用自管理：当前绑定应用的斜杠指令管理",
+        "en_us": "Open Platform app self-management: slash commands for the currently bound app"
+      },
+      "tenant_scopes": [
+        "application:app_slash_command:read",
+        "application:app_slash_command:write"
+      ],
+      "user_scopes": [
+        "application:app_slash_command:read",
+        "application:app_slash_command:write"
+      ]
+    },
+    "approval": {
+      "i18n_name": {
+        "zh_cn": "审批",
+        "en_us": "Approval"
+      },
+      "i18n_desc": {
+        "zh_cn": "审批实例、审批任务管理",
+        "en_us": "Approval instance, and task management"
+      },
+      "tenant_scopes": [],
+      "user_scopes": [
+        "approval:approval:read",
+        "approval:instance:read",
+        "approval:instance:write",
+        "approval:task:read",
+        "approval:task:write"
+      ]
+    },
+    "apps": {
+      "i18n_name": {
+        "zh_cn": "应用",
+        "en_us": "Apps"
+      },
+      "i18n_desc": {
+        "zh_cn": "开发、部署 HTML、Web 页面和应用",
+        "en_us": "Develop, deploy HTML, web pages and applications"
+      },
+      "tenant_scopes": [
+        "spark:directory.user.id_convert:read"
+      ],
+      "user_scopes": [
+        "spark:app:read",
+        "spark:app:write",
+        "spark:directory.user.id_convert:read"
+      ]
+    },
+    "attendance": {
+      "i18n_name": {
+        "zh_cn": "考勤打卡",
+        "en_us": "Attendance"
+      },
+      "i18n_desc": {
+        "zh_cn": "考勤打卡结果查询",
+        "en_us": "Attendance check-in result query"
+      },
+      "tenant_scopes": [
+        "attendance:task:readonly"
+      ],
+      "user_scopes": [
+        "attendance:task:readonly"
+      ]
+    },
+    "base": {
+      "i18n_name": {
+        "zh_cn": "多维表格",
+        "en_us": "Base"
+      },
+      "i18n_desc": {
+        "zh_cn": "数据表、字段、记录、视图、仪表盘、自动化流程、表单、角色权限管理",
+        "en_us": "Table, field, record, view, dashboard, workflow, form, role & permission management"
+      },
+      "tenant_scopes": [
+        "base:app:copy",
+        "base:app:create",
+        "base:app:read",
+        "base:app:update",
+        "base:appmode:create",
+        "base:appmode:read",
+        "base:appmode_block:create",
+        "base:appmode_block:read",
+        "base:appmode_block:update",
+        "base:appmode_page:create",
+        "base:appmode_page:delete",
+        "base:appmode_page:read",
+        "base:appmode_page:update",
+        "base:block:create",
+        "base:block:delete",
+        "base:block:read",
+        "base:block:update",
+        "base:dashboard:create",
+        "base:dashboard:delete",
+        "base:dashboard:read",
+        "base:dashboard:update",
+        "base:field:create",
+        "base:field:delete",
+        "base:field:read",
+        "base:field:update",
+        "base:form:create",
+        "base:form:delete",
+        "base:form:read",
+        "base:form:update",
+        "base:history:read",
+        "base:record:create",
+        "base:record:delete",
+        "base:record:read",
+        "base:record:update",
+        "base:role:create",
+        "base:role:delete",
+        "base:role:read",
+        "base:role:update",
+        "base:table:create",
+        "base:table:delete",
+        "base:table:read",
+        "base:table:update",
+        "base:template:read",
+        "base:view:read",
+        "base:view:write_only",
+        "base:workflow:create",
+        "base:workflow:read",
+        "base:workflow:update",
+        "base:workspace:create",
+        "base:workspace:read",
+        "base:workspace:update",
+        "docs:document.media:download",
+        "docs:document.media:upload",
+        "docs:permission.member:create",
+        "wiki:node:retrieve"
+      ],
+      "user_scopes": [
+        "base:app:copy",
+        "base:app:create",
+        "base:app:read",
+        "base:app:update",
+        "base:appmode:create",
+        "base:appmode:read",
+        "base:appmode_block:create",
+        "base:appmode_block:read",
+        "base:appmode_block:update",
+        "base:appmode_page:create",
+        "base:appmode_page:delete",
+        "base:appmode_page:read",
+        "base:appmode_page:update",
+        "base:block:create",
+        "base:block:delete",
+        "base:block:read",
+        "base:block:update",
+        "base:dashboard:create",
+        "base:dashboard:delete",
+        "base:dashboard:read",
+        "base:dashboard:update",
+        "base:field:create",
+        "base:field:delete",
+        "base:field:read",
+        "base:field:update",
+        "base:form:create",
+        "base:form:delete",
+        "base:form:read",
+        "base:form:update",
+        "base:history:read",
+        "base:record:create",
+        "base:record:delete",
+        "base:record:read",
+        "base:record:update",
+        "base:role:create",
+        "base:role:delete",
+        "base:role:read",
+        "base:role:update",
+        "base:table:create",
+        "base:table:delete",
+        "base:table:read",
+        "base:table:update",
+        "base:template:read",
+        "base:view:read",
+        "base:view:write_only",
+        "base:workflow:create",
+        "base:workflow:read",
+        "base:workflow:update",
+        "base:workspace:create",
+        "base:workspace:read",
+        "base:workspace:update",
+        "docs:document.media:download",
+        "docs:document.media:upload",
+        "search:docs:read",
+        "wiki:node:retrieve"
+      ]
+    },
+    "calendar": {
+      "i18n_name": {
+        "zh_cn": "日历",
+        "en_us": "Calendar"
+      },
+      "i18n_desc": {
+        "zh_cn": "日程、日历、参会人管理",
+        "en_us": "Calendar, event, and attendee management"
+      },
+      "tenant_scopes": [
+        "calendar:calendar.event:create",
+        "calendar:calendar.event:delete",
+        "calendar:calendar.event:join",
+        "calendar:calendar.event:read",
+        "calendar:calendar.event:reply",
+        "calendar:calendar.event:transfer",
+        "calendar:calendar.event:update",
+        "calendar:calendar.free_busy:read",
+        "calendar:calendar:create",
+        "calendar:calendar:delete",
+        "calendar:calendar:read",
+        "calendar:calendar:update"
+      ],
+      "user_scopes": [
+        "calendar:calendar.event:create",
+        "calendar:calendar.event:delete",
+        "calendar:calendar.event:join",
+        "calendar:calendar.event:read",
+        "calendar:calendar.event:reply",
+        "calendar:calendar.event:transfer",
+        "calendar:calendar.event:update",
+        "calendar:calendar.free_busy:read",
+        "calendar:calendar:create",
+        "calendar:calendar:delete",
+        "calendar:calendar:read",
+        "calendar:calendar:update"
+      ]
+    },
+    "contact": {
+      "i18n_name": {
+        "zh_cn": "通讯录",
+        "en_us": "Contacts"
+      },
+      "i18n_desc": {
+        "zh_cn": "用户查询、通讯录搜索",
+        "en_us": "Contacts operations"
+      },
+      "tenant_scopes": [
+        "contact:contact.base:readonly",
+        "contact:user.base:readonly"
+      ],
+      "user_scopes": [
+        "contact:user.basic_profile:readonly",
+        "contact:user:search",
+        "profile:user_profile:read",
+        "search:bot"
+      ]
+    },
+    "docs": {
+      "i18n_name": {
+        "zh_cn": "文档",
+        "en_us": "Docs"
+      },
+      "i18n_desc": {
+        "zh_cn": "文档创建、编辑、搜索",
+        "en_us": "Document and content operations"
+      },
+      "tenant_scopes": [
+        "board:whiteboard:node:create",
+        "board:whiteboard:node:read",
+        "docs:document.media:download",
+        "docs:document.media:upload",
+        "docs:permission.member:auth",
+        "docx:document:create",
+        "docx:document:readonly",
+        "docx:document:write_only",
+        "wiki:node:retrieve"
+      ],
+      "user_scopes": [
+        "board:whiteboard:node:create",
+        "board:whiteboard:node:read",
+        "docs:document.media:download",
+        "docs:document.media:upload",
+        "docs:permission.member:auth",
+        "docx:document:create",
+        "docx:document:readonly",
+        "docx:document:write_only",
+        "search:docs:read",
+        "wiki:node:retrieve"
+      ]
+    },
+    "drive": {
+      "i18n_name": {
+        "zh_cn": "云空间",
+        "en_us": "Drive"
+      },
+      "i18n_desc": {
+        "zh_cn": "文件管理、文档评论、素材上传下载、文档权限管理",
+        "en_us": "File, comment, permission, and upload management"
+      },
+      "tenant_scopes": [
+        "base:app:update",
+        "docs:document.comment:create",
+        "docs:document.comment:delete",
+        "docs:document.comment:read",
+        "docs:document.comment:update",
+        "docs:document.comment:write_only",
+        "docs:document.content:read",
+        "docs:document.media:upload",
+        "docs:document:copy",
+        "docs:document:export",
+        "docs:document:import",
+        "docs:permission.member:auth",
+        "docs:permission.member:create",
+        "docs:permission.member:delete",
+        "docs:permission.member:retrieve",
+        "docs:permission.member:transfer",
+        "docs:permission.setting:read",
+        "docs:permission.setting:write_only",
+        "docx:document:readonly",
+        "drive:drive.metadata:readonly",
+        "drive:file:download",
+        "drive:file:upload",
+        "drive:file:view_record:readonly",
+        "search:docs:read",
+        "space:document:delete",
+        "space:document:move",
+        "space:document:retrieve",
+        "space:document:shortcut",
+        "space:folder:create",
+        "wiki:node:read",
+        "wiki:node:retrieve"
+      ],
+      "user_scopes": [
+        "base:app:update",
+        "docs:document.comment:create",
+        "docs:document.comment:delete",
+        "docs:document.comment:read",
+        "docs:document.comment:update",
+        "docs:document.comment:write_only",
+        "docs:document.content:read",
+        "docs:document.media:upload",
+        "docs:document:copy",
+        "docs:document:export",
+        "docs:document:import",
+        "docs:permission.member:apply",
+        "docs:permission.member:auth",
+        "docs:permission.member:create",
+        "docs:permission.member:delete",
+        "docs:permission.member:retrieve",
+        "docs:permission.member:transfer",
+        "docs:permission.setting:read",
+        "docs:permission.setting:write_only",
+        "docs:secure_label:readonly",
+        "docs:secure_label:write_only",
+        "docx:document:readonly",
+        "drive:drive.metadata:readonly",
+        "drive:file:download",
+        "drive:file:upload",
+        "drive:file:view_record:readonly",
+        "drive:quota_detail:read_one",
+        "search:docs:read",
+        "space:document:delete",
+        "space:document:move",
+        "space:document:retrieve",
+        "space:document:shortcut",
+        "space:folder:create",
+        "wiki:node:read",
+        "wiki:node:retrieve"
+      ]
+    },
+    "im": {
+      "i18n_name": {
+        "zh_cn": "消息与群组",
+        "en_us": "Messenger"
+      },
+      "i18n_desc": {
+        "zh_cn": "消息发送、群聊管理",
+        "en_us": "Message and group chat management"
+      },
+      "tenant_scopes": [
+        "im:chat.managers:write_only",
+        "im:chat.members:read",
+        "im:chat.members:write_only",
+        "im:chat.moderation:read",
+        "im:chat:create",
+        "im:chat:moderation:write_only",
+        "im:chat:read",
+        "im:chat:update",
+        "im:message",
+        "im:message.group_msg",
+        "im:message.p2p_msg:readonly",
+        "im:message.pins:read",
+        "im:message.pins:write_only",
+        "im:message.reactions:read",
+        "im:message.reactions:write_only",
+        "im:message.urgent",
+        "im:message.urgent:phone",
+        "im:message.urgent:sms",
+        "im:message:readonly",
+        "im:message:recall",
+        "im:message:send_as_bot",
+        "im:message:update",
+        "im:resource",
+        "search:message"
+      ],
+      "user_scopes": [
+        "im:chat.managers:write_only",
+        "im:chat.members:read",
+        "im:chat.members:write_only",
+        "im:chat.membership_application:read",
+        "im:chat.membership_application:write",
+        "im:chat.moderation:read",
+        "im:chat.nickname:read",
+        "im:chat.nickname:write",
+        "im:chat.user_setting:read",
+        "im:chat.user_setting:write",
+        "im:chat:create_by_user",
+        "im:chat:moderation:write_only",
+        "im:chat:read",
+        "im:chat:update",
+        "im:feed.flag:read",
+        "im:feed.flag:write",
+        "im:feed.shortcut:read",
+        "im:feed.shortcut:write",
+        "im:feed_group_v1:read",
+        "im:feed_group_v1:write",
+        "im:message",
+        "im:message.group_msg:get_as_user",
+        "im:message.p2p_msg:get_as_user",
+        "im:message.pins:read",
+        "im:message.pins:write_only",
+        "im:message.reactions:read",
+        "im:message.reactions:write_only",
+        "im:message:readonly",
+        "im:message:recall",
+        "im:message:update",
+        "im:resource",
+        "search:message"
+      ]
+    },
+    "mail": {
+      "i18n_name": {
+        "zh_cn": "邮箱",
+        "en_us": "Mail"
+      },
+      "i18n_desc": {
+        "zh_cn": "查看和管理用户邮箱数据，包括邮件、草稿、文件夹和联系人",
+        "en_us": "Email, draft, folder, and contacts management"
+      },
+      "tenant_scopes": [
+        "mail:user_mailbox.folder:read",
+        "mail:user_mailbox.folder:write",
+        "mail:user_mailbox.mail_contact:read",
+        "mail:user_mailbox.mail_contact:write",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.body:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox.rule:read",
+        "mail:user_mailbox.rule:write",
+        "mail:user_mailbox:readonly"
+      ],
+      "user_scopes": [
+        "im:message",
+        "mail:event",
+        "mail:user_mailbox.event.mail_address:read",
+        "mail:user_mailbox.folder:read",
+        "mail:user_mailbox.folder:write",
+        "mail:user_mailbox.mail_contact:read",
+        "mail:user_mailbox.mail_contact:write",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.body:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox.message:send",
+        "mail:user_mailbox.rule:read",
+        "mail:user_mailbox.rule:write",
+        "mail:user_mailbox:readonly"
+      ]
+    },
+    "markdown": {
+      "i18n_name": {
+        "zh_cn": "Markdown",
+        "en_us": "Markdown"
+      },
+      "i18n_desc": {
+        "zh_cn": "Drive 原生 Markdown 文件的创建、读取和覆盖更新",
+        "en_us": "Drive-native Markdown file create, fetch, and overwrite"
+      },
+      "tenant_scopes": [
+        "drive:drive.metadata:readonly",
+        "drive:file:download",
+        "drive:file:upload"
+      ],
+      "user_scopes": [
+        "drive:drive.metadata:readonly",
+        "drive:file:download",
+        "drive:file:upload"
+      ]
+    },
+    "mindnotes": {
+      "i18n_name": {
+        "zh_cn": "思维笔记",
+        "en_us": "Mindnote"
+      },
+      "i18n_desc": {
+        "zh_cn": "思维笔记节点查询、创建和更新",
+        "en_us": "Mindnote node listing, creation, and update"
+      },
+      "tenant_scopes": [
+        "mindnote:node:create",
+        "mindnote:node:read"
+      ],
+      "user_scopes": [
+        "mindnote:node:create",
+        "mindnote:node:read"
+      ]
+    },
+    "minutes": {
+      "i18n_name": {
+        "zh_cn": "妙记",
+        "en_us": "Minutes"
+      },
+      "i18n_desc": {
+        "zh_cn": "妙记信息获取、内容查询",
+        "en_us": "Minutes content and metadata retrieval"
+      },
+      "tenant_scopes": [
+        "minutes:minutes.artifacts:read",
+        "minutes:minutes.basic:read",
+        "minutes:minutes.media:export",
+        "minutes:minutes.search:read",
+        "minutes:permission:apply"
+      ],
+      "user_scopes": [
+        "minutes:minutes.artifacts:read",
+        "minutes:minutes.basic:read",
+        "minutes:minutes.media:export",
+        "minutes:minutes.search:read",
+        "minutes:minutes.upload:write",
+        "minutes:minutes:readonly",
+        "minutes:minutes:update",
+        "minutes:permission:apply"
+      ]
+    },
+    "note": {
+      "i18n_name": {
+        "zh_cn": "会议纪要",
+        "en_us": "Note"
+      },
+      "i18n_desc": {
+        "zh_cn": "会议纪要详情与 unified 逐字稿查询",
+        "en_us": "Meeting note detail and unified transcript retrieval"
+      },
+      "tenant_scopes": [
+        "vc:note:read"
+      ],
+      "user_scopes": [
+        "vc:note:read"
+      ]
+    },
+    "okr": {
+      "i18n_name": {
+        "zh_cn": "OKR",
+        "en_us": "OKR"
+      },
+      "i18n_desc": {
+        "zh_cn": "飞书 OKR 目标、关键结果、对齐、量化指标、进展记录",
+        "en_us": "Lark OKR objectives, key results, alignments, indicators, progresses"
+      },
+      "tenant_scopes": [
+        "okr:okr.comment.readonly",
+        "okr:okr.content:readonly",
+        "okr:okr.content:writeonly",
+        "okr:okr.period:readonly",
+        "okr:okr.progress.file:upload",
+        "okr:okr.progress:delete",
+        "okr:okr.progress:readonly",
+        "okr:okr.progress:writeonly",
+        "okr:okr.setting:read"
+      ],
+      "user_scopes": [
+        "okr:okr.comment.delete",
+        "okr:okr.comment.readonly",
+        "okr:okr.comment.writeonly",
+        "okr:okr.content:readonly",
+        "okr:okr.content:writeonly",
+        "okr:okr.period:readonly",
+        "okr:okr.progress.file:upload",
+        "okr:okr.progress:delete",
+        "okr:okr.progress:readonly",
+        "okr:okr.progress:writeonly",
+        "okr:okr.setting:read"
+      ]
+    },
+    "sheets": {
+      "i18n_name": {
+        "zh_cn": "电子表格",
+        "en_us": "Sheets"
+      },
+      "i18n_desc": {
+        "zh_cn": "电子表格操作",
+        "en_us": "Spreadsheet operations"
+      },
+      "tenant_scopes": [
+        "docs:document.media:upload",
+        "docs:document:export",
+        "docs:document:import",
+        "drive:drive.metadata:readonly",
+        "drive:file:upload",
+        "sheets:spreadsheet.meta:read",
+        "sheets:spreadsheet.meta:write_only",
+        "sheets:spreadsheet:create",
+        "sheets:spreadsheet:read",
+        "sheets:spreadsheet:write_only"
+      ],
+      "user_scopes": [
+        "docs:document.media:upload",
+        "docs:document:export",
+        "docs:document:import",
+        "drive:drive.metadata:readonly",
+        "drive:file:upload",
+        "sheets:spreadsheet.meta:read",
+        "sheets:spreadsheet.meta:write_only",
+        "sheets:spreadsheet:create",
+        "sheets:spreadsheet:read",
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    "slides": {
+      "i18n_name": {
+        "zh_cn": "幻灯片",
+        "en_us": "Slides"
+      },
+      "i18n_desc": {
+        "zh_cn": "创建和管理演示文稿、读取内容，以及新增或删除幻灯片页面",
+        "en_us": "Create and manage presentations, read content, and add or remove slides"
+      },
+      "tenant_scopes": [
+        "docs:document.media:download",
+        "docs:document.media:upload",
+        "drive:file:download",
+        "slides:presentation:create",
+        "slides:presentation:read",
+        "slides:presentation:screenshot",
+        "slides:presentation:update",
+        "slides:presentation:write_only",
+        "wiki:node:read"
+      ],
+      "user_scopes": [
+        "docs:document.media:download",
+        "docs:document.media:upload",
+        "drive:file:download",
+        "slides:presentation:create",
+        "slides:presentation:read",
+        "slides:presentation:screenshot",
+        "slides:presentation:update",
+        "slides:presentation:write_only",
+        "wiki:node:read"
+      ]
+    },
+    "task": {
+      "i18n_name": {
+        "zh_cn": "任务",
+        "en_us": "Task"
+      },
+      "i18n_desc": {
+        "zh_cn": "任务、清单、子任务管理",
+        "en_us": "Task, task list, and subtask management"
+      },
+      "tenant_scopes": [
+        "task:attachment:write",
+        "task:comment:write",
+        "task:custom_field:read",
+        "task:custom_field:write",
+        "task:section:read",
+        "task:section:write",
+        "task:task:read",
+        "task:task:write",
+        "task:tasklist:read",
+        "task:tasklist:write"
+      ],
+      "user_scopes": [
+        "task:attachment:write",
+        "task:comment:write",
+        "task:custom_field:read",
+        "task:custom_field:write",
+        "task:section:read",
+        "task:section:write",
+        "task:task:read",
+        "task:task:write",
+        "task:tasklist:read",
+        "task:tasklist:write"
+      ]
+    },
+    "vc": {
+      "i18n_name": {
+        "zh_cn": "视频会议",
+        "en_us": "VC"
+      },
+      "i18n_desc": {
+        "zh_cn": "视频会议与会议纪要管理",
+        "en_us": "Video conference and meeting note management"
+      },
+      "tenant_scopes": [
+        "vc:meeting.bot.join:write",
+        "vc:meeting.bot.manage:write",
+        "vc:meeting.interaction:write",
+        "vc:meeting.meetingevent:read",
+        "vc:meeting.message:write",
+        "vc:meeting.realtime:read",
+        "vc:meeting.search:read",
+        "vc:note:read",
+        "vc:record:readonly"
+      ],
+      "user_scopes": [
+        "vc:meeting.interaction:write",
+        "vc:meeting.meetingevent:read",
+        "vc:meeting.message:write",
+        "vc:meeting.realtime:read",
+        "vc:meeting.search:read",
+        "vc:note:read",
+        "vc:record:readonly"
+      ]
+    },
+    "wiki": {
+      "i18n_name": {
+        "zh_cn": "知识库",
+        "en_us": "Wiki"
+      },
+      "i18n_desc": {
+        "zh_cn": "知识空间、节点管理",
+        "en_us": "Wiki space and node management"
+      },
+      "tenant_scopes": [
+        "space:document:move",
+        "wiki:member:create",
+        "wiki:member:retrieve",
+        "wiki:member:update",
+        "wiki:node:copy",
+        "wiki:node:create",
+        "wiki:node:move",
+        "wiki:node:read",
+        "wiki:node:retrieve",
+        "wiki:space:read",
+        "wiki:space:retrieve",
+        "wiki:space:write_only"
+      ],
+      "user_scopes": [
+        "space:document:move",
+        "wiki:member:create",
+        "wiki:member:retrieve",
+        "wiki:member:update",
+        "wiki:node:copy",
+        "wiki:node:create",
+        "wiki:node:move",
+        "wiki:node:read",
+        "wiki:node:retrieve",
+        "wiki:space:read",
+        "wiki:space:retrieve",
+        "wiki:space:write_only"
+      ]
+    }
+  }
+}
