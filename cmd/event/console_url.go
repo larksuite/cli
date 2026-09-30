@@ -12,6 +12,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // Landing-page contract for the scan-to-enable deep link, verified against the
@@ -73,13 +74,13 @@ func consoleAddonsURL(brand core.LarkBrand, appID string, a ManifestAddons) (str
 		return "", err
 	}
 	host := core.ResolveEndpoints(brand).Open
-	return fmt.Sprintf("%s%s?%s=%s&addons=%s", host, addonsLandingPath, addonsClientIDParam, appID, encoded), nil
+	return urlrewrite.Rewrite(fmt.Sprintf("%s%s?%s=%s&addons=%s", host, addonsLandingPath, addonsClientIDParam, appID, encoded)), nil
 }
 
 // consoleLandingURL is the bare landing page (no addons) — fallback when encoding fails.
 func consoleLandingURL(brand core.LarkBrand, appID string) string {
 	host := core.ResolveEndpoints(brand).Open
-	return fmt.Sprintf("%s%s?%s=%s", host, addonsLandingPath, addonsClientIDParam, appID)
+	return urlrewrite.Rewrite(fmt.Sprintf("%s%s?%s=%s", host, addonsLandingPath, addonsClientIDParam, appID))
 }
 
 // addonsHintURL returns the scan URL, degrading to the bare landing page on encode error.

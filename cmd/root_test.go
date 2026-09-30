@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,6 +31,7 @@ import (
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/surface"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 // TestPersistentPreRunE_AuthCheckDisabledAnnotations verifies that
@@ -84,11 +86,28 @@ func TestPersistentPreRunE_ConfigSubcommands(t *testing.T) {
 func TestRootLong_AgentSkillsLinkTargetsReadmeSection(t *testing.T) {
 	// The human skills-install guidance now lives in the root usage-template
 	// footer (below the command list), not in the agent-facing Long.
-	if !strings.Contains(rootUsageTemplate, "https://github.com/larksuite/cli#agent-skills") {
-		t.Fatalf("root help footer should link to the README Agent Skills section, got:\n%s", rootUsageTemplate)
+	_, root, _ := buildInternal(context.Background(), buildInvocationForTest(t), WithoutPlugins())
+	help := new(bytes.Buffer)
+	root.SetOut(help)
+	if err := root.Help(); err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(rootUsageTemplate, "https://github.com/larksuite/cli#install-ai-agent-skills") {
-		t.Fatalf("root help should not reference the removed install-ai-agent-skills anchor, got:\n%s", rootUsageTemplate)
+	if !strings.Contains(help.String(), "https://github.com/larksuite/cli#agent-skills") {
+		t.Fatalf("root help footer should link to the README Agent Skills section, got:\n%s", help)
+	}
+	if strings.Contains(help.String(), "https://github.com/larksuite/cli#install-ai-agent-skills") {
+		t.Fatalf("root help should not reference the removed install-ai-agent-skills anchor, got:\n%s", help)
+	}
+}
+
+func TestBuildRewritesRootSkillsHelpURLAfterProviderRegistration(t *testing.T) {
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, "github.com", "mirror.example.test", 1)
+	})
+
+	_, root, _ := buildInternal(context.Background(), buildInvocationForTest(t), WithoutPlugins())
+	if got := root.UsageTemplate(); !strings.Contains(got, "https://mirror.example.test/larksuite/cli#agent-skills") {
+		t.Fatalf("root help URL was not rewritten:\n%s", got)
 	}
 }
 

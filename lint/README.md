@@ -112,6 +112,15 @@ hostnames, and have a current in-scope use. See
 This is not a general outbound-URL or cross-language data-flow analyzer. It does
 not inspect non-Go assets or dynamically constructed values.
 
+For added production lines in the CLI runtime (`main.go`, `cmd/`, `internal/`,
+and `shortcuts/`), the same scan also requires approved static HTTP(S)/WS(S) URLs to
+appear inside `urlrewrite.Rewrite(...)`. This covers literals, constant uses,
+and static concatenation while leaving platform network URLs in
+`core.ResolveEndpoints` untouched; those are rewritten by the transport layer.
+Tests, quality-gate tooling, and the URL rewrite implementation itself are out
+of scope. A non-routable identifier such as a protocol namespace may use
+`//nolint:urlrewrite <reason>` on the same or immediately preceding line.
+
 To add or change a resolver-owned Feishu/Lark endpoint, edit the resolver rather
 than hardcoding the host elsewhere.
 

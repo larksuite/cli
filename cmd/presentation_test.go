@@ -206,7 +206,7 @@ func TestRootGroupsFollowSurfaceConcealmentNotLegacyHiddenState(t *testing.T) {
 
 func TestPresentationDropsRootSkillsFooterWithSkillsRead(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli"}
-	root.SetUsageTemplate(rootUsageTemplate)
+	root.SetUsageTemplate(renderRootUsageTemplate(nil))
 	applyPresentationAffordances(root, surface.NewPlan(map[surface.CommandID]surface.CommandState{
 		surface.CommandSkillsRead: surface.CommandConcealed,
 	}))
@@ -217,7 +217,7 @@ func TestPresentationDropsRootSkillsFooterWithSkillsRead(t *testing.T) {
 
 func TestPresentationProjectsEveryFrameworkOwnedRootHelpTarget(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli", Long: rootLong}
-	root.SetUsageTemplate(rootUsageTemplate)
+	root.SetUsageTemplate(renderRootUsageTemplate(nil))
 	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
 		rootHelpAPI:            surface.CommandConcealed,
 		surface.CommandSchema:  surface.CommandConcealed,
@@ -272,7 +272,7 @@ func TestFrameworkOwnedRootHelpTargetsExistInDefaultTree(t *testing.T) {
 
 func TestPresentationKeepsDefaultRootHelpByteStable(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli", Long: rootLong}
-	root.SetUsageTemplate(rootUsageTemplate)
+	root.SetUsageTemplate(renderRootUsageTemplate(nil))
 	wantLong, wantUsage := root.Long, root.UsageTemplate()
 
 	applyPresentationAffordances(root, nil)

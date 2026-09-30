@@ -128,7 +128,8 @@ func (t *sameOriginRedirectTransport) RoundTrip(req *http.Request) (*http.Respon
 			parseErr,
 		).WithCause(parseErr)
 	}
-	if sameOrigin(req.URL, target) {
+	if sameOrigin(req.URL, target) ||
+		(resp.Request != nil && sameOrigin(resp.Request.URL, target)) {
 		return resp, nil
 	}
 
