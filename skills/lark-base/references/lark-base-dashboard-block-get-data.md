@@ -54,7 +54,7 @@
 
 ```bash
 lark-cli base +dashboard-block-get-data \
-  --base-token bascn***************CtadY \
+  --base-token bascnxxxxxxxxxxxxxxxx \
   --block-id chtxxxxxxxx
 ```
 
@@ -63,13 +63,13 @@ lark-cli base +dashboard-block-get-data \
 ```bash
 # 先看仪表盘里有哪些组件
 lark-cli base +dashboard-block-list \
-  --base-token bascn***************CtadY \
+  --base-token bascnxxxxxxxxxxxxxxxx \
   --dashboard-id blkxxxxxxxx \
   --page-size 100
 
 # 再读取某个组件的最终计算结果
 lark-cli base +dashboard-block-get-data \
-  --base-token bascn***************CtadY \
+  --base-token bascnxxxxxxxxxxxxxxxx \
   --block-id chtxxxxxxxx
 ```
 
@@ -81,7 +81,7 @@ set -euo pipefail
 block_ids=(cht_block_1 cht_block_2)
 for block_id in "${block_ids[@]}"; do
   lark-cli base +dashboard-block-get-data \
-    --base-token bascn***************CtadY \
+    --base-token bascnxxxxxxxxxxxxxxxx \
     --block-id "$block_id"
 done
 ```
@@ -92,7 +92,7 @@ done
 
 ```bash
 lark-cli base +dashboard-block-get \
-  --base-token bascn***************CtadY \
+  --base-token bascnxxxxxxxxxxxxxxxx \
   --dashboard-id blkxxxxxxxx \
   --block-id chtxxxxxxxx
 ```
