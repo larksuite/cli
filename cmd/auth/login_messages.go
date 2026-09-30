@@ -85,8 +85,10 @@ func noWaitAgentHint(context recovery.RenderContext) string {
 }
 
 // getLoginMsg returns the login message bundle for the given language.
+// zh_cn — and values expressing no preference — render Chinese; every other
+// supported locale renders English.
 func getLoginMsg(lang i18n.Lang) *loginMsg {
-	if lang.IsEnglish() {
+	if lang.UsesEnglishUI() {
 		return loginMsgEn
 	}
 	return loginMsgZh
