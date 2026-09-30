@@ -43,12 +43,14 @@ func TestNewUATCallOptions(t *testing.T) {
 // so the refresh path can mint a client_assertion instead of sending a secret.
 func TestNewUATCallOptions_PrivateKeyJWT(t *testing.T) {
 	cfg := &core.CliConfig{
-		AppID:       "cli_pk",
-		Brand:       core.BrandFeishu,
-		UserOpenId:  "ou_test",
-		AuthMethod:  core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		KeyLabel:    "agent-key",
-		KeyProvider: core.KeylessProviderLarkSuite,
+		AppID:            "cli_pk",
+		Brand:            core.BrandFeishu,
+		UserOpenId:       "ou_test",
+		AuthMethod:       core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		KeyLabel:         "agent-key",
+		KeyProvider:      core.KeylessProviderLarkSuite,
+		DPoPMode:         core.DPoPModeRequired,
+		CredentialSource: core.CredentialSourceLocal,
 	}
 	signer := newFakeAuthSigner(t)
 	opts := NewUATCallOptions(cfg, &bytes.Buffer{}, signer)
@@ -64,5 +66,8 @@ func TestNewUATCallOptions_PrivateKeyJWT(t *testing.T) {
 	}
 	if opts.Signer != signer {
 		t.Fatal("Signer was not propagated")
+	}
+	if opts.DPoPMode != core.DPoPModeRequired || opts.DPoPKeyStore == nil {
+		t.Fatal("private-key JWT configuration lost the local DPoP policy")
 	}
 }
