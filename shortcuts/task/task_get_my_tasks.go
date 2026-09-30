@@ -20,11 +20,14 @@ import (
 var GetMyTasks = common.Shortcut{
 	Service:     "task",
 	Command:     "+get-my-tasks",
-	Description: "List tasks assigned to me",
+	Description: "list tasks assigned to me only",
 	Risk:        "read",
 	Scopes:      []string{"task:task:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
+	Tips: []string{
+		"For task lists without an assigned-to-me scope, use +get-related-tasks; for a name-only lookup, use +search --query.",
+	},
 
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search for tasks by summary (exact match first, then partial match)"},

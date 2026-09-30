@@ -195,13 +195,14 @@ func buildTaskCreateBody(runtime *common.RuntimeContext) (map[string]interface{}
 }
 
 var CreateTask = common.Shortcut{
-	Service:     "task",
-	Command:     "+create",
-	Description: "create a task",
-	Risk:        "write",
-	Scopes:      []string{"task:task:write"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:         "task",
+	Command:         "+create",
+	Description:     "create a task",
+	Risk:            "write",
+	Scopes:          []string{"task:task:write"},
+	AuthTypes:       []string{"user", "bot"},
+	HasFormat:       true,
+	PrintFlagSchema: printTaskCreateDataFlagSchema,
 
 	Flags: []common.Flag{
 		{Name: "summary", Desc: "task title"},
@@ -211,7 +212,7 @@ var CreateTask = common.Shortcut{
 		{Name: "due", Desc: "due date (ISO 8601 / date:YYYY-MM-DD / relative:+2d / ms timestamp)"},
 		{Name: "tasklist-id", Desc: "tasklist id or applink URL"},
 		{Name: "idempotency-key", Desc: "client token for idempotency"},
-		{Name: "data", Desc: "JSON payload for creating task"},
+		{Name: "data", Desc: "JSON object of task create fields; inspect --print-schema --flag-name data (summary may also come from --summary)"},
 	},
 
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

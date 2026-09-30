@@ -32,23 +32,27 @@ lark-cli task +create \
 
 # Preview the API call without executing
 lark-cli task +create --summary "Test Task" --dry-run
+
+# Inspect fields accepted by --data, or one nested field
+lark-cli task +create --print-schema --flag-name data
+lark-cli task +create --print-schema --flag-name data.is_milestone
 ```
 
 ## Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `--summary <text>` | Yes | The title or summary of the task |
+| `--summary <text>` | No | Task title; the final create request requires a title, supplied here or as `--data.summary`. |
 | `--description <text>` | No | Detailed description of the task |
 | `--assignee <id>` | No | Assignee ID. Use user `open_id` like `ou_xxx` for people, or app ID like `cli_xxx` for apps. |
 | `--follower <id>` | No | Follower ID. Use user `open_id` like `ou_xxx` for people, or app ID like `cli_xxx` for apps. |
 | `--due <time>` | No | Due date. Supports ISO 8601, `YYYY-MM-DD`, relative time (e.g., `+2d`), or ms timestamp. `YYYY-MM-DD` and relative time will automatically set it as an all-day task. |
 | `--tasklist-id <id>` | No | The GUID of the tasklist, or a full AppLink URL (the CLI will automatically extract the `guid` parameter from the URL). |
 | `--idempotency-key <key>` | No | Client token to ensure idempotency of the request. |
-| `--data <json>` | No | JSON object merged into the task create request for API fields without dedicated flags, such as `{"is_milestone":true}`. Explicit named flags override same-named fields in this object. |
+| `--data <json>` | No | JSON object merged into the task create request for API fields without dedicated flags, such as `{"is_milestone":true}`. Inspect its fields with `--print-schema --flag-name data`; explicit named flags override same-named fields in this object. |
 | `--dry-run` | No | Preview the API call (JSON payload) without actually creating the task. |
 
-> **Required:** If `task +create` has no dedicated flag for a field requested by the user, first inspect `lark-cli schema task.tasks.create`, then add that field to `--data` using the exact field name, type, and nesting from the Meta API request-body schema. Do not omit requested fields or guess their JSON shape. Keep fields already supplied through dedicated flags out of `--data`.
+> **Required:** If `task +create` has no dedicated flag for a field requested by the user, inspect `lark-cli task +create --print-schema --flag-name data` (or `data.<field>` for one field), then add it to `--data` using the exact field name, type, and nesting. Do not omit requested fields or guess their JSON shape. Keep fields already supplied through dedicated flags out of `--data`.
 
 Prefer this shortcut over the raw `tasks create` command when `--data` can express the request. Do not assume that other shortcuts support `--data`; check each shortcut's `--help` output first.
 

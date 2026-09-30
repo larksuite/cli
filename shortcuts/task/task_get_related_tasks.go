@@ -23,11 +23,14 @@ const (
 var GetRelatedTasks = common.Shortcut{
 	Service:     "task",
 	Command:     "+get-related-tasks",
-	Description: "list tasks related to me",
+	Description: "list tasks related to me, including created and followed tasks",
 	Risk:        "read",
 	Scopes:      []string{"task:task:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
+	Tips: []string{
+		"Use this for task lists without an explicit assigned-to-me scope; the results are related to the current user.",
+	},
 	Flags: []common.Flag{
 		{Name: "include-complete", Type: "bool", Desc: "default true; set false to return only incomplete tasks"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages (max 40)"},

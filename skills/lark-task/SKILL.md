@@ -24,7 +24,14 @@ metadata:
 
 shortcut 名称只能来自本 Skill 的 Shortcut 表或 `lark-cli task --help`；原生 resource/method 以逐级 help 为准，参数名、类型和嵌套结构以 method schema 为准。
 
-> **任务搜索技巧**：先区分用户是否**特地指定使用搜索 skill**，以及是否真的提供了**查询关键字**（例如任务名称、关键词、片段描述）。如果用户特地指定使用搜索 skill，或明确给出了任务查询关键字，则目标是**任务**时优先使用 `+search`。如果用户没有特地指定使用搜索 skill，且意图里没有查询关键字，只有范围条件（例如“今年以来”“已完成”“由我创建”“我关注的”），并且使用 `+search` 与 `+get-related-tasks` / `+get-my-tasks` 都能达到目的时，应优先使用列表型能力，而不是搜索型能力。其中，“与我相关 / 我关注的 / 由我创建”等优先考虑 `+get-related-tasks`；“我负责的 / 分配给我”的列表优先考虑 `+get-my-tasks`。不要把时间范围词（例如“今年以来”）本身误当成 `query` 去走搜索。
+## 任务查询范围（必读）
+
+- 用户只问“有哪些飞书任务 / 待完成的飞书任务 / 今天截止的飞书任务”等，**未指定任务关系范围**且没有任务名称或关键词时，默认以当前用户相关任务为候选集，使用 `+get-related-tasks`；答复中说明查询范围是“与当前用户相关”，不要声称已查询租户全部任务。
+- 只有用户明确“我负责/分配给我”时，才使用仅查询已分配任务的 `+get-my-tasks`。不要把“当前用户的任务”自行改写成“分配给我”。“由我创建 / 我关注的 / 与我相关”使用 `+get-related-tasks` 及相应关系过滤。
+- 仅有任务名称或关键词且未限定分配关系时，使用 `+search --query`，不要用仅在已分配任务中本地匹配的 `+get-my-tasks --query`；明确限定“分配给我”的名称查询可以使用 `+get-my-tasks --query`。用户特地指定使用搜索 skill 时，优先考虑 `+search`。只有时间或完成状态条件时优先列表命令，不要把“今天”“今年以来”等时间词当作 `query`。
+- 无范围的“待完成”使用 `+get-related-tasks --include-complete=false --page-all --format json`。需要完整结果时，若返回 `has_more=true`，用返回的 `page_token` 继续查询直至 `has_more=false`；未查完时明确说明结果不完整。
+- “今天截止且未完成”同样先取未完成的相关任务，再按 JSON 中的 `due.timestamp` 和用户时区筛选；`+get-related-tasks --page-token` 是更新时间游标，不能由截止日期推算。具体步骤见 [`+get-related-tasks`](references/lark-task-get-related-tasks.md)。
+
 > **任务搜索相关性提示**：`+search` 当前不会自动判断搜索结果与搜索发起人的相关性。如果用户明确要求搜索“与我相关”的任务，必须先识别具体关系，获取当前用户的 `open_id`，并显式传入对应的 `--assignee`（负责人）、`--creator`（创建人）或 `--follower`（关注人）过滤条件；不能只依赖 `query` 期待自动返回与当前用户相关的任务。
 > **任务清单搜索技巧**：任务清单也遵循同样的判断逻辑。先区分用户是否**特地指定使用搜索 skill**，以及是否真的提供了**清单查询关键字**（例如清单名称、关键词、片段描述）。如果用户特地指定使用搜索 skill，或明确给出了清单查询关键字，则优先使用 `+tasklist-search`。如果用户没有特地指定使用搜索 skill，且意图里没有查询关键字，只有范围条件（例如“由我创建的任务清单”“今年以来创建的清单”），并且使用搜索或原生列取清单都能达到目的时，应优先使用原生 `tasklists.list` 接口列取清单（先 `schema task.tasklists.list`，再 `lark-cli task tasklists list --as user ...`），再按 `creator`、`created_at` 等字段做本地筛选和分页控制。
 > **意图区分补充**：像“搜索飞书中今年以来我关注的任务”这类表达，虽然字面带有“搜索”，但如果没有真正的查询关键字，且本质是在限定“与我相关 + 时间范围”，则应优先走 `+get-related-tasks`；像“搜索飞书中由我创建的任务清单”这类表达，如果没有清单关键字，且本质是在限定“清单范围 + 创建者”，则应优先走原生 `tasklists.list` 后筛选，而不是直接走搜索型 shortcut。
@@ -68,8 +75,8 @@ shortcut 名称只能来自本 Skill 的 Shortcut 表或 `lark-cli task --help`�
 | [`+assign`](references/lark-task-assign.md) | assign or remove task members |
 | [`+followers`](references/lark-task-followers.md) | manage task followers |
 | [`+reminder`](references/lark-task-reminder.md) | manage task reminders |
-| [`+get-my-tasks`](references/lark-task-get-my-tasks.md) | List tasks assigned to me |
-| [`+get-related-tasks`](references/lark-task-get-related-tasks.md) | list tasks related to me |
+| [`+get-my-tasks`](references/lark-task-get-my-tasks.md) | list tasks assigned to me only |
+| [`+get-related-tasks`](references/lark-task-get-related-tasks.md) | list tasks related to me, including created and followed tasks |
 | [`+search`](references/lark-task-search.md) | search tasks |
 | [`+upload-attachment`](references/lark-task-upload-attachment.md) | upload a local file as an attachment to a task |
 | [`+tasklist-create`](references/lark-task-tasklist-create.md) | create a tasklist and optionally add tasks |

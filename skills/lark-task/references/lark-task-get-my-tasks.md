@@ -1,6 +1,6 @@
 # task +get-my-tasks
 
-If the user query only specifies a task name (e.g., "Complete task Lobster No. 1"), use this command to list and search for the task by its summary.
+Use this command only when the user explicitly asks for tasks assigned to them. If they provide only a task name without an assignee-only scope, use `+search --query` to search visible tasks instead.
 
 > **Prerequisites:** Please read `../../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 > 
@@ -14,18 +14,18 @@ List tasks assigned to the current user, with support for filtering by completio
 By default, the command will automatically paginate up to 20 times. Use `--page-all` to fetch more (up to 40 pages).
 
 > **Pending vs all tasks:** When `--complete` is not provided, the result contains **both completed and incomplete tasks**.
-> For standup / daily-summary / pending-todo scenarios, you **must** pass `--complete=false`; otherwise completed tasks will be surfaced as if they were still pending.
+> Within this assigned-only query, pass `--complete=false` for pending-only views; otherwise completed tasks will be surfaced as if they were still pending.
 
 ## Recommended Commands
 
 ```bash
-# Search for a specific task by name
+# Find a named task within tasks assigned to me
 lark-cli task +get-my-tasks --query "Lobster No. 1"
 
-# Get all my tasks, both completed and incomplete (fetches up to 20 pages by default)
+# Get all tasks assigned to me, both completed and incomplete (fetches up to 20 pages by default)
 lark-cli task +get-my-tasks
 
-# Pending-only: my incomplete tasks (use this for standup/daily-summary)
+# Pending-only within tasks assigned to me
 lark-cli task +get-my-tasks --complete=false
 
 # Pending-only with a due-date upper bound (e.g. end of today / this week)
