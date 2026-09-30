@@ -123,6 +123,9 @@ func TestCreateTasklist_PartialFailure(t *testing.T) {
 					"guid": "tl-new",
 					"name": "My List",
 					"url":  "https://example.feishu.cn/tl-new",
+					"members": []interface{}{
+						map[string]interface{}{"id": "ou_editor", "name": "Editor", "role": "editor", "type": "user"},
+					},
 				},
 			},
 		},
@@ -192,6 +195,7 @@ func TestCreateTasklist_PartialFailure(t *testing.T) {
 		t.Fatalf("decode output: %v\n%s", decodeErr, out)
 	}
 	resultData, _ := envelope["data"].(map[string]interface{})
+	assertTasklistMembers(t, resultData, "ou_editor", "Editor")
 	createdTasks, _ := resultData["created_tasks"].([]interface{})
 	if len(createdTasks) != 1 {
 		t.Fatalf("created_tasks = %#v, want one item", resultData["created_tasks"])
