@@ -41,9 +41,8 @@ func jqFilter(w io.Writer, data interface{}, expr string, raw bool) error {
 	}
 
 	// Normalize data through toGeneric so typed structs become map[string]any.
+	// gojq handles json.Number values without losing large-integer precision.
 	normalized := toGeneric(data)
-	// Convert json.Number values to gojq-compatible types.
-	normalized = convertNumbers(normalized)
 
 	iter := code.Run(normalized)
 	for {
@@ -127,32 +126,4 @@ func writeJqValue(w io.Writer, v interface{}, raw bool) error {
 		fmt.Fprintln(w, string(b))
 	}
 	return nil
-}
-
-// convertNumbers recursively converts json.Number values to int or float64
-// so that gojq can process them correctly.
-func convertNumbers(v interface{}) interface{} {
-	switch val := v.(type) {
-	case json.Number:
-		if i, err := val.Int64(); err == nil {
-			return int(i)
-		}
-		if f, err := val.Float64(); err == nil {
-			return f
-		}
-		// Fallback: return as string (shouldn't happen for valid JSON numbers).
-		return val.String()
-	case map[string]interface{}:
-		for k, elem := range val {
-			val[k] = convertNumbers(elem)
-		}
-		return val
-	case []interface{}:
-		for i, elem := range val {
-			val[i] = convertNumbers(elem)
-		}
-		return val
-	default:
-		return v
-	}
 }
