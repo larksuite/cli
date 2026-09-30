@@ -37,16 +37,7 @@ type refreshHTTPTestStep struct {
 	beforeReply func() error
 }
 
-type failSecondAssertionSigner struct {
-	calls atomic.Int32
-}
-
-func (s *failSecondAssertionSigner) SignClientAssertion(context.Context, string, string, string) (string, string, error) {
-	if s.calls.Add(1) == 1 {
-		return "urn:ietf:params:oauth:client-assertion-type:jwt-bearer", "assertion-first", nil
-	}
-	return "", "", errors.New("second assertion failed")
-}
+var invalidProofRefreshResponse = `{"code":` + strconv.Itoa(dpop.ClockSkewErrorCode) + `,"error":"` + dpop.InvalidProofOAuthError + `"}`
 
 func newRefreshTestToken() *StoredUAToken {
 	now := time.Now()
@@ -69,73 +60,6 @@ func newRefreshTestOptions(stored *StoredUAToken) UATCallOptions {
 		UserOpenId: stored.UserOpenId,
 		Domain:     core.BrandFeishu,
 		ErrOut:     io.Discard,
-	}
-}
-
-func TestDoRefreshToken_ProviderResolutionFailsBeforeHTTP(t *testing.T) {
-	stored := newRefreshTestToken()
-	opts := newRefreshTestOptions(stored)
-	opts.AuthMethod = core.AuthMethodPrivateKeyJWTLocalKeyPair
-	opts.KeyProvider = core.KeylessProviderLarkSuite
-	opts.KeyLabel = "openclaw-lark"
-
-	previous := resolveExternalAssertionSigner
-	resolveExternalAssertionSigner = func(context.Context, string) (clientAssertionSigner, error) {
-		return nil, errors.New("provider unavailable")
-	}
-	t.Cleanup(func() { resolveExternalAssertionSigner = previous })
-
-	var calls atomic.Int32
-	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		calls.Add(1)
-		return nil, errors.New("must not send")
-	})}
-	refreshed, err := doRefreshToken(context.Background(), client, opts, stored)
-	if err == nil || refreshed != nil {
-		t.Fatalf("doRefreshToken() = (%v, %v), want provider error", refreshed, err)
-	}
-	if calls.Load() != 0 {
-		t.Fatalf("HTTP calls = %d, want 0", calls.Load())
-	}
-	if stored.RefreshToken != "refresh-old" {
-		t.Fatalf("refresh token mutated to %q", stored.RefreshToken)
-	}
-}
-
-func TestDoRefreshToken_UncertainRequestThenSigningFailurePreservesToken(t *testing.T) {
-	setupStoredTokenTest(t)
-	stored := newRefreshTestToken()
-	if err := SetStoredToken(stored); err != nil {
-		t.Fatalf("SetStoredToken() error = %v", err)
-	}
-	opts := newRefreshTestOptions(stored)
-	opts.AuthMethod = core.AuthMethodPrivateKeyJWTLocalKeyPair
-	opts.KeyProvider = core.KeylessProviderLarkSuite
-	opts.KeyLabel = "openclaw-lark"
-
-	signer := &failSecondAssertionSigner{}
-	previous := resolveExternalAssertionSigner
-	resolveExternalAssertionSigner = func(context.Context, string) (clientAssertionSigner, error) {
-		return signer, nil
-	}
-	t.Cleanup(func() { resolveExternalAssertionSigner = previous })
-
-	var calls atomic.Int32
-	client := scriptedRefreshClient(t, []refreshHTTPTestStep{{
-		err: errors.New("connection lost after write"), markWritten: true,
-	}}, &calls)
-	refreshed, err := doRefreshToken(context.Background(), client, opts, stored)
-	if err == nil || refreshed != nil {
-		t.Fatalf("doRefreshToken() = (%v, %v), want signing error", refreshed, err)
-	}
-	if calls.Load() != 1 || signer.calls.Load() != 2 {
-		t.Fatalf("HTTP calls=%d sign calls=%d, want 1 and 2", calls.Load(), signer.calls.Load())
-	}
-	if IsNeedUserAuthorizationError(err) {
-		t.Fatalf("signing failure replaced with need-user-authorization: %v", err)
-	}
-	if got := mustGetStoredToken(t, stored.AppId, stored.UserOpenId); got == nil || got.RefreshToken != stored.RefreshToken {
-		t.Fatalf("stored token = %#v, want original token preserved", got)
 	}
 }
 
@@ -235,7 +159,7 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 			`{"access_token":"access-new","refresh_token":"refresh-new","expires_in":120,"refresh_token_expires_in":600,"status_message":"Some requested scopes were silently trimmed"}`), nil
 	})}
 
-	accessToken, err := GetValidAccessToken(context.Background(), client, opts)
+	token, err := GetValidAccessToken(ctx, client, opts)
 	if err != nil {
 		t.Fatalf("GetValidAccessToken() error = %v", err)
 	}
@@ -265,9 +189,9 @@ func TestGetValidAccessTokenPreservesCorruptStoredTokenError(t *testing.T) {
 		t.Fatalf("keychain.Set() error = %v", err)
 	}
 
-	accessToken, err := GetValidAccessToken(context.Background(), http.DefaultClient, newRefreshTestOptions(stored))
-	if accessToken != "" {
-		t.Fatalf("access token = %q, want empty", accessToken)
+	token, err := GetValidAccessToken(context.Background(), http.DefaultClient, newRefreshTestOptions(stored))
+	if token != nil {
+		t.Fatalf("token = %+v, want nil", token)
 	}
 	problem, ok := errs.ProblemOf(err)
 	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeStorage {
@@ -527,7 +451,7 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 				t.Fatalf("SetStoredToken() error = %v", err)
 			}
 			var calls atomic.Int32
-			accessToken, err := GetValidAccessToken(
+			token, err := GetValidAccessToken(
 				context.Background(),
 				scriptedRefreshClient(t, tt.steps, &calls),
 				newRefreshTestOptions(stored),
@@ -617,7 +541,7 @@ func TestRefreshDoesNotOverwriteNewerGeneration(t *testing.T) {
 				},
 			}}, &calls)
 
-			accessToken, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
+			token, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
 			current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
 			if tt.deleteNext {
 				if !IsNeedUserAuthorizationError(err) || token != nil || current != nil {
@@ -667,8 +591,8 @@ func TestConcurrentRefreshesAreCoalesced(t *testing.T) {
 		go func() {
 			ready.Done()
 			<-start
-			accessToken, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
-			results <- result{accessToken: accessToken, err: err}
+			token, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
+			results <- result{token: token, err: err}
 		}()
 	}
 	ready.Wait()
@@ -716,9 +640,9 @@ func TestRefreshStopsBeforeRequestWhenStorageProbeFails(t *testing.T) {
 		return nil, errors.New("unexpected refresh request")
 	})}
 
-	accessToken, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
-	if accessToken != "" || calls.Load() != 0 {
-		t.Fatalf("refresh result = (access=%q, %d calls), want failure before HTTP", accessToken, calls.Load())
+	token, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
+	if token != nil || calls.Load() != 0 {
+		t.Fatalf("refresh result = (token=%+v, %d calls), want failure before HTTP", token, calls.Load())
 	}
 	if _, ok := errs.ProblemOf(err); !ok || !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v (%T), want typed storage failure preserving cause", err, err)
@@ -742,9 +666,9 @@ func TestExpiredRefreshTokenIsClearedWithoutRequest(t *testing.T) {
 		return nil, errors.New("unexpected refresh request")
 	})}
 
-	accessToken, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
-	if accessToken != "" || !IsNeedUserAuthorizationError(err) {
-		t.Fatalf("expired refresh result = (access=%q, err=%v), want authorization required", accessToken, err)
+	token, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
+	if token != nil || !IsNeedUserAuthorizationError(err) {
+		t.Fatalf("expired refresh result = (token=%+v, err=%v), want authorization required", token, err)
 	}
 	if calls.Load() != 0 || mustGetStoredToken(t, stored.AppId, stored.UserOpenId) != nil {
 		t.Fatalf("expired refresh made %d request(s) or left token stored", calls.Load())

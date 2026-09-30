@@ -28,15 +28,17 @@ import (
 
 // UATCallOptions contains options for UAT API calls.
 type UATCallOptions struct {
-	UserOpenId  string
-	AppId       string
-	AppSecret   string
-	Domain      core.LarkBrand
-	AuthMethod  string           // "" == client_secret; either private-key JWT method
-	KeyLabel    string           // signer key handle for private-key JWT
-	KeyProvider string           // built-in backend name, external provider, or empty legacy auto-selection
-	Signer      keysigner.Signer // active signer for private-key JWT
-	ErrOut      io.Writer        // diagnostic/status output (caller injects f.IOStreams.ErrOut)
+	UserOpenId   string
+	AppId        string
+	AppSecret    string
+	Domain       core.LarkBrand
+	ErrOut       io.Writer // diagnostic/status output (caller injects f.IOStreams.ErrOut)
+	DPoPMode     core.DPoPMode
+	DPoPKeyStore *dpop.KeyStore
+	AuthMethod   string
+	KeyLabel     string
+	KeyProvider  string
+	Signer       keysigner.Signer
 }
 
 // UATStatus represents the status of a user access token.
@@ -50,8 +52,7 @@ type UATStatus struct {
 	TokenStatus      string `json:"tokenStatus,omitempty"`
 }
 
-// NewUATCallOptions creates UATCallOptions from a CLI config and the
-// invocation-scoped signer selected for that config.
+// NewUATCallOptions creates UATCallOptions from a CLI config.
 func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer, signer keysigner.Signer) UATCallOptions {
 	if errOut == nil {
 		errOut = os.Stderr
@@ -61,20 +62,35 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer, signer keysigner.S
 		mode = core.DPoPModeDisabled
 	}
 	return UATCallOptions{
-		UserOpenId:  cfg.UserOpenId,
-		AppId:       cfg.AppID,
-		AppSecret:   cfg.AppSecret,
-		Domain:      cfg.Brand,
-		AuthMethod:  cfg.AuthMethod,
-		KeyLabel:    cfg.KeyLabel,
-		KeyProvider: cfg.KeyProvider,
-		Signer:      signer,
-		ErrOut:      errOut,
+		UserOpenId:   cfg.UserOpenId,
+		AppId:        cfg.AppID,
+		AppSecret:    cfg.AppSecret,
+		Domain:       cfg.Brand,
+		ErrOut:       errOut,
+		DPoPMode:     mode,
+		DPoPKeyStore: dpop.NewKeyStore(nil),
+		AuthMethod:   cfg.AuthMethod,
+		KeyLabel:     cfg.KeyLabel,
+		KeyProvider:  cfg.KeyProvider,
+		Signer:       signer,
 	}
 }
 
-// GetValidAccessToken obtains a valid access token for the given user.
-func GetValidAccessToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (string, error) {
+// AccessTokenResult carries the token together with its proof-of-possession
+// binding. Binding is nil for Bearer tokens.
+type AccessTokenResult struct {
+	AccessToken string
+	DPoP        *dpop.Binding
+}
+
+// GetValidAccessToken obtains a valid user token and restores its local DPoP binding.
+func GetValidAccessToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (*AccessTokenResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if opts.DPoPKeyStore == nil {
+		opts.DPoPKeyStore = dpop.NewKeyStore(nil)
+	}
 	stored, err := GetStoredToken(opts.AppId, opts.UserOpenId)
 	if err != nil {
 		return nil, err
@@ -454,7 +470,7 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 		ClientID:     opts.AppId,
 	}
 	form := url.Values{}
-	usedAssertion, err := clientAuth.applyClientAssertion(ctx, form, core.ClientAssertionAudience(opts.Domain))
+	usedAssertion, err := clientAuth.ApplyClientAssertion(ctx, form, core.ClientAssertionAudience(opts.Domain))
 	if err != nil {
 		return refreshResult{action: refreshStopAndPreserve, err: err}
 	}

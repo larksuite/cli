@@ -230,6 +230,8 @@ type CliConfig struct {
 	UserOpenId          string
 	UserName            string
 	Lang                i18n.Lang
+	DPoPMode            DPoPMode
+	CredentialSource    CredentialSource
 	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 	AuthMethod          string // "" == client_secret; private_key_jwt or private_key_jwt_local_keypair
 	KeySource           string // tee or file for private-key JWT authentication
@@ -403,13 +405,15 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	}
 
 	cfg := &CliConfig{
-		ProfileName: app.ProfileName(),
-		AppID:       app.AppId,
-		AppSecret:   secret,
-		Brand:       ParseBrand(string(app.Brand)),
-		Lang:        app.Lang,
-		DefaultAs:   app.DefaultAs,
-		AuthMethod:  app.AuthMethod,
+		ProfileName:      app.ProfileName(),
+		AppID:            app.AppId,
+		AppSecret:        secret,
+		Brand:            ParseBrand(string(app.Brand)),
+		Lang:             app.Lang,
+		DefaultAs:        app.DefaultAs,
+		AuthMethod:       app.AuthMethod,
+		DPoPMode:         dpopMode,
+		CredentialSource: CredentialSourceLocal,
 	}
 	if app.KeyRef != nil {
 		cfg.KeySource = app.KeyRef.Source

@@ -56,7 +56,7 @@ func TestClientAuthRestoresSoftwareSigner(t *testing.T) {
 			t.Fatal(err)
 		}
 		form := url.Values{}
-		used, err := ClientAuthFromConfig(cfg, reopened).applyClientAssertion(ctx, form, "https://example.com/token")
+		used, err := ClientAuthFromConfig(cfg, reopened).ApplyClientAssertion(ctx, form, "https://example.com/token")
 		if err != nil || !used || form.Get("client_assertion_type") != jwt.ClientAssertionType || form.Has("client_secret") {
 			t.Fatalf("software client assertion: used=%v, error=%v", used, err)
 		}
@@ -129,10 +129,10 @@ func (f *fakeAuthSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) 
 
 func (*fakeAuthSigner) DeleteKey(context.Context, keysigner.KeyRef) error { return nil }
 
-func TestClientAuth_applyClientAssertion_ClientSecret(t *testing.T) {
+func TestClientAuth_ApplyClientAssertion_ClientSecret(t *testing.T) {
 	ca := ClientAuth{AppID: "cli_a", AppSecret: "test-secret"} // AuthMethod "" => client_secret
 	form := url.Values{}
-	used, err := ca.applyClientAssertion(context.Background(), form, "https://aud/token")
+	used, err := ca.ApplyClientAssertion(context.Background(), form, "https://aud/token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestClientAuth_applyClientAssertion_ClientSecret(t *testing.T) {
 	}
 }
 
-func TestClientAuth_applyClientAssertion_PrivateKeyJWT(t *testing.T) {
+func TestClientAuth_ApplyClientAssertion_PrivateKeyJWT(t *testing.T) {
 	for _, method := range []string{
 		core.AuthMethodPrivateKeyJWT,
 		core.AuthMethodPrivateKeyJWTLocalKeyPair,
@@ -157,7 +157,7 @@ func TestClientAuth_applyClientAssertion_PrivateKeyJWT(t *testing.T) {
 				KeyLabel:   "k",
 			}
 			form := url.Values{}
-			used, err := ca.applyClientAssertion(context.Background(), form, "https://accounts.feishu.cn/open-apis/authen/v2/oauth/token")
+			used, err := ca.ApplyClientAssertion(context.Background(), form, "https://accounts.feishu.cn/open-apis/authen/v2/oauth/token")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -177,29 +177,29 @@ func TestClientAuth_applyClientAssertion_PrivateKeyJWT(t *testing.T) {
 	}
 }
 
-func TestClientAuth_applyClientAssertion_NilSigner(t *testing.T) {
+func TestClientAuth_ApplyClientAssertion_NilSigner(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	for _, method := range []string{
 		core.AuthMethodPrivateKeyJWT,
 		core.AuthMethodPrivateKeyJWTLocalKeyPair,
 	} {
 		ca := ClientAuth{AppID: "cli_a", AuthMethod: method}
-		if _, err := ca.applyClientAssertion(context.Background(), url.Values{}, "aud"); err == nil {
+		if _, err := ca.ApplyClientAssertion(context.Background(), url.Values{}, "aud"); err == nil {
 			t.Fatalf("expected error when %s has no signer", method)
 		}
 	}
 }
 
-func TestClientAuth_applyClientAssertion_UnknownProviderFailsClosed(t *testing.T) {
+func TestClientAuth_ApplyClientAssertion_UnknownProviderFailsClosed(t *testing.T) {
 	ca := ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: newFakeAuthSigner(t), KeyLabel: "k", KeyProvider: "evil.provider"}
 	form := url.Values{}
-	used, err := ca.applyClientAssertion(context.Background(), form, "aud")
+	used, err := ca.ApplyClientAssertion(context.Background(), form, "aud")
 	if err == nil || used || form.Has("client_assertion") {
 		t.Fatalf("unknown provider must fail closed: used=%v form=%v err=%v", used, form, err)
 	}
 }
 
-func TestClientAuth_applyClientAssertion_ExplicitProviderDoesNotUseBuiltinOrSecret(t *testing.T) {
+func TestClientAuth_ApplyClientAssertion_ExplicitProviderDoesNotUseBuiltinOrSecret(t *testing.T) {
 	fake := &fakeExternalAssertionSigner{}
 	previous := resolveExternalAssertionSigner
 	resolveExternalAssertionSigner = func(_ context.Context, provider string) (clientAssertionSigner, error) {
@@ -215,9 +215,9 @@ func TestClientAuth_applyClientAssertion_ExplicitProviderDoesNotUseBuiltinOrSecr
 		Signer: newFakeAuthSigner(t), KeyLabel: "openclaw-lark", KeyProvider: core.KeylessProviderLarkSuite,
 	}
 	form := url.Values{}
-	used, err := ca.applyClientAssertion(context.Background(), form, "open.feishu.cn")
+	used, err := ca.ApplyClientAssertion(context.Background(), form, "open.feishu.cn")
 	if err != nil || !used {
-		t.Fatalf("applyClientAssertion = used %v err %v", used, err)
+		t.Fatalf("ApplyClientAssertion = used %v err %v", used, err)
 	}
 	if form.Get("client_assertion") != "external.jwt.1" || form.Has("client_secret") ||
 		fake.keyRef != "openclaw-lark" || fake.clientID != "cli_external" || fake.audience != "open.feishu.cn" {
@@ -242,9 +242,9 @@ func TestClientAuth_ResolveSignerPreparedCopyReusesResolutionAndRemintsAssertion
 	}
 	forms := []url.Values{{}, {}}
 	for _, form := range forms {
-		used, err := prepared.applyClientAssertion(context.Background(), form, "open.feishu.cn")
+		used, err := prepared.ApplyClientAssertion(context.Background(), form, "open.feishu.cn")
 		if err != nil || !used {
-			t.Fatalf("applyClientAssertion = used %v err %v", used, err)
+			t.Fatalf("ApplyClientAssertion = used %v err %v", used, err)
 		}
 	}
 	if resolveCalls != 1 || fake.calls != 2 || forms[0].Get("client_assertion") == forms[1].Get("client_assertion") {
