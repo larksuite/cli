@@ -107,7 +107,7 @@ type KeyStore struct {
 
 func NewKeyStore(kc keychain.KeychainAccess) *KeyStore {
 	store := newKeyStoreWithSigners(kc, nil)
-	store.signers = append(store.signers, keysigner.NewPlatformSigners(signerDirectory)...)
+	store.signers = append(store.signers, registrationPlatformSigners()...)
 	store.signers = append(store.signers, softwareSigner{keychain: store.keychain})
 	return store
 }
