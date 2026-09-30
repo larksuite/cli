@@ -84,7 +84,7 @@ func (c ClientAuth) isPrivateKeyJWT() bool {
 // client_secret authentication need no provider discovery. Keeping the
 // resolved helper on ClientAuth separates expensive provider discovery from
 // assertion minting: callers may reuse the returned value, while every call to
-// applyClientAssertion still asks the signer for a fresh assertion.
+// ApplyClientAssertion still asks the signer for a fresh assertion.
 func (c ClientAuth) ResolveSigner(ctx context.Context) (ClientAuth, error) {
 	if !c.isPrivateKeyJWT() || c.KeyProvider == "" ||
 		c.KeyProvider == keysigner.SoftwareSignerName ||
@@ -124,11 +124,11 @@ func SignClientAssertion(ctx context.Context, signer keysigner.Signer, helper *k
 	return jwt.ClientAssertionType, assertion, err
 }
 
-// applyClientAssertion adds client_assertion(+type) to a token-endpoint form
+// ApplyClientAssertion adds client_assertion(+type) to a token-endpoint form
 // for either private-key JWT method and returns true. For client_secret it
 // returns false, leaving the caller to apply its own secret-based
 // authentication. audience is the assertion aud claim.
-func (c ClientAuth) applyClientAssertion(ctx context.Context, form url.Values, audience string) (bool, error) {
+func (c ClientAuth) ApplyClientAssertion(ctx context.Context, form url.Values, audience string) (bool, error) {
 	if !c.isPrivateKeyJWT() {
 		return false, nil
 	}

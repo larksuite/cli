@@ -68,7 +68,11 @@ func TestRegistrationSignersSoftwareFallback(t *testing.T) {
 	directory := isolateSoftwareStorage(t)
 	kc := &testMetadataStore{values: map[string]string{}}
 	signers := RegistrationSigners(kc)
-	names := append(keysigner.PlatformSignerNames(), keysigner.SoftwareSignerName)
+	names := keysigner.PlatformSignerNames()
+	if runtime.GOOS == "darwin" {
+		names = []string{keysigner.MacOSKeychainSignerName}
+	}
+	names = append(names, keysigner.SoftwareSignerName)
 	var got []string
 	for _, signer := range signers {
 		got = append(got, signer.Name())
@@ -138,5 +142,18 @@ func TestRegistrationSignersSoftwareFallback(t *testing.T) {
 	}
 	if len(kc.values) != 1 || kc.values[softwareUnlockAccount] == "" {
 		t.Fatal("key deletion changed the shared protection secret")
+	}
+}
+
+func TestLegacyMacOSSignerRemainsKeychain(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS private-key JWT policy")
+	}
+	signer, err := ResolveSigner("", &testMetadataStore{values: map[string]string{}})
+	if err != nil || signer.Name() != keysigner.MacOSKeychainSignerName {
+		t.Fatalf("legacy signer = %v, error = %v", signer, err)
+	}
+	if got := keysigner.PlatformSignerNames(); len(got) < 2 || got[0] != keysigner.MacOSSecureEnclaveSignerName {
+		t.Fatal("private-key JWT policy changed the shared DPoP platform preference")
 	}
 }

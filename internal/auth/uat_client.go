@@ -28,15 +28,17 @@ import (
 
 // UATCallOptions contains options for UAT API calls.
 type UATCallOptions struct {
-	UserOpenId  string
-	AppId       string
-	AppSecret   string
-	Domain      core.LarkBrand
-	AuthMethod  string           // "" == client_secret; either private-key JWT method
-	KeyLabel    string           // signer key handle for private-key JWT
-	KeyProvider string           // built-in backend name, external provider, or empty legacy auto-selection
-	Signer      keysigner.Signer // active signer for private-key JWT
-	ErrOut      io.Writer        // diagnostic/status output (caller injects f.IOStreams.ErrOut)
+	UserOpenId   string
+	AppId        string
+	AppSecret    string
+	Domain       core.LarkBrand
+	ErrOut       io.Writer // diagnostic/status output (caller injects f.IOStreams.ErrOut)
+	DPoPMode     core.DPoPMode
+	DPoPKeyStore *dpop.KeyStore
+	AuthMethod   string
+	KeyLabel     string
+	KeyProvider  string
+	Signer       keysigner.Signer
 }
 
 // UATStatus represents the status of a user access token.
@@ -50,8 +52,7 @@ type UATStatus struct {
 	TokenStatus      string `json:"tokenStatus,omitempty"`
 }
 
-// NewUATCallOptions creates UATCallOptions from a CLI config and the
-// invocation-scoped signer selected for that config.
+// NewUATCallOptions creates UATCallOptions from a CLI config.
 func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer, signer keysigner.Signer) UATCallOptions {
 	if errOut == nil {
 		errOut = os.Stderr
@@ -61,20 +62,35 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer, signer keysigner.S
 		mode = core.DPoPModeDisabled
 	}
 	return UATCallOptions{
-		UserOpenId:  cfg.UserOpenId,
-		AppId:       cfg.AppID,
-		AppSecret:   cfg.AppSecret,
-		Domain:      cfg.Brand,
-		AuthMethod:  cfg.AuthMethod,
-		KeyLabel:    cfg.KeyLabel,
-		KeyProvider: cfg.KeyProvider,
-		Signer:      signer,
-		ErrOut:      errOut,
+		UserOpenId:   cfg.UserOpenId,
+		AppId:        cfg.AppID,
+		AppSecret:    cfg.AppSecret,
+		Domain:       cfg.Brand,
+		ErrOut:       errOut,
+		DPoPMode:     mode,
+		DPoPKeyStore: dpop.NewKeyStore(nil),
+		AuthMethod:   cfg.AuthMethod,
+		KeyLabel:     cfg.KeyLabel,
+		KeyProvider:  cfg.KeyProvider,
+		Signer:       signer,
 	}
 }
 
-// GetValidAccessToken obtains a valid access token for the given user.
-func GetValidAccessToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (string, error) {
+// AccessTokenResult carries the token together with its proof-of-possession
+// binding. Binding is nil for Bearer tokens.
+type AccessTokenResult struct {
+	AccessToken string
+	DPoP        *dpop.Binding
+}
+
+// GetValidAccessToken obtains a valid user token and restores its local DPoP binding.
+func GetValidAccessToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (*AccessTokenResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if opts.DPoPKeyStore == nil {
+		opts.DPoPKeyStore = dpop.NewKeyStore(nil)
+	}
 	stored, err := GetStoredToken(opts.AppId, opts.UserOpenId)
 	if err != nil {
 		return nil, err
@@ -173,7 +189,10 @@ func refreshWithLock(ctx context.Context, httpClient *http.Client, opts UATCallO
 			return err
 		}
 
-		refreshed, err = doRefreshToken(ctx, httpClient, opts, freshStored)
+		// Once token rotation starts, finish it even if the caller disconnects.
+		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uatRefreshTimeout)
+		defer cancel()
+		refreshed, err = doRefreshToken(refreshCtx, httpClient, opts, freshStored)
 		return err
 	})
 	return refreshed, err
@@ -249,24 +268,32 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 	}
 
 	endpoint := ResolveOAuthEndpoints(opts.Domain).Token
-	clientAuth := ClientAuth{
-		AppID:       opts.AppId,
-		AppSecret:   opts.AppSecret,
-		AuthMethod:  opts.AuthMethod,
-		Signer:      opts.Signer,
-		KeyLabel:    opts.KeyLabel,
-		KeyProvider: opts.KeyProvider,
-	}
-	clientAuth, err := clientAuth.ResolveSigner(ctx)
+	clientAuth, err := (ClientAuth{
+		AppID: opts.AppId, AppSecret: opts.AppSecret, AuthMethod: opts.AuthMethod,
+		Signer: opts.Signer, KeyLabel: opts.KeyLabel, KeyProvider: opts.KeyProvider,
+	}).ResolveSigner(ctx)
 	if err != nil {
 		return nil, err
 	}
+	var proofKey *dpop.Key
+	if stored.TokenType == StoredTokenTypeDPoP {
+		binding, err := ResolveDPoPBindingContext(ctx, stored, opts.DPoPKeyStore)
+		if err != nil {
+			return nil, err
+		}
+		proofKey = binding.Key()
+	}
+	if proofKey != nil && stored.TokenType == StoredTokenTypeDPoP {
+		if err := opts.DPoPKeyStore.RequireKeyWritableContext(ctx, proofKey); err != nil {
+			return nil, err
+		}
+	}
 	uncertain := false
-	for attempt := 1; attempt <= refreshMaxAttempts; attempt++ {
-		result := refreshOnce(ctx, httpClient, endpoint, clientAuth, opts, stored)
-		if result.action == refreshSaveResponse {
-			refreshed, err := saveRefreshResponse(opts, stored, result.response)
-			if err != nil {
+	clockRecoveryUsed := false
+	if proofKey != nil {
+		if err := synchronizeStoredTokenClock(ctx, httpClient, opts, stored, proofKey); err != nil {
+			problem, ok := errs.ProblemOf(err)
+			if ctx.Err() != nil || !ok || problem.Subtype != errs.SubtypeDPoPClockSyncFailed {
 				return nil, err
 			}
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: clock synchronization failed; continuing with the existing clock: %v\n", err)
@@ -287,7 +314,7 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 			return nil, nil
 		}
 
-		result := refreshOnce(ctx, httpClient, endpoint, opts, stored, proofKey, !clockRecoveryUsed)
+		result := refreshOnce(ctx, httpClient, endpoint, clientAuth, opts, stored, proofKey, !clockRecoveryUsed)
 		if result.action == refreshSaveResponse {
 			saved, saveErr := saveRefreshResponse(opts, stored, result.response, proofKey)
 			if saveErr != nil {
@@ -367,14 +394,32 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 	}
 }
 
-func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, clientAuth ClientAuth, opts UATCallOptions, stored *StoredUAToken) refreshResult {
+func synchronizeStoredTokenClock(ctx context.Context, httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken, key *dpop.Key) error {
+	if err := dpop.SynchronizeClock(ctx, httpClient, opts.Domain, key); err != nil {
+		return err
+	}
+	if err := opts.DPoPKeyStore.SaveContext(ctx, key); err != nil {
+		return errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
+			"failed to persist synchronized DPoP clock: %v", err).
+			WithCause(err).
+			WithHint("%s", dpop.KeyStoreUnavailableHint)
+	}
+	applyClockState(stored, key.Clock())
+	if err := writeStoredToken(opts.AppId, opts.UserOpenId, stored); err != nil {
+		return errs.NewInternalError(errs.SubtypeStorage,
+			"failed to persist synchronized token clock: %v", err).WithCause(err)
+	}
+	return nil
+}
+
+func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, clientAuth ClientAuth, opts UATCallOptions, stored *StoredUAToken, proofKey *dpop.Key, allowClockRecovery bool) refreshResult {
 	request := refreshRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: stored.RefreshToken,
 		ClientID:     opts.AppId,
 	}
 	form := url.Values{}
-	usedAssertion, err := clientAuth.applyClientAssertion(ctx, form, core.ClientAssertionAudience(opts.Domain))
+	usedAssertion, err := clientAuth.ApplyClientAssertion(ctx, form, core.ClientAssertionAudience(opts.Domain))
 	if err != nil {
 		return refreshResult{action: refreshStopAndPreserve, err: err}
 	}

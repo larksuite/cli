@@ -88,10 +88,7 @@ func (es256Algorithm) cngPublicKey(key windows.Handle) (crypto.PublicKey, error)
 		X:     new(big.Int).SetBytes(blob[8:40]),
 		Y:     new(big.Int).SetBytes(blob[40:72]),
 	}
-	if err := (es256Algorithm{}).validatePublicKey(public); err != nil {
-		return nil, err
-	}
-	return public, nil
+	return P256PublicKey(public)
 }
 
 // Keep native pointer conversion at the syscall boundary.

@@ -15,24 +15,25 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/keylesshelper"
-	"github.com/larksuite/cli/internal/keylessprovider"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
 type tatResponse struct {
-	Code             int    `json:"code"`
-	AccessToken      string `json:"access_token"`
-	ExpiresIn        int64  `json:"expires_in"`
-	Error            string `json:"error"`
-	ErrorDescription string `json:"error_description"`
-	Msg              string `json:"msg"`
-	StatusMessage    string `json:"status_message"`
-	TokenType        string `json:"token_type"`
+	Code              int    `json:"code"`
+	AccessToken       string `json:"access_token"`
+	TenantAccessToken string `json:"tenant_access_token"`
+	ExpiresIn         int64  `json:"expires_in"`
+	Error             string `json:"error"`
+	ErrorDescription  string `json:"error_description"`
+	Msg               string `json:"msg"`
+	StatusMessage     string `json:"status_message"`
+	TokenType         string `json:"token_type"`
 }
 
 type FetchedToken struct {
@@ -62,10 +63,21 @@ type FetchedToken struct {
 //
 // The caller owns the context timeout.
 func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string, mode core.DPoPMode) (*FetchedToken, error) {
+	return FetchTATWithClientAuth(ctx, httpClient, brand, auth.ClientAuth{AppID: appID, AppSecret: appSecret}, mode)
+}
+
+// FetchTATWithClientAuth combines client authentication with the independent
+// DPoP issuance policy. The application key never becomes the token binding key.
+func FetchTATWithClientAuth(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, ca auth.ClientAuth, mode core.DPoPMode) (*FetchedToken, error) {
+	var err error
+	ca, err = ca.ResolveSigner(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var result *FetchedToken
-	err := larkauth.WithTATIssuanceLock(ctx, appID, func() error {
+	err = auth.WithTATIssuanceLock(ctx, ca.AppID, func() error {
 		var issueErr error
-		result, issueErr = fetchTAT(ctx, httpClient, brand, appID, appSecret, mode, nil)
+		result, issueErr = fetchTAT(ctx, httpClient, brand, ca, mode, nil)
 		return issueErr
 	})
 	return result, err
@@ -73,7 +85,7 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 
 // fetchTAT runs under the issuance lock and reuses a stable per-app key handle.
 // The resulting binding stays in memory with the cached TAT.
-func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string, mode core.DPoPMode, keyStore *dpop.KeyStore) (result *FetchedToken, retErr error) {
+func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, ca auth.ClientAuth, mode core.DPoPMode, keyStore *dpop.KeyStore) (result *FetchedToken, retErr error) {
 	mode = core.EffectiveDPoPMode(mode)
 	var proofKey *dpop.Key
 	createdKey := false
@@ -105,7 +117,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 			!errors.Is(retErr, context.Canceled) && !errors.Is(retErr, context.DeadlineExceeded) {
 			repeatedProofRejection := errors.Is(retErr, dpop.ErrRepeatedInvalidProof)
 			fallbackErr := retErr
-			result, retErr = requestTAT(ctx, httpClient, brand, appID, appSecret, nil, keyStore, nil, false, 0)
+			result, retErr = requestTAT(ctx, httpClient, brand, ca, nil, keyStore, nil, false, 0)
 			if retErr == nil && result != nil {
 				result.proofFallback = repeatedProofRejection
 				if !repeatedProofRejection {
@@ -119,7 +131,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 			keyStore = dpop.NewKeyStore(nil)
 		}
 		var err error
-		proofKey, createdKey, err = keyStore.PrepareReplaceableContext(ctx, tatDPoPKeyID(brand, appID))
+		proofKey, createdKey, err = keyStore.PrepareReplaceableContext(ctx, tatDPoPKeyID(brand, ca.AppID))
 		if err != nil {
 			if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
@@ -152,7 +164,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	if mode == core.DPoPModePreferred {
 		invalidProofsLeft = 3
 	}
-	result, retErr = requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, &dpopRequestSent, false, invalidProofsLeft)
+	result, retErr = requestTAT(ctx, httpClient, brand, ca, proofKey, keyStore, &dpopRequestSent, false, invalidProofsLeft)
 	if retErr == nil && result != nil {
 		result.clockSyncErr = clockSyncErr
 		keepKey = result.DPoP != nil
@@ -165,14 +177,25 @@ func tatDPoPKeyID(brand core.LarkBrand, appID string) string {
 	return "tat-" + base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
-func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string, proofKey *dpop.Key, keyStore *dpop.KeyStore, dpopRequestSent *bool, clockRetried bool, invalidProofsLeft int) (*FetchedToken, error) {
+func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, ca auth.ClientAuth, proofKey *dpop.Key, keyStore *dpop.KeyStore, dpopRequestSent *bool, clockRetried bool, invalidProofsLeft int) (*FetchedToken, error) {
 	ep := core.ResolveEndpoints(brand)
 	endpoint := ep.Accounts + core.OAuthTokenV3Path
 
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
-	form.Set("client_id", appID)
-	form.Set("client_secret", appSecret)
+	form.Set("client_id", ca.AppID)
+	if core.IsPrivateKeyJWTAuthMethod(ca.AuthMethod) {
+		// Preserve the registered private-key JWT grant's endpoint contract.
+		endpoint = ep.Open + auth.PathOAuthTokenV2
+		form.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+	}
+	usedAssertion, err := ca.ApplyClientAssertion(ctx, form, core.ClientAssertionAudience(brand))
+	if err != nil {
+		return nil, err
+	}
+	if !usedAssertion {
+		form.Set("client_secret", ca.AppSecret)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -211,7 +234,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 			if desc == "" {
 				desc = result.Msg
 			}
-			classified := classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+			classified := classifyTATResponseCode(result.Code, result.Error, desc, string(brand), ca.AppID)
 			var apiErr *errs.APIError
 			if errors.As(classified, &apiErr) &&
 				apiErr.Subtype == errs.SubtypeRateLimit && apiErr.Retryable {
@@ -256,7 +279,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 				clockRetried = true
 			}
 		}
-		return requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, dpopRequestSent, clockRetried, invalidProofsLeft)
+		return requestTAT(ctx, httpClient, brand, ca, proofKey, keyStore, dpopRequestSent, clockRetried, invalidProofsLeft)
 	}
 	if dpop.IsClockRecoverySignal(result.Code, result.Error) && proofKey != nil {
 		if clockRetried {
@@ -280,10 +303,13 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 				WithCause(err).
 				WithHint("%s", dpop.KeyStoreUnavailableHint)
 		}
-		return requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, dpopRequestSent, true, invalidProofsLeft)
+		return requestTAT(ctx, httpClient, brand, ca, proofKey, keyStore, dpopRequestSent, true, invalidProofsLeft)
 	}
 
-	if result.Code == 0 && result.AccessToken != "" {
+	if core.IsPrivateKeyJWTAuthMethod(ca.AuthMethod) && result.AccessToken == "" {
+		result.AccessToken = result.TenantAccessToken
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 && result.Error == "" && result.Code == 0 && result.AccessToken != "" {
 		if result.ExpiresIn <= 0 {
 			return nil, fmt.Errorf("TAT response has invalid expires_in %d", result.ExpiresIn)
 		}
@@ -293,7 +319,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 			StatusMessage: result.StatusMessage,
 		}
 		if proofKey != nil {
-			if strings.EqualFold(result.TokenType, larkauth.StoredTokenTypeBearer) && invalidProofsLeft > 0 {
+			if strings.EqualFold(result.TokenType, auth.StoredTokenTypeBearer) && invalidProofsLeft > 0 {
 				return fetched, nil
 			}
 			if !strings.EqualFold(result.TokenType, dpop.TokenType) {
@@ -339,7 +365,10 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 	if desc == "" {
 		desc = result.Msg
 	}
-	return nil, classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+	if core.IsPrivateKeyJWTAuthMethod(ca.AuthMethod) && result.Code == 0 && result.Error != "" {
+		return nil, classifyAssertionError(result.Error, resp.StatusCode, desc)
+	}
+	return nil, classifyTATResponseCode(result.Code, result.Error, desc, string(brand), ca.AppID)
 }
 
 func tatRetryAfterSeconds(header http.Header) int {
@@ -352,105 +381,21 @@ func tatRetryAfterSeconds(header http.Header) int {
 	return 0
 }
 
-// FetchTATWithAssertion mints a tenant access token for a private-key JWT app
-// via the RFC 7523 jwt-bearer grant. It signs a short-lived client_assertion
-// and posts it to the unified OAuth token endpoint instead of an app secret.
-//
-// The unified v2 token endpoint returns the minted token as access_token
-// (tenant_access_token is accepted as a fallback).
+// FetchTATWithAssertion validates an application key without issuing a DPoP
+// binding. Normal credential resolution uses FetchTATWithClientAuth.
 func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) (string, error) {
 	return FetchTATWithAssertionForProvider(ctx, httpClient, brand, clientID, signer, "", keyLabel)
 }
 
-// FetchTATWithAssertionForProvider resolves an explicit external signer once.
-// Empty and built-in backend providers use the already-resolved signer.
 func FetchTATWithAssertionForProvider(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, provider, keyLabel string) (string, error) {
-	var helper *keylesshelper.Command
-	if provider != "" && provider != keysigner.SoftwareSignerName &&
-		!keysigner.IsPlatformSignerName(provider) {
-		if provider != core.KeylessProviderLarkSuite {
-			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
-				"unsupported private-key JWT provider %q", provider)
-		}
-		var err error
-		helper, err = keylessprovider.Resolve(ctx, provider)
-		if err != nil {
-			return "", err
-		}
-	}
-	return FetchTATWithAssertionWithHelper(ctx, httpClient, brand, clientID, signer, helper, keyLabel)
-}
-
-// FetchTATWithAssertionWithHelper is the single-resolution variant used when
-// the caller must make a preflight decision from the same helper snapshot.
-func FetchTATWithAssertionWithHelper(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, helper *keylesshelper.Command, keyLabel string) (string, error) {
-	if signer == nil && helper == nil {
-		return "", errs.NewConfigError(errs.SubtypeInvalidClient,
-			"profile uses private-key JWT but no key signer is available on this build").
-			WithHint("install a build with the platform key-signer extension or repair the configured OpenClaw signer provider")
-	}
-	ep := core.ResolveEndpoints(brand)
-	endpoint := ep.Open + auth.PathOAuthTokenV2
-
-	assertionType, assertion, err := auth.SignClientAssertion(ctx, signer, helper, keyLabel, clientID, core.ClientAssertionAudience(brand))
+	result, err := FetchTATWithClientAuth(ctx, httpClient, brand, auth.ClientAuth{
+		AppID: clientID, AuthMethod: core.AuthMethodPrivateKeyJWT,
+		Signer: signer, KeyProvider: provider, KeyLabel: keyLabel,
+	}, core.DPoPModeDisabled)
 	if err != nil {
 		return "", err
 	}
-
-	form := url.Values{}
-	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
-	form.Set("client_id", clientID)
-	form.Set("client_assertion_type", assertionType)
-	form.Set("client_assertion", assertion)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return "", fmt.Errorf("read token response: %w", err)
-	}
-
-	var result struct {
-		Code              int    `json:"code"`
-		Msg               string `json:"msg"`
-		Error             string `json:"error"`
-		ErrorDescription  string `json:"error_description"`
-		AccessToken       string `json:"access_token"`
-		TenantAccessToken string `json:"tenant_access_token"`
-	}
-	_ = json.Unmarshal(body, &result) // best-effort; error body may not be JSON
-
-	token := result.AccessToken
-	if token == "" {
-		token = result.TenantAccessToken
-	}
-	if resp.StatusCode == http.StatusOK && token != "" && result.Error == "" && result.Code == 0 {
-		return token, nil
-	}
-
-	// Surface the server's reason, preferring the OAuth `error` code (e.g.
-	// unauthorized_client) which is more diagnostic than the description alone.
-	detail := result.ErrorDescription
-	if detail == "" {
-		detail = result.Msg
-	}
-	if detail == "" {
-		detail = strings.TrimSpace(string(body))
-	}
-	if result.Error != "" {
-		return "", classifyAssertionError(result.Error, resp.StatusCode, detail)
-	}
-	return "", fmt.Errorf("token endpoint HTTP %d (code=%d): %s", resp.StatusCode, result.Code, detail)
+	return result.AccessToken, nil
 }
 
 // classifyAssertionError maps the OAuth token endpoint's `error` field to a

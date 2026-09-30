@@ -439,11 +439,8 @@ func (es256Algorithm) keychainMetadataPublicKey(md *keyMetadata) (crypto.PublicK
 	if err != nil {
 		return nil, err
 	}
-	p256, ok := publicKey.(*ecdsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("keysigner: public key is %T, want a valid P-256 ECDSA key", publicKey)
-	}
-	if err := (es256Algorithm{}).validatePublicKey(p256); err != nil {
+	p256, err := P256PublicKey(publicKey)
+	if err != nil {
 		return nil, err
 	}
 	appLabel, err := metadataAppLabel(md)
