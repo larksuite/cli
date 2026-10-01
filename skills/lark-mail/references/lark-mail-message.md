@@ -49,6 +49,7 @@ lark-cli mail +message --message-id <message-id> --dry-run
 ```json
 {
   "message_id":               "邮件 ID",
+  "reply_to_message_id":      "被回复原邮件的邮件 ID",
   "thread_id":                "会话 ID",
   "smtp_message_id":          "RFC 2822 Message-ID",
   "subject":                  "邮件主题",
@@ -107,6 +108,7 @@ lark-cli mail +message --message-id <message-id> --dry-run
 | 字段 | 说明 |
 |------|------|
 | `message_id` | 邮件 ID |
+| `reply_to_message_id` | 当前邮件回复的原邮件 ID。服务端未返回或当前邮件不是回复时省略 |
 | `thread_id` | 会话 ID |
 | `subject` | 邮件主题 |
 | `head_from` | 发件人对象：`{mail_address, name}` |
