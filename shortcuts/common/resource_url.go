@@ -96,9 +96,13 @@ var urlPathToType = []struct {
 //	/doc/TOKEN       -> {Type: "doc",  Token: TOKEN}
 //	/sheets/TOKEN    -> {Type: "sheet", Token: TOKEN}
 //	/base/TOKEN      -> {Type: "bitable", Token: TOKEN}
+//	/bitable/TOKEN   -> {Type: "bitable", Token: TOKEN} (alias of /base/)
 //	/wiki/TOKEN      -> {Type: "wiki", Token: TOKEN}
 //	/file/TOKEN      -> {Type: "file", Token: TOKEN}
 //	/drive/folder/TOKEN -> {Type: "folder", Token: TOKEN}
+//	/drive/file/TOKEN   -> {Type: "file", Token: TOKEN}
+//	/drive/shr/TOKEN    -> {Type: "folder", Token: TOKEN}
+//	/chat/drive/TOKEN   -> {Type: "folder", Token: TOKEN}
 //	/mindnote/TOKEN  -> {Type: "mindnote", Token: TOKEN}
 //	/slides/TOKEN    -> {Type: "slides", Token: TOKEN}
 //
