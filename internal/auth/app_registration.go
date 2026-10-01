@@ -88,7 +88,7 @@ func appRegistrationEndpoint(brand core.LarkBrand) string {
 // RequestAppRegistration initiates the device flow. The registration protocol
 // always bootstraps on Feishu; brand selects the user-facing verification host.
 // The request is bounded by ctx and a begin timeout.
-func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, errOut io.Writer) (*AppRegistrationResponse, error) {
+func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID string, errOut io.Writer) (*AppRegistrationResponse, error) {
 	if errOut == nil {
 		errOut = io.Discard
 	}
@@ -104,6 +104,9 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 	form.Set("archetype", "PersonalAgent")
 	form.Set("auth_method", "client_secret")
 	form.Set("request_user_info", "open_id tenant_brand")
+	if appID != "" {
+		form.Set("app_id", appID)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(form.Encode()))
 	if err != nil {

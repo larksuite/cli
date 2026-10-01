@@ -32,6 +32,7 @@ type ConfigInitOptions struct {
 	AppSecretStdin bool   // read app-secret from stdin (avoids process list exposure)
 	Brand          string
 	New            bool
+	Restore        bool
 
 	Lang         string // raw --lang (string for cobra); normalized to canonical/"" in validateInitLang
 	langExplicit bool   // true when --lang was explicitly passed
@@ -90,6 +91,9 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Ctx = cmd.Context()
 			opts.langExplicit = cmd.Flags().Changed("lang")
+			if err := validateRestoreFlags(cmd, opts); err != nil {
+				return err
+			}
 			if err := validateInitLang(opts); err != nil {
 				return err
 			}
@@ -104,6 +108,8 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 	}
 
 	cmd.Flags().BoolVar(&opts.New, "new", false, "create a new app directly (skip mode selection)")
+	cmd.Flags().BoolVar(&opts.Restore, "restore", false,
+		"re-register the app already in config to recover a lost app secret")
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID (non-interactive)")
 	cmd.Flags().BoolVar(&opts.AppSecretStdin, "app-secret-stdin", false, "Read App Secret from stdin to avoid process list exposure")
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
@@ -178,7 +184,7 @@ func guardAgentWorkspace(opts *ConfigInitOptions) error {
 
 // hasAnyNonInteractiveFlag returns true if any non-interactive flag is set.
 func (o *ConfigInitOptions) hasAnyNonInteractiveFlag() bool {
-	return o.New || o.AppID != "" || o.AppSecretStdin
+	return o.New || o.Restore || o.AppID != "" || o.AppSecretStdin
 }
 
 // cleanupOldConfig clears keychain entries (AppSecret + UAT) for all apps in existing config except the app whose AppId equals skipAppID.
@@ -369,6 +375,14 @@ func configInitRun(opts *ConfigInitOptions) error {
 		}
 	}
 
+	if opts.Restore {
+		existing, err := core.LoadOrNotConfigured()
+		if err != nil {
+			return err
+		}
+		return runRestoreFlow(opts, existing, f, getInitMsg(opts.UILang))
+	}
+
 	existing, err := core.LoadMultiAppConfig()
 	if err != nil {
 		existing = nil // treat as empty
@@ -416,7 +430,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 
 	// Mode 3: Create new app directly (--new)
 	if opts.New {
-		result, err := runCreateAppFlow(opts.Ctx, f, parseBrand(opts.Brand), msg)
+		result, err := runCreateAppFlow(opts.Ctx, f, parseBrand(opts.Brand), msg, "")
 		if err != nil {
 			return err
 		}
