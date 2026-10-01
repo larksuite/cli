@@ -5,11 +5,13 @@ package service
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
@@ -429,31 +431,94 @@ func TestServiceMethod_Params_EmptyStringStillMissing(t *testing.T) {
 	}
 }
 
-// A declared optional query param fed "" is dropped (unusable value), not sent
-// as an empty query value — the declared-param loop owns the decision and the
-// undeclared passthrough must not resurrect it. Undeclared keys stay the
-// verbatim raw escape hatch.
-func TestServiceMethod_Params_EmptyOptionalDroppedUndeclaredKept(t *testing.T) {
+// Optional string query parameters preserve key presence. This distinguishes
+// an omitted flag from an explicitly empty value while still forwarding a
+// normal value verbatim.
+func TestServiceMethod_TypedOptionalStringPreservesPresence(t *testing.T) {
 	method := meta.FromMap(map[string]interface{}{
 		"path":       "items",
 		"httpMethod": "GET",
 		"parameters": map[string]interface{}{
-			"user_id_type": map[string]interface{}{"type": "string", "location": "query"},
+			"created_time": map[string]interface{}{"type": "string", "location": "query"},
 		},
 	})
-	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
-	cmd := NewCmdServiceMethod(f, imSpec(), method, "list", "items", nil)
-	cmd.SetArgs([]string{"--params", `{"user_id_type":"","custom_key":"v1"}`, "--dry-run"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	tests := []struct {
+		name      string
+		args      []string
+		wantParam bool
+		wantValue string
+		wantExtra string
+	}{
+		{name: "omitted", args: []string{"--dry-run"}},
+		{name: "explicit empty", args: []string{"--created-time", "", "--dry-run"}, wantParam: true, wantValue: `"created_time": ""`},
+		{name: "non-empty", args: []string{"--created-time", "1720000000000", "--dry-run"}, wantParam: true, wantValue: `"created_time": "1720000000000"`},
+		{name: "params explicit empty", args: []string{"--params", `{"created_time":"","custom_key":"v1"}`, "--dry-run"}, wantParam: true, wantValue: `"created_time": ""`, wantExtra: `"custom_key": "v1"`},
 	}
-	out := stdout.String()
-	if strings.Contains(out, "user_id_type") {
-		t.Errorf("declared optional param with empty value must be dropped, got:\n%s", out)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+			cmd := NewCmdServiceMethod(f, imSpec(), method, "list", "items", nil)
+			cmd.SetArgs(tt.args)
+
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			out := stdout.String()
+			if got := strings.Contains(out, `"created_time"`); got != tt.wantParam {
+				t.Fatalf("created_time presence = %v, want %v; output:\n%s", got, tt.wantParam, out)
+			}
+			if tt.wantValue != "" && !strings.Contains(out, tt.wantValue) {
+				t.Fatalf("expected %s, got:\n%s", tt.wantValue, out)
+			}
+			if tt.wantExtra != "" && !strings.Contains(out, tt.wantExtra) {
+				t.Fatalf("expected passthrough %s, got:\n%s", tt.wantExtra, out)
+			}
+		})
 	}
-	if !strings.Contains(out, `"custom_key": "v1"`) {
-		t.Errorf("undeclared key must pass through verbatim, got:\n%s", out)
+}
+
+// The generic service transport must send both keys and propagate the API's
+// business error. In particular, an explicit empty created_time must not be
+// dropped before the server can apply its page-token conflict validation.
+func TestServiceMethod_OptionalEmptyAndPageTokenReachBusinessError(t *testing.T) {
+	method := meta.FromMap(map[string]interface{}{
+		"path":       "items",
+		"httpMethod": "GET",
+		"parameters": map[string]interface{}{
+			"created_time": map[string]interface{}{"type": "string", "location": "query"},
+			"page_token":   map[string]interface{}{"type": "string", "location": "query"},
+		},
+	})
+	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+	var hadCreatedTime bool
+	var gotCreatedTime, gotPageToken string
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/items",
+		Body: map[string]interface{}{
+			"code": 230027,
+			"msg":  "page_token and created_time cannot be used together",
+		},
+		OnMatch: func(req *http.Request) {
+			query := req.URL.Query()
+			hadCreatedTime = query.Has("created_time")
+			gotCreatedTime = query.Get("created_time")
+			gotPageToken = query.Get("page_token")
+		},
+	})
+
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "list", "items", nil)
+	cmd.SetArgs([]string{"--created-time", "", "--page-token", "next-page", "--as", "bot"})
+
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected the server business error to propagate")
+	}
+	if !hadCreatedTime || gotCreatedTime != "" {
+		t.Fatalf("created_time query = present:%v value:%q, want present empty value", hadCreatedTime, gotCreatedTime)
+	}
+	if gotPageToken != "next-page" {
+		t.Fatalf("page_token query = %q, want %q", gotPageToken, "next-page")
 	}
 }
 

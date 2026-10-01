@@ -528,9 +528,11 @@ func newPreflightMissingScopeError(brand, appID, identity string, missing []stri
 // false and 0 are real values and must not be conflated with "unset"
 // (reflect.IsZero would drop an explicit --with-deleted=false or --foo 0).
 // Only nil/"" stay treated as missing: that keeps the friendly pre-flight
-// error when a required param is fed an empty placeholder, and never emits a
-// declared param as an empty path segment or query value. Undeclared keys are
-// not judged by this rule — they pass through verbatim as the raw escape hatch.
+// error when a path or required query param is fed an empty placeholder.
+// Optional string query params are the exception at the call site: once their
+// key is present, an empty string is an explicit wire value, not "unset".
+// Undeclared keys are not judged by this rule — they pass through verbatim as
+// the raw escape hatch.
 func unusableParamValue(v interface{}) bool {
 	if v == nil {
 		return true
@@ -623,12 +625,17 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		if s.Required && !isPaginationParam && (!exists || unusableParamValue(value)) {
 			return client.RawApiRequest{}, nil, missingRequiredParamError(opts, s, "query")
 		}
-		if exists && !unusableParamValue(value) {
+		// Presence is the contract for optional string query parameters. The
+		// binder only overlays a typed flag when Cobra reports it Changed, so
+		// this preserves the three distinct states: omitted, explicitly empty,
+		// and non-empty. Required query params keep the empty-value validation
+		// above, and nil remains unusable for every parameter kind.
+		optionalStringPresent := !s.Required && s.CanonicalType() == "string" && value != nil
+		if exists && (optionalStringPresent || !unusableParamValue(value)) {
 			queryParams[s.Name] = value
 		}
 		// This loop owns declared query params: consume the key so the
-		// passthrough below can't resurrect a value the gate dropped (an
-		// unusable "" would otherwise be sent as an empty query value).
+		// passthrough below can't resurrect a value the gate dropped.
 		delete(params, s.Name)
 	}
 	// Whatever remains is undeclared — the raw escape hatch for params the
