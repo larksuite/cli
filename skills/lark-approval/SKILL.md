@@ -1,7 +1,7 @@
 ---
 name: lark-approval
-version: 1.2.0
-description: "飞书审批：查询和处理审批待办/已办/实例，搜索可发起审批定义、查看定义详情并发起原生审批实例。当用户要处理审批任务、查看审批实例、搜索或发起审批时使用。审批待办不是飞书任务；非审批类待办走 lark-task。不负责创建审批定义；三方审批定义不走原生提单。"
+version: 1.3.0
+description: "飞书审批：查询和处理审批待办/已办/实例，搜索可发起审批定义、查看定义详情、发起原生审批实例，以及查询、创建、回复、编辑、删除审批评论。当用户要处理审批任务、查看审批实例、搜索或发起审批、操作审批评论时使用。审批待办不是飞书任务；非审批类待办走 lark-task。不负责创建审批定义；三方审批定义不走原生提单。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -22,10 +22,11 @@ metadata:
 出现以下任一语义时，优先走 `lark-approval`：
 
 - 审批待办 / 审批单据 / 审批实例 / 审批意见 / 审批定义
+- 审批评论 / 评论 / 回复；前提是上下文对象是审批实例
 - 同意 / 拒绝 / 转交 / 退回 / 撤回 / 催办 / 加签 / 抄送
 - 待办列表 / 待办单据 / 已发起审批 / 已办审批 / 审批详情 / 同意可编辑
 
-**判定规则：** 只要最终动作是对审批单据做同意、拒绝、转交、退回、撤回、催办、加签、抄送、查详情、查已发起/已办/待办，就归 `lark-approval`。只有当用户处理的是**非审批类任务/待办**时，才走 [`lark-task`](../lark-task/SKILL.md)。
+**判定规则：** 只要最终动作是对审批单据做同意、拒绝、转交、退回、撤回、催办、加签、抄送、查详情、查已发起/已办/待办，或对审批实例评论做查询、创建、回复、编辑、删除，就归 `lark-approval`。只有当用户处理的是**非审批类任务/待办**时，才走 [`lark-task`](../lark-task/SKILL.md)。
 
 ## 选哪个命令
 
@@ -45,11 +46,15 @@ metadata:
 | 撤回已发起审批 | `instances cancel` | [`lark-approval-instances-cancel.md`](references/lark-approval-instances-cancel.md) |
 | 给审批实例追加抄送 | `instances cc` | [`lark-approval-instances-cc.md`](references/lark-approval-instances-cc.md)     |
 | 按定义/关键词查已发起审批 | `instances initiated` | [`lark-approval-instances-initiated.md`](references/lark-approval-instances-initiated.md) |
+| 查询审批实例评论 | `comments list` | [`lark-approval-comments-list.md`](references/lark-approval-comments-list.md) |
+| 创建、回复或编辑审批实例评论 | `comments create` | [`lark-approval-comments-create.md`](references/lark-approval-comments-create.md) |
+| 删除单条审批评论或回复 | `comments delete` | [`lark-approval-comments-delete.md`](references/lark-approval-comments-delete.md) |
 
 处理链：
 
 - 发起审批：`approvals search` -> `approvals get` -> `instances create`
 - 处理审批：`tasks query` 拿 `instance_code` + `task_id`（操作必须成对带上）→ 只有用户明确需要查看详情、当前节点、表单内容、或流程进度时，再 `instances get` → 执行操作
+- 审批评论：`comments list` 查评论树 → `comments create` 创建/回复/编辑 → 必要时 `comments delete` 删除单条评论或回复
 
 ## 执行原则（减少误路由、误重试和无效消耗）
 
@@ -64,6 +69,7 @@ metadata:
 - 已拿到 `instance_code` + `task_id` 后，优先直接执行 `tasks approve/reject/transfer/add_sign/rollback/remind`
 - 同一轮里如果已有足够的新鲜查询结果，不要重复 `tasks query`
 - 不要默认走 `list -> filter -> detail -> write` 全链路；对象已明确时应压缩步骤
+- 评论操作已拿到 `instance_code` 和 `comment_id` 时，直接执行对应 `comments` 命令；不要把审批评论误路由到 Drive 文档评论或飞书任务评论
 
 ### 3) 错误码驱动，而不是盲目重试
 
@@ -92,6 +98,8 @@ lark-cli approval approvals get --params '{"approval_code":"<code>"}' --as user
 lark-cli approval instances create --data '{"approval_code":"<code>","form":"[...]"}' --yes --as user
 lark-cli approval tasks query --params '{"topic":"1"}' --as user
 lark-cli approval tasks approve --data '{"instance_code":"<ic>","task_id":"<tid>","comment":"同意"}' --as user
+lark-cli approval comments list --params '{"instance_id":"<ic>"}' --as user
+lark-cli approval comments create --params '{"instance_id":"<ic>"}' --data '{"content":"{\"text\":\"请补充说明\"}"}' --as user
 ```
 
 ## 不在本 skill 范围
