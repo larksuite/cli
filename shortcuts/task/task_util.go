@@ -169,7 +169,28 @@ func truncateTaskURL(u string) string {
 	return u
 }
 
-// parseTimeFlagSec parses a time flag that can be absolute (ISO 8601, timestamp) or relative (+/- Nd/w/m/h).
+// parseTimeFlagMillis normalizes task inputs to the Task API's millisecond unit.
+// As with common.FormatTime's magnitude convention, canonical positive numeric
+// inputs of 13 or more digits are milliseconds; smaller inputs remain seconds.
+// Detect the input unit before parsing dates: a parsed Unix-seconds result is
+// always seconds, regardless of its magnitude. Preserve millisecond remainders.
+func parseTimeFlagMillis(input string, hint string) (string, error) {
+	input = strings.TrimSpace(input)
+	if ms, err := strconv.ParseInt(input, 10, 64); err == nil && ms >= 1_000_000_000_000 && strconv.FormatInt(ms, 10) == input {
+		return input, nil
+	}
+	seconds, err := parseTimeFlagSec(input, hint)
+	if err != nil {
+		return "", err
+	}
+	sec, err := strconv.ParseInt(seconds, 10, 64)
+	if err != nil {
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid timestamp: %v", err).WithCause(err)
+	}
+	return strconv.FormatInt(sec*1000, 10), nil
+}
+
+// parseTimeFlagSec parses a time flag that can be absolute (ISO 8601, seconds) or relative (+/- Nd/w/m/h).
 // It returns the Unix seconds string.
 func parseTimeFlagSec(input string, hint string) (string, error) {
 	if isRelativeTime(input) {
