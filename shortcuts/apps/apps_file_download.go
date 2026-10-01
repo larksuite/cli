@@ -7,14 +7,22 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"path"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/download"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+const appsFileDownloadPartSize = 32 * 1024 * 1024
+
+func openAppsFileDownload(ctx context.Context, signedURL string) (*download.Stream, error) {
+	urlTransport := download.URL(newFileTransferClient(), signedURL)
+	source := download.ImmutableSource(urlTransport)
+	return download.Open(ctx, source, download.Options{PartSize: appsFileDownloadPartSize})
+}
 
 // AppsFileDownload downloads a file to a local path via a signed URL。
 //
@@ -83,30 +91,17 @@ var AppsFileDownload = common.Shortcut{
 				out = "download"
 			}
 		}
-		req, err := http.NewRequestWithContext(rctx.Ctx(), http.MethodGet, signedURL, nil) //nolint:forbidigo // GET from a presigned object-storage URL bypasses the Lark gateway; raw HTTP required (not a Lark API call).
+		stream, err := openAppsFileDownload(ctx, signedURL)
 		if err != nil {
-			return errs.NewNetworkError(errs.SubtypeNetworkTransport, "build download request").WithCause(err)
+			return err
 		}
-		resp, err := newFileTransferClient().Do(req) //nolint:forbidigo // see above: direct presigned-URL download, RuntimeContext.DoAPI does not apply.
-		if err != nil {
-			// dial/transport 失败是典型可重试场景。
-			return errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed").WithCause(err).WithRetryable()
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode >= 400 {
-			io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-			// 5xx 是上游瞬时故障，标 retryable；4xx（如签名过期）需重新签名而非盲重试，不标。
-			if resp.StatusCode >= 500 {
-				return errs.NewNetworkError(errs.SubtypeNetworkServer, "download failed: HTTP %d", resp.StatusCode).WithRetryable()
-			}
-			return errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: HTTP %d", resp.StatusCode)
-		}
+		defer stream.Body.Close()
 		saved, err := rctx.FileIO().Save(out, fileio.SaveOptions{
-			ContentType:   resp.Header.Get("Content-Type"),
-			ContentLength: resp.ContentLength,
-		}, resp.Body)
+			ContentType:   stream.Header.Get("Content-Type"),
+			ContentLength: stream.ContentLength,
+		}, stream.Body)
 		if err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output: %v", err).WithParam("--output").WithCause(err)
+			return common.WrapSaveErrorTyped(err)
 		}
 		resolved, perr := rctx.FileIO().ResolvePath(out)
 		if perr != nil || resolved == "" {
