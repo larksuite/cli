@@ -217,6 +217,90 @@ func TestMailSendSaveDraftOutputsReference(t *testing.T) {
 	}
 }
 
+func TestMailSendRejectsFromOutsideTargetMailboxBeforeCreatingDraft(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/owner@example.com/settings/send_as",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"sendable_addresses": []interface{}{
+					map[string]interface{}{"email_address": "owner@example.com", "name": "Owner"},
+					map[string]interface{}{"email_address": "alias@example.com", "name": "Alias"},
+				},
+			},
+		},
+	})
+	draftStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/owner@example.com/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"draft_id": "must_not_be_created"},
+		},
+	}
+	reg.Register(draftStub)
+
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--mailbox", "owner@example.com",
+		"--from", "outsider@example.com",
+		"--to", "alice@example.com",
+		"--subject", "identity isolation",
+		"--body", "must not create a draft",
+		"--no-signature",
+	}, f, stdout)
+	assertValidationError(t, err, "is not a sendable address")
+	if len(draftStub.CapturedBody) != 0 {
+		t.Fatalf("drafts.create must not run for an unauthorized --from, captured body: %s", draftStub.CapturedBody)
+	}
+}
+
+func TestMailSendAllowsSendAsAddressForTargetMailbox(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/owner@example.com/settings/send_as",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"sendable_addresses": []interface{}{
+					map[string]interface{}{"email_address": "owner@example.com", "name": "Owner"},
+					map[string]interface{}{"email_address": "alias@example.com", "name": "Alias"},
+				},
+			},
+		},
+	})
+	draftStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/owner@example.com/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"draft_id": "draft_alias"},
+		},
+	}
+	reg.Register(draftStub)
+
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--mailbox", "owner@example.com",
+		"--from", "ALIAS@example.com",
+		"--to", "alice@example.com",
+		"--subject", "authorized alias",
+		"--body", "save this draft",
+		"--no-signature",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("authorized send_as address was rejected: %v", err)
+	}
+	if len(draftStub.CapturedBody) == 0 {
+		t.Fatal("expected drafts.create for an authorized send_as address")
+	}
+}
+
 func TestMailSend_WithCalendarEventEmbedded(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
 
