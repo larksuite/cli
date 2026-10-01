@@ -5,466 +5,499 @@ package mail
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 func threadManageID(suffix string) string {
 	return "thread_abcdefghijklmnop_" + suffix
 }
 
-func threadManageIDs(count int) []string {
-	ids := make([]string, 0, count)
-	for i := 0; i < count; i++ {
-		ids = append(ids, threadManageID(fmt.Sprintf("%02d", i+1)))
-	}
-	return ids
-}
-
-func stubThreadManagePost(reg *httpmock.Registry, endpoint string, body map[string]interface{}) *httpmock.Stub {
+func stubThreadManagePost(reg *httpmock.Registry, endpoint string, response map[string]interface{}) *httpmock.Stub {
 	stub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/user_mailboxes/me/threads/" + endpoint,
-		Body:   body,
+		Body:   response,
 	}
 	reg.Register(stub)
 	return stub
 }
 
-func decodeThreadManageSummary(t *testing.T, data map[string]interface{}) ([]interface{}, []interface{}) {
+func decodeThreadManageBody(t *testing.T, stub *httpmock.Stub) map[string]interface{} {
 	t.Helper()
-	success, ok := data["success_thread_ids"].([]interface{})
-	if !ok {
-		t.Fatalf("success_thread_ids = %#v, want array", data["success_thread_ids"])
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal captured body: %v", err)
 	}
-	failed, ok := data["failed_thread_ids"].([]interface{})
-	if !ok {
-		t.Fatalf("failed_thread_ids = %#v, want array", data["failed_thread_ids"])
-	}
-	return success, failed
+	return body
 }
 
-func TestThreadModify_Metadata(t *testing.T) {
-	if MailThreadModify.Command != "+thread-modify" {
-		t.Fatalf("Command = %q", MailThreadModify.Command)
-	}
-	if MailThreadModify.Risk != "write" {
-		t.Errorf("Risk = %q, want write", MailThreadModify.Risk)
-	}
-	if strings.Join(MailThreadModify.AuthTypes, ",") != "user,bot" {
-		t.Errorf("AuthTypes = %v, want [user bot]", MailThreadModify.AuthTypes)
-	}
-	if len(MailThreadModify.Scopes) != 1 || MailThreadModify.Scopes[0] != "mail:user_mailbox.message:modify" {
-		t.Errorf("Scopes = %v, want [mail:user_mailbox.message:modify]", MailThreadModify.Scopes)
-	}
-	if len(MailThreadModify.ConditionalScopes) != 0 {
-		t.Errorf("ConditionalScopes = %v, want none", MailThreadModify.ConditionalScopes)
-	}
-	flags := map[string]common.Flag{}
-	for _, fl := range MailThreadModify.Flags {
-		flags[fl.Name] = fl
-	}
-	for _, name := range []string{"mailbox", "thread-ids", "add-label-ids", "remove-label-ids", "add-folder", "folder-id"} {
-		if _, ok := flags[name]; !ok {
-			t.Fatalf("missing --%s flag", name)
+func TestThreadManage_MetadataAndRegistration(t *testing.T) {
+	for _, shortcut := range []common.Shortcut{MailThreadModify, MailThreadTrash} {
+		if strings.Join(shortcut.AuthTypes, ",") != "user,bot" {
+			t.Errorf("%s AuthTypes = %v, want [user bot]", shortcut.Command, shortcut.AuthTypes)
+		}
+		if len(shortcut.Scopes) != 1 || shortcut.Scopes[0] != "mail:user_mailbox.message:modify" {
+			t.Errorf("%s Scopes = %v", shortcut.Command, shortcut.Scopes)
 		}
 	}
-	if flags["thread-ids"].Type != "string_array" || !flags["thread-ids"].Required {
-		t.Errorf("--thread-ids = %#v, want required string_array", flags["thread-ids"])
-	}
-	if got := strings.Join(flags["add-folder"].Aliases, ","); got != "" {
-		t.Errorf("--add-folder aliases = %q, want none", got)
-	}
-	if !flags["folder-id"].Hidden {
-		t.Errorf("--folder-id hidden = false, want true")
-	}
-}
-
-func TestThreadTrash_Metadata(t *testing.T) {
-	if MailThreadTrash.Command != "+thread-trash" {
-		t.Fatalf("Command = %q", MailThreadTrash.Command)
+	if MailThreadModify.Risk != "write" {
+		t.Errorf("modify Risk = %q, want write", MailThreadModify.Risk)
 	}
 	if MailThreadTrash.Risk != "high-risk-write" {
-		t.Errorf("Risk = %q, want high-risk-write", MailThreadTrash.Risk)
+		t.Errorf("trash Risk = %q, want high-risk-write", MailThreadTrash.Risk)
 	}
-	if strings.Join(MailThreadTrash.AuthTypes, ",") != "user,bot" {
-		t.Errorf("AuthTypes = %v, want [user bot]", MailThreadTrash.AuthTypes)
-	}
-}
 
-func TestThreadManage_ShortcutsRegistration(t *testing.T) {
+	flags := map[string]common.Flag{}
+	for _, flag := range MailThreadModify.Flags {
+		flags[flag.Name] = flag
+	}
+	for _, name := range []string{"mailbox-id", "thread-id", "add-label-id", "remove-label-id", "folder-id"} {
+		if _, ok := flags[name]; !ok {
+			t.Fatalf("modify flags missing --%s", name)
+		}
+	}
+	if flags["thread-id"].Required || flags["thread-id"].Type != "string_array" {
+		t.Errorf("--thread-id = %#v, want validation-owned string_array", flags["thread-id"])
+	}
+	for _, name := range []string{"thread-id", "add-label-id", "remove-label-id"} {
+		if got := flags[name].Aliases; len(got) != 0 {
+			t.Errorf("--%s aliases = %v, want none", name, got)
+		}
+	}
+	if got := strings.Join(flags["folder-id"].Aliases, ","); got != "add-folder" {
+		t.Errorf("--folder-id aliases = %q", got)
+	}
+
 	commands := map[string]bool{}
 	for _, shortcut := range Shortcuts() {
 		commands[shortcut.Command] = true
 	}
-	for _, want := range []string{"+thread-modify", "+thread-trash"} {
-		if !commands[want] {
-			t.Fatalf("Shortcuts() missing %s", want)
+	for _, command := range []string{"+thread-modify", "+thread-trash"} {
+		if !commands[command] {
+			t.Fatalf("Shortcuts() missing %s", command)
 		}
+	}
+}
+
+func TestThreadManage_HelpShowsOnlySingularBatchFlags(t *testing.T) {
+	tests := []struct {
+		shortcut common.Shortcut
+		command  string
+		want     []string
+		forbid   []string
+	}{
+		{
+			shortcut: MailThreadModify,
+			command:  "+thread-modify",
+			want:     []string{"--thread-id", "--add-label-id", "--remove-label-id", "--folder-id", "--mailbox-id"},
+			forbid:   []string{"--thread-ids", "--add-label-ids", "--remove-label-ids"},
+		},
+		{
+			shortcut: MailThreadTrash,
+			command:  "+thread-trash",
+			want:     []string{"--thread-id", "--mailbox-id"},
+			forbid:   []string{"--thread-ids"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.command, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			parent := &cobra.Command{Use: "test"}
+			test.shortcut.Mount(parent, f)
+			parent.SetOut(stdout)
+			parent.SetErr(stdout)
+			parent.SetArgs([]string{test.command, "--help"})
+			if err := parent.Execute(); err != nil {
+				t.Fatalf("help error: %v", err)
+			}
+			help := stdout.String()
+			for _, flag := range test.want {
+				if !strings.Contains(help, flag) {
+					t.Errorf("help missing %s:\n%s", flag, help)
+				}
+			}
+			for _, flag := range test.forbid {
+				if strings.Contains(help, flag) {
+					t.Errorf("help unexpectedly exposes %s:\n%s", flag, help)
+				}
+			}
+		})
 	}
 }
 
 func TestThreadManage_NormalizeThreadIDs(t *testing.T) {
 	id1 := threadManageID("1")
 	id2 := threadManageID("2")
-	got, err := normalizeThreadManageIDs([]string{id1 + "," + id2, id1})
+	got, err := normalizeThreadManageIDs([]string{id1, id2, id1})
 	if err != nil {
-		t.Fatalf("normalizeThreadManageIDs returned error: %v", err)
+		t.Fatalf("normalize IDs: %v", err)
 	}
-	if len(got) != 2 || got[0] != id1 || got[1] != id2 {
-		t.Fatalf("ids = %v, want [%s %s]", got, id1, id2)
+	if strings.Join(got, ",") != id1+","+id2 {
+		t.Fatalf("IDs = %v, want stable dedupe", got)
 	}
-	for _, tc := range [][]string{
-		{},
-		{""},
-		{" "},
-		{id1 + ","},
-		{" " + id1},
-		{id1 + "\n" + id2},
-		{"1234567890123456"},
-		{"thread_abcdefghijklmnop!"},
-	} {
-		_, err := normalizeThreadManageIDs(tc)
-		requireMessageManageValidationParam(t, err, "--thread-ids")
-	}
-	withDuplicates := append(threadManageIDs(mailThreadManageBatchSize), threadManageID("01"))
-	got, err = normalizeThreadManageIDs(withDuplicates)
-	if err != nil {
-		t.Fatalf("normalizeThreadManageIDs with duplicate returned error: %v", err)
-	}
-	if len(got) != mailThreadManageBatchSize {
-		t.Fatalf("ids len = %d, want %d after dedupe", len(got), mailThreadManageBatchSize)
+	for _, raw := range [][]string{{}, {""}, {" "}, {id1 + ","}, {" " + id1}, {id1 + "\n" + id2}} {
+		_, err := normalizeThreadManageIDs(raw)
+		requireMessageManageValidationParam(t, err, "--thread-id")
 	}
 }
 
-func TestThreadModify_LabelFolderBodyAndOutputContract(t *testing.T) {
+func TestThreadModify_OneRequestAndRawResponse(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	id1 := threadManageID("1")
 	id2 := threadManageID("2")
-	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
+	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{
+		"code": 0,
+		"data": map[string]interface{}{"request_id": "req_1"},
+	})
 
 	err := runMountedMailShortcut(t, MailThreadModify, []string{
 		"+thread-modify",
-		"--thread-ids", id1 + "," + id2 + "," + id1,
-		"--add-label-ids", "unread,customA",
-		"--remove-label-ids", "FLAGGED",
-		"--add-folder", "archive",
+		"--thread-id", id1,
+		"--thread-id", id2,
+		"--thread-id", id1,
+		"--add-label-id", "unread",
+		"--add-label-id", "customA",
+		"--remove-label-id", "FLAGGED",
+		"--folder-id", "  folderA  ",
 	}, f, stdout)
 	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf("execute modify: %v", err)
 	}
-	var body map[string]interface{}
-	if err := json.Unmarshal(post.CapturedBody, &body); err != nil {
-		t.Fatalf("unmarshal captured body: %v", err)
+	if len(post.CapturedBodies) != 1 {
+		t.Fatalf("POST count = %d, want 1", len(post.CapturedBodies))
 	}
-	threadIDs := body["thread_ids"].([]interface{})
-	if len(threadIDs) != 2 || threadIDs[0] != id1 || threadIDs[1] != id2 {
-		t.Fatalf("thread_ids = %#v, want deduped [%s %s]", threadIDs, id1, id2)
+	body := decodeThreadManageBody(t, post)
+	if got := body["thread_ids"].([]interface{}); len(got) != 2 || got[0] != id1 || got[1] != id2 {
+		t.Fatalf("thread_ids = %#v, want stable dedupe", got)
 	}
-	if got := body["add_folder"]; got != "ARCHIVED" {
-		t.Fatalf("add_folder = %v, want ARCHIVED", got)
+	if body["add_folder"] != "folderA" {
+		t.Fatalf("add_folder = %#v, want trimmed folderA", body["add_folder"])
 	}
-	addLabels := body["add_label_ids"].([]interface{})
-	if addLabels[0] != "UNREAD" || addLabels[1] != "customA" {
-		t.Fatalf("add_label_ids = %#v, want [UNREAD customA]", addLabels)
+	if got := body["add_label_ids"].([]interface{}); len(got) != 2 || got[0] != "UNREAD" || got[1] != "customA" {
+		t.Fatalf("add_label_ids = %#v", got)
 	}
-	removeLabels := body["remove_label_ids"].([]interface{})
-	if len(removeLabels) != 1 || removeLabels[0] != "FLAGGED" {
-		t.Fatalf("remove_label_ids = %#v, want [FLAGGED]", removeLabels)
+	if got := body["remove_label_ids"].([]interface{}); len(got) != 1 || got[0] != "FLAGGED" {
+		t.Fatalf("remove_label_ids = %#v", got)
 	}
-
 	data := decodeShortcutEnvelopeData(t, stdout)
-	success, failed := decodeThreadManageSummary(t, data)
-	if len(success) != 2 || success[0] != id1 || success[1] != id2 || len(failed) != 0 {
-		t.Fatalf("summary success=%v failed=%v, want [%s %s]/[]", success, failed, id1, id2)
+	if data["request_id"] != "req_1" {
+		t.Fatalf("data = %#v, want raw downstream data", data)
 	}
-	if _, ok := data["updated_count"]; ok {
-		t.Fatalf("updated_count must not be present: %#v", data)
-	}
-	if _, ok := data["failed_ids"]; ok {
-		t.Fatalf("failed_ids must not be present: %#v", data)
-	}
-	if _, ok := data["submitted_thread_ids"]; ok {
-		t.Fatalf("submitted_thread_ids must not be present: %#v", data)
-	}
-	if _, ok := data["submitted_count"]; ok {
-		t.Fatalf("submitted_count must not be present: %#v", data)
+	for _, synthetic := range []string{"updated_count", "success_thread_ids", "failed_thread_ids"} {
+		if _, ok := data[synthetic]; ok {
+			t.Fatalf("synthetic field %q present in %#v", synthetic, data)
+		}
 	}
 }
 
-func TestThreadModify_FolderIDAliasMapsToAddFolder(t *testing.T) {
+func TestThreadModify_OmitsOptionalFields(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
-	id := threadManageID("alias")
 	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
-
 	err := runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify",
-		"--thread-ids", id,
-		"--folder-id", "archive",
+		"+thread-modify", "--thread-id", threadManageID("1"), "--folder-id", "folderA",
 	}, f, stdout)
 	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf("execute modify: %v", err)
 	}
-	var body map[string]interface{}
-	if err := json.Unmarshal(post.CapturedBody, &body); err != nil {
-		t.Fatalf("unmarshal captured body: %v", err)
+	body := decodeThreadManageBody(t, post)
+	if body["add_folder"] != "folderA" {
+		t.Fatalf("add_folder = %#v", body["add_folder"])
 	}
-	if got := body["add_folder"]; got != "ARCHIVED" {
-		t.Fatalf("add_folder = %v, want ARCHIVED", got)
+	for _, omitted := range []string{"add_label_ids", "remove_label_ids"} {
+		if _, ok := body[omitted]; ok {
+			t.Fatalf("body must omit %s: %#v", omitted, body)
+		}
 	}
 }
 
-func TestThreadModify_AddFolderAndFolderIDConflict(t *testing.T) {
-	f, stdout, _, _ := mailShortcutTestFactory(t)
-	id := threadManageID("conflict")
+func TestThreadModify_OmitsFolderWhenNotProvided(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
 	err := runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify",
-		"--thread-ids", id,
-		"--add-folder", "archive",
-		"--folder-id", "folderA",
+		"+thread-modify", "--thread-id", threadManageID("1"), "--add-label-id", "UNREAD",
 	}, f, stdout)
-	requireMessageManageValidationParam(t, err, "--folder-id")
-	if !strings.Contains(err.Error(), "pass only one") {
-		t.Fatalf("error = %v, want pass only one conflict message", err)
+	if err != nil {
+		t.Fatalf("execute modify: %v", err)
+	}
+	body := decodeThreadManageBody(t, post)
+	if _, ok := body["add_folder"]; ok {
+		t.Fatalf("body must omit add_folder: %#v", body)
 	}
 }
 
 func TestThreadModify_Validation(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	id := threadManageID("1")
-	err := runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify",
-		"--thread-ids", id,
-	}, f, stdout)
-	requireMessageManageValidationParam(t, err, "--thread-modify")
-	if !strings.Contains(err.Error(), "provide at least one") {
-		t.Fatalf("error = %v, want missing action validation", err)
-	}
-
-	err = runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify",
-		"--thread-ids", id,
-		"--add-label-ids", "unread",
-		"--remove-label-ids", "UNREAD",
-	}, f, stdout)
-	requireMessageManageValidationParam(t, err, "--add-label-ids")
-
-	for _, tc := range []struct {
-		name string
-		flag string
+	tests := []struct {
+		name  string
+		args  []string
+		param string
 	}{
-		{name: "add", flag: "--add-label-ids"},
-		{name: "remove", flag: "--remove-label-ids"},
-	} {
-		t.Run("rejects read receipt request label on "+tc.name, func(t *testing.T) {
-			err := runMountedMailShortcut(t, MailThreadModify, []string{
-				"+thread-modify",
-				"--thread-ids", id,
-				tc.flag, "read_receipt_request",
-			}, f, stdout)
-			requireMessageManageValidationParam(t, err, tc.flag)
-			if !strings.Contains(err.Error(), "thread 级别不能管理 `READ_RECEIPT_REQUEST`") {
-				t.Fatalf("error = %v, want thread-level receipt label guidance", err)
+		{name: "missing thread", args: []string{"+thread-modify", "--folder-id", "folderA"}, param: "thread-id"},
+		{name: "missing action", args: []string{"+thread-modify", "--thread-id", id}, param: "thread-modify"},
+		{name: "blank thread", args: []string{"+thread-modify", "--thread-id", " ", "--folder-id", "folderA"}, param: "thread-id"},
+		{name: "blank add label", args: []string{"+thread-modify", "--thread-id", id, "--add-label-id", " "}, param: "add-label-id"},
+		{name: "blank folder", args: []string{"+thread-modify", "--thread-id", id, "--folder-id", " "}, param: "folder-id"},
+		{name: "label conflict", args: []string{"+thread-modify", "--thread-id", id, "--add-label-id", "unread", "--remove-label-id", "UNREAD"}, param: "add-label"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := runMountedMailShortcut(t, MailThreadModify, test.args, f, stdout)
+			var validation *errs.ValidationError
+			if !errors.As(err, &validation) {
+				t.Fatalf("error = %T %v, want ValidationError", err, err)
+			}
+			if !strings.Contains(validation.Param, test.param) {
+				t.Fatalf("param = %q, want %q", validation.Param, test.param)
 			}
 		})
 	}
-
-	err = runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify",
-		"--thread-ids", id,
-		"--folder-id", "trash",
-	}, f, stdout)
-	requireMessageManageValidationParam(t, err, "--folder-id")
-	if !strings.Contains(err.Error(), "use +thread-trash") {
-		t.Fatalf("error = %v, want +thread-trash hint", err)
-	}
 }
 
-func TestThreadModify_BatchesAndAggregatesPartialFailure(t *testing.T) {
+func TestThreadModify_DryRunDoesNotCallAPI(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
-	ids := threadManageIDs(41)
-	first := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
-	second := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 1230001, "msg": "bad request"})
-	third := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
-
+	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
+	post.Optional = true
 	err := runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify",
-		"--thread-ids", strings.Join(ids, ","),
-		"--add-folder", "archive",
+		"+thread-modify", "--thread-id", threadManageID("1"), "--add-label-id", "customA", "--dry-run",
 	}, f, stdout)
 	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf("dry-run: %v", err)
 	}
-	for idx, stub := range []*httpmock.Stub{first, second, third} {
-		var body map[string]interface{}
-		if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
-			t.Fatalf("batch %d body unmarshal: %v", idx+1, err)
-		}
-		threadIDs := body["thread_ids"].([]interface{})
-		want := []int{20, 20, 1}[idx]
-		if len(threadIDs) != want {
-			t.Fatalf("batch %d size = %d, want %d", idx+1, len(threadIDs), want)
-		}
-		if body["add_folder"] != "ARCHIVED" {
-			t.Fatalf("batch %d add_folder = %v, want ARCHIVED", idx+1, body["add_folder"])
-		}
+	if len(post.CapturedBodies) != 0 {
+		t.Fatalf("dry-run made %d API calls", len(post.CapturedBodies))
 	}
-	success, failed := decodeThreadManageSummary(t, decodeShortcutEnvelopeData(t, stdout))
-	if len(success) != 21 || len(failed) != 20 {
-		t.Fatalf("success=%d failed=%d, want 21/20", len(success), len(failed))
+	for _, want := range []string{"POST", "/user_mailboxes/me/threads/batch_modify", "thread_ids", "add_label_ids"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("dry-run missing %q: %s", want, stdout.String())
+		}
 	}
 }
 
-func TestThreadModify_AllBatchesFailReturnsError(t *testing.T) {
+func TestThreadManage_RejectsBlankMailboxBeforeDryRun(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+	}{
+		{
+			name:     "modify",
+			shortcut: MailThreadModify,
+			args: []string{
+				"+thread-modify", "--thread-id", threadManageID("1"),
+				"--add-label-id", "UNREAD", "--mailbox-id", "   ", "--dry-run",
+			},
+		},
+		{
+			name:     "trash",
+			shortcut: MailThreadTrash,
+			args: []string{
+				"+thread-trash", "--thread-id", threadManageID("1"),
+				"--mailbox-id", "   ", "--dry-run",
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, test.shortcut, test.args, f, stdout)
+			var validation *errs.ValidationError
+			if !errors.As(err, &validation) {
+				t.Fatalf("error = %T %v, want ValidationError", err, err)
+			}
+			if validation.Param != "--mailbox-id" {
+				t.Fatalf("param = %q, want --mailbox-id", validation.Param)
+			}
+			if strings.Contains(stdout.String(), "/user_mailboxes/") {
+				t.Fatalf("blank mailbox produced a request: %s", stdout.String())
+			}
+		})
+	}
+}
+
+func TestThreadManage_DryRunMailboxPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+		wantPath string
+	}{
+		{
+			name:     "modify defaults to me",
+			shortcut: MailThreadModify,
+			args:     []string{"+thread-modify", "--thread-id", threadManageID("1"), "--add-label-id", "UNREAD", "--dry-run"},
+			wantPath: "/user_mailboxes/me/threads/batch_modify",
+		},
+		{
+			name:     "modify encodes public mailbox",
+			shortcut: MailThreadModify,
+			args: []string{
+				"+thread-modify", "--thread-id", threadManageID("1"), "--add-label-id", "UNREAD",
+				"--mailbox-id", "shared%team@example.com", "--dry-run",
+			},
+			wantPath: "/user_mailboxes/shared%25team@example.com/threads/batch_modify",
+		},
+		{
+			name:     "trash defaults to me",
+			shortcut: MailThreadTrash,
+			args:     []string{"+thread-trash", "--thread-id", threadManageID("1"), "--dry-run"},
+			wantPath: "/user_mailboxes/me/threads/batch_trash",
+		},
+		{
+			name:     "trash encodes public mailbox",
+			shortcut: MailThreadTrash,
+			args: []string{
+				"+thread-trash", "--thread-id", threadManageID("1"),
+				"--mailbox-id", "shared%team@example.com", "--dry-run",
+			},
+			wantPath: "/user_mailboxes/shared%25team@example.com/threads/batch_trash",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			if err := runMountedMailShortcut(t, test.shortcut, test.args, f, stdout); err != nil {
+				t.Fatalf("dry-run: %v", err)
+			}
+			if !strings.Contains(stdout.String(), test.wantPath) {
+				t.Fatalf("dry-run missing %q: %s", test.wantPath, stdout.String())
+			}
+		})
+	}
+}
+
+func TestThreadModify_APIFailurePassesThrough(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
-	id := threadManageID("1")
 	stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 1230001, "msg": "bad request"})
-
 	err := runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify",
-		"--thread-ids", id,
-		"--add-folder", "archive",
+		"+thread-modify", "--thread-id", threadManageID("1"), "--folder-id", "folderA",
 	}, f, stdout)
-	requireMessageManageFailedPrecondition(t, err)
-}
-
-func TestThreadModify_DryRunShowsPostURLAndBody(t *testing.T) {
-	f, stdout, _, _ := mailShortcutTestFactory(t)
-	id1 := threadManageID("1")
-	id2 := threadManageID("2")
-	err := runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify",
-		"--thread-ids", id1 + "," + id2,
-		"--add-label-ids", "customA",
-		"--add-folder", "folderA",
-		"--dry-run",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("dry-run failed: %v", err)
-	}
-	out := stdout.String()
-	for _, want := range []string{
-		`/user_mailboxes/me/threads/batch_modify`,
-		`thread_ids`,
-		`add_label_ids`,
-		`add_folder`,
-		`batch_size`,
-	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("dry-run output missing %q; got %s", want, out)
-		}
-	}
-	if strings.Contains(out, `validation_api_plan`) {
-		t.Fatalf("dry-run output must not include validation_api_plan; got %s", out)
+	if err == nil || output.ExitCodeOf(err) != output.ExitAPI {
+		t.Fatalf("error = %v, want API error", err)
 	}
 }
 
-func TestThreadTrash_RequiresYesAndBatches(t *testing.T) {
+func TestThreadTrash_OneRequestAndRawResponse(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	id1 := threadManageID("1")
 	id2 := threadManageID("2")
+	post := stubThreadManagePost(reg, "batch_trash", map[string]interface{}{
+		"code": 0,
+		"data": map[string]interface{}{"job_id": "job_1"},
+	})
 	err := runMountedMailShortcut(t, MailThreadTrash, []string{
-		"+thread-trash",
-		"--thread-ids", id1 + "," + id2,
+		"+thread-trash", "--thread-id", id1, "--thread-id", id2, "--thread-id", id1, "--yes",
 	}, f, stdout)
-	if err == nil {
-		t.Fatal("expected confirmation error, got nil")
+	if err != nil {
+		t.Fatalf("execute trash: %v", err)
 	}
-	if code := output.ExitCodeOf(err); code != output.ExitConfirmationRequired {
-		t.Fatalf("exit code = %d, want %d", code, output.ExitConfirmationRequired)
+	if len(post.CapturedBodies) != 1 {
+		t.Fatalf("POST count = %d, want 1", len(post.CapturedBodies))
 	}
+	body := decodeThreadManageBody(t, post)
+	if len(body) != 1 {
+		t.Fatalf("trash body includes modify-only fields: %#v", body)
+	}
+	if got := body["thread_ids"].([]interface{}); len(got) != 2 || got[0] != id1 || got[1] != id2 {
+		t.Fatalf("thread_ids = %#v", got)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["job_id"] != "job_1" {
+		t.Fatalf("data = %#v, want raw downstream data", data)
+	}
+}
 
+func TestThreadTrash_ConfirmationDryRunAndEmptyResponse(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	id := threadManageID("1")
 	post := stubThreadManagePost(reg, "batch_trash", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
-	err = runMountedMailShortcut(t, MailThreadTrash, []string{
-		"+thread-trash",
-		"--thread-ids", id1 + "," + id2,
-		"--yes",
-	}, f, stdout)
+	post.Optional = true
+
+	err := runMountedMailShortcut(t, MailThreadTrash, []string{"+thread-trash", "--thread-id", id}, f, stdout)
+	if err == nil || output.ExitCodeOf(err) != output.ExitConfirmationRequired {
+		t.Fatalf("error = %v, want confirmation required", err)
+	}
+	err = runMountedMailShortcut(t, MailThreadTrash, []string{"+thread-trash", "--thread-id", id, "--dry-run"}, f, stdout)
 	if err != nil {
-		t.Fatalf("unexpected err with --yes: %v", err)
+		t.Fatalf("dry-run: %v", err)
 	}
-	var body map[string]interface{}
-	if err := json.Unmarshal(post.CapturedBody, &body); err != nil {
-		t.Fatalf("unmarshal captured body: %v", err)
+	if len(post.CapturedBodies) != 0 {
+		t.Fatalf("dry-run made %d API calls", len(post.CapturedBodies))
 	}
-	if got := len(body["thread_ids"].([]interface{})); got != 2 {
-		t.Fatalf("thread_ids len = %d, want 2", got)
+	post.Optional = false
+	err = runMountedMailShortcut(t, MailThreadTrash, []string{"+thread-trash", "--thread-id", id, "--yes"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute trash: %v", err)
 	}
-	success, failed := decodeThreadManageSummary(t, decodeShortcutEnvelopeData(t, stdout))
-	if len(success) != 2 || len(failed) != 0 {
-		t.Fatalf("summary success=%v failed=%v", success, failed)
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if len(data) != 0 {
+		t.Fatalf("empty downstream data gained synthetic fields: %#v", data)
 	}
 }
 
-func TestThreadTrash_AllBatchesFailReturnsError(t *testing.T) {
+func TestThreadManage_RemainingAliasesStayAccepted(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
-	id := threadManageID("1")
-	stubThreadManagePost(reg, "batch_trash", map[string]interface{}{"code": 1230001, "msg": "bad request"})
-
-	err := runMountedMailShortcut(t, MailThreadTrash, []string{
-		"+thread-trash",
-		"--thread-ids", id,
-		"--yes",
-	}, f, stdout)
-	requireMessageManageFailedPrecondition(t, err)
-}
-
-func TestThreadTrash_BatchesAndAggregatesPartialFailure(t *testing.T) {
-	f, stdout, _, reg := mailShortcutTestFactory(t)
-	ids := threadManageIDs(41)
-	first := stubThreadManagePost(reg, "batch_trash", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
-	second := stubThreadManagePost(reg, "batch_trash", map[string]interface{}{"code": 1230001, "msg": "bad request"})
-	third := stubThreadManagePost(reg, "batch_trash", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
-
-	err := runMountedMailShortcut(t, MailThreadTrash, []string{
-		"+thread-trash",
-		"--thread-ids", strings.Join(ids, ","),
-		"--yes",
+	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
+	err := runMountedMailShortcut(t, MailThreadModify, []string{
+		"+thread-modify", "--mailbox", "me", "--thread-id", threadManageID("1"),
+		"--add-label-id", "unread", "--remove-label-id", "FLAGGED", "--add-folder", "archive",
 	}, f, stdout)
 	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf("remaining aliases: %v", err)
 	}
-	for idx, stub := range []*httpmock.Stub{first, second, third} {
-		var body map[string]interface{}
-		if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
-			t.Fatalf("batch %d body unmarshal: %v", idx+1, err)
-		}
-		threadIDs := body["thread_ids"].([]interface{})
-		want := []int{20, 20, 1}[idx]
-		if len(threadIDs) != want {
-			t.Fatalf("batch %d size = %d, want %d", idx+1, len(threadIDs), want)
-		}
-	}
-	success, failed := decodeThreadManageSummary(t, decodeShortcutEnvelopeData(t, stdout))
-	if len(success) != 21 || len(failed) != 20 {
-		t.Fatalf("success=%d failed=%d, want 21/20", len(success), len(failed))
+	body := decodeThreadManageBody(t, post)
+	if body["add_folder"] != "ARCHIVED" {
+		t.Fatalf("add_folder = %#v, want ARCHIVED", body["add_folder"])
 	}
 }
 
-func TestThreadTrash_DryRunShowsPostURLAndBody(t *testing.T) {
-	f, stdout, _, _ := mailShortcutTestFactory(t)
-	id := threadManageID("1")
-	err := runMountedMailShortcut(t, MailThreadTrash, []string{
-		"+thread-trash",
-		"--thread-ids", id,
-		"--dry-run",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("dry-run failed: %v", err)
+func TestThreadManage_RejectsPluralAliases(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+		flag     string
+	}{
+		{
+			name:     "modify thread ids",
+			shortcut: MailThreadModify,
+			args:     []string{"+thread-modify", "--thread-ids", threadManageID("1"), "--folder-id", "archive"},
+			flag:     "--thread-ids",
+		},
+		{
+			name:     "modify add label ids",
+			shortcut: MailThreadModify,
+			args:     []string{"+thread-modify", "--thread-id", threadManageID("1"), "--add-label-ids", "unread"},
+			flag:     "--add-label-ids",
+		},
+		{
+			name:     "modify remove label ids",
+			shortcut: MailThreadModify,
+			args:     []string{"+thread-modify", "--thread-id", threadManageID("1"), "--remove-label-ids", "FLAGGED"},
+			flag:     "--remove-label-ids",
+		},
+		{
+			name:     "trash thread ids",
+			shortcut: MailThreadTrash,
+			args:     []string{"+thread-trash", "--thread-ids", threadManageID("1"), "--dry-run"},
+			flag:     "--thread-ids",
+		},
 	}
-	out := stdout.String()
-	for _, want := range []string{
-		`/user_mailboxes/me/threads/batch_trash`,
-		`thread_ids`,
-		`batch_size`,
-	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("dry-run output missing %q; got %s", want, out)
-		}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, test.shortcut, test.args, f, stdout)
+			if err == nil || !strings.Contains(err.Error(), "unknown flag: "+test.flag) {
+				t.Fatalf("error = %v, want unknown flag %s", err, test.flag)
+			}
+		})
 	}
 }

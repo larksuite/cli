@@ -280,9 +280,13 @@ func printWatchOutputSchema(runtime *common.RuntimeContext) {
 	fmt.Fprintln(runtime.IO().Out, string(b))
 }
 
-// resolveMailboxID returns the user_mailbox_id from --mailbox flag, defaulting to "me".
+// resolveMailboxID returns the user_mailbox_id from the canonical mailbox flag
+// used by the mounted shortcut, defaulting to "me".
 func resolveMailboxID(runtime *common.RuntimeContext) string {
 	id := runtime.Str("mailbox")
+	if id == "" {
+		id = runtime.Str("mailbox-id")
+	}
 	if id == "" {
 		return "me"
 	}
@@ -2740,7 +2744,7 @@ func buildCalendarBody(runtime *common.RuntimeContext, senderEmail string, toAdd
 // validateBotMailboxNotMe rejects the combination of bot identity with --mailbox me.
 // bot uses tenant access token; "me" cannot be resolved to a user mailbox under TAT.
 func validateBotMailboxNotMe(runtime *common.RuntimeContext) error {
-	if runtime.IsBot() && runtime.Str("mailbox") == "me" {
+	if runtime.IsBot() && resolveMailboxID(runtime) == "me" {
 		return mailValidationParamError("--mailbox",
 			"--as bot does not support --mailbox me: bot identity uses a tenant token and cannot resolve \"me\" to a user mailbox; "+
 				"pass an explicit email address, e.g. --mailbox alice@example.com")
