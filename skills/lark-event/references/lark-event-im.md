@@ -46,6 +46,22 @@ lark-cli event consume im.message.receive_v1 --as bot \
   --jq 'select(.message_type=="interactive") | .content | fromjson'
 ```
 
+**One human action can arrive as two events.** A thread reply the sender also
+sent to the chat is delivered twice: the original (carries
+`synced_to_chat_message`) and the chat-level copy (carries
+`synced_from_thread_reply`). Both have the same content, so a bot that answers
+each event replies twice. Act on the original and skip the copy:
+
+```bash
+lark-cli event consume im.message.receive_v1 --as bot \
+  --jq 'select(.synced_from_thread_reply == null)'
+```
+
+`interactive` messages are the one exception: compact conversion does not
+support them, so they fall through as the raw event and carry the nested
+`sync_to_chat_info` instead of the flat fields. No API creates a card reply
+with "also send to chat", so this is not expected in practice.
+
 ## On-demand filter recipes
 
 > **Default = no `--jq`.** Run `lark-cli event consume im.message.receive_v1 --as bot` to see every message. The recipes below are only for cases where the user has asked to narrow the stream.
