@@ -28,6 +28,14 @@ lark-cli apps +init --app-id app_xxx --dir ./my-app --dry-run
 - `scaffold=already_initialized` 表示目录已初始化：跳过 clone/scaffold/commit，但仍会执行一次 env-pull 刷新本地环境变量（输出含 `env_pulled`，成功时含 `env_file`，失败时含 `env_pull_error` 且退出码仍为 0）；此时通常没有 `repository_url` / `branch`。
 - `--dry-run` 只打印计划，不执行 git / npx；若输出含 `dir_error`，真跑前先让用户换目录。
 
+## 耗时与失败处理
+
+- 长耗时命令，没有内部超时：内部含 clone、生成项目代码（拉模板 + 装依赖）、提交推送、拉环境变量。给它至少 10 分钟的工具超时，或后台执行后在同一轮里主动轮询到进程退出；不要结束回合去等宿主的后台完成通知。各类型的实测耗时见 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)「`+init` 耗时、超时与成功门禁」。
+- 成功只看 stdout envelope：退出码 0 且 `ok: true`，`data.scaffold` ∈ {`init`, `upgrade`, `already_initialized`}。没有 envelope（超时、被 kill、被中断）就是未完成，不能开始写代码。
+- 退出 0 不代表依赖已装好：脚手架内部的依赖安装是软失败，`+init` 不转述安装错误。full_stack / frontend 要核对 `node_modules/` 存在，缺失则 `npm install`。
+- 被中断后不要立刻重跑：残留的 CLI 与依赖安装子进程可能还在往同一目录写文件并提交推送。先查进程、按需清理，再判定目录——完整顺序、等待上限和核对清单见 local-dev 的同一节。
+- `git push failed`：脚手架已本地提交、未推送，重跑 `+init` 会短路成 `already_initialized`。按 `error.message` 分流：non-fast-forward 先 `git pull --rebase origin sprint/default`，认证失败先 `+git-credential-init`，然后 `git push origin sprint/default`。
+
 ## Agent 规则
 
 - 目标目录必须不存在、为空目录，或已含 `.spark/meta.json` 且其 app_id 与 `--app-id` 一致的已初始化仓库。
