@@ -35,6 +35,7 @@ const messages = {
     step2Spinner:   "正在安装 Skills...",
     step2Done:      "Skills 已安装",
     step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g",
+    step2SkipRequested: "已按 --no-skills 跳过 Skills 安装。需要时运行: npx skills add %s -y -g",
     step3:          "正在配置应用...",
     step3NotFound:  "未找到 lark-cli，终止",
     step3Found:     "发现已配置应用 (App ID: %s)，继续使用？",
@@ -64,6 +65,7 @@ const messages = {
     step2Spinner:   "Installing skills...",
     step2Done:      "Skills installed",
     step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g",
+    step2SkipRequested: "Skipped skills installation (--no-skills). To install later: npx skills add %s -y -g",
     step3:          "Configuring app...",
     step3NotFound:  "lark-cli not found. Aborting",
     step3Found:     "Found existing app (App ID: %s). Use this app?",
@@ -216,6 +218,11 @@ function parseLangArg() {
   return null;
 }
 
+/** True when a boolean flag such as --no-skills is present in process.argv. */
+function hasFlag(name) {
+  return process.argv.slice(2).includes(name);
+}
+
 // ---------------------------------------------------------------------------
 // Steps
 // ---------------------------------------------------------------------------
@@ -271,7 +278,11 @@ async function skillsAlreadyInstalled() {
   }
 }
 
-async function stepInstallSkills(msg) {
+async function stepInstallSkills(msg, skip) {
+  if (skip) {
+    p.log.info(fmt(msg.step2SkipRequested, SKILLS_REPO_FALLBACK));
+    return;
+  }
   const s = p.spinner();
   s.start(msg.step2Spinner);
   try {
@@ -363,18 +374,19 @@ async function main() {
   const isInteractive = !!process.stdin.isTTY;
   const lang = isInteractive ? await stepSelectLang() : (parseLangArg() || "en");
   const msg = messages[lang];
+  const skipSkills = hasFlag("--no-skills");
 
   if (isInteractive) {
     p.intro(msg.setup);
     await stepInstallGlobally(msg);
-    await stepInstallSkills(msg);
+    await stepInstallSkills(msg, skipSkills);
     await stepConfigInit(msg, lang);
     await stepAuthLogin(msg);
     p.outro(msg.done);
   } else {
     console.log(msg.setup);
     await stepInstallGlobally(msg);
-    await stepInstallSkills(msg);
+    await stepInstallSkills(msg, skipSkills);
     console.log(msg.nonTtyHint);
   }
 }
