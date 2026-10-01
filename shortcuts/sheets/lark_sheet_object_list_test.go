@@ -45,6 +45,17 @@ func TestObjectListShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
+			name:     "+chart-list --only-thumbnail",
+			sc:       ChartList,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--only-thumbnail"},
+			toolName: "get_chart_objects",
+			wantInput: map[string]interface{}{
+				"excel_id":       testToken,
+				"sheet_id":       testSheetID,
+				"only_thumbnail": true,
+			},
+		},
+		{
 			name:     "+pivot-list filter",
 			sc:       PivotList,
 			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--pivot-table-id", "ptA"},
