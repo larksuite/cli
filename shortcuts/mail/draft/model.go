@@ -168,6 +168,7 @@ type DraftProjection struct {
 	InlineSummary           []PartSummary            `json:"inline_summary,omitempty"`
 	Warnings                []string                 `json:"warnings,omitempty"`
 	Priority                string                   `json:"priority"`
+	SendSeparately          string                   `json:"send_separately"`
 }
 
 type Patch struct {

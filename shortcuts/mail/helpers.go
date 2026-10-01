@@ -2090,6 +2090,62 @@ func applyPriority(bld emlbuilder.Builder, priority string) emlbuilder.Builder {
 	return bld.Header("X-Cli-Priority", priority)
 }
 
+// sendSeparatelyFlag is the common flag definition for --send-separately,
+// shared by the compose shortcuts. Tri-state by value: unset (empty) keeps
+// the draft's existing setting, "true" enables separate sends per recipient,
+// "false" explicitly cancels it.
+var sendSeparatelyFlag = common.Flag{
+	Name: "send-separately",
+	Desc: "Send separately to each recipient: true or false. Explicit true makes the server deliver one copy per recipient; explicit false cancels it (the value is persisted on the draft either way). Omit the flag to keep the draft's existing setting (new drafts default to a normal single send).",
+}
+
+// parseSendSeparately parses the tri-state --send-separately value:
+// "" (unset, no override), "true", or "false" (case-insensitive). Any other
+// value is a parameter error rejected before any draft write or send.
+func parseSendSeparately(value string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return "", nil
+	case "true":
+		return "true", nil
+	case "false":
+		return "false", nil
+	default:
+		return "", mailValidationParamError("--send-separately", "invalid --send-separately value %q: expected true or false", value)
+	}
+}
+
+// validateSendSeparatelyFlag validates the --send-separately flag value in
+// Validate, so invalid values are caught before Execute (and before any
+// draft write or send side effect).
+func validateSendSeparatelyFlag(runtime *common.RuntimeContext) error {
+	_, err := parseSendSeparately(runtime.Str("send-separately"))
+	return err
+}
+
+// applySendSeparately sets the X-Cli-Send-Separately header on the EML
+// builder when the user explicitly provided --send-separately. An unset flag
+// leaves the header absent so the server keeps the draft's stored setting.
+// Explicit false is written as a present header with value "false" — never
+// omitted — so the cancel reaches the save layer.
+func applySendSeparately(bld emlbuilder.Builder, sendSeparately string) emlbuilder.Builder {
+	if sendSeparately == "" {
+		return bld
+	}
+	return bld.Header(draftpkg.SendSeparatelyHeader, sendSeparately)
+}
+
+// sendSeparatelyConflictError is the parameter conflict returned when
+// --send-separately and a --patch-file op disagree on the send-separately
+// state (JSON entry vs flag entry with different values).
+func sendSeparatelyConflictError() error {
+	return mailValidationError("--send-separately conflicts with --patch-file: both set the send-separately state but disagree; pass only one of them").
+		WithParams(
+			mailInvalidParam("--send-separately", "conflicts with --patch-file send-separately header op"),
+			mailInvalidParam("--patch-file", "conflicts with --send-separately"),
+		)
+}
+
 // parseNetAddrs converts a comma-separated address string to []net/mail.Address.
 // It reuses ParseMailboxList for display-name-aware parsing and deduplicates
 // by email address (case-insensitive), preserving the first occurrence.
