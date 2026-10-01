@@ -175,41 +175,37 @@ func addSignatureImagesToBuilder(bld emlbuilder.Builder, sig *signatureResult) e
 	return bld
 }
 
-// resolveSenderInfo fetches send_as addresses and returns the name/email
-// for signature interpolation. If fromEmail is non-empty, it matches
-// that address in the sendable list (for alias/send_as scenarios);
-// otherwise falls back to the first (primary) address.
+// resolveSenderInfo fetches send_as addresses and returns the name/email for
+// signature interpolation. If fromEmail is non-empty, it matches that address;
+// otherwise it uses --mailbox != me, then the default send_as address. Older
+// servers without is_default fall back to the primary address; no list-order
+// fallback is treated as a default.
 func resolveSenderInfo(runtime *common.RuntimeContext, mailboxID, fromEmail string) (name, email string) {
 	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "settings", "send_as"), nil, nil)
 	if err != nil {
-		return "", ""
+		if from := strings.TrimSpace(fromEmail); from != "" {
+			return "", from
+		}
+		fallback := resolvePrimarySenderInfo(runtime, runtime.Str("mailbox"))
+		return fallback.Name, fallback.Email
 	}
 	addrs, ok := data["sendable_addresses"].([]interface{})
 	if !ok || len(addrs) == 0 {
-		return "", ""
-	}
-	// If fromEmail is specified, find the matching address.
-	if fromEmail != "" {
-		for _, a := range addrs {
-			m, ok := a.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			e, _ := m["email_address"].(string)
-			if strings.EqualFold(e, fromEmail) {
-				n, _ := m["name"].(string)
-				return n, e
-			}
+		if from := strings.TrimSpace(fromEmail); from != "" {
+			return "", from
 		}
+		fallback := resolvePrimarySenderInfo(runtime, runtime.Str("mailbox"))
+		return fallback.Name, fallback.Email
 	}
-	// Fall back to the first sendable address (primary).
-	first, ok := addrs[0].(map[string]interface{})
-	if !ok {
-		return "", ""
+	sender := pickSendAsAddress(addrs, fromEmail, runtime.Str("mailbox"))
+	if sender.Email == "" && strings.TrimSpace(fromEmail) != "" {
+		return "", strings.TrimSpace(fromEmail)
 	}
-	n, _ := first["name"].(string)
-	e, _ := first["email_address"].(string)
-	return n, e
+	if sender.Email == "" {
+		fallback := resolvePrimarySenderInfo(runtime, runtime.Str("mailbox"))
+		return fallback.Name, fallback.Email
+	}
+	return sender.Name, sender.Email
 }
 
 // downloadSignatureImage downloads a signature image by its direct URL.
