@@ -118,6 +118,31 @@ func TestHandleBaseAPIResultClassifiesKnownPermissionCode(t *testing.T) {
 	}
 }
 
+func TestHandleBaseAPIResultClassifiesUnsupportedDashboardDisplayConfig(t *testing.T) {
+	result := map[string]interface{}{
+		"code": 800004045,
+		"msg":  "not supported",
+		"data": map[string]interface{}{
+			"error": map[string]interface{}{
+				"message": "block type pie does not support switch_row_column",
+				"hint":    "Use column, line, bar, area, or scatter.",
+			},
+		},
+	}
+
+	_, err := handleBaseAPIResultAny(result, nil, "update dashboard block")
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T %v", err, err)
+	}
+	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeFeatureNotAvailable {
+		t.Fatalf("category/subtype=%s/%s", p.Category, p.Subtype)
+	}
+	if p.Message != "block type pie does not support switch_row_column" || p.Hint != "Use column, line, bar, area, or scatter." {
+		t.Fatalf("message=%q hint=%q", p.Message, p.Hint)
+	}
+}
+
 func TestAttachBaseResponseLogIDFromHeader(t *testing.T) {
 	result := map[string]interface{}{
 		"code": 91402,

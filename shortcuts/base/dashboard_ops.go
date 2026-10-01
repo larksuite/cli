@@ -65,6 +65,11 @@ func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, inclu
 		}
 		body["position"] = parsed
 	}
+	if runtime.Cmd.Flags().Lookup("switch-row-column") != nil && runtime.Changed("switch-row-column") {
+		body["display_config"] = map[string]interface{}{
+			"switch_row_column": runtime.Bool("switch-row-column"),
+		}
+	}
 	return body, nil
 }
 
