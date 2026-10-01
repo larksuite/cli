@@ -131,6 +131,8 @@ func prepareDocsV2WriteInput(runtime *common.RuntimeContext, input docsV2WriteIn
 	return prepareDocsV2WriteInputForFormat(runtime, runtime.Str("doc-format"), input)
 }
 
+// prepareDocsV2WriteInputForFormat resolves resource references through the
+// invocation runtime and normalizes content before a DocsAI write or preview.
 func prepareDocsV2WriteInputForFormat(runtime *common.RuntimeContext, format string, input docsV2WriteInput) (docsV2WriteInput, error) {
 	refMap := cloneReferenceMapObject(input.ReferenceMap)
 	html5RefMap, err := html5ReferenceMapFromObject(refMap)
@@ -154,6 +156,7 @@ func prepareDocsV2WriteInputForFormat(runtime *common.RuntimeContext, format str
 		return docsV2WriteInput{}, err
 	}
 	refMap = mergeHTML5ReferenceMap(refMap, html5RefMap)
+	content = prepareInlineDocAttachments(format, content)
 	return docsV2WriteInput{
 		Content:        content,
 		ReferenceMap:   refMap,
