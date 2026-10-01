@@ -2307,10 +2307,19 @@ func normalizeCommaFlagValues(values []string) string {
 
 func normalizeInlineFlagValues(values []string) (string, error) {
 	var all []InlineSpec
-	for _, raw := range values {
+	for i, raw := range values {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			err := errors.New("value must not be empty")
+			return "", mailValidationParamError("--inline", "--inline occurrence %d: %v", i+1, err).WithCause(err)
+		}
+		if trimmed == "null" {
+			err := errors.New("null is not a JSON object or array")
+			return "", mailValidationParamError("--inline", "--inline occurrence %d: %v", i+1, err).WithCause(err)
+		}
 		specs, err := parseInlineSpecs(raw)
 		if err != nil {
-			return "", err
+			return "", mailValidationParamError("--inline", "--inline occurrence %d: %v", i+1, err).WithCause(err)
 		}
 		all = append(all, specs...)
 	}
@@ -2368,10 +2377,10 @@ func parseInlineSpecs(raw string) ([]InlineSpec, error) {
 	for i, s := range specs {
 		cid := normalizeInlineCID(s.CID)
 		if cid == "" {
-			return nil, mailValidationParamError("--inline", "--inline entry %d: \"cid\" must not be empty", i)
+			return nil, mailValidationParamError("--inline", "--inline entry %d: \"cid\" must not be empty", i+1)
 		}
 		if strings.TrimSpace(s.FilePath) == "" {
-			return nil, mailValidationParamError("--inline", "--inline entry %d: \"file_path\" must not be empty", i)
+			return nil, mailValidationParamError("--inline", "--inline entry %d: \"file_path\" must not be empty", i+1)
 		}
 		specs[i].CID = cid
 	}
