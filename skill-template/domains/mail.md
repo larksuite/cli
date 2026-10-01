@@ -59,6 +59,32 @@
 
 **已授权判定**：当且仅当用户在最近一轮对话**同时**明确了 (a) 目标对象 和 (b) 动作时（例如"删掉刚才那封 spam"），视为已授权，无需再确认。仅说"删了它"但目标对象只来自历史上下文且未在本轮复述时，仍需展示预览。
 
+#### 决策状态机字段语义（被 evaluator / runner 以 JSON 形式调用时）
+
+当被外部 runner 要求输出 JSON 决策对象（schema 通常含 `decision`、`planned_action`、`preview`、`assistant_message`、`would_execute_write`、`target_found` 等字段）时，按当前操作所处阶段填字段，**不得跨阶段填错**：
+
+**`decision = "ask_confirm"`（征求确认；上表中需确认的操作）**
+
+- `planned_action` **必须为 `null`**。这是"我接下来要打的 API 调用"的承诺槽，仅在 execute 阶段填写。confirm 阶段填它（无论是字符串如 `"batch_trash messages [m_1, m_2]"`、还是 dict 如 `{"api": "messages.batch_trash", "message_ids": [...]}`）都会让下游基于 `planned_action != null` 误判为"用户已授权，可以执行"，跳过二次确认。
+- `would_execute_write = false`、`target_found = true`。
+- `preview.fields` 是**字段名列表**（如 `["sender", "subject", "folder", "count"]`），必须显式列出能让用户识别目标的关键字段名——**不要只把字段值挤进 `preview.items` 里**就算字段抽取完成。具体最低要求：
+  - 邮件删除 / 软删（`*.delete`、`*.trash`、`*.batch_trash`）/ 取消定时发送（`*.cancel_scheduled_send`）：必须含 `sender`、`subject`、`folder`
+  - 收信规则变更（`rules.create` / `update` / `delete`）：必须含 `rule_name`
+- `preview.items` 是**字段值列表**（每条记录展开 `preview.fields` 列出的字段对应的值），与 `fields` 配合呈现。
+- `assistant_message` 必须含"确认"或"是否"等显式征询用语；**不得**含"已删除"、"执行完成"等终态描述。批量操作（`batch_*`）的 `assistant_message` 必须包含**受影响数量数字**（如"将删除 **2 封**邮件"、"将命中 **234** 条规则"）。
+
+**`decision = "execute"`（直接执行；上表中 ❌ 可逆免确认操作 / 已授权 / 用户在确认环节回了"是"）**
+
+- `planned_action` 填**字面 API 名**（如 `"messages.batch_trash"`、`"messages.mark_read"`、`"messages.move"`、`"messages.add_label"`），代表即将发起的具体调用；可附 message_ids / labels 等参数。
+- `would_execute_write = true`。
+- 上表中标 ❌ 可逆免确认 的操作（`*.add_label` / `*.remove_label` / `*.mark_read` / `*.mark_unread` / `*.move`）应**直接 `execute`，不要绕道 `ask_confirm`**——绕道会让免确认流程退化成双触确认。
+
+**`decision = "report_not_found"`（前置对象不存在；见第 1 节）**
+
+- `target_found = false`、`planned_action = null`、`would_execute_write = false`。
+
+> 一句话：`planned_action` 是 execute 阶段的**承诺槽**，不是 confirm 阶段的**动作描述槽**。动作描述放进 `assistant_message` + `preview` 给用户看；`planned_action` 给下游执行器看。
+
 ### 正确流程示例
 
 用户："把发件人是 spam@x.com 的邮件都删了"
