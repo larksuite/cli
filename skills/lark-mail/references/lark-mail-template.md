@@ -29,7 +29,7 @@
 
 | # | 场景 | 合并策略 |
 |---|------|----------|
-| Q1 to/cc/bcc | 全部 5 个 shortcut | 用户 `--to/--cc/--bcc` 先覆盖草稿原有值，再与模板 tos/ccs/bccs **无去重追加** |
+| Q1 to/cc/bcc | 全部 5 个 shortcut | 用户 `--to/--cc/--bcc` 先覆盖草稿原有值，再追加模板 tos/ccs/bccs；`+reply-all` 会在合并后分别对 To/Cc/Bcc 去重，其他 shortcut 不去重 |
 | Q2 subject | `+send` / `+draft-create` | 用户 `--subject` > 草稿 subject > 模板 subject |
 |  | `+reply` / `+reply-all` / `+forward` | 用户 `--subject` 覆盖自动 Re:/Fw:；否则保持 Re:/Fw: + 原邮件 subject。**模板 subject 被忽略**（保留会话线索） |
 | Q3 body | `+send` / `+draft-create` | 空草稿 body → 用模板；非空 HTML → `draftBody + <br><br> + tplContent`；非空 plain-text → `\n\n` 拼接 |
@@ -37,7 +37,7 @@
 | Q4 附件 | 全部 5 个 shortcut | 模板 inline（SMALL）由 CLI 走 `user_mailbox.template.attachments.download_url` 下载后以 MIME part 注入；SMALL 非 inline 同样注入；LARGE（`attachment_type=2`）不下载，只把 `file_key` 放到 `X-Lms-Large-Attachment-Ids` header 让服务端渲染下载卡片 |
 | Q5 cid 冲突 | inline 图片 | cid 由 UUID v4 生成（碰撞概率 ~ 2^-122），不显式检测 |
 
-**Warning**：`+reply` / `+reply-all` + 模板且模板自带 tos/ccs/bccs 时，CLI 在 stderr 打印：`warning: template to/cc/bcc are appended without de-duplication; you may see repeated recipients. Use --to/--cc/--bcc to override, or run +template-update to clear template addresses.`
+**Warning**：`+reply` + 模板且模板自带 tos/ccs/bccs 时，CLI 在 stderr 打印：`warning: template to/cc/bcc are appended without de-duplication; you may see repeated recipients. Use --to/--cc/--bcc to override, or run +template-update to clear template addresses.` `+reply-all` 会在合并模板和显式收件人后执行去重，因此不打印该警告。
 
 ## Size 约束
 
