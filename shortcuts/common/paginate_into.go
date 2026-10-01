@@ -203,7 +203,7 @@ func paginationProgressEnabled(runtime *RuntimeContext) bool {
 	if runtime == nil || !runtime.IO().StderrIsTerminal {
 		return false
 	}
-	if runtime.JqExpr != "" {
+	if runtime.outputJQ() != "" {
 		return true
 	}
 	format, known := output.ParseFormat(runtime.Format)

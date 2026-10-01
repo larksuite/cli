@@ -5,145 +5,100 @@ package mail
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const (
+	mailThreadModifyMethod = "POST"
+	mailThreadTrashMethod  = "POST"
+)
+
 type threadModifyInput struct {
-	ThreadIDs      []string
-	AddLabelIDs    []string
-	RemoveLabelIDs []string
-	FolderID       string
+	ThreadIDs        []string
+	AddLabelIDs      []string
+	RemoveLabelIDs   []string
+	FolderID         string
+	FolderIDProvided bool
 }
 
-const mailThreadManageBatchSize = 20
-
-type threadManageSummary struct {
-	SuccessThreadIDs []string              `json:"success_thread_ids"`
-	FailedThreadIDs  []threadManageFailure `json:"failed_thread_ids"`
+type threadAPIRequest struct {
+	Method string
+	Path   string
+	Body   map[string]interface{}
 }
 
-type threadManageFailure struct {
-	ThreadID string `json:"thread_id"`
-	Reason   string `json:"reason"`
-}
-
-// MailThreadModify is the `+thread-modify` shortcut: apply label changes or a
-// folder move to existing mail threads in batches of 20.
+// MailThreadModify exposes only the fields supported by
+// user_mailbox.threads.batch_modify. Callers cannot inject arbitrary request
+// data or the protocol-level add_folder field name.
 var MailThreadModify = common.Shortcut{
-	Service:     "mail",
-	Command:     "+thread-modify",
-	Description: "Modify existing mail threads by adding/removing label IDs or moving them to a folder. Batches thread IDs in groups of 20 and keeps output compact.",
-	Risk:        "write",
-	Scopes:      []string{"mail:user_mailbox.message:modify"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:          "mail",
+	Command:          "+thread-modify",
+	Description:      "Modify entire mail threads by adding or removing label IDs, or moving them to a folder.",
+	Risk:             "write",
+	Scopes:           []string{"mail:user_mailbox.message:modify"},
+	AuthTypes:        []string{"user", "bot"},
+	HasFormat:        true,
+	HasFieldSelector: true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "Mailbox email address that owns the threads (default: me)."},
-		{Name: "thread-ids", Type: "string_array", Required: true, Desc: "Thread IDs to modify; comma-separated or repeat the flag."},
-		{Name: "add-label-ids", Type: "string_slice", Desc: "Label IDs to add. System labels unread/important/other/flagged are normalized to upper case."},
-		{Name: "remove-label-ids", Type: "string_slice", Desc: "Label IDs to remove. Cannot overlap with --add-label-ids."},
-		{Name: "add-folder", Desc: "Folder ID to move threads to."},
-		{Name: "folder-id", Hidden: true, Desc: "Compatibility alias for --add-folder."},
+		{Name: "thread-id", Type: "string_slice", Required: true, Desc: "Thread ID; comma-separated or repeat the flag."},
+		{Name: "add-label-id", Type: "string_slice", Desc: "Label ID to add; comma-separated or repeat the flag."},
+		{Name: "remove-label-id", Type: "string_slice", Desc: "Label ID to remove; comma-separated or repeat the flag."},
+		{Name: "folder-id", Desc: "Folder ID to move the threads to."},
 	},
-	Normalize: normalizeThreadModifyCompatibility,
-	Validate:  validateThreadModify,
-	DryRun:    dryRunThreadModify,
-	Execute:   executeThreadModify,
+	Validate: validateThreadModify,
+	DryRun:   dryRunThreadModify,
+	Execute:  executeThreadModify,
 }
 
-// MailThreadTrash is the `+thread-trash` shortcut: soft-delete existing mail
-// threads through the thread batch_trash route. Risk is high-risk-write, so the
-// runner requires --yes before Execute.
+// MailThreadTrash sends one batch request and therefore neither fans the
+// operation out nor invents per-thread success results.
 var MailThreadTrash = common.Shortcut{
-	Service:     "mail",
-	Command:     "+thread-trash",
-	Description: "Soft-delete existing mail threads. Batches thread IDs in groups of 20 and calls batch_trash sequentially. Requires --yes.",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"mail:user_mailbox.message:modify"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:          "mail",
+	Command:          "+thread-trash",
+	Description:      "Soft-delete entire mail threads in one batch request. Requires --yes.",
+	Risk:             "high-risk-write",
+	Scopes:           []string{"mail:user_mailbox.message:modify"},
+	AuthTypes:        []string{"user", "bot"},
+	HasFormat:        true,
+	HasFieldSelector: true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "Mailbox email address that owns the threads (default: me)."},
-		{Name: "thread-ids", Type: "string_array", Required: true, Desc: "Thread IDs to soft-delete; comma-separated or repeat the flag."},
+		{Name: "thread-id", Type: "string_slice", Required: true, Desc: "Thread ID; comma-separated or repeat the flag."},
 	},
 	Validate: validateThreadTrash,
 	DryRun:   dryRunThreadTrash,
 	Execute:  executeThreadTrash,
 }
 
-func normalizeThreadModifyCompatibility(ctx context.Context, flags *common.FlagContext) error {
-	if flags.Changed("add-folder") && flags.Changed("folder-id") {
-		return mailValidationParamError("--folder-id", "--folder-id is a compatibility alias for --add-folder; pass only one of them")
-	}
-	if !flags.Changed("folder-id") {
-		return nil
-	}
-	if _, err := normalizeThreadManageFolderForFlag(flags.Str("folder-id"), "--folder-id"); err != nil {
-		return err
-	}
-	return flags.SetCanonicalFrom("folder-id", "add-folder", flags.Str("folder-id"))
-}
-
 func validateThreadModify(ctx context.Context, rt *common.RuntimeContext) error {
 	if err := validateBotMailboxNotMe(rt); err != nil {
 		return err
 	}
-	_, err := buildThreadModifyInput(rt)
+	_, err := threadModifyAPIRequest(rt)
 	return err
 }
 
 func dryRunThreadModify(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
-	mailboxID := resolveMailboxID(rt)
-	input, _ := buildThreadModifyInput(rt)
-	api := common.NewDryRunAPI().
-		Desc("Modify threads sequentially in batches of 20").
-		Set("batch_size", mailThreadManageBatchSize).
-		Set("batches", chunkThreadManageIDs(input.ThreadIDs))
-	for _, batch := range chunkThreadManageIDs(input.ThreadIDs) {
-		api = api.POST(mailboxPath(mailboxID, "threads", "batch_modify")).
-			Body(threadModifyBody(threadModifyInput{
-				ThreadIDs:      batch,
-				AddLabelIDs:    input.AddLabelIDs,
-				RemoveLabelIDs: input.RemoveLabelIDs,
-				FolderID:       input.FolderID,
-			}))
-	}
-	return api
+	req, _ := threadModifyAPIRequest(rt)
+	return common.NewDryRunAPI().
+		Desc("Modify entire mail threads in one batch request").
+		POST(req.Path).
+		Body(req.Body)
 }
 
 func executeThreadModify(ctx context.Context, rt *common.RuntimeContext) error {
-	mailboxID := resolveMailboxID(rt)
-	input, err := buildThreadModifyInput(rt)
+	req, err := threadModifyAPIRequest(rt)
 	if err != nil {
 		return err
 	}
-	summary := threadManageSummary{FailedThreadIDs: []threadManageFailure{}}
-	for _, batch := range chunkThreadManageIDs(input.ThreadIDs) {
-		_, err := rt.CallAPITyped("POST", mailboxPath(mailboxID, "threads", "batch_modify"), nil,
-			threadModifyBody(threadModifyInput{
-				ThreadIDs:      batch,
-				AddLabelIDs:    input.AddLabelIDs,
-				RemoveLabelIDs: input.RemoveLabelIDs,
-				FolderID:       input.FolderID,
-			}))
-		if err != nil {
-			decorated := mailDecorateProblemMessage(err, "failed to modify threads")
-			for _, id := range batch {
-				summary.FailedThreadIDs = append(summary.FailedThreadIDs, threadManageFailure{ThreadID: id, Reason: decorated.Error()})
-			}
-			continue
-		}
-		summary.SuccessThreadIDs = append(summary.SuccessThreadIDs, batch...)
+	data, err := rt.CallAPITyped(req.Method, req.Path, nil, req.Body)
+	if err != nil {
+		return err
 	}
-	emitThreadManageSummary(rt, summary)
-	if len(summary.SuccessThreadIDs) == 0 && len(summary.FailedThreadIDs) > 0 {
-		return mailFailedPreconditionError("all thread modify batches failed")
-	}
+	rt.Out(data, nil)
 	return nil
 }
 
@@ -151,138 +106,137 @@ func validateThreadTrash(ctx context.Context, rt *common.RuntimeContext) error {
 	if err := validateBotMailboxNotMe(rt); err != nil {
 		return err
 	}
-	_, err := normalizeThreadManageIDs(rt.StrArray("thread-ids"))
+	_, err := threadTrashAPIRequest(rt)
 	return err
 }
 
 func dryRunThreadTrash(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
-	mailboxID := resolveMailboxID(rt)
-	threadIDs, _ := normalizeThreadManageIDs(rt.StrArray("thread-ids"))
-	api := common.NewDryRunAPI().
-		Desc("Soft-delete threads sequentially in batches of 20").
-		Set("batch_size", mailThreadManageBatchSize).
-		Set("batches", chunkThreadManageIDs(threadIDs))
-	for _, batch := range chunkThreadManageIDs(threadIDs) {
-		api = api.POST(mailboxPath(mailboxID, "threads", "batch_trash")).
-			Body(map[string]interface{}{"thread_ids": batch})
-	}
-	return api
+	req, _ := threadTrashAPIRequest(rt)
+	return common.NewDryRunAPI().
+		Desc("Soft-delete entire mail threads in one batch request").
+		POST(req.Path).
+		Body(req.Body)
 }
 
 func executeThreadTrash(ctx context.Context, rt *common.RuntimeContext) error {
-	mailboxID := resolveMailboxID(rt)
-	threadIDs, err := normalizeThreadManageIDs(rt.StrArray("thread-ids"))
+	req, err := threadTrashAPIRequest(rt)
 	if err != nil {
 		return err
 	}
-	summary := threadManageSummary{FailedThreadIDs: []threadManageFailure{}}
-	for _, batch := range chunkThreadManageIDs(threadIDs) {
-		_, err := rt.CallAPITyped("POST", mailboxPath(mailboxID, "threads", "batch_trash"), nil,
-			map[string]interface{}{"thread_ids": batch})
-		if err != nil {
-			decorated := mailDecorateProblemMessage(err, "failed to trash threads")
-			for _, id := range batch {
-				summary.FailedThreadIDs = append(summary.FailedThreadIDs, threadManageFailure{ThreadID: id, Reason: decorated.Error()})
-			}
-			continue
-		}
-		summary.SuccessThreadIDs = append(summary.SuccessThreadIDs, batch...)
+	data, err := rt.CallAPITyped(req.Method, req.Path, nil, req.Body)
+	if err != nil {
+		return err
 	}
-	emitThreadManageSummary(rt, summary)
-	if len(summary.SuccessThreadIDs) == 0 && len(summary.FailedThreadIDs) > 0 {
-		return mailFailedPreconditionError("all thread trash batches failed")
-	}
+	rt.Out(data, nil)
 	return nil
 }
 
-func buildThreadModifyInput(rt *common.RuntimeContext) (threadModifyInput, error) {
-	threadIDs, err := normalizeThreadManageIDs(rt.StrArray("thread-ids"))
+func threadModifyAPIRequest(rt *common.RuntimeContext) (threadAPIRequest, error) {
+	return buildThreadModifyRequest(resolveMailboxID(rt), threadModifyInput{
+		ThreadIDs:        rt.StrSlice("thread-id"),
+		AddLabelIDs:      rt.StrSlice("add-label-id"),
+		RemoveLabelIDs:   rt.StrSlice("remove-label-id"),
+		FolderID:         rt.Str("folder-id"),
+		FolderIDProvided: rt.Changed("folder-id"),
+	})
+}
+
+func threadTrashAPIRequest(rt *common.RuntimeContext) (threadAPIRequest, error) {
+	return buildThreadTrashRequest(resolveMailboxID(rt), rt.StrSlice("thread-id"))
+}
+
+// buildThreadModifyRequest is the pure source of truth shared by validation,
+// dry-run, and execution. Its body is an explicit allowlist by construction.
+func buildThreadModifyRequest(mailboxID string, raw threadModifyInput) (threadAPIRequest, error) {
+	mailboxID, err := normalizeThreadMailboxID(mailboxID)
 	if err != nil {
-		return threadModifyInput{}, err
+		return threadAPIRequest{}, err
 	}
-	addLabels, err := normalizeThreadManageLabels(rt.StrSlice("add-label-ids"), "--add-label-ids")
+	threadIDs, err := normalizeThreadIDs(raw.ThreadIDs, "--thread-id", true)
 	if err != nil {
-		return threadModifyInput{}, err
+		return threadAPIRequest{}, err
 	}
-	removeLabels, err := normalizeThreadManageLabels(rt.StrSlice("remove-label-ids"), "--remove-label-ids")
+	addLabelIDs, err := normalizeThreadIDs(raw.AddLabelIDs, "--add-label-id", false)
 	if err != nil {
-		return threadModifyInput{}, err
+		return threadAPIRequest{}, err
 	}
-	if err := validateLabelIntersection(addLabels, removeLabels); err != nil {
-		return threadModifyInput{}, err
-	}
-	folderID, err := normalizeThreadManageFolder(rt.Str("add-folder"))
+	removeLabelIDs, err := normalizeThreadIDs(raw.RemoveLabelIDs, "--remove-label-id", false)
 	if err != nil {
-		return threadModifyInput{}, err
+		return threadAPIRequest{}, err
 	}
-	if len(addLabels) == 0 && len(removeLabels) == 0 && folderID == "" {
-		return threadModifyInput{}, mailValidationParamError("--thread-modify", "provide at least one of --add-label-ids, --remove-label-ids, or --add-folder")
+	if err := validateThreadLabelIntersection(addLabelIDs, removeLabelIDs); err != nil {
+		return threadAPIRequest{}, err
 	}
-	return threadModifyInput{
-		ThreadIDs:      threadIDs,
-		AddLabelIDs:    addLabels,
-		RemoveLabelIDs: removeLabels,
-		FolderID:       folderID,
+
+	folderID := ""
+	if raw.FolderIDProvided {
+		folderID = strings.TrimSpace(raw.FolderID)
+		if folderID == "" {
+			return threadAPIRequest{}, mailValidationParamError("--folder-id", "--folder-id must not be empty")
+		}
+	}
+	if len(addLabelIDs) == 0 && len(removeLabelIDs) == 0 && folderID == "" {
+		return threadAPIRequest{}, mailValidationParamError("--thread-modify", "provide at least one of --add-label-id, --remove-label-id, or --folder-id")
+	}
+
+	body := map[string]interface{}{"thread_ids": threadIDs}
+	if len(addLabelIDs) > 0 {
+		body["add_label_ids"] = addLabelIDs
+	}
+	if len(removeLabelIDs) > 0 {
+		body["remove_label_ids"] = removeLabelIDs
+	}
+	if folderID != "" {
+		body["add_folder"] = folderID
+	}
+	return threadAPIRequest{
+		Method: mailThreadModifyMethod,
+		Path:   mailboxPath(mailboxID, "threads", "batch_modify"),
+		Body:   body,
 	}, nil
 }
 
-func normalizeThreadManageLabels(raw []string, flagName string) ([]string, error) {
-	labels := make([]string, 0, len(raw))
-	seen := make(map[string]struct{}, len(raw))
-	for i, part := range raw {
-		id := strings.TrimSpace(part)
-		if id == "" {
-			return nil, mailValidationParamError(flagName, "%s entry %d is empty; remove extra commas or provide valid label IDs", flagName, i+1)
-		}
-		if id != part {
-			return nil, mailValidationParamError(flagName, "%s entry %d (%q): must not contain leading or trailing whitespace", flagName, i+1, part)
-		}
-		upper := strings.ToUpper(id)
-		if upper == readReceiptRequestLabel {
-			return nil, mailValidationParamError(flagName, "thread 级别不能管理 `READ_RECEIPT_REQUEST`")
-		}
-		normalized := id
-		switch upper {
-		case "UNREAD", "IMPORTANT", "OTHER", "FLAGGED":
-			normalized = upper
-		}
-		if _, ok := seen[normalized]; ok {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		labels = append(labels, normalized)
+// buildThreadTrashRequest mirrors user_mailbox.threads.batch_trash exactly:
+// the request has one and only one body field, thread_ids.
+func buildThreadTrashRequest(mailboxID string, rawThreadIDs []string) (threadAPIRequest, error) {
+	mailboxID, err := normalizeThreadMailboxID(mailboxID)
+	if err != nil {
+		return threadAPIRequest{}, err
 	}
-	if len(labels) > 20 {
-		return nil, mailValidationParamError(flagName, "%s accepts at most 20 label IDs (got %d)", flagName, len(labels))
+	threadIDs, err := normalizeThreadIDs(rawThreadIDs, "--thread-id", true)
+	if err != nil {
+		return threadAPIRequest{}, err
 	}
-	return labels, nil
+	return threadAPIRequest{
+		Method: mailThreadTrashMethod,
+		Path:   mailboxPath(mailboxID, "threads", "batch_trash"),
+		Body:   map[string]interface{}{"thread_ids": threadIDs},
+	}, nil
 }
 
-func normalizeThreadManageIDs(raw []string) ([]string, error) {
-	if len(raw) == 0 {
-		return nil, mailValidationParamError("--thread-ids", "--thread-ids is required")
+func normalizeThreadMailboxID(mailboxID string) (string, error) {
+	mailboxID = strings.TrimSpace(mailboxID)
+	if mailboxID == "" {
+		return "", mailValidationParamError("--mailbox", "--mailbox must not be empty")
 	}
-	ids := make([]string, 0, len(raw))
-	seen := map[string]struct{}{}
-	for tokenIndex, token := range raw {
-		for _, r := range token {
-			if r == '\n' || r == '\r' || r == '\t' {
-				return nil, mailValidationParamError("--thread-ids", "--thread-ids entry %d (%q): must not contain whitespace or control characters", tokenIndex+1, token)
-			}
+	return mailboxID, nil
+}
+
+func normalizeThreadIDs(raw []string, flagName string, required bool) ([]string, error) {
+	if len(raw) == 0 {
+		if required {
+			return nil, mailValidationParamError(flagName, "%s is required", flagName)
 		}
-		for partIndex, part := range strings.Split(token, ",") {
-			if part == "" {
-				return nil, mailValidationParamError("--thread-ids", "--thread-ids contains empty value; remove extra commas or provide valid thread IDs")
-			}
+		return nil, nil
+	}
+
+	ids := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, token := range raw {
+		for _, part := range strings.Split(token, ",") {
 			id := strings.TrimSpace(part)
 			if id == "" {
-				return nil, mailValidationParamError("--thread-ids", "--thread-ids contains empty value; remove extra commas or provide valid thread IDs")
-			}
-			if id != part {
-				return nil, mailValidationParamError("--thread-ids", "--thread-ids entry %d (%q): must not contain leading or trailing whitespace", partIndex+1, part)
-			}
-			if err := validateThreadManageID(id, partIndex); err != nil {
-				return nil, err
+				return nil, mailValidationParamError(flagName, "%s contains an empty ID", flagName)
 			}
 			if _, ok := seen[id]; ok {
 				continue
@@ -291,86 +245,25 @@ func normalizeThreadManageIDs(raw []string) ([]string, error) {
 			ids = append(ids, id)
 		}
 	}
-	if len(ids) == 0 {
-		return nil, mailValidationParamError("--thread-ids", "--thread-ids must include at least one non-empty thread ID")
+	if required && len(ids) == 0 {
+		return nil, mailValidationParamError(flagName, "%s must include at least one ID", flagName)
 	}
 	return ids, nil
 }
 
-func validateThreadManageID(id string, index int) error {
-	if strings.Trim(id, "0123456789") == "" {
-		return mailValidationParamError("--thread-ids", "--thread-ids entry %d (%q): numeric primary IDs are not supported; pass the Open API thread_id from mail output", index+1, id)
+func validateThreadLabelIntersection(addLabelIDs, removeLabelIDs []string) error {
+	added := make(map[string]struct{}, len(addLabelIDs))
+	for _, id := range addLabelIDs {
+		added[id] = struct{}{}
 	}
-	for _, r := range id {
-		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			continue
+	conflicts := make([]string, 0)
+	for _, id := range removeLabelIDs {
+		if _, ok := added[id]; ok {
+			conflicts = append(conflicts, id)
 		}
-		switch r {
-		case '+', '/', '=', '_', '-':
-			continue
-		default:
-			return mailValidationParamError("--thread-ids", "--thread-ids entry %d (%q): contains characters outside the Open API thread_id character set", index+1, id)
-		}
+	}
+	if len(conflicts) > 0 {
+		return mailValidationParamError("--add-label-id", "label IDs cannot be both added and removed: %s", strings.Join(conflicts, ", "))
 	}
 	return nil
-}
-
-func normalizeThreadManageFolder(raw string) (string, error) {
-	return normalizeThreadManageFolderForFlag(raw, "--add-folder")
-}
-
-func normalizeThreadManageFolderForFlag(raw, flagName string) (string, error) {
-	if raw == "" {
-		return "", nil
-	}
-	folder := strings.TrimSpace(raw)
-	if folder == "" {
-		return "", mailValidationParamError(flagName, "%s must not be empty", flagName)
-	}
-	if strings.EqualFold(folder, "TRASH") {
-		return "", mailValidationParamError(flagName, "TRASH is not supported by +thread-modify; use +thread-trash")
-	}
-	if system, ok := messageManageSystemFolders[strings.ToUpper(folder)]; ok {
-		return system, nil
-	}
-	return folder, nil
-}
-
-func threadModifyBody(input threadModifyInput) map[string]interface{} {
-	body := map[string]interface{}{"thread_ids": input.ThreadIDs}
-	if len(input.AddLabelIDs) > 0 {
-		body["add_label_ids"] = input.AddLabelIDs
-	}
-	if len(input.RemoveLabelIDs) > 0 {
-		body["remove_label_ids"] = input.RemoveLabelIDs
-	}
-	if input.FolderID != "" {
-		body["add_folder"] = input.FolderID
-	}
-	return body
-}
-
-func chunkThreadManageIDs(ids []string) [][]string {
-	if len(ids) == 0 {
-		return nil
-	}
-	chunks := make([][]string, 0, (len(ids)+mailThreadManageBatchSize-1)/mailThreadManageBatchSize)
-	for start := 0; start < len(ids); start += mailThreadManageBatchSize {
-		end := start + mailThreadManageBatchSize
-		if end > len(ids) {
-			end = len(ids)
-		}
-		chunks = append(chunks, ids[start:end])
-	}
-	return chunks
-}
-
-func emitThreadManageSummary(rt *common.RuntimeContext, summary threadManageSummary) {
-	rt.OutFormat(summary, &output.Meta{Count: len(summary.SuccessThreadIDs)}, func(w io.Writer) {
-		fmt.Fprintf(w, "success_thread_ids: %d\n", len(summary.SuccessThreadIDs))
-		fmt.Fprintf(w, "failed_thread_ids: %d\n", len(summary.FailedThreadIDs))
-		for _, item := range summary.FailedThreadIDs {
-			fmt.Fprintf(w, "- %s: %s\n", item.ThreadID, item.Reason)
-		}
-	})
 }

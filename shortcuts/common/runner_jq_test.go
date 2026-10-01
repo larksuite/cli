@@ -80,6 +80,35 @@ func TestRuntimeContext_Out_WithJq_Identity(t *testing.T) {
 	}
 }
 
+func TestRuntimeContext_Out_WithField_ProjectsEnvelopeKey(t *testing.T) {
+	rctx, stdout, _ := newJqTestContext("", "json")
+	rctx.FieldSelector = "ok"
+
+	rctx.Out(map[string]interface{}{"key": "value"}, nil)
+
+	if got := strings.TrimSpace(stdout.String()); got != "true" {
+		t.Fatalf("--field ok output = %q, want true", got)
+	}
+}
+
+func TestValidateOutputProjectionFlags(t *testing.T) {
+	t.Run("field and jq conflict", func(t *testing.T) {
+		rctx, _, _ := newJqTestContext(".ok", "json")
+		rctx.FieldSelector = "ok"
+		if err := validateOutputProjectionFlags(rctx); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Fatalf("validateOutputProjectionFlags() error = %v, want mutual-exclusion error", err)
+		}
+	})
+
+	t.Run("field and non-json format conflict", func(t *testing.T) {
+		rctx, _, _ := newJqTestContext("", "pretty")
+		rctx.FieldSelector = "ok"
+		if err := validateOutputProjectionFlags(rctx); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Fatalf("validateOutputProjectionFlags() error = %v, want mutual-exclusion error", err)
+		}
+	})
+}
+
 func TestRuntimeContext_OutFormat_WithJq_OverridesFormat(t *testing.T) {
 	rctx, stdout, _ := newJqTestContext(".data.items", "pretty")
 
