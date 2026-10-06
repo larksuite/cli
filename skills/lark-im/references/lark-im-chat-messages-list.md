@@ -60,6 +60,34 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 
 > **CAUTION:** `--order` is the only sort axis — messages are always ordered by creation time, `asc` or `desc`. There is no field axis: the command cannot sort by sender or any other field, so do **not** attempt `--sort sender` or similar (it is rejected). If the user asks to group or sort by sender, fetch with `--order` and aggregate client-side, and tell them this is local post-processing, not a CLI/API sort capability.
 
+## Exporting history for analysis
+
+Save long conversations before parsing or indexing them so message bodies do
+not have to pass through the agent context:
+
+```bash
+lark-cli im +chat-messages-list --chat-id oc_xxx --order asc --page-all --no-reactions --output ./exports/chat.json
+lark-cli im +chat-messages-list --user-id ou_xxx --page-all --format ndjson --output-dir ./exports
+```
+
+The file contains the same output as the command without export flags, including
+the JSON envelope and pagination metadata when using JSON. `--format`, `--concise`
+and `--jq` apply to the saved content. Stdout is always a JSON success envelope
+whose data contains `saved_path`, `size_bytes`, `format`, `total`, `has_more` and
+the next `page_token` when present. `total` counts messages before jq filtering.
+Check `meta.pagination.complete`; a page-limited export is usable but incomplete.
+Resume with `--page-token` into a different file to retain the preceding pages.
+Exports buffer the retrieved messages and formatted result before saving. For
+histories that exceed available memory, use `--page-limit` and resume into
+separate files.
+
+`--output-dir` names the file after the resolved chat ID (also for `--user-id`),
+with `.json`, `.ndjson`, `.csv`, `.md` for concise Markdown, or `.txt` for
+pretty/table/jq output. It conflicts with `--output`. Existing files are preserved
+unless `--overwrite` is supplied. Paths use the active workspace file provider;
+providers without exclusive writes require explicit `--overwrite`. `--dry-run`
+previews the file destination and replacement policy without writing it.
+
 ## Resource Rendering
 
 Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `![Image](img_xxx)`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). `folder` messages are expanded one level (children rendered inside the tag, see the row below). By default resource binaries are **not** downloaded.

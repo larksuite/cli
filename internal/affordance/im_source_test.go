@@ -79,6 +79,21 @@ var imAffordanceExamples = []imAffordanceExample{
 	},
 }
 
+func TestIMMessageExportGuidance(t *testing.T) {
+	previousSource := mdSource
+	t.Cleanup(func() { SetSource(previousSource) })
+	SetSource(os.DirFS("../../affordance"))
+	for _, method := range []string{"+chat-messages-list", "+threads-messages-list"} {
+		guidance := parsedIMAffordance(t, method)
+		tips := strings.Join(guidance.Tips, "\n")
+		for _, term := range []string{"--output", "--output-dir", "--overwrite", "--jq", "meta.pagination.complete", "meta.pagination.next_token", "JSON artifact summary"} {
+			if !strings.Contains(tips, term) {
+				t.Errorf("%s export guidance is missing %q", method, term)
+			}
+		}
+	}
+}
+
 // TestIMAffordanceExamplesTraceToCurrentSkill verifies affordance examples resolve to current shortcuts.
 func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 	prev := mdSource
