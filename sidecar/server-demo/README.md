@@ -12,6 +12,7 @@ Lark/Feishu API with real credentials injected.
 - HMAC-SHA256 request verification (timestamp drift, body digest, signature)
 - Target host allowlist + https-only target validation (anti-SSRF / anti-downgrade)
 - Identity-based token resolution (UAT for user, TAT for bot)
+- Expiry-aware TAT caching with early renewal
 - Auth-header allowlist: real token may only be injected into `Authorization`
   / `X-Lark-MCP-UAT` / `X-Lark-MCP-TAT`, rejecting attempts to smuggle it into
   `Cookie`, `User-Agent`, or other intermediate-logged headers
@@ -20,10 +21,6 @@ Lark/Feishu API with real credentials injected.
 
 ## What this demo does NOT handle
 
-- **TAT refresh** — the shared `DefaultTokenProvider` caches the TAT via
-  `sync.Once`, which never refreshes. A long-running server will return an
-  expired TAT after 2 hours. Production implementations should maintain a
-  TTL-based cache with early renewal.
 - High availability / load balancing / hot key rotation
 - TLS termination
 - Rate limiting / per-identity quotas
@@ -47,14 +44,18 @@ The demo reuses the lark-cli credential pipeline, so the trusted machine must
 have an app configured:
 
 ```bash
-lark-cli config init --new   # configure app_id / app_secret (required)
-lark-cli auth login          # store user refresh_token in keychain
+lark-cli config init --new   # configure app_id / app_secret
+lark-cli auth login          # store user refresh_token in local credential storage
                               # (only required if sandbox will use --as user)
 ```
 
+Alternatively, configure application signing with
+`lark-cli config init --new --private-key-jwt` instead of the first command.
+
 `auth login` is **only required for user identity**. If the server will only
 serve bot requests (TAT), `config init` alone is enough because the TAT is
-minted from `app_id + app_secret`.
+minted using the configured app authentication method (client secret or
+private-key JWT).
 
 Also, the server process **must not** inherit `LARKSUITE_CLI_AUTH_PROXY` — if
 it does, the sidecar credential provider would activate inside the server and
