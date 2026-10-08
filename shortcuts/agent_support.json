@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-23T16:09:34+08:00",
+  "updatedAt": "2026-10-08T00:00:00+08:00",
   "commands": {
     "application +slash-command-create": {
       "agentSupport": "denied"
@@ -1562,6 +1562,9 @@
       "agentSupport": "allowed"
     },
     "slides +history-revert-status": {
+      "agentSupport": "allowed"
+    },
+    "slides +lint": {
       "agentSupport": "allowed"
     },
     "slides +media-download": {

@@ -71,6 +71,7 @@ func TestPresentationRefFlagReturnsIndependentAliases(t *testing.T) {
 // rewrite a mistyped flag into one the caller never meant to use.
 func TestContentFlagAliasesAreScopedToWholePageCommands(t *testing.T) {
 	wholePage := map[string]bool{
+		SlidesLint.Command:        true,
 		SlidesUpdateSlide.Command: true,
 		SlidesUpdate.Command:      true,
 	}
