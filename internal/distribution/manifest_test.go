@@ -23,6 +23,13 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
 
+func mockDistributionHTTP(t *testing.T, fn roundTripFunc) {
+	t.Helper()
+	previous := DefaultClient
+	DefaultClient = &http.Client{Transport: fn}
+	t.Cleanup(func() { DefaultClient = previous })
+}
+
 type snapshotProvider struct {
 	manifestURL string
 	calls       int
@@ -90,19 +97,8 @@ func TestValidateDistributionURLAcceptsHTTPAndHTTPS(t *testing.T) {
 	}
 }
 
-func TestParseManifestAcceptsOpaqueTarget(t *testing.T) {
-	manifest, err := parseManifest([]byte(validManifestJSON("release-channel-7")), "test-os")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if manifest.Version != "release-channel-7" {
-		t.Fatalf("version = %q", manifest.Version)
-	}
-}
-
 func TestFetchManifestAppliesManifestDeadline(t *testing.T) {
-	previousClient := DefaultClient
-	DefaultClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	mockDistributionHTTP(t, func(req *http.Request) (*http.Response, error) {
 		if _, ok := req.Context().Deadline(); !ok {
 			t.Fatal("manifest request has no deadline")
 		}
@@ -112,27 +108,17 @@ func TestFetchManifestAppliesManifestDeadline(t *testing.T) {
 			Body:       io.NopCloser(strings.NewReader(body)),
 			Header:     make(http.Header),
 		}, nil
-	})}
-	t.Cleanup(func() { DefaultClient = previousClient })
+	})
 	if _, err := (Source{manifestURL: "https://dist.example/manifest.json"}).FetchManifest(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestParseManifestAcceptsHTTPArtifacts(t *testing.T) {
-	input := strings.ReplaceAll(validManifestJSON("1"), "https://", "http://")
-	if _, err := parseManifest([]byte(input), "test-os"); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestFetchManifestPreservesHTTPErrorMetadata(t *testing.T) {
-	previous := DefaultClient
-	DefaultClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	mockDistributionHTTP(t, func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusServiceUnavailable,
 			Header: http.Header{"Retry-After": {"60"}}, Body: http.NoBody}, nil
-	})}
-	t.Cleanup(func() { DefaultClient = previous })
+	})
 	_, err := (Source{manifestURL: "https://dist.example/manifest.json"}).FetchManifest(context.Background())
 	var networkErr *errs.NetworkError
 	if !errors.As(err, &networkErr) || networkErr.Subtype != errs.SubtypeNetworkServer ||
@@ -141,28 +127,27 @@ func TestFetchManifestPreservesHTTPErrorMetadata(t *testing.T) {
 	}
 }
 
-func TestParseManifestIgnoresArtifactsForOtherPlatforms(t *testing.T) {
-	input := strings.Replace(validManifestJSON("1"), `"test-os":`, `"other-os":{"url":"not a URL","checksum":"bad"},"test-os":`, 1)
-	if _, err := parseManifest([]byte(input), "test-os"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestParseManifestAllowsExtensionFields(t *testing.T) {
-	input := strings.Replace(
-		validManifestJSON("1"),
-		`"schema":1`,
-		`"schema":1,"environment":"customer-a"`,
-		1,
-	)
-	input = strings.Replace(
-		input,
-		`"url":"https://dist.example/skills.tar.gz"`,
-		`"url":"https://dist.example/skills.tar.gz","channel":"stable"`,
-		1,
-	)
-	if _, err := parseManifest([]byte(input), "test-os"); err != nil {
-		t.Fatal(err)
+func TestParseManifestAcceptsSupportedVariants(t *testing.T) {
+	const target = "release-channel-7"
+	input := validManifestJSON(target)
+	for name, body := range map[string]string{
+		"opaque target":  input,
+		"HTTP artifacts": strings.ReplaceAll(input, "https://", "http://"),
+		"other platform": strings.Replace(input, `"test-os":`, `"other-os":{"url":"not a URL","checksum":"bad"},"test-os":`, 1),
+		"extension fields": strings.NewReplacer(
+			`"schema":1`, `"schema":1,"environment":"customer-a"`,
+			`"url":"https://dist.example/skills.tar.gz"`, `"url":"https://dist.example/skills.tar.gz","channel":"stable"`,
+		).Replace(input),
+	} {
+		t.Run(name, func(t *testing.T) {
+			manifest, err := parseManifest([]byte(body), "test-os")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if manifest.Version != target {
+				t.Fatalf("version = %q", manifest.Version)
+			}
+		})
 	}
 }
 

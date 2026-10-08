@@ -15,16 +15,14 @@ import (
 )
 
 func TestDownloadArtifactRejectsExcessiveBody(t *testing.T) {
-	previousClient := DefaultClient
-	DefaultClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	mockDistributionHTTP(t, func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode:    http.StatusOK,
 			Body:          io.NopCloser(strings.NewReader("123456789")),
 			ContentLength: -1,
 			Header:        make(http.Header),
 		}, nil
-	})}
-	t.Cleanup(func() { DefaultClient = previousClient })
+	})
 
 	_, err := downloadArtifactWithLimit(context.Background(), Artifact{
 		URL: "https://dist.example/artifact", Checksum: testChecksum,
@@ -36,8 +34,7 @@ func TestDownloadArtifactRejectsExcessiveBody(t *testing.T) {
 
 func TestDownloadArtifactAppliesTenMinuteDeadline(t *testing.T) {
 	payload := []byte("artifact")
-	previousClient := DefaultClient
-	DefaultClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	mockDistributionHTTP(t, func(req *http.Request) (*http.Response, error) {
 		deadline, ok := req.Context().Deadline()
 		if !ok {
 			t.Fatal("artifact request has no deadline")
@@ -51,8 +48,7 @@ func TestDownloadArtifactAppliesTenMinuteDeadline(t *testing.T) {
 			Body:       io.NopCloser(strings.NewReader(string(payload))),
 			Header:     make(http.Header),
 		}, nil
-	})}
-	t.Cleanup(func() { DefaultClient = previousClient })
+	})
 	checksum := fmt.Sprintf("sha256:%x", sha256.Sum256(payload))
 	if _, err := downloadArtifact(context.Background(), Artifact{URL: "https://dist.example/artifact", Checksum: checksum}, t.TempDir(), "artifact-*"); err != nil {
 		t.Fatal(err)

@@ -50,6 +50,19 @@ func (p updateManifestProvider) ResolveManifestURL(ctx context.Context) string {
 	return p.manifestURL
 }
 
+func useTestManifest(t *testing.T, server *httptest.Server, version string) {
+	t.Helper()
+	previousProvider, previousClient, previousVersion := exttransport.GetProvider(), distribution.DefaultClient, currentVersion
+	exttransport.Register(updateManifestProvider{manifestURL: server.URL + "/manifest.json"})
+	distribution.DefaultClient = server.Client()
+	currentVersion = func() string { return version }
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		distribution.DefaultClient = previousClient
+		currentVersion = previousVersion
+	})
+}
+
 func TestUpdateCommandPreservesCancellationContext(t *testing.T) {
 	type contextKey struct{}
 	ctx := context.WithValue(context.Background(), contextKey{}, "command")
@@ -81,12 +94,7 @@ func TestManifestCheckAcceptsHTTPAndReportsOpaqueDowngradeTarget(t *testing.T) {
 		fmt.Fprintf(w, `{"schema":1,"version":"older-channel","artifacts":{"skills":{"url":"https://dist.example/skills","checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},%q:{"url":"https://dist.example/binary","checksum":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}`, runtime.GOOS+"-"+runtime.GOARCH)
 	}))
 	defer server.Close()
-	previousProvider := exttransport.GetProvider()
-	previousClient := distribution.DefaultClient
-	previousVersion := currentVersion
-	exttransport.Register(updateManifestProvider{manifestURL: server.URL})
-	distribution.DefaultClient = server.Client()
-	currentVersion = func() string { return "newer-channel" }
+	useTestManifest(t, server, "newer-channel")
 	src, sourceErr := distribution.ResolveSource(context.Background())
 	if sourceErr != nil {
 		t.Fatal(sourceErr)
@@ -96,12 +104,6 @@ func TestManifestCheckAcceptsHTTPAndReportsOpaqueDowngradeTarget(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(configDir, "update-state.json"), []byte(oldState), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		exttransport.Register(previousProvider)
-		distribution.DefaultClient = previousClient
-		currentVersion = previousVersion
-	})
-
 	factory, stdout, _ := newTestFactory(t)
 	err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true, Check: true})
 	if err != nil {
@@ -150,17 +152,7 @@ func TestManifestArtifactProtocolFailureUsesNetworkTaxonomy(t *testing.T) {
 	}))
 	defer server.Close()
 
-	previousProvider := exttransport.GetProvider()
-	previousClient := distribution.DefaultClient
-	previousVersion := currentVersion
-	exttransport.Register(updateManifestProvider{manifestURL: server.URL + "/manifest.json"})
-	distribution.DefaultClient = server.Client()
-	currentVersion = func() string { return "current" }
-	t.Cleanup(func() {
-		exttransport.Register(previousProvider)
-		distribution.DefaultClient = previousClient
-		currentVersion = previousVersion
-	})
+	useTestManifest(t, server, "current")
 
 	factory, stdout, _ := newTestFactory(t)
 	if err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true}); err == nil {
@@ -207,17 +199,7 @@ func TestManifestUpdateRepairsSkillsWhenBinaryMatches(t *testing.T) {
 			server.URL+"/skills.zip", digest, distribution.CurrentPlatformKey(), server.URL+"/unused.zip", digest)
 	}))
 	defer server.Close()
-	previousProvider := exttransport.GetProvider()
-	previousClient := distribution.DefaultClient
-	previousVersion := currentVersion
-	exttransport.Register(updateManifestProvider{manifestURL: server.URL + "/manifest.json"})
-	distribution.DefaultClient = server.Client()
-	currentVersion = func() string { return "same" }
-	t.Cleanup(func() {
-		exttransport.Register(previousProvider)
-		distribution.DefaultClient = previousClient
-		currentVersion = previousVersion
-	})
+	useTestManifest(t, server, "same")
 
 	factory, _, _ := newTestFactory(t)
 	if err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true}); err != nil {

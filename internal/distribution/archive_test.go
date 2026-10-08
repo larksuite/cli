@@ -5,7 +5,6 @@ package distribution
 
 import (
 	"archive/tar"
-	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"errors"
@@ -17,78 +16,44 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
-func TestExtractArchiveFormats(t *testing.T) {
-	tests := []struct {
-		name  string
-		build func(*testing.T, string)
-	}{
-		{"tar.gz", writeTestTarGzip},
-		{"zip", writeTestZip},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			archive := filepath.Join(root, "artifact")
-			tt.build(t, archive)
-			destination := filepath.Join(root, "out")
-			if err := extractArchive(archive, destination); err != nil {
-				t.Fatal(err)
-			}
-			got, err := vfs.ReadFile(filepath.Join(destination, "skill", "SKILL.md"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(got) != "content" {
-				t.Fatalf("content = %q", got)
-			}
-		})
-	}
-}
-
-func TestExtractArchiveRejectsEntriesOutsideDestination(t *testing.T) {
-	for _, tt := range []struct {
-		name  string
-		build func(*testing.T, string, string)
-	}{
-		{"tar.gz", writeTestTarGzipEntry},
-		{"zip", writeTestZipEntry},
+func TestExtractArchive(t *testing.T) {
+	for format, build := range map[string]func(*testing.T, string, string){
+		"tar.gz": writeTestTarGzipEntry, "zip": writeTestZipEntry,
 	} {
-		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			archive := filepath.Join(root, "artifact")
-			tt.build(t, archive, "../escape")
-			if err := extractArchive(archive, filepath.Join(root, "out")); err == nil {
-				t.Fatal("extractArchive succeeded")
-			}
-			if _, err := vfs.Stat(filepath.Join(root, "escape")); !errors.Is(err, fs.ErrNotExist) {
-				t.Fatalf("archive wrote outside destination: %v", err)
-			}
-		})
+		for _, tc := range []struct {
+			name, entry string
+			limit       int64
+		}{
+			{"valid", "skill/SKILL.md", 7},
+			{"path traversal", "../escape", 7},
+			{"expanded size", "skill/SKILL.md", 6},
+		} {
+			t.Run(format+"/"+tc.name, func(t *testing.T) {
+				root := t.TempDir()
+				archive, destination := filepath.Join(root, "artifact"), filepath.Join(root, "out")
+				build(t, archive, tc.entry)
+				err := extractArchiveWithLimit(archive, destination, tc.limit)
+				switch tc.name {
+				case "valid":
+					if err != nil {
+						t.Fatal(err)
+					}
+					assertFile(t, filepath.Join(destination, tc.entry), "content")
+				case "path traversal":
+					if err == nil {
+						t.Fatal("extractArchive succeeded")
+					}
+					if _, err := vfs.Stat(filepath.Join(root, "escape")); !errors.Is(err, fs.ErrNotExist) {
+						t.Fatalf("archive wrote outside destination: %v", err)
+					}
+				case "expanded size":
+					if err == nil || !strings.Contains(err.Error(), "exceeds 6 bytes") {
+						t.Fatalf("err = %v", err)
+					}
+				}
+			})
+		}
 	}
-}
-
-func TestExtractArchiveRejectsExcessiveExpandedSize(t *testing.T) {
-	for _, tt := range []struct {
-		name  string
-		build func(*testing.T, string)
-	}{
-		{"tar.gz", writeTestTarGzip},
-		{"zip", writeTestZip},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			archive := filepath.Join(root, "artifact")
-			tt.build(t, archive)
-			err := extractArchiveWithLimit(archive, filepath.Join(root, "out"), 6)
-			if err == nil || !strings.Contains(err.Error(), "exceeds 6 bytes") {
-				t.Fatalf("err = %v", err)
-			}
-		})
-	}
-}
-
-func writeTestTarGzip(t *testing.T, path string) {
-	writeTestTarGzipEntry(t, path, "skill/SKILL.md")
 }
 
 func writeTestTarGzipEntry(t *testing.T, path, name string) {
@@ -114,25 +79,9 @@ func writeTestTarGzipEntry(t *testing.T, path, name string) {
 	}
 }
 
-func writeTestZip(t *testing.T, path string) {
-	writeTestZipEntry(t, path, "skill/SKILL.md")
-}
-
 func writeTestZipEntry(t *testing.T, path, name string) {
 	t.Helper()
-	var data bytes.Buffer
-	zw := zip.NewWriter(&data)
-	entry, err := zw.Create(name)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := entry.Write([]byte("content")); err != nil {
-		t.Fatal(err)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := vfs.WriteFile(path, data.Bytes(), 0o600); err != nil {
+	if err := vfs.WriteFile(path, buildTestZip(t, map[string]testZipFile{name: {content: "content"}}), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

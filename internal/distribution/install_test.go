@@ -82,8 +82,7 @@ func TestInstallDownloadsAndCommitsManifestArtifacts(t *testing.T) {
 		"/cli.zip":    binaryArchive,
 		"/skills.zip": skillsArchive,
 	}
-	previousClient := DefaultClient
-	DefaultClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	mockDistributionHTTP(t, func(req *http.Request) (*http.Response, error) {
 		payload, ok := payloads[req.URL.Path]
 		if !ok {
 			return &http.Response{StatusCode: http.StatusNotFound, Body: http.NoBody, Header: make(http.Header)}, nil
@@ -94,8 +93,7 @@ func TestInstallDownloadsAndCommitsManifestArtifacts(t *testing.T) {
 			ContentLength: int64(len(payload)),
 			Header:        make(http.Header),
 		}, nil
-	})}
-	t.Cleanup(func() { DefaultClient = previousClient })
+	})
 
 	manifest := &Manifest{
 		Version:        "release-channel-7",
@@ -152,15 +150,13 @@ func TestInstallRejectsChecksumMismatchBeforeBinaryVerification(t *testing.T) {
 		executableName += ".exe"
 	}
 	archive := buildTestZip(t, map[string]testZipFile{executableName: {content: "new binary"}})
-	previousClient := DefaultClient
-	DefaultClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	mockDistributionHTTP(t, func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(bytes.NewReader(archive)),
 			Header:     make(http.Header),
 		}, nil
-	})}
-	t.Cleanup(func() { DefaultClient = previousClient })
+	})
 	manifest := &Manifest{Version: "target", Artifacts: map[string]Artifact{
 		CurrentPlatformKey(): {URL: "https://distribution.example/cli.zip", Checksum: "sha256:" + strings.Repeat("0", 64)},
 		SkillsKey:            {URL: "https://distribution.example/skills.zip", Checksum: checksumFor(archive)},
