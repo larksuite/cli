@@ -191,6 +191,15 @@ lark-cli auth login --domain calendar --no-wait
 # 稍后恢复轮询
 lark-cli auth login --device-code <DEVICE_CODE>
 
+# 新签发的本地凭证默认以 preferred 模式启用 DPoP（Demonstrating Proof of Possession）
+lark-cli config set dpop preferred
+# 或关闭 DPoP
+lark-cli config set dpop disabled
+# 或强制使用 DPoP，禁止回退到 Bearer
+lark-cli config set dpop required
+# 选择其他策略后重新登录授权
+lark-cli auth login
+
 # 身份切换：以用户或机器人身份执行命令
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"

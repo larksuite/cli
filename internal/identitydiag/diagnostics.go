@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/recovery"
 )
 
@@ -44,22 +45,28 @@ type Result struct {
 
 // Identity is a single identity diagnostic result.
 type Identity struct {
-	Status           string        `json:"status"`
-	Available        bool          `json:"available"`
-	Verified         *bool         `json:"verified,omitempty"`
-	Message          string        `json:"message,omitempty"`
-	Hint             string        `json:"hint,omitempty"`
-	Error            *errs.Problem `json:"error,omitempty"`
-	OpenID           string        `json:"openId,omitempty"`
-	AppName          string        `json:"appName,omitempty"`
-	UserName         string        `json:"userName,omitempty"`
-	TokenStatus      string        `json:"tokenStatus,omitempty"`
-	Scope            string        `json:"scope,omitempty"`
-	ExpiresAt        string        `json:"expiresAt,omitempty"`
-	RefreshExpiresAt string        `json:"refreshExpiresAt,omitempty"`
-	GrantedAt        string        `json:"grantedAt,omitempty"`
-	recoveryTarget   recovery.Target
-	recoveryError    error
+	Status           string          `json:"status"`
+	Available        bool            `json:"available"`
+	Verified         *bool           `json:"verified,omitempty"`
+	Message          string          `json:"message,omitempty"`
+	Hint             string          `json:"hint,omitempty"`
+	Error            errs.TypedError `json:"error,omitempty"`
+	OpenID           string          `json:"openId,omitempty"`
+	AppName          string          `json:"appName,omitempty"`
+	UserName         string          `json:"userName,omitempty"`
+	TokenStatus      string          `json:"tokenStatus,omitempty"`
+	Scope            string          `json:"scope,omitempty"`
+	ExpiresAt        string          `json:"expiresAt,omitempty"`
+	RefreshExpiresAt string          `json:"refreshExpiresAt,omitempty"`
+	GrantedAt        string          `json:"grantedAt,omitempty"`
+	// Local token metadata is projected by auth status without loading the key
+	// a second time and potentially disagreeing with this readiness result.
+	TokenType            string `json:"-"`
+	DPoPKeyStatus        string `json:"-"`
+	DPoPKeyProvider      string `json:"-"`
+	DPoPKeySecurityLevel string `json:"-"`
+	recoveryTarget       recovery.Target
+	recoveryError        error
 }
 
 // withCommandRecovery binds user-facing recovery text to the command it
@@ -76,16 +83,14 @@ func FilterRecovery(result Result, projector *recovery.Projector) Result {
 	filter := func(identity Identity) Identity {
 		if identity.recoveryError != nil {
 			rendered := projector.Render(identity.recoveryError)
-			if problem, ok := errs.ProblemOf(rendered); ok {
-				cloned := *problem
-				identity.Error = &cloned
-				identity.Hint = cloned.Hint
+			if errors.As(rendered, &identity.Error) {
+				identity.Hint = identity.Error.ProblemDetail().Hint
 			}
 		}
 		if identity.recoveryTarget != "" && !projector.CanReference(identity.recoveryTarget) {
 			identity.Hint = ""
-			if identity.Error != nil {
-				identity.Error.Hint = ""
+			if cloned, ok := recovery.CloneTyped(identity.Error); ok && errors.As(cloned, &identity.Error) {
+				identity.Error.ProblemDetail().Hint = ""
 			}
 		}
 		return identity
@@ -93,6 +98,21 @@ func FilterRecovery(result Result, projector *recovery.Projector) Result {
 	result.Bot = filter(result.Bot)
 	result.User = filter(result.User)
 	return result
+}
+
+func withPolicyError(identity Identity, err error) Identity {
+	var typed errs.TypedError
+	if !errors.As(err, &typed) {
+		return identity
+	}
+	problem := typed.ProblemDetail()
+	if problem == nil || problem.Category != errs.CategoryPolicy {
+		return identity
+	}
+	// Keep the concrete typed value: reducing it to Problem would discard
+	// policy-specific wire fields such as challenge_url or rules.
+	identity.Error = typed
+	return identity
 }
 
 // Diagnose checks bot and user identities separately. When verify is false,
@@ -216,7 +236,7 @@ func externalVerifyFailed(id Identity, label, provider string, err error) Identi
 	id.TokenStatus = ""
 	id.Message = label + " identity: verify failed: " + err.Error()
 	id.Hint = externalCredentialHint(provider)
-	return id
+	return withPolicyError(id, err)
 }
 
 // externalCredentialHint reports the constraint, not a remediation: the
@@ -263,22 +283,22 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 		if errors.As(err, &unavailable) {
 			status = StatusNotConfigured
 		}
-		return Identity{
+		return withPolicyError(Identity{
 			Status:   status,
 			Verified: boolPtr(false),
 			Message:  "Bot identity: " + StatusMessage(status) + ": " + err.Error(),
 			Hint:     "check app credentials or the active credential provider",
-		}
+		}, err)
 	}
 
 	info, err := fetchBotInfo(ctx, f, cfg, token)
 	if err != nil {
-		return Identity{
+		return withPolicyError(Identity{
 			Status:   StatusVerifyFailed,
 			Verified: boolPtr(false),
 			Message:  "Bot identity: verify failed: " + err.Error(),
 			Hint:     "check app credentials, scopes, network, or tenant access token configuration",
-		}
+		}, err)
 	}
 
 	id.Verified = boolPtr(true)
@@ -323,6 +343,20 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	}
 
 	fillTokenFields(&id, stored)
+	id.TokenType = stored.TokenType
+	binding, bindingErr := larkauth.ResolveDPoPBindingContext(ctx, stored, nil)
+	if bindingErr != nil {
+		id.Status = StatusMissing
+		id.DPoPKeyStatus = "missing"
+		id.Message = "User identity: missing (DPoP key unavailable or inconsistent)"
+		problem, _ := errs.ProblemOf(bindingErr)
+		return withCommandRecovery(id, recovery.TargetAuthLogin, problem.Hint)
+	}
+	if binding != nil {
+		id.DPoPKeyStatus = "available"
+		id.DPoPKeyProvider = binding.Key().Provider()
+		id.DPoPKeySecurityLevel = string(binding.KeyStoreSecureLevel)
+	}
 	switch larkauth.TokenStatus(stored) {
 	case "valid":
 		id.Status = StatusReady
@@ -357,9 +391,12 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	if err != nil {
 		return markVerifyFailed("create HTTP client: "+err.Error(), "", "")
 	}
-	token, err := larkauth.GetValidAccessToken(httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
+	token, err := larkauth.GetValidAccessToken(ctx, httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
 	if err != nil {
-		return markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin)
+		return withPolicyError(
+			markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin),
+			err,
+		)
 	}
 	sdk, err := f.LarkClient()
 	if err != nil {
@@ -368,8 +405,11 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
 	verifyCtx = core.WithCredentialSource(verifyCtx, core.CredentialSourceLocal)
-	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token); err != nil {
-		return markVerifyFailed("server rejected token: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin)
+	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token.AccessToken, token.DPoP); err != nil {
+		return withPolicyError(
+			markVerifyFailed("server rejected token: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin),
+			err,
+		)
 	}
 
 	id.Verified = boolPtr(true)
@@ -392,6 +432,11 @@ func resolveBotToken(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfi
 	if result == nil || result.Token == "" {
 		return nil, &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
 	}
+	if cfg != nil && cfg.DPoPMode.Required() &&
+		result.Source == core.CredentialSourceLocal && result.DPoP == nil {
+		return nil, errs.NewAuthenticationError(errs.SubtypeDPoPRequired,
+			"this profile requires DPoP but the local bot credential is Bearer")
+	}
 	return result, nil
 }
 
@@ -406,6 +451,9 @@ func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
 	ctx = core.WithCredentialSource(ctx, token.Source)
+	if token.DPoP != nil {
+		ctx = dpop.WithBinding(ctx, token.DPoP)
+	}
 	ctx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
 	url := strings.TrimRight(core.ResolveEndpoints(cfg.Brand).Open, "/") + "/open-apis/bot/v3/info"

@@ -498,6 +498,7 @@ func TestConfigBlockedByExternalProvider(t *testing.T) {
 		{"show", []string{"show"}},
 		{"default-as", []string{"default-as", "user"}},
 		{"strict-mode", []string{"strict-mode", "off"}},
+		{"set", []string{"set", "dpop", "disabled"}},
 	}
 
 	for _, tt := range tests {

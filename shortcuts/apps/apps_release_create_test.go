@@ -7,9 +7,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -19,17 +21,98 @@ import (
 
 func TestBuildPublishBody(t *testing.T) {
 	// branch included when non-empty; app_id is NOT in body (it's in the path)
-	b := buildPublishBody("feat/devops")
+	b := buildPublishBody("feat/devops", "ship it")
 	if b["branch"] != "feat/devops" {
 		t.Errorf("body = %v", b)
+	}
+	if b["apply_reason"] != "ship it" {
+		t.Errorf("apply_reason = %v", b["apply_reason"])
+	}
+	if _, ok := b["applyReason"]; ok {
+		t.Errorf("applyReason must not be in body, got %v", b)
 	}
 	if _, ok := b["app_id"]; ok {
 		t.Errorf("app_id must not be in body, got %v", b)
 	}
 	// branch omitted when empty
-	b2 := buildPublishBody("")
+	b2 := buildPublishBody("", "reason")
 	if _, ok := b2["branch"]; ok {
 		t.Errorf("branch should be omitted when empty, got %v", b2)
+	}
+	if b2["apply_reason"] != "reason" {
+		t.Errorf("apply_reason = %v", b2["apply_reason"])
+	}
+	// apply_reason omitted when the caller does not supply one (html flow)
+	b3 := buildPublishBody("", "")
+	if len(b3) != 0 {
+		t.Errorf("empty optional fields should produce an empty body, got %v", b3)
+	}
+}
+
+func TestValidateReleaseApplyReason(t *testing.T) {
+	longASCII := strings.Repeat("a", maxReleaseApplyReasonRunes)
+	longChinese := strings.Repeat("中", maxReleaseApplyReasonRunes)
+	tests := []struct {
+		name    string
+		value   string
+		wantErr string
+	}{
+		{name: "whitespace", value: " \t\n", wantErr: "--apply-reason must not be empty"},
+		{name: "lf", value: "before\nafter", wantErr: "--apply-reason must not contain control characters"},
+		{name: "cr", value: "before\rafter", wantErr: "--apply-reason must not contain control characters"},
+		{name: "tab", value: "before\tafter", wantErr: "--apply-reason must not contain control characters"},
+		{name: "nul", value: "before\x00after", wantErr: "--apply-reason must not contain control characters"},
+		{name: "c1", value: "before\u0085after", wantErr: "--apply-reason must not contain control characters"},
+		{name: "zero width space only", value: "\u200B", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "line separator", value: "before\u2028after", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "paragraph separator", value: "before\u2029after", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "bidi override", value: "before\u202Eafter", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "bidi isolate", value: "before\u2066after", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "bidi isolate terminator", value: "before\u2069after", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "byte order mark", value: "before\uFEFFafter", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "invalid utf8", value: string([]byte{'b', 0xff, 'd'}), wantErr: "--apply-reason must be valid UTF-8"},
+		{name: "too long ascii", value: longASCII + "a", wantErr: "--apply-reason must be at most 1000 characters"},
+		{name: "too long chinese", value: longChinese + "中", wantErr: "--apply-reason must be at most 1000 characters"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateReleaseApplyReason(tt.value)
+			problem := requireAppsValidationProblem(t, err)
+			if problem.Message != tt.wantErr {
+				t.Errorf("Message = %q, want %q", problem.Message, tt.wantErr)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != "--apply-reason" {
+				t.Errorf("Param = %q, want --apply-reason", validationErr.Param)
+			}
+		})
+	}
+	for _, value := range []string{longASCII, longChinese, "$(rm -rf /); `echo unsafe` | cat"} {
+		if err := validateReleaseApplyReason(value); err != nil {
+			t.Errorf("validateReleaseApplyReason(%q) = %v", value, err)
+		}
+	}
+}
+
+func TestProjectReleaseCreateData(t *testing.T) {
+	tests := []struct {
+		name string
+		data map[string]interface{}
+		want releaseCreateOutput
+	}{
+		{name: "snake case", data: map[string]interface{}{"release_id": "release_1", "status": "done", "sync": true}, want: releaseCreateOutput{ReleaseID: "release_1", Status: "done", Sync: true}},
+		{name: "missing release id", data: map[string]interface{}{"status": "done"}, want: releaseCreateOutput{Status: "done"}},
+		{name: "unsupported camel case is not guessed", data: map[string]interface{}{"releaseID": "release_2", "status": "done"}, want: releaseCreateOutput{Status: "done"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := projectReleaseCreateData(tt.data); got != tt.want {
+				t.Errorf("projectReleaseCreateData() = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -40,12 +123,192 @@ func TestAppsReleaseCreateMeta(t *testing.T) {
 	if len(AppsReleaseCreate.Scopes) != 1 || AppsReleaseCreate.Scopes[0] != "spark:app:write" {
 		t.Errorf("scopes = %v", AppsReleaseCreate.Scopes)
 	}
+	flags := make(map[string]common.Flag, len(AppsReleaseCreate.Flags))
+	for _, flag := range AppsReleaseCreate.Flags {
+		flags[flag.Name] = flag
+	}
+	if !flags["app-id"].Required || flags["apply-reason"].Required {
+		t.Fatalf("app-id must be required and apply-reason must be optional: %+v", flags)
+	}
+	if flags["apply-reason"].Desc != "release application reason for frontend/full_stack apps (max 1000 characters; omit for html apps)" {
+		t.Fatalf("apply-reason desc = %q", flags["apply-reason"].Desc)
+	}
+}
+
+func TestAppsReleaseCreateTipsDistinguishHTMLReasonPolicy(t *testing.T) {
+	var withReason, withoutReason, policy bool
+	for _, tip := range AppsReleaseCreate.Tips {
+		if strings.Contains(tip, "+release-create") {
+			if strings.Contains(tip, "--apply-reason") {
+				withReason = true
+			} else {
+				withoutReason = true
+			}
+		}
+		if strings.Contains(tip, "first example is for HTML apps") && strings.Contains(tip, "no release reason") &&
+			strings.Contains(tip, "frontend/full_stack apps require --apply-reason") {
+			policy = true
+		}
+	}
+	if !withReason || !withoutReason || !policy {
+		t.Fatalf("tips must label the HTML and frontend/full_stack reason policies explicitly: %v", AppsReleaseCreate.Tips)
+	}
+}
+
+func TestAppsReleaseCreateAllowsOmittedApplyReason(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsReleaseCreate, []string{
+		"+release-create", "--app-id", "app_x", "--dry-run", "--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("omitted --apply-reason must be accepted for html releases: %v", err)
+	}
+}
+
+func TestAppsReleaseCreateRejectsExplicitBlankApplyReason(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsReleaseCreate, []string{
+		"+release-create", "--app-id", "app_x", "--apply-reason", "  ", "--dry-run", "--as", "user",
+	}, factory, stdout)
+	problem := requireAppsValidationProblem(t, err)
+	if problem.Message != "--apply-reason must not be empty" {
+		t.Fatalf("Message = %q", problem.Message)
+	}
+}
+
+func TestAppsReleaseCreateRejectsDangerousUnicodeBeforePlanningOrRequest(t *testing.T) {
+	tests := []struct {
+		name   string
+		reason string
+		dryRun bool
+	}{
+		{name: "dry run zero width", reason: "deploy\u200Bnow", dryRun: true},
+		{name: "execute bidi override", reason: "deploy\u202Enow"},
+		{name: "execute line separator", reason: "deploy\u2028now"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			stub := &httpmock.Stub{
+				Method:   "POST",
+				URL:      "/open-apis/spark/v1/apps/app_x/releases",
+				Body:     map[string]interface{}{"code": 0, "data": map[string]interface{}{"release_id": "unexpected"}},
+				Optional: true,
+			}
+			reg.Register(stub)
+
+			args := []string{
+				"+release-create", "--app-id", "app_x", "--apply-reason", tt.reason, "--as", "user",
+			}
+			if tt.dryRun {
+				args = append(args, "--dry-run")
+			}
+			err := runAppsShortcut(t, AppsReleaseCreate, args, factory, stdout)
+			problem := requireAppsValidationProblem(t, err)
+			if problem.Message != "--apply-reason must not contain dangerous Unicode characters" {
+				t.Errorf("Message = %q", problem.Message)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != "--apply-reason" {
+				t.Errorf("Param = %q, want --apply-reason", validationErr.Param)
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("validation must fail before writing a dry-run or success result, got %q", stdout.String())
+			}
+			if len(stub.CapturedBodies) != 0 {
+				t.Errorf("validation must fail before the release-create request, got %d request(s)", len(stub.CapturedBodies))
+			}
+		})
+	}
+}
+
+func TestAppsReleaseCreateDryRunBody(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	reason := "  fix $() `echo nope`; use | safely  "
+	if err := runAppsShortcut(t, AppsReleaseCreate, []string{
+		"+release-create", "--app-id", "app_x", "--branch", "  sprint/default  ",
+		"--apply-reason", reason, "--dry-run", "--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var env struct {
+		Data struct {
+			API []struct {
+				Method string                 `json:"method"`
+				URL    string                 `json:"url"`
+				Body   map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
+	}
+	if len(env.Data.API) != 1 || env.Data.API[0].Method != "POST" || env.Data.API[0].URL != "/open-apis/spark/v1/apps/app_x/releases" {
+		t.Fatalf("dry-run API = %+v", env.Data.API)
+	}
+	body := env.Data.API[0].Body
+	if body["branch"] != "sprint/default" || body["apply_reason"] != reason {
+		t.Fatalf("dry-run body = %#v", body)
+	}
+	if _, ok := body["applyReason"]; ok {
+		t.Fatalf("dry-run body contains applyReason: %#v", body)
+	}
+	if _, ok := body["app_id"]; ok {
+		t.Fatalf("dry-run body contains app_id: %#v", body)
+	}
+
+	factory2, stdout2, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsReleaseCreate, []string{
+		"+release-create", "--app-id", "app_x", "--apply-reason", reason, "--dry-run", "--as", "user",
+	}, factory2, stdout2); err != nil {
+		t.Fatalf("dry-run without branch err=%v", err)
+	}
+	var env2 struct {
+		Data struct {
+			API []struct {
+				Method string                 `json:"method"`
+				URL    string                 `json:"url"`
+				Body   map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout2.Bytes(), &env2); err != nil {
+		t.Fatalf("decode dry-run without branch: %v\n%s", err, stdout2.String())
+	}
+	body = env2.Data.API[0].Body
+	if len(body) != 1 || body["apply_reason"] != reason {
+		t.Fatalf("dry-run body without branch = %#v", body)
+	}
+
+	factory3, stdout3, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsReleaseCreate, []string{
+		"+release-create", "--app-id", "app_x", "--dry-run", "--as", "user",
+	}, factory3, stdout3); err != nil {
+		t.Fatalf("dry-run without apply reason err=%v", err)
+	}
+	var env3 struct {
+		Data struct {
+			API []struct {
+				Body map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout3.Bytes(), &env3); err != nil {
+		t.Fatalf("decode dry-run without apply reason: %v\n%s", err, stdout3.String())
+	}
+	if len(env3.Data.API) != 1 || len(env3.Data.API[0].Body) != 0 {
+		t.Fatalf("dry-run body without apply reason = %#v", env3.Data.API)
+	}
 }
 
 // newReleaseCreateRuntimeContext builds a RuntimeContext whose cobra.Command has the
-// flags that AppsReleaseCreate.Execute reads (app-id, branch). Flag values are set
+// flags that AppsReleaseCreate.Execute reads (app-id, branch, apply-reason). Flag values are set
 // via the returned setter helper.
-func newReleaseCreateRuntimeContext(t *testing.T, appID, branch string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
+func newReleaseCreateRuntimeContext(t *testing.T, appID, branch, applyReason string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	cfg := &core.CliConfig{
 		AppID:      "test-app-" + strings.ToLower(t.Name()),
@@ -59,18 +322,21 @@ func newReleaseCreateRuntimeContext(t *testing.T, appID, branch string) (*common
 	cmd.SetContext(context.Background())
 	cmd.Flags().String("app-id", "", "")
 	cmd.Flags().String("branch", "", "")
+	cmd.Flags().String("apply-reason", "", "")
 	_ = cmd.Flags().Set("app-id", appID)
 	if branch != "" {
 		_ = cmd.Flags().Set("branch", branch)
 	}
+	_ = cmd.Flags().Set("apply-reason", applyReason)
 
 	rctx := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, core.AsUser)
 	return rctx, stdoutBuf, reg
 }
 
 func TestAppsReleaseCreateExecute_Success(t *testing.T) {
-	rctx, stdoutBuf, reg := newReleaseCreateRuntimeContext(t, "app_x", "main")
-	reg.Register(&httpmock.Stub{
+	reason := "  fix $() `echo nope`; use | safely  "
+	rctx, stdoutBuf, reg := newReleaseCreateRuntimeContext(t, "app_x", "main", reason)
+	stub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/spark/v1/apps/app_x/releases",
 		Body: map[string]interface{}{
@@ -79,9 +345,11 @@ func TestAppsReleaseCreateExecute_Success(t *testing.T) {
 			"data": map[string]interface{}{
 				"release_id": "123",
 				"status":     "publishing",
+				"sync":       false,
 			},
 		},
-	})
+	}
+	reg.Register(stub)
 
 	err := AppsReleaseCreate.Execute(context.Background(), rctx)
 	if err != nil {
@@ -104,10 +372,88 @@ func TestAppsReleaseCreateExecute_Success(t *testing.T) {
 	if env.Data["status"] != "publishing" {
 		t.Errorf("status = %v, want publishing", env.Data["status"])
 	}
+	if env.Data["sync"] != false {
+		t.Errorf("sync = %v, want false", env.Data["sync"])
+	}
+	if len(env.Data) != 3 {
+		t.Errorf("public output keys = %v, want exactly release_id/status/sync", env.Data)
+	}
+	for _, key := range []string{"release_id", "status", "sync"} {
+		if _, ok := env.Data[key]; !ok {
+			t.Errorf("public output missing key %q: %v", key, env.Data)
+		}
+	}
+	for _, key := range []string{"releaseID", "applyReason", "apply_reason"} {
+		if _, ok := env.Data[key]; ok {
+			t.Errorf("public output leaked key %q: %v", key, env.Data)
+		}
+	}
+	var sent map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+	if sent["apply_reason"] != reason || sent["branch"] != "main" {
+		t.Errorf("request body = %v", sent)
+	}
+	if _, ok := sent["applyReason"]; ok {
+		t.Errorf("request body contains applyReason: %v", sent)
+	}
+	if _, ok := sent["app_id"]; ok {
+		t.Errorf("request body contains app_id: %v", sent)
+	}
+}
+
+func TestAppsReleaseCreateExecute_OmitsEmptyBranch(t *testing.T) {
+	rctx, _, reg := newReleaseCreateRuntimeContext(t, "app_no_branch", "   ", "reason")
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_no_branch/releases",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"release_id": "789"},
+		},
+	}
+	reg.Register(stub)
+	if err := AppsReleaseCreate.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	var sent map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+	if len(sent) != 1 || sent["apply_reason"] != "reason" {
+		t.Errorf("request body = %v", sent)
+	}
+}
+
+func TestAppsReleaseCreateExecute_OmitsApplyReasonForHTML(t *testing.T) {
+	rctx, _, reg := newReleaseCreateRuntimeContext(t, "app_html", "sprint/default", "")
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_html/releases",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"release_id": "html_release"},
+		},
+	}
+	reg.Register(stub)
+	if err := AppsReleaseCreate.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	var sent map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+	if len(sent) != 1 || sent["branch"] != "sprint/default" {
+		t.Errorf("request body = %v", sent)
+	}
+	if _, ok := sent["apply_reason"]; ok {
+		t.Errorf("html request must omit apply_reason: %v", sent)
+	}
 }
 
 func TestAppsReleaseCreate_SyncField(t *testing.T) {
-	rctx, stdoutBuf, reg := newReleaseCreateRuntimeContext(t, "app_sync", "main")
+	rctx, stdoutBuf, reg := newReleaseCreateRuntimeContext(t, "app_sync", "main", "sync release")
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/spark/v1/apps/app_sync/releases",

@@ -216,6 +216,11 @@ func TestWithAppsHint_SubcodeTable(t *testing.T) {
 			if !strings.Contains(p.Hint, tc.hintHas) {
 				t.Fatalf("hint = %q, want it to mention %q", p.Hint, tc.hintHas)
 			}
+			if tc.name == "publish blocked by release approval" {
+				if !strings.Contains(p.Hint, "--apply-reason") || !strings.Contains(p.Hint, "Confirm the release reason") {
+					t.Fatalf("hint = %q, must require a user-confirmed release reason", p.Hint)
+				}
+			}
 			if strings.Contains(p.Message, dbSubcodePrefix) {
 				t.Fatalf("message = %q, prefix must be stripped", p.Message)
 			}

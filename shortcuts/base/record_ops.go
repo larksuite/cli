@@ -226,13 +226,9 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 		offset = 0
 	}
 	limit := runtime.Int("limit")
-	requestLimit := limit
-	if runtime.Str("format") == "ndjson" {
-		requestLimit = min(limit, ndjsonRecordPageSize)
-	}
 	params := url.Values{}
 	params.Set("offset", strconv.Itoa(offset))
-	params.Set("limit", strconv.Itoa(requestLimit))
+	params.Set("limit", strconv.Itoa(limit))
 	fields, err := recordProjectionFields(runtime)
 	if err != nil {
 		return common.NewDryRunAPI()
@@ -290,7 +286,7 @@ func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *comm
 	if runtime.Str("format") == "ndjson" && body != nil {
 		_, requestedLimit, err := recordSearchPagination(body)
 		if err == nil {
-			body["limit"] = min(requestedLimit, ndjsonRecordPageSize)
+			body["limit"] = requestedLimit
 			dry.Set("export_format", "ndjson").Set("requested_limit", requestedLimit)
 			if outputPath := strings.TrimSpace(runtime.Str("output")); outputPath != "" {
 				dry.Set("output", outputPath)
@@ -545,9 +541,6 @@ func recordProjectionAliasFields(runtime *common.RuntimeContext, flagName string
 }
 
 func executeRecordList(runtime *common.RuntimeContext) error {
-	if err := validateRecordReadFormat(runtime); err != nil {
-		return err
-	}
 	offset := runtime.Int("offset")
 	if offset < 0 {
 		offset = 0
@@ -576,17 +569,11 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	if runtime.Str("format") == "markdown" {
-		return outputRecordMarkdown(runtime, data)
-	}
 	runtime.Out(data, nil)
 	return nil
 }
 
 func executeRecordGet(runtime *common.RuntimeContext) error {
-	if err := validateRecordReadFormat(runtime); err != nil {
-		return err
-	}
 	selection, err := resolveRecordSelection(runtime)
 	if err != nil {
 		return err
@@ -595,9 +582,6 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 	data, err := handleBaseAPIResult(result, err, "batch get records")
 	if err != nil {
 		return err
-	}
-	if runtime.Str("format") == "markdown" {
-		return outputRecordGetMarkdown(runtime, data)
 	}
 	if runtime.Str("format") == "ndjson" {
 		return executeRecordGetNDJSON(runtime, data, len(selection.recordIDs))
@@ -623,9 +607,6 @@ func executeRecordSearch(runtime *common.RuntimeContext) error {
 	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "search"), nil, body)
 	if err != nil {
 		return err
-	}
-	if runtime.Str("format") == "markdown" {
-		return outputRecordMarkdown(runtime, data)
 	}
 	runtime.Out(data, nil)
 	return nil

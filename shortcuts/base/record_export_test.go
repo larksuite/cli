@@ -6,7 +6,6 @@ package base
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -198,7 +197,7 @@ func TestRecordListNDJSONDefaultsTo2000Records(t *testing.T) {
 	withBaseWorkingDir(t, dir)
 	factory, stdout, registry := newExecuteFactory(t)
 	registry.Register(&httpmock.Stub{
-		Method: "GET", URL: "limit=500&offset=0",
+		Method: "GET", URL: "limit=2000&offset=0",
 		Body: map[string]any{"code": 0, "data": recordMatrixPage(0, 1, false, "fld_name")},
 	})
 
@@ -223,17 +222,13 @@ func TestRecordListNDJSONDefaultsTo2000Records(t *testing.T) {
 	}
 }
 
-func TestRecordListNDJSONSerializesPagesAbove500(t *testing.T) {
+func TestRecordListNDJSONReadsOnePageAbove500(t *testing.T) {
 	dir := t.TempDir()
 	withBaseWorkingDir(t, dir)
 	factory, stdout, registry := newExecuteFactory(t)
 	registry.Register(&httpmock.Stub{
-		Method: "GET", URL: "limit=500&offset=0",
-		Body: map[string]any{"code": 0, "data": recordMatrixPageWithRev(0, 500, true, "fld_name", 100)},
-	})
-	registry.Register(&httpmock.Stub{
-		Method: "GET", URL: "limit=1&offset=500",
-		Body: map[string]any{"code": 0, "data": recordMatrixPageWithRev(500, 1, true, "fld_name", 101)},
+		Method: "GET", URL: "limit=501&offset=0",
+		Body: map[string]any{"code": 0, "data": recordMatrixPageWithRev(0, 501, true, "fld_name", 100)},
 	})
 
 	err := runShortcut(t, BaseRecordList, []string{
@@ -272,37 +267,55 @@ func TestRecordListNDJSONSerializesPagesAbove500(t *testing.T) {
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest["rev"] != float64(100) || manifest["page_count"] != float64(2) || manifest["next_offset"] != float64(501) {
+	if manifest["rev"] != float64(100) || manifest["page_count"] != float64(1) || manifest["next_offset"] != float64(501) {
 		t.Fatalf("manifest pagination = %#v", manifest)
 	}
 }
 
-func TestRecordListNDJSONRejectsSchemaChangeWithoutPublishingFiles(t *testing.T) {
-	dir := t.TempDir()
-	withBaseWorkingDir(t, dir)
-	factory, stdout, registry := newExecuteFactory(t)
-	registry.Register(&httpmock.Stub{
-		Method: "GET", URL: "limit=500&offset=0",
-		Body: map[string]any{"code": 0, "data": recordMatrixPage(0, 1, true, "fld_name")},
-	})
-	registry.Register(&httpmock.Stub{
-		Method: "GET", URL: "limit=500&offset=1",
-		Body: map[string]any{"code": 0, "data": recordMatrixPage(1, 1, false, "fld_changed")},
-	})
-
-	err := runShortcut(t, BaseRecordList, []string{
-		"+record-list", "--base-token", "app_x", "--table-id", "tbl_x",
-		"--limit", "501", "--output", "changed.ndjson",
-	}, factory, stdout)
-	if err == nil {
-		t.Fatal("runShortcut() error = nil")
-	}
-	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Subtype != errs.SubtypeFailedPrecondition {
-		t.Fatalf("problem = %#v, err = %v", problem, err)
-	}
-	if _, statErr := os.Stat(filepath.Join(dir, "changed.ndjson")); !errors.Is(statErr, os.ErrNotExist) {
-		t.Fatalf("changed.ndjson should not exist, stat err = %v", statErr)
+func TestRecordNDJSONDoesNotFollowShortPages(t *testing.T) {
+	for _, search := range []bool{false, true} {
+		t.Run(fmt.Sprintf("search=%t", search), func(t *testing.T) {
+			dir := t.TempDir()
+			withBaseWorkingDir(t, dir)
+			factory, stdout, registry := newExecuteFactory(t)
+			stub := &httpmock.Stub{Method: "GET", URL: "limit=2000&offset=17",
+				Body: map[string]any{"code": 0, "data": recordMatrixPage(17, 1, true, "fld_name")}}
+			shortcut := BaseRecordList
+			args := []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--offset", "17"}
+			if search {
+				shortcut = BaseRecordSearch
+				args[0] = "+record-search"
+				args = append(args, "--keyword", "Name", "--search-field", "Name")
+				stub.Method = "POST"
+				stub.URL = "/records/search"
+				stub.BodyFilter = func(body []byte) bool {
+					var request map[string]any
+					return json.Unmarshal(body, &request) == nil && request["limit"] == float64(2000) && request["offset"] == float64(17)
+				}
+			}
+			registry.Register(stub)
+			if err := runShortcut(t, shortcut, args, factory, stdout); err != nil {
+				t.Fatal(err)
+			}
+			var manifest map[string]any
+			if err := json.Unmarshal(stdout.Bytes(), &manifest); err != nil {
+				t.Fatal(err)
+			}
+			if manifest["requested_limit"] != float64(2000) || manifest["records_count"] != float64(1) || manifest["page_count"] != float64(1) || manifest["has_more"] != true || manifest["next_offset"] != float64(18) {
+				t.Fatalf("manifest = %#v", manifest)
+			}
+			raw, err := os.ReadFile(manifest["record_file"].(string))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var row map[string]any
+			if err := json.Unmarshal(raw, &row); err != nil {
+				t.Fatal(err)
+			}
+			if row["record_id"] != "rec_0017" {
+				t.Fatalf("row = %#v", row)
+			}
+		})
 	}
 }
 
@@ -490,7 +503,7 @@ func TestRecordListJQRecordsValidatesOutputContractBeforeRequest(t *testing.T) {
 	}
 }
 
-func TestRecordSearchNDJSONPaginatesAndPreservesSearchBody(t *testing.T) {
+func TestRecordSearchNDJSONReadsOnePageAndPreservesSearchBody(t *testing.T) {
 	dir := t.TempDir()
 	withBaseWorkingDir(t, dir)
 	factory, stdout, registry := newExecuteFactory(t)
@@ -498,20 +511,11 @@ func TestRecordSearchNDJSONPaginatesAndPreservesSearchBody(t *testing.T) {
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
 		BodyFilter: func(body []byte) bool {
-			return strings.Contains(string(body), `"offset":0`) && strings.Contains(string(body), `"limit":500`)
+			return strings.Contains(string(body), `"offset":0`) && strings.Contains(string(body), `"limit":501`)
 		},
-		Body: map[string]any{"code": 0, "data": recordMatrixPage(0, 500, true, "fld_name")},
-	}
-	second := &httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
-		BodyFilter: func(body []byte) bool {
-			return strings.Contains(string(body), `"offset":500`) && strings.Contains(string(body), `"limit":1`)
-		},
-		Body: map[string]any{"code": 0, "data": recordMatrixPage(500, 1, false, "fld_name")},
+		Body: map[string]any{"code": 0, "data": recordMatrixPage(0, 501, true, "fld_name")},
 	}
 	registry.Register(first)
-	registry.Register(second)
 
 	err := runShortcut(t, BaseRecordSearch, []string{
 		"+record-search", "--base-token", "app_x", "--table-id", "tbl_x",
@@ -521,7 +525,7 @@ func TestRecordSearchNDJSONPaginatesAndPreservesSearchBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runShortcut() error = %v", err)
 	}
-	for _, body := range [][]byte{first.CapturedBody, second.CapturedBody} {
+	for _, body := range [][]byte{first.CapturedBody} {
 		if !strings.Contains(string(body), `"keyword":"Name"`) || !strings.Contains(string(body), `"filter":{"conditions":[],"logic":"and"}`) {
 			t.Fatalf("search body lost query fields: %s", body)
 		}
@@ -534,7 +538,7 @@ func TestRecordSearchNDJSONPaginatesAndPreservesSearchBody(t *testing.T) {
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest["records_count"] != float64(501) || manifest["page_count"] != float64(2) {
+	if manifest["records_count"] != float64(501) || manifest["page_count"] != float64(1) {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 }
@@ -585,7 +589,7 @@ func TestRecordSearchNDJSONDefaultsTo2000Records(t *testing.T) {
 				Method: "POST",
 				URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
 				BodyFilter: func(body []byte) bool {
-					return strings.Contains(string(body), `"offset":0`) && strings.Contains(string(body), `"limit":500`)
+					return strings.Contains(string(body), `"offset":0`) && strings.Contains(string(body), `"limit":2000`)
 				},
 				Body: map[string]any{"code": 0, "data": recordMatrixPage(0, 1, false, "fld_name")},
 			})

@@ -17,6 +17,7 @@ import (
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/shortcuts"
@@ -80,7 +81,10 @@ type userInfoResponse struct {
 }
 
 // getUserInfo fetches the current user's OpenID and name using the given access token.
-func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string) (openId, name string, err error) {
+func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string, binding *dpop.Binding) (openId, name string, err error) {
+	if binding != nil {
+		ctx = dpop.WithBinding(ctx, binding)
+	}
 	apiResp, err := sdk.Do(ctx, &larkcore.ApiReq{
 		HttpMethod:                http.MethodGet,
 		ApiPath:                   larkauth.PathUserInfoV1,

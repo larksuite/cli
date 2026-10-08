@@ -34,8 +34,8 @@ func TestRecordListRegistersJSONShorthand(t *testing.T) {
 	if fl.Usage != "shorthand for --format json" {
 		t.Errorf("usage = %q, want shorthand", fl.Usage)
 	}
-	if def := cmd.Flags().Lookup("format").DefValue; def != "markdown" {
-		t.Errorf("format default = %q, want markdown (unchanged)", def)
+	if def := cmd.Flags().Lookup("format").DefValue; def != "ndjson" {
+		t.Errorf("format default = %q, want ndjson", def)
 	}
 }
 
@@ -67,7 +67,7 @@ func TestRecordSearchGetKeepRequestBodyJSON(t *testing.T) {
 func TestRecordReadFormatFlagCarriesEnum(t *testing.T) {
 	cmd := mountBaseShortcutFlags(t, BaseRecordList, "+record-list")
 	usage := cmd.Flags().Lookup("format").Usage
-	if !strings.Contains(usage, "(markdown|json|ndjson)") {
+	if !strings.Contains(usage, "(ndjson|json)") {
 		t.Fatalf("format usage missing enum suffix: %q", usage)
 	}
 }

@@ -681,8 +681,8 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
-		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
+		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}, nil
 	}
 
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{

@@ -27,7 +27,7 @@ var BaseRecordList = common.Shortcut{
 		recordFilterFlag(),
 		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "maximum records to return; range 1-200, or 1-2000 for ndjson; omitted limit uses 2000 for ndjson"},
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "2000", Desc: "maximum records to return; ndjson defaults to 2000 (range 1-2000); json defaults to 100 (range 1-200)"},
 		recordReadFormatFlag(),
 		recordOutputFlag(),
 		recordMinimalStdoutFlag(),
@@ -48,9 +48,9 @@ var BaseRecordList = common.Shortcut{
 		recordAnalysisOutputTip,
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
 	},
-	Normalize: common.ChainNormalizers(normalizeRecordReadOutput, normalizeRecordNDJSONLimit),
+	Normalize: common.ChainNormalizers(normalizeRecordReadOutput, normalizeRecordListLimit),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateRecordReadFormat(runtime); err != nil {
+		if err := validateRecordReadFormat(runtime.Str("format")); err != nil {
 			return err
 		}
 		if err := validateRecordExportFlags(runtime); err != nil {
@@ -82,8 +82,8 @@ func recordListViewRefFlag() common.Flag {
 func recordReadFormatFlag() common.Flag {
 	return common.Flag{
 		Name:    "format",
-		Default: "markdown",
-		Enum:    []string{"markdown", "json", "ndjson"},
-		Desc:    "output format: markdown (default display) | json raw matrix (current inline behavior may be deprecated and replaced by ndjson-like artifact output) | ndjson artifact (records file plus manifest summary and column schema/stats; preferred with file I/O for analysis)",
+		Default: "ndjson",
+		Enum:    []string{"ndjson", "json"},
+		Desc:    "output format: ndjson (default; records file plus manifest summary and column schema/stats) | json (inline raw matrix)",
 	}
 }

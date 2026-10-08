@@ -24,6 +24,7 @@ import (
 type authFSStub struct {
 	vfs.OsFs
 	mkdirAll  func(string, fs.FileMode) error
+	readFile  func(string) ([]byte, error)
 	writeFile func(string, []byte, fs.FileMode) error
 }
 
@@ -32,6 +33,13 @@ func (f authFSStub) MkdirAll(path string, perm fs.FileMode) error {
 		return f.mkdirAll(path, perm)
 	}
 	return f.OsFs.MkdirAll(path, perm)
+}
+
+func (f authFSStub) ReadFile(path string) ([]byte, error) {
+	if f.readFile != nil {
+		return f.readFile(path)
+	}
+	return f.OsFs.ReadFile(path)
 }
 
 func (f authFSStub) WriteFile(path string, data []byte, perm fs.FileMode) error {

@@ -238,7 +238,7 @@ func normalizeRecordSearchJSONBody(body map[string]interface{}) error {
 }
 
 func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
-	if err := validateRecordReadFormat(runtime); err != nil {
+	if err := validateRecordReadFormat(runtime.Str("format")); err != nil {
 		return err
 	}
 	if err := validateRecordExportFlags(runtime); err != nil {
