@@ -534,3 +534,29 @@ lark-cli im reactions batch_query --params '{"user_id_type":"open_id"}' --data '
 
 ### Skills
 - `lark-im/references/lark-im-reactions.md`
+
+## message_links query
+Use for a copied message snapshot when the task needs its linked content.
+
+### Examples
+
+**Read the required sharing-link content**
+```bash
+lark-cli im message_links query --data '{"message_link_url":"https://applink.feishu.cn/client/message/link/open?token=REPLACE_WITH_LINK_TOKEN"}' --as user --format json
+```
+
+### Skills
+- `lark-im/references/lark-im-applinks.md`
+
+## resources download
+Use when the task needs attachment bytes from a queried message sharing link.
+
+### Examples
+
+**Download a resource from a message sharing link**
+```bash
+lark-cli im resources download --as user --params '{"file_key":"file_REPLACE_WITH_KEY","srctype":"messagelink","srcid":"REPLACE_WITH_LINK_TOKEN","type":"file"}' --output ./attachment.bin
+```
+
+### Skills
+- `lark-im/references/lark-im-applinks.md`

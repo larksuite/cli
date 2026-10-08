@@ -25,6 +25,31 @@ func TestCatalogSnapshotPinsReviewedSemantics(t *testing.T) {
 		excludes []string
 	}
 	pins := []pin{
+		{ // Sharing links read copied snapshots through the generic API command.
+			service:  "im",
+			path:     []string{"resources", "message_links", "methods", "query", "path"},
+			contains: []string{"message_links/query"},
+		},
+		{
+			service:  "im",
+			path:     []string{"resources", "message_links", "methods", "query", "httpMethod"},
+			contains: []string{"POST"},
+		},
+		{
+			service:  "im",
+			path:     []string{"resources", "message_links", "methods", "query", "scopes", "0"},
+			contains: []string{"im:message.message_link:read"},
+		},
+		{ // Sharing-link resources use the dedicated endpoint, not message resources.
+			service:  "im",
+			path:     []string{"resources", "resources", "methods", "download", "path"},
+			contains: []string{"resource/download"},
+		},
+		{
+			service:  "im",
+			path:     []string{"resources", "resources", "methods", "download", "httpMethod"},
+			contains: []string{"GET"},
+		},
 		{ // F1: true means notify, not the opposite
 			service:  "drive",
 			path:     []string{"resources", "permission.members", "methods", "transfer_owner", "parameters", "need_notification", "description"},

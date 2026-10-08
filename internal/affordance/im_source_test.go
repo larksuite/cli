@@ -77,6 +77,8 @@ var imAffordanceExamples = []imAffordanceExample{
 		sourceCommand: `lark-cli im reactions batch_query --params '{"user_id_type":"open_id"}' --data '{"queries":[{"message_id":"om_xxx"},{"message_id":"om_yyy","page_token":"<PAGE_TOKEN>"}],"page_size_per_message":10,"reaction_type":"LAUGH"}'`,
 		derivation:    "first-page",
 	},
+	{method: "message_links.query", command: `lark-cli im message_links query --data '{"message_link_url":"https://applink.feishu.cn/client/message/link/open?token=REPLACE_WITH_LINK_TOKEN"}' --as user --format json`, source: "lark-im/references/lark-im-applinks.md"},
+	{method: "resources.download", command: `lark-cli im resources download --as user --params '{"file_key":"file_REPLACE_WITH_KEY","srctype":"messagelink","srcid":"REPLACE_WITH_LINK_TOKEN","type":"file"}' --output ./attachment.bin`, source: "lark-im/references/lark-im-applinks.md"},
 }
 
 // TestIMAffordanceExamplesTraceToCurrentSkill verifies affordance examples resolve to current shortcuts.
@@ -88,7 +90,7 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 	if got, ok := DomainSkill("im"); !ok || got != "lark-im" {
 		t.Fatalf("DomainSkill(im) = (%q, %v), want (lark-im, true)", got, ok)
 	}
-	if got, want := len(imAffordanceExamples), 36; got != want {
+	if got, want := len(imAffordanceExamples), 38; got != want {
 		t.Fatalf("audited IM example count = %d, want %d", got, want)
 	}
 	affordanceSource, err := os.ReadFile("../../affordance/im.md")
@@ -107,8 +109,8 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 			shortcutCount++
 		}
 	}
-	if shortcutCount != 24 || len(imAffordanceExamples)-shortcutCount != 12 {
-		t.Fatalf("audited split = %d shortcuts / %d raw, want 24 / 12", shortcutCount, len(imAffordanceExamples)-shortcutCount)
+	if shortcutCount != 24 || len(imAffordanceExamples)-shortcutCount != 14 {
+		t.Fatalf("audited split = %d shortcuts / %d raw, want 24 / 14", shortcutCount, len(imAffordanceExamples)-shortcutCount)
 	}
 	for method := range parsedDomain.methods {
 		if !audited[method] {

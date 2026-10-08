@@ -1,7 +1,7 @@
 ---
 name: lark-im
 version: 1.0.0
-description: "飞书即时通讯：收发消息和管理群聊。发送和回复消息、搜索聊天记录、管理群聊成员、上传下载图片和文件、管理表情回复、发送应用内/短信/电话加急、发送和处理交互卡片（Interactive Card）、监听卡片按钮回调（card.action.trigger）。当用户需要发消息、查看或搜索聊天记录、下载聊天中的文件、查看群成员、搜索群、创建群聊或话题群、管理标记数据、管理 Feed 置顶（添加/移除/查询置顶会话）、管理标签数据、处理卡片回调时使用。"
+description: "飞书即时通讯：收发消息和管理群聊。发送和回复消息、搜索聊天记录、管理群聊成员、上传下载图片和文件、管理表情回复、发送应用内/短信/电话加急、发送和处理交互卡片（Interactive Card）、监听卡片按钮回调（card.action.trigger）。当用户需要发消息、查看或搜索聊天记录、读取消息分享链接快照、下载聊天中的文件、查看群成员、搜索群、创建群聊或话题群、管理标记数据、管理 Feed 置顶（添加/移除/查询置顶会话）、管理标签数据、处理卡片回调时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -37,7 +37,9 @@ Chat (oc_xxx)
 
 ### AppLink and Share Links
 
-Prefer CLI-returned links: use `chat_app_link` to open joined conversations, `message_app_link` to open messages, and `share_link` to invite others to groups. If manually building a joined-conversation AppLink, use `https://<applink_host>/client/chat/open?openChatId=<oc_xxx>`, never `chatId=<oc_xxx>` or `lark://...chat_id=<oc_xxx>`.
+Messages may contain navigation links, shared message snapshots, or links to other resources. When reading or summarizing messages, read linked content needed for the task rather than treating the link label as its contents. A message's own `message_app_link` opens that message; links embedded in its content may reference additional material. Follow [AppLink identification and reading](references/lark-im-applinks.md) to identify the resource and choose the reading workflow.
+
+When returning links, prefer CLI-returned values: use `chat_app_link` to open joined conversations, `message_app_link` to open messages, and `share_link` to invite others to groups. If manually building a joined-conversation AppLink, use `https://<applink_host>/client/chat/open?openChatId=<oc_xxx>`, never `chatId=<oc_xxx>` or `lark://...chat_id=<oc_xxx>`.
 
 ### Identity and Token Mapping
 
@@ -185,6 +187,14 @@ lark-cli im <resource> <method> [flags] # 调用 API
   - `get` — 获取群成员发言权限。Identity: supports `user` and `bot`; the caller must be in the target chat and belong to the same tenant.
   - `update` — 更新群发言权限。Identity: supports `user` and `bot`; only the group owner (or creator bot with `im:chat:operate_as_owner`) can update; the caller must be in the chat.
 
+### message_links
+
+  - `query` — Query message sharing-link content. Read the copied snapshot using the full message link URL; do not infer chronology from array position; check chat_info.is_authorized separately.[Must-read](references/lark-im-applinks.md#read-message-link-content)
+
+### resources
+
+  - `download` — Download message sharing-link resources. Download one sharing-link resource with srctype=messagelink and the URL token as srcid; use --output to save the binary response. User identity requires one of im:message, im:message:readonly, or im:message.history:readonly.[Must-read](references/lark-im-applinks.md#download-message-link-resources)
+
 ### messages
 
   - `read_status` — 批量查询当前用户对消息的已读状态。Identity: `user` only (`user_access_token`); accepts up to 50 message IDs and returns readable items plus invalid message IDs.[Must-read](references/lark-im-message-read-status.md)
@@ -253,6 +263,8 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `chat.join_requests.handle` | `im:chat.membership_application:write` |
 | `+messages-read-status` | user: `im:message:readonly` (recommended), `im:message`, or `im:message:get_as_user` |
 | `+message-read-users` | user: `im:message:readonly` (recommended), `im:message`, `im:message:basic`, or `im:message:get_as_user`; bot: `im:message:readonly` |
+| `message_links.query` | `im:message.message_link:read` |
+| `resources.download` | user: `im:message`, `im:message:readonly`, or `im:message.history:readonly` |
 | `messages.read_status` | `im:message:readonly` (recommended), `im:message`, or `im:message:get_as_user` |
 | `messages.delete` | `im:message:recall` |
 | `messages.forward` | `im:message` |

@@ -258,6 +258,8 @@ drive.json|$.resources["file.view_records"].methods.list.responseBody.items.prop
 im.json|$.resources.chats.methods.create.responseBody.avatar.example|https://sample.feishu.cn/im/avatar/example.jpg
 im.json|$.resources.chats.methods.get.responseBody.avatar.example|https://sample.feishu.cn/im/avatar/example.jpg
 im.json|$.resources.chats.methods.link.responseBody.share_link.example|https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=example
+im.json|$.resources.message_links.methods.query.requestBody.message_link_url.example|https://applink.feishu.cn/client/message/link/open?token=xxx
+im.json|$.resources.message_links.methods.query.responseBody.messages.properties.message.properties.message_app_link.example|https://xxxx/client/thread/open?chatid=xxx&threadid=xxx&thread_position=xxx
 im.json|$.resources.messages.methods.forward.responseBody.message_app_link.example|https://xxxx/client/thread/open?chatid=xxx&threadid=xxx&thread_position=xxx
 im.json|$.resources.messages.methods.merge_forward.responseBody.message.properties.message_app_link.example|https://xxxx/client/thread/open?chatid=xxx&threadid=xxx&thread_position=xxx
 im.json|$.resources.threads.methods.forward.responseBody.message_app_link.example|https://xxxx/client/thread/open?chatid=xxx&threadid=xxx&thread_position=xxx

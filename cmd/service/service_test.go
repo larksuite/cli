@@ -1331,3 +1331,108 @@ func TestServiceMethod_JsonFlag_Accepted(t *testing.T) {
 		t.Fatal("expected runF to be called")
 	}
 }
+
+// Exercise the shipped catalog through command parsing and request construction,
+// so a metadata refresh cannot silently move or drop the link request fields.
+func TestMessageLinkCatalogRequests(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := snapshot.Load("im")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		resource, method, path, verb, params, data, output string
+	}{
+		{"message_links", "query", "/open-apis/im/v1/message_links/query", "POST", "", `{"message_link_url":"https://applink.feishu.cn/client/message/link/open?token=cli_example%2BB%2FC%3D&extra=1"}`, ""},
+		{"resources", "download", "/open-apis/im/v1/resource/download", "GET", `{"file_key":"file_fixture","srctype":"messagelink","srcid":"A+B/C=","type":"file"}`, "", "attachment.bin"},
+	} {
+		t.Run(tc.resource, func(t *testing.T) {
+			res, ok := svc.Resource(tc.resource)
+			if !ok {
+				t.Fatal("resource missing from catalog")
+			}
+			method, ok := res.Method(tc.method)
+			if !ok {
+				t.Fatal("method missing from catalog")
+			}
+			if tc.resource == "message_links" {
+				field, ok := method.RequestBody["message_link_url"]
+				if !ok || !field.Required || field.Type != "string" {
+					t.Fatal("sharing URL must be a required string body field")
+				}
+			} else {
+				for _, name := range []string{"file_key", "srctype", "srcid", "type"} {
+					field, ok := method.Parameters[name]
+					if !ok || !field.Required || field.Location != "query" || field.Type != "string" {
+						t.Fatalf("%s must be a required string query field", name)
+					}
+				}
+			}
+			f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+			called := false
+			cmd := NewCmdServiceMethod(f, svc, method, tc.method, tc.resource, func(opts *ServiceMethodOptions) error {
+				called = true
+				req, upload, err := buildServiceRequest(opts)
+				if err != nil {
+					return err
+				}
+				if req.Method != tc.verb || req.URL != tc.path || req.As != core.Identity("user") || upload != nil {
+					t.Fatalf("unexpected request: %+v", req)
+				}
+				if tc.data != "" {
+					encoded, err := json.Marshal(req.Data)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var actual, expected struct {
+						URL string `json:"message_link_url"`
+					}
+					if err := json.Unmarshal(encoded, &actual); err != nil {
+						t.Fatal(err)
+					}
+					if err := json.Unmarshal([]byte(tc.data), &expected); err != nil {
+						t.Fatal(err)
+					}
+					if actual != expected || len(req.Params) != 0 {
+						t.Fatalf("sharing URL changed or leaked into query: %+v", req)
+					}
+				} else {
+					want := map[string]interface{}{"file_key": "file_fixture", "srctype": "messagelink", "srcid": "A+B/C=", "type": "file"}
+					if len(req.Params) != len(want) {
+						t.Fatalf("query = %#v", req.Params)
+					}
+					for k, v := range want {
+						if req.Params[k] != v {
+							t.Errorf("query %s = %v, want %v", k, req.Params[k], v)
+						}
+					}
+					if req.Data != nil || opts.Output != tc.output || len(req.ExtraOpts) != 1 {
+						t.Fatal("download must have no body and enable file output")
+					}
+				}
+				return nil
+			})
+			args := []string{"--as", "user", "--dry-run"}
+			if tc.params != "" {
+				args = append(args, "--params", tc.params)
+			}
+			if tc.data != "" {
+				args = append(args, "--data", tc.data)
+			}
+			if tc.output != "" {
+				args = append(args, "--output", tc.output)
+			}
+			cmd.SetArgs(args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if !called {
+				t.Fatal("request was not built")
+			}
+		})
+	}
+}

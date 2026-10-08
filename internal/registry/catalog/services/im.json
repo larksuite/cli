@@ -6148,6 +6148,280 @@
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=update&project=im&resource=feed_group&version=v1"
         }
       }
+    },
+    "message_links": {
+      "methods": {
+        "query": {
+          "id": "message_links.query",
+          "path": "message_links/query",
+          "httpMethod": "POST",
+          "description": "Query message sharing-link content. Read the copied snapshot using the full message link URL; do not infer chronology from array position; check chat_info.is_authorized separately.",
+          "requestBody": {
+            "message_link_url": {
+              "type": "string",
+              "description": "消息链接",
+              "required": true,
+              "example": "https://applink.feishu.cn/client/message/link/open?token=xxx"
+            }
+          },
+          "responseBody": {
+            "messages": {
+              "type": "array",
+              "description": "消息信息",
+              "required": false,
+              "properties": {
+                "message": {
+                  "type": "object",
+                  "description": "消息实体，这里是复制消息链接时的数据快照，如果源消息发生了变化，这里是不变的",
+                  "required": true,
+                  "ref": "message",
+                  "properties": {
+                    "message_id": {
+                      "type": "string",
+                      "description": "消息id open_message_id",
+                      "required": false,
+                      "example": "om_dc13264520392913993dd051dba21dcf",
+                      "annotations": [
+                        "readOnly",
+                        "open:open_x_id"
+                      ]
+                    },
+                    "root_id": {
+                      "type": "string",
+                      "description": "根消息id open_message_id",
+                      "required": false,
+                      "example": "om_40eb06e7b84dc71c03e009ad3c754195",
+                      "annotations": [
+                        "readOnly",
+                        "open:open_x_id"
+                      ]
+                    },
+                    "parent_id": {
+                      "type": "string",
+                      "description": "父消息的id open_message_id",
+                      "required": false,
+                      "example": "om_d4be107c616aed9c1da8ed8068570a9f",
+                      "annotations": [
+                        "readOnly",
+                        "open:open_x_id"
+                      ]
+                    },
+                    "thread_id": {
+                      "type": "string",
+                      "description": "消息所属的话题 ID",
+                      "required": false,
+                      "example": "omt_d4be107c616a"
+                    },
+                    "msg_type": {
+                      "type": "string",
+                      "description": "消息类型 text post card image等等",
+                      "required": false,
+                      "example": "card"
+                    },
+                    "create_time": {
+                      "type": "string",
+                      "description": "消息生成的时间戳。单位：毫秒",
+                      "required": false,
+                      "example": "1615380573411",
+                      "annotations": [
+                        "readOnly"
+                      ]
+                    },
+                    "update_time": {
+                      "type": "string",
+                      "description": "消息更新的时间戳。单位：毫秒",
+                      "required": false,
+                      "example": "1615380573411",
+                      "annotations": [
+                        "readOnly"
+                      ]
+                    },
+                    "deleted": {
+                      "type": "boolean",
+                      "description": "消息是否被撤回",
+                      "required": false,
+                      "example": "false",
+                      "annotations": [
+                        "readOnly"
+                      ]
+                    },
+                    "updated": {
+                      "type": "boolean",
+                      "description": "消息是否被更新",
+                      "required": false,
+                      "example": "false",
+                      "annotations": [
+                        "readOnly"
+                      ]
+                    },
+                    "chat_id": {
+                      "type": "string",
+                      "description": "消息所属的群 ID。你可以调用获取群信息接口，根据群 ID 获取群详情。",
+                      "required": false,
+                      "example": "oc_5ad11d72b830411d72b836c20",
+                      "annotations": [
+                        "open:open_x_id",
+                        "readOnly"
+                      ]
+                    },
+                    "sender": {
+                      "type": "object",
+                      "description": "发送者，可以是用户或应用",
+                      "required": false,
+                      "ref": "sender",
+                      "example": "object",
+                      "annotations": [
+                        "readOnly"
+                      ]
+                    },
+                    "body": {
+                      "type": "object",
+                      "description": "消息内容,json结构",
+                      "required": false,
+                      "ref": "message_body",
+                      "example": "json结构",
+                      "annotations": [
+                        "readOnly"
+                      ]
+                    },
+                    "mentions": {
+                      "type": "array",
+                      "description": "被艾特的人或应用的id",
+                      "required": false,
+                      "annotations": [
+                        "readOnly"
+                      ]
+                    },
+                    "upper_message_id": {
+                      "type": "string",
+                      "description": "合并消息的上一层级消息id open_message_id",
+                      "required": false,
+                      "example": "om_40eb06e7b84dc71c03e009ad3c754195",
+                      "annotations": [
+                        "readOnly",
+                        "open:open_x_id"
+                      ]
+                    },
+                    "message_app_link": {
+                      "type": "string",
+                      "description": "消息跳转链接",
+                      "required": false,
+                      "example": "https://xxxx/client/thread/open?chatid=xxx&threadid=xxx&thread_position=xxx"
+                    }
+                  }
+                }
+              }
+            },
+            "chat_info": {
+              "type": "object",
+              "description": "来源群信息",
+              "required": false,
+              "ref": "message_link_chat_info",
+              "properties": {
+                "is_authorized": {
+                  "type": "boolean",
+                  "description": "调用身份是否有权读取来源会话信息",
+                  "required": false
+                },
+                "name": {
+                  "type": "string",
+                  "description": "无权限时不返回",
+                  "required": false,
+                  "example": "测试群聊"
+                },
+                "chat_id": {
+                  "type": "string",
+                  "description": "来源会话的 open_chat_id，无权读取会话详情时仍返回",
+                  "required": true,
+                  "example": "oc_a0553eda9014c201e6969b478895c230",
+                  "annotations": [
+                    "open:open_x_id",
+                    "readOnly"
+                  ]
+                }
+              }
+            }
+          },
+          "scopes": [
+            "im:message.message_link:read"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant",
+            "agent"
+          ],
+          "risk": "read"
+        }
+      }
+    },
+    "resources": {
+      "methods": {
+        "download": {
+          "id": "resources.download",
+          "path": "resource/download",
+          "httpMethod": "GET",
+          "description": "Download message sharing-link resources. Download one sharing-link resource with srctype=messagelink and the URL token as srcid; use --output to save the binary response. User identity requires one of im:message, im:message:readonly, or im:message.history:readonly.",
+          "parameters": {
+            "file_key": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "Resource key from the queried sharing-link snapshot. Must belong to srcid.",
+              "default": "",
+              "example": "file_REPLACE_WITH_KEY"
+            },
+            "srctype": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "Resource source type. Only messagelink is supported.",
+              "default": "",
+              "example": "messagelink",
+              "options": [
+                {
+                  "value": "messagelink",
+                  "description": "Message sharing link"
+                }
+              ]
+            },
+            "srcid": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "Opaque URL token from the sharing URL token query parameter, not the full URL or a message ID.",
+              "default": "",
+              "example": "REPLACE_WITH_LINK_TOKEN"
+            },
+            "type": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "Use image for pictures; file for file, audio and video resources.",
+              "default": "",
+              "example": "file",
+              "options": [
+                {
+                  "value": "image",
+                  "description": "Image"
+                },
+                {
+                  "value": "file",
+                  "description": "File, audio or video"
+                }
+              ]
+            }
+          },
+          "scopes": [
+            "im:message",
+            "im:message:readonly",
+            "im:message.history:readonly"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "risk": "read"
+        }
+      }
     }
   }
 }
