@@ -232,26 +232,6 @@ func TestHTTPPolicyRouterRewriteOnlyProviderDoesNotMutateCaller(t *testing.T) {
 	}
 }
 
-func TestHTTPPolicyRouterInterceptorObservesRewrittenURL(t *testing.T) {
-	interceptor := &testHeaderInterceptor{}
-	registerTestProvider(t, rewriteTestProvider{
-		testProvider: testProvider{interceptor: interceptor},
-		rewriter: rewriteFunc(func(rawURL string) string {
-			return strings.Replace(rawURL, "source.example.test", "mirror.example.test", 1)
-		}),
-	})
-
-	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		return noContentResponse(req), nil
-	})
-	req := httptest.NewRequest(http.MethodGet, "https://source.example.test/path", nil)
-	roundTripForTest(t, WrapWithExtensionForClass(base, exttransport.RequestClassPlatform), req)
-
-	if interceptor.url != "https://mirror.example.test/path" {
-		t.Fatalf("interceptor URL = %q, want rewritten URL", interceptor.url)
-	}
-}
-
 func TestHTTPPolicyRouterRewriteErrorIncludesSafeEffectiveURL(t *testing.T) {
 	registerTestProvider(t, rewriteTestProvider{
 		rewriter: rewriteFunc(func(rawURL string) string {
@@ -301,10 +281,10 @@ func TestInvalidRewriteRedactsErrorAndClosesBody(t *testing.T) {
 		t.Fatal("invalid URL reached transport")
 		return nil, nil
 	}), exttransport.RequestClassPlatform)
-	_, err := transport.RoundTrip(req)
+	resp, err := transport.RoundTrip(req)
 	problem, ok := errs.ProblemOf(err)
 	var parseErr *url.Error
-	if !ok || problem.Subtype != errs.SubtypeNetworkTransport || !errors.As(err, &parseErr) || !body.closed {
+	if resp != nil || !ok || problem.Subtype != errs.SubtypeNetworkTransport || !errors.As(err, &parseErr) || parseErr.Op != "parse" || !body.closed {
 		t.Fatalf("error = %v, body closed = %v", err, body.closed)
 	}
 	var out bytes.Buffer
@@ -364,33 +344,8 @@ func TestHTTPPolicyRouterRewritesPlatformButPreservesExternalURL(t *testing.T) {
 	if interceptor.calls != 1 {
 		t.Fatalf("interceptor calls = %d, want platform only", interceptor.calls)
 	}
-}
-
-func TestHTTPPolicyRouterRejectsUnparsableRewriteBeforeBase(t *testing.T) {
-	registerTestProvider(t, rewriteTestProvider{
-		rewriter: rewriteFunc(func(string) string { return "http://[::1" }),
-	})
-
-	baseCalls := 0
-	base := roundTripFunc(func(*http.Request) (*http.Response, error) {
-		baseCalls++
-		return nil, nil
-	})
-	router := NewHTTPPolicyRouter(base, base)
-	req := httptest.NewRequest(http.MethodGet, "https://open.feishu.cn/path", nil)
-	resp, err := router.RoundTrip(req)
-	if resp != nil {
-		t.Fatalf("response = %v, want nil", resp)
-	}
-	if err == nil {
-		t.Fatal("RoundTrip() error = nil, want URL parse error")
-	}
-	var parseErr *url.Error
-	if !errors.As(err, &parseErr) || parseErr.Op != "parse" {
-		t.Fatalf("error = %v, want wrapped URL parse error", err)
-	}
-	if baseCalls != 0 {
-		t.Fatalf("base calls = %d, want 0", baseCalls)
+	if interceptor.url != platform.url {
+		t.Fatalf("interceptor URL = %q, want rewritten URL %q", interceptor.url, platform.url)
 	}
 }
 

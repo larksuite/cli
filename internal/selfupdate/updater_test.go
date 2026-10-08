@@ -244,7 +244,7 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 			dir := t.TempDir()
 			script := filepath.Join(dir, "npx")
 			logPath := filepath.Join(dir, "npx.log")
-			if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \""+logPath+"\"\nexit 0\n"), 0o755); err != nil {
+			if err := vfs.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \""+logPath+"\"\nexit 0\n"), 0o755); err != nil {
 				t.Fatal(err)
 			}
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -258,7 +258,7 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 			if result.Err != nil {
 				t.Fatalf("command err = %v, want nil", result.Err)
 			}
-			raw, err := os.ReadFile(logPath)
+			raw, err := vfs.ReadFile(logPath)
 			if err != nil {
 				t.Fatal(err)
 			}
