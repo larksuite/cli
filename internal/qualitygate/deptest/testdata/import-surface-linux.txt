@@ -177,6 +177,7 @@ github.com/spf13/cobra
 github.com/spf13/pflag
 github.com/xo/terminfo
 golang.org/x/crypto/hkdf
+golang.org/x/mod/semver
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/html/charset

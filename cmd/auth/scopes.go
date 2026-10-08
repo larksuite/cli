@@ -76,18 +76,23 @@ func authScopesRun(opts *ScopesOptions) error {
 	}
 	if opts.Format == "pretty" {
 		fmt.Fprintf(f.IOStreams.ErrOut, "App ID: %s\n", config.AppID)
-		fmt.Fprintf(f.IOStreams.ErrOut, "Enabled scopes (%d):\n\n", len(appInfo.UserScopes))
-		for _, s := range appInfo.UserScopes {
+		fmt.Fprintf(f.IOStreams.ErrOut, "Enabled scopes (%d):\n\n", len(appInfo.Scopes))
+		for _, s := range appInfo.Scopes {
 			fmt.Fprintf(f.IOStreams.ErrOut, "  • %s\n", s)
 		}
 	} else {
-		output.PrintJson(f.IOStreams.Out, map[string]interface{}{
-			"appId":      config.AppID,
-			"brand":      config.Brand,
-			"tokenType":  "user",
-			"userScopes": appInfo.UserScopes,
-			"count":      len(appInfo.UserScopes),
-		})
+		result := map[string]interface{}{
+			"appId": config.AppID,
+			"brand": config.Brand,
+			"count": len(appInfo.Scopes),
+		}
+		if appInfo.TokenType == "" {
+			result["scopes"] = appInfo.Scopes
+		} else {
+			result["tokenType"] = appInfo.TokenType
+			result["userScopes"] = appInfo.Scopes
+		}
+		output.PrintJson(f.IOStreams.Out, result)
 	}
 	return nil
 }

@@ -22,6 +22,15 @@ type stubProvider struct {
 func (s *stubProvider) Name() string                                   { return s.name }
 func (s *stubProvider) ResolveInterceptor(context.Context) Interceptor { return &stubInterceptor{} }
 
+type stubDistributionProvider struct {
+	stubProvider
+	manifestURL string
+}
+
+func (s *stubDistributionProvider) ResolveManifestURL(context.Context) string {
+	return s.manifestURL
+}
+
 func TestGetProvider_NilByDefault(t *testing.T) {
 	mu.Lock()
 	provider = nil
@@ -73,5 +82,22 @@ func TestResolveInterceptor_ReturnsNonNil(t *testing.T) {
 	ic := GetProvider().ResolveInterceptor(context.Background())
 	if ic == nil {
 		t.Fatal("expected non-nil Interceptor")
+	}
+}
+
+func TestDistributionProviderIsOptional(t *testing.T) {
+	previous := GetProvider()
+	t.Cleanup(func() { Register(previous) })
+	p := &stubDistributionProvider{
+		stubProvider: stubProvider{name: "distribution"},
+		manifestURL:  "https://dist.example/manifest.json",
+	}
+	Register(p)
+	configured, ok := GetProvider().(DistributionProvider)
+	if !ok {
+		t.Fatal("registered provider does not implement DistributionProvider")
+	}
+	if got := configured.ResolveManifestURL(context.Background()); got != p.manifestURL {
+		t.Fatalf("ManifestURL = %q", got)
 	}
 }

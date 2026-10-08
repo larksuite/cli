@@ -595,14 +595,14 @@ func TestSetupNoticesDoesNoProviderWorkWhenUpdateIsConcealed(t *testing.T) {
 	})
 
 	var checks, refreshes, skillChecks int
-	checkCachedUpdate = func(string) *update.UpdateInfo {
+	checkCachedUpdate = func(context.Context, string) *update.UpdateInfo {
 		checks++
 		return nil
 	}
-	refreshUpdateCache = func(string) { refreshes++ }
-	initializeSkillsCheck = func(string) { skillChecks++ }
+	refreshUpdateCache = func(context.Context, string) { refreshes++ }
+	initializeSkillsCheck = func(context.Context, string) { skillChecks++ }
 
-	setupNotices(surface.NewPlan(map[surface.CommandID]surface.CommandState{
+	setupNotices(context.Background(), surface.NewPlan(map[surface.CommandID]surface.CommandState{
 		surface.CommandUpdate: surface.CommandConcealed,
 	}))
 	if checks != 0 || refreshes != 0 || skillChecks != 0 {

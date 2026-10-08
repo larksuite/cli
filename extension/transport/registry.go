@@ -12,11 +12,13 @@ var (
 
 // Register sets the process-wide transport Provider.
 //
-// Integrations that need multiple capabilities compose them in one Provider
-// and register it during init, before command construction or execution. Later
-// registrations replace the earlier Provider for backward compatibility;
-// changing the Provider while the CLI is running is unsupported because
-// clients may already hold a resolved interceptor or URL rewriter.
+// lark-cli supports one aggregate Provider for request interception, URL
+// rewriting, and distribution configuration. Integrations that need multiple
+// capabilities compose them in that Provider and register it during init,
+// before command construction or execution. Later registrations replace the
+// earlier Provider for backward compatibility; changing the Provider while the
+// CLI is running is unsupported because clients may already hold a resolved
+// interceptor or URL rewriter.
 func Register(p Provider) {
 	mu.Lock()
 	defer mu.Unlock()

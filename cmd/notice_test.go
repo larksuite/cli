@@ -9,7 +9,21 @@ import (
 
 	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/skillscheck"
+	"github.com/larksuite/cli/internal/update"
 )
+
+func TestComposePendingNoticeUsesManifestTarget(t *testing.T) {
+	update.SetPending(&update.UpdateInfo{Current: "newer", Latest: "older", Source: "manifest"})
+	t.Cleanup(func() { update.SetPending(nil) })
+
+	entry := composePendingNotice(nil)["update"].(map[string]interface{})
+	if entry["target"] != "older" || entry["source"] != "manifest" {
+		t.Fatalf("manifest update notice = %#v", entry)
+	}
+	if _, exists := entry["latest"]; exists {
+		t.Fatalf("manifest target was labeled latest: %#v", entry)
+	}
+}
 
 // composePendingNotice must surface a deprecated-command alias under the
 // "deprecated_command" key, with the migration target and a skill-update hint,
