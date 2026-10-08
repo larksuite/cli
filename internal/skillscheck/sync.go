@@ -5,6 +5,7 @@ package skillscheck
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -21,6 +22,9 @@ var (
 	digestPattern    = regexp.MustCompile(`^sha256:[0-9a-fA-F]{64}$`)
 	ansiPattern      = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
 )
+
+// SuiteSkillName is the reserved name of the CLI-managed suite skill.
+const SuiteSkillName = "lark-suite"
 
 const githubSkillsSource = "larksuite/cli"
 
@@ -54,24 +58,32 @@ func ParseSkillsList(text string) []string {
 	return nil
 }
 
+// ErrStateNotWritten identifies the partial-failure state where skill content
+// synced but the state file could not be written. Callers match it with
+// errors.Is; never match on message text.
+var ErrStateNotWritten = errors.New("skills synced but state not written")
+
 type installedSkill struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 }
 
 func parseInstalledSkillsJSON(text string) ([]installedSkill, error) {
-	type globalSkill struct {
-		Name string `json:"name"`
-		Path string `json:"path"`
-	}
-
-	var skills []globalSkill
-	if err := json.Unmarshal([]byte(text), &skills); err != nil {
+	// Count raw entries first so a key-drifted payload (entries present but
+	// none matching the expected shape) fails fast instead of collapsing into
+	// the zero-installed escape hatch, which would reinstall every official
+	// skill on the next sync.
+	var rawEntries []json.RawMessage
+	if err := json.Unmarshal([]byte(text), &rawEntries); err != nil {
 		return nil, err
 	}
 
 	seen := map[string]installedSkill{}
-	for _, skill := range skills {
+	for _, raw := range rawEntries {
+		var skill installedSkill
+		if err := json.Unmarshal(raw, &skill); err != nil {
+			return nil, err
+		}
 		candidate := strings.TrimSpace(skill.Name)
 		if candidate == "" || !skillNamePattern.MatchString(candidate) {
 			continue
@@ -87,6 +99,9 @@ func parseInstalledSkillsJSON(text string) ([]installedSkill, error) {
 	entries := make([]installedSkill, 0, len(names))
 	for _, name := range names {
 		entries = append(entries, seen[name])
+	}
+	if len(entries) == 0 && len(rawEntries) > 0 {
+		return nil, fmt.Errorf("skills list returned %d entries but none matched the expected name/path shape (external skills CLI format drift?)", len(rawEntries))
 	}
 	return entries, nil
 }
@@ -212,13 +227,14 @@ func PlanSync(input SyncInput) SyncPlan {
 
 	updateSet := toSet(installedOfficial)
 	if len(installedOfficial) == 0 {
+		// Fresh machine (or no readable state): no installed subset to
+		// preserve, so reinstall the full official set.
 		updateSet = toSet(official)
 	}
 	for _, skill := range newAddedOfficial {
 		updateSet[skill] = true
 	}
 	toUpdate := sortedKeys(updateSet)
-	updateSet = toSet(toUpdate)
 
 	skipped := []string{}
 	for _, skill := range official {
@@ -393,7 +409,7 @@ func localOfficialSkills(installed []installedSkill, previous *SkillsState, read
 	}
 
 	for _, skill := range installed {
-		if skill.Name != "lark-suite" {
+		if skill.Name != SuiteSkillName {
 			continue
 		}
 		if skill.Path == "" {
@@ -429,8 +445,8 @@ func syncLayout(runner SkillsRunner, source string, layout Layout, plan SyncPlan
 			return fmt.Errorf("archive install failed: %s", resultDetail(result))
 		}
 	}
-	if hasInstalledSkill(installed, "lark-suite") {
-		if result := runner.RemoveGlobalSkills([]string{"lark-suite"}); result == nil || result.Err != nil {
+	if hasInstalledSkill(installed, SuiteSkillName) {
+		if result := runner.RemoveGlobalSkills([]string{SuiteSkillName}); result == nil || result.Err != nil {
 			return fmt.Errorf("remove lark-suite failed: %s", resultDetail(result))
 		}
 	}
@@ -467,8 +483,8 @@ func fallbackSeparate(opts SyncOptions, previous *SkillsState, readable bool, lo
 			Force:  opts.Force,
 		}
 	}
-	if hasInstalledSkill(installed, "lark-suite") {
-		if result := opts.Runner.RemoveGlobalSkills([]string{"lark-suite"}); result == nil || result.Err != nil {
+	if hasInstalledSkill(installed, SuiteSkillName) {
+		if result := opts.Runner.RemoveGlobalSkills([]string{SuiteSkillName}); result == nil || result.Err != nil {
 			return &SyncResult{Action: "failed", Layout: LayoutSeparate, Err: fmt.Errorf("remove lark-suite failed: %s", resultDetail(result)), Force: opts.Force}
 		}
 	}
@@ -510,7 +526,7 @@ func finishSync(opts SyncOptions, layout Layout, plan SyncPlan, action, warning 
 	}
 	if err := WriteState(state); err != nil {
 		result.Action = "failed"
-		result.Err = fmt.Errorf("skills synced but state not written: %w", err)
+		result.Err = fmt.Errorf("%w: %w", ErrStateNotWritten, err)
 	}
 	return result
 }

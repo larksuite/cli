@@ -51,10 +51,6 @@ func ResolveLayout(requested Layout, state *SkillsState, readable bool) (Layout,
 
 func syncSuite(runner SkillsRunner, source string, plan SyncPlan, installed []installedSkill) error {
 	installedSeparate := installedOfficialNames(installed, plan.CleanupOfficial)
-	if len(plan.ToUpdate) == 0 {
-		remove := append(installedSeparate, installedNameIfPresent(installed, "lark-suite")...)
-		return removeSkills(runner, remove)
-	}
 
 	stagingRoot, err := vfs.MkdirTemp("", "lark-cli-suite-")
 	if err != nil {
@@ -67,7 +63,7 @@ func syncSuite(runner SkillsRunner, source string, plan SyncPlan, installed []in
 		return fmt.Errorf("suite archive install failed: %s", resultDetail(stageResult))
 	}
 
-	suitePath := filepath.Join(stagingRoot, ".agents", "skills", "lark-suite")
+	suitePath := filepath.Join(stagingRoot, ".agents", "skills", SuiteSkillName)
 	if err := prepareSuite(suitePath, plan.OfficialSkills, plan.ToUpdate); err != nil {
 		return err
 	}
@@ -123,22 +119,44 @@ func prepareSuite(suitePath string, official, target []string) error {
 	return assertSameSkillNames(kept, target, "cropped suite")
 }
 
+// suiteRouteEntry matches one suite route line and captures the skill name
+// and its parenthesized keywords, e.g. `- lark-calendar（日历）: calendar`.
+var suiteRouteEntry = regexp.MustCompile(`(?m)^- ([^\s（:]+)(?:（([^）\n]*)）)?:[^\n]*(?:\n|$)`)
+
 func cropSuiteRoutes(content string, removed, target []string) (string, error) {
-	routeLine := func(name string) *regexp.Regexp {
-		return regexp.MustCompile(`(?m)^- ` + regexp.QuoteMeta(name) + `(?:（[^）\n]*）)?:[^\n]*(?:\n|$)`)
+	type route struct {
+		full string
+		name string
+	}
+	routes := []route{}
+	for _, match := range suiteRouteEntry.FindAllStringSubmatch(content, -1) {
+		routes = append(routes, route{full: match[0], name: match[1]})
 	}
 
+	count := func(name string) int {
+		n := 0
+		for _, r := range routes {
+			if r.name == name {
+				n++
+			}
+		}
+		return n
+	}
 	for _, name := range removed {
-		line := routeLine(name)
-		if len(line.FindAllStringIndex(content, -1)) != 1 {
+		if count(name) != 1 {
 			return "", fmt.Errorf("suite route for %s is missing or duplicated", name)
 		}
-		content = line.ReplaceAllString(content, "")
+	}
+	for _, name := range target {
+		if count(name) != 1 {
+			return "", fmt.Errorf("cropped suite route for %s is missing or duplicated", name)
+		}
 	}
 
-	for _, name := range target {
-		if len(routeLine(name).FindAllStringIndex(content, -1)) != 1 {
-			return "", fmt.Errorf("cropped suite route for %s is missing or duplicated", name)
+	removedSet := toSet(removed)
+	for _, r := range routes {
+		if removedSet[r.name] {
+			content = strings.Replace(content, r.full, "", 1)
 		}
 	}
 
@@ -158,14 +176,13 @@ func cropSuiteRoutes(content string, removed, target []string) (string, error) {
 }
 
 func suiteKeywords(content string) []string {
-	routeLine := regexp.MustCompile(`(?m)^- [^\n（]+(?:（([^）\n]*)）)?:`)
 	seen := map[string]bool{}
 	keywords := []string{}
-	for _, match := range routeLine.FindAllStringSubmatch(content, -1) {
-		if len(match) < 2 || match[1] == "" {
+	for _, match := range suiteRouteEntry.FindAllStringSubmatch(content, -1) {
+		if len(match) < 3 || match[2] == "" {
 			continue
 		}
-		for _, keyword := range strings.Split(match[1], "、") {
+		for _, keyword := range strings.Split(match[2], "、") {
 			keyword = strings.TrimSpace(keyword)
 			if keyword != "" && !seen[keyword] {
 				seen[keyword] = true
@@ -186,13 +203,6 @@ func installedOfficialNames(installed []installedSkill, official []string) []str
 	}
 	sort.Strings(names)
 	return names
-}
-
-func installedNameIfPresent(installed []installedSkill, name string) []string {
-	if hasInstalledSkill(installed, name) {
-		return []string{name}
-	}
-	return nil
 }
 
 func removeSkills(runner SkillsRunner, names []string) error {

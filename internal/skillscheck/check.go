@@ -5,9 +5,19 @@ package skillscheck
 
 import "strings"
 
+// NormalizeVersion canonicalizes a version string for state comparison.
+// Trims surrounding whitespace and a leading "v"/"V" so versions written
+// from Makefile (git describe → "v1.0.0") and npm (no prefix) compare equal.
+func NormalizeVersion(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "v")
+	return strings.TrimPrefix(s, "V")
+}
+
 // Init runs the synchronous skills version check. Stores a StaleNotice when
 // the local skills state records a version that does not match currentVersion,
-// or the last sync could not determine the complete official Skill set.
+// the last sync could not determine the complete official Skill set, or the
+// state file exists but is unreadable.
 // Safe to call from cmd/root.go before rootCmd.Execute(); zero network, zero
 // subprocess — only a local state file read.
 //
@@ -19,10 +29,16 @@ func Init(currentVersion string) {
 		return
 	}
 	state, ok, err := ReadState()
-	if err != nil || !ok || state.Version == "" {
+	if err != nil {
+		// The state file exists but cannot be parsed: drift detection is
+		// blind, so surface a notice instead of failing silently.
+		SetPending(&StaleNotice{StateUnreadable: true})
 		return
 	}
-	if strings.TrimPrefix(strings.TrimPrefix(state.Version, "v"), "V") == strings.TrimPrefix(strings.TrimPrefix(currentVersion, "v"), "V") && !state.OfficialSkillsUnknown {
+	if !ok || state.Version == "" {
+		return
+	}
+	if NormalizeVersion(state.Version) == NormalizeVersion(currentVersion) && !state.OfficialSkillsUnknown {
 		return
 	}
 	SetPending(&StaleNotice{

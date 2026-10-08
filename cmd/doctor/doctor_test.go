@@ -134,6 +134,20 @@ func TestNetworkChecks_Offline(t *testing.T) {
 	}
 }
 
+// TestProbeEndpoint_AnyHTTPStatusCountsAsReachable locks the connectivity
+// semantics: the probe proves the host answers (TCP+TLS+HTTP round-trip),
+// not that a specific path serves content. A root-path 404 or 5xx must
+// still report reachable — otherwise every healthy API host would fail.
+func TestProbeEndpoint_AnyHTTPStatusCountsAsReachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	if err := probeEndpoint(context.Background(), srv.Client(), srv.URL); err != nil {
+		t.Fatalf("5xx response must still count as reachable (connectivity probe), got %v", err)
+	}
+}
+
 func TestDoctorRunDoesNotFetchUpdateWhenCommandIsConcealed(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	oldFetch := fetchLatestForDoctor

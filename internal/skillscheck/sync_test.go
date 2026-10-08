@@ -15,6 +15,53 @@ import (
 	"github.com/larksuite/cli/internal/selfupdate"
 )
 
+func TestParseInstalledSkillsJSON(t *testing.T) {
+	t.Run("valid entries", func(t *testing.T) {
+		entries, err := parseInstalledSkillsJSON(`[
+			{"name":"lark-calendar","path":"/home/u/.agents/skills/lark-calendar"},
+			{"name":"lark-mail","path":"/home/u/.agents/skills/lark-mail"}
+		]`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 2 || entries[0].Name != "lark-calendar" || entries[1].Name != "lark-mail" {
+			t.Fatalf("entries = %+v", entries)
+		}
+	})
+	t.Run("empty array is not drift", func(t *testing.T) {
+		entries, err := parseInstalledSkillsJSON(`[]`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("entries = %+v, want empty", entries)
+		}
+	})
+	t.Run("key drift fails fast", func(t *testing.T) {
+		if _, err := parseInstalledSkillsJSON(`[{"title":"lark-calendar"}]`); err == nil {
+			t.Fatal("want error for key-drifted entries, got nil")
+		}
+	})
+	t.Run("non-object entry fails fast", func(t *testing.T) {
+		if _, err := parseInstalledSkillsJSON(`["lark-calendar"]`); err == nil {
+			t.Fatal("want error for non-object entry, got nil")
+		}
+	})
+	t.Run("partially invalid entries tolerated", func(t *testing.T) {
+		entries, err := parseInstalledSkillsJSON(`[
+			{"name":"lark-calendar"},
+			{"name":"not a skill name!"},
+			{"name":""}
+		]`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 || entries[0].Name != "lark-calendar" {
+			t.Fatalf("entries = %+v, want only lark-calendar", entries)
+		}
+	})
+}
+
 func TestParseSkillsListIgnoresUnsupportedFormat(t *testing.T) {
 	input := `Installed skills:
 - lark-calendar

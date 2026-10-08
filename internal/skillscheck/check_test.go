@@ -15,6 +15,25 @@ func resetPending(t *testing.T) {
 	t.Cleanup(func() { SetPending(nil) })
 }
 
+func TestNormalizeVersion(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "1.2.3", want: "1.2.3"},
+		{input: "v1.2.3", want: "1.2.3"},
+		{input: "V1.2.3", want: "1.2.3"},
+		{input: " v1.2.3 ", want: "1.2.3"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := NormalizeVersion(tt.input); got != tt.want {
+				t.Fatalf("NormalizeVersion(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestInit_InSync_NoNotice(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
@@ -95,7 +114,7 @@ func TestInit_Skipped_NoNotice(t *testing.T) {
 	}
 }
 
-func TestInit_ReadStateError_FailsClosed(t *testing.T) {
+func TestInit_ReadStateError_SurfacesNotice(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
 	dir := t.TempDir()
@@ -104,7 +123,8 @@ func TestInit_ReadStateError_FailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	Init("1.0.21")
-	if got := GetPending(); got != nil {
-		t.Errorf("GetPending() = %+v, want nil (fail closed on I/O error)", got)
+	got := GetPending()
+	if got == nil || !got.StateUnreadable {
+		t.Errorf("GetPending() = %+v, want StateUnreadable notice on corrupt state", got)
 	}
 }
