@@ -47,6 +47,43 @@ func (s *testMetadataStore) Remove(_, account string) error {
 	return nil
 }
 
+type cancelingUnlockStore struct {
+	*testMetadataStore
+	cancel context.CancelFunc
+}
+
+func (s cancelingUnlockStore) Get(service, account string) (string, error) {
+	s.cancel()
+	return s.testMetadataStore.Get(service, account)
+}
+
+func TestSoftwareUnlockRetainsKeylessPolicy(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		directory := isolateSoftwareStorage(t)
+		kc := &testMetadataStore{values: map[string]string{}}
+		if existing {
+			if err := os.MkdirAll(directory, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, "notes.json"), nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_, err := newSoftwareSigner(kc).unlock(context.Background(), directory, existing)
+		if !errors.Is(err, keysigner.ErrUnlockRequired) || len(kc.values) != 0 {
+			t.Fatalf("existing=%v unlock=%v values=%v", existing, err, kc.values)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cause := errors.New("Get failed while canceling")
+	kc := &testMetadataStore{values: map[string]string{}, getErr: cause}
+	_, err := newSoftwareSigner(cancelingUnlockStore{kc, cancel}).unlock(ctx, isolateSoftwareStorage(t), true)
+	if !errors.Is(err, cause) || errors.Is(err, context.Canceled) || len(kc.values) != 0 {
+		t.Fatalf("keyless retains Get failure without DPoP cancellation recheck: %v", err)
+	}
+}
+
 func isolateSoftwareStorage(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
