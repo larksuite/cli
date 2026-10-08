@@ -86,27 +86,16 @@ var MembersTasklist = common.Shortcut{
 			}
 
 			tl, _ := data["tasklist"].(map[string]interface{})
-			membersRaw, _ := tl["members"].([]interface{})
+			members, _ := tl["members"].([]interface{})
 			tlUrl, _ := tl["url"].(string)
 			tlUrl = truncateTaskURL(tlUrl)
 
-			var members []interface{}
-			for _, m := range membersRaw {
-				if mObj, ok := m.(map[string]interface{}); ok {
-					members = append(members, map[string]interface{}{
-						"id":   mObj["id"],
-						"role": mObj["role"],
-						"type": mObj["type"],
-					})
-				}
-			}
-
 			outData := map[string]interface{}{
-				"guid":    tlId,
-				"url":     tlUrl,
-				"name":    tl["name"],
-				"members": members,
+				"guid": tlId,
+				"url":  tlUrl,
+				"name": tl["name"],
 			}
+			projectTasklistFields(outData, tl, standardTasklistOutputFields...)
 
 			runtime.OutFormat(outData, nil, func(w io.Writer) {
 				fmt.Fprintf(w, "Tasklist: %s (%s)\n", tl["name"], tlId)
@@ -214,6 +203,7 @@ var MembersTasklist = common.Shortcut{
 			"guid": tlId,
 			"url":  tlUrl,
 		}
+		projectTasklistFields(outData, lastTasklist, standardTasklistOutputFields...)
 
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "✅ Tasklist members updated successfully!\n")
