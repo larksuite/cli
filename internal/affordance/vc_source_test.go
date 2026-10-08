@@ -17,16 +17,18 @@ func TestVCAffordanceRoutesAgentActionReferences(t *testing.T) {
 	SetSource(os.DirFS("../../affordance"))
 
 	tests := []struct {
+		service string
 		command string
 		ref     string
 	}{
-		{command: "+meeting-invite", ref: "lark-meeting/references/lark-vc-agent-meeting-invite.md"},
-		{command: "+meeting-chat", ref: "lark-meeting/references/lark-vc-meeting-chat.md"},
-		{command: "+meeting-end", ref: "lark-meeting/references/lark-vc-agent-meeting-end.md"},
+		{service: "vc", command: "+meeting-invite", ref: "lark-meeting/references/lark-vc-agent-meeting-invite.md"},
+		{service: "vc", command: "+meeting-chat", ref: "lark-meeting/references/lark-vc-meeting-chat.md"},
+		{service: "vc", command: "+meeting-end", ref: "lark-meeting/references/lark-vc-agent-meeting-end.md"},
+		{service: "recording", command: "+list", ref: "lark-meeting/references/lark-recording-list.md"},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.command, func(t *testing.T) {
-			raw, ok := For(apicatalog.Catalog{}, "vc", testCase.command)
+			raw, ok := For(apicatalog.Catalog{}, testCase.service, testCase.command)
 			if !ok {
 				t.Fatalf("For(vc, %s) ok=false", testCase.command)
 			}

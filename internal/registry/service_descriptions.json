@@ -63,6 +63,10 @@
     "en": { "title": "Note", "description": "Meeting note detail and unified transcript retrieval" },
     "zh": { "title": "会议纪要", "description": "会议纪要详情与 unified 逐字稿查询" }
   },
+  "recording": {
+    "en": { "title": "Recording", "description": "Personal recordings and their Minutes or Note artifacts" },
+    "zh": { "title": "录音", "description": "个人录音列表及关联妙记、智能纪要产物" }
+  },
   "sheets": {
     "en": { "title": "Sheets", "description": "Spreadsheet operations" },
     "zh": { "title": "电子表格", "description": "电子表格操作" }

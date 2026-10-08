@@ -1267,6 +1267,9 @@
     "okr +weight": {
       "agentSupport": "denied"
     },
+    "recording +list": {
+      "agentSupport": "denied"
+    },
     "sheets +batch-chart-create": {
       "agentSupport": "allowed"
     },

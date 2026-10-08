@@ -1287,3 +1287,17 @@ func TestNewDomainReachesLoginDomainResolution(t *testing.T) {
 		t.Fatalf("new domain scopes = %v, want [%s]", scopes, scope)
 	}
 }
+
+func TestRecordingAuthDomainUsesExistingUserScope(t *testing.T) {
+	resolver := builtinResolver(t)
+	if !resolver.allKnown("")["recording"] {
+		t.Fatal("recording must be available as an independent auth domain")
+	}
+	want := []string{"vc:record:readonly"}
+	if got := resolver.scopesFor([]string{"recording"}, "user", ""); !slices.Equal(got, want) {
+		t.Fatalf("recording user scopes = %v, want %v", got, want)
+	}
+	if got := resolver.scopesFor([]string{"recording"}, "bot", ""); len(got) != 0 {
+		t.Fatalf("recording must not expose bot scopes: %v", got)
+	}
+}

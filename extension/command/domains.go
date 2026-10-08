@@ -45,6 +45,8 @@ const (
 	DomainNote DomainName = "note"
 	// DomainOkr is the OKR domain.
 	DomainOkr DomainName = "okr"
+	// DomainRecording is the personal Recording domain.
+	DomainRecording DomainName = "recording"
 	// DomainSheets is the Sheets domain.
 	DomainSheets DomainName = "sheets"
 	// DomainSlides is the Slides domain.
