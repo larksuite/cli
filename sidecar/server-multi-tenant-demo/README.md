@@ -66,6 +66,12 @@ support:
   on different ports.
 - Clients select which app to use by choosing which sidecar port to connect
   to (via `LARKSUITE_CLI_AUTH_PROXY`).
+- The login bridge in this demo currently uses `app_id` and `app_secret`;
+  unlike the single-tenant demo's credential provider, it does not yet support
+  `private_key_jwt` for device login or user-token refresh.
+- DPoP-bound tokens are forwarded with proofs for standard `Authorization`
+  requests. The MCP custom-token-header protocol does not support DPoP tokens;
+  the demo rejects those requests instead of forwarding an unbound token.
 
 ## Architecture
 

@@ -17,7 +17,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 - **AI-Friendly & Optimized** — Every command is tested with real Agents, featuring concise parameters, smart defaults, and structured output to maximize Agent call success rates
 - **Open Source, Zero Barriers** — MIT license, ready to use, just `npm install`
 - **Up and Running in 3 Minutes** — One-click app creation, interactive login, from install to first API call in just 3 steps
-- **Secure & Controllable** — Input injection protection, terminal output sanitization, OS-native keychain credential storage
+- **Secure & Controllable** — Input injection protection, terminal output sanitization, encrypted, platform-aware local credential storage
 - **Three-Layer Architecture** — Shortcuts (human & AI friendly) → API Commands (platform-synced) → Raw API (full coverage), choose the right granularity
 
 ## Personal or Enterprise?
@@ -109,6 +109,12 @@ lark-cli auth login --recommend
 # 3. Start using
 lark-cli calendar +agenda
 ```
+
+Application signing (`private_key_jwt`) and DPoP are independent: the application
+key signs client assertions, while a separate DPoP key binds issued tokens.
+On macOS, CLI-managed application signing prefers a non-exportable Keychain
+key and can fall back to encrypted software storage when unavailable; DPoP
+may use a different platform backend.
 
 ## Quick Start (AI Agent)
 
@@ -212,6 +218,13 @@ lark-cli auth login
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
+
+In `preferred` mode, the CLI retries issuance without DPoP only when local
+DPoP setup or proof generation fails before a token request is sent, or after
+three consecutive `invalid_dpop_proof` responses. It may also accept a Bearer
+token returned by the server. Application-signing, transport, and policy
+failures do not trigger a Bearer retry; an existing DPoP-bound token is never
+downgraded because its key is unavailable.
 
 ## Three-Layer Command System
 

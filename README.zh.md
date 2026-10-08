@@ -17,7 +17,7 @@
 - **AI 友好调优** — 每条命令经过 Agent 实测验证，提供更友好的参数、智能默认值和结构化输出，大幅提升 Agent 调用成功率
 - **开源零门槛** — MIT 协议，开箱即用，`npm install` 即可使用
 - **三分钟上手** — 一键创建应用、交互式登录授权，从安装到第一次 API 调用只需三步
-- **安全可控** — 输入防注入、终端输出净化、OS 原生密钥链存储凭证
+- **安全可控** — 输入防注入、终端输出净化、按平台加密存储本地凭证
 - **三层调用架构** — 快捷命令（人机友好）→ API 命令（平台同步）→ 通用调用（全 API 覆盖），按需选择粒度
 
 ## 个人使用还是企业集成？
@@ -109,6 +109,11 @@ lark-cli auth login --recommend
 # 3. 开始使用
 lark-cli calendar +agenda
 ```
+
+应用签名（`private_key_jwt`）与 DPoP 相互独立：应用密钥用于签署客户端断言，
+另一个 DPoP 密钥用于绑定签发的 Token。macOS 上由 CLI 管理的应用签名优先使用
+Keychain 中不可导出的密钥；不可用时可以回退到加密的软件存储。DPoP 可以选用
+不同的平台后端。
 
 ### 快速开始（AI Agent）
 
@@ -213,6 +218,11 @@ lark-cli auth login
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
+
+`preferred` 模式下，CLI 仅在发送请求前的本地 DPoP 初始化／签名失败，或连续
+三次收到 `invalid_dpop_proof` 时，才会主动不带 DPoP 重试签发；也可能接受服务端
+直接返回的 Bearer Token。应用签名、网络传输和管控策略错误不会触发 Bearer 重试；
+已有 DPoP 绑定 Token 的密钥不可用时也不会降级。
 
 ## 三层命令调用
 
