@@ -22,6 +22,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/testutil/gitcmd"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -277,11 +278,14 @@ func TestRunScaffold_NonEmpty_SyncsWhenNoSteering(t *testing.T) {
 	dir := t.TempDir() // no steering dir, no meta.json
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{"git ls-files": {stdout: "src/x.ts\n"}}}
 	withFakeRunner(t, f)
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, npmRegistry, "http://registry.example.test", 1)
+	})
 	kind, err := runScaffold(context.Background(), dir, "app_x", "", "")
 	if err != nil || kind != "upgrade" {
 		t.Fatalf("kind=%q err=%v, want upgrade", kind, err)
 	}
-	if c := findCallArg(f.calls, "npx", "app", "sync"); c == nil || !containsAll(c, "-y", "--prefer-online") {
+	if c := findCallArg(f.calls, "npx", "app", "sync"); c == nil || !containsAll(c, "-y", "--prefer-online", "--registry", "http://registry.example.test") {
 		t.Error("app sync not invoked with --prefer-online")
 	} else if containsAll(c, "--local") {
 		t.Errorf("app sync must NOT carry --local: %v", c)

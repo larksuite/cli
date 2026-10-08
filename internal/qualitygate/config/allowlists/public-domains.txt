@@ -4,6 +4,7 @@ accounts.larksuite.com
 applink.feishu.cn
 applink.larksuite.com
 ark.ap-southeast.bytepluses.com
+docs.npmjs.com
 github.com
 larkoffice.com
 lf-larkemail.bytetos.com
@@ -11,6 +12,7 @@ mcp.feishu.cn
 mcp.larksuite.com
 open.feishu.cn
 open.larksuite.com
+pnpm.io
 registry.npmjs.org
 registry.npmmirror.com
 sf16-sg.tiktokcdn.com

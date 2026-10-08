@@ -75,8 +75,17 @@ func FilterForStrictMode(mode core.StrictMode) apicatalog.MethodFilter {
 // readonly scope), falling back to the single recommended scope when a method
 // declares no requiredScopes.
 func CollectScopesForProjects(catalog apicatalog.Catalog, projects []string, identity string) []string {
+	return CollectAllowedScopesForProjects(catalog, projects, identity, nil)
+}
+
+// CollectAllowedScopesForProjects applies command eligibility before collecting
+// scopes. Shared scopes survive as long as an allowed method still needs them.
+func CollectAllowedScopesForProjects(catalog apicatalog.Catalog, projects []string, identity string, allowed func([]string) bool) []string {
 	scopeSet := make(map[string]bool)
 	for _, ref := range methodsForProjects(catalog, projects, identity) {
+		if allowed != nil && !allowed(ref.CommandPath()) {
+			continue
+		}
 		for _, s := range DeclaredScopesForMethod(ref.Method, identity) {
 			scopeSet[s] = true
 		}

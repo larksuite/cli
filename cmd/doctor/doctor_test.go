@@ -8,7 +8,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -19,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 func TestNewCmdDoctor_FlagParsing(t *testing.T) {
@@ -87,6 +90,34 @@ func TestFinishDoctor(t *testing.T) {
 			t.Error("expected ok=false")
 		}
 	})
+}
+
+func TestNetworkChecksReportsEffectiveURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	var calls atomic.Int32
+	ep := core.ResolveEndpoints(core.BrandFeishu)
+	testurlrewrite.Register(t, func(raw string) string {
+		calls.Add(1)
+		return strings.NewReplacer(ep.Open, server.URL, ep.MCP, server.URL).Replace(raw)
+	})
+	opts := &DoctorOptions{Ctx: context.Background()}
+	for _, status := range []string{"pass", "fail"} {
+		if status == "fail" {
+			server.Close()
+		}
+		calls.Store(0)
+		for _, result := range networkChecks(opts.Ctx, opts, ep) {
+			if result.Status != status || !strings.Contains(result.Message, server.URL) || strings.Contains(result.Message, "feishu.cn") {
+				t.Fatalf("unexpected %s result: %+v", status, result)
+			}
+		}
+		if calls.Load() != 2 {
+			t.Fatalf("rewrite calls = %d, want one per probe", calls.Load())
+		}
+	}
 }
 
 func TestNetworkChecks_Offline(t *testing.T) {
