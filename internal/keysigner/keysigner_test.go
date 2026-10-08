@@ -244,6 +244,58 @@ func TestProbeSignerLifecycleAndValidation(t *testing.T) {
 	}
 }
 
+func TestProbeSignersFallback(t *testing.T) {
+	firstErr := fmt.Errorf("first: %w", ErrUnavailable)
+	secondErr := fmt.Errorf("second: %w", ErrUnavailable)
+	terminalErr := errors.New("probe failed")
+	for _, tc := range []struct {
+		name   string
+		errors []error
+		want   []error
+		calls  int
+		cancel bool
+	}{
+		{name: "success", errors: []error{nil}, calls: 1},
+		{name: "ordered fallback", errors: []error{firstErr, nil}, calls: 2},
+		{name: "all unavailable", errors: []error{firstErr, secondErr}, want: []error{ErrUnavailable, firstErr, secondErr}, calls: 2},
+		{name: "no backends", want: []error{ErrUnavailable}},
+		{name: "ordinary failure", errors: []error{terminalErr, nil}, want: []error{terminalErr}, calls: 1},
+		{name: "cleanup failure", errors: []error{errors.Join(firstErr, ErrCleanupFailed), nil}, want: []error{firstErr, ErrCleanupFailed}, calls: 1},
+		{name: "canceled error", errors: []error{errors.Join(firstErr, context.Canceled), nil}, want: []error{firstErr, context.Canceled}, calls: 1},
+		{name: "deadline error", errors: []error{errors.Join(firstErr, context.DeadlineExceeded), nil}, want: []error{firstErr, context.DeadlineExceeded}, calls: 1},
+		{name: "canceled during probe", errors: []error{firstErr, nil}, want: []error{firstErr, context.Canceled}, calls: 1, cancel: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			signers := make([]Signer, len(tc.errors))
+			for i := range signers {
+				signers[i] = &lifecycleTestSigner{name: fmt.Sprint(i)}
+			}
+			calls := 0
+			err := ProbeSigners(ctx, signers, func(signer Signer) error {
+				if signer != signers[calls] {
+					t.Fatal("backend order changed")
+				}
+				probeErr := tc.errors[calls]
+				calls++
+				if tc.cancel {
+					cancel()
+				}
+				return probeErr
+			})
+			if calls != tc.calls || (err == nil) != (len(tc.want) == 0) {
+				t.Fatalf("probe = %v, calls = %d, want %d", err, calls, tc.calls)
+			}
+			for _, cause := range tc.want {
+				if !errors.Is(err, cause) {
+					t.Fatalf("probe error %v lost %v", err, cause)
+				}
+			}
+		})
+	}
+}
+
 func TestSigningAlgorithms(t *testing.T) {
 	es384, err := newECDSAAlgorithm(AlgES384)
 	if err != nil {
@@ -313,12 +365,31 @@ func TestSigningAlgorithms(t *testing.T) {
 				t.Fatal(err)
 			}
 			verifySignature(t, public, algorithm.name(), input, signature)
+			signature, name, err := SignWithPrivateKey(private, input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			verifySignature(t, public, name, input, signature)
 			algorithm.clearPrivateKey(private)
 			if !publicKeysEqual(public, parsed) {
 				t.Fatal("clearing private material changed public identity")
 			}
 			assertPrivateKeyCleared(t, private)
 		})
+	}
+}
+
+func TestSignWithPrivateKeyPreservesFailure(t *testing.T) {
+	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("sign failed")
+	if _, _, err := SignWithPrivateKey(brokenCryptoSigner{Signer: private, err: cause}, nil); !errors.Is(err, cause) {
+		t.Fatalf("signing error lost cause: %v", err)
+	}
+	if _, _, err := SignWithPrivateKey(nil, nil); err == nil {
+		t.Fatal("accepted nil private key")
 	}
 }
 

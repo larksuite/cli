@@ -4,8 +4,6 @@
 package dpop
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -13,10 +11,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -552,89 +547,6 @@ func TestKeyStoreOperationsWaitForSharedLock(t *testing.T) {
 				t.Fatal("waiting operation accessed the signer or changed metadata")
 			}
 		})
-	}
-}
-
-func TestKeyStoreFileLockAcrossProcesses(t *testing.T) {
-	const helperEnv = "LARK_CLI_DPOP_STORE_LOCK_TEST_HELPER"
-	if os.Getenv(helperEnv) == "1" {
-		store := NewKeyStoreWithSigner(&testMetadataStore{values: map[string]string{}},
-			newTestStoreSigner("selected", keysigner.SecurityLevelL2))
-		signer := store.signers[0].(*testStoreSigner)
-		signer.onSign = func() {
-			if _, err := fmt.Fprintln(os.Stdout, "LOCKED"); err != nil {
-				t.Fatal(err)
-			}
-			var release [1]byte
-			if _, err := io.ReadFull(os.Stdin, release[:]); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := store.ProbeWritableContext(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	isolateSoftwareStorage(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestKeyStoreFileLockAcrossProcesses$")
-	command.Env = append(os.Environ(), helperEnv+"=1")
-	stdin, err := command.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	waited := false
-	t.Cleanup(func() {
-		_ = stdin.Close()
-		if !waited {
-			cancel()
-			_ = command.Wait()
-		}
-	})
-	if line, err := bufio.NewReader(stdout).ReadString('\n'); err != nil || line != "LOCKED\n" {
-		t.Fatalf("helper readiness = %q, err = %v", line, err)
-	}
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir()) // Different config, same shared native keychain.
-	signer := newTestStoreSigner("selected", keysigner.SecurityLevelL2)
-	store := NewKeyStoreWithSigner(&testMetadataStore{values: map[string]string{}}, signer)
-	waitCtx, stop := context.WithTimeout(ctx, 30*time.Millisecond)
-	defer stop()
-	_, err = store.GenerateContext(waitCtx)
-	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeStorage ||
-		!problem.Retryable || !errors.Is(err, context.DeadlineExceeded) || len(signer.calls) != 0 {
-		t.Fatalf("file-lock timeout = %v, signer calls = %v", err, signer.calls)
-	}
-	cancelCtx, stopWaiting := context.WithCancel(ctx)
-	defer stopWaiting()
-	timer := time.AfterFunc(30*time.Millisecond, stopWaiting)
-	defer timer.Stop()
-	if _, err := store.GenerateContext(cancelCtx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("file-lock cancellation = %v", err)
-	}
-	if _, err := io.WriteString(stdin, "x"); err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err != nil {
-		t.Fatalf("helper failed: %v; %s", err, stderr.String())
-	}
-	waited = true
-	key, err := store.GenerateContext(ctx)
-	if err != nil {
-		t.Fatalf("store remained locked after release: %v", err)
-	}
-	if err := store.DeleteKeyContext(ctx, key); err != nil {
-		t.Fatal(err)
 	}
 }
 

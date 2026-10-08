@@ -10,92 +10,23 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"sync"
 	"time"
 
-	"github.com/gofrs/flock"
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/keysigner"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/signingstore"
 )
-
-const (
-	keyStoreLockTimeout    = 60 * time.Second
-	keyStoreLockRetryDelay = 500 * time.Millisecond
-)
-
-// The lock follows the shared credential storage, not the selected profile.
-// This matches the macOS native keychain's cross-profile ownership.
-var keyStoreProcessLocks sync.Map
 
 var ErrKeyNotFound = errors.New("keyless key not found")
 
-// withKeyStoreLockContext follows the UAT token store's cancellable process and
-// file locking. It is not reentrant; fn must not call another locking store method.
-func withKeyStoreLockContext(ctx context.Context, fn func() error) (err error) {
-	lockContext := ctx
-	cancel := func() {}
-	if lockContext == nil {
-		lockContext, cancel = context.WithTimeout(context.Background(), keyStoreLockTimeout)
-	} else if _, hasDeadline := lockContext.Deadline(); !hasDeadline {
-		lockContext, cancel = context.WithTimeout(lockContext, keyStoreLockTimeout)
-	}
-	defer cancel()
-
+// withKeyStoreLockContext is not reentrant; locked callbacks use private helpers.
+func withKeyStoreLockContext(ctx context.Context, fn func() error) error {
 	directory, err := signerStorageDir()
 	if err != nil {
 		return err
 	}
-	lockDir, err := validate.SafeEnvDirPath(filepath.Join(directory, "keysigner"), "key store lock directory")
-	if err != nil {
-		return err
-	}
-	// One lock serializes the shared credential store; partition only if
-	// contention warrants it. A fixed filename avoids accumulating probe locks.
-	lockPath := filepath.Join(lockDir, "key_store.lock")
-	candidate := make(chan struct{}, 1)
-	candidate <- struct{}{}
-	value, _ := keyStoreProcessLocks.LoadOrStore(lockPath, candidate)
-	processLock := value.(chan struct{})
-	select {
-	case <-lockContext.Done():
-		return lockContext.Err()
-	case <-processLock:
-	}
-	defer func() { processLock <- struct{}{} }()
-	if err := lockContext.Err(); err != nil {
-		return err
-	}
-
-	if err := vfs.MkdirAll(lockDir, 0700); err != nil {
-		return errs.NewInternalError(errs.SubtypeFileIO, "failed to prepare key storage lock").
-			WithCause(err).
-			WithHint("Check whether local CLI storage is accessible, then retry.")
-	}
-	fileLock := flock.New(lockPath)
-	locked, err := fileLock.TryLockContext(lockContext, keyStoreLockRetryDelay)
-	if errors.Is(err, context.DeadlineExceeded) || (err == nil && !locked) {
-		return errs.NewInternalError(errs.SubtypeStorage, "timed out waiting for key storage lock").
-			WithRetryable().
-			WithCause(context.DeadlineExceeded).
-			WithHint("Retry the command.")
-	}
-	if err != nil {
-		return errs.NewInternalError(errs.SubtypeFileIO, "failed to acquire key storage lock").
-			WithCause(err).
-			WithHint("Check whether local CLI storage is accessible, then retry.")
-	}
-	defer func() {
-		if unlockErr := fileLock.Unlock(); err == nil && unlockErr != nil {
-			err = errs.NewInternalError(errs.SubtypeFileIO, "failed to release key storage lock").
-				WithCause(unlockErr).
-				WithHint("Retry the command. If this persists, check whether local CLI storage is accessible.")
-		}
-	}()
-	return fn()
+	return signingstore.WithStoreLock(ctx, filepath.Join(directory, "keysigner", "key_store.lock"), fn)
 }
 
 // KeyStore coordinates local key lifecycles. Like DPoP's store it owns backend
@@ -108,7 +39,7 @@ type KeyStore struct {
 func NewKeyStore(kc keychain.KeychainAccess) *KeyStore {
 	store := newKeyStoreWithSigners(kc, nil)
 	store.signers = append(store.signers, registrationPlatformSigners()...)
-	store.signers = append(store.signers, softwareSigner{keychain: store.keychain})
+	store.signers = append(store.signers, newSoftwareSigner(store.keychain))
 	return store
 }
 
@@ -300,28 +231,13 @@ func (s *KeyStore) ProbeWritableContext(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	return withKeyStoreLockContext(ctx, func() error {
-		if s == nil || len(s.signers) == 0 {
-			return keysigner.ErrUnavailable
-		}
-		var unavailable []error
-		for _, signer := range s.signers {
+		return keysigner.ProbeSigners(ctx, s.signers, func(signer keysigner.Signer) error {
 			label, err := keysigner.NewKeyLabel("larksuite-cli-probe-")
 			if err != nil {
 				return err
 			}
-			err = keysigner.ProbeSigner(ctx, signer, keysigner.KeyRef{Label: label, Algorithm: keysigner.AlgES256}, []byte("lark-cli key signer probe"))
-			if err == nil {
-				return nil
-			}
-			if ctx != nil && ctx.Err() != nil {
-				return errors.Join(ctx.Err(), err)
-			}
-			if !keysigner.CanFallback(err) {
-				return err
-			}
-			unavailable = append(unavailable, err)
-		}
-		return errors.Join(append([]error{keysigner.ErrUnavailable}, unavailable...)...)
+			return keysigner.ProbeSigner(ctx, signer, keysigner.KeyRef{Label: label, Algorithm: keysigner.AlgES256}, []byte("lark-cli key signer probe"))
+		})
 	})
 }
 

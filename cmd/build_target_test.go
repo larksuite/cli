@@ -1072,22 +1072,31 @@ func executeAssemblyForValidation(
 	}})
 	opts := []BuildOption{
 		WithIO(strings.NewReader(""), io.Discard, io.Discard),
+		WithKeychain(noopKeychain{}),
 		WithoutPlugins(),
 		WithoutStrictMode(),
 		WithServiceCatalog(catalog),
 	}
+	var runtime *buildRuntime
 	var root *cobra.Command
 	if target {
-		var err error
-		root, err = buildRootForArgs(context.Background(), cmdutil.InvocationContext{}, args, opts...)
+		result, err := buildForArgs(context.Background(), cmdutil.InvocationContext{}, args, opts...)
 		if err != nil {
-			t.Fatalf("buildRootForArgs: %v", err)
+			t.Fatalf("buildForArgs: %v", err)
 		}
+		runtime, root = result.runtime, result.root
 	} else {
-		root = Build(context.Background(), cmdutil.InvocationContext{}, opts...)
+		runtime, root, _ = buildInternal(context.Background(), cmdutil.InvocationContext{}, opts...)
 	}
+	config, err := runtime.Config()
+	if err != nil {
+		t.Fatalf("Config: %v", err)
+	}
+	// Legacy shortcut scope checks resolve a token before input validation.
+	testFactory, _, _, _ := cmdutil.TestFactory(t, config)
+	runtime.Credential = testFactory.Credential
 	root.SetArgs(args)
-	err := root.Execute()
+	err = root.Execute()
 	if err == nil {
 		t.Fatalf("%s unexpectedly succeeded", strings.Join(args, " "))
 	}

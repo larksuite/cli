@@ -203,6 +203,13 @@ func newStrictModeDefaultFactory(t *testing.T, profile string, mode core.StrictM
 		cmdutil.NewIOStreams(&bytes.Buffer{}, stdout, stderr),
 		cmdutil.InvocationContext{Profile: profile},
 	)
+	// Preserve real profile/strict-mode resolution, but use fake tokens for scope checks.
+	config, err := f.Config()
+	if err != nil {
+		t.Fatalf("Config() error = %v", err)
+	}
+	testFactory, _, _, _ := cmdutil.TestFactory(t, config)
+	f.Credential = testFactory.Credential
 	return f, stdout, stderr
 }
 

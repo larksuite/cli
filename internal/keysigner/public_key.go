@@ -196,15 +196,6 @@ func PublicKeyThumbprint(public crypto.PublicKey) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(digest[:]), nil
 }
 
-// ECDSASignatureToJOSE converts an ASN.1 ECDSA signature to fixed-width R || S.
-func ECDSASignatureToJOSE(public *ecdsa.PublicKey, der []byte) ([]byte, error) {
-	parameters, err := ecParametersForPublicKey(public)
-	if err != nil {
-		return nil, err
-	}
-	return ecdsaSignatureToJOSE(parameters, der)
-}
-
 func ecdsaSignatureToJOSE(parameters ecKeyParameters, der []byte) ([]byte, error) {
 	var signature struct{ R, S *big.Int }
 	rest, err := asn1.Unmarshal(der, &signature)
