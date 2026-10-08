@@ -57,13 +57,13 @@ lark-cli calendar +create --summary "..." --start "..." --end "..." \
 - `free_busy_status = busy`
 - `attendee_ability = can_modify_event`
 
-需要覆盖上述任一默认值，或使用 `+create` 未暴露的字段（如 `location`、`visibility`、自定义 `reminders`、自定义 `attendee_ability`、自定义 `free_busy_status`、`is_all_day`、附件、颜色、会议室审批 `approval_reason`、参与人可选参加 `is_optional` 等）时，**直接使用完整 API 一次建成**。
+需要覆盖上述任一默认值，或使用 `+create` 未暴露的字段（如 `location`、`visibility`、自定义 `reminders`、自定义 `attendee_ability`、自定义 `free_busy_status`、全天日程（通过 `start_time.date`/`end_time.date`）、附件、颜色、会议室审批 `approval_reason`、参与人可选参加 `is_optional` 等）时，**直接使用完整 API 一次建成**。
 
 **不要先 `+create` 再用完整 API patch 补齐**：`+create` 会立即向参会人发送通知，二次修改会造成可见的字段/通知抖动，且中间失败没有自动回滚。
 
 ```bash
 lark-cli schema calendar.events.create        # 查完整字段定义
-lark-cli calendar events create --data '{...}'
+lark-cli calendar events create --calendar-id <CALENDAR_ID> --data '{...}'
 ```
 
 > 完整 API 命令的时间参数是 **Unix 秒字符串**（非 ISO 8601）。换算时**禁止依赖容器默认时区**（常为 UTC，会导致 8 小时偏移），必须显式指定目标时区。

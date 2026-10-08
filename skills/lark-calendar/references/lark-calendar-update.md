@@ -76,11 +76,11 @@ lark-cli calendar +update \
 
 `+update` 覆盖：标题、描述、时间、重复规则，以及参会人/会议室的增量添加或移除。
 
-需要更新 `location`（地理位置，不含会议室位置）、`visibility`（日程公开范围）、自定义 `reminders`（提醒设置）、自定义 `attendee_ability`（参与人权限）、自定义 `free_busy_status`（日程忙闲状态）、`color`（颜色）、附件、视频会议 `vchat`（含关闭视频会议）、`is_all_day` 全天日程，或在新增参会人时配置可选参加 `is_optional`、会议室审批 `approval_reason` 等 `+update` 未暴露的字段时，**直接使用完整 API 一次改到位**。
+需要更新 `location`（地理位置，不含会议室位置）、`visibility`（日程公开范围）、自定义 `reminders`（提醒设置）、自定义 `attendee_ability`（参与人权限）、自定义 `free_busy_status`（日程忙闲状态）、`color`（颜色）、附件、视频会议 `vchat`（含关闭视频会议）、全天日程（通过 `start_time.date`/`end_time.date`），或在新增参会人时配置可选参加 `is_optional`、会议室审批 `approval_reason` 等 `+update` 未暴露的字段时，**直接使用完整 API 一次改到位**。
 
 ```bash
 lark-cli schema calendar.events.patch                # 查完整字段定义
-lark-cli calendar events patch --as user --params '{"calendar_id":"...","event_id":"..."}' --data '{...}'
+lark-cli calendar events patch --as user --calendar-id <CALENDAR_ID> --event-id <EVENT_ID> --data '{...}'
 
 # 增删参会人的完整 API
 lark-cli schema calendar.event.attendees.create
