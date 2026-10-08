@@ -185,6 +185,26 @@ func CanFallback(err error) bool {
 		!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
 }
 
+// ProbeSigners tries backends in order, retaining the caller's probe labels,
+// payload and error context. Only unavailability permits another backend.
+func ProbeSigners(ctx context.Context, signers []Signer, probe func(Signer) error) error {
+	var unavailable []error
+	for _, signer := range signers {
+		err := probe(signer)
+		if err == nil {
+			return nil
+		}
+		if ctx != nil && ctx.Err() != nil {
+			return errors.Join(ctx.Err(), err)
+		}
+		if !CanFallback(err) {
+			return err
+		}
+		unavailable = append(unavailable, err)
+	}
+	return errors.Join(append([]error{ErrUnavailable}, unavailable...)...)
+}
+
 // EnsureKeyWithFallback creates or opens a key with the strongest usable
 // signer. It falls through only when a backend is unavailable.
 func EnsureKeyWithFallback(ctx context.Context, signers []Signer, ref KeyRef) (Signer, crypto.PublicKey, error) {
@@ -268,21 +288,46 @@ type signingAlgorithm interface {
 	clearPrivateKey(crypto.Signer)
 }
 
+// SignWithPrivateKey signs with an already-loaded key using its public key's
+// JOSE algorithm. It neither accesses storage nor owns the key's lifecycle.
+func SignWithPrivateKey(key crypto.Signer, input []byte) ([]byte, string, error) {
+	if key == nil {
+		return nil, "", errors.New("keysigner: private key is nil")
+	}
+	name, err := AlgForKey(key.Public())
+	if err != nil {
+		return nil, "", err
+	}
+	algorithm, err := algorithmByName(name)
+	if err != nil {
+		return nil, "", err
+	}
+	signature, err := algorithm.sign(key, input)
+	if err != nil {
+		return nil, "", err
+	}
+	return signature, name, nil
+}
+
 func algorithmForRef(ctx context.Context, ref KeyRef) (signingAlgorithm, error) {
 	if err := validateRefContext(ctx, ref); err != nil {
 		return nil, err
 	}
-	switch ref.Algorithm {
+	return algorithmByName(ref.Algorithm)
+}
+
+func algorithmByName(name string) (signingAlgorithm, error) {
+	switch name {
 	case "", AlgES256:
 		return es256Algorithm{}, nil
 	case AlgES384, AlgES512:
-		return newECDSAAlgorithm(ref.Algorithm)
+		return newECDSAAlgorithm(name)
 	case AlgEdDSA:
 		return edDSAAlgorithm{}, nil
 	case AlgRS256:
 		return rs256Algorithm{}, nil
 	default:
-		return nil, fmt.Errorf("keysigner: %w: %q", ErrUnsupportedAlgorithm, ref.Algorithm)
+		return nil, fmt.Errorf("keysigner: %w: %q", ErrUnsupportedAlgorithm, name)
 	}
 }
 

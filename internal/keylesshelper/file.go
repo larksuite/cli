@@ -8,11 +8,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/sha512"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -91,48 +87,18 @@ func (s *FileSigner) Sign(ctx context.Context, ref keysigner.KeyRef, signingInpu
 	if err := validateRequestedAlgorithm(ref, key.Public()); err != nil {
 		return nil, "", err
 	}
-	digest := sha256.Sum256(signingInput)
-	switch k := key.(type) {
-	case *rsa.PrivateKey:
-		sig, err := rsa.SignPKCS1v15(rand.Reader, k, crypto.SHA256, digest[:])
-		if err != nil {
-			return nil, "", fmt.Errorf("keysigner: sign with RSA private key file: %w", err)
+	signature, algorithm, err := keysigner.SignWithPrivateKey(key, signingInput)
+	if err != nil {
+		keyType := "Ed25519"
+		switch key.(type) {
+		case *rsa.PrivateKey:
+			keyType = "RSA"
+		case *ecdsa.PrivateKey:
+			keyType = "EC"
 		}
-		return sig, keysigner.AlgRS256, nil
-	case *ecdsa.PrivateKey:
-		alg, err := keysigner.AlgForKey(&k.PublicKey)
-		if err != nil {
-			return nil, "", err
-		}
-		var ecDigest []byte
-		switch alg {
-		case keysigner.AlgES256:
-			ecDigest = digest[:]
-		case keysigner.AlgES384:
-			sum := sha512.Sum384(signingInput)
-			ecDigest = sum[:]
-		case keysigner.AlgES512:
-			sum := sha512.Sum512(signingInput)
-			ecDigest = sum[:]
-		}
-		der, err := ecdsa.SignASN1(rand.Reader, k, ecDigest)
-		if err != nil {
-			return nil, "", fmt.Errorf("keysigner: sign with EC private key file: %w", err)
-		}
-		sig, err := keysigner.ECDSASignatureToJOSE(&k.PublicKey, der)
-		if err != nil {
-			return nil, "", err
-		}
-		return sig, alg, nil
-	case ed25519.PrivateKey:
-		sig, err := k.Sign(rand.Reader, signingInput, crypto.Hash(0))
-		if err != nil {
-			return nil, "", fmt.Errorf("keysigner: sign with Ed25519 private key file: %w", err)
-		}
-		return sig, keysigner.AlgEdDSA, nil
-	default:
-		return nil, "", fmt.Errorf("keysigner: unsupported private key type %T", key)
+		return nil, "", fmt.Errorf("keysigner: sign with %s private key file: %w", keyType, err)
 	}
+	return signature, algorithm, nil
 }
 
 func (s *FileSigner) DeleteKey(ctx context.Context, ref keysigner.KeyRef) error {

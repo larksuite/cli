@@ -18,15 +18,19 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
-func TestFetchTATWithAssertionForProvider_UnknownProviderFailsBeforeHTTP(t *testing.T) {
+func TestFetchTATWithClientAuth_UnknownProviderFailsBeforeHTTP(t *testing.T) {
 	rt := &stubRoundTripper{respCode: http.StatusOK, respBody: `{"code":0,"access_token":"must-not-use"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTATWithAssertionForProvider(context.Background(), hc, core.BrandFeishu, "cli_app", nil, "unknown.provider", "key-1")
+	_, err := FetchTATWithClientAuth(context.Background(), hc, core.BrandFeishu, auth.ClientAuth{
+		AppID: "cli_app", AuthMethod: core.AuthMethodPrivateKeyJWT,
+		KeyProvider: "unknown.provider", KeyLabel: "key-1",
+	}, core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected unknown provider error")
 	}
@@ -87,6 +91,9 @@ func TestFetchTATWithAssertion_Success(t *testing.T) {
 	}
 	if rt.gotReq.URL.String() != "https://open.feishu.cn/open-apis/authen/v2/oauth/token" {
 		t.Errorf("url = %s", rt.gotReq.URL.String())
+	}
+	if proof := rt.gotReq.Header.Get("DPoP"); proof != "" {
+		t.Fatalf("application-key validation sent a DPoP proof: %q", proof)
 	}
 
 	form, err := url.ParseQuery(rt.gotBody)

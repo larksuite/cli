@@ -30,7 +30,7 @@ func ResolveSigner(name string, kc keychain.KeychainAccess) (keysigner.Signer, e
 	if kc == nil {
 		kc = keychain.Default()
 	}
-	return softwareSigner{keychain: kc}, nil
+	return newSoftwareSigner(kc), nil
 }
 
 // Private-key JWT retains its dedicated macOS Keychain backend. DPoP's

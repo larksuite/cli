@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,12 +17,84 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/keysigner"
 )
+
+type failFirstTATAssertionSigner struct {
+	keysigner.Signer
+	err   error
+	calls int
+}
+
+func (s *failFirstTATAssertionSigner) Sign(ctx context.Context, ref keysigner.KeyRef, input []byte) ([]byte, string, error) {
+	s.calls++
+	if s.calls == 1 {
+		return nil, "", s.err
+	}
+	return s.Signer.Sign(ctx, ref, input)
+}
+
+func TestFetchTATApplicationSigningFailureDoesNotFallBack(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		err       error
+		deleteErr error
+	}{
+		{name: "temporary", err: errors.New("temporary application signer failure")},
+		{name: "unavailable", err: keysigner.ErrUnavailable},
+		{name: "DPoP subtype", err: errs.NewAuthenticationError(errs.SubtypeDPoPProofFailed, "application signer failed").WithCause(keysigner.ErrUnavailable)},
+		{name: "repeated proof sentinel", err: dpop.ErrRepeatedInvalidProof},
+		{name: "canceled", err: context.Canceled},
+		{name: "deadline", err: context.DeadlineExceeded},
+		{name: "policy", err: errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "application signing denied")},
+		{name: "cleanup failure", err: keysigner.ErrUnavailable, deleteErr: errors.New("cleanup denied")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &failFirstTATAssertionSigner{Signer: newFakeTATSigner(t), err: tc.err}
+			proof := newTATTestSigner()
+			store := dpop.NewKeyStoreWithSigner(tatDPoPMetadata{}, proof)
+			heartbeats, tokenCalls := 0, 0
+			client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				body := fmt.Sprintf(`{"code":0,"data":{"now":"%d"}}`, time.Now().Unix())
+				if req.URL.Path == dpop.HeartbeatPath {
+					heartbeats++
+					// Fail only uncommitted-key cleanup, not the earlier probe.
+					proof.deleteErr = tc.deleteErr
+				} else {
+					tokenCalls++
+					body = `{"access_token":"must-not-use","expires_in":120,"token_type":"Bearer"}`
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+			})}
+			ca := auth.ClientAuth{AppID: "cli-tat-sign-failure", AuthMethod: core.AuthMethodPrivateKeyJWT, Signer: app, KeyLabel: "app-key"}
+			token, err := fetchTAT(context.Background(), client, core.BrandFeishu, ca, core.DPoPModePreferred, store)
+			if token != nil || !errors.Is(err, tc.err) || app.calls != 1 || tokenCalls != 0 || heartbeats != 1 {
+				t.Fatalf("application failure = (%+v, %v), assertion signs=%d, token calls=%d, heartbeats=%d; want original failure, one sign, zero token calls, one heartbeat", token, err, app.calls, tokenCalls, heartbeats)
+			}
+			if tc.deleteErr != nil {
+				problem, ok := errs.ProblemOf(err)
+				if !ok || problem.Category != errs.CategoryAuthentication || problem.Subtype != errs.SubtypeDPoPKeyMissing || !errors.Is(err, tc.deleteErr) {
+					t.Fatalf("cleanup classification/cause changed: %v", err)
+				}
+			} else {
+				if want, ok := errs.ProblemOf(tc.err); ok {
+					got, ok := errs.ProblemOf(err)
+					if !ok || got.Category != want.Category || got.Subtype != want.Subtype {
+						t.Fatalf("application error classification changed: %v", err)
+					}
+				}
+				if len(proof.keys) != 0 {
+					t.Fatalf("uncommitted proof keys retained: %d", len(proof.keys))
+				}
+			}
+		})
+	}
+}
 
 func TestFetchTATPrivateKeyJWTWithDPoP(t *testing.T) {
 	for _, tc := range []struct {

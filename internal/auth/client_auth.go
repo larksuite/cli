@@ -105,12 +105,8 @@ func (c ClientAuth) ResolveSigner(ctx context.Context) (ClientAuth, error) {
 	return c, nil
 }
 
-// SignClientAssertion signs with a resolved external helper when present,
-// otherwise with the platform signer.
-func SignClientAssertion(ctx context.Context, signer keysigner.Signer, helper *keylesshelper.Command, keyLabel, clientID, audience string) (string, string, error) {
-	if helper != nil {
-		return helper.SignClientAssertion(ctx, keyLabel, clientID, audience)
-	}
+// signClientAssertion signs with an imported or managed key.
+func signClientAssertion(ctx context.Context, signer keysigner.Signer, keyLabel, clientID, audience string) (string, string, error) {
 	if signer == nil {
 		return "", "", fmt.Errorf("private-key JWT requires a signer")
 	}
@@ -147,7 +143,7 @@ func (c ClientAuth) ApplyClientAssertion(ctx context.Context, form url.Values, a
 	if helper != nil {
 		assertionType, assertion, err = helper.SignClientAssertion(ctx, c.KeyLabel, c.AppID, audience)
 	} else {
-		assertionType, assertion, err = SignClientAssertion(ctx, c.Signer, nil, c.KeyLabel, c.AppID, audience)
+		assertionType, assertion, err = signClientAssertion(ctx, c.Signer, c.KeyLabel, c.AppID, audience)
 	}
 	if err != nil {
 		return false, err
