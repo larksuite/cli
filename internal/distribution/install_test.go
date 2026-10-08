@@ -129,7 +129,7 @@ func TestInstallDownloadsAndCommitsManifestArtifacts(t *testing.T) {
 	assertFile(t, filepath.Join(skillsDir, "lark-alpha", "references", "guide.md"), "guide")
 	assertFile(t, filepath.Join(skillsDir, "lark-beta", "SKILL.md"), "beta")
 	script := filepath.Join(skillsDir, "lark-alpha", "scripts", "check-install")
-	info, statErr := os.Stat(script)
+	info, statErr := vfs.Stat(script)
 	if statErr != nil {
 		t.Fatal(statErr)
 	}
