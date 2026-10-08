@@ -1271,7 +1271,7 @@
       "agentSupport": "denied"
     },
     "recording +list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "sheets +batch-chart-create": {
       "agentSupport": "allowed"
