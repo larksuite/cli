@@ -1,6 +1,28 @@
 # im
 > skill: lark-im
 
+## +applink
+Use this when a known chat, thread, or message needs a client navigation link without fetching full message history.
+
+### Prerequisites
+- The person opening the link must already have access to the conversation.
+- Resolving a message requires read access for the selected user or bot identity.
+
+### Tips
+- Chat and thread IDs produce links locally; a message ID needs one read request.
+- A thread container link does not require a message position. A message link is omitted when the server supplies neither a link nor usable position metadata.
+- Navigation links do not invite users to a group. Use `im chats link` when a share link is needed.
+
+### Examples
+
+**Open a known thread in a joined chat**
+```bash
+lark-cli im +applink --chat-id oc_xxx --thread-id omt_xxx
+```
+
+### Skills
+- `lark-im/references/lark-im-applink.md`
+
 ## +chat-create
 Use this when a new group or topic chat is needed. Choose the calling identity deliberately because it affects ownership and member visibility.
 

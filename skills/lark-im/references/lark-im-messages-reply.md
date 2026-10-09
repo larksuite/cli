@@ -214,6 +214,8 @@ lark-cli im +messages-reply --message-id om_xxx --msg-type interactive --content
 
 ## Return Value
 
+The existing reply fields are preserved. When the reply response provides the metadata, output also includes `thread_id`, `thread_app_link` (chat and thread IDs), and `message_app_link` (a server-provided link or usable position metadata). Unavailable fields are omitted; the command does not make an extra read request to fill them. See [`+applink`](lark-im-applink.md) to resolve an existing message later.
+
 ```json
 {
   "message_id": "om_xxx",

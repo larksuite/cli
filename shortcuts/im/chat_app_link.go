@@ -4,12 +4,9 @@
 package im
 
 import (
-	"net/url"
-	"strings"
-
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
+	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
 )
 
 func addChatAppLinks(chats []map[string]interface{}, runtime *common.RuntimeContext) {
@@ -25,27 +22,5 @@ func addChatAppLinks(chats []map[string]interface{}, runtime *common.RuntimeCont
 
 func assembleChatAppLink(rawChatID interface{}, brand core.LarkBrand) string {
 	chatID, _ := rawChatID.(string)
-	chatID = strings.TrimSpace(chatID)
-	if !strings.HasPrefix(chatID, "oc_") {
-		return ""
-	}
-	domain := resolveChatAppLinkDomain(brand)
-	if domain == "" {
-		return ""
-	}
-
-	u := &url.URL{Scheme: "https", Host: domain, Path: "/client/chat/open"}
-	q := url.Values{}
-	q.Set("openChatId", chatID)
-	u.RawQuery = q.Encode()
-	return urlrewrite.Rewrite(u.String())
-}
-
-func resolveChatAppLinkDomain(brand core.LarkBrand) string {
-	appLink := core.ResolveEndpoints(brand).AppLink
-	u, err := url.Parse(appLink)
-	if err != nil {
-		return ""
-	}
-	return u.Host
+	return convertlib.ChatAppLink(chatID, brand)
 }
