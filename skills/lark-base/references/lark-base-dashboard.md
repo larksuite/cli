@@ -22,6 +22,26 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |
 | 智能重排组件布局 | `+dashboard-arrange` | 用户明确要求重排，或本次会话新建仪表盘的收尾整理；无法指定 `x/y/w/h`、精确位置或尺寸 |
 
+## 交付健康门禁（写任务必做）
+
+当本次请求创建、修改或复用 Dashboard 组件，或修改了这些组件依赖的表/字段时，写响应成功和组件出现在 list 中只证明资源存在，不证明配置与数据可用。自动修改范围只包括本次创建的组件，或可唯一映射到用户明确要求交付物的既有组件；其他同义/冲突组件只做只读检查和报告，未经用户确认不得更新或删除。只读发现限定在目标 Dashboard 内，不扫描其他 Dashboard。
+
+完成前按以下顺序验收；多个组件放在一个 shell 工具调用内串行读取，避免拆成多轮：
+
+1. 已知全部可信交付组件 ID 且无需检查重复或冲突时直接读取，不执行全 Dashboard list。需要定位交付组件或用户要求检查重复/冲突时，才用 `+dashboard-block-list --page-size 100`；用静态 `--jq` 投影保留 `has_more`、`page_token` 和候选的 `block_id/name/type/data_config` 字段引用，并按返回的 `page_token` 读到 `has_more=false`。一个既有组件可唯一映射到用户明确要求的交付物时可原位修复；其他同名或同义冲突组件只报告，未经确认不改删。
+2. 对本次创建、明确要求修改或明确复用的每个交付组件用 `+dashboard-block-get` 读取服务端实际 `data_config`。逐项对照需求和真实表/字段，确认数据源、维度、指标、聚合、筛选与排序均被保留；不存在的引用、API 错误或服务端静默丢失关键配置均未通过。
+3. 对这些交付组件中的非 `text` 数据组件用 `+dashboard-block-get-data` 验证实际计算结果，确认所需维度与 measure 存在且粒度正确。空数据只有在一次有界源表记录查询证明本应为空时才可接受；有匹配源数据却返回空维度、空/缺失 measure 或矛盾数值时进入定向修复。`text` 组件只需 get。
+4. 图表依赖本次新增或修改的 formula/lookup 时，用一次有界记录查询抽查有输入的样例行。整批终验后，对每类失败最多执行一次定向修复和一次复验；仍失败则报告具体未完成项。非目标既有组件未经用户确认不得更新或删除，删除操作还必须遵循高风险确认规则。
+
+## 已有 Dashboard 的冲突检查
+
+在已有 Dashboard 中新增、替换或纠错前，先用 `+dashboard-block-list` 读取该 Dashboard 的全部组件，并识别与目标指标同名、同义，或使用相同数据源但 range、grain、measure 不一致的组件。
+
+- 可唯一确认是用户要求修复的旧组件时原位更新；需要改变组件 `type` 时按下文规则删除后重建。
+- 用户要求新建 Dashboard 时，不要静默复用含冲突组件的旧 Dashboard；创建独立 Dashboard 承载本次交付。用户明确要求修改既有 Dashboard 时，未经授权不得删除其他组件；若冲突组件无法安全修改或删除，应报告阻塞，不得用并存的新组件宣称整个看板正确。
+- 最终对本次交付的新 Dashboard 全部数据组件，或既有 Dashboard 中与目标指标相关的全部组件执行 `+dashboard-block-get` 和 `+dashboard-block-get-data`。同一指标出现矛盾范围、粒度或数值时验收失败。
+- 涉及统计结论时，按 [Base data analysis SOP](lark-base-record-query-and-analysis-sop.md) 对齐确定性查询、Dashboard 实际数据和最终回答。
+
 ## 精确布局 --position vs +dashboard-arrange
 
 create/update 可选 `--position`，用 12 列栅格坐标精确指定单个组件的落点与大小：`{"x","y","w","h"}`，`x`/`y` 为左上角坐标（>=0），`w` 为宽度（1..12，且 `x+w<=12`），`h` 为高度（>=1）。它与 `name`/`type`/`data_config` 平级挂在请求体顶层。
@@ -45,8 +65,9 @@ create/update 可选 `--position`，用 12 列栅格坐标精确指定单个组�
 
 - 聚合方式：创建指标卡或分布图时优先把聚合写进 `data_config`，只有 Top N、字段取值探索、复杂筛选校验或 helper 汇总表场景才先用 `+data-query`。
 - Dry-run 边界：已按模板构造的简单指标卡、分布图、趋势图不需要逐个 `--dry-run` 后再真实创建；只有在调试 JSON、检查请求体、复杂自造 `data_config` 或处理 API validation 错误时才 dry-run。
-- 验证方式：创建接口成功返回即表示写入成功。只有结果不确定时才用一次 `+dashboard-get` 或 `+dashboard-block-list` 确认仪表盘和组件存在；不要仅为确认创建而逐组件调用 `+dashboard-block-get-data`。
+- 验证方式：创建响应只确认请求已受理，不代表运行时一定能算出正确数据；完成前按上方交付健康门禁验证本次目标组件的实际配置与计算结果，不把全量无关组件带入检查。
 - 布局方式：用户没有给出组件级坐标或尺寸时，创建完成后用一次 `+dashboard-arrange` 整盘编排即可；只有用户明确给出可执行的精确布局约束时才在 create 中带 `--position`，此时通常不再需要 arrange。
+- 交付形态：Base 场景中用户要求“图/图表/看板/直观看到/可视化”时，默认把图表沉淀为 Base Dashboard 组件；外部图片或文本统计只能作为补充，不能替代可持续更新的 Dashboard。
 
 示例：搭建一个销售数据分析仪表盘
 
