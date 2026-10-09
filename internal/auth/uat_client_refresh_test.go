@@ -335,7 +335,7 @@ func TestRefreshDPoPTokenRecoversClockAndKeepsBinding(t *testing.T) {
 				return response, nil
 			})}
 			result := refreshOnce(context.Background(), client, ResolveOAuthEndpoints(opts.Domain).Token,
-				opts, current, tc.key, tc.allowRecovery)
+				ClientAuth{AppID: opts.AppId, AppSecret: opts.AppSecret}, opts, current, tc.key, tc.allowRecovery)
 			problem := requireRefreshProblem(t, result.err, errs.CategoryAuthentication, tc.subtype, false)
 			if result.action != refreshStopAndPreserve || problem.Hint == "" {
 				t.Fatalf("refresh result = %+v", result)

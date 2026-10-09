@@ -22,6 +22,9 @@ build_target() {
     ext=".exe"
   fi
 
+  # Platform key signers are selected by GOOS build constraints: macOS uses
+  # Security.framework, Linux uses TPM 2.0, and Windows uses native CNG KSP on
+  # both amd64 and arm64.
   local output="$OUT_DIR/bin/lark-cli-${goos}-${goarch}${ext}"
   echo "Building ${goos}/${goarch} -> ${output}"
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$LDFLAGS" -o "$output" ./main.go
