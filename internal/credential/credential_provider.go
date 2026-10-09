@@ -23,6 +23,10 @@ type DefaultAccountResolver interface {
 	ResolveAccount(ctx context.Context) (*Account, error)
 }
 
+type dpopPolicyResolver interface {
+	ResolveLocalDPoPMode(appID string) core.DPoPMode
+}
+
 // DefaultTokenResolver is implemented by the default token provider.
 type DefaultTokenResolver interface {
 	ResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, error)
@@ -272,6 +276,10 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 		if acct != nil {
 			internal := convertAccount(acct)
 			source := extensionTokenSource{provider: prov}
+			internal.CredentialSource = core.CredentialSource(source.CredentialSource())
+			if policy, ok := p.defaultAcct.(dpopPolicyResolver); ok {
+				internal.DPoPMode = policy.ResolveLocalDPoPMode(internal.AppID)
+			}
 			if internal.CredentialKind == core.CredentialAAT {
 				// The provider has already verified this Agent Employee's
 				// principal. Asking the legacy token path for a user access
@@ -496,6 +504,7 @@ func (p *CredentialProvider) resolveLegacyAccess(ctx context.Context, source cre
 	}
 	return &ResolvedAccess{
 		Value:              result.Token,
+		DPoP:               result.DPoP,
 		Kind:               kind,
 		Scopes:             result.Scopes,
 		Source:             result.Source,
@@ -518,6 +527,7 @@ func (p *CredentialProvider) resolveUnclassifiedAccess(ctx context.Context, spec
 	}
 	access := &ResolvedAccess{
 		Value:              result.Token,
+		DPoP:               result.DPoP,
 		Kind:               kind,
 		Scopes:             result.Scopes,
 		Source:             result.Source,

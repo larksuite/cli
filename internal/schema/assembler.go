@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // Convert renders a meta.Field as a JSON-Schema Property. meta owns the value
@@ -211,7 +212,7 @@ func buildMeta(m meta.Method, agentPrincipal bool) *Meta {
 		out.Risk = core.RiskRead
 	}
 	if m.DocURL != "" {
-		out.DocURL = m.DocURL
+		out.DocURL = urlrewrite.Rewrite(m.DocURL)
 	}
 	return out
 }

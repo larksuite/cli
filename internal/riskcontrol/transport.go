@@ -24,8 +24,8 @@ var restrictedHeaders = [...]string{HeaderProductModel, HeaderOSType, HeaderCred
 
 // Transport is the final outbound metadata boundary. It removes caller- or
 // extension-supplied headers first, writes the request-scoped credential source
-// for official SDK origins, and writes host signals only when workspace policy
-// enables risk control.
+// for official SDK origins and extension-routed platform requests, and writes
+// host signals only when workspace policy enables risk control.
 type Transport struct {
 	next   http.RoundTripper
 	source Source
@@ -131,7 +131,7 @@ func (t *Transport) routeAllowsSignals(req *http.Request) bool {
 	if req == nil || req.URL == nil {
 		return false
 	}
-	return isOfficialFeishuOrigin(originOf(req.URL))
+	return internaltransport.IsExtensionPlatformRequest(req) || isOfficialFeishuOrigin(originOf(req.URL))
 }
 
 func originOf(value *url.URL) origin {

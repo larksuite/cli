@@ -51,6 +51,10 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 
 		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
 		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/pre_release", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.2.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/releases", clie2e.DryRunGet(result.Stdout, "api.2.url").String())
+		assert.Equal(t, "<from pre_release response>", clie2e.DryRunGet(result.Stdout, "api.2.body.tos_path").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.2.body.apply_reason").Exists())
 		// file_count / files / total_size_bytes sit at envelope top level
 		// (not under api.0.body — manifest is dry-run metadata, not the HTTP body).
 		assert.Equal(t, int64(2), clie2e.DryRunGet(result.Stdout, "file_count").Int())

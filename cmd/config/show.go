@@ -57,6 +57,10 @@ func configShowRun(opts *ConfigShowOptions) error {
 	if err != nil {
 		return err
 	}
+	dpopMode, err := app.EffectiveDPoPMode()
+	if err != nil {
+		return errs.NewConfigError(errs.SubtypeInvalidConfig, "%s", err.Error()).WithCause(err)
+	}
 	users := "(no logged-in users)"
 	if len(app.Users) > 0 {
 		var userStrs []string
@@ -77,6 +81,7 @@ func configShowRun(opts *ConfigShowOptions) error {
 		"appSecret":     "****",
 		"brand":         app.Brand,
 		"lang":          app.Lang,
+		"dpopMode":      dpopMode,
 		"users":         users,
 	})
 	fmt.Fprintf(f.IOStreams.ErrOut, "\nConfig file path: %s\n", core.GetConfigPath())

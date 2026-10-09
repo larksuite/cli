@@ -56,6 +56,18 @@ func TestConvertBodyContent(t *testing.T) {
 	}
 }
 
+// TestConvertBodyContentGeneralCalendarPayloadShape uses the field structure of a
+// captured BOE general_calendar payload with fully synthetic values. It verifies
+// that the open IDs flow through the general_calendar registry key.
+// This is the sole guard tying msg_type "general_calendar" to generalCalendarConverter.
+func TestConvertBodyContentGeneralCalendarPayloadShape(t *testing.T) {
+	ctx := &ConvertContext{RawContent: `{"end_time":"1710503600000","open_calendar_id":"cal_test","open_event_id":"evt_test","share_token":"cse_test","start_time":"1710500000000","summary":"Test event"}`}
+	want := "<calendar open_calendar_id=\"cal_test\" open_event_id=\"evt_test\" share_token=\"cse_test\">\nTest event\n" + formatTimestamp("1710500000000") + " ~ " + formatTimestamp("1710503600000") + "\n</calendar>"
+	if got := ConvertBodyContent("general_calendar", ctx); got != want {
+		t.Fatalf("ConvertBodyContent(general_calendar) = %q, want %q", got, want)
+	}
+}
+
 func TestFormatMessageItem(t *testing.T) {
 	raw := map[string]interface{}{
 		"msg_type":    "text",
@@ -502,8 +514,11 @@ func TestMiscConverters(t *testing.T) {
 		{name: "calendar share", got: (calendarEventConverter{}).Convert(&ConvertContext{RawContent: `{"summary":"Review","start_time":"1710500000","end_time":"1710503600","open_calendar_id":"cal_1","open_event_id":"evt_1"}`}), want: "<calendar_share open_calendar_id=\"cal_1\" open_event_id=\"evt_1\">\nReview\n" + formatTimestamp("1710500000") + " ~ " + formatTimestamp("1710503600") + "\n</calendar_share>"},
 		{name: "calendar share with share token", got: (calendarEventConverter{}).Convert(&ConvertContext{RawContent: `{"summary":"Review","open_calendar_id":"cal_1","open_event_id":"evt_1","share_token":"cse_token_1"}`}), want: "<calendar_share open_calendar_id=\"cal_1\" open_event_id=\"evt_1\" share_token=\"cse_token_1\">\nReview\n</calendar_share>"},
 		{name: "calendar invite", got: (calendarInviteConverter{}).Convert(&ConvertContext{RawContent: `{"summary":"Invite","start_time":"1710500000"}`}), want: "<calendar_invite>\nInvite\n" + formatTimestamp("1710500000") + "\n</calendar_invite>"},
+		{name: "calendar invite with open ids", got: (calendarInviteConverter{}).Convert(&ConvertContext{RawContent: `{"summary":"Invite","open_calendar_id":"cal_invite","open_event_id":"evt_invite"}`}), want: "<calendar_invite open_calendar_id=\"cal_invite\" open_event_id=\"evt_invite\">\nInvite\n</calendar_invite>"},
 		{name: "general calendar", got: (generalCalendarConverter{}).Convert(&ConvertContext{RawContent: `{"summary":"All Hands"}`}), want: "<calendar>\nAll Hands\n</calendar>"},
 		{name: "general calendar with share token", got: (generalCalendarConverter{}).Convert(&ConvertContext{RawContent: `{"summary":"All Hands","share_token":"cse_token_2"}`}), want: "<calendar share_token=\"cse_token_2\">\nAll Hands\n</calendar>"},
+		{name: "general calendar with event id and no calendar id", got: (generalCalendarConverter{}).Convert(&ConvertContext{RawContent: `{"summary":"All Hands","open_calendar_id":null,"open_event_id":"evt_2"}`}), want: "<calendar open_event_id=\"evt_2\">\nAll Hands\n</calendar>"},
+		{name: "general calendar with open ids and share token", got: (generalCalendarConverter{}).Convert(&ConvertContext{RawContent: `{"summary":"All Hands","open_calendar_id":"cal_2","open_event_id":"evt_2","share_token":"cse_token_2"}`}), want: "<calendar open_calendar_id=\"cal_2\" open_event_id=\"evt_2\" share_token=\"cse_token_2\">\nAll Hands\n</calendar>"},
 		{name: "vote", got: (voteConverter{}).Convert(&ConvertContext{RawContent: `{"topic":"Lunch","options":["A","B"],"status":1}`}), want: "<vote>\nLunch\n• A\n• B\n(Closed)\n</vote>"},
 		{name: "hongbao", got: (hongbaoConverter{}).Convert(&ConvertContext{RawContent: `{"text":"恭喜发财"}`}), want: `<hongbao text="恭喜发财"/>`},
 		{name: "system", got: (systemConverter{}).Convert(&ConvertContext{RawContent: `{"template":"{from_user} invited {to_chatters} to {name}","from_user":["Alice"],"to_chatters":["Bob","Carol"],"name":"Room A"}`}), want: "Alice invited Bob, Carol to Room A"},

@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keychain"
 )
 
@@ -677,5 +679,28 @@ func TestResolveScopeMetadataForAgentRejectsPrincipalMismatch(t *testing.T) {
 	}
 	if got.Scopes != "bitable:app" {
 		t.Errorf("got %+v, want the keychain record for a different principal to be ignored", got)
+	}
+}
+
+// The internal ResolvedAccess boundary must carry the upstream proof binding
+// through both legacy provider paths, or the HTTP client sends a Bearer request.
+func TestResolveAccessPreservesDPoPBinding(t *testing.T) {
+	for _, configured := range []bool{false, true} {
+		t.Run(fmt.Sprintf("configured=%t", configured), func(t *testing.T) {
+			binding := &dpop.Binding{}
+			token := &mockDefaultToken{result: &TokenResult{Token: "test-token", DPoP: binding}}
+			var acct DefaultAccountResolver
+			if configured {
+				acct = &mockDefaultAcct{account: &Account{AppID: "cli_test"}}
+			}
+			cp := NewCredentialProvider(nil, acct, token, nil)
+			got, err := cp.ResolveAccess(context.Background(), AccessSpec{Identity: core.AsBot, AppID: "cli_test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.DPoP != binding || got.Kind != core.CredentialTAT || got.Value != "test-token" {
+				t.Fatalf("access lost token binding: %#v", got)
+			}
+		})
 	}
 }

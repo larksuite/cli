@@ -33,6 +33,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/commandhost"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/keychain"
 	internalplatform "github.com/larksuite/cli/internal/platform"
@@ -71,7 +72,7 @@ type buildConfig struct {
 }
 
 // buildRuntime owns presentation state for exactly one command tree. Factory
-// remains the business dependency container; distribution policy never enters
+// remains the business dependency container; distribution presentation never enters
 // it. The embedded pointer preserves convenient access to Factory fields in
 // cmd-internal tests without exposing the surface plan to business packages.
 type buildRuntime struct {
@@ -397,6 +398,8 @@ func assembleInternal(
 	request assemblyRequest,
 	cfg *buildConfig,
 ) (*buildRuntime, *cobra.Command, *hook.Registry, error) {
+	ctx = distribution.CaptureSource(ctx)
+
 	// cfg.globals.Profile is left zero here; it's bound to the --profile
 	// flag in RegisterGlobalFlags and filled by cobra's parse step.
 
@@ -436,8 +439,8 @@ func assembleInternal(
 	rootCmd.SetErr(cfg.streams.ErrOut)
 
 	// Root-only usage template (curated Usage synopsis + skills footer); see
-	// rootUsageTemplate.
-	rootCmd.SetUsageTemplate(rootUsageTemplate)
+	// renderRootUsageTemplate.
+	rootCmd.SetUsageTemplate(renderRootUsageTemplate(nil))
 
 	rootCmd.SilenceErrors = true
 	// SilenceUsage as a static field (not only in PersistentPreRun) so it also
@@ -603,11 +606,15 @@ func assembleInternal(
 		}
 	}
 
+	if len(pluginRules) > 0 {
+		f.LoginCommandAllowed = loginCommandEligibility(rootCmd)
+	}
 	// Presentation is an explicit host projection over the exact enforcement
 	// decisions. With no opt-in, legacy Restrict and YAML policy behavior is
 	// mechanically unchanged.
 	var hasConcealedCommands bool
 	runtime.surface, hasConcealedCommands = applyDistributionPresentation(rootCmd, cfg.presentation, denied)
+	rootCmd.SetUsageTemplate(renderRootUsageTemplate(runtime.surface))
 
 	// Resolve skill assets and canonical references before installing hooks.
 	// A declared customization is a build-integrity boundary: failure must

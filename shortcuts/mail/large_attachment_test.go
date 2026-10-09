@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/core"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
@@ -121,6 +122,9 @@ func TestBuildLargeAttachmentPreviewURL(t *testing.T) {
 }
 
 func TestBuildLargeAttachmentHTML(t *testing.T) {
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, "https://", "https://mirror.example/", 1)
+	})
 	results := []largeAttachmentResult{
 		{FileName: "report.pdf", FileSize: 50 * 1024 * 1024, FileToken: "tok_abc"},
 		{FileName: "data.zip", FileSize: 100 * 1024 * 1024, FileToken: "tok_xyz"},
@@ -143,8 +147,11 @@ func TestBuildLargeAttachmentHTML(t *testing.T) {
 		t.Error("missing data-mail-token for tok_abc")
 	}
 	// Check download links
-	if !strings.Contains(html, "www.feishu.cn/mail/page/attachment?token=tok_abc") {
+	if !strings.Contains(html, "mirror.example/www.feishu.cn/mail/page/attachment?token=tok_abc") {
 		t.Error("missing download link for tok_abc")
+	}
+	if !strings.Contains(html, "mirror.example/lf-larkemail.bytetos.com/") {
+		t.Error("missing rewritten icon URL")
 	}
 	if !strings.Contains(html, ">Download<") {
 		t.Error("missing English download text")
@@ -466,6 +473,9 @@ func TestEnsureLargeAttachmentCards_PlainTextNoDuplicate(t *testing.T) {
 }
 
 func TestBuildLargeAttachmentPlainText(t *testing.T) {
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, "https://", "https://mirror.example/", 1)
+	})
 	results := []largeAttachmentResult{
 		{FileName: "report.pdf", FileSize: 26214400, FileToken: "tok_aaa"},
 		{FileName: "video.mp4", FileSize: 314572800, FileToken: "tok_bbb"},
@@ -488,6 +498,9 @@ func TestBuildLargeAttachmentPlainText(t *testing.T) {
 	}
 	if !strings.Contains(text, "tok_bbb") {
 		t.Error("should contain second token in URL")
+	}
+	if !strings.Contains(text, "mirror.example/www.feishu.cn/mail/page/attachment") {
+		t.Error("should contain rewritten download URL")
 	}
 	if !strings.Contains(text, "下载:") {
 		t.Error("should contain Chinese download label")

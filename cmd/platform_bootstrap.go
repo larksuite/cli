@@ -25,6 +25,24 @@ import (
 // directory.
 const userPolicyFileName = "policy.yml"
 
+// loginCommandEligibility freezes executable paths before presentation changes.
+// Restricting plugins receive a complete tree, including commands outside the
+// current invocation's domain. Hidden commands are not necessarily denied.
+func loginCommandEligibility(root *cobra.Command) func([]string) bool {
+	allowed := make(map[string]bool)
+	walkCommandsPostOrder(root, func(cmd *cobra.Command) {
+		for ancestor := cmd; ancestor != nil; ancestor = ancestor.Parent() {
+			if ancestor.Annotations[cmdpolicy.AnnotationDenialLayer] != "" {
+				return
+			}
+		}
+		if cmd.Runnable() && !cmdpolicy.IsPureGroup(cmd) {
+			allowed[cmdpolicy.CanonicalPath(cmd)] = true
+		}
+	})
+	return func(path []string) bool { return allowed[strings.Join(path, "/")] }
+}
+
 // applyUserPolicyPruning resolves the user-layer Rule from plugin
 // contributions and/or ~/.lark-cli/policy.yml and installs denyStubs
 // for commands it rejects.

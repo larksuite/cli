@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/ratelimit"
@@ -66,6 +67,14 @@ func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (*
 	}
 	if result.Value == "" {
 		return nil, newTokenMissingError(as, c.credentialKind(), nil)
+	}
+	if c.Config != nil && c.Config.DPoPMode.Required() &&
+		result.Source == core.CredentialSourceLocal && result.DPoP == nil {
+		hint := recovery.Join("", recovery.Command(recovery.TargetAuthLogin,
+			"run `lark-cli auth login` to issue a DPoP-bound local token")).
+			WithFallback("re-authorize the local profile to obtain a DPoP-bound token")
+		return nil, recovery.Attach(errs.NewAuthenticationError(errs.SubtypeDPoPRequired,
+			"this profile requires DPoP but the local credential source returned an unbound Bearer token"), hint)
 	}
 	return result, nil
 }
@@ -165,6 +174,9 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 
 	opts = append(opts, extraOpts...)
 	requestCtx := core.WithCredentialSource(ctx, token.Source)
+	if token.DPoP != nil {
+		requestCtx = dpop.WithBinding(requestCtx, token.DPoP)
+	}
 	resp, err := c.SDK.Do(requestCtx, req, opts...)
 	if err != nil {
 		return nil, WrapDoAPIError(err)
@@ -209,6 +221,9 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	httpClient.Timeout = 0
 	cancel := func() {}
 	requestCtx := core.WithCredentialSource(ctx, token.Source)
+	if token.DPoP != nil {
+		requestCtx = dpop.WithBinding(requestCtx, token.DPoP)
+	}
 	if cfg.timeout > 0 {
 		if _, hasDeadline := requestCtx.Deadline(); !hasDeadline {
 			requestCtx, cancel = context.WithTimeout(requestCtx, cfg.timeout)

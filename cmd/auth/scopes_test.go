@@ -7,12 +7,57 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
 )
+
+func TestAuthScopesRun_TokenTypeMetadata(t *testing.T) {
+	for _, tt := range []struct {
+		name, scopes, want string
+	}{
+		{
+			"unclassified",
+			`[{"scope":"a"},{"scope":"b","token_types":null},{"scope":"c","token_types":[]},{"scope":""}]`,
+			`{"appId":"test-app","brand":"feishu","count":3,"scopes":["a","b","c"]}`,
+		},
+		{
+			"typed",
+			`[{"scope":"a","token_types":["tenant"]},{"scope":"b","token_types":["user"]},{"scope":"c","token_types":["tenant","user"]}]`,
+			`{"appId":"test-app","brand":"feishu","count":2,"tokenType":"user","userScopes":["b","c"]}`,
+		},
+		{
+			"mixed",
+			`[{"scope":"a"},{"scope":"b","token_types":[]},{"scope":"c","token_types":["user"]}]`,
+			`{"appId":"test-app","brand":"feishu","count":1,"tokenType":"user","userScopes":["c"]}`,
+		},
+		{
+			"empty", `[]`,
+			`{"appId":"test-app","brand":"feishu","count":0,"tokenType":"user","userScopes":null}`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, out, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+				AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+			})
+			reg.Register(&httpmock.Stub{
+				Method:  http.MethodGet,
+				URL:     "/open-apis/application/v6/applications/test-app",
+				RawBody: []byte(`{"code":0,"data":{"app":{"scopes":` + tt.scopes + `}}}`),
+			})
+			cmd := NewCmdAuthScopes(f, nil)
+			require.NoError(t, cmd.Execute())
+			require.JSONEq(t, tt.want, out.String())
+		})
+	}
+}
 
 // stubGetAppInfoErr swaps getAppInfoFn for the duration of t so authScopesRun
 // observes a fixed error from the dependency. t.Cleanup restores the prior

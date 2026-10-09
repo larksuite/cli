@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/sidecar"
 )
 
@@ -20,7 +21,7 @@ func newForwardClient() *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil // never proxy the trusted hop
 	return &http.Client{
-		Transport: transport,
+		Transport: &dpop.Transport{Base: transport},
 		Timeout:   30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
@@ -28,6 +29,10 @@ func newForwardClient() *http.Client {
 			}
 			if len(via) > 0 && req.URL.Host != via[0].URL.Host {
 				req.Header.Del("Authorization")
+				req.Header.Del(dpop.ProofHeader)
+				ctx := dpop.WithBinding(req.Context(), nil)
+				ctx = dpop.WithTokenEndpointKey(ctx, nil)
+				*req = *req.WithContext(ctx)
 				req.Header.Del(sidecar.HeaderMCPUAT)
 				req.Header.Del(sidecar.HeaderMCPTAT)
 			}

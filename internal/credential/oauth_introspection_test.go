@@ -36,6 +36,9 @@ func TestInspectClientCredentialsMintsWithoutScopeAndIntrospectsAAT(t *testing.T
 	exp := time.Now().Add(2 * time.Hour).Unix()
 	requests := map[string]url.Values{}
 	httpClient := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Header.Get("DPoP") != "" {
+			t.Fatal("Agent Employee inspection must preserve Bearer issuance")
+		}
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
 			t.Fatal(err)
@@ -48,7 +51,7 @@ func TestInspectClientCredentialsMintsWithoutScopeAndIntrospectsAAT(t *testing.T
 		switch req.URL.Path {
 		case core.OAuthTokenV3Path:
 			return jsonHTTPResponse(http.StatusOK,
-				`{"code":0,"access_token":"aat-secret-value","token_type":"Bearer","expires_in":7200}`), nil
+				`{"code":0,"access_token":"aat-secret-value","token_type":"Bearer","expires_in":7200,"scope":"docs:doc"}`), nil
 		case auth.PathOAuthIntrospect:
 			return jsonHTTPResponse(http.StatusOK,
 				`{"active":true,"client_id":"cli_aat","token_type":"Bearer","iat":1787639434,"exp":`+
@@ -64,7 +67,7 @@ func TestInspectClientCredentialsMintsWithoutScopeAndIntrospectsAAT(t *testing.T
 	if err != nil {
 		t.Fatalf("InspectClientCredentials() error = %v", err)
 	}
-	if minted.Token != "aat-secret-value" || minted.ExpiresAt.Sub(minted.GrantedAt) != 2*time.Hour {
+	if minted.Scope != "docs:doc" || minted.Token != "aat-secret-value" || minted.ExpiresAt.Sub(minted.GrantedAt) != 2*time.Hour {
 		t.Fatalf("minted = %#v", minted)
 	}
 	if !introspection.IsAgentEmployee() || introspection.OpenID != "ou_agent" {

@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 func TestConvertProperty_BasicTypes(t *testing.T) {
@@ -379,6 +380,10 @@ func TestBuildOutputSchema_ReactionsList(t *testing.T) {
 }
 
 func TestBuildMeta_FullFields(t *testing.T) {
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, "open.feishu.cn", "mirror.example", 1)
+	})
+
 	// Keep this synthetic so all metadata projection fields are covered
 	// independently of future changes to the committed Catalog Snapshot.
 	method := map[string]interface{}{
@@ -405,8 +410,8 @@ func TestBuildMeta_FullFields(t *testing.T) {
 	if !reflect.DeepEqual(m.AccessTokens, []string{"bot", "user"}) {
 		t.Errorf("AccessTokens = %v, want [bot user]", m.AccessTokens)
 	}
-	if m.DocURL == "" {
-		t.Errorf("DocURL should be present for im.images.create")
+	if m.DocURL != "https://mirror.example/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create" {
+		t.Errorf("DocURL = %q, want rewritten documentation URL", m.DocURL)
 	}
 	if !reflect.DeepEqual(m.Scopes, []string{"im:resource:upload", "im:resource"}) {
 		t.Errorf("Scopes = %v, want [im:resource:upload, im:resource] (Catalog source order)", m.Scopes)

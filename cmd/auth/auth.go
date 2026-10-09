@@ -17,6 +17,7 @@ import (
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/shortcuts"
@@ -92,7 +93,10 @@ type userInfoResponse struct {
 }
 
 // getUserInfo fetches the current user's OpenID and name using the given access token.
-func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string) (openId, name string, err error) {
+func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string, binding *dpop.Binding) (openId, name string, err error) {
+	if binding != nil {
+		ctx = dpop.WithBinding(ctx, binding)
+	}
 	apiResp, err := sdk.Do(ctx, &larkcore.ApiReq{
 		HttpMethod:                http.MethodGet,
 		ApiPath:                   larkauth.PathUserInfoV1,
@@ -123,7 +127,8 @@ func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string) (ope
 // appInfo contains application information (owner, scopes).
 type appInfo struct {
 	OwnerOpenId string
-	UserScopes  []string
+	Scopes      []string
+	TokenType   string // Empty when the API does not classify scopes by identity.
 }
 
 // appInfoResponse is the API response for /open-apis/application/v6/applications/:app_id.
@@ -182,15 +187,25 @@ func getAppInfo(ctx context.Context, f *cmdutil.Factory, appId string) (*appInfo
 		ownerOpenId = app.CreatorID
 	}
 
-	var userScopes []string
+	tokenType := "user"
+	if len(app.Scopes) > 0 {
+		tokenType = ""
+		for _, s := range app.Scopes {
+			if len(s.TokenTypes) > 0 {
+				tokenType = "user"
+				break
+			}
+		}
+	}
+	var scopes []string
 	for _, s := range app.Scopes {
-		if s.Scope == "" || !slices.Contains(s.TokenTypes, "user") {
+		if s.Scope == "" || (tokenType != "" && !slices.Contains(s.TokenTypes, tokenType)) {
 			continue
 		}
-		userScopes = append(userScopes, s.Scope)
+		scopes = append(scopes, s.Scope)
 	}
 
-	return &appInfo{OwnerOpenId: ownerOpenId, UserScopes: userScopes}, nil
+	return &appInfo{OwnerOpenId: ownerOpenId, Scopes: scopes, TokenType: tokenType}, nil
 }
 
 // classifyAppInfoErr re-decodes the raw body so BuildAPIError sees the

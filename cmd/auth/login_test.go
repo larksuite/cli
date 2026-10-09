@@ -685,8 +685,8 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
-		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
+		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}, nil
 	}
 
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
@@ -939,9 +939,13 @@ func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationReturnsWriterError(t *
 	})
 	f.IOStreams.Out = failWriter{}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    larkauth.PathDeviceAuthorization,
+		// Cancel after authorization, so cancellation targets polling.
+		OnMatch: func(_ *http.Request) { cancel() },
+		Method:  "POST",
+		URL:     larkauth.PathDeviceAuthorization,
 		Body: map[string]interface{}{
 			"device_code":               "device-code",
 			"user_code":                 "user-code",
@@ -952,8 +956,6 @@ func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationReturnsWriterError(t *
 		},
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 	err := authLoginRun(&LoginOptions{
 		Factory: f,
 		Ctx:     ctx,
@@ -976,9 +978,13 @@ func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *
 		Brand:       core.BrandFeishu,
 	})
 
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    larkauth.PathDeviceAuthorization,
+		// Cancel after authorization, so cancellation targets polling.
+		OnMatch: func(_ *http.Request) { cancel() },
+		Method:  "POST",
+		URL:     larkauth.PathDeviceAuthorization,
 		Body: map[string]interface{}{
 			"device_code":               "device-code",
 			"user_code":                 "user-code",
@@ -989,8 +995,6 @@ func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *
 		},
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 	err := authLoginRun(&LoginOptions{
 		Factory: f,
 		Ctx:     ctx,

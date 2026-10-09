@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/imageconfig"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -162,5 +163,5 @@ func buildCalendarImagePreviewURL(brand core.LarkBrand, fileToken string, width,
 	if size > 0 {
 		u += fmt.Sprintf("&im_size=%d", size)
 	}
-	return u
+	return urlrewrite.Rewrite(u)
 }

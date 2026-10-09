@@ -17,6 +17,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/charcheck"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -419,9 +420,12 @@ func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (s
 		}
 		return scaffoldKindInit, nil
 	}
+	// The npm registry is a CLI-owned URL handed to the child process, so it
+	// passes through the URL rewrite extension once for both npx invocations.
+	registry := urlrewrite.Rewrite(npmRegistry)
 	policy := policyForAppType(appType)
 	if !policy.skipAppSync {
-		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "app", "sync"); err != nil {
+		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", registry, miaodaCLIPkg, "app", "sync"); err != nil {
 			return "", appsExternalToolError(err, "npx app sync failed: %s", gitErr(stderr, err))
 		}
 	}
@@ -429,7 +433,7 @@ func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (s
 		return "", err
 	}
 	if !policy.skipSkillsSync && !hasSteeringSkills(dir) {
-		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "skills", "sync", "--local"); err != nil {
+		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", registry, miaodaCLIPkg, "skills", "sync", "--local"); err != nil {
 			return "", appsExternalToolError(err, "npx skills sync failed: %s", gitErr(stderr, err))
 		}
 	}
@@ -444,9 +448,14 @@ func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (s
 // install; others run it as usual.
 // appType is forwarded verbatim (including "frontend") — the CLI does not
 // translate the app type; mapping the app type to a concrete tech stack is the
-// downstream tool's responsibility.
+// downstream tool's responsibility. The registry is a CLI-owned URL handed to
+// npx, so it passes through the URL rewrite extension.
 func scaffoldInitArgs(appType, appID, sourcePath string) []string {
-	base := []string{"-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "app", "init"}
+	return scaffoldInitArgsWithRegistry(urlrewrite.Rewrite(npmRegistry), appType, appID, sourcePath)
+}
+
+func scaffoldInitArgsWithRegistry(registry, appType, appID, sourcePath string) []string {
+	base := []string{"-y", "--prefer-online", "--registry", registry, miaodaCLIPkg, "app", "init"}
 	at := appType
 	if at == "" {
 		at = "full_stack"

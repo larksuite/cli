@@ -67,6 +67,18 @@ func scanDomainDiff(t *testing.T, root, base string) []lintapi.Violation {
 }
 
 func TestUnapprovedDomainDiffContract(t *testing.T) {
+	t.Run("approved static URL requires rewrite", func(t *testing.T) {
+		root, base := setupDomainDiffRepo(t, "package sample\n\nvar unrelated = 1\n")
+		writeFile(t, root, "cmd/target.go",
+			"package cmd\n\nvar helpURL = \"https://public.example.com/help\"\n")
+		commitDomainDiff(t, root, "add static help URL")
+
+		got := violationsForRule(scanDomainDiff(t, root, base), urlRewriteRule)
+		if len(got) != 1 || filepath.ToSlash(got[0].File) != "cmd/target.go" {
+			t.Fatalf("violations = %+v, want static URL rejection", got)
+		}
+	})
+
 	t.Run("new PR 1975 case", func(t *testing.T) {
 		root, base := setupDomainDiffRepo(t, "package sample\n\nvar unrelated = 1\n")
 		writeFile(t, root, "target.go",

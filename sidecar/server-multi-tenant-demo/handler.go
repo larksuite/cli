@@ -19,6 +19,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/sidecar"
 )
@@ -266,18 +267,19 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 6. Resolve real token
 	// UAT (user identity): per-client isolation via matched PROXY_KEY.
 	// TAT (bot identity): shared credential provider (app-level).
-	var resolvedToken string
+	var tokenResult *credential.TokenResult
 	if identity == sidecar.IdentityUser && h.authBridge != nil {
-		token, err := h.authBridge.resolveUserTokenByClient(matchedClient)
+		token, err := h.authBridge.resolveUserTokenByClient(r.Context(), matchedClient)
 		if err != nil {
 			http.Error(w, "failed to resolve user token: "+err.Error(), http.StatusInternalServerError)
 			h.logger.Printf("TOKEN_ERROR method=%s path=%s identity=%s client=%s error=%q",
 				r.Method, sanitizePath(pathAndQuery), identity, matchedClient, sanitizeError(err))
 			return
 		}
-		resolvedToken = token
+		tokenResult = token
 	} else {
-		tokenResult, err := h.cred.ResolveToken(r.Context(), credential.TokenSpec{
+		var err error
+		tokenResult, err = h.cred.ResolveToken(r.Context(), credential.TokenSpec{
 			Type:  credential.TokenTypeTAT,
 			AppID: h.appID,
 		})
@@ -286,7 +288,6 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.logger.Printf("TOKEN_ERROR method=%s path=%s identity=%s error=%q", r.Method, sanitizePath(pathAndQuery), identity, sanitizeError(err))
 			return
 		}
-		resolvedToken = tokenResult.Token
 	}
 
 	// 7. Build forwarding request
@@ -307,14 +308,25 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	forwardReq.Header.Del("Authorization")
+	forwardReq.Header.Del(dpop.ProofHeader)
+	ctx := dpop.WithBinding(forwardReq.Context(), nil)
+	ctx = dpop.WithTokenEndpointKey(ctx, nil)
+	*forwardReq = *forwardReq.WithContext(ctx)
 	forwardReq.Header.Del(sidecar.HeaderMCPUAT)
 	forwardReq.Header.Del(sidecar.HeaderMCPTAT)
 
 	// 8. Inject real token
 	if authHeader == "Authorization" {
-		forwardReq.Header.Set("Authorization", "Bearer "+resolvedToken)
+		forwardReq.Header.Set("Authorization", "Bearer "+tokenResult.Token)
 	} else {
-		forwardReq.Header.Set(authHeader, resolvedToken)
+		if tokenResult.DPoP != nil {
+			http.Error(w, "DPoP tokens are not supported by the MCP custom-token-header protocol", http.StatusBadGateway)
+			return
+		}
+		forwardReq.Header.Set(authHeader, tokenResult.Token)
+	}
+	if tokenResult.DPoP != nil {
+		forwardReq = forwardReq.WithContext(dpop.WithBinding(forwardReq.Context(), tokenResult.DPoP))
 	}
 
 	// 9. Forward request

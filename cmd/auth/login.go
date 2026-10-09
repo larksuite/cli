@@ -6,7 +6,10 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -19,6 +22,7 @@ import (
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -139,6 +143,9 @@ var fetchRemoteScopes = larkauth.FetchRemoteScopes
 // authLoginRun executes the login command logic.
 func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	f := opts.Factory
+	// Policy is installed after auth commands are constructed. Read this build's
+	// completed snapshot at execution time, never the process-global policy.
+	resolver.commandAllowed = f.LoginCommandAllowed
 
 	config, err := f.Config()
 	if err != nil {
@@ -190,8 +197,10 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		// CLI — does not cover, so it resolves locally instead of remote-first:
 		// trusting the remote would silently drop the custom scopes such a build
 		// added to existing domains and the domains it declared with NewDomain.
+		// A command-policy snapshot also needs local scope collection so denied
+		// commands cannot re-enter through remote domain lists.
 		// Standard builds keep remote-first.
-		if !resolver.hasExternal {
+		if !resolver.hasExternal && resolver.commandAllowed == nil {
 			// Pull the remote scopes.json once for this login (not cached); any
 			// read failure (network/timeout/non-2xx/malformed) silently falls
 			// back to the local full computation — no warning, no telemetry.
@@ -322,8 +331,11 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	if err != nil {
 		return err
 	}
-	authResp, err := larkauth.RequestDeviceAuthorization(httpClient, config.AppID, config.AppSecret, config.Brand, finalScope, f.IOStreams.ErrOut)
+	authResp, err := larkauth.RequestDeviceAuthorization(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand, finalScope, f.IOStreams.ErrOut)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "device authorization failed: %v", err).WithCause(err)
 	}
 
@@ -376,10 +388,16 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 
 	// Step 3: Poll for token
 	log(msg.WaitingAuth)
-	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
-		authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
+	result, err := pollLoginDeviceToken(opts.Ctx, httpClient, config, authResp.DeviceCode,
+		authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
+	if err != nil {
+		return err
+	}
 
 	if !result.OK {
+		if result.Err != nil {
+			return result.Err
+		}
 		if opts.JSON {
 			encoder := json.NewEncoder(f.IOStreams.Out)
 			encoder.SetEscapeHTML(false)
@@ -396,16 +414,28 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	if result.Token == nil {
 		return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "authorization succeeded but no token returned")
 	}
+	keyStore := dpop.NewKeyStore(nil)
+	cleanupPendingKey := func(cause error) error {
+		if result.Token.DPoP == nil {
+			return cause
+		}
+		return cleanupUncommittedLoginDPoPKey(opts.Ctx, keyStore, result.Token.DPoP.Key(), cause)
+	}
 
 	// Step 6: Get user info
 	log(msg.AuthSuccess)
 	sdk, err := f.LarkClient()
 	if err != nil {
-		return errs.NewInternalError(errs.SubtypeSDKError, "failed to get SDK: %v", err).WithCause(err)
+		return cleanupPendingKey(errs.NewInternalError(errs.SubtypeSDKError,
+			"failed to get SDK: %v", err).WithCause(err))
 	}
-	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
+	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken, result.Token.DPoP)
 	if err != nil {
-		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return cleanupPendingKey(err)
+		}
+		return cleanupPendingKey(errs.NewAuthenticationError(errs.SubtypeUnknown,
+			"failed to get user info: %v", err).WithCause(err))
 	}
 
 	scopeSummary := loadLoginScopeSummary(config.AppID, openId, finalScope, result.Token.Scope)
@@ -413,6 +443,9 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 
 	// Step 7: Store token
 	now := time.Now().UnixMilli()
+	if result.Token.DPoP != nil {
+		now = result.Token.DPoP.Key().Clock().Now().UnixMilli()
+	}
 	storedToken := &larkauth.StoredUAToken{
 		UserOpenId:       openId,
 		AppId:            config.AppID,
@@ -422,15 +455,29 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		RefreshExpiresAt: now + int64(result.Token.RefreshExpiresIn)*1000,
 		Scope:            result.Token.Scope,
 		GrantedAt:        now,
+		TokenType:        larkauth.StoredTokenTypeBearer,
+	}
+	if result.Token.DPoP != nil {
+		if err := keyStore.SaveContext(opts.Ctx, result.Token.DPoP.Key()); err != nil {
+			return cleanupPendingKey(errs.NewInternalError(errs.SubtypeStorage,
+				"failed to save DPoP key: %v", err).WithCause(err))
+		}
+		storedToken.TokenType = larkauth.StoredTokenTypeDPoP
+		storedToken.DPoPKeyID = result.Token.DPoP.KeyID
+		storedToken.DPoPJKT = result.Token.DPoP.JKT
+		storedToken.DPoPKeySecurityLevel = string(result.Token.DPoP.KeyStoreSecureLevel)
+		clockState := result.Token.DPoP.Key().Clock().State()
+		storedToken.ClockOffsetMs = clockState.OffsetMillis
+		storedToken.ClockSyncedAtMs = clockState.SyncedAtMillis
 	}
 	if err := larkauth.SetStoredToken(storedToken); err != nil {
-		return errs.NewInternalError(errs.SubtypeStorage, "failed to save token: %v", err).WithCause(err)
+		return cleanupPendingKey(errs.NewInternalError(errs.SubtypeStorage,
+			"failed to save token: %v", err).WithCause(err))
 	}
 
 	// Step 8: Update config — overwrite Users to single user, clean old tokens
-	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
-		_ = larkauth.RemoveStoredToken(config.AppID, openId)
-		return err
+	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName, f.IOStreams.ErrOut); err != nil {
+		return rollbackCommittedLoginToken(config.AppID, openId, err)
 	}
 
 	if issue := ensureRequestedScopesGranted(finalScope, result.Token.Scope, msg, scopeSummary); issue != nil {
@@ -467,10 +514,19 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(recovery.RenderContext{Profile: f.Invocation.Profile}))
 	}
 	log(msg.WaitingAuth)
-	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
-		opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
+	result, err := pollLoginDeviceToken(opts.Ctx, httpClient, config, opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
+	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok &&
+			problem.Category == errs.CategoryPolicy && problem.Subtype == errs.SubtypeAccessDenied {
+			cleanupRequestedScope()
+		}
+		return err
+	}
 
 	if !result.OK {
+		if result.Err != nil {
+			return result.Err
+		}
 		if shouldRemoveLoginRequestedScope(result) {
 			cleanupRequestedScope()
 		}
@@ -480,16 +536,28 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	if result.Token == nil {
 		return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "authorization succeeded but no token returned")
 	}
+	keyStore := dpop.NewKeyStore(nil)
+	cleanupPendingKey := func(cause error) error {
+		if result.Token.DPoP == nil {
+			return cause
+		}
+		return cleanupUncommittedLoginDPoPKey(opts.Ctx, keyStore, result.Token.DPoP.Key(), cause)
+	}
 
 	// Get user info
 	log(msg.AuthSuccess)
 	sdk, err := f.LarkClient()
 	if err != nil {
-		return errs.NewInternalError(errs.SubtypeSDKError, "failed to get SDK: %v", err).WithCause(err)
+		return cleanupPendingKey(errs.NewInternalError(errs.SubtypeSDKError,
+			"failed to get SDK: %v", err).WithCause(err))
 	}
-	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
+	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken, result.Token.DPoP)
 	if err != nil {
-		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return cleanupPendingKey(err)
+		}
+		return cleanupPendingKey(errs.NewAuthenticationError(errs.SubtypeUnknown,
+			"failed to get user info: %v", err).WithCause(err))
 	}
 
 	scopeSummary := loadLoginScopeSummary(config.AppID, openId, requestedScope, result.Token.Scope)
@@ -497,6 +565,9 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 
 	// Store token
 	now := time.Now().UnixMilli()
+	if result.Token.DPoP != nil {
+		now = result.Token.DPoP.Key().Clock().Now().UnixMilli()
+	}
 	storedToken := &larkauth.StoredUAToken{
 		UserOpenId:       openId,
 		AppId:            config.AppID,
@@ -506,15 +577,29 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		RefreshExpiresAt: now + int64(result.Token.RefreshExpiresIn)*1000,
 		Scope:            result.Token.Scope,
 		GrantedAt:        now,
+		TokenType:        larkauth.StoredTokenTypeBearer,
+	}
+	if result.Token.DPoP != nil {
+		if err := keyStore.SaveContext(opts.Ctx, result.Token.DPoP.Key()); err != nil {
+			return cleanupPendingKey(errs.NewInternalError(errs.SubtypeStorage,
+				"failed to save DPoP key: %v", err).WithCause(err))
+		}
+		storedToken.TokenType = larkauth.StoredTokenTypeDPoP
+		storedToken.DPoPKeyID = result.Token.DPoP.KeyID
+		storedToken.DPoPJKT = result.Token.DPoP.JKT
+		storedToken.DPoPKeySecurityLevel = string(result.Token.DPoP.KeyStoreSecureLevel)
+		clockState := result.Token.DPoP.Key().Clock().State()
+		storedToken.ClockOffsetMs = clockState.OffsetMillis
+		storedToken.ClockSyncedAtMs = clockState.SyncedAtMillis
 	}
 	if err := larkauth.SetStoredToken(storedToken); err != nil {
-		return errs.NewInternalError(errs.SubtypeSDKError, "failed to save token: %v", err).WithCause(err)
+		return cleanupPendingKey(errs.NewInternalError(errs.SubtypeStorage,
+			"failed to save token: %v", err).WithCause(err))
 	}
 
 	// Update config — overwrite Users to single user, clean old tokens
-	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
-		_ = larkauth.RemoveStoredToken(config.AppID, openId)
-		return errs.NewInternalError(errs.SubtypeSDKError, "failed to update login profile: %v", err).WithCause(err)
+	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName, f.IOStreams.ErrOut); err != nil {
+		return rollbackCommittedLoginToken(config.AppID, openId, err)
 	}
 
 	if issue := ensureRequestedScopesGranted(requestedScope, result.Token.Scope, msg, scopeSummary); issue != nil {
@@ -525,8 +610,41 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	return nil
 }
 
+func cleanupUncommittedLoginDPoPKey(ctx context.Context, store *dpop.KeyStore, key *dpop.Key, cause error) error {
+	cleanupCtx := context.Background()
+	if ctx != nil {
+		cleanupCtx = context.WithoutCancel(ctx)
+	}
+	if cleanupErr := store.DeleteKeyContext(cleanupCtx, key); cleanupErr != nil {
+		return errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
+			"failed to clean up an uncommitted DPoP key: %v", cleanupErr).
+			WithCause(errors.Join(cause, cleanupErr)).
+			WithHint("%s", dpop.KeyStoreUnavailableHint)
+	}
+	return cause
+}
+
+func rollbackCommittedLoginToken(appID, openID string, cause error) error {
+	if cleanupErr := larkauth.RemoveStoredToken(appID, openID); cleanupErr != nil {
+		return errs.NewInternalError(errs.SubtypeStorage,
+			"failed to roll back stored login token: %v", cleanupErr).
+			WithCause(errors.Join(cause, cleanupErr)).
+			WithHint("restore access to local credential storage and remove the incomplete login before retrying")
+	}
+	return cause
+}
+
+func pollLoginDeviceToken(ctx context.Context, httpClient *http.Client, config *core.CliConfig, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
+	if config != nil && config.CredentialSource == core.CredentialSourceLocal {
+		return larkauth.PollDeviceTokenWithMode(ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+			deviceCode, interval, expiresIn, errOut, core.EffectiveDPoPMode(config.DPoPMode))
+	}
+	return pollDeviceToken(ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+		deviceCode, interval, expiresIn, errOut)
+}
+
 // syncLoginUserToProfile persists the logged-in user info into the named profile.
-func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
+func syncLoginUserToProfile(profileName, appID, openID, userName string, errOut io.Writer) error {
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "load config: %v", err).WithCause(err)
@@ -545,7 +663,9 @@ func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
 
 	for _, oldUser := range oldUsers {
 		if oldUser.UserOpenId != openID {
-			_ = larkauth.RemoveStoredToken(appID, oldUser.UserOpenId)
+			if err := larkauth.RemoveStoredToken(appID, oldUser.UserOpenId); err != nil && errOut != nil {
+				fmt.Fprintf(errOut, "[lark-cli] [WARN] auth login: failed to remove credentials for a replaced user: %v\n", err)
+			}
 		}
 	}
 	return nil
@@ -590,8 +710,9 @@ func filterBatchExcludedScopes(scopes []string) []string {
 // every method here reads the snapshot it was constructed with instead of the
 // built-in set.
 type domainResolver struct {
-	catalog    apicatalog.Catalog
-	registered []common.Shortcut
+	catalog        apicatalog.Catalog
+	registered     []common.Shortcut
+	commandAllowed func([]string) bool
 	// hasExternal is true when this build carries business commands injected via
 	// WithCommandSets beyond the built-in set. Such a build's domain/scope
 	// universe is not reflected in the remote scopes.json (generated from the
@@ -644,7 +765,7 @@ func (r domainResolver) scopesFor(domains []string, identity string, brand core.
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
-	for _, s := range registry.CollectScopesForProjects(r.catalog, domains, identity) {
+	for _, s := range registry.CollectAllowedScopesForProjects(r.catalog, domains, identity, r.commandAllowed) {
 		scopeSet[s] = true
 	}
 
@@ -659,6 +780,9 @@ func (r domainResolver) scopesFor(domains []string, identity string, brand core.
 
 	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
 	for _, sc := range r.registered {
+		if r.commandAllowed != nil && !r.commandAllowed(append([]string{sc.Service}, strings.Fields(sc.Command)...)) {
+			continue
+		}
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}

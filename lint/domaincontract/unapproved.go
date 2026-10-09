@@ -26,6 +26,7 @@ const (
 	unapprovedDomainRule = "unapproved-domain"
 	unusedDomainRule     = "domain-allowlist-unused"
 	incompleteDomainRule = "domain-scan-incomplete"
+	urlRewriteRule       = "url-rewrite-required"
 )
 
 type typedGoFile struct {
@@ -110,7 +111,7 @@ func scanUnapprovedDomains(root string, opts ScanOptions) ([]lintapi.Violation, 
 	for _, rel := range goFiles {
 		path := filepath.Join(root, filepath.FromSlash(rel))
 		parsedFset := token.NewFileSet()
-		parsedFile, parseErr := parser.ParseFile(parsedFset, path, nil, 0)
+		parsedFile, parseErr := parser.ParseFile(parsedFset, path, nil, parser.ParseComments)
 		if parseErr != nil {
 			inventoryComplete = false
 			if opts.ChangedFrom == "" {
@@ -166,6 +167,11 @@ func scanUnapprovedDomains(root string, opts ScanOptions) ([]lintapi.Violation, 
 			if _, ok := policy.Public[evidence.Host]; ok {
 				if !fixture && !policyOwner {
 					observedPublic[evidence.Host] = true
+				}
+				if opts.ChangedFrom != "" {
+					if violation, ok := scan.unrewrittenURLViolation(rel, evidence, added[rel]); ok {
+						out = append(out, violation)
+					}
 				}
 				continue
 			}

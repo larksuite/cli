@@ -5,11 +5,14 @@ package riskcontrol
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
+	"github.com/larksuite/cli/internal/transport"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -30,6 +33,39 @@ func (s *countingSource) Snapshot() Snapshot {
 type staticSource Snapshot
 
 func (s staticSource) Snapshot() Snapshot { return Snapshot(s) }
+
+func TestExtensionRoutingPreservesPlatformSignals(t *testing.T) {
+	received := make(chan http.Header, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		received <- req.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	testurlrewrite.Register(t, func(raw string) string {
+		return strings.Replace(raw, "https://open.feishu.cn", server.URL, 1)
+	})
+	boundary := NewTransport(server.Client().Transport, staticSource{OSType: OSTypeLinux, ProductModel: "test-model"})
+	client := &http.Client{Transport: transport.NewHTTPPolicyRouter(boundary, boundary)}
+	// The same gateway must not receive signals for an ordinary external request.
+	for _, raw := range []string{"https://open.feishu.cn/test", server.URL + "/test"} {
+		req, err := http.NewRequest(http.MethodGet, raw, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req = req.WithContext(core.WithCredentialSource(req.Context(), core.CredentialSourceLocal))
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	platform, external := <-received, <-received
+	for key, want := range map[string]string{HeaderOSType: string(OSTypeLinux), HeaderProductModel: "test-model", HeaderCredentialSource: "local"} {
+		if platform.Get(key) != want || external.Get(key) != "" {
+			t.Errorf("%s: platform=%q external=%q, want %q and empty", key, platform.Get(key), external.Get(key), want)
+		}
+	}
+}
 
 func TestTransportAuthorizesBeforeCollecting(t *testing.T) {
 	tests := []struct {

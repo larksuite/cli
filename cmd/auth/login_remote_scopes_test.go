@@ -5,6 +5,7 @@ package auth
 
 import (
 	"context"
+	"net/http"
 	"reflect"
 	"slices"
 	"strings"
@@ -131,9 +132,13 @@ func TestAuthLoginRun_NonTerminal_NoFlags_ProceedsAndSurfacesAgentHint(t *testin
 		AppSecret:   "secret",
 		Brand:       core.BrandFeishu,
 	})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    larkauth.PathDeviceAuthorization,
+		// Cancel after authorization, so cancellation targets polling.
+		OnMatch: func(_ *http.Request) { cancel() },
+		Method:  "POST",
+		URL:     larkauth.PathDeviceAuthorization,
 		Body: map[string]interface{}{
 			"device_code":               "device-code",
 			"user_code":                 "user-code",
@@ -144,10 +149,7 @@ func TestAuthLoginRun_NonTerminal_NoFlags_ProceedsAndSurfacesAgentHint(t *testin
 		},
 	})
 
-	// Cancel the context so token polling returns promptly after the device
-	// authorization step, which is where the stderr hint is printed.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	// The authorization stub cancels before polling, after the hint response is available.
 	// TestFactory has IsTerminal=false by default and no scope/domain/recommend
 	// flags are set, so this is the bare non-terminal path.
 	err := authLoginRun(&LoginOptions{Factory: f, Ctx: ctx}, builtinResolver(t))

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/update"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // DoctorOptions holds inputs for the doctor command.
@@ -94,7 +96,7 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 	// ── 0. CLI version & update check ──
 	checks = append(checks, pass("cli_version", build.Version))
 	if !opts.Offline && projector.CanReference(recovery.TargetUpdate) {
-		checks = append(checks, checkCLIUpdate()...)
+		checks = append(checks, checkCLIUpdate(opts.Ctx)...)
 	}
 
 	// ── 1. Config file ──
@@ -199,18 +201,18 @@ func networkChecks(ctx context.Context, opts *DoctorOptions, ep core.Endpoints) 
 	}
 
 	var wg sync.WaitGroup
-	results := make([]probeResult, 2)
+	results := []probeResult{{name: "endpoint_open"}, {name: "endpoint_mcp"}}
 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		defer func() { recover() }()
-		results[0] = probeResult{"endpoint_open", ep.Open, probeEndpoint(ctx, httpClient, ep.Open)}
+		results[0].url, results[0].err = probeEndpoint(ctx, httpClient, ep.Open)
 	}()
 	go func() {
 		defer wg.Done()
 		defer func() { recover() }()
-		results[1] = probeResult{"endpoint_mcp", mcpURL, probeEndpoint(ctx, httpClient, mcpURL)}
+		results[1].url, results[1].err = probeEndpoint(ctx, httpClient, mcpURL)
 	}()
 	wg.Wait()
 
@@ -226,39 +228,52 @@ func networkChecks(ctx context.Context, opts *DoctorOptions, ep core.Endpoints) 
 }
 
 // probeEndpoint sends a HEAD request to check reachability.
-func probeEndpoint(ctx context.Context, client *http.Client, url string) error {
+func probeEndpoint(ctx context.Context, client *http.Client, rawURL string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
 	if err != nil {
-		return err
+		return rawURL, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		var effective urlrewrite.RequestError
+		var requestErr *url.Error
+		if errors.As(err, &effective) && errors.As(err, &requestErr) {
+			cloned := *requestErr
+			cloned.URL = effective.EffectiveRequestURL()
+			return cloned.URL, &cloned
+		}
+		return rawURL, err
 	}
 	resp.Body.Close()
-	return nil
+	if resp.Request != nil && resp.Request.URL != nil {
+		actual := *resp.Request.URL
+		actual.User, actual.RawQuery, actual.Fragment = nil, "", ""
+		actual.ForceQuery = false
+		return actual.String(), nil
+	}
+	return rawURL, nil
 }
 
-// checkCLIUpdate actively queries the npm registry for the latest version.
+// checkCLIUpdate actively queries the configured source for its target version.
 // Unlike the root-level async check, this does a synchronous fetch with timeout
 // and works regardless of build version (dev builds included).
-func checkCLIUpdate() []checkResult {
-	latest, err := fetchLatestForDoctor()
+func checkCLIUpdate(ctx context.Context) []checkResult {
+	target, err := fetchLatestForDoctor(ctx)
 	if err != nil {
 		return []checkResult{warn("cli_update", "check failed: "+err.Error(), "")}
 	}
 	current := build.Version
-	if update.IsNewer(latest, current) {
+	if target.Available(current) {
 		return []checkResult{warn("cli_update",
-			fmt.Sprintf("%s → %s available", current, latest),
+			fmt.Sprintf("%s → %s available", current, target.Version),
 			"run: lark-cli update")}
 	}
-	return []checkResult{pass("cli_update", latest+" (up to date)")}
+	return []checkResult{pass("cli_update", target.Version+" (up to date)")}
 }
 
-var fetchLatestForDoctor = update.FetchLatest
+var fetchLatestForDoctor = update.FetchTarget
 
 func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
 	allOK := true
