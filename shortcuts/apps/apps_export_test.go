@@ -136,8 +136,8 @@ func TestAppsExport_RejectsJSONEnvelopeBody(t *testing.T) {
 	if apiErr.Code != 40400 {
 		t.Errorf("code = %d, want 40400 from the envelope", apiErr.Code)
 	}
-	// annotate must touch only 40901: a different envelope code keeps whatever
-	// the classifier produced and must not pick up the publish-first guidance.
+	// annotate must touch only its known codes: a different envelope code keeps
+	// whatever the classifier produced and must not pick up the publish-first guidance.
 	if strings.Contains(errHint(err), "publish") {
 		t.Errorf("hint = %q, want no publish guidance on a non-40901 code", errHint(err))
 	}
@@ -178,6 +178,46 @@ func TestAppsExport_AnnotatesNotPublishedEnvelope(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
 		t.Error("src.zip was written; a not-published error must never become a product")
+	}
+}
+
+// TestAppsExport_TypesPermissionDeniedEnvelope pins the live share-link failure:
+// a viewer without download permission gets HTTP 200 + JSON
+// {"code":40300,"msg":"permission denied"}, not an HTTP 403, so it flows through
+// the envelope classifier. 40300 is not in the shared spark table, so without
+// annotation the caller sees subtype "unknown" and no next step. It must surface
+// as the same permission error the HTTP-403 branch raises.
+func TestAppsExport_TypesPermissionDeniedEnvelope(t *testing.T) {
+	dir := chdirTemp(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(archiveStub("", 200,
+		[]byte(`{"code":40300,"msg":"permission denied"}`), "application/json; charset=utf-8", ""))
+
+	err := runAppsShortcut(t, AppsExport,
+		[]string{"+export", "--meta-token", "share-tok", "--output", "src.zip", "--as", "user"}, factory, stdout)
+	if err == nil {
+		t.Fatal("execute err = nil, want the permission envelope surfaced as an error")
+	}
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("err = %T %v, want *errs.PermissionError", err, err)
+	}
+	if permErr.Category != errs.CategoryAuthorization || permErr.Subtype != errs.SubtypePermissionDenied {
+		t.Errorf("type/subtype = %q/%q, want %q/%q", permErr.Category, permErr.Subtype,
+			errs.CategoryAuthorization, errs.SubtypePermissionDenied)
+	}
+	if permErr.Code != 40300 {
+		t.Errorf("code = %d, want 40300 from the envelope", permErr.Code)
+	}
+	if permErr.Hint != exportPermissionDeniedHint {
+		t.Errorf("hint = %q, want %q", permErr.Hint, exportPermissionDeniedHint)
+	}
+	var apiErr *errs.APIError
+	if !errors.As(permErr.Cause, &apiErr) {
+		t.Errorf("cause = %T, want the classifier's *errs.APIError preserved", permErr.Cause)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
+		t.Error("src.zip was written; a permission error must never become a product")
 	}
 }
 
