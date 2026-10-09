@@ -7246,6 +7246,444 @@
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=trash&project=mail&resource=user_mailbox.thread&version=v1"
         }
       }
+    },
+    "user_mailbox.allow_senders": {
+      "methods": {
+        "batch_create": {
+          "id": "user_mailbox.allow_sender.batch_create",
+          "path": "user_mailboxes/{user_mailbox_id}/allow_senders/batch_create",
+          "httpMethod": "POST",
+          "description": "批量将发件人加入指定用户邮箱的「信任发件人」白名单。支持按邮箱地址 (sender_type=1) 或域名 (sender_type=2) 添加。单次最多 100 项，单用户黑白名单合计最多 2000 项；与黑名单互斥（添加白名单会从黑名单删除对侧记录）。",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "用户邮箱标识。支持以下两种取值：1) `me`（仅 user_access_token 调用时有效，代表当前调用者邮箱）；2) 完整邮箱地址",
+              "example": "user@xxx.xx 或 me"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id"
+          ],
+          "requestBody": {
+            "items": {
+              "type": "array",
+              "description": "待加入白名单的发件人列表，单次最多 100 项",
+              "required": true,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "发件人地址，根据 sender_type 不同含义不同：当 sender_type=1 时为完整邮箱地址；当 sender_type=2 时为邮箱域名",
+                  "required": false,
+                  "example": "marketing@example.com"
+                },
+                "sender_type": {
+                  "type": "integer",
+                  "description": "发件人类型。1=邮箱地址 (Address)，按完整邮箱匹配；2=域名 (Domain)，按邮箱域名匹配",
+                  "required": false,
+                  "example": "1",
+                  "max": "2",
+                  "min": "1"
+                }
+              }
+            }
+          },
+          "responseBody": {
+            "failed_items": {
+              "type": "array",
+              "description": "部分失败的发件人列表。每项含 sender 与 reason_code（INVALID/SELF_ADDRESS/SELF_DOMAIN/CONFLICT_BLOCK/QUOTA_EXCEEDED）。空列表表示全部成功",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "失败的发件人地址或域名，与请求 items[].sender 一致",
+                  "required": false,
+                  "example": "bad-format"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "description": "失败原因码：;- INVALID         非法发件人格式;- SELF_ADDRESS    不能屏蔽/信任自己的邮箱地址;- SELF_DOMAIN     不能屏蔽/信任自己邮箱所在域;- CONFLICT_BLOCK  与对侧名单冲突（黑白互斥）;- QUOTA_EXCEEDED  超过单用户黑白名单合计配额;",
+                  "required": false,
+                  "example": "INVALID"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_create&project=mail&resource=user_mailbox.allow_sender&version=v1",
+          "requiredScopes": [
+            "mail:user_mailbox.message:modify"
+          ]
+        },
+        "batch_remove": {
+          "id": "user_mailbox.allow_sender.batch_remove",
+          "path": "user_mailboxes/{user_mailbox_id}/allow_senders/batch_remove",
+          "httpMethod": "POST",
+          "description": "批量从指定用户邮箱的「信任发件人」白名单中删除发件人。senders 中每项可以是邮箱地址或域名（与添加时一致）。批量删除按字面值哈希匹配，可兼容历史大写数据。单次最多 100 项。",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "用户邮箱标识。支持以下两种取值：1) `me`（仅 user_access_token 调用时有效，代表当前调用者邮箱）；2) 完整邮箱地址",
+              "example": "user@xxx.xx 或 me"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id"
+          ],
+          "requestBody": {
+            "senders": {
+              "type": "array",
+              "description": "待删除的发件人列表，每项为邮箱地址或域名。单次最多 100 项",
+              "required": true
+            }
+          },
+          "responseBody": {
+            "failed_items": {
+              "type": "array",
+              "description": "部分失败的发信人列表",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "失败的发件人地址或域名，与请求 items[].sender 一致",
+                  "required": false,
+                  "example": "bad-format"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "description": "失败原因码：;- INVALID         非法发件人格式;- SELF_ADDRESS    不能屏蔽/信任自己的邮箱地址;- SELF_DOMAIN     不能屏蔽/信任自己邮箱所在域;- CONFLICT_BLOCK  与对侧名单冲突（黑白互斥）;- QUOTA_EXCEEDED  超过单用户黑白名单合计配额;",
+                  "required": false,
+                  "example": "INVALID"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_remove&project=mail&resource=user_mailbox.allow_sender&version=v1",
+          "requiredScopes": [
+            "mail:user_mailbox.message:modify"
+          ]
+        },
+        "list": {
+          "id": "user_mailbox.allow_sender.list",
+          "path": "user_mailboxes/{user_mailbox_id}/allow_senders",
+          "httpMethod": "GET",
+          "description": "列表/搜索指定用户邮箱的「信任发件人」白名单。支持按发件人地址或域名前缀搜索 (keyword)。返回列表按创建时间倒序，使用 page_token + page_size 进行分页。",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "用户邮箱标识。支持以下两种取值：1) `me`（仅 user_access_token 调用时有效，代表当前调用者邮箱）；2) 完整邮箱地址",
+              "example": "user@xxx.xx 或 me"
+            },
+            "keyword": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "搜索关键词，按发件人地址或域名做前缀匹配。空值或省略表示返回全部条目",
+              "default": "",
+              "example": "marketing"
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "每页返回的最大条数。取值范围 1-100，默认 20",
+              "default": "",
+              "example": "20",
+              "max": "100",
+              "min": "1"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "分页查询标记。当 has_more=true 时，将上一次返回的 page_token 作为下一页查询的入参；首次查询无需传入",
+              "default": "",
+              "example": "1710000000"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id"
+          ],
+          "responseBody": {
+            "has_more": {
+              "type": "boolean",
+              "description": "是否还有更多数据。true 表示存在未返回的记录，需使用 page_token 继续查询",
+              "required": false,
+              "example": "true"
+            },
+            "page_token": {
+              "type": "string",
+              "description": "下一页分页标记。当 has_more=true 时返回，作为下一次调用的入参",
+              "required": false,
+              "example": "1710000000"
+            },
+            "items": {
+              "type": "array",
+              "description": "用户级白名单条目列表，按创建时间倒序",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "发件人地址或域名，与创建时的 sender 取值一致",
+                  "required": false,
+                  "example": "marketing@example.com"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:readonly",
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.allow_sender&version=v1",
+          "requiredScopes": [
+            "mail:user_mailbox.message:readonly"
+          ]
+        }
+      }
+    },
+    "user_mailbox.blocked_senders": {
+      "methods": {
+        "batch_create": {
+          "id": "user_mailbox.blocked_sender.batch_create",
+          "path": "user_mailboxes/{user_mailbox_id}/blocked_senders/batch_create",
+          "httpMethod": "POST",
+          "description": "批量将发件人加入指定用户邮箱的「屏蔽发件人」黑名单。支持按邮箱地址 (sender_type=1) 或域名 (sender_type=2) 添加。单次最多 100 项，单用户黑白名单合计最多 2000 项；与白名单互斥（添加黑名单会从白名单删除对侧记录）。",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "用户邮箱标识。支持以下两种取值：1) `me`（仅 user_access_token 调用时有效，代表当前调用者邮箱）；2) 完整邮箱地址",
+              "example": "user@xxx.xx 或 me"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id"
+          ],
+          "requestBody": {
+            "items": {
+              "type": "array",
+              "description": "待加入黑名单的发件人列表，单次最多 100 项",
+              "required": true,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "发件人地址，根据 sender_type 不同含义不同：当 sender_type=1 时为完整邮箱地址；当 sender_type=2 时为邮箱域名",
+                  "required": false,
+                  "example": "marketing@example.com"
+                },
+                "sender_type": {
+                  "type": "integer",
+                  "description": "发件人类型。1=邮箱地址 (Address)，按完整邮箱匹配；2=域名 (Domain)，按邮箱域名匹配",
+                  "required": false,
+                  "example": "1",
+                  "max": "2",
+                  "min": "1"
+                }
+              }
+            }
+          },
+          "responseBody": {
+            "failed_items": {
+              "type": "array",
+              "description": "部分失败的发件人列表。每项含 sender 与 reason_code（INVALID/SELF_ADDRESS/SELF_DOMAIN/CONFLICT_BLOCK/QUOTA_EXCEEDED）。空列表表示全部成功",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "失败的发件人地址或域名，与请求 items[].sender 一致",
+                  "required": false,
+                  "example": "bad-format"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "description": "失败原因码：;- INVALID         非法发件人格式;- SELF_ADDRESS    不能屏蔽/信任自己的邮箱地址;- SELF_DOMAIN     不能屏蔽/信任自己邮箱所在域;- CONFLICT_BLOCK  与对侧名单冲突（黑白互斥）;- QUOTA_EXCEEDED  超过单用户黑白名单合计配额;",
+                  "required": false,
+                  "example": "INVALID"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_create&project=mail&resource=user_mailbox.blocked_sender&version=v1",
+          "requiredScopes": [
+            "mail:user_mailbox.message:modify"
+          ]
+        },
+        "batch_remove": {
+          "id": "user_mailbox.blocked_sender.batch_remove",
+          "path": "user_mailboxes/{user_mailbox_id}/blocked_senders/batch_remove",
+          "httpMethod": "POST",
+          "description": "批量从指定用户邮箱的「屏蔽发件人」黑名单中删除发件人。senders 中每项可以是邮箱地址或域名（与添加时一致）。批量删除按字面值哈希匹配，可兼容历史大写数据。单次最多 100 项。",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "用户邮箱标识。支持以下两种取值：1) `me`（仅 user_access_token 调用时有效，代表当前调用者邮箱）；2) 完整邮箱地址",
+              "example": "user@xxx.xx 或 me"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id"
+          ],
+          "requestBody": {
+            "senders": {
+              "type": "array",
+              "description": "待删除的发件人列表，每项为邮箱地址或域名。单次最多 100 项",
+              "required": true
+            }
+          },
+          "responseBody": {
+            "failed_items": {
+              "type": "array",
+              "description": "部分失败的发信人列表",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "失败的发件人地址或域名，与请求 items[].sender 一致",
+                  "required": false,
+                  "example": "bad-format"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "description": "失败原因码：;- INVALID         非法发件人格式;- SELF_ADDRESS    不能屏蔽/信任自己的邮箱地址;- SELF_DOMAIN     不能屏蔽/信任自己邮箱所在域;- CONFLICT_BLOCK  与对侧名单冲突（黑白互斥）;- QUOTA_EXCEEDED  超过单用户黑白名单合计配额;",
+                  "required": false,
+                  "example": "INVALID"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_remove&project=mail&resource=user_mailbox.blocked_sender&version=v1",
+          "requiredScopes": [
+            "mail:user_mailbox.message:modify"
+          ]
+        },
+        "list": {
+          "id": "user_mailbox.blocked_sender.list",
+          "path": "user_mailboxes/{user_mailbox_id}/blocked_senders",
+          "httpMethod": "GET",
+          "description": "列表/搜索指定用户邮箱的「屏蔽发件人」黑名单。支持按发件人地址或域名前缀搜索 (keyword)。返回列表按创建时间倒序，使用 page_token + page_size 进行分页。",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "用户邮箱标识。支持以下两种取值：1) `me`（仅 user_access_token 调用时有效，代表当前调用者邮箱）；2) 完整邮箱地址",
+              "example": "user@xxx.xx 或 me"
+            },
+            "keyword": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "搜索关键词，按发件人地址或域名做前缀匹配。空值或省略表示返回全部条目",
+              "default": "",
+              "example": "marketing"
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "每页返回的最大条数。取值范围 1-100，默认 20",
+              "default": "",
+              "example": "20",
+              "max": "100",
+              "min": "1"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "分页查询标记。当 has_more=true 时，将上一次返回的 page_token 作为下一页查询的入参；首次查询无需传入",
+              "default": "",
+              "example": "1710000000"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id"
+          ],
+          "responseBody": {
+            "has_more": {
+              "type": "boolean",
+              "description": "是否还有更多数据。true 表示存在未返回的记录，需使用 page_token 继续查询",
+              "required": false,
+              "example": "true"
+            },
+            "page_token": {
+              "type": "string",
+              "description": "下一页分页标记。当 has_more=true 时返回，作为下一次调用的入参",
+              "required": false,
+              "example": "1710000000"
+            },
+            "items": {
+              "type": "array",
+              "description": "用户级黑名单条目列表，按创建时间倒序",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "发件人地址或域名，与创建时的 sender 取值一致",
+                  "required": false,
+                  "example": "marketing@example.com"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:readonly",
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.blocked_sender&version=v1",
+          "requiredScopes": [
+            "mail:user_mailbox.message:readonly"
+          ]
+        }
+      }
     }
   }
 }
