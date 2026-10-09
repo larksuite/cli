@@ -11,7 +11,7 @@ lark-cli base +field-update \
   --base-token <base_token> \
   --table-id <table_id> \
   --field-id <field_id> \
-  --json '{"name":"状态","type":"select","multiple":false,"default_value":["Doing"],"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Doing","hue":"Orange","lightness":"Light"},{"name":"Done","hue":"Green","lightness":"Light"}]}' \
+  --json '{"name":"新字段名","type":"text"}' \
   --yes
 
 ```
@@ -42,47 +42,29 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - 更新语义是 override 式的完整覆盖 `PUT`，不是 partial update；先读取当前定义，再提交整个字段需要保留的可写配置，不要只传零散片段。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
 - 需要字段默认值时传 `default_value`，直接使用字段对应 CellValue；传 `null` 清空。完整规则见 [Field Schema](lark-base-field-schema.md)。
-- `select` 更新时：`options` 仍按对象数组传，避免混入无效字段。**提交的 `options` 就是更新后的完整选项集合：没写进来的存量选项会被删除。** 取全量选项的方法见下方「工作流」第 1 步。
+- 已有静态 `select` 字段的选项增删改一律使用 `+manage-select-options`，不要用本命令覆盖 `options`；选项多时容易漏写，专用操作也更高效。
 - `link` 更新限制：
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
 - 更新 `auto_number.style.rules` 会按新规则更新已有记录的编号；规则结构见 [Field Schema](lark-base-field-schema.md)。
 
-**推荐更新示例**
+**静态选项更新示例（单选、多选通用）：**
 
-```json
-{
-  "name": "状态",
-  "type": "select",
-  "multiple": false,
-  "default_value": ["Doing"],
-  "options": [
-    { "name": "Todo", "hue": "Blue", "lightness": "Lighter" },
-    { "name": "Doing", "hue": "Orange", "lightness": "Light" },
-    { "name": "Done", "hue": "Green", "lightness": "Light" }
-  ]
-}
+```bash
+lark-cli base +manage-select-options --base-token <base_token> --table-id <table_id> --field-id <field_id> \
+  --json '{"operations":[{"operation":"add","name":"新选项"},{"operation":"rename","name":"旧名称","new_name":"新名称"},{"operation":"delete","name":"废弃选项"}]}'
 ```
+
+按顺序执行；查看返回的 `results`，逐项确认 `success`。重命名会更新单元格中的选项名，删除会从单元格移除该选项。动态选项须修改底层 source field。
 
 ## 返回重点
 
 - 返回 `field` 和 `updated: true`。
-- ⚠️ 返回的 `field.options` 同样最多只有前 50 条，**不能用它确认选项总数或核对本次写入是否完整**；要核对请用 `+field-search-options`。
 - 按返回的 `next_step` 和 `verification_hint` 继续；类型转换涉及已有值时抽样读取记录。
 
 ## 工作流
 
-
-1. 先用 `+field-get` 读取当前定义，只改变目标属性，并把需要保留的其他可写配置完整写回。
-   - **`select` 字段例外**：`+field-get` / `+field-list` 返回的 `options` **最多只有前 50 条**，且不带 `has_more` 或总数提示，看起来就像该字段只有 50 个选项。直接拿它做 read-modify-write 会删掉第 50 条之后的全部存量选项。必须改用 `+field-search-options` 翻完全部选项再拼 `--json.options`：
-
-     ```bash
-     lark-cli base +field-search-options \
-       --base-token <base_token> --table-id <table_id> --field-id <field_id> \
-       --limit 200 --offset 0 --as user
-     ```
-
-     `--limit` 最大 200，按 `--offset` 递增翻页直到返回不足一页为止。
+1. 普通字段属性更新先用 `+field-get` 读取当前定义，只改变目标属性，并把需要保留的其他可写配置完整写回。静态选项增删改直接用 `+manage-select-options`，无需读取完整选项列表。
 2. `formula/lookup` 类型更新前先阅读对应指南。
 3. 如果这次更新会改变字段 `type`，先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
 
@@ -150,7 +132,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## 坑点
 
 - ⚠️ 这是全量字段属性更新语义，不是 patch。
-- ⚠️ **`select` 选项是「静默删除」的重灾区**：`+field-get` / `+field-list` 的 `options` 截断到前 50 条，而本命令是全量 `PUT`。两者相乘的结果是——你以为在「新增选项」，实际是「用手上这 50 条 + 新增项替换掉整个选项集合」，第 50 条之后的存量选项全部消失，且命令返回 `updated: true`、`exitCode=0`、无任何告警。新增或修改选项前，必须先用 `+field-search-options` 取全量。
+- ⚠️ 静态 `select` 选项增删改使用 `+manage-select-options`；本命令全量覆盖字段定义，漏写选项会删除已有选项。
 - ⚠️ 这是高风险写入操作，执行时必须带 `--yes`。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先阅读对应指南再执行。
 

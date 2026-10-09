@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-22T17:02:00+08:00",
+  "updatedAt": "2026-09-23T16:09:34+08:00",
   "commands": {
     "application +slash-command-create": {
       "agentSupport": "denied"
@@ -566,6 +566,9 @@
       "agentSupport": "allowed"
     },
     "base +form-update": {
+      "agentSupport": "allowed"
+    },
+    "base +manage-select-options": {
       "agentSupport": "allowed"
     },
     "base +record-batch-create": {

@@ -171,7 +171,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+url-resolve", "+title-resolve",
 		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete", "+table-copy", "+table-copy-status",
-		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
+		"+field-list", "+field-get", "+field-create", "+field-update", "+manage-select-options", "+field-delete", "+field-search-options",
 		"+field-extension-get", "+field-extension-update", "+field-extension-update-cells",
 		"+contact-field-enrichment-list", "+contact-field-enrichment-create",
 		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
@@ -1404,7 +1404,7 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
 	wantTips := []string{
 		`lark-cli base +field-update --base-token <base_token> --table-id <table_id> --field-id "Status" --json '{"name":"Status","type":"text"}' --yes`,
-		`"type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]`,
+		"Use +manage-select-options for all static select option additions, renames, and deletions",
 		`Example auto_number update: lark-cli base +field-update`,
 		`When --json.type is "auto_number", updating the numbering rules also reapplies them to existing numbers`,
 		"just submit the target field definition and do not add extra low-level parameters",
@@ -1422,6 +1422,30 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 	}
 	if strings.Contains(tips, "--reformat-existing-records") {
 		t.Fatalf("+field-update tips must not ask agents to pass --reformat-existing-records:\n%s", tips)
+	}
+	if strings.Contains(tips, "build options from +field-search-options") {
+		t.Fatalf("+field-update tips must direct option changes to +manage-select-options:\n%s", tips)
+	}
+}
+
+func TestBaseFieldGetHelpRoutesSelectOptionChanges(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseFieldGet.Mount(parent, &cmdutil.Factory{})
+	tips := strings.Join(cmdutil.GetTips(parent.Commands()[0]), "\n")
+	if !strings.Contains(tips, "+manage-select-options to add, rename, or delete static options") {
+		t.Fatalf("field-get tips must route static option edits to +manage-select-options:\n%s", tips)
+	}
+	if strings.Contains(tips, "before using this as a +field-update baseline") {
+		t.Fatalf("field-get tips must not recommend option read-modify-write:\n%s", tips)
+	}
+}
+
+func TestBaseFieldListHelpRoutesSelectOptionChanges(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseFieldList.Mount(parent, &cmdutil.Factory{})
+	tips := strings.Join(cmdutil.GetTips(parent.Commands()[0]), "\n")
+	if !strings.Contains(tips, "+manage-select-options to add, rename, or delete static options") {
+		t.Fatalf("field-list tips must route static option edits to +manage-select-options:\n%s", tips)
 	}
 }
 

@@ -1,9 +1,9 @@
 # Base CLI E2E Coverage
 
 ## Metrics
-- Denominator: 142 leaf commands (136 from `main` plus six permission shortcuts in this MR)
-- Covered: 95
-- Coverage: 66.9%
+- Denominator: 145 leaf commands (2026-10-08 compiled `base --help` inventory; all shortcuts)
+- Covered: 96
+- Coverage: 66.2%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
@@ -13,6 +13,7 @@
 - TestBaseButtonRuleDryRun: existing request-shape coverage for button field binding, reading and unbinding by ID/name, including field resolution and the final workflow ID body.
 - TestBaseDashboardBlockCreateDryRun_PositionAndNumberFormat / TestBaseDashboardBlockUpdateDryRun_Position: prove `+dashboard-block-create` / `+dashboard-block-update` dry-run request shape carries the optional top-level `position` sibling and statistics `data_config.number_format`; TestBaseDashboardBlockCreateDryRun_InvalidNumberFormat proves the number_format enum validation rejects a bad formatName before any request.
 - TestBaseFieldCreateDryRunArrayCompat: proves `+field-create` dry-run request shape for the internal JSON-array compatibility path.
+- TestBaseManageSelectOptionsDryRun: proves the POST route and ordered operations body; TestBaseManageSelectOptionsWorkflow is deployment-gated by `LARK_CLI_E2E_BASE_MANAGE_SELECT_OPTIONS_READY=1` and verifies results plus option readback in a temporary Base.
 - TestBaseFieldExtensionDryRun: proves `+field-extension-get`, `+field-extension-update`, and `+field-extension-update-cells` request shapes, including row-vs-column update bodies; TestBaseFieldExtensionUpdateCellsDryRunRejectsRowWithoutRecordID proves row updates require an explicit record.
 - TestBaseFormQuestionsCreateDryRun: proves `+form-questions-create` preserves its POST body and renders the existing-question guard in command help.
 - TestBaseFormDetailDryRun / TestBaseFormSubmitDryRun: prove shared-form detail and submission request shapes.
@@ -81,6 +82,7 @@
 | ✓ | base +dashboard-share-update | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/dashboard partial update, dashboard auto analysis is not exposed; base_share_workflow_test.go::TestBaseShareWorkflow/dashboard share update and get | one of `--enabled`; `--access-scope=invite`; `--show-source` per request; unsupported auto-analysis flag | single-field updates, explicit false, invite-only scope, live read-back, and backend-gated setting exclusion covered |
 | ✕ | base +dashboard-update | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +data-query | shortcut |  | none | no data-query assertions yet |
+| ✕ | base +data-sql-query | shortcut |  | none | no CLI E2E workflow yet |
 | ✓ | base +field-create | shortcut | base_field_dryrun_test.go::TestBaseFieldCreateDryRunArrayCompat | `--base-token`; `--table-id`; `--json`; dry-run only | request shape only |
 | ✕ | base +field-delete | shortcut |  | none | field workflows not covered |
 | ✓ | base +field-extension-get | shortcut | base_field_extension_dryrun_test.go::TestBaseFieldExtensionDryRun/get | `--base-token`; `--table-id`; `--field-id`; dry-run only | request shape only |
@@ -90,6 +92,7 @@
 | ✕ | base +field-list | shortcut |  | none | field workflows not covered |
 | ✕ | base +field-search-options | shortcut |  | none | field workflows not covered |
 | ✕ | base +field-update | shortcut |  | none | field workflows not covered |
+| ✓ | base +manage-select-options | shortcut | base_manage_select_options_dryrun_test.go::TestBaseManageSelectOptionsDryRun; base_manage_select_options_workflow_test.go::TestBaseManageSelectOptionsWorkflow | `--json.operations`; optional hidden `--yes`; live test deployment-gated | POST request shape, ordered result handling, and option readback |
 | ✕ | base +form-create | shortcut |  | none | form workflows not covered |
 | ✕ | base +form-delete | shortcut |  | none | form workflows not covered |
 | ✓ | base +form-display-settings-get | shortcut | base_form_subresource_dryrun_test.go::TestBaseFormDisplaySettingsDryRun/get | `--base-token`; `--table-id`; `--form-id`; dry-run only | request shape only; live blocked on deployment signal |
@@ -137,6 +140,7 @@
 | ✓ | base +role-member-list | shortcut | base_permission_dryrun_test.go::TestBasePermissionShortcutsDryRun | `--base-token`; `--role-id`; `--page-size` | dry-run request shape |
 | ✓ | base +role-member-remove | shortcut | base_permission_dryrun_test.go::TestBasePermissionShortcutsDryRun | `--base-token`; `--role-id`; `--chat-id` | dry-run request shape |
 | ✓ | base +role-update | shortcut | base_role_workflow_test.go::TestBase_RoleWorkflow/update as bot | `--base-token`; `--role-id`; `--json` | |
+| ✕ | base +schema-context-get | shortcut |  | none | no CLI E2E workflow yet |
 | ✕ | base +sql-catalog | shortcut |  | none | catalog has unit coverage only |
 | ✓ | base +sql-query | shortcut | base_sql_dryrun_test.go::TestBaseSQLQueryDryRun | `--base-token`; `--sql`; dry-run | POST request shape and verbatim SQL preservation |
 | ✓ | base +table-create | shortcut | base/helpers_test.go::createTableWithRetry | `--base-token`; `--name`; `--fields`; optional `--view` | helper asserts table id |

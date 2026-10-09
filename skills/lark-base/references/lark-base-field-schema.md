@@ -439,7 +439,8 @@ Location 读取为 `{lng,lat,full_address}`；写入只使用数字 `{lng,lat}`�
 ## 4. 创建与更新
 
 - `+field-create`：按目标字段配置直接构造 `--json`。
-- `+field-update`：使用同样的 JSON 结构，但执行完整覆盖更新，不是局部 patch。先用 `+field-get` 读取当前定义，在其基础上修改目标属性；需要保留的名称、类型、样式、选项、默认值、描述及类型专属配置都应完整写回，并带 `--yes`。
+- 静态 `select` 字段的选项增删改一律使用 `+manage-select-options`，无需读取完整选项列表。
+- 其他字段属性用 `+field-update` 完整覆盖更新；先用 `+field-get` 读取当前定义，保留其他可写配置，并带 `--yes`。
 
 ## 5. 暂不支持字段
 

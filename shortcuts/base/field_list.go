@@ -23,7 +23,7 @@ var BaseFieldList = common.Shortcut{
 		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "300", Desc: "legacy pagination size, range 1-300; hidden for compatibility", Hidden: true},
 	},
 	Tips: []string{
-		"A select field's options are capped at the first 50 entries with no truncation marker; read the full list with +field-search-options.",
+		"Select options here are capped at 50. Use +field-search-options to read beyond 50, and +manage-select-options to add, rename, or delete static options.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := common.ValidatePageSizeTyped(runtime, "limit", 300, 1, 300)
