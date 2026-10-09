@@ -37,7 +37,7 @@ Chat (oc_xxx)
 
 ### AppLink and Share Links
 
-Prefer CLI-returned links: use `chat_app_link` to open joined conversations, `message_app_link` to open messages, and `share_link` to invite others to groups. If manually building a joined-conversation AppLink, use `https://<applink_host>/client/chat/open?openChatId=<oc_xxx>`, never `chatId=<oc_xxx>` or `lark://...chat_id=<oc_xxx>`.
+Prefer CLI-returned links: use `chat_app_link` to open joined conversations, `thread_app_link` to open thread containers, `message_app_link` to open messages, and `share_link` to invite others to groups. For known IDs, use [`+applink`](references/lark-im-applink.md); it assembles chat/thread links locally or resolves a message with one read request. If manually building a joined-conversation AppLink, use `https://<applink_host>/client/chat/open?openChatId=<oc_xxx>`, never `chatId=<oc_xxx>` or `lark://...chat_id=<oc_xxx>`.
 
 ### Identity and Token Mapping
 
@@ -113,6 +113,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 
 | Shortcut | 说明 |
 |----------|------|
+| [`+applink`](references/lark-im-applink.md) | Get navigation links for a joined chat, thread, or message; use known chat/thread IDs locally or resolve a message ID with one read request |
 | [`+chat-create`](references/lark-im-chat-create.md) | Create a group chat or topic chat; user/bot; --chat-mode group|topic; private/public; invites users/bots; optionally sets bot manager |
 | [`+chat-list`](references/lark-im-chat-list.md) | List chats the current user/bot is a member of; defaults to groups; pass --types=p2p,group to include p2p single chats (user-only); user/bot; supports sorting, auto-pagination, --exclude-muted (user-only) |
 | [`+chat-members-list`](references/lark-im-chat-members-list.md) | List members of a chat; returns separate users[] / bots[] buckets; callable as user or bot; --member-types filters which kinds to return; --page-all pagination; surfaces truncations[] when the server caps a bucket |

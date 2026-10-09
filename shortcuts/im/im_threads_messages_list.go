@@ -161,6 +161,17 @@ var ImThreadsMessagesList = common.Shortcut{
 			"has_more":   hasMore,
 			"page_token": nextPageToken,
 		}
+		for _, item := range result.items {
+			message := convertlib.MessageLinkDataFromMap(item)
+			if message.ThreadID != "" && message.ThreadID != threadId {
+				continue
+			}
+			message.ThreadID = threadId
+			if link := message.AppLinks(runtime.Config.Brand).ThreadAppLink; link != "" {
+				outData["thread_app_link"] = link
+				break
+			}
+		}
 		if runtime.Bool("concise") {
 			return outputMessagesConcise(runtime, conciseMessageView{
 				Type:  conciseMessageViewThread,

@@ -24,6 +24,7 @@ type imAffordanceExample struct {
 }
 
 var imAffordanceExamples = []imAffordanceExample{
+	{method: "+applink", command: "lark-cli im +applink --chat-id oc_xxx --thread-id omt_xxx", source: "lark-im/references/lark-im-applink.md"},
 	{method: "+chat-create", command: `lark-cli im +chat-create --name "My Group"`, source: "lark-im/references/lark-im-chat-create.md"},
 	{method: "+chat-list", command: "lark-cli im +chat-list", source: "lark-im/references/lark-im-chat-list.md"},
 	{method: "+chat-members-list", command: "lark-cli im +chat-members-list --chat-id oc_xxx", source: "lark-im/references/lark-im-chat-members-list.md"},
@@ -88,7 +89,7 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 	if got, ok := DomainSkill("im"); !ok || got != "lark-im" {
 		t.Fatalf("DomainSkill(im) = (%q, %v), want (lark-im, true)", got, ok)
 	}
-	if got, want := len(imAffordanceExamples), 36; got != want {
+	if got, want := len(imAffordanceExamples), 37; got != want {
 		t.Fatalf("audited IM example count = %d, want %d", got, want)
 	}
 	affordanceSource, err := os.ReadFile("../../affordance/im.md")
@@ -107,8 +108,8 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 			shortcutCount++
 		}
 	}
-	if shortcutCount != 24 || len(imAffordanceExamples)-shortcutCount != 12 {
-		t.Fatalf("audited split = %d shortcuts / %d raw, want 24 / 12", shortcutCount, len(imAffordanceExamples)-shortcutCount)
+	if shortcutCount != 25 || len(imAffordanceExamples)-shortcutCount != 12 {
+		t.Fatalf("audited split = %d shortcuts / %d raw, want 25 / 12", shortcutCount, len(imAffordanceExamples)-shortcutCount)
 	}
 	for method := range parsedDomain.methods {
 		if !audited[method] {
