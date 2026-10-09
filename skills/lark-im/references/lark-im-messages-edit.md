@@ -2,7 +2,7 @@
 
 > **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
-Edit an already-sent message's content. **Bot identity only** — the edit API does not accept user tokens. Only messages the bot sent can be edited.
+Edit an already-sent message's content. Supports both user identity (`--as user`) and bot identity (`--as bot`).
 
 This skill maps to the shortcut: `lark-cli im +messages-edit` (PUT on the message edit endpoint).
 
@@ -12,10 +12,13 @@ Editing rewrites a message visible to other people. Before calling it, you **mus
 
 1. Which message to edit (its `message_id`)
 2. The new content
-
-The bot must be the original sender — editing another identity's message fails. Identity is always the bot: user identity is rejected server-side (`user access token not support`).
+3. The editing identity (user or bot), which must be the original sender
 
 **Do not** edit a message without explicit user approval.
+
+When using `--as bot`, only messages the app sent can be edited.
+
+When using `--as user`, the message is edited as the authorized end user and requires the `im:message.send_as_user` and `im:message` scopes; only messages that user sent can be edited.
 
 ## Choose The Right Content Flag
 
@@ -31,6 +34,9 @@ The bot must be the original sender — editing another identity's message fails
 ```bash
 # Read the replacement Markdown from a local file
 lark-cli im +messages-edit --as bot --message-id om_xxx --markdown @./updated-message.md
+
+# Edit a message the user sent
+lark-cli im +messages-edit --as user --message-id om_xxx --text "Updated content"
 ```
 
 ## Editing the Attachment Zone
@@ -42,7 +48,7 @@ lark-cli im +messages-edit --as bot --message-id om_xxx --markdown @./updated-me
 To edit a message so it attaches (or re-attaches) files:
 
 ```bash
-lark-cli im +messages-edit --as bot --message-id om_xxx --markdown "Updated content" --set-attachments file_xxx --set-attachments file_yyy
+lark-cli im +messages-edit --message-id om_xxx --markdown "Updated content" --set-attachments file_xxx --set-attachments file_yyy
 ```
 
 - `--set-attachments` accepts a bare file/folder key (`file_xxx`), and may be repeated.
@@ -73,7 +79,7 @@ lark-cli im +messages-edit --as bot --message-id om_xxx --markdown "Updated cont
 | `--set-attachments <key>` | One content option | Repeatable bare file/folder key (`file_xxx`); **replaces** the post attachment zone — the flag values become the final `files` array, discarding any `files` written in `--content`, and duplicate keys are sent once. Name/size/mime/is_folder are filled by the server |
 | `--clear-attachments` | One content option | Clear the post attachment zone by setting `files:[]` |
 | `--msg-type <type>` | No | Message type (default `text`). When `--markdown`/`--set-attachments`/`--clear-attachments` is used the effective type is inferred automatically |
-| `--as <identity>` | No | Identity type: `bot` only (user identity is rejected by the server) |
+| `--as <identity>` | No | Identity type: `bot` or `user` |
 | `--dry-run` | No | Print the request only, do not execute it |
 
 ## Return Value

@@ -17,11 +17,12 @@ import (
 var ImMessagesEdit = common.Shortcut{
 	Service:     "im",
 	Command:     "+messages-edit",
-	Description: "Edit a sent text or rich-text message, optionally updating its attachment zone; bot only (the edit API does not accept user tokens)",
+	Description: "Edit a sent text or rich-text message, optionally updating its attachment zone; user/bot",
 	Risk:        "write",
 	Scopes:      []string{"im:message:send_as_bot"},
+	UserScopes:  []string{"im:message.send_as_user", "im:message"},
 	BotScopes:   []string{"im:message:send_as_bot"},
-	AuthTypes:   []string{"bot"},
+	AuthTypes:   []string{"bot", "user"},
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "message ID (om_xxx)", Required: true},
 		{Name: "msg-type", Default: "text", Desc: "message type for --content JSON; when using --markdown/--text the effective type is inferred automatically", Enum: []string{"text", "post"}},

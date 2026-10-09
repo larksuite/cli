@@ -100,13 +100,10 @@ func writeAgentProfileConfigWithUserStrictMode(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
 }
 
-// TestBuildForAgentProfileIgnoresStrictModeForAllowedBotOnlyShortcut pins that
-// the strict prune does not run for an Agent Employee. `im +messages-edit`
-// declares a bot lane and is allowed by the verdict; under a user strict mode
-// the strict pass would replace it with a stub before the agent pass ever saw
-// it, and the refusal would talk about strict mode to a profile that has no
-// lane to switch to.
-func TestBuildForAgentProfileIgnoresStrictModeForAllowedBotOnlyShortcut(t *testing.T) {
+// TestBuildForAgentProfileKeepsAllowedShortcutUnderUserStrictMode pins that an
+// Agent Employee under a user strict mode still sees a verdict-allowed
+// shortcut, neither stubbed nor hidden.
+func TestBuildForAgentProfileKeepsAllowedShortcutUnderUserStrictMode(t *testing.T) {
 	writeAgentProfileConfigWithUserStrictMode(t)
 	_, root, _ := buildInternalForTest(t, context.Background(), cmdutil.InvocationContext{}, WithoutPlugins())
 

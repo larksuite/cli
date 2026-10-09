@@ -117,9 +117,10 @@ Use this to edit an already-sent **text or rich-text (post)** message, including
 - Sending a corrected message as a new message → use [[+messages-send]].
 
 ### Prerequisites
-- Confirm the target message id, the new content, and that the calling identity (bot) is the original sender before editing.
+- Confirm the target message id, new content, and editing identity before editing.
 
 ### Tips
+- Do not pin user or bot in a generic call: both are supported, and the identity must match the original sender.
 - Omit attachment flags to preserve the current attachment zone.
 - `--set-attachments` replaces the attachment set; `--clear-attachments` removes it.
 - `--content` that already carries a `files` array cannot be combined with the attachment flags.
@@ -128,7 +129,7 @@ Use this to edit an already-sent **text or rich-text (post)** message, including
 
 **Edit a message to a post with an attachment zone**
 ```bash
-lark-cli im +messages-edit --as bot --message-id om_xxx --markdown "Updated content" --set-attachments file_xxx
+lark-cli im +messages-edit --message-id om_xxx --markdown "Updated content" --set-attachments file_xxx
 ```
 
 ### Skills

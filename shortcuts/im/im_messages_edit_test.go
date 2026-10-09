@@ -7,10 +7,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -256,5 +263,196 @@ func TestImMessagesEditDryRunPUTContract(t *testing.T) {
 				t.Fatalf("dry-run content = %s, want substring %q", content, tt.wantFiles)
 			}
 		})
+	}
+
+	// Identity lanes: the mounted shortcut accepts both --as user and --as bot
+	// and plans the same PUT on the message edit endpoint, with no identity
+	// error from the framework.
+	for _, as := range []string{"user", "bot"} {
+		t.Run("mounted dry-run as "+as, func(t *testing.T) {
+			factory, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+				AppID: "test", AppSecret: "test", Brand: core.BrandFeishu, UserOpenId: "ou_self",
+			})
+			parent := &cobra.Command{Use: "im", SilenceErrors: true, SilenceUsage: true}
+			ImMessagesEdit.Mount(parent, factory)
+			parent.SetArgs([]string{"+messages-edit", "--as", as, "--message-id", "om_xxx", "--text", "hi", "--dry-run"})
+			if err := parent.Execute(); err != nil {
+				t.Fatalf("Execute(--as %s --dry-run) error = %v", as, err)
+			}
+			out := stdout.String()
+			for _, want := range []string{`"PUT"`, "/open-apis/im/v1/messages/om_xxx"} {
+				if !strings.Contains(out, want) {
+					t.Fatalf("dry-run output missing %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
+// TestImMessagesEditAuthTypesIncludeUser pins the identity declaration: the
+// edit shortcut is available on both lanes, and the user lane requires the same
+// scopes as +messages-send.
+func TestImMessagesEditAuthTypesIncludeUser(t *testing.T) {
+	for _, want := range []string{"bot", "user"} {
+		if !slices.Contains(ImMessagesEdit.AuthTypes, want) {
+			t.Fatalf("AuthTypes = %v, want it to include %q", ImMessagesEdit.AuthTypes, want)
+		}
+	}
+	if !slices.Equal(ImMessagesEdit.UserScopes, ImMessagesSend.UserScopes) {
+		t.Fatalf("UserScopes = %v, want %v (aligned with +messages-send)", ImMessagesEdit.UserScopes, ImMessagesSend.UserScopes)
+	}
+	if want := []string{"im:message.send_as_user", "im:message"}; !slices.Equal(ImMessagesEdit.UserScopes, want) {
+		t.Fatalf("UserScopes = %v, want %v", ImMessagesEdit.UserScopes, want)
+	}
+	if want := []string{"im:message:send_as_bot"}; !slices.Equal(ImMessagesEdit.BotScopes, want) {
+		t.Fatalf("BotScopes = %v, want %v", ImMessagesEdit.BotScopes, want)
+	}
+}
+
+// identityTokenResolver returns a distinct token per token type so a test
+// can tell from the Authorization header which identity a request used.
+type identityTokenResolver struct{}
+
+func (identityTokenResolver) ResolveToken(_ context.Context, spec credential.TokenSpec) (*credential.TokenResult, error) {
+	if spec.Type == credential.TokenTypeUAT {
+		return &credential.TokenResult{Token: "user-token"}, nil
+	}
+	return &credential.TokenResult{Token: "tenant-token"}, nil
+}
+
+// TestImMessagesEditExecuteUsesSelectedIdentity runs Execute end to end
+// through the HTTP transport: the PUT on the edit endpoint must carry the
+// token of the selected identity, so --as user really edits as the user.
+func TestImMessagesEditExecuteUsesSelectedIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		as        core.Identity
+		wantToken string
+	}{
+		{core.AsUser, "Bearer user-token"},
+		{core.AsBot, "Bearer tenant-token"},
+	} {
+		t.Run(string(tc.as), func(t *testing.T) {
+			var gotMethod, gotPath, gotAuth string
+			var gotBody map[string]interface{}
+			runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				gotMethod, gotPath, gotAuth = req.Method, req.URL.Path, req.Header.Get("Authorization")
+				if req.Body != nil {
+					data, _ := io.ReadAll(req.Body)
+					_ = json.Unmarshal(data, &gotBody)
+				}
+				return shortcutJSONResponse(200, map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"message_id": "om_xxx", "chat_id": "oc_xxx", "update_time": "1700000000000"},
+				}), nil
+			}))
+			runtime.Factory.Credential = credential.NewCredentialProvider(nil, nil, identityTokenResolver{}, nil)
+			setRuntimeField(t, runtime, "resolvedAs", tc.as)
+			runtime.Cmd = newEditTestRuntimeContext(map[string]string{"message-id": "om_xxx", "text": "hi"}, nil).Cmd
+
+			if err := ImMessagesEdit.Execute(context.Background(), runtime); err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			if gotMethod != http.MethodPut || gotPath != "/open-apis/im/v1/messages/om_xxx" {
+				t.Fatalf("request = %s %s, want PUT /open-apis/im/v1/messages/om_xxx", gotMethod, gotPath)
+			}
+			if gotAuth != tc.wantToken {
+				t.Fatalf("Authorization = %q, want %q", gotAuth, tc.wantToken)
+			}
+			if gotBody["msg_type"] != "text" || gotBody["content"] != `{"text":"hi"}` {
+				t.Fatalf("body = %v, want text content {\"text\":\"hi\"}", gotBody)
+			}
+		})
+	}
+}
+
+// editScopedTokenResolver is identityTokenResolver with granted scopes attached,
+// so the command entry's scope pre-check runs instead of being skipped.
+type editScopedTokenResolver struct{ userScopes, botScopes string }
+
+func (r editScopedTokenResolver) ResolveToken(_ context.Context, spec credential.TokenSpec) (*credential.TokenResult, error) {
+	if spec.Type == credential.TokenTypeUAT {
+		return &credential.TokenResult{Token: "user-token", Scopes: r.userScopes}, nil
+	}
+	return &credential.TokenResult{Token: "tenant-token", Scopes: r.botScopes}, nil
+}
+
+// TestImMessagesEditMountedExecuteAsUserAndBot drives the real command entry
+// (identity resolution, scope pre-check and Execute) through the HTTP mock:
+// --as user and --as bot each send one PUT on the edit endpoint, and the two
+// requests carry the selected identity's token.
+func TestImMessagesEditMountedExecuteAsUserAndBot(t *testing.T) {
+	auth := map[string]string{}
+	for _, as := range []string{"user", "bot"} {
+		t.Run(as, func(t *testing.T) {
+			factory, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+				AppID: "test", AppSecret: "test", Brand: core.BrandFeishu, UserOpenId: "ou_self",
+			})
+			factory.Credential = credential.NewCredentialProvider(nil, nil, editScopedTokenResolver{
+				userScopes: "im:message.send_as_user im:message",
+				botScopes:  "im:message:send_as_bot",
+			}, nil)
+			var gotBody map[string]interface{}
+			reg.Register(&httpmock.Stub{
+				Method: http.MethodPut,
+				URL:    "/open-apis/im/v1/messages/om_xxx",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"message_id": "om_xxx", "chat_id": "oc_xxx", "update_time": "1700000000000"},
+				},
+				OnMatch: func(req *http.Request) {
+					auth[as] = req.Header.Get("Authorization")
+					if req.Body != nil {
+						data, _ := io.ReadAll(req.Body)
+						_ = json.Unmarshal(data, &gotBody)
+					}
+				},
+			})
+			parent := &cobra.Command{Use: "im", SilenceErrors: true, SilenceUsage: true}
+			ImMessagesEdit.Mount(parent, factory)
+			parent.SetArgs([]string{"+messages-edit", "--as", as, "--message-id", "om_xxx", "--text", "hi", "--format", "json"})
+			if err := parent.Execute(); err != nil {
+				t.Fatalf("Execute(--as %s) error = %v", as, err)
+			}
+			if auth[as] == "" {
+				t.Fatalf("PUT /open-apis/im/v1/messages/om_xxx was not sent as %s", as)
+			}
+			if gotBody["msg_type"] != "text" || gotBody["content"] != `{"text":"hi"}` {
+				t.Fatalf("body = %v, want text content {\"text\":\"hi\"}", gotBody)
+			}
+			if !strings.Contains(stdout.String(), "om_xxx") {
+				t.Fatalf("output missing message_id:\n%s", stdout.String())
+			}
+		})
+	}
+	if auth["user"] != "Bearer user-token" || auth["bot"] != "Bearer tenant-token" {
+		t.Fatalf("Authorization user=%q bot=%q, want user-token / tenant-token", auth["user"], auth["bot"])
+	}
+}
+
+// TestImMessagesEditMountedUserMissingScopeSendsNothing checks that the
+// command entry's scope pre-check guards the user lane: a user token without
+// im:message.send_as_user fails before any request is sent.
+func TestImMessagesEditMountedUserMissingScopeSendsNothing(t *testing.T) {
+	factory, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu, UserOpenId: "ou_self",
+	})
+	factory.Credential = credential.NewCredentialProvider(nil, nil, editScopedTokenResolver{userScopes: "im:message"}, nil)
+	sent := false
+	reg.Register(&httpmock.Stub{
+		Method:   http.MethodPut,
+		URL:      "/open-apis/im/v1/messages/om_xxx",
+		Body:     map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		Optional: true,
+		OnMatch:  func(*http.Request) { sent = true },
+	})
+	parent := &cobra.Command{Use: "im", SilenceErrors: true, SilenceUsage: true}
+	ImMessagesEdit.Mount(parent, factory)
+	parent.SetArgs([]string{"+messages-edit", "--as", "user", "--message-id", "om_xxx", "--text", "hi"})
+	err := parent.Execute()
+	if err == nil || !strings.Contains(err.Error(), "im:message.send_as_user") {
+		t.Fatalf("Execute() error = %v, want missing im:message.send_as_user", err)
+	}
+	if sent {
+		t.Fatal("edit request was sent despite the missing scope")
 	}
 }

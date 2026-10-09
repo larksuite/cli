@@ -32,7 +32,7 @@ var imAffordanceExamples = []imAffordanceExample{
 	{method: "+chat-update", command: `lark-cli im +chat-update --chat-id oc_xxx --name "New Group Name"`, source: "lark-im/references/lark-im-chat-update.md"},
 	{method: "+message-read-users", command: "lark-cli im +message-read-users --message-id om_xxx", source: "lark-im/references/lark-im-message-read-status.md"},
 	{method: "+messages-mget", command: "lark-cli im +messages-mget --message-ids om_xxx", source: "lark-im/references/lark-im-messages-mget.md"},
-	{method: "+messages-edit", command: "lark-cli im +messages-edit --as bot --message-id om_xxx --markdown \"Updated content\" --set-attachments file_xxx", source: "lark-im/references/lark-im-messages-edit.md"},
+	{method: "+messages-edit", command: "lark-cli im +messages-edit --message-id om_xxx --markdown \"Updated content\" --set-attachments file_xxx", source: "lark-im/references/lark-im-messages-edit.md"},
 	{
 		method:        "+messages-read-status",
 		command:       "lark-cli im +messages-read-status --as user --message-ids om_xxx,om_yyy",
