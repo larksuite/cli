@@ -34,6 +34,7 @@ var DriveImport = common.Shortcut{
 		{Name: "folder-token", Desc: "target folder token (omit for root folder; API accepts empty mount_key as root)"},
 		{Name: "name", Desc: "imported file name (default: local file name without extension)"},
 		{Name: "target-token", Desc: "existing token to import data into (only for type=bitable); when set, data is mounted into this bitable instead of creating a new one"},
+		{Name: "no-wait", Type: "bool", Desc: "return the import task ticket immediately without polling; resume with drive +task_result"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return ValidateImport(importParamsFromFlags(runtime))
@@ -55,6 +56,7 @@ type ImportParams struct {
 	FolderToken string
 	Name        string
 	TargetToken string
+	NoWait      bool
 	// FileExtension optionally overrides the extension inferred from File's
 	// name. Leave empty to infer from File (the default). Callers that have
 	// sniffed the file's real container use this to correct a mislabeled name
@@ -82,6 +84,7 @@ func importParamsFromFlags(runtime *common.RuntimeContext) ImportParams {
 		FolderToken: runtime.Str("folder-token"),
 		Name:        runtime.Str("name"),
 		TargetToken: runtime.Str("target-token"),
+		NoWait:      runtime.Bool("no-wait"),
 	}
 }
 
@@ -103,7 +106,11 @@ func PlanImportDryRun(runtime *common.RuntimeContext, p ImportParams) *common.Dr
 	}
 
 	dry := common.NewDryRunAPI()
-	dry.Desc("Upload file (single-part or multipart) -> create import task -> poll status")
+	if p.NoWait {
+		dry.Desc("Upload file (single-part or multipart) -> create import task -> return ticket without polling")
+	} else {
+		dry.Desc("Upload file (single-part or multipart) -> create import task -> poll status")
+	}
 
 	appendDriveImportFolderTokenWikiCheckDryRun(dry, spec)
 	appendDriveImportUploadDryRun(dry, spec, fileSize)
@@ -112,6 +119,10 @@ func PlanImportDryRun(runtime *common.RuntimeContext, p ImportParams) *common.Dr
 	dry.POST("/open-apis/drive/v1/import_tasks").
 		Desc("[2] Create import task").
 		Body(spec.CreateTaskBody("<file_token>"))
+
+	if p.NoWait {
+		return dry
+	}
 
 	dry.GET("/open-apis/drive/v1/import_tasks/:ticket").
 		Desc("[3] Poll import task result").
@@ -147,6 +158,25 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 	ticket, err := createDriveImportTask(runtime, spec, fileToken)
 	if err != nil {
 		return err
+	}
+	if p.NoWait {
+		profile := ""
+		if runtime.Config != nil {
+			profile = runtime.Config.ProfileName
+		}
+		nextCommand := driveImportTaskResultCommand(
+			ticket,
+			profile,
+			string(runtime.As()),
+		)
+		runtime.Out(map[string]interface{}{
+			"ticket":       ticket,
+			"type":         spec.DocType,
+			"ready":        false,
+			"timed_out":    false,
+			"next_command": nextCommand,
+		}, nil)
+		return nil
 	}
 
 	// Step 3: Poll task
@@ -187,7 +217,15 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 		out["extra"] = status.Extra
 	}
 	if !ready {
-		nextCommand := driveImportTaskResultCommand(ticket)
+		profile := ""
+		if runtime.Config != nil {
+			profile = runtime.Config.ProfileName
+		}
+		nextCommand := driveImportTaskResultCommand(
+			ticket,
+			profile,
+			string(runtime.As()),
+		)
 		fmt.Fprintf(runtime.IO().ErrOut, "Import task is still in progress. Continue with: %s\n", nextCommand)
 		out["timed_out"] = true
 		out["next_command"] = nextCommand

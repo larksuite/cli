@@ -371,9 +371,34 @@ func (s driveImportStatus) StatusLabel() string {
 }
 
 // driveImportTaskResultCommand prints the resume command returned after bounded
-// polling times out locally.
-func driveImportTaskResultCommand(ticket string) string {
-	return fmt.Sprintf("lark-cli drive +task_result --scenario import --ticket %s", ticket)
+// polling times out locally. It pins the resolved profile and identity so the
+// follow-up cannot accidentally query the task in another account.
+func driveImportTaskResultCommand(ticket, profile, identity string) string {
+	parts := []string{"lark-cli"}
+	if profile != "" {
+		parts = append(parts, "--profile="+shellQuoteDriveImportArg(profile))
+	}
+	parts = append(parts,
+		"drive", "+task_result",
+		"--scenario", "import",
+		"--ticket", shellQuoteDriveImportArg(ticket),
+	)
+	if identity != "" {
+		parts = append(parts, "--as", shellQuoteDriveImportArg(identity))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuoteDriveImportArg(value string) string {
+	if value != "" && strings.IndexFunc(value, func(char rune) bool {
+		return !((char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			strings.ContainsRune("._/-", char))
+	}) == -1 {
+		return value
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 // createDriveImportTask creates the server-side import task after the media

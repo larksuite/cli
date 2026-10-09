@@ -6,6 +6,7 @@ package drive
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strconv"
@@ -352,11 +353,114 @@ func TestDriveImportTimeoutReturnsFollowUpCommand(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte(`"timed_out": true`)) {
 		t.Fatalf("stdout missing timed_out=true: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"next_command": "lark-cli drive +task_result --scenario import --ticket tk_import"`)) {
+	if !bytes.Contains(stdout.Bytes(), []byte(`"next_command": "lark-cli drive +task_result --scenario import --ticket tk_import --as bot"`)) {
 		t.Fatalf("stdout missing follow-up command: %s", stdout.String())
 	}
 	if bytes.Contains(stdout.Bytes(), []byte(`"permission_grant"`)) {
 		t.Fatalf("stdout should not include permission_grant before import is ready: %s", stdout.String())
+	}
+}
+
+func TestDriveImportNoWaitReturnsTicketWithoutPolling(t *testing.T) {
+	config := driveTestConfig()
+	config.ProfileName = "boe"
+	f, stdout, _, reg := cmdutil.TestFactory(t, config)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_123"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/import_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_no_wait"},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.WriteFile("data.xlsx", []byte("fake-xlsx"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveImport, []string{
+		"+import",
+		"--file", "data.xlsx",
+		"--type", "sheet",
+		"--no-wait",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		`"ticket": "tk_no_wait"`,
+		`"ready": false`,
+		`"next_command": "lark-cli --profile=boe drive +task_result --scenario import --ticket tk_no_wait --as bot"`,
+	} {
+		if !bytes.Contains(stdout.Bytes(), []byte(want)) {
+			t.Fatalf("stdout missing %s: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestDriveImportNoWaitDryRunStopsAfterTaskCreation(t *testing.T) {
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.WriteFile("data.xlsx", []byte("fake-xlsx"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "drive +import"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("type", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("name", "", "")
+	cmd.Flags().String("target-token", "", "")
+	cmd.Flags().Bool("no-wait", false, "")
+	for name, value := range map[string]string{
+		"file": "./data.xlsx",
+		"type": "sheet",
+	} {
+		if err := cmd.Flags().Set(name, value); err != nil {
+			t.Fatalf("set --%s: %v", name, err)
+		}
+	}
+	if err := cmd.Flags().Set("no-wait", "true"); err != nil {
+		t.Fatalf("set --no-wait: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, driveTestConfig(), core.AsBot)
+	dry := DriveImport.DryRun(context.Background(), runtime)
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry-run: %v", err)
+	}
+	var got struct {
+		Description string `json:"description"`
+		API         []struct {
+			Desc string `json:"desc"`
+			URL  string `json:"url"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry-run: %v", err)
+	}
+	if !strings.Contains(got.Description, "return ticket without polling") {
+		t.Fatalf("description = %q, want no-wait contract", got.Description)
+	}
+	for _, call := range got.API {
+		if strings.Contains(call.URL, "import_tasks/:ticket") {
+			t.Fatalf("no-wait dry-run unexpectedly polls: %#v", got.API)
+		}
+	}
+	if got.API[len(got.API)-1].Desc != "[2] Create import task" {
+		t.Fatalf("create-task description = %q", got.API[len(got.API)-1].Desc)
 	}
 }
 
