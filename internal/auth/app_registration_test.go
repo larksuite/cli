@@ -122,8 +122,8 @@ func TestRequestAppRegistration_UsesFeishuBootstrapAndConfiguredVerificationBran
 }
 
 // TestRequestAppRegistration_RewritesVerificationURL pins the presentation
-// boundary: the final CLI-built confirmation page URL passes through the URL
-// rewrite extension for both brands without losing its query parameters.
+// boundary: the final confirmation URL passes through the URL rewrite extension
+// for both brands without losing its path or query parameters.
 func TestRequestAppRegistration_RewritesVerificationURL(t *testing.T) {
 	testurlrewrite.Register(t, func(rawURL string) string {
 		rawURL = strings.Replace(rawURL, "open.feishu.cn", "open.mirror.test", 1)
@@ -134,14 +134,23 @@ func TestRequestAppRegistration_RewritesVerificationURL(t *testing.T) {
 	})}
 
 	for _, brand := range []core.LarkBrand{core.BrandFeishu, core.BrandLark} {
-		resp, err := RequestAppRegistration(context.Background(), client, brand, io.Discard)
+		resp, err := RequestAppRegistration(context.Background(), client, brand, AppRegistrationBeginOptions{}, io.Discard)
 		if err != nil {
 			t.Fatalf("RequestAppRegistration(%q) error = %v", brand, err)
 		}
-		got := BuildVerificationURL(resp.VerificationUriComplete, "1.2.3")
-		want := "https://open.mirror.test/page/cli?user_code=TEST-CODE&lpv=1.2.3&ocv=1.2.3&from=cli"
-		if got != want {
-			t.Errorf("brand %q: verification URL = %q, want %q", brand, got, want)
+		got, err := url.Parse(BuildVerificationURL(resp.VerificationUriComplete, "1.2.3", ""))
+		if err != nil {
+			t.Fatalf("parse verification URL: %v", err)
+		}
+		if got.Host != "open.mirror.test" || got.Path != "/page/launcher" {
+			t.Errorf("brand %q: verification URL = %q, want rewritten launcher URL", brand, got)
+		}
+		query := got.Query()
+		if query.Get("user_code") != "TEST-CODE" ||
+			query.Get("lpv") != "1.2.3" ||
+			query.Get("ocv") != "1.2.3" ||
+			query.Get("from") != "cli" {
+			t.Errorf("brand %q: verification query = %v", brand, query)
 		}
 	}
 }

@@ -48,12 +48,6 @@ require (
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/google/btree v1.1.2 // indirect
-	github.com/google/certificate-transparency-go v1.1.8 // indirect
-	github.com/google/certtostore v1.0.6 // indirect
-	github.com/google/deck v0.0.0-20230104221208-105ad94aa8ae // indirect
-	github.com/google/go-attestation v0.5.1 // indirect
-	github.com/google/go-tspi v0.3.0 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
