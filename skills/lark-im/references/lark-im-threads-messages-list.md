@@ -60,6 +60,22 @@ lark-cli im +threads-messages-list --thread omt_xxx --dry-run
 
 ## Core Constraints
 
+### File exports
+
+Use the same [file export workflow as chat history](lark-im-chat-messages-list.md#exporting-history-for-analysis)
+when analyzing long threads:
+
+```bash
+lark-cli im +threads-messages-list --thread omt_xxx --page-all --no-reactions --output ./exports/thread.json
+lark-cli im +threads-messages-list --thread om_xxx --page-all --concise --output-dir ./exports
+```
+
+`--output-dir` uses the resolved thread ID, including when `--thread` is a
+message ID. The saved content follows `--format`, `--concise` or `--jq`; stdout
+contains only the JSON file summary and `meta.pagination`. Existing exports
+require `--overwrite`. For an incomplete result, resume into a new file using
+`meta.pagination.next_token`.
+
 ### 1. Source of `thread_id`
 
 `thread_id` (`omt_xxx` or `om_xxx`) comes from the `thread_id` field in results returned by `im +chat-messages-list` or `im +messages-search`. Do not guess a thread ID. Fetch messages first and use the returned value.
