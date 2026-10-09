@@ -73,7 +73,7 @@ func TestDocs_CreateAndFetchWorkflowAsBot(t *testing.T) {
 	})
 }
 
-func TestDocs_CreateAndFetchWorkflowAsUser(t *testing.T) {
+func TestDocs_CreateAndFetchWorkflowAsUser_AATCompatible(t *testing.T) {
 	clie2e.SkipWithoutUserToken(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

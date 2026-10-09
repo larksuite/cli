@@ -14,7 +14,7 @@ test('redacts raw and encoded credentials', () => {
 });
 test('identity evidence requires PASS; final rerun wins', () => {
   const event = (Test, Action) => JSON.stringify({ Package: 'docs', Test, Action });
-  const s = coverage([event('TestDocs_CreateAndFetchWorkflowAsUser','run'),event('TestDocs_CreateAndFetchWorkflowAsUser','skip'),event('TestDocs_CreateAndFetchWorkflowAsBot','pass'),event('Other','fail'),event('Other','pass')].join('\n'));
+  const s = coverage([event('TestDocs_CreateAndFetchWorkflowAsUser_AATCompatible','run'),event('TestDocs_CreateAndFetchWorkflowAsUser_AATCompatible','skip'),event('TestDocs_CreateAndFetchWorkflowAsBot','pass'),event('Other','fail'),event('Other','pass')].join('\n'));
   assert.deepEqual(s, { passed: 2, failed: 0, skipped: 1, bot: 1, user: 0 });
 });
 test('unsafe package selection fails before acquiring tokens', async () => {

@@ -33,3 +33,24 @@ Put them under tests/cli_e2e/xxx.
 make build
 go test ./tests/cli_e2e/... -count=1
 ```
+
+## Internal CI: UAT/TAT and AAT
+
+The internal `e2e_live` job selects business packages from the diff. User commands
+use UAT and bot commands use TAT; adding a normal test to a selected package does
+not require changing CI.
+
+For a self-contained user workflow whose **setup, assertions and cleanup** also
+support Agent Employee AAT, name the top-level test
+`TestXxxAsUser_AATCompatible`. The suffix is an explicit compatibility declaration,
+not a different CLI identity: both UAT and AAT use `--as user`.
+
+The AAT runner automatically discovers this exact suffix, including tests in new
+packages, and unions those tests with its existing explicit allowlist. Duplicates
+run once. Business contributors add the test and update their `coverage.md`;
+new suffixed tests require no CI YAML or runner changes. Confirm AAT permissions
+and product capability with a live run; do not mark bot-dependent, dry-run or
+uncleanable workflows. Missing, skipped or failed selected tests fail the AAT gate.
+
+See [internal live CI documentation](../../.codebase/e2e/README.md#adding-aat-compatible-cases)
+for legacy explicit entries, discovery, reports and local validation.

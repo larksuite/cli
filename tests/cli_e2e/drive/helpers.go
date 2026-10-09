@@ -118,7 +118,18 @@ func deleteDriveResourceAndVerify(ctx context.Context, token, docType, defaultAs
 		defaultAs = "bot"
 	}
 
-	deleteResult, deleteErr := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
+	// Reserve part of the caller's cleanup deadline for read-after-delete.
+	// The CLI may keep polling an async task after the resource is gone; using
+	// the whole deadline there leaves the verification command unable to start.
+	deleteBudget := 30 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline) / 2; remaining < deleteBudget {
+			deleteBudget = remaining
+		}
+	}
+	deleteCtx, cancelDelete := context.WithTimeout(ctx, deleteBudget)
+	defer cancelDelete()
+	deleteResult, deleteErr := clie2e.RunCmdWithRetry(deleteCtx, clie2e.Request{
 		Args:      []string{"drive", "+delete", "--file-token", token, "--type", docType, "--yes"},
 		DefaultAs: defaultAs,
 	}, driveDeleteRetry)

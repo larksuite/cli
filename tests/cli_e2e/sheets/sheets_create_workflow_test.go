@@ -13,7 +13,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestSheets_CreateWorkflowAsUser(t *testing.T) {
+func TestSheets_CreateWorkflowAsUser_AATCompatible(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 

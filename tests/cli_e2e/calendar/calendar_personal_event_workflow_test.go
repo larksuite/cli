@@ -14,7 +14,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestCalendar_PersonalEventWorkflowAsUser(t *testing.T) {
+func TestCalendar_PersonalEventWorkflowAsUser_AATCompatible(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

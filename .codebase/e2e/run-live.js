@@ -38,7 +38,7 @@ function coverage(events) {
   for (const event of final.values()) {
     counts[{ pass: 'passed', fail: 'failed', skip: 'skipped' }[event.Action]]++;
     if (event.Action === 'pass' && event.Test === 'TestDocs_CreateAndFetchWorkflowAsBot') counts.bot++;
-    if (event.Action === 'pass' && event.Test === 'TestDocs_CreateAndFetchWorkflowAsUser') counts.user++;
+    if (event.Action === 'pass' && event.Test === 'TestDocs_CreateAndFetchWorkflowAsUser_AATCompatible') counts.user++;
   }
   return counts;
 }
@@ -101,7 +101,7 @@ async function runLive(env = process.env) {
     stage = 'identity_smoke';
     const smokeRC = await execute('go', [...commonArgs, '--packages=./tests/cli_e2e/docs',
       `--junitfile=${path.join(privateDir, 'smoke.xml')}`, `--jsonfile=${smokeEvents}`, '--', '-count=1', '-timeout=5m',
-      '-run=^TestDocs_CreateAndFetchWorkflowAs(Bot|User)$'], cleanEnv, smokeLog);
+      '-run=^TestDocs_CreateAndFetchWorkflowAs(Bot|User_AATCompatible)$'], cleanEnv, smokeLog);
     publish('smoke.log'); publish('smoke.xml'); publish('smoke.jsonl');
     const smoke = coverage(fs.existsSync(smokeEvents) ? fs.readFileSync(smokeEvents, 'utf8') : '');
     fs.writeFileSync(path.join(reportDir, 'identity-summary.json'), JSON.stringify(smoke, null, 2));

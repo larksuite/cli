@@ -55,3 +55,6 @@ cover*.out
 
 lark-env.sh
 /automations/
+
+# Internal AAT CI artifacts
+/e2e-aat-report/

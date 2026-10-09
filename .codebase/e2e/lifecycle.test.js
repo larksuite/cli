@@ -20,10 +20,11 @@ for (const mode of ['success', 'acquire-failure', 'verify-failure', 'smoke-skip'
       fs.writeFileSync(path.join(root,'bin/go'), `#!${process.execPath}
 const fs=require('fs');const args=process.argv.slice(2);const smoke=args.some(a=>a.startsWith('-run='));const mode=process.env.MODE;
 if(!args.includes('--rerun-fails-run-root-test'))process.exit(89);
+if(smoke){const pattern=new RegExp(args.find(a=>a.startsWith('-run=')).slice(5));if(!['TestDocs_CreateAndFetchWorkflowAsBot','TestDocs_CreateAndFetchWorkflowAsUser_AATCompatible'].every(name=>pattern.test(name)))process.exit(90);}
 fs.appendFileSync('executions',smoke?'smoke\\n':'live\\n');
 if(process.env.E2E_BBQ_ACCESS_TOKEN || process.env.TEST_BOT1_APP_SECRET || process.env.LARKSUITE_CLI_USER_ACCESS_TOKEN)process.exit(88);
 const xml=args.find(a=>a.startsWith('--junitfile=')).split('=')[1];const json=args.find(a=>a.startsWith('--jsonfile=')).split('=')[1];
-const ev=['Bot','User'].map(as=>JSON.stringify({Package:'docs',Test:'TestDocs_CreateAndFetchWorkflowAs'+as,Action:mode==='smoke-skip'&&as==='User'?'skip':'pass'})).join('\\n');
+const ev=['Bot','User'].map(as=>JSON.stringify({Package:'docs',Test:'TestDocs_CreateAndFetchWorkflowAs'+as+(as==='User'?'_AATCompatible':''),Action:mode==='smoke-skip'&&as==='User'?'skip':'pass'})).join('\\n');
 fs.writeFileSync(json,ev);fs.writeFileSync(xml,'<testsuite>fake-uat-secret</testsuite>');console.log('fake-uat-secret fake-tat-secret');process.exit(!smoke&&mode==='live-failure'?7:0);
 `, {mode:0o700});
       const result = spawnSync(process.execPath,['--require',path.join(root,'preload.js'),runner], {cwd:root,encoding:'utf8',env:{...process.env,MODE:mode,PATH:path.join(root,'bin')+path.delimiter+process.env.PATH,RUNNER_TEMP:path.join(root,'private'),LIVE_PKGS:'github.com/larksuite/cli/tests/cli_e2e/docs',TEST_BOT1_APP_ID:'cli_test',TEST_BOT1_APP_SECRET:'fake-app-secret',E2E_BBQ_ACCESS_TOKEN:'fake-bbq-secret'}});

@@ -16,8 +16,8 @@
 # Nothing here publishes outward: no release, no npm or bnpm publish, no
 # codecov upload, no pkg.pr.new preview package, no GitHub API call. Every
 # command reads the checkout or fetches Go modules through the internal proxy.
-# The one job that leaves the runner is e2e_live, by design: it drives the CLI
-# against a real Feishu test tenant, creating and deleting real records.
+# The live jobs e2e_live and e2e_aat leave the runner by design: they drive
+# the CLI against dedicated Feishu test identities and clean up created records.
 #
 # Six jobs prepare the API registry. Until upstream #2232 (lazy API catalog
 # routing) `scripts/fetch_meta.py` writes internal/registry/meta_data.json,
@@ -650,7 +650,7 @@ jobs:
           - 'if [ -n "$DRY_ROOT" ]; then go test -v -count=1 -timeout=5m "$DRY_ROOT"; fi'
           - 'if [ -n "$DRY_PKGS" ]; then go test -v -count=1 -timeout=5m $DRY_PKGS -run "DryRun|Regression"; fi'
 
-  # The one job that talks to a real tenant. It mirrors the public e2e-live
+  # The UAT/TAT job that talks to a real tenant. It mirrors the public e2e-live
   # job, including its gate: the cheap checks must pass first, so a broken
   # branch never gets to create and delete records in a live workspace.
   #
@@ -736,6 +736,44 @@ jobs:
       - name: Preserve live E2E exit status
         commands:
           - 'exit "$(cat e2e-live-report/exit-code)"'
+
+  # Dedicated Agent Employee application; never receives the UAT/TAT secrets.
+  e2e_aat:
+    name: E2E AAT
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    timeout: 20
+    depends: [ unit_test, lint, script_test, quality_gate, e2e_dry_run ]
+    if: '${{Jobs.unit_test.Conclusion == "success" && Jobs.lint.Conclusion == "success" && Jobs.script_test.Conclusion == "success" && Jobs.quality_gate.Conclusion == "success" && Jobs.e2e_dry_run.Conclusion == "success"}}'
+    envs:
+      E2E_AAT_APP_ID: ${{ E2E_AAT_APP_ID }}
+      E2E_AAT_APP_SECRET: ${{ E2E_AAT_APP_SECRET }}
+    steps:
+      - uses: actions/checkout
+      - name: Merge the target branch
+        commands:
+          - bash .codebase/ci/merge-target.sh
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - node --version
+      - name: Run AAT workflows
+        commands:
+          - make build
+          - export LARK_CLI_BIN="$PWD/lark-cli"
+          - export GOSUMDB=off
+          - mkdir -p e2e-aat-report
+          - rc=0
+          - node .codebase/e2e/run-aat.js || rc=$?
+          - echo "$rc" > e2e-aat-report/exit-code
+      - name: Upload AAT report
+        uses: actions/upload-artifact
+        inputs:
+          name: e2e-aat-report
+          path: e2e-aat-report
+      - name: Preserve AAT exit status
+        commands:
+          - 'exit "$(cat e2e-aat-report/exit-code)"'
 
   # The tarball a reviewer or QA installs to run this merge request's CLI
   # without building it. Built on every run, like the public preview package,

@@ -126,3 +126,127 @@ bot/user document smoke first, and the standard prerequisite CI jobs still run.
 For an already configured standalone runner, `LIVE_PKGS=./tests/cli_e2e/im`
 selects the IM suite when invoking `run-live.js`; the pipeline itself computes
 and overwrites this variable from the diff.
+
+## Dedicated AAT gate
+
+`e2e_aat` is a separate CI job using an Agent Employee application. Configure
+`E2E_AAT_APP_ID` and encrypted `E2E_AAT_APP_SECRET` in Codebase repository
+Variables. These must be dedicated CI credentials, not the integration-test
+application or the existing UAT/TAT application. The source contains no actual
+application ID or secret. Existing UAT/TAT jobs and their variables are unchanged.
+
+`fetch-aat.js` mints a per-run credential and introspects it. It requires the
+configured client ID, an active token, Agent Employee user type 66, a nonempty
+principal and at least 15 minutes remaining. The test subprocess receives only
+AAT via the supported environment provider, `--as user`, and private config/data
+directories. No app secret, UAT, TAT or BBQ invocation secret reaches it. This
+uses the CLI's existing AAT support; there is no `--as agent` or relabelled UAT.
+
+The explicit selection in `run-aat.js` is:
+
+- `calendar.TestCalendar_PersonalEventWorkflowAsUser_AATCompatible`: existing in-repo
+  create/read/agenda/cleanup workflow. AAT uses the user lane without attendees.
+- `sheets.TestSheets_FindReplaceWorkflowAsUser_AATCompatible`: adapted from
+  `LarkQA/lark-cli-e2e-tests`, commit `68614d7d2106`,
+  `sheets/sheets_cell_editing_workflow_test.go::TestSheets_FindReplaceWorkflow`.
+  Reuses in-repo fixture and cleanup helpers instead of importing the external
+  identity runner. It creates a sheet, finds A2, replaces Alice, and reads back
+  Alicia plus the unchanged neighboring Bob value.
+
+- `docs.TestDocs_CreateAndFetchWorkflowAsUser_AATCompatible`: existing user workflow; creates
+  its own folder and document, reads back the title and Markdown content, then
+  deletes the document and folder using the same identity.
+- `sheets.TestSheets_CreateWorkflowAsUser_AATCompatible`: existing user workflow; creates its
+  own folder and spreadsheet, checks workbook info and a sheet ID, then deletes
+  both resources using the same identity.
+
+### Adding AAT-compatible cases
+
+Selection is the union of two sources, deduplicated by package and root test name:
+
+1. The explicit `workflows` map in `run-aat.js` keeps required baseline or legacy
+   cases, including tests without the suffix. Each package maps to an array of
+   exact names. A stale entry is an error, not an ignored case.
+2. Top-level Go tests ending **exactly** in `_AATCompatible` are discovered across
+   `tests/cli_e2e/...` (excluding `demo`). New packages are discovered too.
+
+For a new business workflow, use a name such as
+`TestSheets_NewWorkflowAsUser_AATCompatible`. This suffix declares that the
+complete setup, assertions and cleanup support both UAT and AAT in the user lane;
+it does not mean AAT-only and does not change `--as user` to another identity.
+Do not add the suffix to a bot fixture, a dry-run test, or a workflow whose cleanup
+is unavailable to AAT. Validate the dedicated application's permissions and
+product capability with a live run before treating it as supported.
+
+Business contributors only add their workflow and update the domain's
+`coverage.md`. No pipeline YAML, runner-list edit or extra manifest is required
+for a new suffixed test. Existing unsuffixed tests remain eligible through the
+explicit map when changing their names is undesirable. When renaming a baseline
+case, update its explicit entry and any exact smoke filters too.
+
+Before acquiring credentials, the runner uses credential-free
+`go test -json -list=^Test -run=^$ -p=1 ./tests/cli_e2e/...` to enumerate actual
+compiled tests. It fails on discovery errors, an empty selection or a missing
+explicit entry. Discovery compiles packages but does not execute test functions;
+package initialization must remain free of live work (as must any future
+`TestMain`). The resulting map is saved as `e2e-aat-report/selection.json`.
+Packages run separately with exact root-test filters, so an explicit name in one
+package cannot accidentally select an unmarked same-name test in another.
+
+`e2e_aat` runs the full combined selection on every eligible CI run. In contrast,
+`e2e_live` selects packages from the branch diff and runs the marked user workflows
+with UAT alongside the existing user/bot tests. Its mandatory Docs user smoke
+uses the renamed `_AATCompatible` test; the bot smoke keeps its existing name.
+A package being selected is not proof that each of its tests ran without skips.
+
+Do not select `task.TestTask_UpdateWorkflow`: its business steps passed under
+AAT, but `task/tasks/delete` was denied by Agent Employee policy and cleanup
+failed. `task.TestTask_TasklistWorkflowAsUser` is also excluded because
+`task/+tasklist-create` is denied. A user-lane test name alone does not establish
+AAT support. Existing bot-only Base/Drive/Sheets workflows require a separate
+adaptation; fixture-dependent BaseApp, cross-identity, messaging and mail flows
+are outside this incremental selection.
+
+Calendar needs a usable primary calendar and event create/read/delete plus agenda
+access. Sheets needs Drive folder creation and deletion, spreadsheet creation,
+read, write, native find and replace. The entire setup and cleanup path must work
+for the dedicated application. There are no personal-resource IDs to configure.
+
+Drive status remains an expansion candidate: the in-repo test uses the bot lane
+and must first be adapted as a complete workflow, including helpers and cleanup.
+Contact search that skips failures and request-only dry-run cases are not part
+of this AAT live gate.
+
+Run locally after `make build`, with the two dedicated credentials supplied by
+your secret manager to the process environment:
+
+```bash
+LARK_CLI_BIN="$PWD/lark-cli" node .codebase/e2e/run-aat.js
+```
+
+The wrapper verifies CLI identity before and after execution and introspects the
+same credential again after the workflows to require an unchanged principal.
+All selected root tests and executed subtests must pass; a skip, missing
+selection, package failure or credential failure fails the gate. JSON events,
+per-package JUnit (`live-N.xml`), scrubbed logs and identity evidence are written
+to `e2e-aat-report` and
+uploaded before the job returns its original failure status. No automatic retry
+is enabled for this initial gate so a flaky pass cannot hide the first failure.
+Private credential/config/log files are deleted on normal exit or SIGTERM/SIGINT.
+
+The repository CI runs on MR create/update targeting main, main branch pushes,
+and manual invocation. It merges the target before tests and gates AAT on unit,
+lint, script, quality and dry-run checks. To inspect or run a branch:
+
+```bash
+bytedcli codebase pipeline status -R lark/cli --branch <branch> --pipeline CI
+bytedcli codebase pipeline run -R lark/cli --branch <branch> --pipeline CI
+```
+
+Validate wrapper behavior without credentials with
+`node --test .codebase/e2e/*.test.js` and `bash .codebase/ci/pipeline.test.sh`.
+
+The shared Drive cleanup helper reserves half of its remaining deadline (at most
+30 seconds) for the delete command, leaving time to verify resource disappearance
+when async task polling is slow. Deletion errors remain fatal if metadata still
+shows an accessible resource; the gate does not treat timeouts as success.

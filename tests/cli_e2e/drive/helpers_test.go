@@ -65,6 +65,28 @@ func TestDeleteDriveResourceAndVerify(t *testing.T) {
 	})
 }
 
+// A slow async task poll must not consume the budget needed to prove that
+// the test-created resource is already gone. Reverting the separate command
+// budget leaves the meta command with an expired parent context.
+func TestDeleteDriveResourceAndVerifyReservesVerificationBudget(t *testing.T) {
+	fake := filepath.Join(t.TempDir(), "slow-delete")
+	script := `#!/bin/sh
+if [ "$1" = "drive" ]; then
+  exec sleep 5
+fi
+printf '%s\n' '{"ok":true,"data":{"metas":[]}}'
+`
+	require.NoError(t, os.WriteFile(fake, []byte(script), 0o755))
+	t.Setenv(clie2e.EnvBinaryPath, fake)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	result, err := DeleteDriveResourceAndVerify(ctx, "test_owned_sheet", "sheet", "user")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 0, result.ExitCode)
+	require.NoError(t, ctx.Err(), "verification must finish within the caller budget")
+}
+
 func withFastDriveDeleteRetry(t *testing.T) {
 	t.Helper()
 
