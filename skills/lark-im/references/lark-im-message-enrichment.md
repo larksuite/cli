@@ -36,7 +36,7 @@ Use `--download-resources` when you want the binaries on disk in one pass; other
 
 ## Scope requirement
 
-The default enrichment requires `im:message.reactions:read`, already declared in each shortcut's `UserScopes` / `BotScopes` (or `Scopes` for the search command), so the framework's pre-flight check surfaces a `missing_scope` error before the request is sent. Bots that were registered before this scope was added need an incremental authorization in the Feishu developer console; users can run:
+The default enrichment requires `im:message.reactions:read`. The four message-pulling shortcuts declare it as a conditional scope and pre-flight it whenever reaction enrichment is enabled, so a missing grant surfaces before the request is sent. Pass `--no-reactions` to skip both the enrichment request and this conditional scope requirement. Bots that were registered before this scope was added need an incremental authorization in the Feishu developer console; users can run:
 
 ```bash
 lark-cli auth login --scope "im:message.reactions:read"
