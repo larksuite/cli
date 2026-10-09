@@ -154,6 +154,7 @@ PY
 ```jsonc
 {
   "标题": "Created from shortcut", // text: string
+  "待确认": "请 <at user_id=ou_123/> 确认", // text(plain): 人员提及；实际 open_id 用 lark-contact 查询；不发送通知
   "官网": "[官网](https://example.com)", // text(url): 裸 URL 或 Markdown link
   "联系电话": "13800000000", // text(phone): 合法电话号码字符串
   "邮箱": "owner@example.com", // text(email): 合法邮箱字符串
