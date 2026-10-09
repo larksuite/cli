@@ -309,7 +309,7 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 
 	// The confirmation page is CLI-owned presentation (shown as a link/QR code,
 	// never fetched), so it passes through the URL rewrite extension.
-	verificationUriComplete = urlrewrite.Rewrite(fmt.Sprintf("%s/page/cli?user_code=%s", ep.Open, userCode))
+	verificationUriComplete = urlrewrite.Rewrite(verificationUriComplete)
 
 	return &AppRegistrationResponse{
 		DeviceCode:              deviceCode,
