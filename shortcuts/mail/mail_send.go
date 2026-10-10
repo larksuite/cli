@@ -24,6 +24,7 @@ var MailSend = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
+		separateSendFlag,
 		{Name: "to", Type: "string_array", Desc: "Recipient email address. Repeat --to once per recipient; quote each value. Display-name format is supported."},
 		{Name: "subject", Desc: "Email subject. Required unless --template-id supplies a non-empty subject."},
 		{Name: "body", Desc: "Email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file. Required unless --template-id supplies a non-empty body."},
@@ -60,13 +61,13 @@ var MailSend = common.Shortcut{
 		}
 		api = api.GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
-			Body(map[string]interface{}{
+			Body(withSeparateSendBody(runtime, map[string]interface{}{
 				"raw": "<base64url-EML>",
 				"_preview": map[string]interface{}{
 					"to":      to,
 					"subject": subject,
 				},
-			})
+			}))
 		if confirmSend {
 			api = api.POST(mailboxPath(mailboxID, "drafts", "<draft_id>", "send"))
 		}
@@ -331,7 +332,7 @@ var MailSend = common.Shortcut{
 			return mailValidationError("failed to build EML: %v", err).WithCause(err)
 		}
 
-		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
+		draftResult, err := draftpkg.CreateWithRawSetting(runtime, mailboxID, rawEML, separateSendSetting(runtime))
 		if err != nil {
 			return mailDecorateProblemMessage(err, "failed to create draft")
 		}
