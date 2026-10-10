@@ -204,13 +204,10 @@ func tmpRootLabel() string {
 	return "/tmp"
 }
 
-// denyRoots returns the built-in denylist, resolved once per process. The CLI
-// config directory is covered from every candidate home at once, because deny
-// roots only ever accumulate:
-// adding an environment-derived location can protect a second copy of the
-// credentials, and can never unprotect the real one.
-var denyRoots = sync.OnceValue(func() []policyEntry {
-	entries := []policyEntry{
+// fixedDenyRoots returns the deny roots that do not live under an account home
+// directory, resolved once per process.
+var fixedDenyRoots = sync.OnceValue(func() []policyEntry {
+	return []policyEntry{
 		newPolicyEntry("/etc", "/etc"),
 		newPolicyEntry("/proc", "/proc"),
 		newPolicyEntry("/sys", "/sys"),
@@ -218,27 +215,375 @@ var denyRoots = sync.OnceValue(func() []policyEntry {
 		newPolicyEntry("/root", "/root"),
 		newPolicyEntry("/var/run", "/var/run"),
 	}
-	homes := map[string]bool{}
+})
+
+// homeDenyGroups returns one group per candidate home directory. The CLI
+// config directory is covered from every candidate at once, because deny roots
+// only ever accumulate: adding an environment-derived location can protect a
+// second copy of the credentials, and can never unprotect the real one.
+var homeDenyGroups = sync.OnceValue(func() []*homeDenyGroup {
+	var groups []*homeDenyGroup
+	for _, home := range candidateHomes() {
+		groups = append(groups, newHomeDenyGroup(home))
+	}
+	return groups
+})
+
+// candidateHomes returns every directory that could be this account's home,
+// most authoritative first and without duplicates.
+func candidateHomes() []string {
+	var homes []string
+	seen := map[string]bool{}
+	add := func(home string) {
+		if home == "" || seen[home] {
+			return
+		}
+		seen[home] = true
+		homes = append(homes, home)
+	}
 	if home, ok := passwdHome(); ok {
-		homes[home] = true
+		add(home)
 	}
 	if home, err := trustedHome(); err == nil {
-		homes[home] = true
+		add(home)
 	}
 	if home, err := vfs.UserHomeDir(); err == nil {
-		homes[home] = true
+		add(home)
 	}
-	if u, err := user.Current(); err == nil && u.HomeDir != "" {
-		homes[u.HomeDir] = true
+	if u, err := user.Current(); err == nil {
+		add(u.HomeDir)
 	}
-	for home := range homes {
-		for _, d := range homeDenyNames {
-			entries = append(entries, newPolicyEntry("~/"+d, filepath.Join(home, d)))
+	return homes
+}
+
+// denyName is one home-relative deny root before resolution. Label and literal
+// path are known without touching the filesystem, which is all the name pass
+// needs — and the name pass is what settles every spelling that addresses a
+// deny root outright.
+type denyName struct {
+	label   string
+	rel     string // slash-separated, relative to the home directory
+	literal string
+}
+
+// homeDenyGroup holds the deny roots under one candidate home directory.
+//
+// Resolving those roots is what stats ~/.ssh, ~/.aws and their neighbours, and
+// on a machine whose security tooling guards those paths every such stat is an
+// alarm (#2726). So the group resolves nothing up front: the home directory
+// itself is resolved, and the roots beneath it only when this target could
+// actually be inside one — see rootsToCheck.
+type homeDenyGroup struct {
+	home  policyEntry
+	names []denyName
+
+	// Classification is one pass over the listings; the two selections derived
+	// from it resolve their roots on first use and keep them.
+	kindsOnce  sync.Once
+	kinds      map[string]denyNameKind
+	linkedOnce sync.Once
+	linked     []policyEntry
+	fileOnce   sync.Once
+	files      []policyEntry
+
+	// Both caches are shared by concurrent validations — download fan-out runs
+	// them in parallel — and each has its own lock so that selecting a root
+	// (which lists directories) never waits on resolving one.
+	resolvedMu sync.Mutex
+	resolved   map[string]policyEntry
+
+	listMu   sync.Mutex
+	listings map[string]listing
+}
+
+// listing is one directory read, kept whether it succeeded or not. Caching the
+// failure matters as much as caching the entries: a home directory that denies
+// enumeration while still allowing access by name would otherwise be re-read
+// for every name on every validation, and under access control each attempt is
+// another denial to log.
+type listing struct {
+	entries []os.DirEntry
+	err     error
+}
+
+func newHomeDenyGroup(home string) *homeDenyGroup {
+	g := &homeDenyGroup{
+		home:     newPolicyEntry("the home directory", home),
+		resolved: map[string]policyEntry{},
+		listings: map[string]listing{},
+	}
+	for _, rel := range homeDenyNames {
+		g.names = append(g.names, denyName{
+			label:   "~/" + rel,
+			rel:     rel,
+			literal: filepath.Join(home, filepath.FromSlash(rel)),
+		})
+	}
+	g.names = append(g.names, denyName{
+		label:   "the CLI config directory",
+		rel:     ".lark-cli",
+		literal: filepath.Join(home, ".lark-cli"),
+	})
+	return g
+}
+
+// rootsToCheck returns the roots of this group whose resolved form still has to
+// be compared against the target, and resolves exactly those. A root reachable
+// by name alone is not among them: matchHomeDenyNames has already ruled on it
+// without reading anything.
+//
+// A root can only match by being the target's real location or an ancestor of
+// it, and that bounds the work to three kinds of root:
+//
+//   - Roots that sit under the home directory as named. Such a root can only be
+//     an ancestor of a target that is itself under this home, and then it has to
+//     be the very first component below it — so the one name the target could be
+//     inside is its own first component (nameRoots).
+//   - Roots reached through a symlink, junction or other reparse point, which
+//     can put them anywhere at all (linkedRoots).
+//   - Roots that could be the target file itself under a second name, which is
+//     possible only when the target carries more than one (hardLinkRoots).
+//
+// Everything else is skipped, and skipping it is the point: downloading into
+// the working directory no longer stats ~/.ssh and its neighbours, which is
+// what set off the security tooling in #2726.
+//
+// Two limits come with resolving late rather than up front, both of them the
+// price of not stat-ing credential paths a target has nothing to do with:
+//
+//   - An alias that leaves no trace in a directory listing and that symlink
+//     resolution cannot see through — a bind mount of a credential directory,
+//     say — is not matched when the target is addressed through the alias.
+//   - Identities are read when a root is resolved rather than pinned at the
+//     first validation, so a credential directory renamed between two
+//     validations of one process is matched under its new name only by that
+//     name. Every ordinary invocation is a fresh process, which never had the
+//     pinning either.
+//
+// In both cases the named path stays denied, and in the strict tier the
+// allowlist still has to accept the alias independently.
+func (g *homeDenyGroup) rootsToCheck(resolved, absLiteral string, chain []ancestor) []policyEntry {
+	return slices.Concat(
+		g.linkedRoots(),
+		g.hardLinkRoots(chain),
+		g.nameRoots(resolved, absLiteral, chain),
+	)
+}
+
+// hardLinkRoots returns the credential files that could be the target itself
+// under another name. A hard link has no target to resolve and no mark in a
+// directory listing, so neither name containment nor the listing can see that
+// "~/report.txt" and "~/.npmrc" are one file — only identity can, and identity
+// needs those roots resolved. The link count decides that, and it is read from
+// the stat the ancestor walk already did (Windows keeps the count behind a
+// handle, so there it opens the caller's own file, never a credential one).
+func (g *homeDenyGroup) hardLinkRoots(chain []ancestor) []policyEntry {
+	if len(chain) == 0 {
+		return nil
+	}
+	leaf := chain[0]
+	if !leaf.info.Mode().IsRegular() || !hasExtraHardLinks(leaf.path, leaf.info) {
+		return nil
+	}
+	g.fileOnce.Do(func() { g.files = g.rootsOfKind(denyNameFile) })
+	return g.files
+}
+
+// nameRoots resolves the roots that share a first component with the target's
+// own position under this home. Comparison is by directory-entry name, which
+// folds like the filesystem does, so an alternate spelling of ".ssh" selects
+// the ~/.ssh root and then loses to it on file identity.
+func (g *homeDenyGroup) nameRoots(resolved, absLiteral string, chain []ancestor) []policyEntry {
+	var roots []policyEntry
+	for _, head := range g.targetHeads(resolved, absLiteral, chain) {
+		for _, n := range g.names {
+			if sameEntryName(firstSegment(n.rel), head) {
+				roots = append(roots, g.resolveRoot(n))
+			}
 		}
-		entries = append(entries, newPolicyEntry("the CLI config directory", filepath.Join(home, ".lark-cli")))
 	}
-	return entries
-})
+	return roots
+}
+
+// targetHeads returns the first path component below this home directory for
+// every reading of the target that lands under it: the real location, the
+// literal one a caller keeps verbatim, and the location reached when the home
+// directory itself is spelled differently (matched by file identity).
+func (g *homeDenyGroup) targetHeads(resolved, absLiteral string, chain []ancestor) []string {
+	var heads []string
+	seen := map[string]bool{}
+	add := func(base, target string) {
+		head, ok := headUnder(base, target)
+		if !ok || seen[head] {
+			return
+		}
+		seen[head] = true
+		heads = append(heads, head)
+	}
+	add(g.home.resolved, resolved)
+	add(g.home.literal, resolved)
+	add(g.home.literal, absLiteral)
+	for _, a := range chain {
+		if g.home.info != nil && os.SameFile(a.info, g.home.info) {
+			add(a.path, resolved)
+		}
+	}
+	return heads
+}
+
+// linkedRoots resolves the roots whose real location is not where their name
+// says — those reached through a symlink, a junction or another reparse point.
+// Which ones those are is read from directory listings, which name the entries
+// without opening any of them: listing ~ reveals whether ".ssh" is a link
+// without ever touching ~/.ssh.
+func (g *homeDenyGroup) linkedRoots() []policyEntry {
+	g.linkedOnce.Do(func() { g.linked = g.rootsOfKind(denyNameLinked) })
+	return g.linked
+}
+
+// rootsOfKind resolves every name the listings put in one class.
+func (g *homeDenyGroup) rootsOfKind(want denyNameKind) []policyEntry {
+	var roots []policyEntry
+	for _, n := range g.names {
+		if g.classifyAll()[n.rel] == want {
+			roots = append(roots, g.resolveRoot(n))
+		}
+	}
+	return roots
+}
+
+// classifyAll walks every deny name through the directory listings once per
+// process. The listings are cached, failures included, so this never re-reads a
+// directory however many validations follow.
+func (g *homeDenyGroup) classifyAll() map[string]denyNameKind {
+	g.kindsOnce.Do(func() {
+		g.kinds = make(map[string]denyNameKind, len(g.names))
+		for _, n := range g.names {
+			g.kinds[n.rel] = g.classify(n.rel)
+		}
+	})
+	return g.kinds
+}
+
+// resolveRoot resolves one deny root, once per process.
+func (g *homeDenyGroup) resolveRoot(n denyName) policyEntry {
+	g.resolvedMu.Lock()
+	defer g.resolvedMu.Unlock()
+	if e, ok := g.resolved[n.label]; ok {
+		return e
+	}
+	e := newPolicyEntry(n.label, n.literal)
+	g.resolved[n.label] = e
+	return e
+}
+
+// denyNameKind is what directory listings can say about a deny name without
+// opening it.
+type denyNameKind int
+
+const (
+	denyNameMissing denyNameKind = iota // no such entry, so it contains nothing
+	denyNameDir                         // a plain directory where its name says
+	denyNameFile                        // a plain file where its name says
+	denyNameLinked                      // reached through a link: can be anywhere
+)
+
+// classify walks rel from the home directory through directory listings alone.
+// A directory it cannot list is reported as linked: an unreadable directory is
+// a question the listing did not answer, and the fail-closed answer is to
+// resolve the root and compare it properly.
+func (g *homeDenyGroup) classify(rel string) denyNameKind {
+	dir := g.home.resolved
+	segments := strings.Split(rel, "/")
+	for i, segment := range segments {
+		entries, err := g.listing(dir)
+		if err != nil {
+			return denyNameLinked
+		}
+		entry, ok := findEntry(entries, segment)
+		switch {
+		case !ok:
+			return denyNameMissing
+		case entry.Type()&(os.ModeSymlink|os.ModeIrregular) != 0:
+			return denyNameLinked
+		case i == len(segments)-1:
+			return finalKind(entry)
+		case !entry.IsDir(): // a file cannot hold the rest of the path
+			return denyNameMissing
+		}
+		dir = filepath.Join(dir, segment)
+	}
+	return denyNameMissing
+}
+
+func finalKind(entry os.DirEntry) denyNameKind {
+	if entry.IsDir() {
+		return denyNameDir
+	}
+	return denyNameFile
+}
+
+// listing reads dir once per process. Concurrent validations share the cache:
+// download fan-out runs them in parallel.
+//
+// Reading the directory is what keeps the entries closed: Windows fills every
+// attribute from the one directory query, and Unix from the dirent type. The
+// exception is a filesystem that reports no dirent type (DT_UNKNOWN — some FUSE
+// mounts, XFS made without ftype): os.ReadDir then lstats each entry itself, so
+// on those the credential paths are stat'ed after all, as they were before this
+// existed. It stays one listing per process either way.
+func (g *homeDenyGroup) listing(dir string) ([]os.DirEntry, error) {
+	g.listMu.Lock()
+	defer g.listMu.Unlock()
+	if cached, ok := g.listings[dir]; ok {
+		return cached.entries, cached.err
+	}
+	entries, err := vfs.ReadDir(dir)
+	g.listings[dir] = listing{entries: entries, err: err}
+	return entries, err
+}
+
+// findEntry looks name up in a directory listing the way the filesystem itself
+// would resolve it. Comparison is by Unicode simple case folding on the
+// platforms whose default filesystems fold, which covers both ".SSH" on NTFS
+// and APFS folding U+017F ("ſ") onto "s".
+func findEntry(entries []os.DirEntry, name string) (os.DirEntry, bool) {
+	for _, entry := range entries {
+		if sameEntryName(entry.Name(), name) {
+			return entry, true
+		}
+	}
+	return nil, false
+}
+
+func sameEntryName(a, b string) bool {
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+// headUnder returns the first path component of target below base, reporting
+// false when target is not inside base or is base itself. Containment is
+// decided on the folded spellings, the same way isUnderDir decides it.
+func headUnder(base, target string) (string, bool) {
+	rel, err := filepath.Rel(foldCase(base), foldCase(target))
+	if err != nil {
+		return "", false
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return firstSegment(filepath.ToSlash(rel)), true
+}
+
+// firstSegment returns the leading component of a slash-separated relative path.
+func firstSegment(rel string) string {
+	if i := strings.IndexByte(rel, '/'); i >= 0 {
+		return rel[:i]
+	}
+	return rel
+}
 
 // homeDenyNames lists what under the account home is refused. Entries are
 // matched by containment, so naming a directory covers everything beneath it
@@ -268,51 +613,119 @@ var homeDenyNames = []string{
 // path expanded to include the OS account name and working directory would be
 // gratuitous exposure.
 func checkDeny(flagName, raw, absLiteral, resolved, cwd string) error {
-	// slices.Concat, not append: denyRoots() is a process-cached slice with
+	// slices.Concat, not append: fixedDenyRoots() is a process-cached slice with
 	// spare capacity, and appending to it would write the per-call entries into
 	// the shared backing array — a data race between concurrent validations
 	// (download fan-out does run them in parallel) and a cross-call overwrite.
-	roots := slices.Concat(denyRoots(), configDirDenyRoots(cwd))
-	for _, e := range roots {
-		if matchResolved(resolved, e) || isUnderDir(foldCase(absLiteral), foldCase(e.literal)) {
-			return denyError(flagName, raw, e.label)
-		}
+	eager := slices.Concat(fixedDenyRoots(), configDirDenyRoots(cwd))
+	if label, ok := matchRoots(resolved, absLiteral, eager); ok {
+		return denyError(flagName, raw, label)
+	}
+	if label, ok := matchHomeDenyNames(resolved, absLiteral); ok {
+		return denyError(flagName, raw, label)
 	}
 	// Name comparison alone cannot decide containment: case-insensitive and
 	// case-folding filesystems (APFS folds U+017F to "s", so ".ſſh" opens
 	// "~/.ssh"), Unicode normalization, and Windows short names all give the
 	// same directory several spellings. Ask the kernel instead — file identity
 	// has exactly one answer per directory.
-	if label, ok := matchByFileIdentity(resolved, roots); ok {
+	chain := ancestors(resolved)
+	if label, ok := identityLabel(chain, eager); ok {
+		return denyError(flagName, raw, label)
+	}
+	if label, ok := matchHomeDenyRoots(resolved, absLiteral, chain); ok {
 		return denyError(flagName, raw, label)
 	}
 	return nil
+}
+
+// matchRoots reports the first root that contains the target in either of the
+// two readings of the argument.
+func matchRoots(resolved, absLiteral string, roots []policyEntry) (string, bool) {
+	for _, e := range roots {
+		if matchResolved(resolved, e) || isUnderDir(foldCase(absLiteral), foldCase(e.literal)) {
+			return e.label, true
+		}
+	}
+	return "", false
+}
+
+// matchHomeDenyNames applies the home-relative denylist by name only. This is
+// the pass that answers "--file ~/.ssh/id_rsa", and it answers it without
+// reading anything from disk.
+func matchHomeDenyNames(resolved, absLiteral string) (string, bool) {
+	for _, g := range homeDenyGroups() {
+		for _, n := range g.names {
+			if isUnderDir(foldCase(absLiteral), foldCase(n.literal)) ||
+				isUnderDir(foldCase(resolved), foldCase(n.literal)) {
+				return n.label, true
+			}
+		}
+	}
+	return "", false
+}
+
+// matchHomeDenyRoots settles the spellings a name cannot: each group decides
+// how much of itself has to be resolved for this target (rootsToCheck) and the
+// comparison then runs over that subset.
+func matchHomeDenyRoots(resolved, absLiteral string, chain []ancestor) (string, bool) {
+	for _, g := range homeDenyGroups() {
+		roots := g.rootsToCheck(resolved, absLiteral, chain)
+		if label, ok := matchRoots(resolved, absLiteral, roots); ok {
+			return label, true
+		}
+		if label, ok := identityLabel(chain, roots); ok {
+			return label, true
+		}
+	}
+	return "", false
 }
 
 func denyError(flagName, raw, label string) error {
 	return fmt.Errorf("%s %q is inside %s, which is protected by the built-in denylist", flagName, raw, label)
 }
 
-// matchByFileIdentity walks resolved upwards and reports the first root that
-// is the very same directory as one of the ancestors, compared by device and
-// inode rather than by name. Missing ancestors are skipped: a target that does
-// not exist yet is decided by its nearest existing parent.
+// ancestor is one existing directory on the way up from the target, kept with
+// the path it was reached by so a match can be read back as a location.
+type ancestor struct {
+	path string
+	info os.FileInfo
+}
+
+// matchByFileIdentity reports the first root that is the very same directory
+// as one of the target's ancestors, compared by device and inode rather than
+// by name.
 func matchByFileIdentity(resolved string, roots []policyEntry) (string, bool) {
+	return identityLabel(ancestors(resolved), roots)
+}
+
+// ancestors walks resolved upwards and returns every ancestor that exists,
+// deepest first. Missing ancestors are skipped: a target that does not exist
+// yet is decided by its nearest existing parent.
+func ancestors(resolved string) []ancestor {
+	var chain []ancestor
 	p := resolved
 	for {
 		if fi, err := vfs.Lstat(p); err == nil {
-			for _, e := range roots {
-				if e.info != nil && os.SameFile(fi, e.info) {
-					return e.label, true
-				}
-			}
+			chain = append(chain, ancestor{path: p, info: fi})
 		}
 		parent := filepath.Dir(p)
 		if parent == p {
-			return "", false
+			return chain
 		}
 		p = parent
 	}
+}
+
+func identityLabel(chain []ancestor, roots []policyEntry) (string, bool) {
+	for _, a := range chain {
+		for _, e := range roots {
+			if e.info != nil && os.SameFile(a.info, e.info) {
+				return e.label, true
+			}
+		}
+	}
+	return "", false
 }
 
 // checkAllow accepts paths under any built-in allow root; everything else is
