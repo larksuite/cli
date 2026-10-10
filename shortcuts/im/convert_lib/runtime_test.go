@@ -21,10 +21,12 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
-type staticConvertlibTokenResolver struct{}
+type staticConvertlibTokenResolver struct {
+	scopes string
+}
 
 func (s *staticConvertlibTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
-	return &credential.TokenResult{Token: "test-token"}, nil
+	return &credential.TokenResult{Token: "test-token", Scopes: s.scopes}, nil
 }
 
 type convertlibRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -53,6 +55,13 @@ func setConvertlibRuntimeField(t *testing.T, runtime *common.RuntimeContext, fie
 }
 
 func newBotConvertlibRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeContext {
+	return newBotConvertlibRuntimeWithScopes(t, rt, ImMessageReactionsReadScope)
+}
+
+// newBotConvertlibRuntimeWithScopes builds a convert-lib runtime whose token
+// carries the given granted scopes (space-separated). The default helper
+// grants the reactions scope, mirroring a properly configured bot.
+func newBotConvertlibRuntimeWithScopes(t *testing.T, rt http.RoundTripper, scopes string) *common.RuntimeContext {
 	t.Helper()
 
 	httpClient := &http.Client{Transport: rt}
@@ -68,7 +77,7 @@ func newBotConvertlibRuntime(t *testing.T, rt http.RoundTripper) *common.Runtime
 		AppSecret: "test-secret",
 		Brand:     core.BrandFeishu,
 	}
-	testCred := credential.NewCredentialProvider(nil, nil, &staticConvertlibTokenResolver{}, nil)
+	testCred := credential.NewCredentialProvider(nil, nil, &staticConvertlibTokenResolver{scopes: scopes}, nil)
 	runtime := &common.RuntimeContext{
 		Config: cfg,
 		Factory: &cmdutil.Factory{
