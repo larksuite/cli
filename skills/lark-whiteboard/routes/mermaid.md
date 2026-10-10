@@ -4,24 +4,29 @@
 
 ## Workflow
 
-```
+```text
 Step 1: 读取知识
-  - 读 scenes/mermaid.md — Mermaid 语法和使用方式
+  - 读 scenes/mermaid.md，了解 Mermaid 语法和使用方式
 
 Step 2: 生成 Mermaid
-  - 按 mermaid.md 的语法编写 .mmd 文件
-  - 只输出纯 Mermaid 语法文本
+  - 创建 ./diagrams/YYYY-MM-DDTHHMMSS/
+  - 把纯 Mermaid 语法保存为 diagram.mmd
 
-Step 3: 渲染验证 & 写入画板 & 交付
-  1. 创建产物目录 ./diagrams/YYYY-MM-DDTHHMMSS/
-  2. 保存为 diagram.mmd
-  3. 渲染（仅用于预览验证，PNG 不是最终产物）：
-       npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.mmd -o diagram.png
-  4. 审查 PNG，有问题修改后重新渲染（最多 2 轮）
-  5. 写入画板：用 whiteboard-cli 将 diagram.mmd 转换为 OpenAPI 格式并 pipe 给 +update：
-       npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.mmd --to openapi --format json \
-         | lark-cli whiteboard +update --whiteboard-token <board_token> \
-             --source - --input_format raw --idempotent-token <时间戳+标识> --as user
-       → 完整 dry-run / 确认流程见 [§ 写入画板](../references/lark-whiteboard-workflow.md#写入画板)
-  6. 交付：向用户报告 board_token 写入成功
+Step 3: 渲染审查并交回 Workflow
+  - 渲染 preview：npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.mmd -o diagram.png
+  - 审查 PNG，有问题修改后重新渲染，最多 2 轮
+  - 检查：npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.mmd --check
+  - 按需生成 compiled nodes：npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.mmd --to openapi --format json -o compiled-nodes.json
+  - 不在 route 内读取目标画板、选择 mutation semantics、执行远端写入或报告远端成功
 ```
+
+## Artifact Contract
+
+本 route 交回 [`lark-whiteboard-workflow.md`](../references/lark-whiteboard-workflow.md#渲染--写入画板)：
+
+- `diagram.mmd`：Mermaid source。
+- `diagram.png`：本地 preview。
+- 本地 `--check` 结果和人工视觉审查结论。
+- 可选 `compiled-nodes.json`：同一 source 转换出的 OpenAPI 创建 payload。
+
+Workflow 决定 initialize、append 或 replace，并负责本地请求预览、确认、远端写入和读回。
