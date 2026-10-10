@@ -4,7 +4,7 @@
 
 Base SQL 是实验性的 PostgreSQL 风格只读子集，支持一个 Base 内的跨表查询。环境准入见 [主 Skill 的记录分析](../SKILL.md#记录分析)；进入 SQL 流程后，通过 Catalog 的 `data.supportBaseSQLExecute=true` 确认目标 Base 支持执行。
 
-单条 SQL 返回的结果行数上限以服务端配置为准，明细和分组结果共用此上限，超限会报错。需要完整结果且行数或上限未知、或执行超限时，使用 Record 完整分页后计算。
+SQL 的价值是下推计算。编写查询时充分使用谓词、聚合等云端计算，将预计返回规模控制在 1000 行以下；超过 1000 行会执行失败，明细和分组结果共用此上限。需求确实需要下载超过 1000 行的完整数据时，使用主 Skill 的记录下载流程。
 
 ## 标准操作流程
 
@@ -90,7 +90,7 @@ SQL 表/列名使用 Catalog `data.tables` 的 `name`，类型取 `sqlType.kind`
 | TEXT | `= != <>`、`[NOT] IN`、`[NOT] LIKE/ILIKE` |
 | INT / DOUBLE | `= != <> < <= > >=`、`[NOT] IN`、`[NOT] BETWEEN` |
 | BOOL | `= TRUE/FALSE` |
-| TIMESTAMP | 等值、范围比较与同类型时间表达式 |
+| TIMESTAMP | 等值、范围比较与同类型时间表达式；字面量用 `TIMESTAMP 'YYYY-MM-DD HH:MM:SS'`（Base 时区）或 RFC 3339，如 `TIMESTAMP '2026-01-01T00:00:00+08:00'` / `TIMESTAMP '2026-01-01T00:00:00Z'` |
 | OPTION | `= !=`、`[NOT] IN`；字面量使用已有选项名。OPTION 是独立类型，按其类型使用算子；与 TEXT 混合的 UNION 分支会触发类型错误 |
 | RECORD_ID | 等值；系统 `rec_id` 可与记录 ID 字符串比较，如 `rec_id = 'rec_example'` |
 | USER_ID / GROUP_ID | 支持同类型比较，如 `"负责人".userId = CURRENT_USER_ID()`；与 TEXT 字面量比较会被拒绝 |
@@ -253,7 +253,7 @@ URL   = {link: TEXT, text: TEXT}
 - **连接与子查询：** `WITH RECURSIVE`、`LATERAL`、`RIGHT/FULL/NATURAL JOIN`、`USING`、`INTERSECT/EXCEPT`。
 - **聚合与窗口：** 聚合内 `ORDER BY`、显式 `ROWS/RANGE` frame、`LAG/LEAD`、`BOOL_AND/BOOL_OR`、总体/样本标准差及方差函数。
 - **集合与表函数：** `GENERATE_SERIES`、`UNNEST WITH ORDINALITY`、LEFT/INNER JOIN UNNEST、`ARRAY_POSITION`、数组下标/切片、数组 `||`、`ARRAY_CAT`。
-- **时间与类型转换：** `EXTRACT(EPOCH)`、`TO_CHAR`、`TO_NUMBER`、月/年或多单位 INTERVAL；`INT/BOOL → DOUBLE` 和 `DOUBLE → TEXT` 的 CAST。
+- **时间与类型转换：** `TIMESTAMP WITH TIME ZONE`、`EXTRACT(EPOCH)`、`TO_CHAR`、`TO_NUMBER`、月/年或多单位 INTERVAL；`INT/BOOL → DOUBLE` 和 `DOUBLE → TEXT` 的 CAST。
 - **排序与谓词：** `NULLS FIRST/LAST`、`IS DISTINCT FROM`、正则运算符、`ANY`、`BETWEEN SYMMETRIC`；LIKE 的 `ESCAPE` 子句、`LIKE ANY(...)`、`COLLATE`。
 - **数值与文本函数：** `TRUNC/SQRT/POWER/^/SIGN`、`GREATEST/LEAST`、`STRING_AGG/SUBSTRING/REGEXP_REPLACE/CONCAT_WS/SPLIT_PART/POSITION`。
 
@@ -272,20 +272,21 @@ URL   = {link: TEXT, text: TEXT}
 
 | 查询组合 | 实际行为与推荐写法 |
 | --- | --- |
-| CTE 透传 TIMESTAMP 后外层 ± INTERVAL | 当前实现缺陷：有效 TIMESTAMP 的外层运算会返回 NULL。临时绕过：在物理表层先计算时间边界再传出。外层 EXTRACT / DATE_TRUNC 可直接使用 |
+| CTE / FROM 子查询透传 TIMESTAMP 后外层 ± INTERVAL；CTE 外层时间戳相减 | 当前实现缺陷：有效 TIMESTAMP 的运算会返回 NULL。在物理表层先计算再传出；外层时间比较、EXTRACT / DATE_TRUNC 可直接使用 |
 | 物理表 JOIN 按文本键聚合的 CTE，再 LIMIT/OFFSET | 分页可能遗漏匹配行；使用公共明细 CTE 聚合后回连并返回有界完整结果，或分别查询聚合结果和明细再合并 |
-| 时间范围条件放 JOIN ON | 范围条件可能保留额外匹配行；物理表使用 CROSS JOIN + WHERE 表达时间范围，再分组计算 |
+| JOIN ON 用 AND 组合多个匹配条件 | 当前实现缺陷：部分条件可能丢失；时间等值、时间范围及数值范围组合均已复现，调换条件顺序可能改变结果。INNER JOIN 的 ON 保留单个匹配条件，其余条件放 WHERE；需保留未匹配行的 LEFT JOIN，先在子查询形成有效匹配，再按键回连 |
 | 多键相关 EXISTS / NOT EXISTS | 相关条件可能丢失部分匹配；使用常量范围加单个等值相关键，或按完整连接键去重后 JOIN |
 | Link 集合关联谓词放 CROSS JOIN 后的 WHERE | 可能触发记录 ID 集合算子错误；关联集合条件使用 JOIN ON，时间等筛选条件放 WHERE |
 | SUM(x) OVER (ORDER BY ...) | 返回整个分区的总和；累计值使用物理表 CROSS JOIN + WHERE 范围约束后分组汇总，或在本地计算 |
-| 多阶段时间条件的 CTE/连接链 | 可能丢失阶段约束或返回执行错误；拆成逐阶段查询，将上一阶段实际结果作为下一阶段的范围与时间边界 |
 
-查询预算：JOIN 上限为 10，计算子查询上限为 8，结果行数上限由服务端配置决定。透传 CTE 的优化与计算节点预算分别处理。需要完整明细时使用完整分页路径。
+查询预算：JOIN 上限为 10，计算子查询上限为 8；预计返回规模控制在 1000 行以下。透传 CTE 的优化与计算节点预算分别处理。需要下载超过 1000 行的完整数据时，使用主 Skill 的记录下载流程。
+
+时间字面量带偏移量时使用 RFC 3339 的 `T` 分隔符；`TIMESTAMP '2026-01-01 00:00:00+08:00'` 当前会返回执行错误。
 
 ### 处理失败与能力边界
 
 SQL 错误的定位信息来自响应中的 phase/span/action；保留 SQL、类型与 log_id 便于诊断，分享时脱敏业务值。
 
-- 结果行数超限：转 Record 完整分页；字节数超限：精简返回字段。
+- 结果行数超限：分析任务通过谓词、聚合等下推计算缩减结果；完整数据下载转主 Skill 的记录下载流程。字节数超限：精简返回字段。
 - JOIN/子查询预算超限：拆为有界查询或本地计算；Catalog 超限：转 Record / Field 路径。
 - USER_ID/GROUP_ID 的指定 ID 文本筛选：读取 ID 后在本地比较。
