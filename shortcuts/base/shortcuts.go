@@ -79,6 +79,7 @@ func Shortcuts() []common.Shortcut {
 		BaseWorkflowUpdate,
 		BaseWorkflowEnable,
 		BaseWorkflowDisable,
+		BaseDashboardPushCreate,
 		BaseButtonRuleBind,
 		BaseButtonRuleGet,
 		BaseButtonRuleUnbind,
