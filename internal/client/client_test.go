@@ -327,6 +327,45 @@ func TestPaginateAll_NaturalEndClearsPageToken(t *testing.T) {
 	}
 }
 
+// TestPaginateAll_SinglePagePreservesTopLevelPayload pins the wrap contract
+// for non-list endpoints under --page-all: a single-page response must come
+// back verbatim, so legacy payloads living outside "data" (e.g. bot/v3/info's
+// top-level "bot") survive pagination unchanged instead of being rewrapped
+// under a "pages" key.
+func TestPaginateAll_SinglePagePreservesTopLevelPayload(t *testing.T) {
+	apiCalls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalls++
+		return jsonResponse(map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"bot": map[string]interface{}{"open_id": "ou_bot", "app_name": "HypeSTAFF"},
+		}), nil
+	})
+
+	ac, _ := newTestAPIClient(t, rt)
+
+	result, err := ac.PaginateAll(context.Background(), RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/bot/v3/info",
+		As:     "bot",
+	}, PaginationOptions{PageLimit: 10, PageDelay: 0})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if apiCalls != 1 {
+		t.Fatalf("expected 1 API call for a non-paginated endpoint, got %d", apiCalls)
+	}
+
+	resultMap, _ := result.(map[string]interface{})
+	bot, ok := resultMap["bot"].(map[string]interface{})
+	if !ok || bot["open_id"] != "ou_bot" {
+		t.Fatalf("top-level bot payload must survive verbatim, got: %#v", result)
+	}
+	if _, exists := resultMap["pages"]; exists {
+		t.Fatalf("single-page result must not be rewrapped under pages, got: %#v", result)
+	}
+}
+
 func TestBuildApiReq_QueryParams(t *testing.T) {
 	ac := &APIClient{}
 
