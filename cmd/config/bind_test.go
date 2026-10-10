@@ -367,7 +367,7 @@ func TestConfigBindRun_InvalidSource(t *testing.T) {
 	err := configBindRun(&BindOptions{Factory: f, Source: "invalid"})
 	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
-		Message: `invalid --source "invalid"; valid values: openclaw, hermes, lark-channel`,
+		Message: `invalid --source "invalid"; valid values: openclaw, hermes, lark-channel, dsh`,
 	})
 }
 
@@ -385,16 +385,16 @@ func TestConfigBindRun_MissingSourceNonTTY(t *testing.T) {
 	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: "cannot determine Agent source: no --source flag and no Agent environment detected",
-		Hint:    "pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context",
+		Hint:    "pass --source openclaw|hermes|lark-channel|dsh, or run this command inside the corresponding Agent context",
 	})
 }
 
 // clearAgentEnv removes every env var that DetectWorkspaceFromEnv treats as
 // an Agent signal, so tests exercising the "no signals" path stay isolated
 // from whatever the host shell exported. Prefix-based instead of an explicit
-// list — when DetectWorkspaceFromEnv gains a new OPENCLAW_* / HERMES_* signal,
-// this helper does not need to be updated and tests do not silently misroute.
-// t.Setenv restores the original values after the test returns.
+// list — when DetectWorkspaceFromEnv gains a new OPENCLAW_* / HERMES_* / DSH_*
+// signal, this helper does not need to be updated and tests do not silently
+// misroute. t.Setenv restores the original values after the test returns.
 func clearAgentEnv(t *testing.T) {
 	t.Helper()
 	for _, kv := range os.Environ() {
@@ -405,6 +405,7 @@ func clearAgentEnv(t *testing.T) {
 		k := kv[:idx]
 		if strings.HasPrefix(k, "OPENCLAW_") ||
 			strings.HasPrefix(k, "HERMES_") ||
+			strings.HasPrefix(k, "DSH_") ||
 			k == "LARK_CHANNEL" {
 			t.Setenv(k, "")
 		}
@@ -793,6 +794,217 @@ func TestConfigBindRun_LarkChannelEmptySecret(t *testing.T) {
 		Type:    "config",
 		Message: "accounts.app.secret is empty in " + configPath,
 		Hint:    "run lark-channel-bridge's setup to populate the app credential",
+	})
+}
+
+// writeDSHFixture writes the DeepSeek Harness settings document under the
+// harness home directory, and points DSH_HOME at it.
+func writeDSHFixture(t *testing.T, harnessHome, body string) string {
+	t.Helper()
+	if err := os.MkdirAll(harnessHome, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	path := filepath.Join(harnessHome, "settings.yaml")
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	t.Setenv("DSH_HOME", harnessHome)
+	return path
+}
+
+// Happy path: --source dsh reads the settings document under DSH_HOME and
+// records the bind under the dsh workspace.
+func TestConfigBindRun_DSH_Success(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+	writeDSHFixture(t, t.TempDir(), "lark-channel:\n  appId: cli_dsh_main\n  appSecret: dsh_secret\n")
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f, Source: "dsh"}); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+
+	envelope := map[string]any{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	if envelope["workspace"] != "dsh" {
+		t.Errorf("workspace = %v, want %q", envelope["workspace"], "dsh")
+	}
+	if envelope["app_id"] != "cli_dsh_main" {
+		t.Errorf("app_id = %v, want %q", envelope["app_id"], "cli_dsh_main")
+	}
+}
+
+// The harness injects DSH_SHELL into every shell it manages, so an agent never
+// has to pass --source.
+func TestConfigBindRun_AutoDetect_DSHFromEnv(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+	writeDSHFixture(t, t.TempDir(), "lark-channel:\n  appId: cli_dsh_auto\n  appSecret: s\n")
+	t.Setenv("DSH_SHELL", "1")
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f}); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	envelope := map[string]any{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	if envelope["workspace"] != "dsh" {
+		t.Errorf("workspace = %v, want %q", envelope["workspace"], "dsh")
+	}
+}
+
+// The section stores the raw open-platform URL, not a brand name, so the Lark
+// deployment is only recognised if the domain is mapped rather than parsed.
+func TestConfigBindRun_DSH_LarkDomainBrand(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+	writeDSHFixture(t, t.TempDir(),
+		"lark-channel:\n  appId: cli_dsh_lark\n  appSecret: s\n  domain: https://open.larksuite.com\n")
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f, Source: "dsh"}); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+
+	core.SetCurrentWorkspace(core.WorkspaceDSH)
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("load workspace config: %v", err)
+	}
+	if len(multi.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(multi.Apps))
+	}
+	if got := string(multi.Apps[0].Brand); got != "lark" {
+		t.Errorf("Brand = %q, want %q (a larksuite domain must map to Lark)", got, "lark")
+	}
+}
+
+// An absent domain is the Feishu deployment — the field is only written when
+// the operator points the plugin at Lark.
+func TestConfigBindRun_DSH_DefaultBrandIsFeishu(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+	writeDSHFixture(t, t.TempDir(), "lark-channel:\n  appId: cli_dsh_feishu\n  appSecret: s\n")
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f, Source: "dsh"}); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+
+	core.SetCurrentWorkspace(core.WorkspaceDSH)
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("load workspace config: %v", err)
+	}
+	if got := string(multi.Apps[0].Brand); got != "feishu" {
+		t.Errorf("Brand = %q, want %q", got, "feishu")
+	}
+}
+
+// The workspace exists so a harness-hosted bind cannot disturb the config a
+// developer uses from their own terminal.
+func TestConfigBindRun_DSH_LeavesLocalConfigUntouched(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+	clearAgentEnv(t)
+
+	localPath := filepath.Join(configDir, "config.json")
+	localBefore := []byte(`{"apps":[{"appId":"cli_local_untouched"}]}` + "\n")
+	if err := os.WriteFile(localPath, localBefore, 0600); err != nil {
+		t.Fatalf("seed local config: %v", err)
+	}
+	writeDSHFixture(t, t.TempDir(), "lark-channel:\n  appId: cli_dsh_iso\n  appSecret: s\n")
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f, Source: "dsh"}); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+
+	localAfter, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local config: %v", err)
+	}
+	if string(localAfter) != string(localBefore) {
+		t.Errorf("local config was modified:\n before: %s\n after:  %s", localBefore, localAfter)
+	}
+	if _, err := os.Stat(filepath.Join(configDir, "dsh", "config.json")); err != nil {
+		t.Errorf("expected the bind under the dsh workspace: %v", err)
+	}
+}
+
+// --source dsh inside an OpenClaw environment is almost always the wrong
+// context; the mismatch is rejected before any prompt or write.
+func TestConfigBindRun_SourceEnvMismatch_DSHFlagInOpenClawEnv(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+	t.Setenv("OPENCLAW_CLI", "1")
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, Source: "dsh"})
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
+		Type:    "validation",
+		Message: `--source "dsh" does not match detected Agent environment (openclaw)`,
+		Hint:    "remove --source to auto-detect, or run this command in the correct Agent context",
+	})
+}
+
+func TestConfigBindRun_DSHMissingFile(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+
+	harnessHome := t.TempDir() // empty — no settings document written
+	t.Setenv("DSH_HOME", harnessHome)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, Source: "dsh"})
+	configPath := filepath.Join(harnessHome, "settings.yaml")
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
+		Type:    "config",
+		Message: "cannot read " + configPath + ": open " + configPath + ": no such file or directory",
+		Hint:    "verify the DeepSeek Harness lark-channel plugin is installed and has completed onboarding",
+	})
+}
+
+// A harness that never onboarded the channel still has a settings document —
+// it just has no lark-channel section to bind.
+func TestConfigBindRun_DSHMissingSection(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+	configPath := writeDSHFixture(t, t.TempDir(), "ui-onboarding:\n  welcomeNoticeVersion: 2026-08-13.1\n")
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, Source: "dsh"})
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
+		Type:    "config",
+		Message: "lark-channel.appId missing in " + configPath,
+		Hint:    "complete the plugin's first-boot QR onboarding so it persists appId/appSecret into this file",
+	})
+}
+
+func TestConfigBindRun_DSHEmptySecret(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+	configPath := writeDSHFixture(t, t.TempDir(), "lark-channel:\n  appId: cli_dsh_no_secret\n  appSecret: \"\"\n")
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, Source: "dsh"})
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
+		Type:    "config",
+		Message: "lark-channel.appSecret is empty in " + configPath,
+		Hint:    "complete the plugin's first-boot QR onboarding so it persists appId/appSecret into this file",
 	})
 }
 
