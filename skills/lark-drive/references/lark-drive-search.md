@@ -49,6 +49,7 @@
 | 我 owner、2026 年 3 月创建的文档（精确日历月；同上，owner + 创建时间窗两个维度） | `lark-cli drive +search --query "" --mine --created-since 2026-03-01 --created-until 2026-04-01` |
 | 关键词"预算"，最近一周我打开过，按编辑时间降序 | `lark-cli drive +search --query 预算 --opened-since 7d --sort edit_time` |
 | 某个 wiki space 下、我 owner 且 30-60 天前创建的 | `lark-cli drive +search --query "" --mine --space-ids space_xxx --created-since 2m --created-until 1m` |
+| 查询 xx 密级的文档 | 先按照 [`lark-drive-secure-label.md`](lark-drive-secure-label.md) 查找对应的密级 ID，再执行 `lark-cli drive +search --query "" --secure-label-ids <SECURE_LABEL_ID> --as user` |
 | 张三 owner / 负责的文档（注意是 owner 语义，不是张三最初创建的）| `lark-cli drive +search --query "" --creator-ids ou_zhangsan` |
 | 我最近 3 个月评论过的 docx | `lark-cli drive +search --query "" --commented-since 3m --doc-types docx` |
 
@@ -84,6 +85,14 @@ lark-cli drive +search --query OKR --format pretty
 lark-cli drive +search --query 方案 --format json
 lark-cli drive +search --query 方案 --page-token '<PAGE_TOKEN>'
 ```
+
+### 密级 / 安全标签搜索
+
+用户希望搜索 `xx` 密级的文档时，先阅读 [`lark-drive-secure-label.md`](lark-drive-secure-label.md) 了解如何查找对应的密级 ID，再将该 ID 通过 `--secure-label-ids` 传给 `drive +search --as user`。无法确定唯一的密级 ID 时，向用户提供可见密级列表并请其确认，不要发起搜索。`xx` 是密级条件，不是搜索关键词，不要放进 `--query`。
+
+多个用户指定的密级都唯一解析后，可按原顺序把 ID 以逗号连接后一次传入。搜索翻页时原样保留 `--secure-label-ids` 和其他 filters，只替换 `--page-token`。
+
+`--secure-label-ids` 默认同时下推到 `doc_filter` 和 `wiki_filter`；与 `--folder-tokens` 组合时只搜索该 Drive 文件夹，与 `--space-ids` 组合时只搜索该 Wiki 空间。
 
 ### 列表 / 统计型请求的执行步骤
 
@@ -141,6 +150,7 @@ lark-cli drive +search --query 方案 --page-token '<PAGE_TOKEN>'
 | 参数 | 映射 | 说明 |
 |---|---|---|
 | `--doc-types docx,sheet` | `doc_types` | 逗号分隔。允许值：`doc,sheet,bitable,mindnote,file,wiki,docx,folder,catalog,slides,shortcut` |
+| `--secure-label-ids 7441...,7442...` | `secure_label_ids` | 只接受 `+secure-label-list` 返回的数字 ID；默认进入 doc/wiki 两侧，folder/space 范围下只进入对应一侧 |
 | `--folder-tokens fld_a,fld_b` | `folder_tokens`（仅 doc_filter） | 存在时只发 `doc_filter`；**与 `--space-ids` 互斥** |
 | `--space-ids sp_x` | `space_ids`（仅 wiki_filter） | 存在时只发 `wiki_filter`；**与 `--folder-tokens` 互斥** |
 | `--chat-ids oc_x` | `chat_ids` | 逗号分隔 |
@@ -212,6 +222,7 @@ stdout 的 JSON 输出不受影响。`open_time` / `create_time` 不做 snap。
   - "某个文件夹下" → `--folder-tokens`（doc-only）
   - "某个 wiki 空间下" → `--space-ids`（wiki-only）
   - 两者不能同时使用，混用会报错
+- **密级 / 安全标签**：先按 [密级标签参考](lark-drive-secure-label.md) 解析当前 user 可见标签；唯一匹配后传 `--secure-label-ids`，否则停下让用户确认。
 - **身份 flag 互斥**：`--mine` 和 `--creator-ids` 不要同时传；`--created-by-me` 和 `--original-creator-ids` 不要同时传。owner 维度与原始创建者维度可以组合，例如“我创建后转给王五 owner”用 `--created-by-me --creator-ids ou_wangwu`。
 - **实体补全**：
   - 用户说"某个群里"，先用 `lark-im` 查 `chat_id`

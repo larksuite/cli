@@ -23,6 +23,17 @@ lark-cli drive +secure-label-list --page-size 10 --lang zh
 
 底层接口：`GET /open-apis/drive/v2/my_secure_labels`。
 
+### 将密级描述解析为标签 ID
+
+当需要把用户描述的密级解析为标签 ID 时：
+
+1. 使用后续命令所用的同一 user 身份和 profile 调用 `drive +secure-label-list`，并保持语言一致。
+2. 如果 `has_more=true`，携带返回的 `page_token` 继续查询；完成全部分页后才能判断没有匹配。
+3. 先按完整展示名匹配；用户明确给出等级 token（例如 `L4`）时，再以大小写不敏感、边界清晰的独立等级 token 匹配返回的 `name`。不要用宽泛包含关系猜测标签。
+4. 恰好一个候选时使用其数字 `id`；没有候选或存在多个候选时，向用户列出可见的标签名称和 ID 并请求确认，不要继续调用下游命令。
+
+标签列表属于当前用户可见的运行时数据，不要硬编码名称或 ID，也不要把展示名当作标签 ID 传给下游命令。
+
 ## 修改文档密级
 
 ```bash

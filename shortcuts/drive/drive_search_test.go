@@ -308,10 +308,66 @@ func TestValidateDriveSearchIDs(t *testing.T) {
 		spec := driveSearchSpec{
 			CreatorIDs:         []string{"ou_aaa"},
 			OriginalCreatorIDs: []string{"ou_ccc"},
+			SecureLabelIDs:     []string{"7441128698091569155"},
 			ChatIDs:            []string{"oc_xxx"},
 			SharerIDs:          []string{"ou_bbb"},
 		}
 		if err := validateDriveSearchIDs(spec); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("secure label display name is rejected", func(t *testing.T) {
+		t.Parallel()
+		err := validateDriveSearchIDs(driveSearchSpec{SecureLabelIDs: []string{"L4-机密"}})
+		if err == nil {
+			t.Fatal("expected --secure-label-ids error")
+		}
+		var vErr *errs.ValidationError
+		if !errors.As(err, &vErr) {
+			t.Fatalf("expected *errs.ValidationError, got %T", err)
+		}
+		if vErr.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("Subtype = %q, want %q", vErr.Subtype, errs.SubtypeInvalidArgument)
+		}
+		if vErr.Param != "--secure-label-ids" {
+			t.Fatalf("Param = %q, want --secure-label-ids", vErr.Param)
+		}
+		if !strings.Contains(vErr.Hint, "drive +secure-label-list") {
+			t.Fatalf("Hint = %q, want +secure-label-list recovery", vErr.Hint)
+		}
+		if got := output.ExitCodeOf(err); got != output.ExitValidation {
+			t.Fatalf("exit code = %d, want ExitValidation (%d)", got, output.ExitValidation)
+		}
+	})
+
+	t.Run("explicit empty secure label ids are rejected", func(t *testing.T) {
+		t.Parallel()
+		err := validateDriveSearchIDs(driveSearchSpec{SecureLabelIDsSet: true})
+		if err == nil {
+			t.Fatal("expected --secure-label-ids error")
+		}
+		var vErr *errs.ValidationError
+		if !errors.As(err, &vErr) {
+			t.Fatalf("expected *errs.ValidationError, got %T", err)
+		}
+		if vErr.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("Subtype = %q, want %q", vErr.Subtype, errs.SubtypeInvalidArgument)
+		}
+		if vErr.Param != "--secure-label-ids" {
+			t.Fatalf("Param = %q, want --secure-label-ids", vErr.Param)
+		}
+		if !strings.Contains(vErr.Hint, "drive +secure-label-list") {
+			t.Fatalf("Hint = %q, want +secure-label-list recovery", vErr.Hint)
+		}
+		if got := output.ExitCodeOf(err); got != output.ExitValidation {
+			t.Fatalf("exit code = %d, want ExitValidation (%d)", got, output.ExitValidation)
+		}
+	})
+
+	t.Run("omitted secure label ids are allowed", func(t *testing.T) {
+		t.Parallel()
+		if err := validateDriveSearchIDs(driveSearchSpec{}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -892,9 +948,24 @@ func TestBuildDriveSearchRequest(t *testing.T) {
 		}
 	})
 
+	t.Run("--secure-label-ids fills both filters in input order", func(t *testing.T) {
+		t.Parallel()
+		want := []string{"7441128698091569155", "7441128254235426818"}
+		req, _, err := buildDriveSearchRequest(driveSearchSpec{SecureLabelIDs: want}, userOpenID, now)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		for _, filterKey := range []string{"doc_filter", "wiki_filter"} {
+			got := req[filterKey].(map[string]interface{})["secure_label_ids"]
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("%s.secure_label_ids = %v, want %v", filterKey, got, want)
+			}
+		}
+	})
+
 	t.Run("--folder-tokens scopes only doc_filter", func(t *testing.T) {
 		t.Parallel()
-		spec := driveSearchSpec{FolderTokens: []string{"fld_a"}}
+		spec := driveSearchSpec{FolderTokens: []string{"fld_a"}, SecureLabelIDs: []string{"7441128698091569155"}}
 		req, _, err := buildDriveSearchRequest(spec, userOpenID, now)
 		if err != nil {
 			t.Fatalf("err: %v", err)
@@ -906,11 +977,14 @@ func TestBuildDriveSearchRequest(t *testing.T) {
 		if _, ok := df["folder_tokens"]; !ok {
 			t.Fatalf("doc_filter must carry folder_tokens")
 		}
+		if got := df["secure_label_ids"]; !reflect.DeepEqual(got, spec.SecureLabelIDs) {
+			t.Fatalf("doc_filter.secure_label_ids = %v, want %v", got, spec.SecureLabelIDs)
+		}
 	})
 
 	t.Run("--space-ids scopes only wiki_filter", func(t *testing.T) {
 		t.Parallel()
-		spec := driveSearchSpec{SpaceIDs: []string{"sp_x"}}
+		spec := driveSearchSpec{SpaceIDs: []string{"sp_x"}, SecureLabelIDs: []string{"7441128698091569155"}}
 		req, _, err := buildDriveSearchRequest(spec, userOpenID, now)
 		if err != nil {
 			t.Fatalf("err: %v", err)
@@ -921,6 +995,9 @@ func TestBuildDriveSearchRequest(t *testing.T) {
 		wf := req["wiki_filter"].(map[string]interface{})
 		if _, ok := wf["space_ids"]; !ok {
 			t.Fatalf("wiki_filter must carry space_ids")
+		}
+		if got := wf["secure_label_ids"]; !reflect.DeepEqual(got, spec.SecureLabelIDs) {
+			t.Fatalf("wiki_filter.secure_label_ids = %v, want %v", got, spec.SecureLabelIDs)
 		}
 	})
 

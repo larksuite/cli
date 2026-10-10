@@ -49,10 +49,31 @@ func TestDriveSearchDryRun_RequestShape(t *testing.T) {
 			wantWikiFilter: true,
 		},
 		{
+			name: "--secure-label-ids emits both filters and preserves order",
+			args: []string{
+				"drive", "+search",
+				"--query", "",
+				"--secure-label-ids", "7441128698091569155, 7441128254235426818,,",
+				"--dry-run",
+			},
+			wantURL:        "/open-apis/search/v2/doc_wiki/search",
+			wantDocFilter:  true,
+			wantWikiFilter: true,
+			wantDocFilterFields: map[string]string{
+				"secure_label_ids.0": "7441128698091569155",
+				"secure_label_ids.1": "7441128254235426818",
+			},
+			wantWikiFilterFields: map[string]string{
+				"secure_label_ids.0": "7441128698091569155",
+				"secure_label_ids.1": "7441128254235426818",
+			},
+		},
+		{
 			name: "--folder-tokens scopes to doc_filter only",
 			args: []string{
 				"drive", "+search",
 				"--query", "x",
+				"--secure-label-ids", "7441128698091569155",
 				"--folder-tokens", "fld_aaa,fld_bbb",
 				"--dry-run",
 			},
@@ -60,8 +81,9 @@ func TestDriveSearchDryRun_RequestShape(t *testing.T) {
 			wantQuery:     "x",
 			wantDocFilter: true,
 			wantDocFilterFields: map[string]string{
-				"folder_tokens.0": "fld_aaa",
-				"folder_tokens.1": "fld_bbb",
+				"folder_tokens.0":    "fld_aaa",
+				"folder_tokens.1":    "fld_bbb",
+				"secure_label_ids.0": "7441128698091569155",
 			},
 		},
 		{
@@ -69,6 +91,7 @@ func TestDriveSearchDryRun_RequestShape(t *testing.T) {
 			args: []string{
 				"drive", "+search",
 				"--query", "x",
+				"--secure-label-ids", "7441128698091569155",
 				"--space-ids", "sp_xxx",
 				"--dry-run",
 			},
@@ -76,7 +99,8 @@ func TestDriveSearchDryRun_RequestShape(t *testing.T) {
 			wantQuery:      "x",
 			wantWikiFilter: true,
 			wantWikiFilterFields: map[string]string{
-				"space_ids.0": "sp_xxx",
+				"space_ids.0":        "sp_xxx",
+				"secure_label_ids.0": "7441128698091569155",
 			},
 		},
 		{
@@ -159,6 +183,65 @@ func TestDriveSearchDryRun_RequestShape(t *testing.T) {
 					t.Fatalf("wiki_filter.%s=%q, want %q\nstdout:\n%s", path, got, want, out)
 				}
 			}
+		})
+	}
+}
+
+func TestDriveSearchDryRun_RejectsSecureLabelDisplayName(t *testing.T) {
+	setDriveSearchE2EEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+search",
+			"--secure-label-ids", "L4-机密",
+			"--dry-run",
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Empty(t, result.Stdout)
+	require.Equal(t, "validation", clie2e.DryRunGet(result.Stderr, "error.type").String(), result.Stderr)
+	require.Equal(t, "invalid_argument", clie2e.DryRunGet(result.Stderr, "error.subtype").String(), result.Stderr)
+	require.Equal(t, "--secure-label-ids", clie2e.DryRunGet(result.Stderr, "error.param").String(), result.Stderr)
+	require.Contains(t, clie2e.DryRunGet(result.Stderr, "error.hint").String(), "drive +secure-label-list")
+}
+
+func TestDriveSearchDryRun_RejectsEmptySecureLabelIDs(t *testing.T) {
+	setDriveSearchE2EEnv(t)
+
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "empty", value: ""},
+		{name: "whitespace", value: "   "},
+		{name: "separators only", value: ", ,"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"drive", "+search",
+					"--secure-label-ids", tt.value,
+					"--dry-run",
+				},
+				DefaultAs: "bot",
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 2)
+			require.Empty(t, result.Stdout)
+			require.Equal(t, "validation", clie2e.DryRunGet(result.Stderr, "error.type").String(), result.Stderr)
+			require.Equal(t, "invalid_argument", clie2e.DryRunGet(result.Stderr, "error.subtype").String(), result.Stderr)
+			require.Equal(t, "--secure-label-ids", clie2e.DryRunGet(result.Stderr, "error.param").String(), result.Stderr)
+			require.Contains(t, clie2e.DryRunGet(result.Stderr, "error.hint").String(), "drive +secure-label-list")
 		})
 	}
 }

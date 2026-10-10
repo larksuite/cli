@@ -94,6 +94,7 @@ var DriveSearch = common.Shortcut{
 		{Name: "created-until", Desc: "end of [document created] time window"},
 
 		{Name: "doc-types", Desc: "comma-separated types: doc,sheet,bitable,mindnote,file,wiki,docx,folder,catalog,slides,shortcut"},
+		{Name: "secure-label-ids", Desc: "comma-separated numeric secure label IDs returned by +secure-label-list"},
 		{Name: "folder-tokens", Desc: "comma-separated folder tokens (doc-only; mutually exclusive with --space-ids)"},
 		{Name: "space-ids", Desc: "comma-separated wiki space IDs (wiki-only; mutually exclusive with --folder-tokens)"},
 		{Name: "chat-ids", Desc: "comma-separated chat IDs"},
@@ -195,11 +196,13 @@ type driveSearchSpec struct {
 	CreatedSince   string
 	CreatedUntil   string
 
-	DocTypes     []string
-	FolderTokens []string
-	SpaceIDs     []string
-	ChatIDs      []string
-	SharerIDs    []string
+	DocTypes          []string
+	SecureLabelIDs    []string
+	SecureLabelIDsSet bool
+	FolderTokens      []string
+	SpaceIDs          []string
+	ChatIDs           []string
+	SharerIDs         []string
 
 	OnlyTitle   bool
 	OnlyComment bool
@@ -227,11 +230,13 @@ func readDriveSearchSpec(runtime *common.RuntimeContext) driveSearchSpec {
 		CreatedSince:   runtime.Str("created-since"),
 		CreatedUntil:   runtime.Str("created-until"),
 
-		DocTypes:     upperAll(common.SplitCSV(runtime.Str("doc-types"))),
-		FolderTokens: common.SplitCSV(runtime.Str("folder-tokens")),
-		SpaceIDs:     common.SplitCSV(runtime.Str("space-ids")),
-		ChatIDs:      common.SplitCSV(runtime.Str("chat-ids")),
-		SharerIDs:    common.SplitCSV(runtime.Str("sharer-ids")),
+		DocTypes:          upperAll(common.SplitCSV(runtime.Str("doc-types"))),
+		SecureLabelIDs:    common.SplitCSV(runtime.Str("secure-label-ids")),
+		SecureLabelIDsSet: runtime.Changed("secure-label-ids"),
+		FolderTokens:      common.SplitCSV(runtime.Str("folder-tokens")),
+		SpaceIDs:          common.SplitCSV(runtime.Str("space-ids")),
+		ChatIDs:           common.SplitCSV(runtime.Str("chat-ids")),
+		SharerIDs:         common.SplitCSV(runtime.Str("sharer-ids")),
 
 		OnlyTitle:   runtime.Bool("only-title"),
 		OnlyComment: runtime.Bool("only-comment"),
@@ -328,6 +333,9 @@ func buildDriveSearchRequest(spec driveSearchSpec, userOpenID string, now time.T
 	if len(spec.DocTypes) > 0 {
 		filter["doc_types"] = spec.DocTypes
 	}
+	if len(spec.SecureLabelIDs) > 0 {
+		filter["secure_label_ids"] = spec.SecureLabelIDs
+	}
 	if len(spec.ChatIDs) > 0 {
 		filter["chat_ids"] = spec.ChatIDs
 	}
@@ -402,6 +410,20 @@ func parseDriveSearchPageSize(raw string) (int, error) {
 // so misuse surfaces as a named-flag validation error rather than an opaque
 // server-side failure or empty result.
 func validateDriveSearchIDs(spec driveSearchSpec) error {
+	if spec.SecureLabelIDsSet && len(spec.SecureLabelIDs) == 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--secure-label-ids requires at least one numeric secure label ID").
+			WithParam("--secure-label-ids").
+			WithHint("run `lark-cli drive +secure-label-list --as user` and pass the numeric `id` value; do not pass an empty value or label name")
+	}
+	for _, id := range spec.SecureLabelIDs {
+		for _, r := range id {
+			if r < '0' || r > '9' {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--secure-label-ids must contain numeric secure label IDs, got %q", id).
+					WithParam("--secure-label-ids").
+					WithHint("run `lark-cli drive +secure-label-list --as user` and pass the numeric `id` value; do not pass the label name")
+			}
+		}
+	}
 	for _, id := range spec.CreatorIDs {
 		if _, err := common.ValidateUserIDTyped("--creator-ids", id); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--creator-ids %q: %s", id, err).WithParam("--creator-ids")
