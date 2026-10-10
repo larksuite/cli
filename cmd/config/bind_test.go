@@ -1409,6 +1409,56 @@ func TestConfigBindRun_IdentityEscalationWithForceAllowed(t *testing.T) {
 		core.StrictModeOff, core.AsUser)
 }
 
+// TestConfigBindRun_PreservesWorkspacePolicy verifies a re-bind does not drop
+// workspace-level policy (top-level strictMode / riskControl) when replacing
+// the bound app — those settings are workspace-scoped, not app-scoped.
+func TestConfigBindRun_PreservesWorkspacePolicy(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+
+	hermesDir := filepath.Join(configDir, "hermes")
+	if err := os.MkdirAll(hermesDir, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	seed := `{"strictMode":"user","riskControl":false,"apps":[{"appId":"cli_old","strictMode":"bot","defaultAs":"bot"}]}`
+	if err := os.WriteFile(filepath.Join(hermesDir, "config.json"), []byte(seed), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"),
+		[]byte("FEISHU_APP_ID=cli_new\nFEISHU_APP_SECRET=new\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	f2, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{
+		Factory:  f2,
+		Source:   "hermes",
+		Identity: "user-default",
+		Force:    true,
+	}); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(hermesDir, "config.json"))
+	if err != nil {
+		t.Fatalf("read bound config: %v", err)
+	}
+	var got core.MultiAppConfig
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("parse bound config: %v", err)
+	}
+	if got.StrictMode != core.StrictModeUser {
+		t.Errorf("workspace strictMode = %q, want %q (preserved)", got.StrictMode, core.StrictModeUser)
+	}
+	if got.RiskControl == nil || *got.RiskControl {
+		t.Errorf("workspace riskControl = %v, want explicit false (preserved)", got.RiskControl)
+	}
+}
+
 // TestConfigBindRun_AllowsRebindSameBotOnly verifies re-binding the same
 // bot-only identity is NOT blocked — only bot→user escalation is gated.
 func TestConfigBindRun_AllowsRebindSameBotOnly(t *testing.T) {
