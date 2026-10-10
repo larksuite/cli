@@ -273,7 +273,7 @@ func fetchDrivePreviewCandidates(runtime *common.RuntimeContext, fileToken strin
 		body,
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, withDrivePreviewRecoveryHint(err)
 	}
 	return data, normalizeDrivePreviewCandidates(data), nil
 }
@@ -464,7 +464,8 @@ func downloadDrivePreviewArtifactWithParams(ctx context.Context, runtime *common
 
 	resp, err := runtime.DoAPIStream(ctx, apiReq)
 	if err != nil {
-		return nil, wrapDriveNetworkErr(err, "preview download failed: %s", err)
+		err = classifyDriveFileReadStreamError(runtime, err)
+		return nil, withDrivePreviewRecoveryHint(wrapDriveNetworkErr(err, "preview download failed: %s", err))
 	}
 	defer resp.Body.Close()
 
