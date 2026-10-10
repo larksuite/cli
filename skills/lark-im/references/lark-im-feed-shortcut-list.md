@@ -51,10 +51,10 @@ Example (with detail enrichment, CHAT type):
   "data": {
     "shortcuts": [
       {
-        "feed_card_id": "oc_092f0100fe59c35995727db1039777a8",
+        "feed_card_id": "oc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "type": 1,
         "detail": {
-          "chat_id": "oc_092f0100fe59c35995727db1039777a8",
+          "chat_id": "oc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
           "chat_mode": "group",
           "name": "Engineering",
           "avatar": "https://...",
@@ -66,10 +66,10 @@ Example (with detail enrichment, CHAT type):
         }
       },
       {
-        "feed_card_id": "oc_c82061d126a06635aa3569587b134bb1",
+        "feed_card_id": "oc_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
         "type": 1,
         "detail": {
-          "chat_id": "oc_c82061d126a06635aa3569587b134bb1",
+          "chat_id": "oc_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
           "chat_mode": "p2p",
           "name": "",
           "p2p_target_id": "ou_xxx",

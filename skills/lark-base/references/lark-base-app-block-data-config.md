@@ -88,7 +88,7 @@ lark-cli base +app-block-update \
 
 ```json
 {
-  "base_token": "A2f5boKjfazMzesI9zKbmugTc4T",
+  "base_token": "<base_token>",
   "data_sources": [
     {
       "table_name": "数据表",
@@ -107,7 +107,7 @@ lark-cli base +app-block-update \
 lark-cli base +app-block-create \
   --app-token <app_token> --page-id <page_id> \
   --name "文本分布" --type column \
-  --data-config '{"base_token":"A2f5boKjfazMzesI9zKbmugTc4T","data_sources":[{"table_name":"数据表","count_all":true,"group_by":[{"field_name":"文本","mode":"integrated","sort":{"type":"value","order":"desc"}}]}]}'
+  --data-config '{"base_token":"<base_token>","data_sources":[{"table_name":"数据表","count_all":true,"group_by":[{"field_name":"文本","mode":"integrated","sort":{"type":"value","order":"desc"}}]}]}'
 ```
 
 多数据源示例（两张表各出一条系列，按数据源拆分）：
