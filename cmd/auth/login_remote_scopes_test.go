@@ -73,6 +73,44 @@ func TestResolveScopesForDomains_FallbackToLocal(t *testing.T) {
 	}
 }
 
+func TestResolveScopesForDomains_MailRemoteAndBuiltinEquivalent(t *testing.T) {
+	const (
+		baseScope    = "mail:user_mailbox.mail_contact:read"
+		addressScope = "mail:user_mailbox.mail_contact.mail_address:read"
+	)
+
+	resolver := builtinResolver(t)
+	builtinMail := resolver.scopesFor([]string{"mail"}, "user", core.BrandFeishu)
+	for _, want := range []string{baseScope, addressScope} {
+		if !slices.Contains(builtinMail, want) {
+			t.Fatalf("built-in Mail scopes missing %q: %v", want, builtinMail)
+		}
+	}
+
+	remote := make(map[string][]string)
+	for _, domain := range resolver.sorted(core.BrandFeishu) {
+		remote[domain] = resolver.scopesFor([]string{domain}, "user", core.BrandFeishu)
+	}
+	remoteMail := resolveScopesForDomains([]string{"mail"}, remote, true, resolver, core.BrandFeishu)
+	if !reflect.DeepEqual(remoteMail, builtinMail) {
+		t.Fatalf("remote Mail scopes = %v, built-in = %v", remoteMail, builtinMail)
+	}
+
+	for domain, scopes := range remote {
+		if domain != "mail" && slices.Contains(scopes, addressScope) {
+			t.Errorf("contact-address scope leaked into domain %q: %v", domain, scopes)
+		}
+	}
+
+	allDomains := resolver.sorted(core.BrandFeishu)
+	for _, remoteOK := range []bool{false, true} {
+		got := resolveScopesForDomains(allDomains, remote, remoteOK, resolver, core.BrandFeishu)
+		if !slices.Contains(got, addressScope) {
+			t.Errorf("all-domain scopes (remote=%v) missing %q", remoteOK, addressScope)
+		}
+	}
+}
+
 func TestLegalDomainsFor_RemoteUsed(t *testing.T) {
 	// includes "newbiz", a domain unknown to this CLI build, verifying a remote-listed domain is still legal
 	remote := map[string][]string{
