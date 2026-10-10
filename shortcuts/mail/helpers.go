@@ -2748,6 +2748,26 @@ func validateBotMailboxNotMe(runtime *common.RuntimeContext) error {
 	return nil
 }
 
+func validateUserMailboxID(flagName, mailboxID string) error {
+	const message = "%s must be \"me\" or a valid email address, for example shared@example.com"
+	if mailboxID == "me" {
+		return nil
+	}
+	if mailboxID == "" || mailboxID != strings.TrimSpace(mailboxID) {
+		return mailValidationParamError(flagName, message, flagName)
+	}
+	if strings.ContainsFunc(mailboxID, func(r rune) bool {
+		return r < 0x20 || r == 0x7f
+	}) {
+		return mailValidationParamError(flagName, message, flagName)
+	}
+	addr, err := netmail.ParseAddress(mailboxID)
+	if err != nil || addr == nil || addr.Name != "" || addr.Address != mailboxID {
+		return mailValidationParamError(flagName, message, flagName)
+	}
+	return nil
+}
+
 // validateMessageIDs parses and validates the existing +messages comma-separated
 // flag format. Unlike splitByComma, it keeps empty entries so "id1,,id2" fails
 // locally. It intentionally does not enforce the server-side single-call limit:
