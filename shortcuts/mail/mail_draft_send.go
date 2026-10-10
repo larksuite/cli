@@ -10,6 +10,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
+	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
 
 // MaxBatchSendDrafts caps the number of draft IDs accepted in a single
@@ -99,6 +100,10 @@ var MailDraftSend = common.Shortcut{
 			Desc: "Stop at the first recoverable per-draft failure (default: continue and aggregate). " +
 				"Fatal errors (auth, permission, network, mailbox-level quota) always abort immediately " +
 				"regardless of this flag."},
+		{Name: "send-separately",
+			Desc: "Override each draft's send-separately setting before sending: true or false. " +
+				"Every draft is saved with the new value first, then sent (save-then-send); a draft " +
+				"whose save fails is NOT sent. Omit to send each draft with its server-stored setting."},
 	},
 	Validate: validateDraftSend,
 	DryRun:   dryRunDraftSend,
@@ -127,11 +132,43 @@ func executeDraftSend(ctx context.Context, rt *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	sendSeparately, err := parseSendSeparately(rt.Str("send-separately"))
+	if err != nil {
+		return err
+	}
 
 	out := batchSendOutput{MailboxID: mailboxID, Total: len(draftIDs)}
 	stopOnErr := rt.Bool("stop-on-error")
 	for i, id := range draftIDs {
 		idx := i + 1
+		// --send-separately override: save the new value onto the draft
+		// FIRST, then send the same draft (state-transition contract:
+		// "发送草稿并覆盖设置" = save succeeds → send; save fails → do not
+		// send that draft). Routed through the same fatal/recoverable
+		// classification as send errors below.
+		if sendSeparately != "" {
+			saveErr := saveDraftSendSeparately(rt, mailboxID, id, sendSeparately)
+			if saveErr == nil {
+				writeDraftSendProgressf(rt, "[%d/%d] saved draft %s with send_separately=%s",
+					idx, len(draftIDs), sanitizeForSingleLine(id), sendSeparately)
+			} else if isFatalSendErr(saveErr) {
+				writeDraftSendProgressf(rt, "[%d/%d] aborting after draft %s: save before send failed: %s",
+					idx, len(draftIDs), sanitizeForSingleLine(id), sanitizeForSingleLine(saveErr.Error()))
+				out.Failed = append(out.Failed, failedDraft{DraftID: id, Error: saveErr.Error()})
+				if out.hasProgress() {
+					return emitDraftSendAborted(rt, &out, saveErr)
+				}
+				return saveErr
+			} else {
+				writeDraftSendProgressf(rt, "[%d/%d] failed draft %s: save before send failed: %s",
+					idx, len(draftIDs), sanitizeForSingleLine(id), sanitizeForSingleLine(saveErr.Error()))
+				out.Failed = append(out.Failed, failedDraft{DraftID: id, Error: saveErr.Error()})
+				if stopOnErr {
+					break
+				}
+				continue
+			}
+		}
 		writeDraftSendProgressf(rt, "[%d/%d] sending draft %s",
 			idx, len(draftIDs), sanitizeForSingleLine(id))
 		// Direct CallAPITyped rather than draftpkg.Send: this shortcut never sends
@@ -203,20 +240,70 @@ func executeDraftSend(ctx context.Context, rt *common.RuntimeContext) error {
 }
 
 // dryRunDraftSend builds the --dry-run preview: one POST call per draft ID,
-// in input order, with a header description summarising the batch size.
+// in input order, with a header description summarising the batch size. When
+// --send-separately is set, each draft is preceded by the save-then-send
+// pair (GET raw → PUT updated raw EML) that applies the override.
 func dryRunDraftSend(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
 	mailboxID := resolveComposeMailboxID(rt)
 	draftIDs, _ := normalizedDraftSendIDs(rt)
+	sendSeparately, _ := parseSendSeparately(rt.Str("send-separately"))
 	api := common.NewDryRunAPI().Desc(fmt.Sprintf(
 		"Send %d existing drafts sequentially", len(draftIDs)))
 	for _, id := range draftIDs {
+		if sendSeparately != "" {
+			api = api.GET(mailboxPath(mailboxID, "drafts", id)).
+				Params(map[string]interface{}{"format": "raw"}).
+				Desc(fmt.Sprintf("Fetch draft %s to apply the --send-separately=%s override before sending (save-then-send).", id, sendSeparately)).
+				PUT(mailboxPath(mailboxID, "drafts", id)).
+				Body(map[string]interface{}{
+					"raw":       "<base64url-EML>",
+					"_override": map[string]interface{}{draftpkg.SendSeparatelyHeader: sendSeparately},
+				})
+		}
 		api = api.POST(mailboxPath(mailboxID, "drafts", id, "send"))
 	}
 	return api
 }
 
+// saveDraftSendSeparately persists an explicit send-separately override onto
+// an existing draft before it is sent. The OAPI drafts.update contract
+// replaces the whole raw EML (no partial update), so this is a
+// read-modify-write of exactly one header: fetch raw EML → parse → upsert
+// X-Cli-Send-Separately via the typed patch layer → serialize → update.
+// Everything else in the draft (content, recipients, other settings) is
+// carried over from the latest server state, never overwritten with defaults.
+func saveDraftSendSeparately(rt *common.RuntimeContext, mailboxID, draftID, value string) error {
+	rawDraft, err := draftpkg.GetRaw(rt, mailboxID, draftID)
+	if err != nil {
+		return mailDecorateProblemMessage(err, "read draft raw EML failed while applying --send-separately")
+	}
+	snapshot, err := draftpkg.Parse(rawDraft)
+	if err != nil {
+		return err
+	}
+	patch := draftpkg.Patch{Ops: []draftpkg.PatchOp{{
+		Op:    "set_header",
+		Name:  draftpkg.SendSeparatelyHeader,
+		Value: value,
+	}}}
+	if err := draftpkg.Apply(&draftpkg.DraftCtx{FIO: rt.FileIO()}, snapshot, patch); err != nil {
+		return err
+	}
+	serialized, err := draftpkg.Serialize(snapshot)
+	if err != nil {
+		return err
+	}
+	if _, err := draftpkg.UpdateWithRaw(rt, mailboxID, draftID, serialized); err != nil {
+		return mailDecorateProblemMessage(err, "save --send-separately onto draft failed")
+	}
+	return nil
+}
+
 func validateDraftSend(ctx context.Context, rt *common.RuntimeContext) error {
-	_, err := normalizedDraftSendIDs(rt)
+	if _, err := normalizedDraftSendIDs(rt); err != nil {
+		return err
+	}
+	_, err := parseSendSeparately(rt.Str("send-separately"))
 	return err
 }
 

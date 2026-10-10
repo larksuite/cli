@@ -80,6 +80,7 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 | `--body <text>` | 否 | 整段替换正文（自动展开为 `set_body` op）。与 `--body-file` 互斥；与 `--patch-file` 内的 `set_body` / `set_reply_body` op 互斥 |
 | `--body-file <path>` | 否 | 从文件读取正文 HTML（相对路径，仅限 cwd 子树）。与 `--body` 互斥。文件大小上限 32 MB |
 | `--set-priority <level>` | 否 | 设置邮件优先级：`high`、`normal`、`low`。设为 `normal` 会清除已有优先级 |
+| `--send-separately <bool>` | 否 | 分别发送：`true` 开启、`false` 显式取消（取消值同样写入草稿，不会丢失）。省略时保留草稿既有设置，仅修改其他指定字段。与 `--patch-file` 中针对 `X-Cli-Send-Separately` 头的 `set_header`/`remove_header` 值不一致时返回参数冲突（退出码 2），值一致则正常合并。`--inspect` 投影中的 `send_separately` 为 `true` / `false` / `unknown`（草稿无该头时为 `unknown`，不按收件人数推断，不伪造成 `false`） |
 | `--set-event-summary <text>` | 否 | 设置日程标题。需同时设置 `--set-event-start` 和 `--set-event-end` |
 | `--set-event-start <time>` | 条件必填 | 设置日程开始时间（ISO 8601） |
 | `--set-event-end <time>` | 条件必填 | 设置日程结束时间（ISO 8601） |
