@@ -24,12 +24,13 @@ const (
 	SourceMindnote    SourceType = 9  // mindnotes
 	SourceSlides      SourceType = 10 // slides presentations
 	SourceFile        SourceType = 11 // drive files
+	SourceMail        SourceType = 12 // mail messages
 )
 
 var allocated = map[SourceType]struct{}{
 	SourceWiki: {}, SourceDoc: {}, SourceMessage: {}, SourceMinute: {},
 	SourceBase: {}, SourceSheet: {}, SourceMeeting: {}, SourceMeetingNote: {},
-	SourceMindnote: {}, SourceSlides: {}, SourceFile: {},
+	SourceMindnote: {}, SourceSlides: {}, SourceFile: {}, SourceMail: {},
 }
 
 // IsAllocated reports whether st is an assigned business scene. SourceUnset

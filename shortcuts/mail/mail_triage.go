@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -56,6 +57,10 @@ var MailTriage = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMail},
+		Build:       mailTriageCitations,
+	},
 	Flags: []common.Flag{
 		{Name: "format", Default: "table", Enum: []string{"table", "json", "data"}, Desc: "output format: table | json | data (json/data output object with pagination fields)"},
 		{Name: "max", Aliases: []string{"page-size"}, Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},
@@ -110,7 +115,7 @@ var MailTriage = common.Shortcut{
 				Desc(searchDesc)
 			if showLabels {
 				d = d.POST(mailboxPath(mailbox, "messages", "batch_get")).
-					Body(map[string]interface{}{"format": "metadata", "message_ids": []string{"<message_id>"}}).
+					Body(triageBatchGetBody([]string{"<message_id>"})).
 					Desc("batch_get messages with format=metadata to populate labels")
 			}
 			return d
@@ -131,7 +136,7 @@ var MailTriage = common.Shortcut{
 		return d.GET(mailboxPath(mailbox, "messages")).
 			Params(listParams).
 			POST(mailboxPath(mailbox, "messages", "batch_get")).
-			Body(map[string]interface{}{"format": "metadata", "message_ids": []string{"<message_id>"}}).
+			Body(triageBatchGetBody([]string{"<message_id>"})).
 			Desc(listDesc).
 			Set("resolve_note", "name→ID resolution for filter.folder/filter.label runs during execution; dry-run does not call folders/labels list APIs")
 	},
@@ -141,8 +146,13 @@ var MailTriage = common.Shortcut{
 			return nil
 		}
 		mailbox := resolveMailboxID(runtime)
-		hintIdentityFirst(runtime, mailbox)
+		if !citation.Enabled() {
+			hintIdentityFirst(runtime, mailbox)
+		}
 		outFormat := runtime.Str("format")
+		if citation.Enabled() && !runtime.Changed("format") {
+			outFormat = "json"
+		}
 		query := runtime.Str("query")
 		if query != "" {
 			if err := common.RejectDangerousCharsTyped("--query", query); err != nil {
@@ -281,18 +291,23 @@ var MailTriage = common.Shortcut{
 			msg["mailbox_id"] = mailbox
 		}
 
+		outData := map[string]interface{}{
+			"messages":   messages,
+			"mailbox_id": mailbox,
+			"count":      len(messages),
+			"has_more":   hasMore,
+			"page_token": nextPageToken,
+		}
+		if notice != "" {
+			outData["notice"] = notice
+		}
+		if citation.Enabled() && (outFormat == "json" || outFormat == "data") {
+			runtime.Out(outData, nil)
+			return nil
+		}
+
 		switch outFormat {
 		case "json", "data":
-			outData := map[string]interface{}{
-				"messages":   messages,
-				"mailbox_id": mailbox,
-				"count":      len(messages),
-				"has_more":   hasMore,
-				"page_token": nextPageToken,
-			}
-			if notice != "" {
-				outData["notice"] = notice
-			}
 			output.PrintJson(runtime.IO().Out, outData)
 		default: // "table"
 			if notice != "" {
@@ -789,10 +804,7 @@ func fetchMessageMetas(runtime *common.RuntimeContext, mailbox string, messageID
 		data, err := doJSONAPI(runtime, &larkcore.ApiReq{
 			HttpMethod: http.MethodPost,
 			ApiPath:    mailboxPath(mailbox, "messages", "batch_get"),
-			Body: map[string]interface{}{
-				"format":      "metadata",
-				"message_ids": messageIDs[start:end],
-			},
+			Body:       triageBatchGetBody(messageIDs[start:end]),
 		}, "API call failed")
 		if err != nil {
 			return nil, err
@@ -822,6 +834,17 @@ func fetchMessageMetas(runtime *common.RuntimeContext, mailbox string, messageID
 	return messages, nil
 }
 
+func triageBatchGetBody(messageIDs []string) map[string]interface{} {
+	body := map[string]interface{}{
+		"format":      "metadata",
+		"message_ids": messageIDs,
+	}
+	if citation.Enabled() {
+		body["include_applink"] = true
+	}
+	return body
+}
+
 func buildTriageMessageMeta(msg map[string]interface{}, fallbackMessageID string) map[string]interface{} {
 	item := map[string]interface{}{
 		"message_id": fallbackMessageID,
@@ -832,6 +855,13 @@ func buildTriageMessageMeta(msg map[string]interface{}, fallbackMessageID string
 	item["thread_id"] = strVal(msg["thread_id"])
 	item["subject"] = strVal(msg["subject"])
 	item["folder"] = strVal(msg["folder_id"])
+	if citation.Enabled() {
+		copyTriageCitationFields(item, msg, "applink", "internal_date")
+		if preview := strVal(msg["body_preview"]); preview != "" {
+			item["body_preview"] = decodeBase64URL(preview)
+		}
+		decodeBodyFields(msg, item)
+	}
 	if d := strVal(msg["date"]); d != "" {
 		item["date"] = d
 	} else if ts, ok := msg["internal_date"]; ok {
@@ -876,6 +906,15 @@ func buildTriageMessagesFromSearchItems(raw interface{}) []map[string]interface{
 			message["thread_id"] = strVal(meta["thread_id"])
 			message["subject"] = strVal(meta["title"])
 			message["date"] = strVal(meta["create_time"])
+			if citation.Enabled() {
+				copyTriageCitationFields(message, meta, "applink", "title", "body_preview", "internal_date", "create_time")
+				if value, ok := meta["app_link"]; ok {
+					message["applink"] = value
+				}
+				if preview := strVal(meta["body_preview"]); preview != "" {
+					message["body_preview"] = decodeBase64URL(preview)
+				}
+			}
 			if from, ok := meta["from"].(map[string]interface{}); ok {
 				message["from"] = formatAddress(from)
 			}
@@ -1141,6 +1180,9 @@ func buildSearchParams(runtime *common.RuntimeContext, mailboxID, query string, 
 	body := map[string]interface{}{}
 	if strings.TrimSpace(query) != "" {
 		body["query"] = strings.TrimSpace(query)
+	}
+	if citation.Enabled() {
+		filterBody["include_app_link"] = true
 	}
 	if len(filterBody) > 0 {
 		body["filter"] = filterBody

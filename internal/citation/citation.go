@@ -33,6 +33,15 @@ func Enabled() bool {
 	return os.Getenv(envvars.CliCitation) == "1"
 }
 
+// Configured reports whether the citation environment variable is present.
+// Unlike Enabled, it intentionally treats every value, including "0" and an
+// empty value, as configured. Commands use it for output-mode compatibility
+// that must take effect whenever the caller supplies the variable.
+func Configured() bool {
+	_, ok := os.LookupEnv(envvars.CliCitation)
+	return ok
+}
+
 // Normalize drops entries without a URL and returns nil for an empty result
 // so the envelope omits the citations key entirely.
 func Normalize(items []Citation) []Citation {

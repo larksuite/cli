@@ -22,6 +22,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
@@ -1010,6 +1011,9 @@ func resolveLookupHint(kind, mailboxID string) string {
 // html=false -> format=plain_text_full (server omits body_html)
 func fetchFullMessage(runtime *common.RuntimeContext, mailboxID, messageID string, html bool) (map[string]interface{}, error) {
 	params := map[string]interface{}{"format": messageGetFormat(html)}
+	if citation.Enabled() {
+		params["include_applink"] = true
+	}
 	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "messages", messageID), params, nil)
 	if err != nil {
 		return nil, err

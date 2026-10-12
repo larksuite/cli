@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -419,6 +420,34 @@ func TestBuildSearchParamsDoesNotSetUserMailboxIDInBody(t *testing.T) {
 	}
 }
 
+func TestBuildSearchParamsIncludesAppLinkOnlyWhenCitationEnabled(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{"query": "hello"})
+
+	t.Setenv(envvars.CliCitation, "0")
+	_, body, err := buildSearchParams(runtime, "", runtime.Str("query"), triageFilter{}, 15, "", true)
+	if err != nil {
+		t.Fatalf("buildSearchParams failed: %v", err)
+	}
+	if filter, ok := body["filter"].(map[string]interface{}); ok {
+		if _, ok := filter["include_app_link"]; ok {
+			t.Fatalf("filter.include_app_link must be absent when citation is disabled: %#v", body)
+		}
+	}
+
+	t.Setenv(envvars.CliCitation, "1")
+	_, body, err = buildSearchParams(runtime, "", runtime.Str("query"), triageFilter{}, 15, "", true)
+	if err != nil {
+		t.Fatalf("buildSearchParams failed: %v", err)
+	}
+	filter, ok := body["filter"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("filter missing from body: %#v", body)
+	}
+	if got, ok := filter["include_app_link"].(bool); !ok || !got {
+		t.Fatalf("filter.include_app_link = %#v, want true", filter["include_app_link"])
+	}
+}
+
 func TestMailTriageDryRunQueryWithoutLabelsUsesSearchOnly(t *testing.T) {
 	runtime := runtimeForMailTriageTest(t, map[string]string{
 		"query": "合同审批",
@@ -468,6 +497,20 @@ func TestMailTriageDryRunListPathUsesMessagesAndBatchGet(t *testing.T) {
 	}
 	if apis[1].URL != mailboxPath("me", "messages", "batch_get") {
 		t.Fatalf("batch_get url mismatch, got %s", apis[1].URL)
+	}
+}
+
+func TestTriageBatchGetBodyIncludesApplinkOnlyWhenCitationEnabled(t *testing.T) {
+	t.Setenv(envvars.CliCitation, "0")
+	disabled := triageBatchGetBody([]string{"m1"})
+	if _, ok := disabled["include_applink"]; ok {
+		t.Fatalf("include_applink must be absent when citation is disabled: %#v", disabled)
+	}
+
+	t.Setenv(envvars.CliCitation, "1")
+	enabled := triageBatchGetBody([]string{"m1"})
+	if got, ok := enabled["include_applink"].(bool); !ok || !got {
+		t.Fatalf("include_applink = %#v, want true", enabled["include_applink"])
 	}
 }
 
@@ -625,6 +668,48 @@ func TestBuildTriageMessageMetaOmitsAbsentBodyFields(t *testing.T) {
 	}
 	if _, ok := got["body_plain_text"]; ok {
 		t.Fatalf("body_plain_text should be absent when not in API response")
+	}
+}
+
+func TestTriageCitationFieldsOnlyAppearWhenCitationEnabled(t *testing.T) {
+	preview := base64.RawURLEncoding.EncodeToString([]byte("Preview"))
+	listMessage := map[string]interface{}{
+		"message_id":      "msg_456",
+		"subject":         "List subject",
+		"applink":         "https://example.com/list",
+		"body_preview":    preview,
+		"body_plain_text": base64.RawURLEncoding.EncodeToString([]byte("Plain body")),
+		"internal_date":   "1700000000000",
+	}
+	searchItems := []interface{}{map[string]interface{}{
+		"meta_data": map[string]interface{}{
+			"message_biz_id": "msg_search",
+			"title":          "Search subject",
+			"create_time":    "1700000001",
+			"app_link":       "https://example.com/search",
+			"body_preview":   preview,
+			"internal_date":  "1700000000000",
+		},
+	}}
+
+	t.Setenv(envvars.CliCitation, "0")
+	for _, message := range []map[string]interface{}{
+		buildTriageMessageMeta(listMessage, "msg_456"),
+		buildTriageMessagesFromSearchItems(searchItems)[0],
+	} {
+		for _, key := range []string{"applink", "body_preview", "body_plain_text", "internal_date", "title", "create_time"} {
+			if _, ok := message[key]; ok {
+				t.Fatalf("citation-disabled output unexpectedly contains %q: %#v", key, message)
+			}
+		}
+	}
+
+	t.Setenv(envvars.CliCitation, "1")
+	if got := buildTriageMessageMeta(listMessage, "msg_456"); got["body_preview"] != "Preview" || got["body_plain_text"] != "Plain body" || got["applink"] == nil || got["internal_date"] == nil {
+		t.Fatalf("citation-enabled list output missing citation fields: %#v", got)
+	}
+	if got := buildTriageMessagesFromSearchItems(searchItems)[0]; got["body_preview"] != "Preview" || got["applink"] == nil || got["internal_date"] == nil || got["title"] == nil || got["create_time"] == nil {
+		t.Fatalf("citation-enabled search output missing citation fields: %#v", got)
 	}
 }
 
@@ -2004,12 +2089,12 @@ func registerMailTriageListStub(reg *httpmock.Registry, mailbox string, items []
 	})
 }
 
-func registerMailTriageBatchStub(reg *httpmock.Registry, mailbox string, messages []map[string]interface{}) {
+func registerMailTriageBatchStub(reg *httpmock.Registry, mailbox string, messages []map[string]interface{}, wantIncludeApplink ...bool) {
 	rawMessages := make([]interface{}, 0, len(messages))
 	for _, msg := range messages {
 		rawMessages = append(rawMessages, msg)
 	}
-	reg.Register(&httpmock.Stub{
+	stub := &httpmock.Stub{
 		Method: "POST",
 		URL:    mailboxPath(mailbox, "messages", "batch_get"),
 		Body: map[string]interface{}{
@@ -2018,11 +2103,41 @@ func registerMailTriageBatchStub(reg *httpmock.Registry, mailbox string, message
 				"messages": rawMessages,
 			},
 		},
-	})
+	}
+	if len(wantIncludeApplink) > 0 {
+		stub.BodyFilter = requestIncludeApplinkEqual(wantIncludeApplink[0])
+	}
+	reg.Register(stub)
+}
+
+func requestIncludeApplinkEqual(want bool) func([]byte) bool {
+	return func(body []byte) bool {
+		var payload map[string]interface{}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return false
+		}
+		got, ok := payload["include_applink"].(bool)
+		if !want {
+			return !ok
+		}
+		return ok && got
+	}
 }
 
 // registerMailTriageSearchStub registers a mailbox search response for triage tests.
-func registerMailTriageSearchStub(reg *httpmock.Registry, mailbox string, items []interface{}, hasMore bool, pageToken string, notices ...string) {
+func registerMailTriageSearchStub(reg *httpmock.Registry, mailbox string, items []interface{}, hasMore bool, pageToken string, opts ...interface{}) {
+	var notice string
+	var wantIncludeAppLink bool
+	var checkIncludeAppLink bool
+	for _, opt := range opts {
+		switch value := opt.(type) {
+		case string:
+			notice = value
+		case bool:
+			wantIncludeAppLink = value
+			checkIncludeAppLink = true
+		}
+	}
 	data := map[string]interface{}{
 		"items":    items,
 		"has_more": hasMore,
@@ -2030,17 +2145,36 @@ func registerMailTriageSearchStub(reg *httpmock.Registry, mailbox string, items 
 	if pageToken != "" {
 		data["page_token"] = pageToken
 	}
-	if len(notices) > 0 && notices[0] != "" {
-		data["notice"] = notices[0]
+	if notice != "" {
+		data["notice"] = notice
 	}
-	reg.Register(&httpmock.Stub{
+	stub := &httpmock.Stub{
 		Method: "POST",
 		URL:    mailboxPath(mailbox, "search"),
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": data,
 		},
-	})
+	}
+	if checkIncludeAppLink {
+		stub.BodyFilter = requestIncludeAppLinkEqual(wantIncludeAppLink)
+	}
+	reg.Register(stub)
+}
+
+func requestIncludeAppLinkEqual(want bool) func([]byte) bool {
+	return func(body []byte) bool {
+		var payload map[string]interface{}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return false
+		}
+		filter, _ := payload["filter"].(map[string]interface{})
+		got, ok := filter["include_app_link"].(bool)
+		if !want {
+			return !ok
+		}
+		return ok && got
+	}
 }
 
 func mailTriageBatchMessage(messageID, subject string) map[string]interface{} {

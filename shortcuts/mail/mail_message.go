@@ -6,6 +6,7 @@ package mail
 import (
 	"context"
 
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -19,6 +20,10 @@ var MailMessage = common.Shortcut{
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMail},
+		Build:       mailMessageCitations,
+	},
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
 		{Name: "message-id", Desc: "Required. Single email message ID only. For multiple IDs, use mail +messages --message-ids.", Required: true},
@@ -31,9 +36,14 @@ var MailMessage = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveMailboxID(runtime)
 		messageID := runtime.Str("message-id")
+		var params map[string]interface{}
+		if citation.Enabled() {
+			params = map[string]interface{}{"include_applink": true}
+		}
 		return common.NewDryRunAPI().
 			Desc("Fetch full email content and attachments metadata, including inline images").
-			GET(mailboxPath(mailboxID, "messages", messageID))
+			GET(mailboxPath(mailboxID, "messages", messageID)).
+			Params(params)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if runtime.Bool("print-output-schema") {
@@ -41,7 +51,9 @@ var MailMessage = common.Shortcut{
 			return nil
 		}
 		mailboxID := resolveMailboxID(runtime)
-		hintIdentityFirst(runtime, mailboxID)
+		if !citation.Enabled() {
+			hintIdentityFirst(runtime, mailboxID)
+		}
 		messageID := runtime.Str("message-id")
 		html := runtime.Bool("html")
 

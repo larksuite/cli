@@ -32,6 +32,23 @@ func TestEnabledUnset(t *testing.T) {
 	}
 }
 
+func TestConfigured(t *testing.T) {
+	for _, value := range []string{"1", "0", ""} {
+		t.Setenv(envvars.CliCitation, value)
+		if !Configured() {
+			t.Errorf("Configured() with %q = false, want true", value)
+		}
+	}
+
+	t.Setenv(envvars.CliCitation, "1")
+	if err := unsetenvForTest(t); err != nil {
+		t.Fatal(err)
+	}
+	if Configured() {
+		t.Error("Configured() with unset env = true, want false")
+	}
+}
+
 func TestNormalize(t *testing.T) {
 	in := []Citation{
 		{SourceType: SourceWiki, URL: "https://a.example/1", Title: "keep-1"},
@@ -96,12 +113,12 @@ func TestIsAllocated(t *testing.T) {
 	if IsAllocated(SourceUnset) {
 		t.Error("IsAllocated(SourceUnset) = true")
 	}
-	for _, st := range []SourceType{SourceWiki, SourceDoc, SourceMessage, SourceMinute, SourceBase, SourceSheet, SourceMeeting, SourceMeetingNote, SourceMindnote, SourceSlides, SourceFile} {
+	for _, st := range []SourceType{SourceWiki, SourceDoc, SourceMessage, SourceMinute, SourceBase, SourceSheet, SourceMeeting, SourceMeetingNote, SourceMindnote, SourceSlides, SourceFile, SourceMail} {
 		if !IsAllocated(st) {
 			t.Errorf("IsAllocated(%d) = false", st)
 		}
 	}
-	if IsAllocated(SourceType(12)) || IsAllocated(SourceType(99)) {
+	if IsAllocated(SourceType(13)) || IsAllocated(SourceType(99)) {
 		t.Error("IsAllocated(unallocated int) = true")
 	}
 }
