@@ -1255,6 +1255,12 @@ func chatEntries(payload map[string]interface{}, fallbackTime time.Time, fallbac
 		} else {
 			description = fmt.Sprintf("[%s] %s", typeLabel, description)
 		}
+		if typeLabel == "reaction" {
+			count, _ := item["count"].(json.Number)
+			if value, err := count.Int64(); err == nil && value > 1 {
+				description = fmt.Sprintf("%s ×%d", description, value)
+			}
+		}
 		entries = append(entries, newTimelineEntry(when, ok, sequence, subject, description, nil))
 	}
 	return entries

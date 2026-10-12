@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"reflect"
 	"strings"
@@ -256,6 +257,27 @@ func mixedChatAndReactionEvent() map[string]interface{} {
 					},
 				},
 			},
+		},
+	}
+}
+
+func reactionCountsEvent() map[string]interface{} {
+	items := make([]interface{}, 0, 3)
+	for i, count := range []json.Number{"1", "3", "4"} {
+		items = append(items, map[string]interface{}{
+			"content":      fmt.Sprintf("reaction-%d", i),
+			"message_type": json.Number("3"),
+			"count":        count,
+			"send_time":    "1776408062000",
+		})
+	}
+	return map[string]interface{}{
+		"event_id":   "event-reaction-counts",
+		"event_type": "chat_received",
+		"event_time": "2026-04-17T08:05:00Z",
+		"payload": map[string]interface{}{
+			"activity_event_type": "chat_received",
+			"chat_received_items": items,
 		},
 	}
 }
@@ -1046,6 +1068,33 @@ func TestMeetingEventsEventRows_OmitsEmptyEventFields(t *testing.T) {
 	}
 }
 
+func TestChatEntriesAppendsExactReactionCount(t *testing.T) {
+	items := []interface{}{
+		map[string]interface{}{"message_type": json.Number("3"), "content": "one", "count": json.Number("1")},
+		map[string]interface{}{"message_type": json.Number("3"), "content": "three", "count": json.Number("3")},
+		map[string]interface{}{"message_type": json.Number("3"), "content": "four", "count": json.Number("4")},
+		map[string]interface{}{"message_type": json.Number("3"), "content": "legacy"},
+		map[string]interface{}{"message_type": json.Number("1"), "content": "text", "count": json.Number("9")},
+	}
+	sequence := 0
+	entries := chatEntries(map[string]interface{}{"chat_received_items": items}, time.Time{}, false, &sequence)
+	if len(entries) != len(items) {
+		t.Fatalf("entries len = %d, want %d", len(entries), len(items))
+	}
+	want := []string{
+		"[reaction] one",
+		"[reaction] three ×3",
+		"[reaction] four ×4",
+		"[reaction] legacy",
+		"[text] text",
+	}
+	for i := range want {
+		if entries[i].description != want[i] || entries[i].sequence != i {
+			t.Fatalf("entry[%d] = %#v, want description %q and sequence %d", i, entries[i], want[i], i)
+		}
+	}
+}
+
 func TestMeetingEvents_ExecuteJSON_PrunesEmptySlices(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub([]interface{}{chatReceivedEvent()}, false, ""))
@@ -1144,6 +1193,81 @@ func TestMeetingEvents_ExecuteJSON_PreservesReactionItems(t *testing.T) {
 	}
 	if strings.Contains(out, `"im_post"`) {
 		t.Fatalf("json output should not include IM post payload: %s", stdout.String())
+	}
+}
+
+func TestMeetingEvents_ExecuteJSONPreservesReactionCounts(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{reactionCountsEvent()}, false, ""))
+	reg.Register(botInfoStub())
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	var envelope map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout.String()), &envelope); err != nil {
+		t.Fatalf("decode JSON output: %v: %s", err, stdout.String())
+	}
+	events := common.GetSlice(common.GetMap(envelope, "data"), "events")
+	if len(events) != 1 {
+		t.Fatalf("events len = %d, want 1", len(events))
+	}
+	event, _ := events[0].(map[string]interface{})
+	items := common.GetSlice(common.GetMap(event, "payload"), "chat_received_items")
+	assertReactionCounts(t, items)
+}
+
+func TestMeetingEvents_ExecuteNDJSONPreservesReactionCounts(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{reactionCountsEvent()}, false, ""))
+	reg.Register(botInfoStub())
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "ndjson",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("ndjson lines = %d, want event and metadata: %s", len(lines), stdout.String())
+	}
+	var row map[string]interface{}
+	if err := json.Unmarshal([]byte(lines[0]), &row); err != nil {
+		t.Fatalf("decode NDJSON event row: %v: %s", err, lines[0])
+	}
+	items := common.GetSlice(common.GetMap(row, "payload"), "chat_received_items")
+	assertReactionCounts(t, items)
+}
+
+func assertReactionCounts(t *testing.T, items []interface{}) {
+	t.Helper()
+	want := []float64{1, 3, 4}
+	if len(items) != len(want) {
+		t.Fatalf("chat items len = %d, want %d", len(items), len(want))
+	}
+	for i := range want {
+		item, _ := items[i].(map[string]interface{})
+		count, ok := item["count"].(float64)
+		if !ok || count != want[i] {
+			t.Fatalf("item[%d] count = %T(%v), want %v", i, item["count"], item["count"], want[i])
+		}
+		if got := common.GetString(item, "content"); got != fmt.Sprintf("reaction-%d", i) {
+			t.Fatalf("item[%d] content = %q, want stable order", i, got)
+		}
 	}
 }
 
