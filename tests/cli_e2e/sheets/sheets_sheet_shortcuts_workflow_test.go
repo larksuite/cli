@@ -33,6 +33,16 @@ func TestSheets_SheetShortcutsWorkflow(t *testing.T) {
 	originalSheetID := ""
 	createdSheetID := ""
 	copiedSheetID := ""
+	sourceCells := ""
+	readCells := func(t *testing.T, id string) string {
+		t.Helper()
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: []string{"sheets", "+cells-get", "--spreadsheet-token", spreadsheetToken, "--sheet-id", id, "--range", "A1:B1", "--include", "value,formula,style"}, DefaultAs: "bot"})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		cells := gjson.Get(result.Stdout, "data.ranges.0.cells").Raw
+		require.NotEmpty(t, cells)
+		return cells
+	}
 
 	// sheetsOf returns the workbook's sub-sheet entries as +workbook-info sees
 	// them. The structure payload spells the display name sheet_name in some
@@ -102,6 +112,20 @@ func TestSheets_SheetShortcutsWorkflow(t *testing.T) {
 		assert.Equal(t, "data-"+suffix, nameOf(entry))
 	})
 
+	t.Run("prepare source content and a trailing sheet", func(t *testing.T) {
+		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
+		require.NotEmpty(t, createdSheetID, "created sheet_id is required")
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: []string{"sheets", "+sheet-create", "--spreadsheet-token", spreadsheetToken, "--title", "notes-" + suffix}, DefaultAs: "bot"})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result, err = clie2e.RunCmd(ctx, clie2e.Request{Args: []string{"sheets", "+cells-set", "--spreadsheet-token", spreadsheetToken, "--sheet-id", createdSheetID, "--range", "A1:B1", "--cells", `[[{"value":7},{"formula":"=A1*2","cell_styles":{"font_weight":"bold","number_format":"0.00"}}]]`}, DefaultAs: "bot"})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		sourceCells = readCells(t, createdSheetID)
+		require.NotEmpty(t, gjson.Get(sourceCells, "0.1.formula").String())
+		require.NotEmpty(t, gjson.Get(sourceCells, "0.1.cell_styles").Raw)
+	})
+
 	t.Run("copy sheet with +sheet-copy as bot", func(t *testing.T) {
 		require.NotEmpty(t, createdSheetID, "created sheet_id is required")
 
@@ -111,7 +135,7 @@ func TestSheets_SheetShortcutsWorkflow(t *testing.T) {
 				"--spreadsheet-token", spreadsheetToken,
 				"--sheet-id", createdSheetID,
 				"--title", "copy-" + suffix,
-				"--index", "2",
+				"--index", "3",
 			},
 			DefaultAs: "bot",
 		})
@@ -126,6 +150,36 @@ func TestSheets_SheetShortcutsWorkflow(t *testing.T) {
 		entry, ok := findByID(t, copiedSheetID)
 		require.True(t, ok, "the copy must be listed")
 		assert.Equal(t, "copy-"+suffix, nameOf(entry))
+		assert.Equal(t, int64(3), entry.Get("index").Int())
+		assert.Equal(t, int64(3), gjson.Get(result.Stdout, "data.index").Int())
+		require.JSONEq(t, sourceCells, readCells(t, createdSheetID))
+		require.JSONEq(t, sourceCells, readCells(t, copiedSheetID))
+	})
+
+	t.Run("copy default and middle positions preserve source content", func(t *testing.T) {
+		require.NotEmpty(t, createdSheetID, "created sheet_id is required")
+		require.NotEmpty(t, sourceCells, "source cell snapshot is required")
+		for _, explicit := range []bool{false, true} {
+			args := []string{"sheets", "+sheet-copy", "--spreadsheet-token", spreadsheetToken, "--sheet-id", createdSheetID}
+			if explicit {
+				args = append(args, "--index", "1")
+			}
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "bot"})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 0)
+			id := gjson.Get(result.Stdout, "data.sheet_id").String()
+			require.NotEmpty(t, id)
+			entry, ok := findByID(t, id)
+			require.True(t, ok)
+			want := int64(2)
+			if explicit {
+				want = 1
+			}
+			require.Equal(t, want, entry.Get("index").Int())
+			require.Equal(t, want, gjson.Get(result.Stdout, "data.index").Int())
+			require.JSONEq(t, sourceCells, readCells(t, createdSheetID))
+			require.JSONEq(t, sourceCells, readCells(t, id))
+		}
 	})
 
 	t.Run("rename sheet with +sheet-rename as bot", func(t *testing.T) {

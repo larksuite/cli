@@ -124,13 +124,32 @@ func TestReconcile_StyleEnvelopeUnpacks(t *testing.T) {
 		}
 	})
 
+	t.Run("plural envelope fields land on their own flags", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+			"--url", testURL, "--sheet-id", testSheetID, "--range", "A1",
+			"--styles", `{"font_weight":"bold","font_size":14}`,
+		})
+		if len(calls) == 0 {
+			t.Fatal("the plural style envelope was refused")
+		}
+		body := fmt.Sprint(calls...)
+		for _, want := range []string{"font_weight", "bold", "font_size"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%q missing from the plan: %s", want, body)
+			}
+		}
+	})
 	t.Run("a field this command does not have keeps the prescription", func(t *testing.T) {
 		t.Parallel()
 		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
 			"--url", testURL, "--sheet-id", testSheetID, "--range", "A1",
 			"--style", `{"nonsense":"x"}`, "--dry-run",
 		})
-		requireValidation(t, err, "is not a field of this command")
+		validation := requireValidation(t, err, "not a supported style field")
+		if validation.Param != "--style" {
+			t.Errorf("param = %q, want --style", validation.Param)
+		}
 	})
 
 	t.Run("an explicit flag outranks the envelope", func(t *testing.T) {
@@ -144,6 +163,157 @@ func TestReconcile_StyleEnvelopeUnpacks(t *testing.T) {
 			t.Errorf("the envelope overwrote an explicit flag: %s", body)
 		}
 	})
+}
+
+// OpenAPI indexes resolve onto A1 flags: insertion is zero-based and
+// half-open; deletion is one-based and inclusive.
+func TestReconcile_OpenAPIIndexSpan(t *testing.T) {
+	t.Parallel()
+
+	t.Run("dim-insert single span resolves to a position", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, shortcutFromRegistry(t, "+dim-insert"), []string{
+			"--url", testURL, "--sheet-name", "S", "--range", "36:36", "--count", "1",
+		})
+		if len(calls) == 0 {
+			t.Fatal("a single --range boundary must resolve to --position")
+		}
+		if !strings.Contains(fmt.Sprint(calls...), `"position":"36"`) {
+			t.Errorf("span must map to position 36: %s", calls)
+		}
+	})
+
+	t.Run("dim-insert end-index derives the count", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, shortcutFromRegistry(t, "+dim-insert"), []string{
+			"--url", testURL, "--sheet-name", "S", "--start-index", "21", "--end-index", "23",
+		})
+		if len(calls) == 0 {
+			t.Fatal("the index pair must resolve")
+		}
+		body := fmt.Sprint(calls...)
+		for _, want := range []string{`"position":"22"`, `"count":2`} {
+			if !strings.Contains(body, want) {
+				t.Errorf("body missing %s: %s", want, body)
+			}
+		}
+	})
+
+	t.Run("a reversed end-index still fails naming both sides", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+dim-delete"), []string{
+			"--url", testURL, "--sheet-name", "S", "--start-index", "6", "--end-index", "5", "--dry-run",
+		})
+		requireValidation(t, err, "inclusive boundary")
+	})
+
+	t.Run("dim-delete end-index closes the range at end", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, shortcutFromRegistry(t, "+dim-delete"), []string{
+			"--url", testURL, "--sheet-name", "S", "--start-index", "6", "--end-index", "22",
+		})
+		if len(calls) == 0 {
+			t.Fatal("the index pair must resolve")
+		}
+		if !strings.Contains(fmt.Sprint(calls...), `"range":"6:22"`) {
+			t.Errorf("pair must map to range 6:22: %s", calls)
+		}
+	})
+}
+
+// +cells-set accepts a --formula at --range by packing it into --cells.
+func TestReconcile_FormulaResolvesToCells(t *testing.T) {
+	t.Parallel()
+
+	t.Run("formula with a range lands in cells", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, shortcutFromRegistry(t, "+cells-set"), []string{
+			"--url", testURL, "--sheet-name", "S", "--range", "D19", "--formula", "=SUM(D3:D18)",
+		})
+		if len(calls) == 0 {
+			t.Fatal("the --formula must resolve to --cells")
+		}
+		if !strings.Contains(fmt.Sprint(calls...), `"formula":"=SUM(D3:D18)"`) {
+			t.Errorf("formula missing from the plan: %s", calls)
+		}
+	})
+
+	t.Run("formula with a start cell lands in cells", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, shortcutFromRegistry(t, "+cells-set"), []string{
+			"--url", testURL, "--sheet-name", "S", "--start-cell", "D19", "--formula", "=SUM(D3:D18)",
+		})
+		if len(calls) == 0 {
+			t.Fatal("the --formula must resolve at --start-cell")
+		}
+		body := fmt.Sprint(calls...)
+		for _, want := range []string{`"range":"D19"`, `"formula":"=SUM(D3:D18)"`} {
+			if !strings.Contains(body, want) {
+				t.Errorf("body missing %s: %s", want, body)
+			}
+		}
+	})
+
+	t.Run("formula without a range names the missing target", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+			"--url", testURL, "--sheet-name", "S", "--formula", "=SUM(A1)", "--dry-run",
+		})
+		requireValidation(t, err, "needs a target --range")
+	})
+}
+
+// +cells-set-style accepts --bold / --font-bold as font-weight bold.
+func TestReconcile_BoldResolvesToFontWeight(t *testing.T) {
+	t.Parallel()
+	for _, flag := range []string{"--bold", "--font-bold"} {
+		calls := parseDryRunAPI(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+			"--url", testURL, "--sheet-name", "S", "--range", "A1", flag,
+		})
+		if len(calls) == 0 {
+			t.Fatalf("%s must resolve", flag)
+		}
+		if !strings.Contains(fmt.Sprint(calls...), `"font_weight":"bold"`) {
+			t.Errorf("%s must map to font_weight bold: %s", flag, calls)
+		}
+	}
+	t.Run("agreeing aliases normalize once", func(t *testing.T) {
+		calls := parseDryRunAPI(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+			"--url", testURL, "--sheet-name", "S", "--range", "A1", "--bold=false", "--font-bold=false",
+		})
+		if !strings.Contains(fmt.Sprint(calls...), `"font_weight":"normal"`) {
+			t.Errorf("matching aliases must map to normal: %s", calls)
+		}
+	})
+	t.Run("conflicting aliases fail", func(t *testing.T) {
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+			"--url", testURL, "--sheet-name", "S", "--range", "A1", "--bold=false", "--font-bold=true", "--dry-run",
+		})
+		requireValidation(t, err, "conflicting bold values")
+	})
+}
+
+// +cells-get folds --include-formula / --include-style onto --include.
+func TestReconcile_IncludeAliases(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		flag, member string
+	}{
+		{"--include-formula", "formula"}, {"--include-formulas", "formula"},
+		{"--include-style", "style"}, {"--include-styles", "style"},
+	}
+	for _, tc := range cases {
+		calls := parseDryRunAPI(t, shortcutFromRegistry(t, "+cells-get"), []string{
+			"--url", testURL, "--sheet-name", "S", "--range", "A1", tc.flag,
+		})
+		if len(calls) == 0 {
+			t.Fatalf("%s must resolve onto --include", tc.flag)
+		}
+		// The category reaches the tool's include/info_type path either way.
+		if !strings.Contains(strings.ToLower(fmt.Sprint(calls...)), tc.member) {
+			t.Errorf("%s should carry %q: %s", tc.flag, tc.member, calls)
+		}
+	}
 }
 
 // Lark's own borderType vocabulary names which EDGES, not which line.

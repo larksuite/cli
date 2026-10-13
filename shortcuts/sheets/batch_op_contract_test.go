@@ -27,7 +27,6 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 
 	cases := []struct {
 		shortcut string
-		sc       common.Shortcut
 		// standalone args (excluding --url, which every case shares)
 		args []string
 		// sub-op input object as JSON (CLI flag names; no excel_id/url)
@@ -35,61 +34,81 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 	}{
 		{
 			shortcut: "+cells-set",
-			sc:       CellsSet,
 			args:     []string{"--sheet-id", "sh1", "--range", "A1:B1", "--cells", `[[{"value":"x"},{"value":"y"}]]`},
 			subInput: `{"sheet-id":"sh1","range":"A1:B1","cells":[[{"value":"x"},{"value":"y"}]]}`,
 		},
 		{
+			shortcut: "+cells-set",
+			args:     []string{"--sheet-id", "sh1", "--range", "A1", "--formula", "=SUM(1,2)"},
+			subInput: `{"sheet-id":"sh1","range":"A1","formula":"=SUM(1,2)"}`,
+		},
+		{
+			shortcut: "+cells-set-style",
+			args:     []string{"--sheet-id", "sh1", "--range", "A1", "--bold=true"},
+			subInput: `{"sheet-id":"sh1","range":"A1","bold":true}`,
+		},
+		{
+			shortcut: "+cells-set-style",
+			args:     []string{"--sheet-id", "sh1", "--range", "A1", "--style", `{"font_weight":"bold"}`},
+			subInput: `{"sheet-id":"sh1","range":"A1","style":"{\"font_weight\":\"bold\"}"}`,
+		},
+		{
 			shortcut: "+cells-clear",
-			sc:       CellsClear,
 			args:     []string{"--sheet-id", "sh1", "--range", "A1:C3", "--scope", "formats"},
 			subInput: `{"sheet-id":"sh1","range":"A1:C3","scope":"formats"}`,
 		},
 		{
 			shortcut: "+cells-replace",
-			sc:       CellsReplace,
 			args:     []string{"--sheet-id", "sh1", "--find", "foo", "--replacement", "bar", "--match-case"},
 			subInput: `{"sheet-id":"sh1","find":"foo","replacement":"bar","match-case":true}`,
 		},
 		{
 			shortcut: "+csv-put",
-			sc:       CsvPut,
 			args:     []string{"--sheet-id", "sh1", "--csv", "a,b\n1,2", "--start-cell", "B2"},
 			subInput: `{"sheet-id":"sh1","csv":"a,b\n1,2","start-cell":"B2"}`,
 		},
 		{
 			shortcut: "+cells-merge",
-			sc:       CellsMerge,
 			args:     []string{"--sheet-id", "sh1", "--range", "A1:C1", "--merge-type", "rows"},
 			subInput: `{"sheet-id":"sh1","range":"A1:C1","merge-type":"rows"}`,
 		},
 		{
 			shortcut: "+cells-unmerge",
-			sc:       CellsUnmerge,
 			args:     []string{"--sheet-id", "sh1", "--range", "A1:C1"},
 			subInput: `{"sheet-id":"sh1","range":"A1:C1"}`,
 		},
 		{
 			shortcut: "+dim-insert",
-			sc:       DimInsert,
 			args:     []string{"--sheet-id", "sh1", "--position", "11", "--count", "2", "--inherit-style", "before"},
 			subInput: `{"sheet-id":"sh1","position":"11","count":2,"inherit-style":"before"}`,
 		},
 		{
+			shortcut: "+dim-insert",
+			args:     []string{"--sheet-id", "sh1", "--start-index", "3", "--end-index", "7"},
+			subInput: `{"sheet-id":"sh1","start-index":3,"end-index":7}`,
+		},
+		{
+			shortcut: "+dim-insert",
+			args:     []string{"--sheet-id", "sh1", "--range", "3:3", "--count", "2"},
+			subInput: `{"sheet-id":"sh1","range":"3:3","count":2}`,
+		},
+		{
 			shortcut: "+dim-delete",
-			sc:       DimDelete,
+			args:     []string{"--sheet-id", "sh1", "--start-index", "3", "--end-index", "7"},
+			subInput: `{"sheet-id":"sh1","start-index":3,"end-index":7}`,
+		},
+		{
+			shortcut: "+dim-delete",
 			args:     []string{"--sheet-id", "sh1", "--range", "C:D"},
 			subInput: `{"sheet-id":"sh1","range":"C:D"}`,
 		},
 		{
 			shortcut: "+dim-hide",
-			sc:       DimHide,
 			args:     []string{"--sheet-id", "sh1", "--range", "2:3"},
 			subInput: `{"sheet-id":"sh1","range":"2:3"}`,
 		},
 		{
 			shortcut: "+dim-freeze",
-			sc:       DimFreeze,
 			args:     []string{"--sheet-id", "sh1", "--dimension", "row", "--count", "2"},
 			subInput: `{"sheet-id":"sh1","dimension":"row","count":2}`,
 		},
@@ -98,109 +117,91 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			// way to freeze rows AND columns there, since +styles-put (the other
 			// carrier of a combined freeze) is not a batchable sub-op.
 			shortcut: "+dim-freeze",
-			sc:       DimFreeze,
 			args:     []string{"--sheet-id", "sh1", "--rows", "1", "--cols", "2"},
 			subInput: `{"sheet-id":"sh1","rows":1,"cols":2}`,
 		},
 		{
 			shortcut: "+dim-group",
-			sc:       DimGroup,
 			args:     []string{"--sheet-id", "sh1", "--range", "2:5", "--group-state", "fold"},
 			subInput: `{"sheet-id":"sh1","range":"2:5","group-state":"fold"}`,
 		},
 		{
 			shortcut: "+rows-resize",
-			sc:       RowsResize,
 			args:     []string{"--sheet-id", "sh1", "--range", "1", "--height", "30"},
 			subInput: `{"sheet-id":"sh1","range":"1","height":30}`,
 		},
 		{
 			shortcut: "+cols-resize",
-			sc:       ColsResize,
 			args:     []string{"--sheet-id", "sh1", "--range", "B:D", "--type", "standard"},
 			subInput: `{"sheet-id":"sh1","range":"B:D","type":"standard"}`,
 		},
 		{
 			shortcut: "+range-move",
-			sc:       RangeMove,
 			args:     []string{"--sheet-id", "sh1", "--source-range", "A1:C5", "--target-range", "D1"},
 			subInput: `{"sheet-id":"sh1","source-range":"A1:C5","target-range":"D1"}`,
 		},
 		{
 			shortcut: "+range-copy",
-			sc:       RangeCopy,
 			args:     []string{"--sheet-id", "sh1", "--source-range", "A1:B2", "--target-range", "A10", "--paste-type", "values"},
 			subInput: `{"sheet-id":"sh1","source-range":"A1:B2","target-range":"A10","paste-type":"values"}`,
 		},
 		{
 			shortcut: "+range-fill",
-			sc:       RangeFill,
 			args:     []string{"--sheet-id", "sh1", "--source-range", "A1:A2", "--target-range", "A1:A10", "--series-type", "linear"},
 			subInput: `{"sheet-id":"sh1","source-range":"A1:A2","target-range":"A1:A10","series-type":"linear"}`,
 		},
 		{
 			shortcut: "+range-sort",
-			sc:       RangeSort,
 			args:     []string{"--sheet-id", "sh1", "--range", "A1:D10", "--sort-keys", `[{"column":"B","ascending":true}]`, "--has-header"},
 			subInput: `{"sheet-id":"sh1","range":"A1:D10","sort-keys":[{"column":"B","ascending":true}],"has-header":true}`,
 		},
 		{
 			shortcut: "+sheet-create",
-			sc:       SheetCreate,
 			args:     []string{"--title", "New", "--index", "2"},
 			subInput: `{"title":"New","index":2}`,
 		},
 		{
 			shortcut: "+sheet-delete",
-			sc:       SheetDelete,
 			args:     []string{"--sheet-id", "sh1"},
 			subInput: `{"sheet-id":"sh1"}`,
 		},
 		{
 			shortcut: "+sheet-rename",
-			sc:       SheetRename,
 			args:     []string{"--sheet-id", "sh1", "--title", "Renamed"},
 			subInput: `{"sheet-id":"sh1","title":"Renamed"}`,
 		},
 		{
 			shortcut: "+sheet-copy",
-			sc:       SheetCopy,
 			args:     []string{"--sheet-id", "sh1", "--title", "Copy"},
 			subInput: `{"sheet-id":"sh1","title":"Copy"}`,
 		},
 		{
 			shortcut: "+sheet-hide",
-			sc:       SheetHide,
 			args:     []string{"--sheet-id", "sh1"},
 			subInput: `{"sheet-id":"sh1"}`,
 		},
 		{
 			shortcut: "+sheet-unhide",
-			sc:       SheetUnhide,
 			args:     []string{"--sheet-id", "sh1"},
 			subInput: `{"sheet-id":"sh1"}`,
 		},
 		{
 			shortcut: "+sheet-set-tab-color",
-			sc:       SheetSetTabColor,
 			args:     []string{"--sheet-id", "sh1", "--color", "#FF0000"},
 			subInput: `{"sheet-id":"sh1","color":"#FF0000"}`,
 		},
 		{
 			shortcut: "+sheet-show-gridline",
-			sc:       SheetShowGridline,
 			args:     []string{"--sheet-id", "sh1"},
 			subInput: `{"sheet-id":"sh1"}`,
 		},
 		{
 			shortcut: "+sheet-hide-gridline",
-			sc:       SheetHideGridline,
 			args:     []string{"--sheet-id", "sh1"},
 			subInput: `{"sheet-id":"sh1"}`,
 		},
 		{
 			shortcut: "+dropdown-set",
-			sc:       DropdownSet,
 			args:     []string{"--sheet-id", "sh1", "--range", "A2:A4", "--options", `["x","y"]`, "--multiple"},
 			subInput: `{"sheet-id":"sh1","range":"A2:A4","options":["x","y"],"multiple":true}`,
 		},
@@ -210,13 +211,11 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			// branch in buildDropdownValidation: standalone reads the cobra
 			// "Changed" bit; sub-op reads the key's presence in the map.
 			shortcut: "+dropdown-set",
-			sc:       DropdownSet,
 			args:     []string{"--sheet-id", "sh1", "--range", "A2:A4", "--options", `["x","y"]`, "--highlight=false"},
 			subInput: `{"sheet-id":"sh1","range":"A2:A4","options":["x","y"],"highlight":false}`,
 		},
 		{
 			shortcut: "+pivot-create",
-			sc:       PivotCreate,
 			// +pivot-create renamed --sheet-id / --sheet-name → --target-sheet-id /
 			// --target-sheet-name to flag the placement-sheet semantics (the data
 			// source is in --source). Both standalone args and the +batch-update
@@ -226,91 +225,76 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 		},
 		{
 			shortcut: "+cond-format-create",
-			sc:       CondFormatCreate,
 			args:     []string{"--sheet-id", "sh1", "--properties", `{"style":{}}`, "--rule-type", "duplicateValues", "--ranges", `["A1:A100"]`},
 			subInput: `{"sheet-id":"sh1","properties":{"style":{}},"rule-type":"duplicateValues","ranges":["A1:A100"]}`,
 		},
 		{
 			shortcut: "+filter-create",
-			sc:       FilterCreate,
 			args:     []string{"--sheet-id", "sh1", "--range", "A1:F1000", "--properties", `{"rules":[]}`},
 			subInput: `{"sheet-id":"sh1","range":"A1:F1000","properties":{"rules":[]}}`,
 		},
 		{
 			shortcut: "+filter-update",
-			sc:       FilterUpdate,
 			args:     []string{"--sheet-id", "sh1", "--range", "A1:F1000", "--properties", `{"rules":[]}`},
 			subInput: `{"sheet-id":"sh1","range":"A1:F1000","properties":{"rules":[]}}`,
 		},
 		{
 			shortcut: "+filter-delete",
-			sc:       FilterDelete,
 			args:     []string{"--sheet-id", "sh1"},
 			subInput: `{"sheet-id":"sh1"}`,
 		},
 		{
 			shortcut: "+filter-view-create",
-			sc:       FilterViewCreate,
 			args:     []string{"--sheet-id", "sh1", "--range", "A1:Z100", "--view-name", "v1", "--properties", `{"rules":[]}`},
 			subInput: `{"sheet-id":"sh1","range":"A1:Z100","view-name":"v1","properties":{"rules":[]}}`,
 		},
 		{
 			shortcut: "+sparkline-create",
-			sc:       SparklineCreate,
 			args:     []string{"--sheet-id", "sh1", "--properties", `{"type":"line","data_range":"A2:F2","target_range":"G2"}`},
 			subInput: `{"sheet-id":"sh1","properties":{"type":"line","data_range":"A2:F2","target_range":"G2"}}`,
 		},
 		{
 			shortcut: "+sparkline-delete",
-			sc:       SparklineDelete,
 			args:     []string{"--sheet-id", "sh1", "--group-id", "g1"},
 			subInput: `{"sheet-id":"sh1","group-id":"g1"}`,
 		},
 		{
 			shortcut: "+chart-create",
-			sc:       ChartCreate,
 			args:     []string{"--sheet-id", "sh1", "--properties", `{"type":"line","position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}`},
 			subInput: `{"sheet-id":"sh1","properties":{"type":"line","position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}}`,
 		},
 		{
 			shortcut: "+chart-update",
-			sc:       ChartUpdate,
 			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--properties", `{"title":{"text":"Revenue"}}`},
 			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","properties":{"title":{"text":"Revenue"}}}`,
 		},
 		{
 			shortcut: "+chart-delete",
-			sc:       ChartDelete,
 			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1"},
 			subInput: `{"sheet-id":"sh1","chart-id":"chart-1"}`,
 		},
 		{
 			shortcut: "+chart-create-basic",
-			sc:       ChartCreateBasic,
 			args:     []string{"--sheet-id", "sh1", "--chart-type", "line", "--data-range", "A1:C10", "--title", "Revenue"},
 			subInput: `{"sheet-id":"sh1","chart-type":"line","data-range":"A1:C10","title":"Revenue"}`,
 		},
 		{
 			shortcut: "+chart-config-update",
-			sc:       ChartConfigUpdate,
 			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--title", "Revenue"},
 			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","title":"Revenue"}`,
 		},
 		{
 			shortcut: "+chart-data-update",
-			sc:       ChartDataUpdate,
 			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--data-range", "A1:C10", "--data-direction", "column"},
 			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","data-range":"A1:C10","data-direction":"column"}`,
 		},
 		{
 			shortcut: "+float-image-create",
-			sc:       FloatImageCreate,
 			args:     []string{"--sheet-id", "sh1", "--image-name", "logo.png", "--image-token", "tok", "--position-row", "0", "--position-col", "A", "--size-width", "100", "--size-height", "50"},
 			subInput: `{"sheet-id":"sh1","image-name":"logo.png","image-token":"tok","position-row":0,"position-col":"A","size-width":100,"size-height":50}`,
 		},
 		{
 			shortcut: "+float-image-delete",
-			sc:       FloatImageDelete,
 			args:     []string{"--sheet-id", "sh1", "--float-image-id", "fi1"},
 			subInput: `{"sheet-id":"sh1","float-image-id":"fi1"}`,
 		},
@@ -326,12 +310,16 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			}
 
 			// Standalone body via the shortcut's own dry-run.
-			standaloneBody := decodeToolInput(t, parseDryRunBody(t, tc.sc, append([]string{"--url", testURL}, tc.args...)), mapping.mcpToolName)
+			standalone := shortcutFromRegistry(t, tc.shortcut)
+			standaloneBody := decodeToolInput(t, parseDryRunBody(t, standalone, append([]string{"--url", testURL}, tc.args...)), mapping.mcpToolName)
 
 			// Batch body via the +batch-update translator.
 			var subInput map[string]interface{}
 			if err := json.Unmarshal([]byte(tc.subInput), &subInput); err != nil {
 				t.Fatalf("bad subInput JSON: %v", err)
+			}
+			if err := normalizeSubOpInputKeys(tc.shortcut, subInput); err != nil {
+				t.Fatalf("normalize sub-op input: %v", err)
 			}
 			fv := newMapFlagViewForCommand(tc.shortcut, subInput)
 			// Match what translateBatchOp does — read the sheet selector
@@ -339,8 +327,8 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			// (target-sheet-id / target-sheet-name) and the rest
 			// (sheet-id / sheet-name) both resolve correctly.
 			sidFlag, snameFlag := sheetSelectorFlagsForSubOp(tc.shortcut)
-			sidStr, _ := subInput[sidFlag].(string)
-			snameStr, _ := subInput[snameFlag].(string)
+			sidStr := fv.Str(sidFlag)
+			snameStr := fv.Str(snameFlag)
 			batchBody, err := mapping.translate(fv, testToken, sidStr, snameStr)
 			if err != nil {
 				t.Fatalf("batch translate failed: %v", err)

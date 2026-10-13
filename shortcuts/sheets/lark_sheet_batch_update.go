@@ -1077,6 +1077,7 @@ var CellsBatchSetStyle = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+cells-batch-set-style"),
+	Normalize:   normalizeBorderAttributeFlags,
 	Tips: []string{
 		"DEPRECATED: superseded by +styles-put, whose one spec also covers merges, row/col sizes and freeze — prefer it for new work.",
 		`Example: lark-cli sheets +cells-batch-set-style --url <URL> --ranges '["Sheet1!A1:B2","汇总!C1:C9"]' --font-weight bold`,
@@ -1086,7 +1087,7 @@ var CellsBatchSetStyle = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, err := validateDropdownRanges(runtime); err != nil {
+		if _, err := batchRangeTargets(runtime); err != nil {
 			return err
 		}
 		if err := requireAnyStyleFlag(runtime); err != nil {
@@ -1132,7 +1133,7 @@ var CellsBatchSetStyle = common.Shortcut{
 const cellsBatchSetStyleDeprecationNote = "+cells-batch-set-style is superseded by +styles-put (one spec covers styles + merges + row/col sizes + freeze); prefer +styles-put for new work"
 
 func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[string]interface{}, error) {
-	ranges, err := validateDropdownRanges(runtime)
+	ranges, err := batchRangeTargets(runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -1150,11 +1151,8 @@ func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[
 	}
 	ops := make([]interface{}, 0, len(ranges))
 	var totalCells int64
-	for _, rng := range ranges {
-		sheet, sub, err := splitSheetPrefixedRange(rng)
-		if err != nil {
-			return nil, err
-		}
+	for _, target := range ranges {
+		sub, rng := target.rangeText, target.rangeText
 		rows, cols, err := rangeDimensions(sub)
 		if err != nil {
 			return nil, sheetsValidationForFlag("range", "range %q: %v", rng, err)
@@ -1167,15 +1165,9 @@ func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[
 			return nil, err
 		}
 		cells := fillCellsMatrix(rows, cols, prototype)
-		ops = append(ops, map[string]interface{}{
-			"tool_name": "set_cell_range",
-			"input": map[string]interface{}{
-				"excel_id":   token,
-				"sheet_name": sheet,
-				"range":      sub,
-				"cells":      cells,
-			},
-		})
+		input := map[string]interface{}{"excel_id": token, "range": sub, "cells": cells}
+		sheetSelectorForToolInput(input, target.id, target.name)
+		ops = append(ops, map[string]interface{}{"tool_name": "set_cell_range", "input": input})
 	}
 	return map[string]interface{}{
 		"excel_id":   token,
@@ -1201,7 +1193,7 @@ var CellsBatchClear = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, err := validateDropdownRanges(runtime); err != nil {
+		if _, err := batchRangeTargets(runtime); err != nil {
 			return err
 		}
 		return nil
@@ -1229,32 +1221,23 @@ var CellsBatchClear = common.Shortcut{
 	},
 	Tips: []string{
 		"high-risk-write — always preview with --dry-run; clear is not undoable.",
-		"Every --ranges item must carry a sheet prefix (e.g. \"Sheet1!A1:A10\"); all ranges are cleared with the same --scope.",
+		"Use sheet-prefixed ranges or an explicit --sheet-id / --sheet-name with unqualified ranges; all ranges use the same --scope.",
 		"Can't delete an embedded pivot/chart by clearing cells — remove the object itself with +pivot-delete / +chart-delete.",
 	},
 }
 
 func cellsBatchClearInput(runtime *common.RuntimeContext, token string) (map[string]interface{}, error) {
-	ranges, err := validateDropdownRanges(runtime)
+	ranges, err := batchRangeTargets(runtime)
 	if err != nil {
 		return nil, err
 	}
 	clearType := normalizeClearType(runtime.Str("scope"))
 	ops := make([]interface{}, 0, len(ranges))
-	for _, rng := range ranges {
-		sheet, sub, err := splitSheetPrefixedRange(rng)
-		if err != nil {
-			return nil, err
-		}
-		ops = append(ops, map[string]interface{}{
-			"tool_name": "clear_cell_range",
-			"input": map[string]interface{}{
-				"excel_id":   token,
-				"sheet_name": sheet,
-				"range":      sub,
-				"clear_type": clearType,
-			},
-		})
+	for _, target := range ranges {
+		sub := target.rangeText
+		input := map[string]interface{}{"excel_id": token, "range": sub, "clear_type": clearType}
+		sheetSelectorForToolInput(input, target.id, target.name)
+		ops = append(ops, map[string]interface{}{"tool_name": "clear_cell_range", "input": input})
 	}
 	return map[string]interface{}{
 		"excel_id":   token,
@@ -1277,7 +1260,7 @@ var DropdownUpdate = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		if _, err := validateDropdownRanges(runtime); err != nil {
+		if _, err := batchRangeTargets(runtime); err != nil {
 			return err
 		}
 		if _, err := validateDropdownSourceOrOptions(runtime); err != nil {
@@ -1326,8 +1309,8 @@ var DropdownDelete = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		// validateDropdownRanges enforces the shared maxBatchRanges cap.
-		if _, err := validateDropdownRanges(runtime); err != nil {
+		// batchRangeTargets enforces the shared maxBatchRanges cap.
+		if _, err := batchRangeTargets(runtime); err != nil {
 			return err
 		}
 		return nil
@@ -1359,7 +1342,7 @@ var DropdownDelete = common.Shortcut{
 // +dropdown-update (clear=false, data_validation populated) and
 // +dropdown-delete (clear=true, data_validation: null).
 func dropdownBatchInput(runtime *common.RuntimeContext, token string, clear bool) (map[string]interface{}, error) {
-	ranges, err := validateDropdownRanges(runtime)
+	ranges, err := batchRangeTargets(runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -1375,11 +1358,8 @@ func dropdownBatchInput(runtime *common.RuntimeContext, token string, clear bool
 	}
 	ops := make([]interface{}, 0, len(ranges))
 	var totalCells int64
-	for _, rng := range ranges {
-		sheet, sub, err := splitSheetPrefixedRange(rng)
-		if err != nil {
-			return nil, err
-		}
+	for _, target := range ranges {
+		sub, rng := target.rangeText, target.rangeText
 		rows, cols, err := rangeDimensions(sub)
 		if err != nil {
 			return nil, sheetsValidationForFlag("range", "range %q: %v", rng, err)
@@ -1392,15 +1372,9 @@ func dropdownBatchInput(runtime *common.RuntimeContext, token string, clear bool
 			return nil, err
 		}
 		cells := fillCellsMatrix(rows, cols, prototype)
-		ops = append(ops, map[string]interface{}{
-			"tool_name": "set_cell_range",
-			"input": map[string]interface{}{
-				"excel_id":   token,
-				"sheet_name": sheet,
-				"range":      sub,
-				"cells":      cells,
-			},
-		})
+		input := map[string]interface{}{"excel_id": token, "range": sub, "cells": cells}
+		sheetSelectorForToolInput(input, target.id, target.name)
+		ops = append(ops, map[string]interface{}{"tool_name": "set_cell_range", "input": input})
 	}
 	return map[string]interface{}{
 		"excel_id":   token,
@@ -1429,40 +1403,48 @@ func checkBatchStampBudget(flagName string, totalCells int64) error {
 	return nil
 }
 
-// validateDropdownRanges parses --ranges, requires every entry to carry a
-// sheet prefix, and returns the parsed list.
-func validateDropdownRanges(runtime *common.RuntimeContext) ([]string, error) {
+// batchRangeTarget is one fully selected range, shared by the clear, style
+// and dropdown fan-outs. No selector is inferred or broadcast across names.
+type batchRangeTarget struct {
+	id, name, rangeText string
+}
+
+func batchRangeTargets(runtime flagView) ([]batchRangeTarget, error) {
+	id, name := strings.TrimSpace(runtime.Str("sheet-id")), strings.TrimSpace(runtime.Str("sheet-name"))
+	if err := optionalSheetSelector(id, name, "sheet-id", "sheet-name"); err != nil {
+		return nil, err
+	}
 	raw, err := requireJSONArray(runtime, "ranges")
 	if err != nil {
 		return nil, err
 	}
-	out := make([]string, 0, len(raw))
-	for i, v := range raw {
-		s, ok := v.(string)
+	if len(raw) > maxBatchRanges {
+		return nil, sheetsValidationForFlag("ranges", "--ranges accepts at most %d entries; got %d", maxBatchRanges, len(raw))
+	}
+	out := make([]batchRangeTarget, 0, len(raw))
+	for i, value := range raw {
+		text, ok := value.(string)
 		if !ok {
 			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] must be a string", i)
 		}
-		s = strings.TrimSpace(s)
-		// scanSheetQualifier rather than a literal "!" scan: the separator has
-		// four equal spellings, so a full-width "工作表1！A1:B2" does carry a
-		// prefix and must not be told it doesn't.
-		if _, _, ok := scanSheetQualifier(s); !ok {
-			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] (%q) must include a sheet prefix", i, s)
+		text = strings.TrimSpace(text)
+		target := batchRangeTarget{id: id, name: name, rangeText: text}
+		if _, _, qualified := scanSheetQualifier(text); qualified {
+			sheet, sub, err := splitSheetPrefixedRange(text)
+			if err != nil {
+				return nil, sheetsValidationForFlag("ranges", "--ranges[%d]: %v", i, err).WithCause(err)
+			}
+			if id != "" || (name != "" && name != sheet) {
+				return nil, sheetsValidationForFlag("ranges", "--ranges[%d] conflicts with the explicit sub-sheet selector; use unqualified ranges with --sheet-id", i)
+			}
+			target.name, target.rangeText = sheet, sub
+		} else if id == "" && name == "" {
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] (%q) must include a sheet prefix or an explicit --sheet-id / --sheet-name", i, text)
 		}
-		// Validate the sheet!range shape up front so malformed entries like
-		// "!A1" (no sheet), "Sheet1!" (no range) or "Sheet1!bad" (bad ref) fail
-		// here at Validate instead of slipping through to DryRun/Execute.
-		_, sub, err := splitSheetPrefixedRange(s)
-		if err != nil {
-			return nil, sheetsValidationForFlag("ranges", "--ranges[%d]: %v", i, err)
+		if _, _, err := rangeDimensions(target.rangeText); err != nil {
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] (%q): %v", i, text, err).WithCause(err)
 		}
-		if _, _, err := rangeDimensions(sub); err != nil {
-			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] (%q): %v", i, s, err)
-		}
-		out = append(out, s)
-	}
-	if len(out) > maxBatchRanges {
-		return nil, sheetsValidationForFlag("ranges", "--ranges accepts at most %d entries; got %d", maxBatchRanges, len(out))
+		out = append(out, target)
 	}
 	return out, nil
 }

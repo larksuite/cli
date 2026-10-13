@@ -133,8 +133,9 @@ type tablePayload struct {
 // maps + `data` — lives in tableSheetIn and is collapsed into this struct by
 // (*tableSheetIn).normalize.
 type tableSheetSpec struct {
-	Name      string
-	StartCell string
+	Name       string
+	StartCell  string
+	expectedID string // an explicit existing-sheet constraint, verified before writes
 	// Mode controls write placement: "overwrite" (default) writes a header+data
 	// block from start_cell; "append" writes data below the sheet's existing
 	// data (start_cell's row is ignored, its column is honored).
@@ -170,7 +171,9 @@ type tableColumnSpec struct {
 // df.dtypes.astype(str).to_dict()}`) and lets handwritten payloads stay flat
 // rather than nest a {name, type, format} object per column.
 type tableSheetIn struct {
-	Name           string          `json:"name"`
+	Name           string `json:"name"`
+	nameGiven      bool
+	extraFields    []string
 	StartCell      string          `json:"start_cell"`
 	Mode           string          `json:"mode"`
 	Header         *bool           `json:"header"`
@@ -179,6 +182,62 @@ type tableSheetIn struct {
 	Data           [][]interface{} `json:"data"`
 	Dtypes         dtypeLabels     `json:"dtypes"`
 	Formats        formatLabels    `json:"formats"`
+}
+
+// sheet_name is this domain's usual selector spelling. Decode its alias at
+// the wire boundary before create defaults or existing-sheet lookup, retaining
+// UseNumber so even large integer cell values survive the additional layer.
+func (in *tableSheetIn) UnmarshalJSON(data []byte) error {
+	type wire tableSheetIn
+	var decoded wire
+	shape := struct {
+		*wire
+		Name      json.RawMessage `json:"name"`
+		SheetName json.RawMessage `json:"sheet_name"`
+	}{wire: &decoded}
+	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec.UseNumber()
+	if err := dec.Decode(&shape); err != nil {
+		return err
+	}
+	if len(shape.Name) > 0 {
+		decoded.nameGiven = true
+		if err := json.Unmarshal(shape.Name, &decoded.Name); err != nil {
+			return err
+		}
+	}
+	if len(shape.SheetName) > 0 {
+		decoded.nameGiven = true
+		var name *string
+		if err := json.Unmarshal(shape.SheetName, &name); err != nil {
+			return err
+		}
+		if name == nil || strings.TrimSpace(*name) == "" {
+			return common.ValidationErrorf("sheet_name must be a non-empty string")
+		}
+		if len(shape.Name) > 0 && decoded.Name != *name {
+			return common.ValidationErrorf("sheet_name conflicts with name; keep one sheet name")
+		}
+		decoded.Name = *name
+	}
+	// Track unsupported fields without changing canonical named inputs. New
+	// selector/name compatibility must not accept a shape whose data is dropped.
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for _, key := range sortedKeys(fields) {
+		switch strings.ToLower(key) {
+		case "name", "sheet_name", "start_cell", "mode", "header", "allow_overwrite", "columns", "data", "dtypes", "formats", "index":
+		default:
+			decoded.extraFields = append(decoded.extraFields, key)
+		}
+	}
+	if len(shape.Name) == 0 && len(shape.SheetName) > 0 && len(decoded.extraFields) > 0 {
+		return common.ValidationErrorf("sheet_name table carries unsupported fields %s; use columns/data and start_cell, or +cells-set for cell writes", strings.Join(decoded.extraFields, ", "))
+	}
+	*in = tableSheetIn(decoded)
+	return nil
 }
 
 // columnHeadings holds `columns` as written on the wire. The documented shape
@@ -631,6 +690,10 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 		target = &wire.Sheets
 	}
 	if err := dec.Decode(target); err != nil {
+		var validation *errs.ValidationError
+		if errors.As(err, &validation) {
+			return nil, validation.WithParam("--sheets")
+		}
 		// Eval traces show two distinct decode failures that each burned
 		// retries: a field with a JSON kind no reading accepts (data as an
 		// object) — fixed by seeing the expected shape once — and
@@ -664,6 +727,12 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 	if err := decoderExpectEOF(dec); err != nil {
 		return nil, common.ValidationErrorf("--sheets: %v", err).WithCause(err)
 	}
+	if runtime.Command() == "+table-put" && len(wire.Sheets) == 1 && !wire.Sheets[0].nameGiven && runtime.Changed("sheet-name") {
+		if len(wire.Sheets[0].extraFields) > 0 {
+			return nil, sheetsValidationForFlag("sheets", "--sheets[0] carries unsupported fields %s; use columns/data and start_cell, or +cells-set for cell writes", strings.Join(wire.Sheets[0].extraFields, ", "))
+		}
+		wire.Sheets[0].Name = runtime.Str("sheet-name")
+	}
 	p := &tablePayload{Sheets: make([]tableSheetSpec, 0, len(wire.Sheets))}
 	for i := range wire.Sheets {
 		spec, err := wire.Sheets[i].normalize(i)
@@ -677,6 +746,18 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 	}
 	if err := p.validate(); err != nil {
 		return nil, err
+	}
+	if runtime.Command() == "+table-put" && runtime.Str("sheet-id") != "" {
+		if err := optionalSheetSelector(runtime.Str("sheet-id"), runtime.Str("sheet-name"), "sheet-id", "sheet-name"); err != nil {
+			return nil, err
+		}
+		if len(p.Sheets) != 1 || len(wire.Sheets) != 1 {
+			return nil, sheetsValidationForFlag("sheet-id", "--sheet-id requires exactly one named table")
+		}
+		if len(wire.Sheets[0].extraFields) > 0 {
+			return nil, sheetsValidationForFlag("sheets", "the table selected by --sheet-id carries unsupported fields %s; use columns/data and start_cell", strings.Join(wire.Sheets[0].extraFields, ", "))
+		}
+		p.Sheets[0].expectedID = strings.TrimSpace(runtime.Str("sheet-id"))
 	}
 	return p, nil
 }
@@ -1793,6 +1874,11 @@ func writeTypedSheets(ctx context.Context, runtime *common.RuntimeContext, token
 	if err != nil {
 		return nil, err
 	}
+	for _, sheet := range payload.Sheets {
+		if sheet.expectedID != "" && byName[sheet.Name] != sheet.expectedID {
+			return nil, sheetsValidationForFlag("sheet-id", "--sheet-id %q does not identify the named table %q; no sheets were written", sheet.expectedID, sheet.Name)
+		}
+	}
 
 	type target struct {
 		sheetID string
@@ -2124,6 +2210,10 @@ func tablePutDryRun(runtime *common.RuntimeContext) *common.DryRunAPI {
 		return dry
 	}
 	sheetStyles, _ := parseWorkbookCreateSheetStyles(runtime, payload, true)
+	if runtime.Str("sheet-id") != "" {
+		body, _ := buildToolBody("get_workbook_structure", map[string]interface{}{"excel_id": token})
+		dry.POST(toolInvokePath(token, ToolKindRead)).Desc("verify the explicit sheet ID matches the named table").Body(body)
+	}
 	for i := range payload.Sheets {
 		s := &payload.Sheets[i]
 		matrix, _, _ := buildSheetMatrix(s, headerOn(s))
@@ -2170,6 +2260,10 @@ func tablePutDryRun(runtime *common.RuntimeContext) *common.DryRunAPI {
 			"sheet_name": s.Name,
 			"range":      rng,
 			"cells":      matrix,
+		}
+		if s.expectedID != "" {
+			delete(input, "sheet_name")
+			input["sheet_id"] = s.expectedID
 		}
 		if !tableWriteAllowsOverwrite(s) {
 			input["allow_overwrite"] = false

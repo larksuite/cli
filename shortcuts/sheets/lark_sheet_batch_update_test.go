@@ -450,8 +450,8 @@ func TestBatchUpdate_TranslatorRejects(t *testing.T) {
 			wantMatch: "do not wrap in cell_styles",
 		},
 		{
-			name:      "wrapped styles structure",
-			opsJSON:   `[{"shortcut":"+cells-set-style","input":{"sheet_name":"s","range":"A1","styles":{"font_weight":"bold"}}}]`,
+			name:      "wrapped styles structure on a non-style shortcut",
+			opsJSON:   `[{"shortcut":"+cells-set","input":{"sheet_name":"s","range":"A1","cells":[[{"value":"x"}]],"styles":{"font_weight":"bold"}}}]`,
 			wantMatch: "do not wrap in styles",
 		},
 		{
@@ -502,10 +502,9 @@ func TestBatchUpdate_FlattenedStyleKeysNotMistakenForWrapper(t *testing.T) {
 
 // TestBatchUpdate_WrapperKeysDisjointFromSubOpFlags locks the static
 // assumption wrappedSubOpInputKeys relies on: no shortcut registered in
-// batchOpDispatch declares a flag named cell_styles / cell_merges / styles.
-// If a future dispatch-table addition (e.g. +table-put) carries one of these
-// flags, its legitimate input would be silently rejected by the wrapper
-// check — this test turns that silent breakage into a build-time failure.
+// batchOpDispatch declares a flag named cell_styles / cell_merges. styles is
+// intentionally the dynamic OpenAPI envelope on +cells-set-style, so it is
+// exempted from the wrapper-key rejection for that one sub-operation.
 func TestBatchUpdate_WrapperKeysDisjointFromSubOpFlags(t *testing.T) {
 	t.Parallel()
 	wrapped := make(map[string]struct{}, len(wrappedSubOpInputKeys))
@@ -515,6 +514,9 @@ func TestBatchUpdate_WrapperKeysDisjointFromSubOpFlags(t *testing.T) {
 	for shortcut := range batchOpDispatch {
 		for _, f := range flagsFor(shortcut) {
 			key := strings.ReplaceAll(f.Name, "-", "_")
+			if key == "styles" && shortcut == "+cells-set-style" {
+				continue
+			}
 			if _, clash := wrapped[key]; clash {
 				t.Errorf("%s declares flag --%s which collides with wrappedSubOpInputKeys; "+
 					"exempt this shortcut from the wrapper check before adding it to batchOpDispatch",

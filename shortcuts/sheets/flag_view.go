@@ -135,8 +135,9 @@ func (m mapFlagView) lookupRawWithKey(name string) (string, interface{}, bool) {
 		}
 	}
 	canonicalName := strings.ReplaceAll(name, "_", "-")
-	aliases := make([]string, 0, len(commandFlagAliases[m.command]))
-	for alias, target := range commandFlagAliases[m.command] {
+	inputAliases := commandInputAliases(m.command)
+	aliases := make([]string, 0, len(inputAliases))
+	for alias, target := range inputAliases {
 		if strings.ReplaceAll(target, "_", "-") == canonicalName {
 			aliases = append(aliases, alias)
 		}

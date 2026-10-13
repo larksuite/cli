@@ -88,7 +88,7 @@ lark-cli sheets +range-copy --url "<表格URL>" --sheet-name "<真实表名>" \
 
 > 以下是用 `+cells-set`（及 `+cells-set-style`）做富写入时的常用模式与准则；选哪个 shortcut 见上方「使用场景」。
 
-`+cells-set` 为一块区域设置值 / 公式 / 批注 / 样式，也支持 `rich_text` 的 `type: "embed-image"` 嵌入单元格图片。**关键：`--cells` 恒为二维数组（行 × 格），单格也是 `[[{"value":…}]]`；裸 `--range A1`（或 `--start-cell`）是左上角**锚点**，落区由 `--cells` 自身的行列数决定；写成矩形（`A1:B2`）则是**边界**——数组比它小会收窄，比它大会被拒绝，而不是写到范围之外**。
+`+cells-set` 为一块区域设置值 / 公式 / 批注 / 样式，也支持 `rich_text` 的 `type: "embed-image"` 嵌入单元格图片。**关键：搭配 `--range` 时，`--cells` 用二维数组（行 × 格），单格也是 `[[{"value":…}]]`；裸 `--range A1`（或 `--start-cell`）是左上角**锚点**，落区由 `--cells` 自身的行列数决定；写成矩形（`A1:B2`）则是**边界**——数组比它小会收窄，比它大会被拒绝，而不是写到范围之外**。
 
 > **单元格图片 vs 浮动图片**：图若**属于某条记录、要随那行排序 / 筛选 / 增删**（凭证 / 证件照 / 每行配图，话里带「对应 / 每行 / 这列」等绑定词）→ **单元格图片**（本工具）：用 `+cells-set-image`（最短）或 `+cells-set` 的 `rich_text` + `type: "embed-image"`。只是自由摆放的装饰（logo / 水印 / 封面）→ 浮动图片，见 lark-sheets-float-image。别因「浮动图更好控制 / 更熟」默认选浮动图——它承载"对应某记录"的图会随增删行 / 排序错位。
 
@@ -118,6 +118,8 @@ JSON
 ```
 
 范围级统一样式不在 `--writes` 里做（cells 逐格 `cell_styles` 仅用于逐格差异化），写完接 `+styles-put`。
+
+已有输入逐项带 A1 坐标时，也接受 `--cells '[{"cell":"A2","value":"00123"},{"range":"C5","formula":"=SUM(C2:C4)"}]'`：只写明示位置，中间未指定的格子保留。此形态不要同时传 `--range`、`--start-cell`、`--copy-to-range` 或独立公式 flag；每项只给 `cell` / `range` 之一。单值和公式只能指向单格；矩形区间用项内 `cells` / `values` 数组。目标 sheet 取顶层选择器或项内限定坐标（如 `'明细表'!A2`）。沿用 `--writes` 的批量限制与失败后回读规则；在 `+batch-update` 中仍需拆成各自的 `range + cells` 子操作。
 
 💡 **写入公式前先按迁移规则改写**：如果公式来自 Excel 或包含数组场景，先读取并遵循 `references/lark-sheets-formula-translation.md` 的规则完成改写，再把最终公式写入 `formula` 字段。
 

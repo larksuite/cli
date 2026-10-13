@@ -132,9 +132,9 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--height` | int | xor | 统一行高（像素，例：30 / 40 / 60；不是磅/points），配 `--range` 使用。传了 `--height` 就是像素模式，可以省略 `--type`；显式 `--type pixel` 也行（等价）。多行不同高用 `--heights` |
-| `--heights` | string + File + Stdin（复合 JSON） | xor | 差异化行高 map，一次调用给多行设置不同高度：键为单行（`"1"`）或行闭区间（`"2:20"`），值为像素高（如 30 / 50）、`"auto"`（自适应内容）或 `"standard"`（重置默认）。⚠️ 单位是像素，不是磅/points。与 `--range` / `--height` / `--type` 互斥 |
+| `--heights` | string + File + Stdin（复合 JSON） | xor | 差异化行高：map 的键是单行/列或闭区间，值为整数像素或"auto" / "standard"；也接受配合连续 --range 的等长尺寸列表、或逐项带坐标的尺寸列表。map 与 --range 同给时必须完整覆盖相同范围。与 --height / --type 互斥；每批最多 100 项，失败后先回读再重发。单位为像素 |
 | `--type` | string | xor | 尺寸方式 enum：`pixel`（需配 `--height`）/ `standard`（重置为默认行高）/ `auto`（自动适应内容）。常规写法直接给 `--height` 即可省略本 flag；`--type standard` / `--type auto` 不能与 `--height` 同时给（可选值：`pixel` / `standard` / `auto`） |
-| `--range` | string | xor | 要调整行高的行闭区间；1-based 行号如 `2:10` 或单行 `5`。统一尺寸形态必填（配 `--height` 或 `--type`）；map 形态（`--heights`）不传 |
+| `--range` | string | xor | 行闭区间（1-based，如 2:10 或 5）。统一尺寸或按顺序的尺寸列表必填；map 形态可省略，同给时必须完整覆盖相同范围 |
 
 ### `+cols-resize`
 
@@ -143,9 +143,9 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--width` | int | xor | 统一列宽（像素，例：80 / 120 / 200；不是 Excel 字符单位），配 `--range` 使用。传了 `--width` 就是像素模式，可以省略 `--type`；显式 `--type pixel` 也行（等价）。多列不同宽用 `--widths` |
-| `--widths` | string + File + Stdin（复合 JSON） | xor | 差异化列宽 map，一次调用给多列设置不同宽度：键为单列（`"A"`）或列闭区间（`"C:E"`），值为像素宽（如 80 / 120 / 200）或 `"standard"`（重置默认）。⚠️ 单位是像素，不是 Excel 字符单位（像素 ≈ 字符数×8+16）。与 `--range` / `--width` / `--type` 互斥 |
+| `--widths` | string + File + Stdin（复合 JSON） | xor | 差异化列宽：map 的键是单行/列或闭区间，值为整数像素或"standard"；也接受配合连续 --range 的等长尺寸列表、或逐项带坐标的尺寸列表。map 与 --range 同给时必须完整覆盖相同范围。与 --width / --type 互斥；每批最多 100 项，失败后先回读再重发。单位为像素，列宽不得低于 20px，不是 Excel 字符单位 |
 | `--type` | string | xor | 尺寸方式 enum：`pixel`（需配 `--width`）/ `standard`（重置为默认列宽）。常规写法直接给 `--width` 即可省略本 flag；`--type standard` 不能与 `--width` 同时给（可选值：`pixel` / `standard`） |
-| `--range` | string | xor | 要调整列宽的列闭区间；列字母如 `A:E` 或单列 `C`。统一尺寸形态必填（配 `--width` 或 `--type`）；map 形态（`--widths`）不传 |
+| `--range` | string | xor | 列闭区间（列字母，如 A:E 或 C）。统一尺寸或按顺序的尺寸列表必填；map 形态可省略，同给时必须完整覆盖相同范围 |
 
 ### `+range-move`
 
@@ -242,6 +242,8 @@ lark-cli sheets +cells-unmerge --url "..." --sheet-id "$SID" --range "A1:C100"
 
 ### `+rows-resize` / `+cols-resize`
 
+尺寸列表配合连续 A1 范围时，按顺序为每一行/列设置尺寸，长度必须完全相等：例如 `+cols-resize --range B:D --widths '[80,120,160]'` 或 `+rows-resize --range 7:9 --heights '[30,"auto",50]'`，也接受 `80,120,160` 这种逗号分隔尺寸。带坐标的列表（如 `--widths '[{"column":"B","width":120},{"col":"Z","size":80}]'`）只调整明示位置，不填补间隙。map 若额外传 `--range`，须完整覆盖同一范围；重叠、遗漏和冲突仍报错，沿用像素单位与每批最多 100 项的限制。
+
 行高列宽分两条 shortcut，避免行 / 列在底层 schema 的差异（行支持 `auto`，列不支持）混在一起。两种形态：
 
 - **统一尺寸**：`--range` + `--height`/`--width <px>`（省略 `--type`，等价于 `--type pixel`）。非像素模式走 `--type standard` / `--type auto`，此时不能再带像素值。
@@ -279,6 +281,8 @@ lark-cli sheets +cols-resize --url "..." --sheet-id "$SID" --range "A:E" --type 
 
 > `+range-move` 会**清空源区域**（move = copy + clear_source）；`+range-copy` 不动源。
 
+`+range-copy` 兼容同义名称：`--range` / `--src-range` 指源区域，`--copy-to-range` / `--destination-range` / `--dest-range` 指目标区域；`--source-sheet-id` / `--source-sheet-name` 选择源子表。坐标、跨子表目标和 `--paste-type` 的含义保持一致，批量子操作接受对应下划线 key；同一个子操作内两个同义 key 的值冲突时仍报错。
+
 ### `+range-fill`
 
 ```bash
@@ -295,6 +299,6 @@ lark-cli sheets +range-sort --url "..." --sheet-id "$SID" --range "A1:E100" --ha
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`+cells-clear` 强制 `--yes` 或 `--dry-run`；`+range-*` 校验源 / 目标 range 在同一 spreadsheet；`+range-sort` 的 `--sort-keys` 必须合法 JSON 数组且 col 都在 `--range` 内；`+rows-resize` / `+cols-resize` 两种形态二选一——统一形态必须给 `--range` 且至少给 `--height`/`--width` 或 `--type` 之一（`--type standard`/`auto` 不能与像素 flag 同给，`--type pixel` 共存 OK），map 形态（`--heights`/`--widths`）不能与 `--range`/`--height`/`--width`/`--type` 混用，map 键必须与命令维度一致（行数字 / 列字母）、不得重复，值为正整数像素或模式字符串；列宽 < 20px 拒绝（疑似 Excel 字符单位）；`+cols-resize` 不接受 `auto`（列宽不支持自适应）。map 形态在 `+batch-update` 子操作里不可用（它本身就是批量提交）。
+- `Validate`：XOR 公共四件套；`+cells-clear` 强制 `--yes` 或 `--dry-run`；`+range-*` 校验源 / 目标 range 在同一 spreadsheet；`+range-sort` 的 `--sort-keys` 必须合法 JSON 数组且 col 都在 `--range` 内；`+rows-resize` / `+cols-resize` 两种形态二选一——统一形态必须给 `--range` 且至少给 `--height`/`--width` 或 `--type` 之一（`--type standard`/`auto` 不能与像素 flag 同给，`--type pixel` 共存 OK），map 形态（`--heights`/`--widths`）不能与 `--height`/`--width`/`--type` 混用，额外的 `--range` 必须与 map 完整覆盖同一范围，map 键必须与命令维度一致（行数字 / 列字母）、不得重复，值为正整数像素或模式字符串；列宽 < 20px 拒绝（疑似 Excel 字符单位）；`+cols-resize` 不接受 `auto`（列宽不支持自适应）。map 形态在 `+batch-update` 子操作里不可用（它本身就是批量提交）。
 - `DryRun`：所有写操作输出"将要 PATCH 的 range + 受影响 cell 数估算"。
 - `Execute`：sort/move/copy/fill 后回读首、中、末记录；merge/unmerge 后 `+sheet-info --include merges` + `+cells-get` 核范围、左上角值与边界；clear 后确认目标 scope 已空；resize 结果用 `+sheet-info` 核尺寸，不能只读 cell 值。

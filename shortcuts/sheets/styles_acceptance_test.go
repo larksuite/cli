@@ -72,6 +72,8 @@ func TestStylesAcceptance_VocabularyParity(t *testing.T) {
 			return "Arial"
 		case "number-format":
 			return "0.00"
+		case "border-weight":
+			return "medium"
 		default: // colors and any future string field
 			return "#112233"
 		}
@@ -96,6 +98,17 @@ func TestStylesAcceptance_VocabularyParity(t *testing.T) {
 			if df.Name == "border-styles" {
 				if _, ok := proto["border_styles"].(map[string]interface{}); !ok {
 					t.Fatalf("border_styles not emitted: %v", proto)
+				}
+				return
+			}
+			if df.Name == "border-color" || df.Name == "border-weight" {
+				attr := strings.TrimPrefix(df.Name, "border-")
+				bs, _ := proto["border_styles"].(map[string]interface{})
+				for _, side := range []string{"top", "bottom", "left", "right"} {
+					got, _ := bs[side].(map[string]interface{})
+					if got[attr] != value {
+						t.Fatalf("%s.%s = %v, want %v", side, attr, got[attr], value)
+					}
 				}
 				return
 			}
@@ -156,6 +169,8 @@ var stylesPriorCorpus = []struct {
 	// alignment family
 	{name: "horizontal_align shorthand", fields: map[string]interface{}{"horizontal_align": "center"}, check: wantStyle("horizontal_alignment", "center")},
 	{name: "valign shorthand", fields: map[string]interface{}{"valign": "top"}, check: wantStyle("vertical_alignment", "top")},
+	{name: "h_align shorthand", fields: map[string]interface{}{"h_align": "center"}, check: wantStyle("horizontal_alignment", "center")},
+	{name: "v_align shorthand", fields: map[string]interface{}{"v_align": "center"}, check: wantStyle("vertical_alignment", "middle")},
 	{name: "CSS center for vertical", fields: map[string]interface{}{"vertical_alignment": "center"}, check: wantStyle("vertical_alignment", "middle")},
 	{name: "casing normalized", fields: map[string]interface{}{"font_weight": "BOLD"}, check: wantStyle("font_weight", "bold")},
 	// weight vocabulary in the FULL nested form's style slot (07-21 rerun:
@@ -235,10 +250,10 @@ var stylesPriorCorpus = []struct {
 	{name: "border_type off-vocabulary value reaches the style enum",
 		fields:  map[string]interface{}{"border_type": "xlContinuous"},
 		wantErr: "is invalid"},
-	{name: "camelCase borderType prescribed", fields: map[string]interface{}{"borderType": "FULL_BORDER"},
-		wantErr: "borders go in border"},
-	{name: "kebab border-style prescribed", fields: map[string]interface{}{"border-style": "solid"},
-		wantErr: "borders go in border"},
+	{name: "camelCase borderType accepted", fields: map[string]interface{}{"borderType": "FULL_BORDER"},
+		check: wantBorder("top", "style", "solid")},
+	{name: "kebab border-style accepted", fields: map[string]interface{}{"border-style": "solid"},
+		check: wantBorder("top", "style", "solid")},
 	{name: "border_width reads as a weight", fields: map[string]interface{}{"border_width": float64(1)},
 		check: wantBorder("top", "weight", "thin")},
 	// The one-value border shorthand every external vocabulary has.
@@ -270,14 +285,24 @@ var stylesPriorCorpus = []struct {
 		check: wantStyle("font_line", "underline")},
 	{name: "font_name is font_family", fields: map[string]interface{}{"font_name": "Arial"},
 		check: wantStyle("font_family", "Arial")},
+	{name: "nested font retains all specified fields", fields: map[string]interface{}{"font": map[string]interface{}{
+		"bold": false, "italic": true, "underline": "single", "fontSize": "14", "name": "Arial", "color": "#123456",
+	}}, check: wantAll(wantStyle("font_weight", "normal"), wantStyle("font_style", "italic"), wantStyle("font_line", "underline"),
+		wantNumberStyle("font_size", 14), wantStyle("font_family", "Arial"), wantStyle("font_color", "#123456"))},
+	{name: "nested font conflicts with flat alias", fields: map[string]interface{}{
+		"font": map[string]interface{}{"name": "Arial"}, "font_name": "Calibri",
+	}, wantErr: "font conflicts with font_family"},
+	{name: "nested font preserves unknown field rejection", fields: map[string]interface{}{
+		"font": map[string]interface{}{"bold": true, "shadow": true},
+	}, wantErr: "font.shadow is not a supported font field"},
 	{name: "an unreadable italic value keeps its prescription",
 		fields:  map[string]interface{}{"italic": "sort of"},
 		wantErr: `font_style:"italic"`},
-	{name: "nested style envelope prescribed",
-		fields:  map[string]interface{}{"style": map[string]interface{}{"font_weight": "bold"}},
-		wantErr: "no nested style object"},
-	{name: "bg_color prescribed", fields: map[string]interface{}{"bg_color": "#FFFFFF"},
-		wantErr: "the cell fill is background_color"},
+	{name: "nested style envelope accepted",
+		fields: map[string]interface{}{"style": map[string]interface{}{"font_weight": "bold"}},
+		check:  wantStyle("font_weight", "bold")},
+	{name: "bg_color is the cell fill", fields: map[string]interface{}{"bg_color": "#FFFFFF"},
+		check: wantStyle("background_color", "#FFFFFF")},
 	{name: "text_color is font_color", fields: map[string]interface{}{"text_color": "#000000"},
 		check: wantStyle("font_color", "#000000")},
 	// prescriptions (ambiguous / unsupported / typo)
@@ -287,7 +312,7 @@ var stylesPriorCorpus = []struct {
 		check: wantStyle("background_color", "#EEE")},
 	{name: "indent rejected not ignored", fields: map[string]interface{}{"indent": float64(2)}, wantErr: "not a supported style field"},
 	{name: "unknown field carries did-you-mean and the field list",
-		fields: map[string]interface{}{"fontcolor": "#000000"}, wantErr: `did you mean "font_color"`},
+		fields: map[string]interface{}{"font_colr": "#000000"}, wantErr: `did you mean "font_color"`},
 	{name: "enum typo gets did-you-mean", fields: map[string]interface{}{"vertical_alignment": "botom"}, wantErr: "did you mean"},
 	// 08-29..31 reflow. A quoted number under a numeric field is a typing
 	// slip with one reading; the row/column size fields and bare wrap are
@@ -607,12 +632,33 @@ func TestTypedCellsHabitualKeys(t *testing.T) {
 		}
 	})
 
-	t.Run("type key gets a prescription", func(t *testing.T) {
+	t.Run("matching type annotation preserves text through batch", func(t *testing.T) {
+		t.Parallel()
+		translated, err := translateBatchOp(subOp("+cells-set", map[string]interface{}{
+			"sheet_name": "S1", "range": "A1",
+			"cells": []interface{}{[]interface{}{map[string]interface{}{
+				"value": "00123", "type": "text",
+			}}},
+		}), testToken, 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := translated["input"].(map[string]interface{})
+		cell := input["cells"].([]interface{})[0].([]interface{})[0].(map[string]interface{})
+		if cell["value"] != "00123" {
+			t.Fatalf("cell = %v, want unchanged string value", cell)
+		}
+		if _, has := cell["type"]; has {
+			t.Fatalf("type annotation must not reach the API, got %v", cell)
+		}
+	})
+
+	t.Run("contradicting type key gets a prescription", func(t *testing.T) {
 		t.Parallel()
 		_, err := translateBatchOp(subOp("+cells-set", map[string]interface{}{
 			"sheet_name": "S1", "range": "A1",
 			"cells": []interface{}{[]interface{}{map[string]interface{}{
-				"value": "x", "type": "text",
+				"value": "00123", "type": "number",
 			}}},
 		}), testToken, 0)
 		requireValidation(t, err, "not a cell field")
@@ -725,13 +771,23 @@ func TestStylesAcceptance_FlagPathParity(t *testing.T) {
 		t.Fatal("no +cells-set-style flag defs")
 	}
 
-	args := []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2"}
+	args := []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--border-styles", `{"all":{"style":"solid"}}`}
 	want := map[string]interface{}{}
+	wantBorder := map[string]interface{}{}
 	for _, df := range spec.Flags {
 		if df.Kind != "own" || df.Name == "range" || df.Name == "border-styles" {
 			continue // border-styles is a composite with its own structural tests
 		}
 		field := strings.ReplaceAll(df.Name, "-", "_")
+		if df.Name == "border-color" || df.Name == "border-weight" {
+			value := "#112233"
+			if df.Name == "border-weight" {
+				value = "medium"
+			}
+			args = append(args, "--"+df.Name, value)
+			wantBorder[strings.TrimPrefix(df.Name, "border-")] = value
+			continue
+		}
 		var value string
 		switch {
 		case len(df.Enum) > 0:
@@ -761,6 +817,15 @@ func TestStylesAcceptance_FlagPathParity(t *testing.T) {
 	row, _ := cells[0].([]interface{})
 	cell, _ := row[0].(map[string]interface{})
 	got, _ := cell["cell_styles"].(map[string]interface{})
+	bs, _ := cell["border_styles"].(map[string]interface{})
+	for _, side := range []string{"top", "bottom", "left", "right"} {
+		border, _ := bs[side].(map[string]interface{})
+		for attr, expected := range wantBorder {
+			if border[attr] != expected {
+				t.Errorf("%s.%s = %v, want %v", side, attr, border[attr], expected)
+			}
+		}
+	}
 	if got == nil {
 		t.Fatalf("no cell_styles emitted: %v", cell)
 	}

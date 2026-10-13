@@ -528,8 +528,69 @@ func TestShortcuts_IntuitiveFlagAliases(t *testing.T) {
 	})
 }
 
-func TestMapFlagView_AliasResolutionIsDeterministic(t *testing.T) {
+func TestNewAliasesRetainRequestPayloads(t *testing.T) {
 	t.Parallel()
+	cases := []struct {
+		name, command, tool string
+		args                []string
+		assert              func(*testing.T, map[string]interface{})
+	}{
+		{
+			name: "keyword reaches search term", command: "+cells-search", tool: "search_data",
+			args: []string{"--url", testURL, "--sheet-name", "S", "--keyword", "needle"},
+			assert: func(t *testing.T, input map[string]interface{}) {
+				t.Helper()
+				if input["search_term"] != "needle" {
+					t.Errorf("search_term = %#v, want needle", input["search_term"])
+				}
+			},
+		},
+		{
+			name: "csv value reaches csv", command: "+csv-put", tool: "set_range_from_csv",
+			args: []string{"--url", testURL, "--sheet-name", "S", "--start-cell", "A1", "--value", "a,b\\n1,2"},
+			assert: func(t *testing.T, input map[string]interface{}) {
+				t.Helper()
+				if input["csv"] != "a,b\\n1,2" {
+					t.Errorf("csv = %#v, want original value", input["csv"])
+				}
+			},
+		},
+		{
+			name: "payload reaches sheets", command: "+table-put", tool: "set_cell_range",
+			args: []string{"--url", testURL, "--payload", `{"sheets":[{"name":"S","columns":["a"],"data":[["x"]]}]}`},
+			assert: func(t *testing.T, input map[string]interface{}) {
+				t.Helper()
+				if input["range"] != "A1:A2" {
+					t.Errorf("range = %#v, want A1:A2", input["range"])
+				}
+			},
+		},
+		{
+			name: "sheets reaches styles", command: "+styles-put", tool: "batch_update",
+			args: []string{"--url", testURL, "--sheets", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`},
+			assert: func(t *testing.T, input map[string]interface{}) {
+				t.Helper()
+				ops, ok := input["operations"].([]interface{})
+				if !ok || len(ops) != 1 {
+					t.Fatalf("operations = %#v, want one style operation", input["operations"])
+				}
+				operation, _ := ops[0].(map[string]interface{})
+				if operation["tool_name"] != "set_cell_range" {
+					t.Errorf("tool_name = %#v, want set_cell_range", operation["tool_name"])
+				}
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := parseDryRunAPI(t, shortcutFromRegistry(t, tc.command), tc.args)
+			input := decodeToolInput(t, calls[0].(map[string]interface{})["body"].(map[string]interface{}), tc.tool)
+			tc.assert(t, input)
+		})
+	}
+}
+
+func TestMapFlagView_AliasResolutionIsDeterministic(t *testing.T) {
 
 	t.Run("multiple aliases use stable lexical precedence", func(t *testing.T) {
 		t.Parallel()
@@ -570,34 +631,8 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 		// obvious wording would steer into a deprecated flag.
 		rejectHint []string
 	}{
+
 		{
-			command:  "+cells-set-style",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--bold", "true"},
-			wrong:    "--bold",
-			wantHint: []string{"--font-weight bold"},
-		},
-		{
-			command:  "+sheet-copy",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--new-sheet-name", "副本"},
-			wrong:    "--new-sheet-name",
-			wantHint: []string{"--title", "source sheet"},
-		},
-		{
-			command:  "+table-put",
-			args:     []string{"--url", testURL, "--sheets", "{}", "--start-cell", "B2"},
-			wrong:    "--start-cell",
-			wantHint: []string{`"start_cell"`, "+csv-put"},
-		},
-		{
-			command:  "+cells-set-style",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--font-bold", "true"},
-			wrong:    "--font-bold",
-			wantHint: []string{"--font-weight bold"},
-		},
-		{
-			// --border-all / --border / --border-type are renames onto the
-			// composite flag now (a bare value is all four sides), so what
-			// still prescribes is a spelling that names ONE side or attribute.
 			command:  "+cells-set-style",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-top", "thin"},
 			wrong:    "--border-top",
@@ -608,18 +643,6 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-bottom-color", "#000000"},
 			wrong:    "--border-bottom-color",
 			wantHint: []string{"--border-styles"},
-		},
-		{
-			command:  "+cells-set-style",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-color", "#000"},
-			wrong:    "--border-color",
-			wantHint: []string{"--border-styles", "color"},
-		},
-		{
-			command:  "+chart-create-basic",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--position", "F2"},
-			wrong:    "--position",
-			wantHint: []string{"--anchor-cell F2", "--width", "--height"},
 		},
 		{
 			command:  "+chart-create-basic",
@@ -815,15 +838,14 @@ func TestShortcuts_UnknownFlagNamesItsOwner(t *testing.T) {
 		}
 	})
 
-	t.Run("a curated prescription still wins", func(t *testing.T) {
+	t.Run("bold is silently accepted as font-weight bold", func(t *testing.T) {
 		t.Parallel()
 		sc := shortcutFromRegistry(t, "+cells-set-style")
 		_, _, err := runShortcutCapturingErr(t, sc, []string{
 			"--url", testURL, "--sheet-name", "s", "--range", "A1", "--bold", "--dry-run",
 		})
-		ve := requireValidation(t, err, "unknown flag")
-		if !strings.Contains(ve.Hint, "--font-weight bold") {
-			t.Errorf("the prescription should survive, got %q", ve.Hint)
+		if err != nil {
+			t.Fatalf("--bold should parse onto --font-weight, got %v", err)
 		}
 	})
 }
@@ -1139,6 +1161,8 @@ func TestReflowLongTailVocabulary(t *testing.T) {
 				[]string{"--url", testURL, "--file", "./out.xlsx"}},
 			{"cells-replace names the replacement text", "+cells-replace",
 				[]string{"--url", testURL, "--sheet-name", "s", "--find", "a", "--replace", "b"}},
+			{"dim-delete start-index resolves to range", "+dim-delete",
+				[]string{"--url", testURL, "--sheet-name", "s", "--start-index", "3"}},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
@@ -1156,11 +1180,6 @@ func TestReflowLongTailVocabulary(t *testing.T) {
 			name, command, want string
 			args                []string
 		}{
-			// --position now resolves to --range (see the alias table); the
-			// half-open index pair still cannot be guessed and keeps its
-			// prescription.
-			{"dim-delete has no start-index", "+dim-delete", `--range: "3:5" deletes rows`,
-				[]string{"--url", testURL, "--sheet-name", "s", "--start-index", "3"}},
 			// A single-span --ranges resolves now; several is still the
 			// caller asking for what the command does not do, and the
 			// prescription is checked in TestReconcile_SingletonRanges.

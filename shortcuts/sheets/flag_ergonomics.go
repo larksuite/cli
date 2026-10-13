@@ -45,8 +45,10 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		// indexes every registered name once and installs a pflag normalizer
 		// over the result, and a flag added afterwards is missing from the
 		// index — which makes pflag fail to resolve the command's OWN flags.
-		chainDimDeleteCount(cmd)
 		chainPayloadEchoedFlags(cmd)
+		// Resolve the inclusive --end-index before --count expands its start
+		// into a span, so redundant boundaries can be checked for agreement.
+		chainDimDeleteCount(cmd)
 		chainEnumNormalization(cmd)
 		chainFlagAliases(cmd)
 		chainRangeSheetPrefix(cmd)
@@ -126,7 +128,10 @@ const requiredFlagHelpPrefix = "(required) "
 // differ, and they carry their own value-side rule to make them match: both
 // name a path by definition, so the value is read as one
 // (resolveCSVPathFromFileAlias) rather than being written into the sheet as
-// literal text. Without that, the alias itself manufactured a failure — an
+// literal text. +dim-insert's start-index also needs a value-side rule:
+// OpenAPI uses a zero-based index, while position is a one-based A1 row.
+// Alias provenance keeps that conversion off canonical position values.
+// Without these rules, the alias itself manufactured a failure — an
 // agent that wrote `--file ./data.csv` got "--csv value is an existing file",
 // an error about a flag it never typed.
 var commandFlagAliases = map[string]map[string]string{
@@ -134,7 +139,7 @@ var commandFlagAliases = map[string]map[string]string{
 	// --csv's own value semantics (inline text, @file or -), so they are pure
 	// renames. csv-file joins file on the path-valued side. 08-29..31 reflow:
 	// 8 of +csv-put's 29 rejections were one of these four names.
-	"+csv-put":      {"file": "csv", "csv-file": "csv", "data": "csv", "content": "csv", "csv-data": "csv", "text": "csv", "values": "csv", "rows": "csv"},
+	"+csv-put":      {"file": "csv", "csv-file": "csv", "data": "csv", "content": "csv", "csv-data": "csv", "text": "csv", "values": "csv", "rows": "csv", "value": "csv"},
 	"+sheet-create": {"name": "title", "sheet-name": "title"},
 	// Same one name-valued input as +sheet-create, so the same rename is the
 	// only reading. 09-11..15: 616 rejections on --name for +workbook-create
@@ -155,14 +160,18 @@ var commandFlagAliases = map[string]map[string]string{
 	// carries to its sibling, which names rows and columns by an A1 span. The
 	// value survives the rename untouched — --range takes a lone "5" as the
 	// single row 5, which is the only thing "delete at position 5" can mean,
-	// the command having no notion of inserting before anything. Kept to
-	// --position alone: --start-index / --end-index name a half-open pair
-	// whose end would have to be guessed, so those keep their prescription.
-	"+dim-delete":          {"position": "range"},
-	"+cols-resize":         {"cols": "range", "size": "width"},
-	"+rows-resize":         {"rows": "range", "size": "height"},
-	"+range-fill":          {"source": "source-range", "target": "target-range"},
-	"+range-copy":          {"source": "source-range", "target": "target-range"},
+	// the command having no notion of inserting before anything. OpenAPI's
+	// delete start-index is also one-based; end-index is inclusive and is
+	// reconciled separately before the count expansion.
+	"+dim-delete":  {"position": "range", "start-index": "range", "start": "range"},
+	"+cols-resize": {"cols": "range", "size": "width"},
+	"+rows-resize": {"rows": "range", "size": "height"},
+	"+range-fill":  {"source": "source-range", "target": "target-range"},
+	// Copy has one source and one destination; these observed spellings
+	// retain the same A1 values and source-sheet selector semantics.
+	"+range-copy": {"source": "source-range", "range": "source-range", "src-range": "source-range",
+		"target": "target-range", "copy-to-range": "target-range", "destination-range": "target-range", "dest-range": "target-range", "dst-range": "target-range", "destination": "target-range", "to": "target-range", "paste-to": "target-range", "paste-range": "target-range", "target-start-cell": "target-range",
+		"source-sheet-id": "sheet-id", "source-sheet-name": "sheet-name"},
 	"+range-move":          {"source": "source-range", "target": "target-range"},
 	"+chart-create-basic":  {"type": "chart-type", "range": "data-range", "x-axis": "x-axis-title", "y-axis": "y-axis-title"},
 	"+chart-config-update": {"x-axis": "x-axis-title", "y-axis": "y-axis-title"},
@@ -208,6 +217,16 @@ var commandFlagAliases = map[string]map[string]string{
 	"+workbook-export": {"file": "output-path", "outdir": "output-path", "output-dir": "output-path", "output": "output-path", "type": "file-extension"},
 	"+cells-replace":   {"replace": "replacement"},
 	"+csv-get":         {"output": "output-path"},
+
+	// Index vocabulary from the OpenAPI / gspread. start-index's zero-based
+	// value is converted using alias provenance in flag_reconcile.go;
+	// the other spellings retain position's one-based A1 semantics.
+	"+dim-insert":   {"start-index": "position", "length": "count", "index": "position", "start": "position", "before": "position"},
+	"+cells-search": {"keyword": "find"},
+	// The payload-per-sheet commands: the alias just names the payload the
+	// canonical flag already takes.
+	"+table-put":  {"payload": "sheets"},
+	"+styles-put": {"sheets": "styles"},
 	// +sheet-create already answers to "name"; new-title joins new-name on
 	// +sheet-rename for the same reason.
 }
@@ -374,11 +393,9 @@ var intuitiveFlagHints = map[string]map[string]string{
 	"+table-put": {
 		"payload":    `the sub-sheet payload flag is --sheets ({"sheets":[{"name":"Sheet1","columns":[…],"data":[…]}]}); --values takes an untyped 2D array instead`,
 		"start-cell": `anchor each sub-sheet via the "start_cell" field inside --sheets (e.g. {"sheets":[{"name":"Sheet1","start_cell":"B2",…}]}); to paste CSV at a cell use +csv-put --start-cell`,
-		"sheet-name": `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
-		"sheet-id":   `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
+		"range":      `anchor each sub-sheet via the "start_cell" field inside --sheets; for cell-range writes use +cells-set --range`,
 	},
 	"+chart-create-basic": {
-		"position":    "use --anchor-cell F2 for the chart anchor; optionally pair --width and --height for its pixel size",
 		"show-labels": "use --data-labels value (or any value/category/percentage combination such as value_category_percentage; use series for series names or none to hide labels)",
 	},
 	"+chart-config-update": {
@@ -396,30 +413,15 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"end-index":   `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
 	},
 
-	// The --ranges commands name their sheet inside each entry, as a bare A1
-	// prefix. Without these the generic locator answers instead, and it only
-	// says which OTHER commands take --sheet-name -- never where the sheet
-	// goes here. --sheet-id has no expression at all in a prefix, which the
-	// flag's own contract states (a prefix is the display name, never a
-	// reference_id), so it is pointed at --sheet-name rather than at a form
-	// that does not exist.
+	// Batch range selectors are declared flags; only unsupported generic sheet spellings need guidance.
 	"+cells-batch-clear": {
-		"sheet-name": rangesCarryTheSheetPrefix("+cells-batch-clear", `["Sheet1!A2:Z1000","Sheet2!A2:Z1000"]`),
-		"sheet-id":   rangesCarryTheSheetIDPrefix("+cells-batch-clear", `["Sheet1!A2:Z1000"]`),
-		"sheet":      rangesCarryTheSheetPrefix("+cells-batch-clear", `["Sheet1!A2:Z1000","Sheet2!A2:Z1000"]`),
-		"range":      `+cells-batch-clear takes the plural --ranges, each entry carrying its own sheet prefix: --ranges '["Sheet1!A1:B2"]'`,
+		"sheet": rangesCarryTheSheetPrefix("+cells-batch-clear", `["Sheet1!A2:Z1000","Sheet2!A2:Z1000"]`),
 	},
 	"+dropdown-delete": {
-		"sheet-name": rangesCarryTheSheetPrefix("+dropdown-delete", `["Sheet1!A1:A10"]`),
-		"sheet-id":   rangesCarryTheSheetIDPrefix("+dropdown-delete", `["Sheet1!A1:A10"]`),
-		"sheet":      rangesCarryTheSheetPrefix("+dropdown-delete", `["Sheet1!A1:A10"]`),
-		"range":      `+dropdown-delete takes the plural --ranges, each entry carrying its own sheet prefix: --ranges '["Sheet1!A1:A10"]'`,
+		"sheet": rangesCarryTheSheetPrefix("+dropdown-delete", `["Sheet1!A1:A10"]`),
 	},
 	"+dropdown-update": {
-		"sheet-name": rangesCarryTheSheetPrefix("+dropdown-update", `["Sheet1!A1:A10"]`),
-		"sheet-id":   rangesCarryTheSheetIDPrefix("+dropdown-update", `["Sheet1!A1:A10"]`),
-		"sheet":      rangesCarryTheSheetPrefix("+dropdown-update", `["Sheet1!A1:A10"]`),
-		"range":      `+dropdown-update takes the plural --ranges, each entry carrying its own sheet prefix: --ranges '["Sheet1!A1:A10"]'`,
+		"sheet": rangesCarryTheSheetPrefix("+dropdown-update", `["Sheet1!A1:A10"]`),
 	},
 	"+csv-get": {
 		"include":     "+csv-get returns values only; for formulas / styles / comments use +cells-get --include formula,style",
@@ -447,9 +449,7 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"output-path": "+workbook-import uploads a local file and returns the new spreadsheet's token and url; it writes nothing locally. Capture the JSON result instead, or use +workbook-export --output-path to pull a sheet back down",
 	},
 	"+styles-put": {
-		"payload":    `the styles payload flag is --styles ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
-		"sheet-name": `+styles-put has no sheet selector -- each --styles item carries its own "name" field ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
-		"sheet-id":   `+styles-put has no sheet selector -- each --styles item carries its own "name" field ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
+		"payload": `the styles payload flag is --styles ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
 	},
 }
 
@@ -573,12 +573,14 @@ func chainFlagAliases(cmd *cobra.Command) {
 
 // aliasProvenanceFlags names, per command, the canonical flags whose supplying
 // spelling must be tracked — the aliases in commandFlagAliases whose value
-// semantics differ from their target's. Two today: +csv-put's --csv (--file
+// semantics differ from their target's: +dim-insert's --position (start-index
+// is zero-based), +csv-put's --csv (--file
 // carries a path, --csv carries text) and +workbook-export's --output-path
 // (--outdir names a directory, --output-path names a file unless the path
 // already exists as one). Kept explicit rather than derived, so wrapping a
 // flag's Value stays a deliberate, reviewed act.
 var aliasProvenanceFlags = map[string][]string{
+	"+dim-insert":      {"position"},
 	"+csv-put":         {"csv"},
 	"+workbook-export": {"output-path"},
 }
@@ -991,17 +993,10 @@ func splitRangeAreas(raw string) []string {
 	return areas
 }
 
-// rangesCarryTheSheetPrefix and its sheet-id counterpart phrase the one answer
-// the --ranges commands have for a sheet selector: the sheet is named inside
-// each entry, bare and unquoted, and there is no top-level flag for it.
+// The generic --sheet spelling is ambiguous; name the explicit selector or
+// keep display-name qualifiers inside the ranges themselves.
 func rangesCarryTheSheetPrefix(command, example string) string {
-	return fmt.Sprintf("%s has no sheet selector — each --ranges entry names its own sheet as a bare A1 prefix: --ranges '%s' "+
-		"(the prefix is the sheet's display name, written without quotes; entries may name different sheets)", command, example)
-}
-
-func rangesCarryTheSheetIDPrefix(command, example string) string {
-	return fmt.Sprintf("%s has no sheet selector, and a reference_id cannot appear in one — each --ranges entry names its sheet by "+
-		"DISPLAY NAME as a bare A1 prefix: --ranges '%s' (look the name up with +sheet-list if you only have the id)", command, example)
+	return fmt.Sprintf("%s takes --sheet-name / --sheet-id with unqualified --ranges, or sheet-prefixed --ranges '%s'", command, example)
 }
 
 // rejectMultiAreaRange answers the Excel multi-area habit — several

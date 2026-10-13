@@ -29,6 +29,7 @@ func Shortcuts() []common.Shortcut {
 		// shortcut values are package globals and Shortcuts may be called more
 		// than once in tests or embedders.
 		all[i].Flags = withSpreadsheetTokenAlias(all[i].Flags)
+		all[i].Flags = withCommandFlagAliases(all[i].Command, all[i].Flags)
 		// +chart-create grows --print-example (minimal per-type --properties
 		// templates) — the biggest --print-schema consumer in eval traces.
 		if all[i].Command == "+chart-create" {
@@ -85,6 +86,64 @@ func withSpreadsheetTokenAlias(flags []common.Flag) []common.Flag {
 		return decorated
 	}
 	return flags
+}
+
+// Exact synonyms use the framework's declared alias contract. These observed
+// spellings keep the canonical flag's value grammar, defaults and validation.
+var canonicalCommandFlagAliases = map[string]map[string]string{
+	"+cols-resize":           {"col-range": "range", "col": "range", "column": "range", "sizes": "widths", "columns": "widths", "pixel": "width", "col-start": "start-col", "col-end": "end-col", "start-column": "start-col", "end-column": "end-col"},
+	"+rows-resize":           {"row-range": "range", "row": "range", "sizes": "heights", "pixel": "height"},
+	"+sheet-copy":            {"new-sheet-name": "title", "new-title": "title"},
+	"+chart-create-basic":    {"anchor": "anchor-cell", "position": "anchor-cell"},
+	"+dim-delete":            {"end": "end-index"},
+	"+styles-put":            {"spec": "styles", "style": "styles"},
+	"+csv-get":               {"output-file": "output-path"},
+	"+cells-clear":           {"clear-type": "scope"},
+	"+cells-batch-clear":     {"range": "ranges"},
+	"+cells-batch-set-style": {"range": "ranges"},
+	"+dropdown-update":       {"range": "ranges"},
+	"+dropdown-delete":       {"range": "ranges"},
+}
+
+var canonicalSheetFlagAliases = map[string]string{"worksheet-id": "sheet-id", "worksheet-name": "sheet-name"}
+
+func withCommandFlagAliases(command string, flags []common.Flag) []common.Flag {
+	aliases := make(map[string]string, len(canonicalCommandFlagAliases[command])+len(canonicalSheetFlagAliases))
+	for alias, target := range canonicalCommandFlagAliases[command] {
+		aliases[alias] = target
+	}
+	for alias, target := range canonicalSheetFlagAliases {
+		aliases[alias] = target
+	}
+	decorated := append([]common.Flag(nil), flags...)
+	for i := range decorated {
+		for _, alias := range sortedKeys(aliases) {
+			if aliases[alias] == decorated[i].Name {
+				decorated[i].Aliases = append(append([]string(nil), decorated[i].Aliases...), alias)
+			}
+		}
+	}
+	return decorated
+}
+
+// Batch inputs share both the declared synonyms and legacy value adapters.
+func commandInputAliases(command string) map[string]string {
+	aliases := make(map[string]string, len(commandFlagAliases[command])+len(canonicalCommandFlagAliases[command]))
+	for alias, target := range commandFlagAliases[command] {
+		aliases[alias] = target
+	}
+	for alias, target := range canonicalCommandFlagAliases[command] {
+		aliases[alias] = target
+	}
+	for alias, target := range canonicalSheetFlagAliases {
+		for _, flag := range flagDefs[command].Flags {
+			if flag.Name == target {
+				aliases[alias] = target
+				break
+			}
+		}
+	}
+	return aliases
 }
 
 func shortcutList() []common.Shortcut {

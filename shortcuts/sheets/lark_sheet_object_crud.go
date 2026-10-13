@@ -1814,6 +1814,13 @@ func normalizeCondFormatCompareValue(entry map[string]interface{}, compareType s
 	// at the backend instead.
 	if list, isList := raw.([]interface{}); isList {
 		if compareType != "between" && compareType != "notBetween" {
+			// Scalar comparisons have one threshold; an explicit singleton
+			// array carries exactly the same value, with no truncation.
+			if len(list) == 1 {
+				if text, ok := condFormatScalarText(list[0]); ok {
+					entry["value"] = text
+				}
+			}
 			return
 		}
 		if len(list) != 2 {
@@ -1840,6 +1847,8 @@ func normalizeCondFormatCompareValue(entry map[string]interface{}, compareType s
 // already right; an object has no single reading).
 func condFormatScalarText(raw interface{}) (string, bool) {
 	switch v := raw.(type) {
+	case string:
+		return v, true
 	case json.Number:
 		return v.String(), true
 	case float64:

@@ -56,24 +56,23 @@ var CellsSet = common.Shortcut{
 	Flags:       flagsFor("+cells-set"),
 	Tips: []string{
 		`Example: lark-cli sheets +cells-set --url <URL> --sheet-name Sheet1 --range A1:B1 --cells '[[{"value":"名称"},{"formula":"=SUM(B2:B9)"}]]'`,
-		`--cells is always a 2D array (rows × cells), even for one cell: [[{"value":…}]].`,
+		`With --range, --cells is a 2D array (rows × cells). Coordinate-bearing --cells '[{"cell":"A1","value":…},{"range":"C3:D3","values":[[…]]}]' uses each item's exact target instead; omit --range / --start-cell / --copy-to-range.`,
 		`Scattered regions (e.g. fixing formulas across ranges/sheets): --writes '[{"sheet_name":…,"range":…,"cells":[[…]]}, …]' — one batch request (fail-fast; a failing item drops the buffered writes before it, so read back before resending), sheet selector inside each item.`,
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if runtime.Changed("writes") {
-			token, err := resolveSpreadsheetToken(runtime)
-			if err != nil {
-				return err
-			}
-			_, _, err = cellsSetWritesOps(runtime, token)
+		token, err := resolveSpreadsheetToken(runtime)
+		if err != nil {
+			return err
+		}
+		_, _, planned, err := cellsSetPlannedWrites(runtime, token)
+		if planned || err != nil {
 			return err
 		}
 		return validateViaInput(cellsSetInput)(ctx, runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
-		if runtime.Changed("writes") {
-			ops, _, _ := cellsSetWritesOps(runtime, token)
+		if ops, _, planned, _ := cellsSetPlannedWrites(runtime, token); planned {
 			return invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
 				"excel_id":   token,
 				"operations": ops,
@@ -88,11 +87,11 @@ var CellsSet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if runtime.Changed("writes") {
-			ops, notes, err := cellsSetWritesOps(runtime, token)
-			if err != nil {
-				return err
-			}
+		ops, notes, planned, err := cellsSetPlannedWrites(runtime, token)
+		if err != nil {
+			return err
+		}
+		if planned {
 			out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
 				"excel_id":   token,
 				"operations": ops,
@@ -149,7 +148,7 @@ func narrowingNotes(note string) []string {
 // aggregated so one retry fixes them all. The payload rewrites land one step
 // earlier still, in normalizeWritesFlagValue, since the array is schema-checked
 // before it gets here.
-func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interface{}, []string, error) {
+func cellsSetWritesOps(runtime flagView, token string) ([]interface{}, []string, error) {
 	for _, conflicting := range []string{"range", "cells", "copy-to-range"} {
 		if runtime.Changed(conflicting) {
 			return nil, nil, sheetsValidationForFlag("writes", "--writes and --%s are mutually exclusive: single region → --range + --cells; multiple regions → --writes alone", conflicting)
@@ -163,17 +162,23 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 	// single-sheet --writes call had to repeat it on every item to say
 	// nothing new. 09-04..07: 19059 rejections, the single largest
 	// +cells-set cluster, on payloads that named the sheet exactly once.
-	topSheetID := strings.TrimSpace(runtime.Str("sheet-id"))
-	topSheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 	raw, err := requireJSONArray(runtime, "writes")
 	if err != nil {
 		return nil, nil, err
 	}
+	return buildCellsSetWritesOps(runtime, token, raw, "writes")
+}
+
+// buildCellsSetWritesOps is shared by --writes and coordinate-bearing --cells.
+// Each item names its exact region; gaps never become an implicit rectangle.
+func buildCellsSetWritesOps(runtime flagView, token string, raw []interface{}, source string) ([]interface{}, []string, error) {
+	topSheetID := strings.TrimSpace(runtime.Str("sheet-id"))
+	topSheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 	if len(raw) == 0 {
-		return nil, nil, sheetsValidationForFlag("writes", "--writes must be a non-empty JSON array of {sheet_name, range, cells} items")
+		return nil, nil, sheetsValidationForFlag(source, "--%s must be a non-empty JSON array of write items", source)
 	}
 	if len(raw) > maxBatchOperations {
-		return nil, nil, sheetsValidationForFlag("writes", "--writes accepts at most %d items; got %d — merge adjacent regions or split into several calls", maxBatchOperations, len(raw))
+		return nil, nil, sheetsValidationForFlag(source, "--%s accepts at most %d items; got %d — merge adjacent regions or split into several calls", source, maxBatchOperations, len(raw))
 	}
 	topLevelOverwrite := runtime.Bool("allow-overwrite")
 	ops := make([]interface{}, 0, len(raw))
@@ -183,11 +188,11 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 	for i, v := range raw {
 		item, ok := v.(map[string]interface{})
 		if !ok {
-			probs = append(probs, common.ValidationErrorf("--writes[%d] must be an object like {\"sheet_name\":…,\"range\":…,\"cells\":[[…]]}", i))
+			probs = append(probs, common.ValidationErrorf("--%s[%d] must be an object like {\"sheet_name\":…,\"range\":…,\"cells\":[[…]]}", source, i))
 			continue
 		}
 		if err := normalizeSubOpInputKeys("+cells-set", item); err != nil {
-			probs = append(probs, common.ValidationErrorf("--writes[%d]: %v", i, err))
+			probs = append(probs, prefixValidationIssue(fmt.Sprintf("--%s[%d]", source, i), err))
 			continue
 		}
 		if runtime.Changed("allow-overwrite") {
@@ -212,11 +217,11 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 			// "+workbook-info" pointer, for one) and "%v" would render only the
 			// message, silently costing exactly the guidance this path exists to
 			// deliver. joinWritesValidationErrors re-reads both fields.
-			probs = append(probs, prefixValidationIssue(fmt.Sprintf("--writes[%d]", i), err))
+			probs = append(probs, prefixValidationIssue(fmt.Sprintf("--%s[%d]", source, i), err))
 			continue
 		}
 		if note != "" {
-			notes = append(notes, fmt.Sprintf("--writes[%d]: %s", i, note))
+			notes = append(notes, fmt.Sprintf("--%s[%d]: %s", source, i, note))
 		}
 		if cells, ok := input["cells"].([]interface{}); ok {
 			for _, row := range cells {
@@ -225,7 +230,7 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 				}
 			}
 		}
-		if err := checkBatchStampBudget("writes", totalCells); err != nil {
+		if err := checkBatchStampBudget(source, totalCells); err != nil {
 			return nil, nil, err
 		}
 		ops = append(ops, map[string]interface{}{
@@ -233,7 +238,7 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 			"input":     input,
 		})
 	}
-	if err := joinWritesValidationErrors(probs); err != nil {
+	if err := joinWritesValidationErrors(probs, source); err != nil {
 		return nil, nil, err
 	}
 	return ops, notes, nil
@@ -242,7 +247,7 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 // joinWritesValidationErrors mirrors joinStyleValidationErrors for --writes:
 // every item's first error in one message, so the whole payload is fixed in
 // a single retry.
-func joinWritesValidationErrors(probs []error) error {
+func joinWritesValidationErrors(probs []error, source string) error {
 	switch len(probs) {
 	case 0:
 		return nil
@@ -253,7 +258,7 @@ func joinWritesValidationErrors(probs []error) error {
 		// is preserved; only the typed attribution is added — and the inner
 		// hint rides along, since a lone issue has the outer Hint slot free.
 		msg, hint := aggregatedIssueParts(probs[0])
-		verr := sheetsValidationForFlag("writes", "%s", msg).WithCause(probs[0])
+		verr := sheetsValidationForFlag(source, "%s", msg).WithCause(probs[0])
 		if hint != "" {
 			verr = verr.WithHint("%s", hint)
 		}
@@ -268,10 +273,10 @@ func joinWritesValidationErrors(probs []error) error {
 		msgs = msgs[:maxShown]
 	}
 	if distinct < len(probs) {
-		return sheetsValidationForFlag("writes", "--writes has %d issues (%d distinct): %s%s", len(probs), distinct, strings.Join(msgs, " | "), suffix).
+		return sheetsValidationForFlag(source, "--%s has %d issues (%d distinct): %s%s", source, len(probs), distinct, strings.Join(msgs, " | "), suffix).
 			WithCause(probs[0])
 	}
-	return sheetsValidationForFlag("writes", "--writes has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix).
+	return sheetsValidationForFlag(source, "--%s has %d issues: %s%s", source, len(probs), strings.Join(msgs, " | "), suffix).
 		WithCause(probs[0])
 }
 
@@ -309,6 +314,9 @@ func cellsSetInputWithNote(runtime flagView, token, sheetID, sheetName string) (
 		return nil, "", err
 	}
 	if err := normalizeTypedCellsStyleAliases(cells, "--cells"); err != nil {
+		return nil, "", sheetsValidationForFlag("cells", "%v", err).WithCause(err)
+	}
+	if err := checkCellsFormulaFlags(runtime, cells); err != nil {
 		return nil, "", err
 	}
 	rangeStr = expandAnchorRange(rangeStr, cells)
@@ -355,6 +363,7 @@ var CellsSetStyle = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+cells-set-style"),
+	Normalize:   normalizeBorderAttributeFlags,
 	Tips: []string{
 		`Example: lark-cli sheets +cells-set-style --url <URL> --sheet-name Sheet1 --range A1:D1 --font-weight bold --background-color "#F0F0F0" --horizontal-alignment center`,
 		`Borders take JSON: --border-styles '{"top":{"style":"solid","weight":"thin","color":"#000000"}}' (sides: top/bottom/left/right).`,

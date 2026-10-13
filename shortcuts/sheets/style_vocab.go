@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -107,7 +106,7 @@ func buildCellStyleFromFlags(runtime flagView) map[string]interface{} {
 // hallucinate (Excel / openpyxl / CSS conventions) onto the canonical field
 // names the backend expects. Entries here are pure renames; a word whose
 // VALUE also has to be read (bold, italic) belongs in cellStyleValueAliases.
-// Ambiguous guesses (e.g. "color", "bg_color", "text_align") are intentionally
+// Ambiguous guesses (e.g. a bare "color") are intentionally
 // left out either way, so a wrong guess still surfaces as an error rather than
 // being silently reinterpreted.
 var cellStyleAliases = []struct{ alias, canonical string }{
@@ -117,9 +116,18 @@ var cellStyleAliases = []struct{ alias, canonical string }{
 	// rejections.
 	{"font_name", "font_family"},
 	{"horizontal_align", "horizontal_alignment"},
+	{"horizontal", "horizontal_alignment"},
+	// CSS text-align refers to the horizontal text axis; fill/background
+	// spellings refer to the cell fill, as in conditional-format styles.
+	{"text_align", "horizontal_alignment"},
+	{"bg_color", "background_color"},
+	{"fill_color", "background_color"},
 	{"halign", "horizontal_alignment"},
+	{"h_align", "horizontal_alignment"},
 	{"vertical_align", "vertical_alignment"},
+	{"vertical", "vertical_alignment"},
 	{"valign", "vertical_alignment"},
+	{"v_align", "vertical_alignment"},
 	// wrap family: word_wrap is the sole wrap concept, no ambiguity. 07-20
 	// eval: wrap_text alone produced an 88-issue retry loop on --styles;
 	// wrap_strategy (the Google Sheets API word) followed on 07-21.
@@ -176,11 +184,11 @@ func styleOnOffWord(on, off string) func(interface{}) (string, bool) {
 				return on, true
 			}
 			return off, true
-		case float64:
-			switch v {
-			case 1:
+		case float64, json.Number:
+			if jsonEqual(v, 1) {
 				return on, true
-			case 0:
+			}
+			if jsonEqual(v, 0) {
 				return off, true
 			}
 		case string:
@@ -214,28 +222,19 @@ func styleUnderlineWord(raw interface{}) (string, bool) {
 // font_color?" and nested font drew "font_line" — an agent that follows
 // either burns a second failed round trip). Keyed by lowercased field name;
 // the text replaces the did-you-mean on the unsupported-field error. These
-// stay prescriptions, not silent aliases: text_align is on the deliberate
-// no-alias list above, and the bold / italic / underline rows now answer only
+// answer unsupported shapes, and the bold / italic / underline rows answer only
 // the values cellStyleValueAliases could not read.
 var styleFieldPrescriptions = map[string]string{
-	"bold":       `bold text is font_weight:"bold"`,
-	"font_bold":  `bold text is font_weight:"bold"`,
-	"italic":     `italic text is font_style:"italic"`,
-	"underline":  `underline is font_line:"underline"`,
-	"text_align": "horizontal text alignment is horizontal_alignment (left/center/right)",
-	"font":       `cell_styles has no nested font object — use the flat font_* fields (font:{"bold":true,"size":18,"color":"#000"} becomes font_weight:"bold", font_size:18, font_color:"#000")`,
+	"bold":      `bold text is font_weight:"bold"`,
+	"font_bold": `bold text is font_weight:"bold"`,
+	"italic":    `italic text is font_style:"italic"`,
+	"underline": `underline is font_line:"underline"`,
 	// The OpenAPI's own request shape is {range, style:{…}}, so a cell_styles
 	// item written from the API docs nests one level too deep. Distance-based
 	// suggestion is useless here (the fix is structural, not a rename) and the
 	// bare "style is not a supported style field" reads like the whole payload
 	// shape is wrong. 08-18..24 eval, --styles group.
 	"style": `cell_styles has no nested style object — the style fields sit directly on the item, next to range ({"range":"A1:B2","style":{"font_weight":"bold"}} becomes {"range":"A1:B2","font_weight":"bold"})`,
-	// bg_color / text_color read unambiguously (unlike fore_color, which is
-	// rejected as ambiguous above) but stay prescriptions rather than silent
-	// aliases: they are spelling permutations, not words from a real external
-	// vocabulary, and the silent-alias admission bar excludes those.
-	"bg_color":   "the cell fill is background_color",
-	"fill_color": "the cell fill is background_color",
 	// 08-29..31 reflow, --styles unknown-field group (96 rejections on
 	// +styles-put alone). These name real concepts that the payload does
 	// carry — just not inside a cell_styles item, so the fix is structural
@@ -355,7 +354,7 @@ func cellStyleScalarTypes() map[string]string {
 		}
 		name := strings.ReplaceAll(df.Name, "-", "_")
 		switch name {
-		case "range", "border_styles", "border":
+		case "range", "border_styles", "border", "border_color", "border_weight":
 			continue // locator / composite: validated structurally elsewhere
 		}
 		switch df.Type {
@@ -404,6 +403,9 @@ func numericStyleValue(raw interface{}) (float64, bool) {
 func normalizeCellStyleAliases(style map[string]interface{}, path string) error {
 	if len(style) == 0 {
 		return nil
+	}
+	if err := normalizeStyleFieldSpellings(style, path); err != nil {
+		return err
 	}
 	for _, a := range cellStyleAliases {
 		v, ok := style[a.alias]
@@ -462,6 +464,27 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 		}
 		style["font_color"] = v
 		delete(style, "fore_color")
+	}
+	if err := flattenNestedFont(style, path); err != nil {
+		return err
+	}
+	if err := flattenNestedAlignment(style, path); err != nil {
+		return err
+	}
+	// Lark's existing hAlign/vAlign JSON vocabulary is 0/1/2, not enum
+	// ordinals guessed from the canonical string list. Preserve zero and
+	// reject every other number or type through the scalar validator below.
+	// https://open.feishu.cn/document/server-docs/docs/sheets-v3/data-operation/set-cell-style
+	for field, words := range map[string][3]string{
+		"horizontal_alignment": {"left", "center", "right"},
+		"vertical_alignment":   {"top", "middle", "bottom"},
+	} {
+		for n, word := range words {
+			if jsonEqual(style[field], n) {
+				style[field] = word
+				break
+			}
+		}
 	}
 	// Boolean wrap habit: true unambiguously means wrap on, false means off.
 	if b, isBool := style["word_wrap"].(bool); isBool {
@@ -527,6 +550,193 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 	return nil
 }
 
+// Separator/case folding covers only the existing style vocabulary. Unknown
+// fields stay visible to the carrier's validator, and collisions never choose
+// one of two values for the same field.
+var styleFieldSpellings = func() map[string]string {
+	names := append([]string{"font", "alignment", "fore_color", "border_type"}, workbookCreateCellStyleFieldList...)
+	for _, attr := range []string{"style", "color", "weight", "width"} {
+		names = append(names, "border_"+attr)
+		for _, side := range []string{"top", "bottom", "left", "right", "all"} {
+			names = append(names, "border_"+side+"_"+attr, side+"_border_"+attr)
+		}
+	}
+	for _, side := range []string{"top", "bottom", "left", "right", "all"} {
+		names = append(names, "border_"+side, side+"_border")
+	}
+	for _, alias := range cellStyleAliases {
+		names = append(names, alias.alias)
+	}
+	for _, alias := range cellStyleValueAliases {
+		names = append(names, alias.alias)
+	}
+	spellings := make(map[string]string, 2*len(names))
+	for _, name := range names {
+		spellings[name] = name
+		if key := squashStyleFieldKey(name); spellings[key] == "" {
+			spellings[key] = name
+		}
+	}
+	return spellings
+}()
+
+func normalizeStyleFieldSpellings(style map[string]interface{}, path string) error {
+	scalars := cellStyleScalarTypes()
+	for _, field := range sortedKeys(style) {
+		if styleFieldSpellings[field] == field {
+			continue
+		}
+		name := styleFieldSpellings[squashStyleFieldKey(field)]
+		if name == "" || name == field {
+			continue
+		}
+		target := name
+		for _, alias := range cellStyleAliases {
+			if alias.alias == name {
+				target = alias.canonical
+				break
+			}
+		}
+		// Loose typed cells already forward foreign structured style values.
+		// A case fold cannot turn an RGB object into the canonical hex string.
+		// Preserve that carrier contract; a future color-object conversion must
+		// define its units and precision explicitly. Declarative styles still
+		// reject the untouched unsupported field in their own validator.
+		switch style[field].(type) {
+		case map[string]interface{}, []interface{}:
+			if scalars[target] != "" {
+				continue
+			}
+		}
+		if _, present := style[name]; present {
+			return common.ValidationErrorf("%s.%s conflicts with %s; keep one spelling", path, field, name)
+		}
+		style[name] = style[field]
+		delete(style, field)
+	}
+	return nil
+}
+
+// font scopes size/name/color to their font_* fields. Reuse the scalar
+// vocabulary for booleans, types and enums; refuse unknown fields and
+// overlapping spellings before merging so no part of the font is discarded.
+func flattenNestedFont(style map[string]interface{}, path string) error {
+	raw, present := style["font"]
+	if !present {
+		return nil
+	}
+	font, ok := raw.(map[string]interface{})
+	if !ok || len(font) == 0 {
+		return common.ValidationErrorf("%s.font must be a non-empty JSON object of font fields", path)
+	}
+	flat := make(map[string]interface{}, len(font))
+	for _, key := range sortedKeys(font) {
+		var field string
+		switch squashStyleFieldKey(key) {
+		case "size", "fontsize":
+			field = "font_size"
+		case "name", "family", "fontname", "fontfamily":
+			field = "font_family"
+		case "color", "fontcolor", "forecolor", "textcolor":
+			field = "font_color"
+		case "weight", "fontweight":
+			field = "font_weight"
+		case "bold", "fontbold":
+			field = "bold"
+		case "italic", "fontitalic":
+			field = "italic"
+		case "underline", "fontunderline":
+			field = "underline"
+		default:
+			return common.ValidationErrorf("%s.font.%s is not a supported font field; use size, name, color, weight, bold, italic or underline", path, key)
+		}
+		if _, duplicate := flat[field]; duplicate {
+			return common.ValidationErrorf("%s.font.%s conflicts with another spelling of %s; keep one", path, key, field)
+		}
+		flat[field] = font[key]
+	}
+	if err := normalizeCellStyleAliases(flat, path+".font"); err != nil {
+		return err
+	}
+	for _, field := range sortedKeys(flat) {
+		if !workbookCreateCellStyleField(field) {
+			return common.ValidationErrorf("%s.font.%s has an unsupported value", path, field)
+		}
+		if _, duplicate := style[field]; duplicate {
+			return common.ValidationErrorf("%s.font conflicts with %s; keep one spelling of each font field", path, field)
+		}
+	}
+	for field, value := range flat {
+		style[field] = value
+	}
+	delete(style, "font")
+	return nil
+}
+
+// Only the alignment options this API can express are admitted. Rotation,
+// indent and shrink-to-fit must remain errors instead of disappearing.
+func nestedAlignmentStyleField(field string) string {
+	switch squashStyleFieldKey(field) {
+	case "horizontal", "horizontalalignment", "horizontalalign", "halign":
+		return "horizontal_alignment"
+	case "vertical", "verticalalignment", "verticalalign", "valign":
+		return "vertical_alignment"
+	case "wraptext", "wordwrap", "textwrap", "wrapstrategy", "wrap":
+		return "word_wrap"
+	default:
+		return ""
+	}
+}
+
+// openpyxl puts horizontal/vertical/wrapText in an alignment object. Flatten
+// that scope with the existing type and enum rules, checking the whole object
+// and every collision before merging it into the effective style.
+func flattenNestedAlignment(style map[string]interface{}, path string) error {
+	raw, present := style["alignment"]
+	if !present {
+		return nil
+	}
+	alignment, ok := raw.(map[string]interface{})
+	if !ok {
+		// This rewrite owns the object carrier only. Loose typed cell_styles
+		// already forwards unknown scalar fields verbatim; leave those to the
+		// caller's existing validation rather than changing that contract.
+		return nil
+	}
+	if len(alignment) == 0 {
+		return common.ValidationErrorf("%s.alignment must be a non-empty JSON object of alignment fields", path)
+	}
+	flat := make(map[string]interface{}, len(alignment))
+	for _, key := range sortedKeys(alignment) {
+		field := nestedAlignmentStyleField(key)
+		if field == "" {
+			return common.ValidationErrorf("%s.alignment.%s is not a supported alignment field; use horizontal, vertical or wrapText", path, key)
+		}
+		if _, duplicate := flat[field]; duplicate {
+			return common.ValidationErrorf("%s.alignment.%s conflicts with another spelling of %s; keep one", path, key, field)
+		}
+		switch value := alignment[key].(type) {
+		case nil:
+			return common.ValidationErrorf("%s.alignment.%s must specify an alignment value", path, key)
+		default:
+			flat[field] = value
+		}
+	}
+	if err := normalizeCellStyleAliases(flat, path+".alignment"); err != nil {
+		return err
+	}
+	for _, field := range sortedKeys(flat) {
+		if _, duplicate := style[field]; duplicate {
+			return common.ValidationErrorf("%s.alignment conflicts with %s; keep one spelling of each alignment field", path, field)
+		}
+	}
+	for field, value := range flat {
+		style[field] = value
+	}
+	delete(style, "alignment")
+	return nil
+}
+
 // normalizeTypedCellsStyleAliases walks a typed --cells 2D array and applies
 // normalizeCellStyleAliases to every cell's inline cell_styles object, so the
 // alignment shorthands are accepted on +cells-set the same as on --styles.
@@ -546,6 +756,7 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 			if !ok {
 				continue
 			}
+			normalizeCellContentType(cell)
 			// cells[][].style is the habitual spelling of cell_styles (recurring
 			// server-side 900015206 in eval traces) — rewrite when unambiguous.
 			if styleObj, isObj := cell["style"].(map[string]interface{}); isObj {
@@ -555,9 +766,13 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 				cell["cell_styles"] = styleObj
 				delete(cell, "style")
 			}
-			// cells[][].type is not a cell field; the value type is whatever the
-			// JSON value is. Reject with the fix instead of a server round trip.
+			// A remaining type is unsupported or contradicts its content; it
+			// cannot be sent as a wire field. Keep the existing recovery error.
 			if _, has := cell["type"]; has {
+				if typedEqualsText(cell) {
+					return common.ValidationErrorf("%s[%d][%d] explicitly requests text beginning with '=', which value would store as a formula", path, r, c).
+						WithHint(`use rich_text:[{"type":"text","text":"=..."}] for literal text, or type:"formula" for a formula`)
+				}
 				return common.ValidationErrorf("%s[%d][%d].type is not a cell field — the value type is inferred from the JSON value; control display format via cell_styles.number_format", path, r, c)
 			}
 			// border_styles written one level too deep is the same object in
@@ -568,6 +783,9 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 			// carrying both keeps the error: that is two different borders for
 			// one cell, and nothing here says which one the caller meant.
 			if st, isObj := cell["cell_styles"].(map[string]interface{}); isObj {
+				if err := foldBorderFamilyAliases(st, fmt.Sprintf("%s[%d][%d].cell_styles", path, r, c)); err != nil {
+					return err
+				}
 				if nested, misNested := st["border_styles"]; misNested {
 					if _, alsoTop := cell["border_styles"]; alsoTop {
 						return common.ValidationErrorf(
@@ -619,7 +837,7 @@ func expandBorderAllShorthand(border map[string]interface{}) {
 		case !hasAll:
 			border["all"] = outer
 			delete(border, "outer")
-		case reflect.DeepEqual(all, outer):
+		case jsonEqual(all, outer):
 			// A duplicate spelling of the same box; dropping it loses nothing.
 			delete(border, "outer")
 		default:
@@ -744,6 +962,12 @@ func borderLineWidth(v interface{}) (float64, bool) {
 	switch t := v.(type) {
 	case float64:
 		n = t
+	case json.Number:
+		parsed, err := t.Float64()
+		if err != nil {
+			return 0, false
+		}
+		n = parsed
 	case string:
 		parsed, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
 		if err != nil {
@@ -950,6 +1174,7 @@ var cellCarrierFields = map[string]bool{
 // where it is: it may be a field the tool contract gained since this build,
 // and guessing at it is what the contract forbids.
 func foldCellLevelStyleVocabulary(cell map[string]interface{}) {
+	normalizeCellContentType(cell)
 	// The border family folds into border_styles, which IS a cell-level
 	// carrier -- the same rewrite the --styles path performs. A conflict
 	// (both spellings present) is left alone for the validator to report.
@@ -1002,6 +1227,83 @@ func foldCellLevelStyleVocabulary(cell map[string]interface{}) {
 	if styles, ok := cell["cell_styles"].(map[string]interface{}); ok {
 		_ = normalizeCellStyleAliases(styles, "--cells")
 	}
+}
+
+// normalizeCellContentType accepts a redundant type annotation only when it
+// agrees with the one content field already present. It never coerces values:
+// numeric-looking text, leading zeros, false, and zero keep their JSON types.
+// Explicit text beginning with '=' stays invalid: the tool's value carrier
+// automatically interprets that prefix as a formula, so removing type loses intent.
+// An explicit formula annotation on an =-prefixed value selects the existing
+// formula carrier. Unknown types, missing content, and conflicts stay intact
+// for the existing validator; rich-text segment types are never visited.
+func normalizeCellContentType(cell map[string]interface{}) {
+	kind, annotated := cell["type"].(string)
+	if !annotated {
+		return
+	}
+	if typedEqualsText(cell) {
+		return
+	}
+	if text, ok := cell["text"].(string); ok && (kind == "text" || kind == "string" || kind == "formula") {
+		for _, field := range []string{"value", "formula", "rich_text", "multiple_values"} {
+			if _, present := cell[field]; present {
+				return
+			}
+		}
+		if kind == "formula" && !strings.HasPrefix(text, "=") {
+			return
+		}
+		cell["value"] = text
+		delete(cell, "text")
+	}
+	content := ""
+	for _, key := range []string{"value", "formula", "rich_text", "multiple_values"} {
+		if _, present := cell[key]; present {
+			if content != "" {
+				return
+			}
+			content = key
+		}
+	}
+	matched := false
+	switch kind {
+	case "string", "text":
+		_, matched = cell["value"].(string)
+	case "number":
+		switch cell["value"].(type) {
+		case float64, json.Number, int, int64:
+			matched = true
+		default:
+			return
+		}
+	case "boolean":
+		_, matched = cell["value"].(bool)
+	case "formula":
+		text, isString := cell[content].(string)
+		matched = (content == "value" || content == "formula") && isString && strings.HasPrefix(text, "=")
+		if matched && content == "value" {
+			cell["formula"] = text
+			delete(cell, "value")
+		}
+	default:
+		return
+	}
+	if matched {
+		delete(cell, "type")
+	}
+}
+
+func typedEqualsText(cell map[string]interface{}) bool {
+	if kind, _ := cell["type"].(string); kind != "text" && kind != "string" {
+		return false
+	}
+	for _, field := range []string{"value", "text"} {
+		if text, ok := cell[field].(string); ok && strings.HasPrefix(text, "=") {
+			return true
+		}
+	}
+	return false
 }
 
 // hasBorderFamilyKey reports whether a cell carries any border spelling other
@@ -1149,20 +1451,30 @@ func requireAnyStyleFlag(runtime flagView) error {
 // produce different messages run to run (same reason parseWorkbookCreateFreezeOp
 // sorts its keys).
 func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
+	if err := normalizeStyleFieldSpellings(in, path); err != nil {
+		return err
+	}
 	attrNames := []string{"color", "style", "weight"}
 	sides := map[string]bool{"top": true, "bottom": true, "left": true, "right": true, "all": true}
 	attrs := map[string]bool{"style": true, "color": true, "weight": true}
 
-	ensureBorder := func() map[string]interface{} {
-		bs, ok := in["border_styles"].(map[string]interface{})
-		if !ok {
-			bs = map[string]interface{}{}
-			in["border_styles"] = bs
+	ensureBorder := func() (map[string]interface{}, error) {
+		if raw, exists := in["border_styles"]; exists {
+			bs, ok := raw.(map[string]interface{})
+			if !ok {
+				return nil, common.ValidationErrorf("%s.border_styles must be an object; it cannot be combined with a border alias", path)
+			}
+			return bs, nil
 		}
-		return bs
+		bs := map[string]interface{}{}
+		in["border_styles"] = bs
+		return bs, nil
 	}
 	setSideAttr := func(side, attr string, v interface{}, from string) error {
-		bs := ensureBorder()
+		bs, err := ensureBorder()
+		if err != nil {
+			return err
+		}
 		sideObj, ok := bs[side].(map[string]interface{})
 		if !ok {
 			if _, exists := bs[side]; exists {
@@ -1244,6 +1556,12 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 	setAllScalar := func(attr string, v interface{}, from string) error {
 		if attr == "style" {
 			if s, ok := v.(string); ok {
+				// In this all-sides shorthand, a full/grid selector names the
+				// same solid box as border_type. Per-side style slots remain
+				// line-kind slots and never expand their side selection.
+				if side := borderTypeSideValues[strings.ToUpper(strings.TrimSpace(s))]; side == "all" {
+					return setSideAttr("all", "style", "solid", from)
+				}
 				if canon := borderWeightWord(s); canon != "" {
 					if err := setSideAttr("all", "weight", canon, from); err != nil {
 						return err
@@ -1348,11 +1666,10 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 	// who wrote border_type:"FULL_BORDER" alongside border_style:"dashed"
 	// means a dashed box, not a conflict.
 	if v, has := in["border_type"]; has {
-		soft := func(side, attr string, val interface{}) {
-			bs, ok := in["border_styles"].(map[string]interface{})
-			if !ok {
-				bs = map[string]interface{}{}
-				in["border_styles"] = bs
+		soft := func(side, attr string, val interface{}) error {
+			bs, err := ensureBorder()
+			if err != nil {
+				return err
 			}
 			// A side selector picks WHICH edges, and the line attributes the
 			// caller spelled out apply to those edges. Those attributes have
@@ -1382,7 +1699,7 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 			sideObj, ok := bs[side].(map[string]interface{})
 			if !ok {
 				if _, exists := bs[side]; exists {
-					return
+					return nil
 				}
 				sideObj = map[string]interface{}{}
 				bs[side] = sideObj
@@ -1390,6 +1707,7 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 			if _, exists := sideObj[attr]; !exists {
 				sideObj[attr] = val
 			}
+			return nil
 		}
 		if err := foldBorderTypeValue(v, path, setSideAttr, setSideLoose, soft); err != nil {
 			return err
@@ -1415,7 +1733,7 @@ var borderAttrAliases = map[string]string{"width": "weight"}
 // the earlier reading of these values as inexpressible was the mapping being
 // read the wrong way round.
 var borderTypeSideValues = map[string]string{
-	"FULL_BORDER": "all", "ALL_BORDER": "all", "ALL_BORDERS": "all", "ALL": "all", "GRID": "all",
+	"FULL_BORDER": "all", "FULL": "all", "ALL_BORDER": "all", "ALL_BORDERS": "all", "ALL": "all", "GRID": "all",
 	"TOP_BORDER": "top", "BOTTOM_BORDER": "bottom", "LEFT_BORDER": "left", "RIGHT_BORDER": "right",
 }
 
@@ -1445,7 +1763,7 @@ var borderTypeInteriorValues = map[string]string{
 func foldBorderTypeValue(v interface{}, path string,
 	setSideAttr func(side, attr string, v interface{}, from string) error,
 	setSideLoose func(side string, v interface{}, from string) error,
-	soft func(side, attr string, val interface{}),
+	soft func(side, attr string, val interface{}) error,
 ) error {
 	word, isStr := v.(string)
 	if !isStr {
@@ -1454,8 +1772,7 @@ func foldBorderTypeValue(v interface{}, path string,
 	key := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(word), "-", "_"))
 	key = strings.ReplaceAll(key, " ", "_")
 	if side, ok := borderTypeSideValues[key]; ok {
-		soft(side, "style", "solid")
-		return nil
+		return soft(side, "style", "solid")
 	}
 	if key == "NO_BORDER" || key == "NONE" {
 		return setSideAttr("all", "style", "none", "border_type")

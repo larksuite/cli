@@ -82,7 +82,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--ranges` | string + File + Stdin（简单 JSON） | required | 目标范围 JSON 数组（最多 100 个，如 `["Sheet1!A2:A100","Sheet1!C2:C100"]`，前缀裸写不加引号），每项必须带 sheet 前缀；前缀必须与 sheet 真实显示名完全一致（含大小写），不接受 sheet reference_id |
+| `--ranges` | string + File + Stdin（简单 JSON） | required | 目标范围 JSON 数组（最多 100 个）：使用表名前缀范围（如 `["Sheet1!A2:A100","Sheet1!C2:C100"]`），或显式 --sheet-id / --sheet-name 加无前缀范围（如 `["A2:A100","C2:C100"]`）。前缀必须与真实显示名完全一致（含大小写）；--sheet-id 不接受带表名前缀的范围 |
 | `--options` | string + File + Stdin（复合 JSON） | xor | 下拉选项 JSON 数组，例如 `["opt1","opt2"]`。服务端不限制选项数量，也不限制单个选项长度；含逗号的选项可以接受（写入时会自动转义）。大量选项建议改用 `--source-range`。 |
 | `--colors` | string + File + Stdin（简单 JSON） | optional | 下拉胶囊背景色，RGB hex 数组。更新会重写整条验证规则：若用户未要求重置配色，先用 `+dropdown-get` 回读并将现有 `highlight_colors` 作为本 flag 传回；省略会按内置 10 色色板重建。用户明确要求新配色或选项有清晰语义配色时，应选浅色、低饱和度背景以适配黑色文字。长度可短不可长——超长 Validate 拦截（`--colors length (N) must not exceed dropdown source size (M)`），未指定项按内置色板循环补色。单独传即生效；`--highlight=false` 时被忽略。 |
 | `--multiple` | bool | optional | 启用多选。本 flag 只更新验证规则，不会写入选中值；后续用 `+cells-set` 写值时必须传 `multiple_values` 数组，不要传逗号拼接的 `value` |
@@ -95,7 +95,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--ranges` | string + File + Stdin（简单 JSON） | required | 目标范围 JSON 数组（最多 100 个，如 `["Sheet1!E2:E6"]`，前缀裸写不加引号），每项必须带 sheet 前缀；前缀必须与 sheet 真实显示名完全一致（含大小写），不接受 sheet reference_id |
+| `--ranges` | string + File + Stdin（简单 JSON） | required | 目标范围 JSON 数组（最多 100 个）：使用表名前缀范围（如 `["Sheet1!E2:E6"]`），或显式 --sheet-id / --sheet-name 加无前缀范围（如 `["E2:E6"]`）。前缀必须与真实显示名完全一致（含大小写）；--sheet-id 不接受带表名前缀的范围 |
 
 ### `+cells-batch-clear`
 

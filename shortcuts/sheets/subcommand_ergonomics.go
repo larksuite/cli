@@ -162,6 +162,17 @@ var unknownSubcommandHints = map[string]prescription{
 		Command: "+cols-resize",
 		Hint:    colsResizeForm,
 	},
+	// 09-30..10-06 catalog: 2,300 calls to a bare read named +fetch. It is a
+	// docs-domain habit (docs +fetch reads a whole document); the sheets
+	// surface has no one "read everything" call — workbook metadata is
+	// +workbook-info, and sheet data needs a named target sheet. Kept as a
+	// prescription: the callers' --doc / --detail / --token flags are not
+	// cells-get flags, and cells-get requires a non-omitted --range, so a
+	// silent redirect would fail again.
+	"+fetch": {
+		Command: "+cells-get",
+		Hint:    `read sheet data with +cells-get --sheet-name "<name>" --range A1:F50 (--range is required), or +csv-get --sheet-name "<name>" to read the WHOLE used sheet with --range omitted; workbook structure (sub-sheets/ids) comes from +workbook-info`,
+	},
 }
 
 // InstallUnknownSubcommandHints hooks the sheets group's Args validator, which

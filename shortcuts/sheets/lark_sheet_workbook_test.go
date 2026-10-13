@@ -84,16 +84,15 @@ func TestWorkbookShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
-			name:     "+sheet-copy with new title and index",
+			name:     "+sheet-copy with new title",
 			sc:       SheetCopy,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--title", "副本", "--index", "0"},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--title", "副本"},
 			toolName: "modify_workbook_structure",
 			wantInput: map[string]interface{}{
-				"excel_id":     testToken,
-				"operation":    "duplicate",
-				"sheet_id":     testSheetID,
-				"new_name":     "副本",
-				"target_index": float64(0),
+				"excel_id":  testToken,
+				"operation": "duplicate",
+				"sheet_id":  testSheetID,
+				"new_name":  "副本",
 			},
 		},
 		{

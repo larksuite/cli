@@ -685,6 +685,7 @@ func TestParseA1Range(t *testing.T) {
 		{"A1", "", 0, 0, true}, // cell ref, not a row/col range
 		{"3:5:7", "", 0, 0, true},
 		{"0", "", 0, 0, true}, // rows are 1-based
+		{"999999999999999999999999999999", "", 0, 0, true},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {

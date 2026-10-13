@@ -483,6 +483,7 @@ var DimFreeze = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+dim-freeze"),
+	Normalize:   normalizeFreezeCountFlags,
 	Tips: []string{
 		"Example: lark-cli sheets +dim-freeze --url <URL> --sheet-name Sheet1 --rows 1 --cols 2 (holds the header row and the first 2 columns in one call)",
 		"Freezing is not additive: --dimension row --count 1 followed by --dimension column --count 2 leaves ONLY the columns frozen. Pass --rows/--cols together instead of calling twice",
@@ -532,6 +533,63 @@ var DimFreeze = common.Shortcut{
 		runtime.Out(annotateSheetsDeprecation(out, dimFreezeLegacyNote(runtime)), nil)
 		return nil
 	},
+}
+
+// These count spellings sound like a partial update. Accept them only when
+// both axes are stated, so compatibility cannot silently unfreeze an axis.
+var freezeCountAliases = map[string]string{
+	"frozen-rows": "rows", "frozen-row-count": "rows", "row-count": "rows",
+	"frozen-cols": "cols", "frozen-col-count": "cols", "col-count": "cols",
+}
+
+func freezeCountTargets(flags interface {
+	Int(string) int
+	Changed(string) bool
+}) (map[string]int, error) {
+	counts := map[string]int{}
+	for _, name := range []string{"rows", "cols"} {
+		if flags.Changed(name) {
+			counts[name] = flags.Int(name)
+		}
+	}
+	firstAlias := ""
+	for _, name := range sortedKeys(freezeCountAliases) {
+		if !flags.Changed(name) {
+			continue
+		}
+		if firstAlias == "" {
+			firstAlias = name
+		}
+		count := flags.Int(name)
+		if count < 0 {
+			return nil, sheetsValidationForFlag(name, "--%s must be >= 0", name)
+		}
+		target := freezeCountAliases[name]
+		if given, present := counts[target]; present && given != count {
+			return nil, sheetsValidationForFlag(name, "--%s conflicts with another %s count", name, target)
+		}
+		counts[target] = count
+	}
+	if firstAlias == "" {
+		return nil, nil
+	}
+	if len(counts) != 2 {
+		return nil, sheetsValidationForFlag(firstAlias, "freeze count aliases require explicit counts for both axes").WithHint("one call states the whole freeze state; an omitted axis becomes UNFROZEN. State both --rows N and --cols N, including 0 when intended")
+	}
+	return counts, nil
+}
+
+func normalizeFreezeCountFlags(_ context.Context, flags *common.FlagContext) error {
+	counts, err := freezeCountTargets(flags)
+	if err != nil {
+		return err
+	}
+	for _, name := range sortedKeys(counts) {
+		if err := flags.SetCanonical(name, strconv.Itoa(counts[name])); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DEPRECATED(phase-2): +dim-freeze --dimension / --count — replaced by
@@ -859,7 +917,10 @@ func parseA1Position(s string) (dimension string, idx int, err error) {
 		}
 	}
 	if isDigits {
-		n, _ := strconv.Atoi(s)
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return "", 0, fmt.Errorf("row position %q exceeds the supported A1 coordinate range: %w", s, err) //nolint:forbidigo // intermediate error; callers wrap it into a typed flag validation error
+		}
 		if n <= 0 {
 			return "", 0, fmt.Errorf("row number must be >= 1 (got %q)", s) //nolint:forbidigo // intermediate error; callers wrap it into a typed flag validation error
 		}

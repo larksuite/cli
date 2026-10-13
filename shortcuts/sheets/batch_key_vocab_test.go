@@ -475,4 +475,106 @@ func TestBatchOp_SpellingConflictRejected(t *testing.T) {
 			t.Fatalf("sheet_name = %v, want S1 (hyphen spelling should canonicalize)", input["sheet_name"])
 		}
 	})
+
+	t.Run("case-variant alias with identical values passes", func(t *testing.T) {
+		t.Parallel()
+		translated, err := translateBatchOp(subOp("+dim-delete", map[string]interface{}{
+			"sheet_name": "S",
+			"position":   "3",
+			"Position":   "3",
+		}), testToken, 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := translated["input"].(map[string]interface{})
+		if input["range"] != "3" {
+			t.Errorf("range = %#v, want 3", input["range"])
+		}
+	})
+
+	t.Run("case-variant alias with conflicting values rejects", func(t *testing.T) {
+		t.Parallel()
+		_, err := translateBatchOp(subOp("+dim-delete", map[string]interface{}{
+			"sheet_name": "S",
+			"position":   "3",
+			"Position":   "5",
+		}), testToken, 0)
+		requireValidation(t, err, "conflicting values")
+	})
+
+	t.Run("dynamic formula casing is canonicalized before translation", func(t *testing.T) {
+		t.Parallel()
+		translated, err := translateBatchOp(subOp("+cells-set", map[string]interface{}{
+			"sheet_name": "S",
+			"range":      "A1",
+			"Formula":    "=SUM(1,2)",
+		}), testToken, 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := translated["input"].(map[string]interface{})
+		cells := input["cells"].([]interface{})
+		cell := cells[0].([]interface{})[0].(map[string]interface{})
+		if cell["formula"] != "=SUM(1,2)" {
+			t.Errorf("formula = %#v, want =SUM(1,2)", cell["formula"])
+		}
+	})
+
+	t.Run("identical formula casing is collapsed", func(t *testing.T) {
+		t.Parallel()
+		translated, err := translateBatchOp(subOp("+cells-set", map[string]interface{}{
+			"sheet_name": "S",
+			"range":      "A1",
+			"formula":    "=1",
+			"Formula":    "=1",
+		}), testToken, 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := translated["input"].(map[string]interface{})
+		cells := input["cells"].([]interface{})
+		cell := cells[0].([]interface{})[0].(map[string]interface{})
+		if cell["formula"] != "=1" {
+			t.Errorf("formula = %#v, want =1", cell["formula"])
+		}
+	})
+
+	t.Run("conflicting formula casing is rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := translateBatchOp(subOp("+cells-set", map[string]interface{}{
+			"sheet_name": "S",
+			"range":      "A1",
+			"formula":    "=1",
+			"Formula":    "=2",
+		}), testToken, 0)
+		requireValidation(t, err, "conflicting values")
+	})
+
+	t.Run("conflicting end-index spellings are rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := translateBatchOp(subOp("+dim-insert", map[string]interface{}{
+			"sheet_name":  "S",
+			"start_index": 3,
+			"end-index":   7,
+			"end_index":   9,
+		}), testToken, 0)
+		requireValidation(t, err, "conflicting values")
+	})
+
+	t.Run("identical end-index spellings derive one count", func(t *testing.T) {
+		t.Parallel()
+		translated, err := translateBatchOp(subOp("+dim-insert", map[string]interface{}{
+			"sheet_name":  "S",
+			"start_index": 3,
+			"end-index":   7,
+			"end_index":   7,
+		}), testToken, 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := translated["input"].(map[string]interface{})
+		if input["count"] != 4 {
+			t.Errorf("count = %#v, want 4", input["count"])
+		}
+	})
 }

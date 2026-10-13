@@ -244,8 +244,8 @@ func TestFlagRenames_FromTheUnknownFlagTable(t *testing.T) {
 
 // +dim-freeze sends the WHOLE freeze state every call, so --frozen-rows 2 as
 // a silent rename would ship freeze_rows:2 with no freeze_columns and unfreeze
-// an existing column freeze the caller never mentioned. The names stay on the
-// prescription tier, where the answer can name the other axis.
+// an existing column freeze the caller never mentioned. A single-axis count
+// alias keeps its prescription; explicit counts for both axes can normalize.
 func TestDimFreeze_KeepsItsPrescription(t *testing.T) {
 	t.Parallel()
 	for _, flag := range []string{
@@ -259,7 +259,11 @@ func TestDimFreeze_KeepsItsPrescription(t *testing.T) {
 			t.Parallel()
 			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+dim-freeze"),
 				[]string{"--url", testURL, "--sheet-name", "s", flag, "2", "--dry-run"})
-			ve := requireValidation(t, err, "unknown flag")
+			message := "freeze count aliases require explicit counts for both axes"
+			if flag == "--frozen-columns" || flag == "--column-count" {
+				message = "unknown flag"
+			}
+			ve := requireValidation(t, err, message)
 			for _, want := range []string{"one call states the whole freeze state", "UNFROZEN"} {
 				if !strings.Contains(ve.Hint, want) {
 					t.Errorf("hint should carry %q, got %q", want, ve.Hint)
@@ -269,47 +273,31 @@ func TestDimFreeze_KeepsItsPrescription(t *testing.T) {
 	}
 }
 
-// The --ranges commands keep refusing a top-level sheet selector -- the sheet
-// belongs in each entry's prefix, and a reference_id has no expression there
-// at all. What they used to answer with was the generic locator, which names
-// the OTHER commands --sheet-name is valid on and never says where the sheet
-// goes here. These pin the answer rather than the refusal.
-func TestRangesCommands_PrescribeTheSheetPrefix(t *testing.T) {
-	t.Parallel()
-	for _, tt := range []struct {
+// Unqualified batch ranges retain the explicitly supplied selector in every
+// operation; no display-name lookup is needed for an ID-valued selector.
+func TestRangesCommands_ForwardExplicitSelectors(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	for _, tc := range []struct {
 		command string
 		extra   []string
 	}{
-		{"+cells-batch-clear", []string{"--ranges", `["A1:B2"]`, "--scope", "content", "--yes"}},
-		{"+dropdown-delete", []string{"--ranges", `["A1:B2"]`, "--yes"}},
-		{"+dropdown-update", []string{"--ranges", `["A1:B2"]`, "--options", `["a"]`}},
+		{"+cells-batch-clear", []string{"--scope", "content", "--yes"}},
+		{"+dropdown-delete", []string{"--yes"}},
+		{"+dropdown-update", []string{"--options", `["a"]`}},
 	} {
-		t.Run(tt.command+" --sheet-name", func(t *testing.T) {
-			t.Parallel()
-			args := append([]string{"--url", testURL, "--sheet-name", "S1"}, tt.extra...)
-			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, tt.command), append(args, "--dry-run"))
-			ve := requireValidation(t, err, "unknown flag")
-			for _, want := range []string{"--ranges", "prefix", "Sheet1!"} {
-				if !strings.Contains(ve.Hint, want) {
-					t.Errorf("hint should carry %q, got %q", want, ve.Hint)
-				}
+		for _, flag := range []string{"sheet-id", "sheet-name"} {
+			calls := parseDryRunAPI(t, shortcutFromRegistry(t, tc.command), append([]string{"--url", testURL, "--" + flag, "explicit", "--ranges", `["A1:B2"]`}, tc.extra...))
+			body := calls[0].(map[string]interface{})["body"].(map[string]interface{})
+			var input struct {
+				Operations []struct{ Input map[string]interface{} } `json:"operations"`
 			}
-		})
-
-		// A reference_id cannot be a prefix, so this one has to send the
-		// caller to look the display name up rather than to a form that does
-		// not exist.
-		t.Run(tt.command+" --sheet-id", func(t *testing.T) {
-			t.Parallel()
-			args := append([]string{"--url", testURL, "--sheet-id", "shtabc"}, tt.extra...)
-			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, tt.command), append(args, "--dry-run"))
-			ve := requireValidation(t, err, "unknown flag")
-			for _, want := range []string{"reference_id cannot appear", "+sheet-list"} {
-				if !strings.Contains(ve.Hint, want) {
-					t.Errorf("hint should carry %q, got %q", want, ve.Hint)
-				}
+			if err := json.Unmarshal([]byte(body["input"].(string)), &input); err != nil {
+				t.Fatal(err)
 			}
-		})
+			if len(input.Operations) != 1 || input.Operations[0].Input[strings.ReplaceAll(flag, "-", "_")] != "explicit" {
+				t.Fatalf("selector dropped: %s", body["input"])
+			}
+		}
 	}
 }
 

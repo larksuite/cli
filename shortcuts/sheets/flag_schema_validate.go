@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 
@@ -370,7 +371,7 @@ func collectSchemaErrors(value interface{}, schema *schemaProperty, path string,
 
 	// Numeric bounds — only checked when value is a number (type mismatch
 	// already reported above). Apply to both `number` and `integer` types.
-	if num, ok := value.(float64); ok {
+	if num, ok := tableGetToFloat(value); ok {
 		if schema.Minimum != nil && num < *schema.Minimum {
 			c.add(fmt.Errorf("%svalue %v is below minimum %v", pathPrefix(path), num, *schema.Minimum)) //nolint:forbidigo // intermediate error; validateFlagAgainstSchema wraps it into a typed flag validation error with a --print-schema hint
 		}
@@ -683,10 +684,10 @@ func matchesJSONType(value interface{}, expected string) bool {
 		_, ok := value.(string)
 		return ok
 	case "number":
-		_, ok := value.(float64)
+		_, ok := tableGetToFloat(value)
 		return ok
 	case "integer":
-		f, ok := value.(float64)
+		f, ok := tableGetToFloat(value)
 		return ok && f == float64(int64(f))
 	case "boolean":
 		_, ok := value.(bool)
@@ -707,7 +708,7 @@ func jsType(value interface{}) string {
 		return "array"
 	case string:
 		return "string"
-	case float64:
+	case float64, json.Number:
 		return "number"
 	case bool:
 		return "boolean"
@@ -718,7 +719,45 @@ func jsType(value interface{}) string {
 func jsonEqual(a, b interface{}) bool {
 	ja, _ := json.Marshal(a)
 	jb, _ := json.Marshal(b)
-	return string(ja) == string(jb)
+	if string(ja) == string(jb) {
+		return true
+	}
+	// Preserve numeric equality inside alias payloads as well as enum scalars.
+	switch va := a.(type) {
+	case []interface{}:
+		vb, ok := b.([]interface{})
+		if !ok || (va == nil) != (vb == nil) || len(va) != len(vb) {
+			return false
+		}
+		for i := range va {
+			if !jsonEqual(va[i], vb[i]) {
+				return false
+			}
+		}
+		return true
+	case map[string]interface{}:
+		vb, ok := b.(map[string]interface{})
+		if !ok || (va == nil) != (vb == nil) || len(va) != len(vb) {
+			return false
+		}
+		for key, value := range va {
+			other, present := vb[key]
+			if !present || !jsonEqual(value, other) {
+				return false
+			}
+		}
+		return true
+	}
+	// Numeric members compare by exact value, independent of decimal or
+	// exponent spelling. Quoted strings do not parse as rational numbers.
+	var na, nb big.Rat
+	if _, ok := na.SetString(string(ja)); !ok {
+		return false
+	}
+	if _, ok := nb.SetString(string(jb)); !ok {
+		return false
+	}
+	return na.Cmp(&nb) == 0
 }
 
 // formatJSONValue is the "what you actually passed" half of an enum

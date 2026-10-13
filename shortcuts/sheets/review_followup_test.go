@@ -86,15 +86,17 @@ func TestSingletonRanges_ConflictWithRangeIsRefused(t *testing.T) {
 	requireValidation(t, err, "name different spans")
 }
 
-// --sheet-id neither selects a sheet here nor validates against the payload,
-// so accepting it would let a write land wherever the payload pointed.
-func TestSheetIDStaysRefusedOnPayloadPerSheetCommands(t *testing.T) {
-	t.Parallel()
-	_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+table-put"), []string{
-		"--url", testURL, "--sheet-id", "sh_target", "--dry-run",
+// An explicit ID must match the real named table before any write or create.
+func TestSheetIDChecksTheNamedTableBeforeWriting(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	out, err := runShortcutWithStubs(t, shortcutFromRegistry(t, "+table-put"), []string{
+		"--url", testURL, "--sheet-id", "sh_target",
 		"--sheets", `{"sheets":[{"name":"Other","columns":["a"],"data":[["x"]]}]}`,
-	})
-	requireValidation(t, err, `unknown flag "--sheet-id"`)
+	}, toolOutputStub(testToken, "read", `{"sheets":[{"sheet_id":"sh_other","sheet_name":"Other"}]}`))
+	ve := requireValidation(t, err, "does not identify")
+	if ve.Param != "--sheet-id" || out != "" {
+		t.Fatalf("unexpected failure metadata/output: %#v %s", ve, out)
+	}
 }
 
 // The sheet-name check runs in Validate, after the shared runner has resolved

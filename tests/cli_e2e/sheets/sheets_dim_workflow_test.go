@@ -77,6 +77,66 @@ func TestSheets_DimShortcutsWorkflow(t *testing.T) {
 		return result.Stdout
 	}
 
+	t.Run("OpenAPI row indexes insert before the first row", func(t *testing.T) {
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"sheets", "+dim-insert", "--spreadsheet-token", spreadsheetToken,
+				"--sheet-id", sheetID, "--start-index", "0", "--end-index", "2",
+			},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		require.Contains(t, readRow1(t, "A3:C3"), "r1c1,r1c2,r1c3")
+		require.NotContains(t, readRow1(t, "A1:C2"), "r1c1")
+	})
+
+	t.Run("inclusive delete indexes and count restore the rows", func(t *testing.T) {
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"sheets", "+dim-delete", "--spreadsheet-token", spreadsheetToken,
+				"--sheet-id", sheetID, "--start-index", "1", "--end-index", "2", "--count", "2",
+			},
+			DefaultAs: "bot",
+			Yes:       true,
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		require.Contains(t, readRow1(t, "A1:C1"), "r1c1,r1c2,r1c3")
+		require.Contains(t, readRow1(t, "A4:C4"), "r4c1,r4c2,r4c3")
+	})
+
+	t.Run("batch deletion count and endIndex restore inserted rows", func(t *testing.T) {
+		for _, endKey := range []string{"count", "endIndex"} {
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"sheets", "+dim-insert", "--spreadsheet-token", spreadsheetToken,
+					"--sheet-id", sheetID, "--start-index", "0", "--count", "2",
+				},
+				DefaultAs: "bot",
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 0)
+			operations, err := json.Marshal([]any{map[string]any{
+				"shortcut": "+dim-delete",
+				"input":    map[string]any{"sheet_id": sheetID, "start_index": 1, endKey: 2},
+			}})
+			require.NoError(t, err)
+			result, err = clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"sheets", "+batch-update", "--spreadsheet-token", spreadsheetToken,
+					"--operations", string(operations),
+				},
+				DefaultAs: "bot",
+				Yes:       true,
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 0)
+			require.Contains(t, readRow1(t, "A1:C1"), "r1c1,r1c2,r1c3")
+			require.Contains(t, readRow1(t, "A4:C4"), "r4c1,r4c2,r4c3")
+		}
+	})
+
 	t.Run("dim-insert inherit-style before lands before position", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{

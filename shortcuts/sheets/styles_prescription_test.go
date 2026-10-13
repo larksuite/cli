@@ -62,8 +62,7 @@ func TestTablePut_StylesFieldPrescriptions(t *testing.T) {
 		// the field is recognizable but the caller's intent is not.
 		{"bold with an unreadable value", `"bold":"sort of"`, []string{`font_weight:"bold"`}, nil},
 		{"font_bold with an unreadable value", `"font_bold":"very"`, []string{`font_weight:"bold"`}, []string{"font_color"}},
-		{"text_align", `"text_align":"center"`, []string{"horizontal_alignment"}, nil},
-		{"nested font", `"font":{"bold":true,"size":18}`, []string{"flat font_*", `font_weight:"bold"`}, []string{"font_line"}},
+		{"unsupported nested font field", `"font":{"bold":true,"shadow":true}`, []string{"font.shadow is not a supported font field"}, []string{"font_line"}},
 		{"near-typo still suggests", `"font_colour":"#FFF"`, []string{`did you mean "font_color"`}, nil},
 	}
 	for _, tc := range cases {
@@ -76,7 +75,7 @@ func TestTablePut_StylesFieldPrescriptions(t *testing.T) {
 				"--styles", `{"styles":[{"name":"s","cell_styles":[{"range":"A1:A1",` + tc.field + `}]}]}`,
 				"--dry-run",
 			})
-			ve := requireValidation(t, err, "is not a supported style field")
+			ve := requireValidation(t, err, "not a supported")
 			for _, want := range tc.want {
 				if !strings.Contains(ve.Message, want) {
 					t.Errorf("message should contain %q, got %q", want, ve.Message)

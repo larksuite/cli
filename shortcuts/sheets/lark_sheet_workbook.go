@@ -406,14 +406,15 @@ func sourceIndexOrPlaceholder(runtime *common.RuntimeContext) interface{} {
 // SheetCopy duplicates a sub-sheet. --title (optional) names the copy;
 // --index (optional) places it.
 var SheetCopy = common.Shortcut{
-	Service:     "sheets",
-	Command:     "+sheet-copy",
-	Description: "Duplicate a sub-sheet, optionally renaming and repositioning the copy.",
-	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
-	Flags:       flagsFor("+sheet-copy"),
+	Service:           "sheets",
+	Command:           "+sheet-copy",
+	Description:       "Duplicate a sub-sheet, optionally renaming and repositioning the copy.",
+	Risk:              "write",
+	Scopes:            []string{"sheets:spreadsheet:write_only"},
+	ConditionalScopes: []string{sheetsStructureReadScope},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
+	Flags:             flagsFor("+sheet-copy"),
 	Tips: []string{
 		"Example: lark-cli sheets +sheet-copy --url <URL> --sheet-name 数据源 --title 数据源-副本",
 		"--sheet-name / --sheet-id selects the SOURCE sheet; the copy's new name goes in --title.",
@@ -423,7 +424,22 @@ var SheetCopy = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := sheetCopyInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "modify_workbook_structure", input)
+		if !runtime.Changed("index") {
+			return invokeToolDryRun(token, ToolKindWrite, "modify_workbook_structure", input)
+		}
+		dry := common.NewDryRunAPI()
+		body, _ := buildToolBody("get_workbook_structure", map[string]interface{}{"excel_id": token})
+		dry.POST(toolInvokePath(token, ToolKindRead)).Desc("validate copy position before creating a sheet").Body(body)
+		body, _ = buildToolBody("modify_workbook_structure", input)
+		dry.POST(toolInvokePath(token, ToolKindWrite)).Body(body)
+		body, _ = buildToolBody("modify_workbook_structure", map[string]interface{}{
+			"excel_id": token, "operation": "move", "sheet_id": "<copy sheet_id>",
+			"source_index": "<copy index>", "target_index": runtime.Int("index"),
+		})
+		dry.POST(toolInvokePath(token, ToolKindWrite)).Desc("move the new copy only if its index differs").Body(body)
+		body, _ = buildToolBody("get_workbook_structure", map[string]interface{}{"excel_id": token})
+		dry.POST(toolInvokePath(token, ToolKindRead)).Desc("verify the copy's final index after moving").Body(body)
+		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -438,9 +454,22 @@ var SheetCopy = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		var existingIDs map[string]bool
+		if runtime.Changed("index") {
+			existingIDs, err = sheetCopyIndexPreflight(ctx, runtime, token, runtime.Int("index"))
+			if err != nil {
+				return err
+			}
+		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "modify_workbook_structure", input)
 		if err != nil {
 			return err
+		}
+		if runtime.Changed("index") {
+			out, err = placeSheetCopy(ctx, runtime, token, runtime.Int("index"), existingIDs, out)
+			if err != nil {
+				return err
+			}
 		}
 		runtime.Out(out, nil)
 		return nil
@@ -457,7 +486,9 @@ func sheetCopyInput(runtime flagView, token, sheetID, sheetName string) (map[str
 		input["new_name"] = t
 	}
 	if runtime.Changed("index") {
-		input["target_index"] = runtime.Int("index")
+		if runtime.Int("index") < 0 {
+			return nil, sheetsValidationForFlag("index", "--index must be >= 0")
+		}
 	}
 	return input, nil
 }
@@ -1171,6 +1202,13 @@ func parseWorkbookCreateSheetStyles(runtime flagView, payload *tablePayload, exi
 	out.ByIndex = make([]*workbookCreateStylePayload, len(payload.Sheets))
 	var probs []error
 	for i, item := range items {
+		// One table and one style item already identify a unique target.
+		// Keep explicit (including empty) names and multi-sheet specs strict.
+		if len(items) == 1 {
+			if _, named := item["name"]; !named {
+				item["name"] = payload.Sheets[i].Name
+			}
+		}
 		name, _ := item["name"].(string)
 		if strings.TrimSpace(name) == "" {
 			probs = append(probs, common.ValidationErrorf("%s[%d].name is required", src.array, i))
@@ -1215,7 +1253,17 @@ func parseWorkbookCreateStylesItems(v interface{}, src stylesSource) ([]map[stri
 	case map[string]interface{}:
 		var present bool
 		if rawItems, present = shaped["styles"]; !present {
-			return nil, common.ValidationErrorf("%s is required", src.array)
+			foldStyleItemKeys(shaped)
+			for _, section := range []string{"cell_styles", "cell_merges", "row_sizes", "col_sizes", "freeze"} {
+				if _, has := shaped[section]; has {
+					rawItems = []interface{}{shaped}
+					present = true
+					break
+				}
+			}
+			if !present {
+				return nil, common.ValidationErrorf("%s is required", src.array)
+			}
 		}
 	default:
 		return nil, common.ValidationErrorf("%s must be the object {\"styles\":[...]} or the bare [...] item list", src.whole)
@@ -1646,6 +1694,24 @@ func parseWorkbookCreateCellStyleOp(raw interface{}, path string) (workbookCreat
 			continue
 		}
 		styleObj[k] = v
+	}
+	// The native style API puts fields inside style. A declarative stamp
+	// already has its range, so this wrapper has exactly one destination.
+	if rawStyle, present := styleObj["style"]; present {
+		nested, ok := rawStyle.(map[string]interface{})
+		if !ok || len(nested) == 0 {
+			return workbookCreateCellStyleOp{}, common.ValidationErrorf("%s.style must be a non-empty style object", path)
+		}
+		for _, key := range sortedKeys(nested) {
+			if key == "style" || key == "range" {
+				return workbookCreateCellStyleOp{}, common.ValidationErrorf("%s.style.%s is not a style field", path, key)
+			}
+			if _, present := styleObj[key]; present {
+				return workbookCreateCellStyleOp{}, common.ValidationErrorf("%s.style.%s conflicts with %s; keep one spelling", path, key, key)
+			}
+			styleObj[key] = nested[key]
+		}
+		delete(styleObj, "style")
 	}
 	style, err := normalizeWorkbookCreateStyleObject(styleObj, path)
 	if err != nil {

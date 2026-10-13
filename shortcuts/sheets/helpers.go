@@ -423,7 +423,13 @@ func validateViaInput(
 // the whole thing with it and has no narrower target to state, so it is the
 // one place where an omitted selector stays an error even when the answer is
 // unambiguous.
-var selectorMustBeExplicit = map[string]bool{"+sheet-delete": true}
+var selectorMustBeExplicit = map[string]bool{
+	"+sheet-delete": true,
+	// Batch ranges are either qualified or explicitly selected. They never
+	// discover a default sheet, and must not acquire an unused read scope.
+	"+cells-batch-clear": true, "+cells-batch-set-style": true,
+	"+dropdown-update": true, "+dropdown-delete": true,
+}
 
 // deferMissingSheetSelector drops the one pre-flight complaint the execute
 // path can settle by asking the workbook (resolveSheetSelectorExec), and
@@ -590,8 +596,27 @@ func parseJSONText(runtime flagView, name, text string) (interface{}, error) {
 	if raw == "" {
 		return nil, nil
 	}
-	var out interface{}
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+	decode := func(raw string) (interface{}, error) {
+		// Cell content must keep its original numeric precision through every
+		// parse, including repaired JSON and per-item flag view round trips.
+		if name == "cells" || name == "writes" {
+			value, err := decodeValuesPayload(raw)
+			if err != nil {
+				// Keep json.Unmarshal's SyntaxError offsets and causes for
+				// truncated input; Decoder reports only unexpected EOF.
+				var document json.RawMessage
+				if syntaxErr := json.Unmarshal([]byte(raw), &document); syntaxErr != nil {
+					return nil, syntaxErr
+				}
+			}
+			return value, err
+		}
+		var value interface{}
+		err := json.Unmarshal([]byte(raw), &value)
+		return value, err
+	}
+	out, err := decode(raw)
+	if err != nil {
 		// The conventions of whatever produced the payload — Python's
 		// literals and single quotes, a trailing comma, a string that never
 		// got its quotes — are the same data in another spelling, so they are
@@ -607,15 +632,13 @@ func parseJSONText(runtime flagView, name, text string) (interface{}, error) {
 			return finishParsedJSONFlag(runtime, name, wrapped)
 		}
 		if repaired, ok := repairLooseJSON(raw); ok {
-			var fixed interface{}
-			if json.Unmarshal([]byte(repaired), &fixed) == nil {
+			if fixed, err := decode(repaired); err == nil {
 				return finishParsedJSONFlag(runtime, name, fixed)
 			}
 		}
 		// A single closing bracket of the wrong kind, verified by re-parsing.
 		if repaired, ok := repairMistypedCloser(raw, err); ok {
-			var fixed interface{}
-			if json.Unmarshal([]byte(repaired), &fixed) == nil {
+			if fixed, err := decode(repaired); err == nil {
 				return finishParsedJSONFlag(runtime, name, fixed)
 			}
 		}
@@ -687,13 +710,15 @@ const (
 // cluster — the same A1 range that every sibling flag takes unquoted — and a
 // bare string names exactly one element.
 var bareStringListFlags = map[string]map[string]bareListMode{
-	"+cond-format-create": {"ranges": bareListSplitCommas},
-	"+cond-format-update": {"ranges": bareListSplitCommas},
-	"+cells-batch-clear":  {"ranges": bareListSplitCommas},
+	"+cond-format-create":    {"ranges": bareListSplitCommas},
+	"+cond-format-update":    {"ranges": bareListSplitCommas},
+	"+cells-batch-clear":     {"ranges": bareListSplitCommas},
+	"+cells-batch-set-style": {"ranges": bareListSplitCommas},
+	"+dropdown-delete":       {"ranges": bareListSplitCommas},
 	// Dropdown options are user-authored labels; "Yes, with conditions" is one
 	// option, not two.
 	"+dropdown-set":    {"options": bareListWrapOnly},
-	"+dropdown-update": {"options": bareListWrapOnly},
+	"+dropdown-update": {"options": bareListWrapOnly, "ranges": bareListSplitCommas},
 }
 
 // wrapBareListValue lifts that bare value into its list. Only for a value that
@@ -763,6 +788,9 @@ func bareListCommaHint(command, flag, raw string) string {
 // doubt may be rewritten; anything ambiguous must fail with a prescription
 // instead. Applied to the parsed JSON value inside parseJSONFlag.
 var jsonFlagNormalizers = map[string]map[string]func(flagView, interface{}) interface{}{
+	"+range-sort":            {"sort-keys": normalizeSortKeysFlagValue},
+	"+rows-resize":           {"heights": normalizeResizeSizesFlagValue},
+	"+cols-resize":           {"widths": normalizeResizeSizesFlagValue},
 	"+cells-set":             {"cells": normalizeCellsFlagValue, "writes": normalizeWritesFlagValue},
 	"+cells-set-style":       {"border-styles": normalizeBorderStylesFlagValue},
 	"+cells-batch-set-style": {"border-styles": normalizeBorderStylesFlagValue},
@@ -879,6 +907,7 @@ func wrapLoneCellObject(v interface{}) interface{} {
 	if !ok || len(obj) == 0 {
 		return v
 	}
+	normalizeCellContentType(obj)
 	for k := range obj {
 		if _, known := cellObjectKeys[k]; !known {
 			return v

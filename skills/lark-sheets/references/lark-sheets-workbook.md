@@ -117,7 +117,7 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--title` | string | optional | 副本名称；省略时由服务端生成 |
-| `--index` | int | optional | 副本插入位置（0-based）；省略时附加到末尾 |
+| `--index` | int | optional | 副本最终位置（0-based）；省略时副本紧跟源表 |
 
 ### `+sheet-hide`
 
@@ -403,9 +403,13 @@ standalone 路径在缺 `--source-index` / 只给 `--sheet-name` 时会自动发
 ### `+sheet-copy`
 
 ```bash
-# --title 省略时由服务端生成副本名
+# --title 省略时由服务端生成副本名；不传 --index 时副本紧跟源表
 lark-cli sheets +sheet-copy --url "..." --sheet-id "$SID" --title "副本"
+# 指定最终 0-based 位置；原有 3 个子表时，--index 3 放到末尾
+lark-cli sheets +sheet-copy --url "..." --sheet-id "$SID" --title "副本" --index 3
 ```
+
+显式 `--index` 需要表格读取权限：CLI 在复制前校验位置范围，复制后按需移动同一副本；移动后回读，回执 `index` 表示最终位置。移动或回读失败时副本可能已存在；按错误 hint 中的副本 ID 继续 `+sheet-move`，不要重新复制。`+batch-update` 内不支持带 `index` 的 `+sheet-copy`，请使用上面的独立调用；不带 `index` 的批量复制仍可用。
 
 > 💡 `+sheet-copy` 连**公式 / 合并 / 分组底色 / 列宽 / 条件格式**一起整表复制。"照一张现成子表批量造结构相同的新子表"（如参考模板给每份数据各建一张同构子表）时，先 `+sheet-copy` 复制模板再用 `+cells-*` 只改数据，比从零 `+sheet-create` + 重建公式 / 样式省一大截，也天然满足"公式 / 分组 / 颜色照搬"。要把本地文件 / 数据并入**已有工作簿**当子表时走它（或 `+sheet-create`），别用 `+workbook-import` / `+workbook-create`——那两条只会新建独立表。
 

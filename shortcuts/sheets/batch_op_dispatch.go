@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/suggest"
 	"github.com/larksuite/cli/internal/util"
 )
@@ -96,6 +97,13 @@ var batchOpDispatch = map[string]batchOpMapping{
 		if fv.Changed("writes") {
 			return nil, sheetsValidationForFlag("writes", `"writes" is not supported inside +batch-update (it expands into its own batch request); call +cells-set --writes standalone, or give each sub-op a single range + cells`)
 		}
+		if _, sparse, err := cellsSetSparseWrites(fv); sparse {
+			if err != nil {
+				return nil, err
+			}
+			return nil, sheetsValidationForFlag("cells", "coordinate-bearing cells expands into its own batch request").
+				WithHint("call +cells-set --cells standalone, or give each +batch-update sub-op a single range + cells")
+		}
 		return cellsSetInput(fv, token, sid, sname)
 	}},
 	"+cells-set-style": {"set_cell_range", cellsSetStyleInput},
@@ -170,7 +178,7 @@ var batchOpDispatch = map[string]batchOpMapping{
 	"+sheet-delete": {"modify_workbook_structure", sheetDeleteInput},
 	"+sheet-rename": {"modify_workbook_structure", sheetRenameInput},
 	"+sheet-move":   {"modify_workbook_structure", sheetMoveBatchInput},
-	"+sheet-copy":   {"modify_workbook_structure", sheetCopyInput},
+	"+sheet-copy":   {"modify_workbook_structure", sheetCopyBatchInput},
 	"+sheet-hide": {"modify_workbook_structure", func(fv flagView, t, sid, sn string) (map[string]interface{}, error) {
 		return sheetVisibilityInput(fv, t, sid, sn, "hide")
 	}},
@@ -284,6 +292,14 @@ func rejectLocalImageInBatch(fv flagView) error {
 		return sheetsValidationForFlag("image", "--image (local upload) is not supported inside +batch-update; pass --image-token or --image-uri instead")
 	}
 	return nil
+}
+
+func sheetCopyBatchInput(fv flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
+	if fv.Changed("index") {
+		return nil, sheetsValidationForFlag("index", "+sheet-copy with index needs the new copy's ID before moving; this is unavailable mid-batch").
+			WithHint("run standalone +sheet-copy --index; a copy without index remains supported in +batch-update")
+	}
+	return sheetCopyInput(fv, token, sheetID, sheetName)
 }
 
 // sheetMoveBatchInput translates +sheet-move inside a batch. Unlike the
@@ -401,22 +417,17 @@ func camelToKebab(key string) string {
 // Anything else errors with a did-you-mean. Returns a bare error; the caller
 // wraps it with the operations[i] (<shortcut>) context and key contract.
 func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
+
 	vocab := subOpKeyVocabulary(sc)
 	if vocab == nil {
 		return nil
-	}
-	// Before the key walk, so the pair is gone by the time `count` would be
-	// judged against the vocabulary — and so a sub-op means exactly what the
-	// standalone command means.
-	if err := foldSubOpPositionCount(sc, vocab, input); err != nil {
-		return err
 	}
 	keys := make([]string, 0, len(input))
 	for k := range input {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	aliases := commandFlagAliases[sc]
+	aliases := commandInputAliases(sc)
 	// canonical tracks which raw key already claimed each logical key, so two
 	// spellings of the same flag (sheet-id / sheet_id / sheetId) can never both
 	// survive into the tool body — the flag view resolves hyphen↔underscore
@@ -435,6 +446,105 @@ func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
 	}
 	for _, k := range keys {
 		hv := strings.ReplaceAll(k, "_", "-")
+		if sc == "+dim-delete" && hv == "count" {
+			// The count adapter consumes this after all start aliases have
+			// resolved to range; count is not a field of the tool input.
+			continue
+		}
+		if (sc == "+dim-delete" || sc == "+dim-insert") && strings.EqualFold(hv, "end-index") {
+			if _, ok := subOpScalarText(input[k]); !ok {
+				return sheetsValidationForFlag("end-index", "end-index must be an integer")
+			}
+			if err := claim("end-index", k); err != nil {
+				return err
+			}
+			if k != "end-index" {
+				if _, taken := input["end-index"]; !taken {
+					input["end-index"] = input[k]
+					delete(input, k)
+					canonical["end-index"] = "end-index"
+				}
+			}
+			continue
+		}
+		if sc == "+dim-insert" && strings.EqualFold(hv, "range") {
+			if _, ok := input[k].(string); !ok {
+				return sheetsValidationForFlag("range", "range must be a string")
+			}
+			if err := claim("range", k); err != nil {
+				return err
+			}
+			if k != "range" {
+				if _, taken := input["range"]; !taken {
+					input["range"] = input[k]
+					delete(input, k)
+					canonical["range"] = "range"
+				}
+			}
+			continue
+		}
+		if sc == "+cells-set-style" && (strings.EqualFold(hv, "bold") || strings.EqualFold(hv, "font-bold")) {
+			target := strings.ToLower(hv)
+			if err := claim(target, k); err != nil {
+				return err
+			}
+			if k != target {
+				if _, taken := input[target]; !taken {
+					input[target] = input[k]
+					delete(input, k)
+					canonical[target] = target
+				}
+			}
+			continue
+		}
+		if sc == "+cells-set-style" && (strings.EqualFold(hv, "style") || strings.EqualFold(hv, "styles")) {
+			target := strings.ToLower(hv)
+			if _, ok := subOpStyleEnvelopeText(input[k]); !ok {
+				return sheetsValidationForFlag(target, "%s must be a JSON string or object", target)
+			}
+			if err := claim(target, k); err != nil {
+				return err
+			}
+			if k != target {
+				if _, taken := input[target]; !taken {
+					input[target] = input[k]
+					delete(input, k)
+					canonical[target] = target
+				}
+			}
+			continue
+		}
+		if sc == "+cells-set" && (strings.EqualFold(hv, "formula") || strings.EqualFold(hv, "formulas")) {
+			if _, ok := input[k].(string); !ok {
+				return sheetsValidationForFlag(hv, "%s must be a string", hv)
+			}
+			target := strings.ToLower(hv)
+			if err := claim(target, k); err != nil {
+				return err
+			}
+			if k != target {
+				if _, taken := input[target]; !taken {
+					input[target] = input[k]
+					delete(input, k)
+					canonical[target] = target
+				}
+			}
+			// formula/formulas are dynamic standalone flags. Their canonical keys
+			// remain in the map so cellsSetInputWithNote can run its shared
+			// agreement check.
+			continue
+		}
+		if sc == "+dim-insert" && strings.EqualFold(hv, "start-index") {
+			raw, ok := subOpScalarText(input[k])
+			if !ok {
+				return sheetsValidationForFlag("start-index", "start-index must be an integer")
+			}
+			position, err := insertPositionFromIndex(raw)
+			if err != nil {
+				return err
+			}
+			input[k] = position
+		}
 		if vocab[hv] {
 			if err := claim(hv, k); err != nil {
 				return err
@@ -476,6 +586,7 @@ func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
 			if !hyphenTaken && !underscoreTaken {
 				input[target] = input[k]
 				delete(input, k)
+				canonical[target] = target
 				continue
 			}
 			// The alias AND its target are both present. This key is recognized,
@@ -529,7 +640,88 @@ func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
 		}
 		return fmt.Errorf("%s", msg) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
 	}
-	return nil
+	if sc == "+rows-resize" || sc == "+cols-resize" {
+		dimension, axis := "row", "row"
+		if sc == "+cols-resize" {
+			dimension, axis = "column", "col"
+		}
+		rng, changed, err := resizeBoundaryRange(newMapFlagViewForCommand(sc, input), dimension)
+		if err != nil {
+			return err
+		}
+		if changed {
+			input["range"] = rng
+			for _, edge := range []string{"start", "end"} {
+				delete(input, edge+"-"+axis)
+				delete(input, edge+"_"+axis)
+			}
+		}
+	}
+	if sc == "+dim-freeze" {
+		// Check the original counts before alias folding can overwrite them.
+		if err := newMapFlagViewForCommand(sc, input).validateRawTypes(); err != nil {
+			return err
+		}
+		// Use the CLI's same full-state guard, with exact integer parsing for
+		// JSON counts before the map flag view's integer accessor is used.
+		for _, name := range sortedKeys(freezeCountAliases) {
+			for _, key := range []string{name, strings.ReplaceAll(name, "-", "_")} {
+				if raw, present := input[key]; present {
+					text, ok := subOpScalarText(raw)
+					if !ok {
+						return sheetsValidationForFlag(name, "--%s must be an integer", name)
+					}
+					n, err := strconv.Atoi(text)
+					if err != nil {
+						return sheetsValidationForFlag(name, "--%s must be an integer", name).WithCause(err)
+					}
+					input[key] = float64(n)
+				}
+			}
+		}
+		counts, err := freezeCountTargets(newMapFlagViewForCommand(sc, input))
+		if err != nil {
+			return err
+		}
+		if counts != nil {
+			for name, n := range counts {
+				input[name] = float64(n)
+			}
+			for name := range freezeCountAliases {
+				delete(input, name)
+				delete(input, strings.ReplaceAll(name, "-", "_"))
+			}
+		}
+	}
+	if err := foldSubOpInsertRange(sc, input); err != nil {
+		return err
+	}
+	if err := foldSubOpInsertEndIndex(sc, input); err != nil {
+		return err
+	}
+	if err := foldSubOpPositionCount(sc, vocab, input); err != nil {
+		return err
+	}
+	if err := foldSubOpDeleteEndIndex(sc, input); err != nil {
+		return err
+	}
+	if err := foldSubOpStyleAliases(sc, input); err != nil {
+		return err
+	}
+	if sc == "+cells-set-style" {
+		border, changed, err := borderAttributeFlags(newMapFlagViewForCommand(sc, input))
+		if err != nil {
+			return err
+		}
+		if changed {
+			input["border-styles"] = border
+			delete(input, "border_styles")
+			for _, key := range []string{"border-color", "border_color", "border-weight", "border_weight"} {
+				delete(input, key)
+			}
+		}
+	}
+	return foldSubOpFormulaFlags(sc, input)
 }
 
 // translateBatchOp 把一个 CLI 视角的 {shortcut, input} 翻成底层 MCP
@@ -612,13 +804,22 @@ func translateBatchOpWithDispatch(
 	// an unrelated "at least one style flag is required" (helpers.go), which never
 	// points at the real mistake.
 	for _, k := range wrappedSubOpInputKeys {
-		if _, has := input[k]; has {
-			return nil, sheetsValidationForFlag(
-				"operations",
-				`operations[%d] (%s): op input is the shortcut's flags flattened as JSON keys (e.g. "background_color": "#EBF1F8"); do not wrap in %s`,
-				index, sc, k,
-			)
+		if _, has := input[k]; !has {
+			continue
 		}
+		if sc == "+cells-set-style" && k == "styles" {
+			if _, ok := subOpStyleEnvelopeText(input[k]); ok {
+				// The style shortcuts dynamically accept --styles as the singular
+				// OpenAPI envelope. Its scalar string/object shapes are distinct
+				// from the full visual-spec wrapper rejected for every other op.
+				continue
+			}
+		}
+		return nil, sheetsValidationForFlag(
+			"operations",
+			`operations[%d] (%s): op input is the shortcut's flags flattened as JSON keys (e.g. "background_color": "#EBF1F8"); do not wrap in %s`,
+			index, sc, k,
+		)
 	}
 	// 拒绝任何额外的 sub-op 顶层 key（防御未来 schema drift / 用户笔误）。
 	for k := range op {
@@ -656,9 +857,12 @@ func translateBatchOpWithDispatch(
 		// The inner error names one problem at a time (first missing flag);
 		// the hint lists the sub-op's complete key contract so an agent fixes
 		// every gap in a single retry instead of iterating flag by flag.
-		verr := sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err)
+		verr := sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err).WithCause(err)
 		if contract := subOpInputContract(sc); contract != "" {
 			verr = verr.WithHint("%s input keys: %s", sc, contract)
+		}
+		if p, ok := errs.ProblemOf(err); ok && p != nil && p.Hint != "" {
+			verr = verr.WithHint("%s; %s", p.Hint, verr.Hint)
 		}
 		return nil, verr
 	}
@@ -831,6 +1035,12 @@ func estimatedBatchOpCells(raw interface{}) int64 {
 		if !ok {
 			return 0
 		}
+		if hasSparseCellTargets(cells) {
+			// Nested fan-out is rejected by the translator before any cells
+			// materialize. Preserve that diagnosis instead of treating each
+			// coordinate-bearing object as an oversized malformed matrix row.
+			return 0
+		}
 		var total int64
 		for _, row := range cells {
 			r, ok := row.([]interface{})
@@ -875,6 +1085,252 @@ func translatedCellCount(op map[string]interface{}) int64 {
 	default:
 		return 0
 	}
+}
+
+func foldSubOpInsertRange(sc string, input map[string]interface{}) error {
+	if sc != "+dim-insert" {
+		return nil
+	}
+	rawRange, given := input["range"]
+	if !given {
+		return nil
+	}
+	span, ok := subOpScalarText(rawRange)
+	if !ok {
+		return sheetsValidationForFlag("range", "range must be a string")
+	}
+	position, positionGiven := input["position"]
+	positionText, ok := subOpScalarText(position)
+	if positionGiven && !ok {
+		return sheetsValidationForFlag("position", "position must be a string")
+	}
+	resolved, err := insertRangePosition(span, positionText, positionGiven)
+	if err != nil {
+		return err
+	}
+	delete(input, "range")
+	if !positionGiven {
+		input["position"] = resolved
+	}
+	return nil
+}
+
+func foldSubOpDeleteEndIndex(sc string, input map[string]interface{}) error {
+	if sc != "+dim-delete" {
+		return nil
+	}
+	rawEnd, given := input["end-index"]
+	if !given {
+		rawEnd, given = input["end_index"]
+	}
+	if !given {
+		return nil
+	}
+	endText, ok := subOpScalarText(rawEnd)
+	if !ok {
+		return sheetsValidationForFlag("end-index", "end-index must be an integer")
+	}
+	end, err := strconv.Atoi(endText)
+	if err != nil {
+		return sheetsValidationForFlag("end-index", "end-index must be an integer").WithCause(err)
+	}
+	span, ok := subOpScalarText(input["range"])
+	if !ok {
+		return sheetsValidationForFlag("range", "invalid --range %q: a start range is required when --end-index is set", "")
+	}
+	resolved, err := deleteRangeFromEndIndex(end, span)
+	if err != nil {
+		return err
+	}
+	delete(input, "end-index")
+	delete(input, "end_index")
+	input["range"] = resolved
+	return nil
+}
+
+func subOpStyleEnvelopeText(raw interface{}) (string, bool) {
+	switch value := raw.(type) {
+	case string:
+		return value, true
+	case map[string]interface{}:
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return "", false
+		}
+		return string(encoded), true
+	default:
+		return "", false
+	}
+}
+
+func foldSubOpStyleAliases(sc string, input map[string]interface{}) error {
+	if sc != "+cells-set-style" {
+		return nil
+	}
+	// This is the first standalone reconcile pass: direct aliases resolve before
+	// the envelope so an explicitly supplied bold value outranks one nested in
+	// --style, just as registerBoldFlags does on the cobra path.
+	if err := foldSubOpBoldAliases(input); err != nil {
+		return err
+	}
+	if raw, hasStyles := input["styles"]; hasStyles {
+		if rawStyle, hasStyle := input["style"]; hasStyle && !jsonEqual(rawStyle, raw) {
+			return sheetsValidationForFlag("styles", "--style and --styles specify different envelopes")
+		}
+		input["style"] = raw
+		delete(input, "styles")
+	}
+	if raw, hasStyle := input["style"]; hasStyle {
+		text, ok := subOpStyleEnvelopeText(raw)
+		if !ok {
+			return sheetsValidationForFlag("style", "style must be a JSON string or object")
+		}
+		envelope, err := styleEnvelopeFlagsWithExplicit(text, "style", func(name string) bool {
+			_, explicit := input[name]
+			if explicit {
+				return true
+			}
+			_, explicit = input[strings.ReplaceAll(name, "-", "_")]
+			return explicit
+		})
+		if err != nil {
+			return err
+		}
+		for name, text := range envelope {
+			if value, explicit := input[name]; explicit {
+				if name == "range" && value != text {
+					return sheetsValidationForFlag("style", "--style.range conflicts with range; keep one target range")
+				}
+				continue
+			}
+			if _, explicit := input[strings.ReplaceAll(name, "-", "_")]; explicit {
+				continue
+			}
+			input[name] = text
+		}
+		delete(input, "style")
+	}
+	// This second pass resolves bold aliases that came from the envelope.
+	return foldSubOpBoldAliases(input)
+}
+
+func foldSubOpBoldAliases(input map[string]interface{}) error {
+	if _, explicit := input["font-weight"]; explicit {
+		delete(input, "bold")
+		delete(input, "font-bold")
+		return nil
+	}
+	if _, explicit := input["font_weight"]; explicit {
+		delete(input, "bold")
+		delete(input, "font-bold")
+		return nil
+	}
+	var weight, source string
+	for _, name := range []string{"bold", "font-bold"} {
+		raw, present := input[name]
+		if !present {
+			continue
+		}
+		candidate, ok := styleOnOffWord("bold", "normal")(raw)
+		if !ok {
+			return sheetsValidationForFlag(name, "%s must be a boolean", name)
+		}
+		if source != "" && candidate != weight {
+			return sheetsValidationForFlag(source, "--%s and --%s specify conflicting bold values", source, name)
+		}
+		weight, source = candidate, name
+	}
+	if source != "" {
+		input["font-weight"] = weight
+	}
+	delete(input, "bold")
+	delete(input, "font-bold")
+	return nil
+}
+
+// foldSubOpInsertEndIndex gives a +dim-insert sub-op the same zero-based,
+// half-open index span as its standalone command. Normalization has already
+// converted start-index to position before this runs.
+func foldSubOpInsertEndIndex(sc string, input map[string]interface{}) error {
+	if sc != "+dim-insert" {
+		return nil
+	}
+	rawEnd, given := input["end-index"]
+	if !given {
+		rawEnd, given = input["end_index"]
+	}
+	if !given {
+		return nil
+	}
+	endText, ok := subOpScalarText(rawEnd)
+	if !ok {
+		return sheetsValidationForFlag("end-index", "end-index must be an integer")
+	}
+	end, err := strconv.Atoi(endText)
+	if err != nil {
+		return sheetsValidationForFlag("end-index", "end-index must be an integer").WithCause(err)
+	}
+	startText, ok := subOpScalarText(input["position"])
+	if !ok {
+		return sheetsValidationForFlag("position", "invalid --position %q: a start position is required when --end-index is set", "")
+	}
+	_, start, err := parseA1Position(startText)
+	if err != nil {
+		return sheetsValidationForFlag("position", "invalid --position %q: %v", startText, err).WithCause(err)
+	}
+	var count *int
+	if rawCount, hasCount := input["count"]; hasCount {
+		value, ok := util.ToFloat64(rawCount)
+		if !ok || value != float64(int(value)) {
+			return sheetsValidationForFlag("count", "count must be an integer")
+		}
+		converted := int(value)
+		count = &converted
+	}
+	derived, err := insertCountFromEndIndex(end, start, count)
+	if err != nil {
+		return err
+	}
+	delete(input, "end-index")
+	delete(input, "end_index")
+	input["count"] = float64(derived)
+	return nil
+}
+
+// foldSubOpFormulaFlags packs a scalar formula alias into the cells payload
+// when a +cells-set sub-op did not already give cells. Formula aliases remain
+// present so the shared input builder verifies agreement with any explicit
+// cells payload.
+func foldSubOpFormulaFlags(sc string, input map[string]interface{}) error {
+	if sc != "+cells-set" {
+		return nil
+	}
+	formula, source, err := formulaFlagValue(func(name string) bool {
+		_, ok := input[name]
+		if !ok {
+			_, ok = input[strings.ReplaceAll(name, "-", "_")]
+		}
+		return ok
+	}, func(name string) string {
+		if value, ok := input[name]; ok {
+			text, _ := value.(string)
+			return text
+		}
+		text, _ := input[strings.ReplaceAll(name, "-", "_")].(string)
+		return text
+	})
+	if err != nil || source == "" {
+		return err
+	}
+	if _, hasCells := input["cells"]; hasCells {
+		return nil
+	}
+	payload, err := json.Marshal([][]map[string]interface{}{{{"formula": formula}}})
+	if err != nil {
+		return sheetsValidationForFlag(source, "could not encode the formula").WithCause(err)
+	}
+	input["cells"] = string(payload)
+	return nil
 }
 
 // foldSubOpPositionCount gives a +dim-delete sub-op the same --position /

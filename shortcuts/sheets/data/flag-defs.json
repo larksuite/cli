@@ -399,7 +399,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Insert position for the copy (0-based); appended to the end when omitted",
+        "desc": "Final position of the copy (0-based); omitted leaves the copy immediately after its source",
         "default": "-1"
       },
       {
@@ -933,6 +933,14 @@
         ]
       },
       {
+        "name": "end-index",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "One-based inclusive end of the index span; resolves to --range",
+        "hidden": true
+      },
+      {
         "name": "yes",
         "kind": "system",
         "type": "bool",
@@ -1106,6 +1114,54 @@
         "type": "int",
         "required": "optional",
         "desc": "Freeze the first N columns; together with --rows this states the COMPLETE freeze state — an omitted axis is left unfrozen (0 means no frozen columns)"
+      },
+      {
+        "name": "col-count",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Compatibility freeze count; both row and column counts must be explicit (0 leaves that axis unfrozen)",
+        "hidden": true
+      },
+      {
+        "name": "frozen-col-count",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Compatibility freeze count; both row and column counts must be explicit (0 leaves that axis unfrozen)",
+        "hidden": true
+      },
+      {
+        "name": "frozen-cols",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Compatibility freeze count; both row and column counts must be explicit (0 leaves that axis unfrozen)",
+        "hidden": true
+      },
+      {
+        "name": "frozen-row-count",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Compatibility freeze count; both row and column counts must be explicit (0 leaves that axis unfrozen)",
+        "hidden": true
+      },
+      {
+        "name": "frozen-rows",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Compatibility freeze count; both row and column counts must be explicit (0 leaves that axis unfrozen)",
+        "hidden": true
+      },
+      {
+        "name": "row-count",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Compatibility freeze count; both row and column counts must be explicit (0 leaves that axis unfrozen)",
+        "hidden": true
       },
       {
         "name": "dry-run",
@@ -2003,11 +2059,27 @@
         "desc": "Number format pattern (e.g. text `@`, number `0.00`, currency `$#,##0.00`, date `mm/dd/yyyy`)"
       },
       {
+        "name": "border-color",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Border color; refines the explicitly selected sides in --border-styles; conflicting attributes are rejected",
+        "hidden": true
+      },
+      {
+        "name": "border-weight",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Border weight; refines the explicitly selected sides in --border-styles; conflicting attributes are rejected",
+        "hidden": true
+      },
+      {
         "name": "border-styles",
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Border config JSON: `{ top: {style,weight,color}, bottom: ..., left: ..., right: ... }`; same shape for all 4 sides. style = line type (solid|dashed|dotted|double|none); weight = thickness (thin|medium|thick — a string, not a pixel number); color = hex like #000000. { all: {...} } sets all four sides at once. This is the only border flag: no --border-all / --border-top / --border-color exist",
+        "desc": "Border config JSON: `{ top: {style,weight,color}, bottom: ..., left: ..., right: ... }`; same shape for all 4 sides. style = line type (solid|dashed|dotted|double|none); weight = thickness (thin|medium|thick — a string, not a pixel number); color = hex like #000000. { all: {...} } sets all four sides at once. This selects border sides; --border-color / --border-weight only refine an explicit selection",
         "input": [
           "file",
           "stdin"
@@ -2288,6 +2360,14 @@
         ]
       },
       {
+        "name": "sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Verify the sole named table matches this existing sub-sheet ID before writing; never creates a different target",
+        "hidden": true
+      },
+      {
         "name": "dry-run",
         "kind": "system",
         "type": "bool",
@@ -2514,7 +2594,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Per-row height map — set different heights for many rows in one batched call (fail-fast; read back before resending). Keys: single row (`\"1\"`) or closed range (`\"2:20\"`); values: pixel height (e.g. 30 / 50), `\"auto\"` (fit content) or `\"standard\"` (reset to default). Units are pixels, NOT points. Mutually exclusive with `--range` / `--height` / `--type`",
+        "desc": "Per-row sizes in pixels: map {\"1\":30,\"2:5\":40}; ordered list [30,40] with an exact --range; or coordinate entries [{\"row\":\"3\",\"height\":40}]. Values are pixel integers or \"auto\" / \"standard\". A repeated map --range must cover exactly the same rows. Mutually exclusive with --height / --type; at most 100 entries; read back before resending",
         "input": [
           "file",
           "stdin"
@@ -2537,7 +2617,23 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Row closed range to resize; 1-based row numbers like `2:10` or `5` (single row). Required for the uniform form (with `--height` or `--type`); omit with the map form (`--heights`)"
+        "desc": "Row closed range; 1-based numbers like 2:10 or 5. Required for uniform --height/--type or an ordered --heights list; optional for a map only when both cover exactly the same rows"
+      },
+      {
+        "name": "start-row",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "A1 row number boundary; explicit start/end combine into --range",
+        "hidden": true
+      },
+      {
+        "name": "end-row",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "A1 row number boundary; explicit start/end combine into --range",
+        "hidden": true
       },
       {
         "name": "dry-run",
@@ -2592,7 +2688,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Per-column width map — set different widths for many columns in one batched call (fail-fast; read back before resending). Keys: single column (`\"A\"`) or closed range (`\"C:E\"`); values: pixel width (e.g. 80 / 120 / 200) or `\"standard\"` (reset to default). Units are pixels, NOT Excel character units (px ≈ chars × 8 + 16). Mutually exclusive with `--range` / `--width` / `--type`",
+        "desc": "Per-column sizes in pixels: map {\"A\":80,\"C:E\":120}; ordered list [30,40] with an exact --range; or coordinate entries [{\"column\":\"C\",\"width\":120}]. Values are pixel integers or \"standard\". A repeated map --range must cover exactly the same columns. Mutually exclusive with --width / --type; at most 100 entries; read back before resending",
         "input": [
           "file",
           "stdin"
@@ -2614,7 +2710,23 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Column closed range to resize; column letters like `A:E` or `C` (single column). Required for the uniform form (with `--width` or `--type`); omit with the map form (`--widths`)"
+        "desc": "Column closed range; letters like A:E or C. Required for uniform --width/--type or an ordered --widths list; optional for a map only when both cover exactly the same columns"
+      },
+      {
+        "name": "start-col",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "A1 column letters boundary; explicit start/end combine into --range",
+        "hidden": true
+      },
+      {
+        "name": "end-col",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "A1 column letters boundary; explicit start/end combine into --range",
+        "hidden": true
       },
       {
         "name": "dry-run",
@@ -2924,6 +3036,22 @@
         ]
       },
       {
+        "name": "sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Target one styles item by sub-sheet ID; execution resolves and verifies its name before writing",
+        "hidden": true
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Single A1 style range; requires an explicit sub-sheet selector and a flat style object",
+        "hidden": true
+      },
+      {
         "name": "dry-run",
         "kind": "system",
         "type": "bool",
@@ -3207,6 +3335,22 @@
         "desc": "Number format pattern (e.g. text `@`, number `0.00`, currency `$#,##0.00`, date `mm/dd/yyyy`)"
       },
       {
+        "name": "border-color",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Border color; refines the explicitly selected sides in --border-styles; conflicting attributes are rejected",
+        "hidden": true
+      },
+      {
+        "name": "border-weight",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Border weight; refines the explicitly selected sides in --border-styles; conflicting attributes are rejected",
+        "hidden": true
+      },
+      {
         "name": "border-styles",
         "kind": "own",
         "type": "string",
@@ -3216,6 +3360,22 @@
           "file",
           "stdin"
         ]
+      },
+      {
+        "name": "sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Explicit sub-sheet selector for unqualified ranges; conflicting qualified ranges are rejected",
+        "hidden": true
+      },
+      {
+        "name": "sheet-name",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Explicit sub-sheet selector for unqualified ranges; conflicting qualified ranges are rejected",
+        "hidden": true
       },
       {
         "name": "dry-run",
@@ -3248,7 +3408,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Target ranges as a JSON array (up to 100 items, e.g. `[\"Sheet1!A2:A100\",\"Sheet1!C2:C100\"]`, prefix written bare without quotes); each item must include a sheet prefix; the prefix must exactly match the sheet display name (case-sensitive), not the sheet reference_id",
+        "desc": "Target ranges as a JSON array (up to 100 items): use sheet-prefixed ranges (e.g. `[\"Sheet1!A2:A100\",\"Sheet1!C2:C100\"]`), or explicit --sheet-id / --sheet-name with unqualified ranges (e.g. `[\"A2:A100\",\"C2:C100\"]`). Prefixes must exactly match display names (case-sensitive); --sheet-id cannot be combined with sheet-prefixed ranges",
         "input": [
           "file",
           "stdin"
@@ -3298,6 +3458,22 @@
         "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI reports the warning in the result's `data.warnings`. Pass `--highlight=false` to suppress."
       },
       {
+        "name": "sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Explicit sub-sheet selector for unqualified ranges; conflicting qualified ranges are rejected",
+        "hidden": true
+      },
+      {
+        "name": "sheet-name",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Explicit sub-sheet selector for unqualified ranges; conflicting qualified ranges are rejected",
+        "hidden": true
+      },
+      {
         "name": "dry-run",
         "kind": "system",
         "type": "bool",
@@ -3328,11 +3504,27 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Target ranges as a JSON array (up to 100 items, e.g. `[\"Sheet1!E2:E6\"]`, prefix written bare without quotes); each item must include a sheet prefix; the prefix must exactly match the sheet display name (case-sensitive), not the sheet reference_id",
+        "desc": "Target ranges as a JSON array (up to 100 items): use sheet-prefixed ranges (e.g. `[\"Sheet1!E2:E6\"]`), or explicit --sheet-id / --sheet-name with unqualified ranges (e.g. `[\"E2:E6\"]`). Prefixes must exactly match display names (case-sensitive); --sheet-id cannot be combined with sheet-prefixed ranges",
         "input": [
           "file",
           "stdin"
         ]
+      },
+      {
+        "name": "sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Explicit sub-sheet selector for unqualified ranges; conflicting qualified ranges are rejected",
+        "hidden": true
+      },
+      {
+        "name": "sheet-name",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Explicit sub-sheet selector for unqualified ranges; conflicting qualified ranges are rejected",
+        "hidden": true
       },
       {
         "name": "yes",
@@ -3390,6 +3582,22 @@
           "formats",
           "all"
         ]
+      },
+      {
+        "name": "sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Explicit sub-sheet selector for unqualified ranges; conflicting qualified ranges are rejected",
+        "hidden": true
+      },
+      {
+        "name": "sheet-name",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Explicit sub-sheet selector for unqualified ranges; conflicting qualified ranges are rejected",
+        "hidden": true
       },
       {
         "name": "yes",

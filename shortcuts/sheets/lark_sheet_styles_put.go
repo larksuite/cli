@@ -71,6 +71,13 @@ var StylesPut = common.Shortcut{
 			"excel_id":   token,
 			"operations": chunks[0],
 		})
+		if runtime.Str("sheet-id") != "" {
+			dry = common.NewDryRunAPI()
+			body, _ := buildToolBody("get_workbook_structure", map[string]interface{}{"excel_id": token})
+			dry.POST(toolInvokePath(token, ToolKindRead)).Desc("resolve and verify the explicit sheet ID").Body(body)
+			body, _ = buildToolBody("batch_update", map[string]interface{}{"excel_id": token, "operations": chunks[0]})
+			dry.POST(toolInvokePath(token, ToolKindWrite)).Body(body)
+		}
 		for _, chunk := range chunks[1:] {
 			body, _ := buildToolBody("batch_update", map[string]interface{}{
 				"excel_id":   token,
@@ -87,7 +94,11 @@ var StylesPut = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		ops, err := stylesPutOperations(runtime, token, newSheetGridBounder(ctx, runtime, token))
+		name, bound, err := stylesPutTarget(ctx, runtime, token)
+		if err != nil {
+			return err
+		}
+		ops, err := stylesPutOperationsForTarget(runtime, token, bound, name)
 		if err != nil {
 			return err
 		}
@@ -148,14 +159,14 @@ var StylesPut = common.Shortcut{
 // aggregate-all-issues error shape are identical across the three --styles
 // carriers.
 func stylesPutOperations(runtime flagView, token string, bound sheetRangeBounder) ([]interface{}, error) {
+	return stylesPutOperationsForTarget(runtime, token, bound, "")
+}
+
+func stylesPutOperationsForTarget(runtime flagView, token string, bound sheetRangeBounder, resolvedName string) ([]interface{}, error) {
 	if strings.TrimSpace(runtime.Str("styles")) == "" {
 		return nil, sheetsValidationForFlag("styles", "--styles is required")
 	}
-	v, err := parseJSONFlag(runtime, "styles")
-	if err != nil {
-		return nil, err
-	}
-	items, err := parseWorkbookCreateStylesItems(v, stylesFromFlag)
+	items, err := stylesPutItems(runtime, resolvedName)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +190,8 @@ func stylesPutOperations(runtime flagView, token string, bound sheetRangeBounder
 		path := fmt.Sprintf("--styles.styles[%d]", i)
 		name, _ := item["name"].(string)
 		name = strings.TrimSpace(name)
-		if name == "" {
+		_, nameGiven := item["name"]
+		if name == "" && (nameGiven || runtime.Str("sheet-id") == "") {
 			probs = append(probs, common.ValidationErrorf("%s.name is required (the real sheet name; check +workbook-info)", path))
 			continue
 		}
@@ -202,7 +214,7 @@ func stylesPutOperations(runtime flagView, token string, bound sheetRangeBounder
 	ops := make([]interface{}, 0, len(specs)*4)
 	var totalCells int64
 	appendVisual := func(name string, op workbookCreateStyleOp) {
-		input, toolName := workbookCreateVisualOpInput(token, "", name, op)
+		input, toolName := workbookCreateVisualOpInput(token, runtime.Str("sheet-id"), name, op)
 		if toolName == "" {
 			return
 		}
@@ -225,14 +237,11 @@ func stylesPutOperations(runtime flagView, token string, bound sheetRangeBounder
 			if err := checkBatchStampBudget("styles", totalCells); err != nil {
 				return nil, err
 			}
+			input := map[string]interface{}{"excel_id": token, "range": stripSheetPrefix(cs.Range), "cells": fillCellsMatrix(rows, cols, cs.Style)}
+			sheetSelectorForToolInput(input, runtime.Str("sheet-id"), spec.name)
 			ops = append(ops, map[string]interface{}{
 				"tool_name": "set_cell_range",
-				"input": map[string]interface{}{
-					"excel_id":   token,
-					"sheet_name": spec.name,
-					"range":      stripSheetPrefix(cs.Range),
-					"cells":      fillCellsMatrix(rows, cols, cs.Style),
-				},
+				"input":     input,
 			})
 		}
 		for _, rs := range spec.payload.RowSizes {

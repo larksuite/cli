@@ -69,7 +69,37 @@ func TestOutdirIsNotADomainAlias(t *testing.T) {
 	}
 }
 
-// TestWorkbookExport_ExecuteExportOnly covers the no-download path: without
+func TestWorkbookExport_DocTypeMustBeSheet(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		docType string
+		wantErr bool
+	}{
+		{name: "sheet is accepted", docType: "sheet"},
+		{name: "case and surrounding whitespace are accepted", docType: " SHEET "},
+		{name: "other document type is rejected", docType: "docx", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+workbook-export"), []string{
+				"--url", testURL, "--doc-type", tc.docType, "--dry-run",
+			})
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("--doc-type %q should be accepted: %v", tc.docType, err)
+				}
+				if out == "" {
+					t.Fatal("accepted --doc-type must produce a dry-run plan")
+				}
+				return
+			}
+			validation := requireValidation(t, err, "not supported")
+			if validation.Param != "--doc-type" {
+				t.Errorf("validation param = %q, want --doc-type", validation.Param)
+			}
+		})
+	}
+}
+
 // --output-path, +workbook-export delegates to the shared drive export core
 // with OutputDir="" so it creates + polls the export task and returns the ready
 // file token without writing a local file (downloaded=false).

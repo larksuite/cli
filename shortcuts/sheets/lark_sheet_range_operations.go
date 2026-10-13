@@ -248,9 +248,13 @@ var RowsResize = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+rows-resize"),
-	Validate:    validateViaResize("row"),
-	DryRun:      resizeDryRun("row"),
-	Execute:     resizeExecute("row"),
+	Normalize:   normalizeResizeBoundaries("row"),
+	Tips: []string{
+		`Compatibility: --range 3:5 --heights '[30,40,50]' assigns one pixel height per row; a map may repeat --range only when it covers exactly the same rows.`,
+	},
+	Validate: validateViaResize("row"),
+	DryRun:   resizeDryRun("row"),
+	Execute:  resizeExecute("row"),
 }
 
 // ColsResize wraps resize_range for column widths. Pass --range + --width
@@ -266,9 +270,11 @@ var ColsResize = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+cols-resize"),
+	Normalize:   normalizeResizeBoundaries("column"),
 	Tips: []string{
 		"Example: lark-cli sheets +cols-resize --url <URL> --sheet-name Sheet1 --range A:C --width 120",
 		`Different widths per column in one batch request: --widths '{"A":80,"C:E":120}'. Widths are pixels (px ≈ chars × 8 + 16), not Excel character units.`,
+		`Compatibility: --range B:D --widths '[80,120,160]' assigns one pixel width per column; a map may repeat --range only when it covers exactly the same columns.`,
 	},
 	Validate: validateViaResize("column"),
 	DryRun:   resizeDryRun("column"),
@@ -428,7 +434,7 @@ func resizeInput(runtime flagView, token, sheetID, sheetName, dimension string) 
 	rangeStr := strings.TrimSpace(runtime.Str("range"))
 	parsedDim, _, _, err := parseA1Range(rangeStr)
 	if err != nil {
-		return nil, sheetsValidationForFlag("range", "invalid --range %q: %v", rangeStr, err)
+		return nil, sheetsValidationForFlag("range", "invalid --range %q: %v", rangeStr, err).WithCause(err)
 	}
 	if parsedDim != dimension {
 		want := "row numbers (e.g. \"2:10\")"
@@ -496,12 +502,18 @@ func resizeMapInput(runtime flagView, token, sheetID, sheetName, dimension strin
 		return nil, err
 	}
 	mapFlag := sizeMapFlag(dimension)
-	for _, other := range []string{"range", pixelFlag(dimension), "type"} {
+	for _, other := range []string{pixelFlag(dimension), "type"} {
 		if runtime.Changed(other) {
 			return nil, common.ValidationErrorf("--%s is a self-contained map; do not combine it with --%s", mapFlag, other).WithParams(sheetsInvalidParam(mapFlag, "mutually exclusive"), sheetsInvalidParam(other, "mutually exclusive"))
 		}
 	}
-	parsed, err := parseJSONFlag(runtime, mapFlag)
+	raw := strings.TrimSpace(runtime.Str(mapFlag))
+	// A bare comma list contains sizes, never user-authored text. The same
+	// schema and exact range-length checks apply as for a JSON size array.
+	if strings.Contains(raw, ",") && !strings.HasPrefix(raw, "{") && !strings.HasPrefix(raw, "[") {
+		raw = "[" + raw + "]"
+	}
+	parsed, err := parseJSONText(runtime, mapFlag, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -527,7 +539,7 @@ func resizeMapInput(runtime flagView, token, sheetID, sheetName, dimension strin
 	for key, raw := range entries {
 		parsedDim, startIdx, endIdx, err := parseA1Range(key)
 		if err != nil {
-			return nil, sheetsValidationForFlag(mapFlag, "--%s key %q: %v", mapFlag, key, err)
+			return nil, sheetsValidationForFlag(mapFlag, "--%s key %q: %v", mapFlag, key, err).WithCause(err)
 		}
 		if parsedDim != dimension {
 			want := "row numbers (e.g. \"2:10\")"
@@ -603,6 +615,18 @@ func resizeMapInput(runtime flagView, token, sheetID, sheetName, dimension strin
 			)
 		}
 	}
+	if runtime.Changed("range") {
+		axis, start, end, rangeErr := parseA1Range(strings.TrimSpace(runtime.Str("range")))
+		covered := 0
+		for _, op := range ops {
+			covered += op.end - op.start + 1
+		}
+		if rangeErr != nil || axis != dimension || ops[0].start != start || ops[len(ops)-1].end != end || covered != end-start+1 {
+			return nil, sheetsValidationForFlag(mapFlag, "--%s is a self-contained map; do not combine it with --range unless both cover exactly the same rows or columns", mapFlag).
+				WithParams(sheetsInvalidParam(mapFlag, "conflicting target"), sheetsInvalidParam("range", "conflicting target")).
+				WithCause(rangeErr)
+		}
+	}
 	operations := make([]interface{}, 0, len(ops))
 	for _, op := range ops {
 		operations = append(operations, map[string]interface{}{
@@ -657,9 +681,12 @@ var RangeCopy = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+range-copy"),
-	Validate:    validateRangeMoveOrCopy("copy", true),
-	DryRun:      transformDryRunFn("copy", true, false),
-	Execute:     transformExecuteFn("copy", true, false),
+	Tips: []string{
+		"Compatibility: --range / --src-range name the source; --copy-to-range / --destination-range / --dest-range name the target. --source-sheet-id / --source-sheet-name select the source sheet.",
+	},
+	Validate: validateRangeMoveOrCopy("copy", true),
+	DryRun:   transformDryRunFn("copy", true, false),
+	Execute:  transformExecuteFn("copy", true, false),
 }
 
 // RangeFill performs autofill from a template range into a target range.
@@ -882,6 +909,13 @@ func rangeSortInput(runtime flagView, token, sheetID, sheetName string) (map[str
 	if err != nil {
 		return nil, err
 	}
+	for i, raw := range keys {
+		if key, ok := raw.(map[string]interface{}); ok {
+			if _, present := key["order"]; present {
+				return nil, sheetsValidationForFlag("sort-keys", "--sort-keys[%d].order must be asc or desc and agree with ascending", i)
+			}
+		}
+	}
 	input := map[string]interface{}{
 		"excel_id":        token,
 		"operation":       "sort",
@@ -893,4 +927,38 @@ func rangeSortInput(runtime flagView, token, sheetID, sheetName string) (map[str
 		input["has_header"] = true
 	}
 	return input, nil
+}
+
+// SQL-style sort direction names the same boolean as ascending. Refuse
+// unknown words and conflicting directions through the existing schema.
+func normalizeSortKeysFlagValue(_ flagView, value interface{}) interface{} {
+	keys, ok := value.([]interface{})
+	if !ok {
+		return value
+	}
+	for _, raw := range keys {
+		key, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		order, ok := key["order"].(string)
+		if !ok {
+			continue
+		}
+		var ascending bool
+		switch strings.ToLower(strings.TrimSpace(order)) {
+		case "asc", "ascending":
+			ascending = true
+		case "desc", "descending":
+			ascending = false
+		default:
+			continue
+		}
+		if given, present := key["ascending"]; present && given != ascending {
+			continue
+		}
+		key["ascending"] = ascending
+		delete(key, "order")
+	}
+	return value
 }

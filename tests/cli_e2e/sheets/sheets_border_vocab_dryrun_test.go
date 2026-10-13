@@ -100,3 +100,28 @@ func TestSheets_BorderWeightVocabularyDryRun(t *testing.T) {
 		})
 	}
 }
+
+func TestSheets_EquivalentBorderNumbersDryRun(t *testing.T) {
+	setSheetsDryRunEnv(t)
+	for _, outer := range []string{"1.0", "1e0", "2", "1.0000000000000000001"} {
+		t.Run(outer, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: []string{"sheets", "+cells-set-style", "--spreadsheet-token", "shtDryRun", "--sheet-name", "S", "--range", "A1", "--style", `{"border_styles":{"all":{"style":"solid","weight":1},"outer":{"style":"solid","weight":` + outer + `}}}`, "--dry-run"}, DefaultAs: "user"})
+			require.NoError(t, err)
+			if outer == "2" || outer == "1.0000000000000000001" {
+				result.AssertExitCode(t, 2)
+				require.Empty(t, result.Stdout)
+				require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
+				require.Equal(t, "--style", gjson.Get(result.Stderr, "error.param").String())
+				return
+			}
+			result.AssertExitCode(t, 0)
+			input := clie2e.DryRunGet(result.Stdout, "api.0.body.input").String()
+			for _, side := range []string{"top", "bottom", "left", "right"} {
+				require.Equal(t, "solid", gjson.Get(input, "cells.0.0.border_styles."+side+".style").String())
+				require.Equal(t, "thin", gjson.Get(input, "cells.0.0.border_styles."+side+".weight").String())
+			}
+		})
+	}
+}

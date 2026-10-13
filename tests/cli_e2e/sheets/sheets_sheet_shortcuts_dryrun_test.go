@@ -11,6 +11,7 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func setSheetsDryRunEnv(t *testing.T) {
@@ -178,7 +179,6 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 				"--spreadsheet-token", "shtDryRun",
 				"--sheet-id", "sheet1",
 				"--title", "Copy",
-				"--index", "2",
 				"--dry-run",
 			},
 			wantURL: toolURL,
@@ -187,7 +187,7 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 				require.Equal(t, "duplicate", clie2e.DryRunGet(out, "tool_input.operation").String(), "stdout:\n%s", out)
 				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "tool_input.sheet_id").String(), "stdout:\n%s", out)
 				require.Equal(t, "Copy", clie2e.DryRunGet(out, "tool_input.new_name").String(), "stdout:\n%s", out)
-				require.Equal(t, int64(2), clie2e.DryRunGet(out, "tool_input.target_index").Int(), "stdout:\n%s", out)
+				require.False(t, clie2e.DryRunGet(out, "tool_input.target_index").Exists(), "stdout:\n%s", out)
 			},
 		},
 		{
@@ -315,4 +315,25 @@ func TestSheets_DimInsertDryRunInheritAfterKeepsBeforePosition(t *testing.T) {
 	require.Equal(t, "D", clie2e.DryRunGet(out, "tool_input.position").String(), "stdout:\n%s", out)
 	require.Equal(t, int64(1), clie2e.DryRunGet(out, "tool_input.count").Int(), "stdout:\n%s", out)
 	require.Equal(t, "before", clie2e.DryRunGet(out, "tool_input.side").String(), "inherit-style=after copies the following-side style via side=before; stdout:\n%s", out)
+}
+
+func TestSheets_SheetCopyIndexDryRun(t *testing.T) {
+	setSheetsDryRunEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: []string{"sheets", "+sheet-copy", "--spreadsheet-token", "shtDryRun", "--sheet-id", "source", "--title", "Copy", "--index", "3", "--dry-run"}, DefaultAs: "user"})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	require.Equal(t, int64(4), clie2e.DryRunGet(result.Stdout, "api.#").Int())
+	require.Equal(t, "get_workbook_structure", clie2e.DryRunGet(result.Stdout, "api.0.body.tool_name").String())
+	duplicate := clie2e.DryRunGet(result.Stdout, "api.1.body.input").String()
+	require.Equal(t, "duplicate", gjson.Get(duplicate, "operation").String())
+	require.Equal(t, "source", gjson.Get(duplicate, "sheet_id").String())
+	require.False(t, gjson.Get(duplicate, "target_index").Exists())
+	move := clie2e.DryRunGet(result.Stdout, "api.2.body.input").String()
+	require.Equal(t, "move", gjson.Get(move, "operation").String())
+	require.Equal(t, "<copy sheet_id>", gjson.Get(move, "sheet_id").String())
+	require.Equal(t, "<copy index>", gjson.Get(move, "source_index").String())
+	require.Equal(t, int64(3), gjson.Get(move, "target_index").Int())
+	require.Equal(t, "get_workbook_structure", clie2e.DryRunGet(result.Stdout, "api.3.body.tool_name").String())
 }
