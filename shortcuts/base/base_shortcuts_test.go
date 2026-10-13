@@ -172,6 +172,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete", "+table-copy", "+table-copy-status",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+manage-select-options", "+field-delete", "+field-search-options",
+		"+field-group-list", "+field-group-manage",
 		"+field-extension-get", "+field-extension-update", "+field-extension-update-cells",
 		"+contact-field-enrichment-list", "+contact-field-enrichment-create",
 		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",

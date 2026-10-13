@@ -31,6 +31,8 @@ func Shortcuts() []common.Shortcut {
 		BaseFieldManageSelectOptions,
 		BaseFieldDelete,
 		BaseFieldSearchOptions,
+		BaseFieldGroupList,
+		BaseFieldGroupManage,
 		BaseFieldExtensionGet,
 		BaseFieldExtensionUpdate,
 		BaseFieldExtensionUpdateCells,

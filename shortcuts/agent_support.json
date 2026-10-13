@@ -478,6 +478,12 @@
     "base +field-get": {
       "agentSupport": "allowed"
     },
+    "base +field-group-list": {
+      "agentSupport": "allowed"
+    },
+    "base +field-group-manage": {
+      "agentSupport": "allowed"
+    },
     "base +field-list": {
       "agentSupport": "allowed"
     },
