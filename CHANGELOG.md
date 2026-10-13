@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.98] - 2026-10-13
+
+### Features
+
+- **base**: default record reads to ndjson (#2782)
+- **auth**: add DPoP support (#2679)
+- support URL rewriting extensions (#2595)
+- support manifest-based distribution updates (#2596)
+
+### Documentation
+
+- **task**: clarify section routing and workflows (#2795)
+- **base**: add text cell mention example (#2802)
+- **apps**: restrict creative-mode wording in skill guidance (#2801)
+
 ## [v1.0.97] - 2026-09-28
 
 ### Features
@@ -2197,6 +2212,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.98]: https://github.com/larksuite/cli/releases/tag/v1.0.98
 [v1.0.97]: https://github.com/larksuite/cli/releases/tag/v1.0.97
 [v1.0.96]: https://github.com/larksuite/cli/releases/tag/v1.0.96
 [v1.0.95]: https://github.com/larksuite/cli/releases/tag/v1.0.95
