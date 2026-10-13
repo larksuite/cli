@@ -73,7 +73,7 @@ This is the foundation of formula logic. You must determine this before writing 
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Number + Float               | → Float                                                                                                     |
 | Date + Number                | → Date (adds/subtracts days). Use `+`/`-` for whole days, use `DURATION()` for hour/minute/second precision |
-| Date - Date                  | → Number of elapsed days, including fractional days from hours/minutes/seconds                              |
+| Date - Date                  | → Duration, represented as elapsed days including fractional days; multiply by 24 to convert to hours                              |
 | Boolean compared with Number | Boolean auto-converts to number (TRUE=1, FALSE=0)                                                           |
 | `&` concatenation            | Both sides auto-convert to string                                                                           |
 
@@ -499,7 +499,7 @@ DATEDIF([StartDate], [EndDate], "D") & " days"
 DAYS([EndDate], [StartDate])
 ```
 
-Direct subtraction preserves time components and returns fractional days. For 09:30 to 12:00 on the same date, the difference is `2.5/24` days:
+Direct subtraction returns a Duration expressed in fractional days, preserving time components. For 09:30 to 12:00 on the same date, the difference is `2.5/24` days:
 
 ```
 [EndDate] - [StartDate]
