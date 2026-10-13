@@ -29,7 +29,8 @@ var BaseBaseCreate = common.Shortcut{
 		"base:table:delete",
 		"docs:permission.member:create",
 	},
-	AuthTypes: authTypes(),
+	ConditionalScopes: []string{"space:document:delete"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		{Name: "name", Desc: "base name", Required: true},
 		{Name: "folder-token", Desc: "folder token for destination"},

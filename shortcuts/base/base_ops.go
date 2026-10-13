@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -45,16 +46,24 @@ func dryRunBaseCreate(_ context.Context, runtime *common.RuntimeContext) *common
 	hasFields := strings.TrimSpace(runtime.Str("fields")) != ""
 	hasTableName := strings.TrimSpace(runtime.Str("table-name")) != ""
 	if hasFields {
+		fields, err := parseBaseCreateFields(runtime)
+		if err != nil {
+			fields = "<invalid_fields_json>"
+		}
 		d.GET("/open-apis/base/v3/bases/:created_base_token/tables").
 			Params(map[string]interface{}{"offset": 0, "limit": 100}).
 			Desc("If the create response does not include the default table ID, the CLI lists tables to find it.").
 			Set("created_base_token", "<created_base_token>")
 		d.POST("/open-apis/base/v3/bases/:created_base_token/tables").
-			Body(dryRunTableCreateBody(runtime, baseCreateFirstTableName(runtime))).
-			Desc("Create a replacement first table with --fields in the create-table body.")
+			Body(map[string]interface{}{"name": baseCreateFirstTableName(runtime), "fields": fields}).
+			Desc("Create a replacement first table with --fields in the create-table body. If creation fails, delete the newly created Base via Drive (type=bitable).")
 		d.DELETE("/open-apis/base/v3/bases/:created_base_token/tables/:default_table_id").
-			Desc("After a 1s wait, delete the default table created with the Base.").
+			Desc("After a 1s wait, delete the default table created with the Base. Cleanup failure is a warning; creation remains successful.").
 			Set("default_table_id", "<default_table_id>")
+		d.DELETE("/open-apis/drive/v1/files/:created_base_token").
+			Params(map[string]interface{}{"type": "bitable"}).
+			Set("created_base_token", "<created_base_token>").
+			Desc("Only if table creation fails: delete the newly created Base to roll back.")
 	} else if hasTableName {
 		d.GET("/open-apis/base/v3/bases/:created_base_token/tables").
 			Params(map[string]interface{}{"offset": 0, "limit": 100}).
@@ -69,7 +78,22 @@ func dryRunBaseCreate(_ context.Context, runtime *common.RuntimeContext) *common
 }
 
 func validateBaseCreate(runtime *common.RuntimeContext) error {
-	return nil
+	if strings.TrimSpace(runtime.Str("fields")) == "" {
+		return nil
+	}
+	if strings.HasPrefix(strings.TrimSpace(runtime.Str("fields")), "@") {
+		content, err := loadJSONInput(newParseCtx(runtime), runtime.Str("fields"), "fields")
+		if err != nil {
+			return err
+		}
+		if err := runtime.FlagContext().SetCanonical("fields", content); err != nil {
+			return err
+		}
+		runtime.MarkInputResolved("fields")
+	}
+	// Validate syntax before creating the Base; field schema is server-owned.
+	_, err := parseBaseCreateFields(runtime)
+	return err
 }
 
 func executeBaseGet(runtime *common.RuntimeContext) error {
@@ -105,8 +129,14 @@ func executeBaseCreate(runtime *common.RuntimeContext) error {
 		}
 		out["table"] = customTable
 		out["fields"] = createdFields
-		out["default_table_deleted"] = true
-		out["deleted_default_table_id"] = defaultTableID
+		time.Sleep(baseCreateDefaultTableDeleteDelay)
+		_, deleteErr := baseV3Call(runtime, "DELETE", baseV3Path("bases", extractBasePermissionToken(data), "tables", defaultTableID), nil, nil)
+		out["default_table_deleted"] = deleteErr == nil
+		if deleteErr != nil {
+			fmt.Fprintf(runtime.IO().ErrOut, "Warning: Base and specified table were created, but deleting default table %s failed: %v\n", defaultTableID, deleteErr)
+		} else {
+			out["deleted_default_table_id"] = defaultTableID
+		}
 	} else if strings.TrimSpace(runtime.Str("table-name")) != "" {
 		renamedTable, defaultTableID, err := renameBaseDefaultTable(runtime, data)
 		if err != nil {
@@ -166,6 +196,18 @@ func extractBasePermissionToken(base map[string]interface{}) string {
 	return ""
 }
 
+func parseBaseCreateFields(runtime *common.RuntimeContext) (interface{}, error) {
+	content, err := loadJSONInput(newParseCtx(runtime), runtime.Str("fields"), "fields")
+	if err != nil {
+		return nil, err
+	}
+	var fields interface{}
+	if err := common.ParseJSON([]byte(content), &fields); err != nil {
+		return nil, formatJSONError("fields", "value", err)
+	}
+	return fields, nil
+}
+
 func replaceBaseDefaultTable(runtime *common.RuntimeContext, base map[string]interface{}) (map[string]interface{}, []interface{}, string, error) {
 	baseToken := extractBasePermissionToken(base)
 	if baseToken == "" {
@@ -175,12 +217,30 @@ func replaceBaseDefaultTable(runtime *common.RuntimeContext, base map[string]int
 	if err != nil {
 		return nil, nil, "", err
 	}
-	tableBody, err := buildTableCreateBody(runtime, newParseCtx(runtime), baseCreateFirstTableName(runtime))
-	if err != nil {
-		return nil, nil, "", err
+	fields, err := parseBaseCreateFields(runtime)
+	tableBody := map[string]interface{}{"name": baseCreateFirstTableName(runtime)}
+	// Preserve the existing empty-array/null behavior without validating schema.
+	if items, ok := fields.([]interface{}); fields != nil && (!ok || len(items) > 0) {
+		tableBody["fields"] = fields
 	}
-	customTable, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables"), nil, tableBody)
+	var customTable map[string]interface{}
+	if err == nil {
+		customTable, err = baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables"), nil, tableBody)
+	}
 	if err != nil {
+		_, rollbackErr := runtime.CallAPITyped("DELETE", "/open-apis/drive/v1/files/"+validate.EncodePathSegment(baseToken), map[string]interface{}{"type": "bitable"}, nil)
+		if problem, ok := errs.ProblemOf(err); ok {
+			hint := "Reread lark-base/SKILL.md and lark-base/references/lark-base-field-schema.md; correct the table creation error"
+			if rollbackErr == nil {
+				hint = "The newly created Base was deleted after table creation failed. " + hint + "; then create the Base again with +base-create."
+			} else {
+				hint = fmt.Sprintf("Base creation succeeded (base_token=%s), but the specified table could not be created. Deleting the Base failed: %v. %s; then use +table-create --base-token %s --name '%s' --fields '<corrected-field-array>' to create the table in this Base.", baseToken, rollbackErr, hint, baseToken, strings.ReplaceAll(baseCreateFirstTableName(runtime), "'", `'\''`))
+			}
+			if problem.Hint != "" {
+				problem.Hint += "; "
+			}
+			problem.Hint += hint
+		}
 		return nil, nil, "", err
 	}
 	customTableID := tableID(customTable)
@@ -190,10 +250,6 @@ func replaceBaseDefaultTable(runtime *common.RuntimeContext, base map[string]int
 	createdFields := []interface{}{}
 	if fields, ok := customTable["fields"].([]interface{}); ok {
 		createdFields = fields
-	}
-	time.Sleep(baseCreateDefaultTableDeleteDelay)
-	if _, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", baseToken, "tables", defaultTableID), nil, nil); err != nil {
-		return nil, nil, "", err
 	}
 	return customTable, createdFields, defaultTableID, nil
 }

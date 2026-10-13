@@ -1691,6 +1691,11 @@ func TestBaseCreateScopesCoverFollowUpTableOperations(t *testing.T) {
 	if !reflect.DeepEqual(BaseBaseCreate.BotScopes, requiredBotScopes) {
 		t.Fatalf("BotScopes=%v want=%v", BaseBaseCreate.BotScopes, requiredBotScopes)
 	}
+	for _, identity := range []string{"user", "bot"} {
+		if !reflect.DeepEqual(BaseBaseCreate.ConditionalScopesForIdentity(identity), []string{"space:document:delete"}) {
+			t.Fatalf("rollback scope must be conditional for %s", identity)
+		}
+	}
 }
 
 func TestBaseRecordValidate(t *testing.T) {

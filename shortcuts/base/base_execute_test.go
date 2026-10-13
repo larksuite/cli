@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -658,16 +659,219 @@ func TestBaseWorkspaceExecuteCreateWithFields(t *testing.T) {
 	}
 }
 
+// These cases pin the resource lifecycle: rollback before a table exists,
+// but preserve both resources when only default-table cleanup fails.
+func TestBaseCreateTableFailureAndCleanup(t *testing.T) {
+	for _, tc := range []struct {
+		name                      string
+		fields, tableName         string
+		tableFails, rollbackFails bool
+	}{
+		{name: "table failure rolls back", tableFails: true},
+		{name: "rollback failure retains base", tableFails: true, rollbackFails: true},
+		{name: "cleanup failure remains successful"},
+		{name: "valid JSON schema is validated by server", tableFails: true, fields: `[1]`},
+		{name: "JSON object is validated by server", tableFails: true, fields: `{}`},
+		{name: "JSON scalar is validated by server", tableFails: true, fields: `1`},
+		{name: "recovery preserves table name", tableFails: true, rollbackFails: true, tableName: "Tasks '$BASE_TEST_VALUE' $(printf expanded) `printf expanded`\n新表"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			oldDelay := baseCreateDefaultTableDeleteDelay
+			baseCreateDefaultTableDeleteDelay = 0
+			t.Cleanup(func() { baseCreateDefaultTableDeleteDelay = oldDelay })
+			factory, stdout, reg := newExecuteFactoryWithUserOpenID(t, "")
+			reg.Register(&httpmock.Stub{Method: "POST", URL: "/open-apis/base/v3/bases", Body: map[string]interface{}{
+				"code": 0, "data": map[string]interface{}{"base_token": "app_x", "default_table_id": "tbl_default"},
+			}})
+			tableBody := map[string]interface{}{"code": 0, "data": map[string]interface{}{"id": "tbl_custom"}}
+			if tc.tableFails {
+				tableBody = map[string]interface{}{"code": 1254001, "msg": "invalid field schema"}
+			}
+			tableCreate := &httpmock.Stub{Method: "POST", URL: "/open-apis/base/v3/bases/app_x/tables", Body: tableBody}
+			reg.Register(tableCreate)
+			rollbackCount := 0
+			if tc.tableFails {
+				rollbackBody := map[string]interface{}{"code": 0, "data": map[string]interface{}{}}
+				if tc.rollbackFails {
+					rollbackBody = map[string]interface{}{"code": 99999999, "msg": "delete denied"}
+				}
+				reg.Register(&httpmock.Stub{Method: "DELETE", URL: "/open-apis/drive/v1/files/app_x?type=bitable", Body: rollbackBody,
+					OnMatch: func(req *http.Request) {
+						rollbackCount++
+						if req.URL.Query().Get("async") == "true" {
+							t.Fatal("rollback must delete synchronously")
+						}
+					},
+				})
+			} else {
+				reg.Register(&httpmock.Stub{Method: "DELETE", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_default", Body: map[string]interface{}{"code": 1254001, "msg": "cleanup denied"}})
+				reg.Register(&httpmock.Stub{Method: "DELETE", URL: "/open-apis/drive/v1/files/app_x", Optional: true,
+					OnMatch: func(*http.Request) { rollbackCount++ },
+				})
+			}
+			fields := tc.fields
+			if fields == "" {
+				fields = `[{"name":"Title","type":"text"}]`
+			}
+			tableName := tc.tableName
+			if tableName == "" {
+				tableName = "Tasks"
+			}
+			err := runShortcut(t, BaseBaseCreate, []string{"+base-create", "--name", "Demo", "--table-name", tableName, "--fields", fields}, factory, stdout)
+			if !tc.tableFails {
+				if err != nil {
+					t.Fatal(err)
+				}
+				data := decodeBaseEnvelope(t, stdout)
+				if data["created"] != true || data["default_table_deleted"] != false || data["deleted_default_table_id"] != nil || rollbackCount != 0 {
+					t.Fatalf("unexpected cleanup result: %#v; rollbacks=%d", data, rollbackCount)
+				}
+				table := data["table"].(map[string]interface{})
+				if table["id"] != "tbl_custom" || !strings.Contains(factory.IOStreams.ErrOut.(*bytes.Buffer).String(), "cleanup denied") {
+					t.Fatalf("missing created table or cleanup warning: %#v", data)
+				}
+				return
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || rollbackCount != 1 || stdout.Len() != 0 {
+				t.Fatalf("expected original typed table error and one rollback: err=%v; rollbacks=%d; stdout=%s", err, rollbackCount, stdout)
+			}
+			if problem.Code != 1254001 {
+				t.Fatalf("lost table API error code: %#v", problem)
+			}
+			if tc.fields != "" {
+				body := decodeCapturedJSONBody(t, tableCreate)
+				if got, _ := json.Marshal(body["fields"]); string(got) != tc.fields {
+					t.Fatalf("fields changed before reaching API: %s", got)
+				}
+			}
+			for _, reference := range []string{"lark-base/SKILL.md", "lark-base/references/lark-base-field-schema.md"} {
+				if !strings.Contains(problem.Hint, reference) {
+					t.Fatalf("missing guidance: %s", problem.Hint)
+				}
+			}
+			if tc.rollbackFails {
+				if !strings.Contains(problem.Hint, "delete denied") || !strings.Contains(problem.Hint, "+table-create --base-token app_x") {
+					t.Fatalf("missing retained Base recovery: %s", problem.Hint)
+				}
+				if tc.tableName != "" {
+					t.Setenv("BASE_TEST_VALUE", "expanded")
+					_, command, found := strings.Cut(problem.Hint, "then use ")
+					command, complete := strings.CutSuffix(command, " to create the table in this Base.")
+					if !found || !complete {
+						t.Fatalf("missing recovery command: %s", problem.Hint)
+					}
+					name, shellErr := exec.Command("sh", "-c", "set -- "+command+"; printf '%s' \"$5\"").Output()
+					if shellErr != nil || string(name) != tableName {
+						t.Fatalf("recovery name = %q, want %q; err=%v", name, tableName, shellErr)
+					}
+				}
+			} else if !strings.Contains(problem.Hint, "Base was deleted") || !strings.Contains(problem.Hint, "+base-create") {
+				t.Fatalf("missing rollback guidance: %s", problem.Hint)
+			}
+		})
+	}
+}
+
+func TestBaseCreateMalformedJSONFailsBeforeCreation(t *testing.T) {
+	for _, tc := range []struct{ name, fields, content string }{
+		{"inline", `[{`, ""},
+		{"unquoted keys", `[{type:"text","name":"Title"}]`, ""},
+		{"file", "@fields.json", `[{`},
+	} {
+		for _, dryRun := range []bool{false, true} {
+			t.Run(tc.name+map[bool]string{false: "/execute", true: "/dry-run"}[dryRun], func(t *testing.T) {
+				t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+				factory, stdout, reg := newExecuteFactory(t)
+				fio := &changingJSONFileIO{contents: []string{tc.content}}
+				factory.FileIOProvider = changingJSONProvider{fio: fio}
+				create := &httpmock.Stub{Method: "POST", URL: "/open-apis/base/v3/bases", Optional: true}
+				reg.Register(create)
+				args := []string{"+base-create", "--name", "Demo", "--fields", tc.fields}
+				if dryRun {
+					args = append(args, "--dry-run")
+				}
+				err := runShortcut(t, BaseBaseCreate, args, factory, stdout)
+				assertInvalidArgumentValidation(t, err, "--fields", nil, "invalid JSON")
+				if len(create.CapturedBodies) != 0 || stdout.Len() != 0 {
+					t.Fatalf("invalid JSON must fail before creation or dry-run output: stdout=%s", stdout)
+				}
+				if strings.HasPrefix(tc.fields, "@") && fio.opens != 1 {
+					t.Fatalf("fields file opened %d times, want 1", fio.opens)
+				}
+			})
+		}
+	}
+}
+
+func TestBaseCreateRejectsFieldsFileBeforeCreating(t *testing.T) {
+	for _, path := range []string{"@missing.json", "@../outside.json", "@/tmp/fields.json"} {
+		t.Run(path, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			withBaseWorkingDir(t, t.TempDir())
+			factory, stdout, reg := newExecuteFactory(t)
+			create := &httpmock.Stub{Method: "POST", URL: "/open-apis/base/v3/bases", Optional: true}
+			reg.Register(create)
+			err := runShortcut(t, BaseBaseCreate, []string{"+base-create", "--name", "Demo", "--fields", path}, factory, stdout)
+			assertInvalidArgumentValidation(t, err, "--fields", nil, "")
+			if len(create.CapturedBodies) != 0 || stdout.Len() != 0 {
+				t.Fatalf("invalid fields file must fail before creation: stdout=%s", stdout)
+			}
+		})
+	}
+}
+
+func TestBaseCreateDryRunReadsFieldsFileOnce(t *testing.T) {
+	for _, content := range []string{`[{"name":"Title","type":"text"}]`, `@another.json`} {
+		t.Run(content, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			factory, stdout, _ := newExecuteFactory(t)
+			fio := &changingJSONFileIO{contents: []string{content, `invalid`}}
+			factory.FileIOProvider = changingJSONProvider{fio: fio}
+			err := runShortcut(t, BaseBaseCreate, []string{"+base-create", "--name", "Demo", "--fields", "@fields.json", "--dry-run"}, factory, stdout)
+			if fio.opens != 1 {
+				t.Fatalf("fields file opened %d times, want 1", fio.opens)
+			}
+			if content == "@another.json" {
+				assertInvalidArgumentValidation(t, err, "--fields", nil, "invalid JSON")
+				if stdout.Len() != 0 {
+					t.Fatal("invalid file content must not produce a dry-run plan")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			data := decodeBaseEnvelope(t, stdout)
+			calls := data["api"].([]interface{})
+			body := calls[2].(map[string]interface{})["body"].(map[string]interface{})
+			fields := body["fields"].([]interface{})
+			if fields[0].(map[string]interface{})["name"] != "Title" {
+				t.Fatalf("unexpected snapshotted fields: %#v", body)
+			}
+		})
+	}
+}
+
 func TestBaseWorkspaceExecuteCreateWithFieldsDefaultTableName(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	oldDelay := baseCreateDefaultTableDeleteDelay
 	baseCreateDefaultTableDeleteDelay = 0
 	t.Cleanup(func() { baseCreateDefaultTableDeleteDelay = oldDelay })
 
 	factory, stdout, reg := newExecuteFactory(t)
+	fio := &changingJSONFileIO{contents: []string{`[{"name":"Title","type":"text"}]`, `invalid`}}
+	factory.FileIOProvider = changingJSONProvider{fio: fio}
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases",
+		OnMatch: func(*http.Request) {
+			if fio.opens != 1 {
+				t.Fatalf("fields must be loaded before Base creation: opens=%d", fio.opens)
+			}
+		},
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{"app_token": "app_x", "name": "Demo Base"},
@@ -708,7 +912,7 @@ func TestBaseWorkspaceExecuteCreateWithFieldsDefaultTableName(t *testing.T) {
 	err := runShortcut(
 		t,
 		BaseBaseCreate,
-		[]string{"+base-create", "--name", "Demo Base", "--fields", `[{"name":"Title","type":"text"}]`},
+		[]string{"+base-create", "--name", "Demo Base", "--fields", "@fields.json"},
 		factory,
 		stdout,
 	)
@@ -718,6 +922,9 @@ func TestBaseWorkspaceExecuteCreateWithFieldsDefaultTableName(t *testing.T) {
 	body := decodeCapturedJSONBody(t, createTableStub)
 	if body["name"] != "Table 1" {
 		t.Fatalf("create table body = %#v, want name Table 1", body)
+	}
+	if fio.opens != 1 {
+		t.Fatalf("fields file opened %d times, want 1", fio.opens)
 	}
 }
 

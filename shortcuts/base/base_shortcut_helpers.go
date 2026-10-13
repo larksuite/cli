@@ -16,11 +16,12 @@ import (
 
 // parseCtx carries file I/O dependency for JSON/file parsing helpers.
 type parseCtx struct {
-	fio fileio.FileIO
+	fio           fileio.FileIO
+	inputResolved func(string) bool
 }
 
 func newParseCtx(runtime *common.RuntimeContext) *parseCtx {
-	return &parseCtx{fio: runtime.FileIO()}
+	return &parseCtx{fio: runtime.FileIO(), inputResolved: runtime.InputResolvedFromSource}
 }
 
 func baseTableID(runtime *common.RuntimeContext) string {
@@ -32,7 +33,8 @@ func loadJSONInput(pc *parseCtx, raw string, flagName string) (string, error) {
 	if raw == "" {
 		return "", baseFlagErrorf("--%s cannot be empty", flagName)
 	}
-	if !strings.HasPrefix(raw, "@") {
+	// Source content is literal JSON, even when it starts with @.
+	if (pc != nil && pc.inputResolved != nil && pc.inputResolved(flagName)) || !strings.HasPrefix(raw, "@") {
 		return raw, nil
 	}
 	path := strings.TrimSpace(strings.TrimPrefix(raw, "@"))

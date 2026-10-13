@@ -10,7 +10,20 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
+
+func TestBaseCreateDryRunRejectsMalformedJSON(t *testing.T) {
+	setBaseDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: []string{"base", "+base-create", "--name", "Demo", "--fields", `[{`, "--dry-run"}, DefaultAs: "bot"})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Empty(t, result.Stdout)
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
+	require.Equal(t, "--fields", gjson.Get(result.Stderr, "error.param").String())
+}
 
 func TestBaseCreateDryRun(t *testing.T) {
 	setBaseDryRunConfigEnv(t)
@@ -51,6 +64,9 @@ func TestBaseCreateDryRun(t *testing.T) {
 
 	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E", clie2e.DryRunGet(out, "api.3.url").String(), out)
 	require.Equal(t, "DELETE", clie2e.DryRunGet(out, "api.3.method").String(), out)
+	require.Equal(t, "DELETE", clie2e.DryRunGet(out, "api.4.method").String(), out)
+	require.Equal(t, "/open-apis/drive/v1/files/%3Ccreated_base_token%3E", clie2e.DryRunGet(out, "api.4.url").String(), out)
+	require.Equal(t, "bitable", clie2e.DryRunGet(out, "api.4.params.type").String(), out)
 }
 
 func TestBaseCreateDryRunTableNameOnlyRenamesDefaultTable(t *testing.T) {
