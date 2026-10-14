@@ -27,11 +27,11 @@ var MailTemplateCreate = common.Shortcut{
 		{Name: "template-content", Desc: "Template body content. Prefer HTML. Referenced local images (<img src=\"./file.png\">) are auto-uploaded to Drive and rewritten to cid: refs."},
 		{Name: "template-content-file", Desc: "Optional. Path to a file whose contents become --template-content. Relative path only. Mutually exclusive with --template-content."},
 		{Name: "plain-text", Type: "bool", Desc: "Mark the template as plain-text mode (is_plain_text_mode=true). Cannot be used with --inline; use only for pure plain-text templates."},
-		{Name: "to", Type: "string_array", Desc: "Optional. Default To recipient email address. Repeat --to once per recipient; quote each value. Display-name format is supported."},
-		{Name: "cc", Type: "string_array", Desc: "Optional. Default Cc recipient email address. Repeat --cc once per recipient; quote each value."},
-		{Name: "bcc", Type: "string_array", Desc: "Optional. Default Bcc recipient email address. Repeat --bcc once per recipient; quote each value."},
-		{Name: "attach", Type: "string_array", Desc: "Optional. Non-inline attachment file path, relative path only. Repeat --attach once per file; order is preserved for LARGE/SMALL classification."},
-		{Name: "inline", Type: "string_array", Desc: "Optional. Inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string."},
+		{Name: "to", Type: "string_array", Desc: "Optional. Default To recipient email address. Repeat --to or pass a comma-separated address list in one occurrence; quote each value. Display-name format is supported."},
+		{Name: "cc", Type: "string_array", Desc: "Optional. Default Cc recipient email address. Repeat --cc or pass a comma-separated address list in one occurrence; quote each value."},
+		{Name: "bcc", Type: "string_array", Desc: "Optional. Default Bcc recipient email address. Repeat --bcc or pass a comma-separated address list in one occurrence; quote each value."},
+		{Name: "attach", Type: "string_array", Desc: "Optional. Non-inline attachment file path, relative path only. Repeat --attach or pass a comma-separated path list in one occurrence; order is preserved for LARGE/SMALL classification."},
+		{Name: "inline", Type: "string_array", Desc: "Optional. Inline images as a JSON object or array per occurrence. Repeat --inline to append more images; values are not comma-split. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveComposeMailboxID(runtime)

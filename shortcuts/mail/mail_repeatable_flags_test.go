@@ -135,13 +135,46 @@ func TestNormalizeRepeatedInlineFlagsAllowsDuplicateCIDForCompatibility(t *testi
 	}
 }
 
-func TestParseInlineSpecsNullIsEmptyForCompatibility(t *testing.T) {
-	specs, err := parseInlineSpecs(`null`)
+func TestNormalizeRepeatedInlineFlagsAllowsEmptyArray(t *testing.T) {
+	raw, err := normalizeInlineFlagValues([]string{`[]`, `{"cid":"hero","file_path":"./hero.png"}`})
 	if err != nil {
-		t.Fatalf("parseInlineSpecs(null) error = %v", err)
+		t.Fatalf("normalizeInlineFlagValues() error = %v", err)
 	}
-	if len(specs) != 0 {
-		t.Fatalf("parseInlineSpecs(null) = %#v, want empty", specs)
+	specs, err := parseInlineSpecs(raw)
+	if err != nil {
+		t.Fatalf("parseInlineSpecs(%q) error = %v", raw, err)
+	}
+	want := []InlineSpec{{CID: "hero", FilePath: "./hero.png"}}
+	if !reflect.DeepEqual(specs, want) {
+		t.Fatalf("inline specs = %#v, want %#v", specs, want)
+	}
+}
+
+func TestNormalizeRepeatedInlineFlagsRejectsInvalidOccurrence(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "empty", raw: "", want: "value must not be empty"},
+		{name: "whitespace", raw: "  ", want: "value must not be empty"},
+		{name: "null", raw: `null`, want: "null is not a JSON object or array"},
+		{name: "scalar", raw: `42`, want: "JSON object or array"},
+		{name: "empty object", raw: `{}`, want: `"cid" must not be empty`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := normalizeInlineFlagValues([]string{
+				`{"cid":"ok","file_path":"./ok.png"}`,
+				tc.raw,
+			})
+			if err == nil {
+				t.Fatal("expected validation error, got nil")
+			}
+			assertInlineValidationError(t, err)
+			if !strings.Contains(err.Error(), "--inline occurrence 2") || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %q, want occurrence and cause %q", err, tc.want)
+			}
+		})
 	}
 }
 
@@ -223,10 +256,50 @@ func TestMailRepeatableFlagTypes(t *testing.T) {
 			cmd := mountedShortcutCommand(t, f, tc.shortcut)
 			for _, name := range tc.stringArrays {
 				assertFlagType(t, cmd, name, "stringArray")
+				if err := cmd.Flags().Set(name, "first"); err != nil {
+					t.Fatalf("set first --%s: %v", name, err)
+				}
+				if err := cmd.Flags().Set(name, "second"); err != nil {
+					t.Fatalf("set second --%s: %v", name, err)
+				}
+				got, err := cmd.Flags().GetStringArray(name)
+				if err != nil {
+					t.Fatalf("get --%s: %v", name, err)
+				}
+				if !reflect.DeepEqual(got, []string{"first", "second"}) {
+					t.Fatalf("--%s values = %#v, want both occurrences", name, got)
+				}
 			}
 			for _, name := range tc.strings {
 				assertFlagType(t, cmd, name, "string")
 			}
+		})
+	}
+}
+
+func TestMailRepeatableInlineInvalidLaterOccurrenceFailsBeforeExecute(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+	}{
+		{name: "send", shortcut: MailSend, args: []string{"+send"}},
+		{name: "draft-create", shortcut: MailDraftCreate, args: []string{"+draft-create"}},
+		{name: "reply", shortcut: MailReply, args: []string{"+reply", "--message-id", "m1"}},
+		{name: "reply-all", shortcut: MailReplyAll, args: []string{"+reply-all", "--message-id", "m1"}},
+		{name: "forward", shortcut: MailForward, args: []string{"+forward", "--message-id", "m1"}},
+		{name: "template-create", shortcut: MailTemplateCreate, args: []string{"+template-create", "--name", "n"}},
+		{name: "template-update", shortcut: MailTemplateUpdate, args: []string{"+template-update", "--template-id", "1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			args := append([]string{}, tc.args...)
+			args = append(args,
+				"--inline", `{"cid":"ok","file_path":"./not-read.png"}`,
+				"--inline", `null`,
+			)
+			err := runMountedMailShortcut(t, tc.shortcut, args, f, stdout)
+			assertValidationError(t, err, "--inline occurrence 2")
 		})
 	}
 }
