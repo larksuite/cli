@@ -3,13 +3,10 @@
 按 ID 取用户基本信息(姓名等)。
 
 ```bash
-# 取自己
+# 取自己(只有 user 身份能省略 --user-id)
 lark-cli contact +get-user --as user
 
-# bot 按 ID 取他人
-lark-cli contact +get-user --user-id ou_xxx --as bot
-
-# 按 union_id / user_id 取(默认 open_id)
+# bot 身份按 ID 取他人;ID 不是 open_id 时要显式指定类型
 lark-cli contact +get-user --user-id <id> --user-id-type union_id --as bot
 ```
 
