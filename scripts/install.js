@@ -265,6 +265,7 @@ function install() {
     const binaryName = NAME + (isWindows ? ".exe" : "");
     const extractedBinary = path.join(tmpDir, binaryName);
 
+    fs.mkdirSync(binDir, { recursive: true });
     fs.copyFileSync(extractedBinary, dest);
     fs.chmodSync(dest, 0o755);
     console.log(`${NAME} v${VERSION} installed successfully`);
