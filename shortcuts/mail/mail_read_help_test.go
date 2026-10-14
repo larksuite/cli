@@ -89,7 +89,7 @@ func TestMailMessagesDryRunMentionsBatchGetChunkingAndMerge(t *testing.T) {
 	}
 }
 
-func TestMailTriageTableHintRoutesSingleAndMultipleReads(t *testing.T) {
+func TestMailTriageTableHintRecommendsBatchRead(t *testing.T) {
 	f, stdout, stderr, reg := mailShortcutTestFactory(t)
 	registerTriageReadHintStubs(reg)
 
@@ -102,13 +102,16 @@ func TestMailTriageTableHintRoutesSingleAndMultipleReads(t *testing.T) {
 	reg.Verify(t)
 
 	errOut := stderr.String()
-	for _, want := range []string{
-		"tip: read full content:",
-		"single message use mail +message --message-id <id>",
-		"multiple messages use mail +messages --message-ids <id1>,<id2>,<id3>",
+	want := "tip: read full content: use mail +messages --message-ids <id1>,<id2>,<id3>"
+	if !strings.Contains(errOut, want) {
+		t.Fatalf("stderr missing %q\n%s", want, errOut)
+	}
+	for _, disallowed := range []string{
+		"single message use mail +message",
+		"multiple messages use mail +messages",
 	} {
-		if !strings.Contains(errOut, want) {
-			t.Fatalf("stderr missing %q\n%s", want, errOut)
+		if strings.Contains(errOut, disallowed) {
+			t.Fatalf("stderr must not recommend legacy read hint %q\n%s", disallowed, errOut)
 		}
 	}
 }
