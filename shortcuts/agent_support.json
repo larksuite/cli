@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-08T00:00:00+08:00",
+  "updatedAt": "2026-10-09T00:00:00+08:00",
   "commands": {
     "application +slash-command-create": {
       "agentSupport": "denied"
@@ -1122,6 +1122,18 @@
     },
     "mail +rule-update": {
       "agentSupport": "allowed"
+    },
+    "mail +sender-allowlist": {
+      "agentSupport": "denied"
+    },
+    "mail +sender-allowlist-modify": {
+      "agentSupport": "denied"
+    },
+    "mail +sender-blocklist": {
+      "agentSupport": "denied"
+    },
+    "mail +sender-blocklist-modify": {
+      "agentSupport": "denied"
     },
     "mail +send": {
       "agentSupport": "allowed"
