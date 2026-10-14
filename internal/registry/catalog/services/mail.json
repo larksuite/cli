@@ -4887,7 +4887,12 @@
             }
           },
           "scopes": [
-            "mail:user_mailbox.rule:write"
+            "mail:user_mailbox.rule:write",
+            "mail:user_mailbox.rule:read"
+          ],
+          "requiredScopes": [
+            "mail:user_mailbox.rule:write",
+            "mail:user_mailbox.rule:read"
           ],
           "accessTokens": [
             "tenant",

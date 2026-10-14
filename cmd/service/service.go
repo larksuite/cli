@@ -455,6 +455,10 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
 
+	if err := completeMailRuleReorderRequest(opts.Ctx, ac, opts.Method, &request); err != nil {
+		return err
+	}
+
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
 		return err
@@ -691,6 +695,133 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	}
 
 	return request, nil, nil
+}
+
+func completeMailRuleReorderRequest(ctx context.Context, ac *client.APIClient, method meta.Method, request *client.RawApiRequest) error {
+	if method.ID != "user_mailbox.rule.reorder" {
+		return nil
+	}
+	body, ok := request.Data.(map[string]interface{})
+	if !ok || body == nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data must be a JSON object for mail rule reorder").WithParam("--data")
+	}
+	input, err := stringSliceField(body, "rule_ids")
+	if err != nil {
+		return err
+	}
+	listReq := client.RawApiRequest{
+		Method: "GET",
+		URL:    strings.TrimSuffix(request.URL, "/reorder"),
+		Params: map[string]interface{}{},
+		As:     request.As,
+	}
+	result, err := ac.CallAPI(ctx, listReq)
+	if err != nil {
+		return err
+	}
+	if apiErr := ac.CheckResponse(result, request.As); apiErr != nil {
+		return apiErr
+	}
+	current, err := mailRuleIDsFromListResult(result)
+	if err != nil {
+		return err
+	}
+	final, err := completeServiceRuleOrder(input, current)
+	if err != nil {
+		return err
+	}
+	body["rule_ids"] = final
+	request.Data = body
+	return nil
+}
+
+func stringSliceField(body map[string]interface{}, field string) ([]string, error) {
+	raw, ok := body[field]
+	if !ok {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--data.%s is required", field).WithParam("--data." + field)
+	}
+	switch v := raw.(type) {
+	case []string:
+		return append([]string(nil), v...), nil
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for i, item := range v {
+			s, ok := item.(string)
+			if !ok || strings.TrimSpace(s) == "" {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--data.%s[%d] must be a non-empty string", field, i).WithParam("--data." + field)
+			}
+			out = append(out, strings.TrimSpace(s))
+		}
+		return out, nil
+	default:
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--data.%s must be an array of strings", field).WithParam("--data." + field)
+	}
+}
+
+func mailRuleIDsFromListResult(result interface{}) ([]string, error) {
+	root, ok := result.(map[string]interface{})
+	if !ok || root == nil {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list returned an unexpected response shape")
+	}
+	data, ok := root["data"].(map[string]interface{})
+	if !ok || data == nil {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing data")
+	}
+	rawItems, ok := data["items"]
+	if !ok {
+		rawItems = data["rules"]
+	}
+	items, ok := rawItems.([]interface{})
+	if !ok {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing items")
+	}
+	ids := make([]string, 0, len(items))
+	for i, item := range items {
+		rule, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list item %d has unexpected shape", i)
+		}
+		id, _ := rule["id"].(string)
+		if id == "" {
+			id, _ = rule["rule_id"].(string)
+		}
+		if strings.TrimSpace(id) == "" {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list item %d missing rule id", i)
+		}
+		ids = append(ids, strings.TrimSpace(id))
+	}
+	return ids, nil
+}
+
+func completeServiceRuleOrder(input, current []string) ([]string, error) {
+	if len(input) == 0 {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "mail rule reorder requires at least one rule id").WithParam("--data.rule_ids")
+	}
+	if len(current) == 0 {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "current mailbox has no mail rules to reorder").WithParam("--data.rule_ids")
+	}
+	seen := make(map[string]bool, len(input))
+	currentSet := make(map[string]bool, len(current))
+	for _, id := range current {
+		currentSet[id] = true
+	}
+	final := make([]string, 0, len(current))
+	for _, id := range input {
+		if seen[id] {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "duplicate mail rule id in rule_ids: %s", id).WithParam("--data.rule_ids")
+		}
+		if !currentSet[id] {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "mail rule id does not belong to the current mailbox: %s", id).WithParam("--data.rule_ids")
+		}
+		seen[id] = true
+		final = append(final, id)
+	}
+	for _, id := range current {
+		if !seen[id] {
+			final = append(final, id)
+		}
+	}
+	return final, nil
 }
 
 func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, opts *ServiceMethodOptions) error {

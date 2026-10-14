@@ -364,13 +364,13 @@ var MailRuleDisable = makeRuleToggleShortcut("+rule-disable", false)
 var MailRuleReorder = common.Shortcut{
 	Service:     "mail",
 	Command:     "+rule-reorder",
-	Description: "Reorder mailbox rules by full rule_id list or by moving one rule before/after/top/bottom.",
+	Description: "Reorder mailbox rules by rule_id list or by moving one rule before/after/top/bottom.",
 	Risk:        "write",
-	Scopes:      []string{"mail:user_mailbox.rule:write"},
+	Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
 	AuthTypes:   mailRuleAuthTypes,
 	HasFormat:   true,
 	Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
-		common.Flag{Name: "rule-ids", Type: "string_slice", Desc: "Full target rule ID order. Must contain every current rule exactly once."},
+		common.Flag{Name: "rule-ids", Type: "string_slice", Desc: "Target rule ID order. Missing current rules are appended in current order."},
 		common.Flag{Name: "move-rule-id", Desc: "Rule ID to move in the current order."},
 		common.Flag{Name: "before-rule-id", Desc: "Place --move-rule-id before this rule."},
 		common.Flag{Name: "after-rule-id", Desc: "Place --move-rule-id after this rule."},
@@ -1631,10 +1631,11 @@ func validateRuleReorderFlags(rt *common.RuntimeContext) error {
 func buildRuleTargetOrder(rt *common.RuntimeContext, current []mailRuleEnvelope) ([]string, error) {
 	currentIDs := envelopeRuleIDs(current)
 	if ids := normalizeRuleIDs(rt.StrSlice("rule-ids")); len(ids) > 0 {
-		if err := validateFullRuleOrder(ids, currentIDs); err != nil {
+		target, err := completeRuleOrder(ids, currentIDs)
+		if err != nil {
 			return nil, err
 		}
-		return ids, nil
+		return target, nil
 	}
 	moveID := strings.TrimSpace(rt.Str("move-rule-id"))
 	order := removeString(currentIDs, moveID)
@@ -1653,23 +1654,32 @@ func buildRuleTargetOrder(rt *common.RuntimeContext, current []mailRuleEnvelope)
 	}
 }
 
-func validateFullRuleOrder(target, current []string) error {
-	if len(target) != len(current) {
-		return mailValidationParamError("--rule-ids", "--rule-ids must contain every current rule id exactly once (got %d, want %d)", len(target), len(current))
+func completeRuleOrder(input, current []string) ([]string, error) {
+	if len(current) == 0 {
+		return nil, mailValidationParamError("--rule-ids", "current rule list is empty; cannot reorder non-empty --rule-ids")
 	}
-	want := make(map[string]int, len(current))
+	seen := make(map[string]bool, len(input))
+	currentSet := make(map[string]bool, len(current))
 	for _, id := range current {
-		want[id]++
+		currentSet[id] = true
 	}
-	for _, id := range target {
-		want[id]--
+	target := make([]string, 0, len(current))
+	for _, id := range input {
+		if seen[id] {
+			return nil, mailValidationParamError("--rule-ids", "duplicate rule_id %s in --rule-ids", id)
+		}
+		if !currentSet[id] {
+			return nil, mailValidationParamError("--rule-ids", "rule_id %s is not in current rule order", id)
+		}
+		seen[id] = true
+		target = append(target, id)
 	}
-	for id, count := range want {
-		if count != 0 {
-			return mailValidationParamError("--rule-ids", "--rule-ids mismatch for %s; run +rule-list first and submit the complete order", id)
+	for _, id := range current {
+		if !seen[id] {
+			target = append(target, id)
 		}
 	}
-	return nil
+	return target, nil
 }
 
 func normalizeRuleIDs(ids []string) []string {
