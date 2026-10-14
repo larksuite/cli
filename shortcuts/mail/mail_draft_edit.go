@@ -27,6 +27,7 @@ var MailDraftEdit = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
+		separateSendFlag,
 		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me). Prefer --mailbox for clarity; --from is kept for backward compatibility."},
 		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Takes priority over --from when both are set."},
 		{Name: "draft-id", Desc: "Target draft ID. Required for real edits. It can be omitted only when using the --print-patch-template flag by itself."},
@@ -74,13 +75,16 @@ var MailDraftEdit = common.Shortcut{
 			GET(mailboxPath(mailboxID, "drafts", draftID)).
 			Params(map[string]interface{}{"format": "raw"}).
 			PUT(mailboxPath(mailboxID, "drafts", draftID)).
-			Body(map[string]interface{}{
+			Body(withSeparateSendBody(runtime, map[string]interface{}{
 				"raw":     "<base64url-EML>",
 				"_patch":  patch.Summary(),
 				"_notice": "This edit flow has no optimistic locking. If the same draft is changed concurrently, the last writer wins.",
-			})
+			}))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if runtime.Changed("send-separately") && (runtime.Bool("inspect") || runtime.Bool("print-patch-template")) {
+			return mailValidationParamError("--send-separately", "--send-separately cannot be combined with read-only inspection or patch template output")
+		}
 		if runtime.Bool("print-patch-template") {
 			runtime.Out(buildDraftEditPatchTemplate(), nil)
 			return nil
@@ -212,7 +216,7 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return mailValidationError("serialize draft failed: %v", err).WithCause(err)
 		}
-		updateResult, err := draftpkg.UpdateWithRaw(runtime, mailboxID, draftID, serialized)
+		updateResult, err := draftpkg.UpdateWithRawSetting(runtime, mailboxID, draftID, serialized, separateSendSetting(runtime))
 		if err != nil {
 			return mailDecorateProblemMessage(err, "update draft failed")
 		}
@@ -280,7 +284,13 @@ func executeDraftInspect(runtime *common.RuntimeContext, mailboxID, draftID stri
 		"draft_id":   draftID,
 		"projection": projection,
 	}
+	if rawDraft.IsSendSeparately != nil {
+		out["is_send_separately"] = *rawDraft.IsSendSeparately
+	}
 	runtime.OutFormat(out, nil, func(w io.Writer) {
+		if rawDraft.IsSendSeparately != nil {
+			fmt.Fprintf(w, "is_send_separately: %t\n", *rawDraft.IsSendSeparately)
+		}
 		fmt.Fprintln(w, "Draft inspection (read-only, no changes applied).")
 		fmt.Fprintf(w, "draft_id: %s\n", draftID)
 		if projection.Subject != "" {
@@ -487,7 +497,7 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 		patch.Ops = append(patch.Ops, draftpkg.PatchOp{Op: "remove_calendar"})
 	}
 
-	if len(patch.Ops) == 0 && !runtime.Bool("request-receipt") {
+	if len(patch.Ops) == 0 && !runtime.Bool("request-receipt") && !runtime.Changed("send-separately") {
 		return patch, mailValidationError("at least one edit operation is required; use direct flags such as --set-subject/--set-to, or use --patch-file for body edits and other advanced operations (run --print-patch-template first)")
 	}
 	if len(patch.Ops) == 0 {
