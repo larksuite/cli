@@ -23,7 +23,7 @@ metadata:
 - **读取 / 摘要 — [`+fetch`](references/lark-doc-fetch.md)**：先读参考再获取文档。
 - **从零创作 — [`创建工作流`](references/lark-doc-create-workflow.md)**：先完整执行创建工作流，**简单任务不是跳过的理由**；
 - **导入 / 空文档 — [`+create`](references/lark-doc-create.md)**：仅创建空文档或原样导入用户提供的完整内容时，跳过创建工作流。
-- **编辑 / block 直达链接 — [`+update`](references/lark-doc-update.md)**：语义改写、润色、重组、补写或排版均按 update 参考完成。
+- **编辑 / block 直达链接 — [`+update`](references/lark-doc-update.md)**：语义改写、润色、重组、补写或排版均按 update 参考完成。编辑用户可能同步维护的已有文档时，每次写入前重新局部读取目标内容及最新 revision，并用本次读取的 revision ID 约束对应写入；若发生版本冲突，重新读取并基于最新内容生成修改。始终只修改用户本轮明确指定的最小范围。
 
 ### 辅助能力
 
