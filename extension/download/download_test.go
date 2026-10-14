@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"testing"
@@ -1051,5 +1052,191 @@ func TestOpenPreservesTypedReadError(t *testing.T) {
 	_, err = io.ReadAll(stream.Body)
 	if !errors.Is(err, want) {
 		t.Fatalf("ReadAll() error = %v, want preserved typed error", err)
+	}
+}
+
+func TestOpenResumeFromStartOffsetMultipart(t *testing.T) {
+	payload := bytes.Repeat([]byte("abcdefgh"), 256) // 2048 bytes
+	var requested []Request
+	source := func(_ context.Context, req Request) (*http.Response, error) {
+		requested = append(requested, req)
+		if req.Range == nil {
+			return testResponse(http.StatusOK, payload, nil), nil
+		}
+		start, end := req.Range.Start, req.Range.End
+		if start < 0 || end >= int64(len(payload)) || start > end {
+			return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "range unsupported").
+				WithCode(http.StatusRequestedRangeNotSatisfiable)
+		}
+		return testPartial(payload[start:end+1], start, end, int64(len(payload)), `"v1"`), nil
+	}
+
+	const start = int64(900)
+	stream, err := Open(context.Background(), immutableSource(source), Options{PartSize: 128, StartOffset: start})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer stream.Body.Close()
+	got, err := io.ReadAll(stream.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if !bytes.Equal(got, payload[start:]) {
+		t.Fatalf("resumed content mismatch: got %d bytes, want %d", len(got), len(payload)-int(start))
+	}
+	if stream.ContentLength != int64(len(payload)) {
+		t.Fatalf("ContentLength = %d, want %d", stream.ContentLength, len(payload))
+	}
+	if len(requested) == 0 || requested[0].Range == nil || requested[0].Range.Start != start {
+		t.Fatalf("first request = %#v, want a range starting at %d", requested[0], start)
+	}
+	// remaining bytes 1148 at PartSize 128 => 9 responses (ceil(1148/128))
+	if len(requested) != 9 {
+		t.Fatalf("requests = %d, want 9", len(requested))
+	}
+}
+
+func TestOpenResumeSendsExpectedETagOnFirstRange(t *testing.T) {
+	payload := []byte("abcdefgh")
+	var requested []Request
+	stream, err := Open(context.Background(), immutableSource(func(_ context.Context, req Request) (*http.Response, error) {
+		requested = append(requested, req)
+		if req.Range == nil {
+			return testResponse(http.StatusOK, payload, nil), nil
+		}
+		end := min(req.Range.End, int64(len(payload))-1)
+		return testPartial(payload[req.Range.Start:end+1], req.Range.Start, end, int64(len(payload)), `"v1"`), nil
+	}), Options{PartSize: 4, StartOffset: 2, ExpectedETag: `"v1"`})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer stream.Body.Close()
+	if _, err := io.ReadAll(stream.Body); err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if len(requested) == 0 || requested[0].IfRange != `"v1"` {
+		t.Fatalf("first request = %#v, want IfRange \"v1\"", requested)
+	}
+}
+
+func TestOpenResumeRejectsExpectedETagMismatch(t *testing.T) {
+	_, err := Open(context.Background(), immutableSource(func(_ context.Context, req Request) (*http.Response, error) {
+		if req.Range == nil {
+			return testResponse(http.StatusOK, []byte("abcdefgh"), nil), nil
+		}
+		return testPartial([]byte("cdef"), 2, 5, 8, `"v2"`), nil
+	}), Options{PartSize: 4, StartOffset: 2, ExpectedETag: `"v1"`})
+	if err == nil {
+		t.Fatal("expected ETag mismatch error")
+	}
+	requireProblem(t, err, errs.SubtypeNetworkRepresentationChanged, true, "validator")
+}
+
+func TestOpenResumeCompletesInSingleResponse(t *testing.T) {
+	payload := bytes.Repeat([]byte("z"), 100)
+	source := func(_ context.Context, req Request) (*http.Response, error) {
+		if req.Range == nil {
+			return testResponse(http.StatusOK, payload, nil), nil
+		}
+		start, end := req.Range.Start, req.Range.End
+		if end >= int64(len(payload)) {
+			end = int64(len(payload)) - 1
+		}
+		return testPartial(payload[start:end+1], start, end, int64(len(payload)), `"v1"`), nil
+	}
+	const start = int64(90)
+	stream, err := Open(context.Background(), immutableSource(source), Options{PartSize: 128, StartOffset: start})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer stream.Body.Close()
+	got, err := io.ReadAll(stream.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if !bytes.Equal(got, payload[start:]) {
+		t.Fatalf("got %q, want %q", got, payload[start:])
+	}
+}
+
+func TestOpenResumeRejectsWhenServerLacksRange(t *testing.T) {
+	payload := []byte("resume me")
+	_, err := Open(context.Background(), immutableSource(func(_ context.Context, req Request) (*http.Response, error) {
+		if req.Range != nil {
+			return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "range unsupported").
+				WithCode(http.StatusRequestedRangeNotSatisfiable)
+		}
+		return testResponse(http.StatusOK, payload, nil), nil
+	}), Options{PartSize: 4, StartOffset: 2})
+	if err == nil {
+		t.Fatal("expected error when server rejects Range during a resume")
+	}
+	requireProblem(t, err, errs.SubtypeNetworkProtocol, false, "cannot resume")
+}
+
+func TestOpenResumeRejectsFullResponseInsteadOfRange(t *testing.T) {
+	payload := []byte("full body")
+	_, err := Open(context.Background(), immutableSource(func(_ context.Context, req Request) (*http.Response, error) {
+		if req.Range != nil {
+			return testResponse(http.StatusOK, payload, nil), nil
+		}
+		return testResponse(http.StatusOK, payload, nil), nil
+	}), Options{PartSize: 4, StartOffset: 3})
+	if err == nil {
+		t.Fatal("expected error when server answers a resumed range request with a full 200")
+	}
+	requireProblem(t, err, errs.SubtypeNetworkProtocol, false, "cannot resume")
+}
+
+func TestOpenRejectsNegativeStartOffset(t *testing.T) {
+	_, err := Open(context.Background(), immutableSource(func(context.Context, Request) (*http.Response, error) {
+		t.Fatal("transport must not be called when options are invalid")
+		return nil, nil
+	}), Options{PartSize: 4, StartOffset: -1})
+	if err == nil {
+		t.Fatal("expected validation error for negative StartOffset")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("problem=%+v ok=%v, want internal/unknown validation error", problem, ok)
+	}
+}
+
+func TestOpenRejectsMutableResumeWithoutExpectedETag(t *testing.T) {
+	_, err := Open(context.Background(), MutableSource(unusedFetch), Options{PartSize: 4, StartOffset: 1})
+	if err == nil {
+		t.Fatal("expected mutable resume without ExpectedETag to be rejected")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("problem=%+v ok=%v, want internal/unknown validation error", problem, ok)
+	}
+}
+
+func TestOpenRejectsMultipartDisabledResume(t *testing.T) {
+	_, err := Open(context.Background(), immutableSource(func(context.Context, Request) (*http.Response, error) {
+		t.Fatal("transport must not be called when options are invalid")
+		return nil, nil
+	}), Options{PartSize: 4, StartOffset: 1, DisableMultipart: true})
+	if err == nil {
+		t.Fatal("expected validation error when multipart is disabled for a resume")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("problem=%+v ok=%v, want internal/unknown validation error", problem, ok)
+	}
+}
+
+func TestOpenRejectsOverflowingResumeRange(t *testing.T) {
+	_, err := Open(context.Background(), immutableSource(func(context.Context, Request) (*http.Response, error) {
+		t.Fatal("transport must not be called when options are invalid")
+		return nil, nil
+	}), Options{PartSize: 4, StartOffset: math.MaxInt64})
+	if err == nil {
+		t.Fatal("expected validation error for an overflowing resume range")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("problem=%+v ok=%v, want internal/unknown validation error", problem, ok)
 	}
 }
