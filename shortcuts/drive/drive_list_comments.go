@@ -18,6 +18,8 @@ const (
 	driveListCommentsDefaultPageSize     = 50
 	driveListCommentsDefaultSolvedStatus = "false"
 	driveListCommentsDefaultScope        = "all"
+	driveListCommentsOrderAsc            = "comment_id_asc"
+	driveListCommentsOrderDesc           = "comment_id_desc"
 )
 
 var driveListCommentsTypes = []string{"doc", "docx", "sheet", "file", "slides", "bitable", "base", "apps", "wiki"}
@@ -39,6 +41,8 @@ type driveListCommentsSpec struct {
 	PageToken    string
 	SolvedStatus string
 	CommentScope string
+	Order        string
+	OrderSet     bool
 	NeedReaction bool
 	NeedRelation bool
 }
@@ -59,6 +63,7 @@ var DriveListComments = common.Shortcut{
 		{Name: "type", Desc: "document type for bare --token; optional for URLs but must match the URL type when provided", Enum: driveListCommentsTypes},
 		{Name: "solved-status", Default: driveListCommentsDefaultSolvedStatus, Desc: "comment solved filter: false=unresolved, true=solved, all=all comments", Enum: []string{"false", "true", "all"}},
 		{Name: "comment-scope", Default: driveListCommentsDefaultScope, Desc: "comment scope filter: all=all comments, whole=full-document comments, partial=local/selection comments", Enum: []string{"all", "whole", "partial"}},
+		{Name: "order", Desc: "comment ID order; omit to use the API default ascending order", Enum: []string{driveListCommentsOrderAsc, driveListCommentsOrderDesc}},
 		{Name: "need-reaction", Type: "bool", Desc: "include reaction data on comment cards"},
 		{Name: "need-relation", Type: "bool", Desc: "include docx comment relation data; ignored for non-docx targets"},
 		{Name: "page-size", Type: "int", Default: "50", Desc: "page size, 1-100"},
@@ -117,6 +122,8 @@ func readDriveListCommentsSpec(runtime *common.RuntimeContext) (driveListComment
 		PageToken:    strings.TrimSpace(runtime.Str("page-token")),
 		SolvedStatus: strings.TrimSpace(runtime.Str("solved-status")),
 		CommentScope: strings.TrimSpace(runtime.Str("comment-scope")),
+		Order:        runtime.Str("order"),
+		OrderSet:     runtime.Changed("order"),
 		NeedReaction: runtime.Bool("need-reaction"),
 		NeedRelation: runtime.Bool("need-relation"),
 	}, nil
@@ -131,6 +138,9 @@ func validateDriveListCommentsSpec(spec driveListCommentsSpec) error {
 	}
 	if _, ok := driveListCommentsScopeParam(spec.CommentScope); !ok {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --comment-scope %q; allowed: all, whole, partial", spec.CommentScope).WithParam("--comment-scope")
+	}
+	if (spec.OrderSet || spec.Order != "") && spec.Order != driveListCommentsOrderAsc && spec.Order != driveListCommentsOrderDesc {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --order %q; allowed: comment_id_asc, comment_id_desc", spec.Order).WithParam("--order")
 	}
 	return nil
 }
@@ -309,6 +319,9 @@ func buildDriveListCommentsParams(spec driveListCommentsSpec, fileType string) m
 	}
 	if spec.PageToken != "" {
 		params["page_token"] = spec.PageToken
+	}
+	if spec.Order != "" {
+		params["order"] = spec.Order
 	}
 	if value, ok := driveListCommentsSolvedStatusParam(spec.SolvedStatus); ok && value != nil {
 		params["is_solved"] = *value

@@ -90,6 +90,7 @@ func TestDriveAddCommentMarkdownFileWorkflow(t *testing.T) {
 			"--type", "file",
 			"--solved-status", "all",
 			"--page-size", "100",
+			"--order", "comment_id_desc",
 		},
 		DefaultAs: "bot",
 	}, clie2e.RetryOptions{

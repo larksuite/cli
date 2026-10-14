@@ -29,6 +29,7 @@ lark-cli drive +list-comments --url "<DOCUMENT_URL>" --solved-status all
 | `--type` | 裸 token 时必填 | 传 token 对应类型：`doc`、`docx`、`sheet`、`file`、`slides`、`bitable`、`base`、`apps`、`wiki`。wiki token 使用 `wiki`；传 `base` 时，CLI 会按 `bitable` 类型处理。 |
 | `--solved-status` | 否 | `false` / `true` / `all`，默认 `false`。`false` 查未解决评论；`true` 查已解决评论；`all` 查全部评论。 |
 | `--comment-scope` | 否 | `all` / `whole` / `partial`，默认 `all`。`all` 查全部范围；`whole` 查全文评论；`partial` 查局部评论。 |
+| `--order` | 否 | `comment_id_asc` 按评论 ID 升序（省略时默认）；`comment_id_desc` 按评论 ID 降序。 |
 | `--need-reaction` | 否 | 是否返回评论卡片上的 reaction 数据；只有用户明确需要 reaction 时才带。 |
 | `--need-relation` | 否 | docx 评论定位关系字段；仅 docx 生效，非 docx 静默忽略。需要定位正文时先读 [`lark-drive-comment-location.md`](lark-drive-comment-location.md)。 |
 | `--page-size` | 否 | 默认 50，最大 100。 |
@@ -57,9 +58,8 @@ lark-cli drive +list-comments --url "<DOCUMENT_URL>" --solved-status all
 
 ## 排序
 
-- 只有当用户明确提到“最新评论”“最后评论”“最早评论”时，才需要按 `create_time` 排序。
-- 排序前必须拉完所有评论分页，不能只取第一页。
-- “最新评论”/“最后评论”：按 `create_time` 降序取第一条。“最早评论”：按 `create_time` 升序取第一条。
+- 用户需要“最新评论”“最后评论”时，传 `--order comment_id_desc --page-size 1`；需要“最早评论”时，传 `--order comment_id_asc --page-size 1`。
+- 查询近一周等时间范围的评论时，传 `--order comment_id_desc` 倒序逐页查询，按 `create_time` 筛选；遇到早于范围起点的评论即可停止。
 - 用户只说“第一条评论”时，直接使用返回的第一条，不需要额外排序。
 
 ## 输出

@@ -10,6 +10,7 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestDriveListCommentsDryRun_DocxDefaults(t *testing.T) {
@@ -49,6 +50,38 @@ func TestDriveListCommentsDryRun_DocxDefaults(t *testing.T) {
 	if clie2e.DryRunGet(out, "api.0.params.user_id_type").Exists() {
 		t.Fatalf("api.0.params.user_id_type should be omitted\nstdout:\n%s", out)
 	}
+	if clie2e.DryRunGet(out, "api.0.params.order").Exists() {
+		t.Fatalf("api.0.params.order should be omitted by default\nstdout:\n%s", out)
+	}
+}
+
+func TestDriveListCommentsDryRun_RejectsExplicitEmptyOrder(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+list-comments",
+			"--url", "https://example.larksuite.com/docx/docxDryRunCommentList",
+			"--order=",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Empty(t, result.Stdout)
+	if got := gjson.Get(result.Stderr, "error.type").String(); got != "validation" {
+		t.Fatalf("error.type = %q, want validation\nstderr:\n%s", got, result.Stderr)
+	}
+	if got := gjson.Get(result.Stderr, "error.subtype").String(); got != "invalid_argument" {
+		t.Fatalf("error.subtype = %q, want invalid_argument\nstderr:\n%s", got, result.Stderr)
+	}
+	if got := gjson.Get(result.Stderr, "error.param").String(); got != "--order" {
+		t.Fatalf("error.param = %q, want --order\nstderr:\n%s", got, result.Stderr)
+	}
 }
 
 func TestDriveListCommentsDryRun_AppsPageURL(t *testing.T) {
@@ -61,6 +94,7 @@ func TestDriveListCommentsDryRun_AppsPageURL(t *testing.T) {
 		Args: []string{
 			"drive", "+list-comments",
 			"--url", "https://bytedance.feishu.cn/page/appsDryRunCommentList/",
+			"--order", "comment_id_desc",
 			"--dry-run",
 		},
 		DefaultAs: "bot",
@@ -74,6 +108,9 @@ func TestDriveListCommentsDryRun_AppsPageURL(t *testing.T) {
 	}
 	if got := clie2e.DryRunGet(out, "api.0.params.file_type").String(); got != "apps" {
 		t.Fatalf("api.0.params.file_type=%q, want apps\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.params.order").String(); got != "comment_id_desc" {
+		t.Fatalf("api.0.params.order=%q, want comment_id_desc\nstdout:\n%s", got, out)
 	}
 }
 
@@ -92,6 +129,7 @@ func TestDriveListCommentsDryRun_WikiToken(t *testing.T) {
 			"--comment-scope", "partial",
 			"--need-relation",
 			"--page-size", "99",
+			"--order", "comment_id_asc",
 			"--dry-run",
 		},
 		DefaultAs: "bot",
@@ -121,5 +159,8 @@ func TestDriveListCommentsDryRun_WikiToken(t *testing.T) {
 	}
 	if got := clie2e.DryRunGet(out, "api.1.params.need_relation").String(); got != "<sent only when obj_type is docx>" {
 		t.Fatalf("api.1.params.need_relation=%q, want conditional placeholder\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.1.params.order").String(); got != "comment_id_asc" {
+		t.Fatalf("api.1.params.order=%q, want comment_id_asc\nstdout:\n%s", got, out)
 	}
 }

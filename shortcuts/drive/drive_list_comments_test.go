@@ -214,6 +214,20 @@ func TestValidateDriveListCommentsSpec(t *testing.T) {
 			},
 			wantParam: "--comment-scope",
 		},
+		{
+			name: "invalid order",
+			mutate: func(spec *driveListCommentsSpec) {
+				spec.Order = "create_time_desc"
+			},
+			wantParam: "--order",
+		},
+		{
+			name: "explicit empty order",
+			mutate: func(spec *driveListCommentsSpec) {
+				spec.OrderSet = true
+			},
+			wantParam: "--order",
+		},
 	}
 
 	for _, tt := range tests {
@@ -281,12 +295,22 @@ func TestBuildDriveListCommentsParams(t *testing.T) {
 	if _, ok := defaultParams["user_id_type"]; ok {
 		t.Fatalf("default params should omit user_id_type: %#v", defaultParams)
 	}
+	if _, ok := defaultParams["order"]; ok {
+		t.Fatalf("default params should omit order: %#v", defaultParams)
+	}
+
+	ascSpec := defaultSpec
+	ascSpec.Order = driveListCommentsOrderAsc
+	if got := buildDriveListCommentsParams(ascSpec, "docx")["order"]; got != driveListCommentsOrderAsc {
+		t.Fatalf("ascending order = %#v, want %q", got, driveListCommentsOrderAsc)
+	}
 
 	allPartialSpec := driveListCommentsSpec{
 		PageSize:     100,
 		PageToken:    "next",
 		SolvedStatus: "all",
 		CommentScope: "partial",
+		Order:        driveListCommentsOrderDesc,
 		NeedReaction: true,
 		NeedRelation: true,
 	}
@@ -305,6 +329,9 @@ func TestBuildDriveListCommentsParams(t *testing.T) {
 	}
 	if got := allPartialParams["page_token"]; got != "next" {
 		t.Fatalf("page_token = %#v, want next", got)
+	}
+	if got := allPartialParams["order"]; got != driveListCommentsOrderDesc {
+		t.Fatalf("descending order = %#v, want %q", got, driveListCommentsOrderDesc)
 	}
 
 	sheetParams := buildDriveListCommentsParams(allPartialSpec, "sheet")
@@ -340,6 +367,9 @@ func TestDriveListCommentsExecuteDocx(t *testing.T) {
 			if got := query.Get("user_id_type"); got != "" {
 				t.Errorf("user_id_type = %q, want omitted", got)
 			}
+			if got := query.Get("order"); got != driveListCommentsOrderDesc {
+				t.Errorf("order = %q, want %q", got, driveListCommentsOrderDesc)
+			}
 		},
 		Body: map[string]interface{}{
 			"code": 0,
@@ -357,6 +387,7 @@ func TestDriveListCommentsExecuteDocx(t *testing.T) {
 	err := mountAndRunDrive(t, DriveListComments, []string{
 		"+list-comments",
 		"--url", "https://example.larksuite.com/docx/docxResource",
+		"--order", driveListCommentsOrderDesc,
 		"--as", "user",
 	}, f, stdout)
 	if err != nil {
@@ -412,6 +443,9 @@ func TestDriveListCommentsExecuteWikiResolvesToDocx(t *testing.T) {
 			if got := query.Get("need_relation"); got != "true" {
 				t.Errorf("need_relation = %q, want true for resolved docx", got)
 			}
+			if got := query.Get("order"); got != driveListCommentsOrderAsc {
+				t.Errorf("order = %q, want %q", got, driveListCommentsOrderAsc)
+			}
 		},
 		Body: map[string]interface{}{
 			"code": 0,
@@ -430,6 +464,7 @@ func TestDriveListCommentsExecuteWikiResolvesToDocx(t *testing.T) {
 		"--solved-status", "all",
 		"--comment-scope", "whole",
 		"--need-relation",
+		"--order", driveListCommentsOrderAsc,
 		"--as", "user",
 	}, f, stdout)
 	if err != nil {
