@@ -105,6 +105,8 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 ["位置", "intersects", "深圳"]
 ```
 
+不推荐写 `["位置", "==", "深圳"]` 这类精确匹配，除非确保筛选值与完整 `full_address` 完全一致。
+
 ### `number` / `auto_number`
 
 用数字：
