@@ -163,50 +163,67 @@ func TestClassifyTATResponseCode_InvalidClient_MapsToInvalidClient(t *testing.T)
 	}
 }
 
-// TestClassifyTATResponseCode_UnauthorizedClient_MapsToInvalidClient pins that
-// unauthorized_client is treated as the same credential failure as
-// invalid_client.
-func TestClassifyTATResponseCode_UnauthorizedClient_MapsToInvalidClient(t *testing.T) {
-	err := classifyTATResponseCode(0, "unauthorized_client", "client not authorized", "feishu", "cli_app_x")
-	var cfgErr *errs.ConfigError
-	if !errors.As(err, &cfgErr) {
-		t.Fatalf("expected *errs.ConfigError, got %T: %v", err, err)
-	}
-	if cfgErr.Subtype != errs.SubtypeInvalidClient {
-		t.Errorf("Subtype = %q, want %q", cfgErr.Subtype, errs.SubtypeInvalidClient)
+func TestClassifyTATResponseCode_OAuthErrors(t *testing.T) {
+	for _, tc := range []struct {
+		oauthError string
+		category   errs.Category
+		subtype    errs.Subtype
+	}{
+		{"invalid_client", errs.CategoryConfig, errs.SubtypeInvalidClient},
+		{"unauthorized_client", errs.CategoryAuthorization, errs.SubtypeUnauthorizedClient},
+		{"invalid_grant", errs.CategoryAuthentication, errs.SubtypeInvalidGrant},
+		{"invalid_request", errs.CategoryAPI, errs.SubtypeInvalidParameters},
+		{"unsupported_grant_type", errs.CategoryAPI, errs.SubtypeUnsupportedGrantType},
+		{"invalid_scope", errs.CategoryAPI, errs.SubtypeInvalidScope},
+		{"vendor_error", errs.CategoryAPI, errs.SubtypeUnknown},
+	} {
+		for _, code := range []int{0, 99999} {
+			for _, description := range []string{"server detail", ""} {
+				t.Run(fmt.Sprintf("%s/%d/description=%t", tc.oauthError, code, description != ""), func(t *testing.T) {
+					err := classifyTATResponseCode(code, tc.oauthError, description, "feishu", "cli_app_x")
+					problem, ok := errs.ProblemOf(err)
+					wantMessage := description
+					if wantMessage == "" {
+						wantMessage = tc.oauthError
+					}
+					if !ok || problem.Category != tc.category || problem.Subtype != tc.subtype || problem.Code != code || problem.Retryable || problem.Message != wantMessage {
+						t.Fatalf("error = %+v, want %s/%s code=%d message=%q without retry", problem, tc.category, tc.subtype, code, wantMessage)
+					}
+				})
+			}
+		}
 	}
 }
 
-// TestClassifyTATResponseCode_OtherErrorFallsThrough pins that OAuth errors
-// outside the credential set fall through to the generic BuildAPIError fallback
-// — still typed, but not a ConfigError. The mapping is narrow and intentional.
-func TestClassifyTATResponseCode_OtherErrorFallsThrough(t *testing.T) {
-	err := classifyTATResponseCode(20068, "invalid_scope", "unauthorized scope", "feishu", "cli_app_x")
-	if err == nil {
-		t.Fatal("expected non-nil error for invalid_scope")
-	}
-	var cfgErr *errs.ConfigError
-	if errors.As(err, &cfgErr) {
-		t.Fatalf("invalid_scope must not be classified as ConfigError, got %T", err)
-	}
-}
-
-// TestClassifyTATResponseCode_CodeZeroOtherError_StillTyped pins the code-0
-// backstop: a non-credential OAuth error (e.g. invalid_scope) that arrives with no
-// numeric code (code 0) must still produce a non-nil typed error. BuildAPIError
-// returns nil for code 0 (Feishu's success convention); without the backstop,
-// FetchTAT would surface this deterministic rejection as (nil, nil) — no token
-// with no error.
-func TestClassifyTATResponseCode_CodeZeroOtherError_StillTyped(t *testing.T) {
-	err := classifyTATResponseCode(0, "invalid_scope", "the requested scope is not granted", "feishu", "cli_app_x")
-	if err == nil {
-		t.Fatal("expected non-nil error for code-0 invalid_scope (must not be swallowed as success)")
-	}
-	if !errs.IsTyped(err) {
-		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
-	}
-	var cfgErr *errs.ConfigError
-	if errors.As(err, &cfgErr) {
-		t.Fatalf("code-0 invalid_scope must not be a ConfigError, got %T", err)
+func TestClassifyTATResponseCode_NumericPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		code       int
+		oauthError string
+		category   errs.Category
+		subtype    errs.Subtype
+		retryable  bool
+	}{
+		{21000, "invalid_client", errs.CategoryPolicy, errs.SubtypeChallengeRequired, false},
+		{21001, "unauthorized_client", errs.CategoryPolicy, errs.SubtypeAccessDenied, false},
+		{20037, "invalid_grant", errs.CategoryAuthentication, errs.SubtypeRefreshTokenExpired, false},
+		{99991672, "invalid_scope", errs.CategoryAuthorization, errs.SubtypeAppScopeNotApplied, false},
+		{99991400, "invalid_request", errs.CategoryAPI, errs.SubtypeRateLimit, true},
+		{10014, "unauthorized_client", errs.CategoryConfig, errs.SubtypeInvalidClient, false},
+		{20002, "invalid_client", errs.CategoryConfig, errs.SubtypeInvalidClient, false},
+		{20048, "invalid_client", errs.CategoryConfig, errs.SubtypeInvalidClient, false},
+		{20068, "invalid_scope", errs.CategoryAPI, errs.SubtypeInvalidScope, false},
+		{800070003, "invalid_scope", errs.CategoryAPI, errs.SubtypeInvalidScope, false},
+		{800100112, "invalid_scope", errs.CategoryInternal, errs.SubtypeUnknown, false},
+	} {
+		t.Run(fmt.Sprint(tc.code), func(t *testing.T) {
+			err := classifyTATResponseCode(tc.code, tc.oauthError, "server detail", "feishu", "cli_app_x")
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != tc.category || problem.Subtype != tc.subtype || problem.Code != tc.code || problem.Retryable != tc.retryable {
+				t.Fatalf("error = %+v, want %s/%s code=%d retryable=%t", problem, tc.category, tc.subtype, tc.code, tc.retryable)
+			}
+			if tc.category == errs.CategoryConfig && problem.Hint == "" {
+				t.Fatal("numeric configuration errors must retain recovery guidance")
+			}
+		})
 	}
 }

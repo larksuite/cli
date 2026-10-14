@@ -29,43 +29,31 @@ func withKeyStoreLockContext(ctx context.Context, fn func() error) error {
 	return signingstore.WithStoreLock(ctx, filepath.Join(directory, "keysigner", "key_store.lock"), fn)
 }
 
-// KeyStore coordinates local key lifecycles. Like DPoP's store it owns backend
-// selection and locking; PKJWT binding metadata remains in the existing profile.
+// KeyStore manages generated keys for private_key_jwt_local_keypair.
+// It owns backend selection and locking; key binding metadata stays in the profile.
 type KeyStore struct {
 	keychain keychain.KeychainAccess
 	signers  []keysigner.Signer
 }
 
 func NewKeyStore(kc keychain.KeychainAccess) *KeyStore {
-	store := newKeyStoreWithSigners(kc, nil)
+	store := NewKeyStoreWithSigners(kc)
 	store.signers = append(store.signers, registrationPlatformSigners()...)
 	store.signers = append(store.signers, newSoftwareSigner(store.keychain))
 	return store
 }
 
-// NewKeyStoreWithSigner injects a backend while retaining credential ownership.
-func NewKeyStoreWithSigner(kc keychain.KeychainAccess, signer keysigner.Signer) *KeyStore {
-	var signers []keysigner.Signer
-	if signer != nil {
-		signers = []keysigner.Signer{signer}
-	}
-	return newKeyStoreWithSigners(kc, signers)
-}
-
-// NewKeyStoreWithSigners is the registration command's ordered test-injection seam.
+// NewKeyStoreWithSigners uses only the supplied backends, in order, while retaining credential ownership.
 func NewKeyStoreWithSigners(kc keychain.KeychainAccess, signers ...keysigner.Signer) *KeyStore {
-	return newKeyStoreWithSigners(kc, signers)
-}
-
-func newKeyStoreWithSigners(kc keychain.KeychainAccess, signers []keysigner.Signer) *KeyStore {
 	if kc == nil {
 		kc = keychain.Default()
 	}
 	return &KeyStore{keychain: kc, signers: append([]keysigner.Signer(nil), signers...)}
 }
 
-// Key retains a snapshot of the public identity and protection level. PKJWT
-// supports both EC and RSA keys; the DPoP clock remains protocol-specific.
+// Key retains a snapshot of the public identity and protection level.
+// private_key_jwt_local_keypair supports both EC and RSA keys;
+// the DPoP clock remains protocol-specific.
 type Key struct {
 	id            string
 	public        crypto.PublicKey

@@ -29,6 +29,7 @@ import (
 	"syscall"
 	"time"
 
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
@@ -127,6 +128,11 @@ func run(ctx context.Context, listen, keyFile, keysDir, logFile, profile string)
 		return fmt.Errorf("failed to load config: %v", err)
 	}
 
+	signer, err := larkauth.ResolveConfigSigner(cfg, factory.Keychain)
+	if err != nil {
+		return fmt.Errorf("failed to resolve application signer: %w", err)
+	}
+
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		return fmt.Errorf("failed to listen on %s: %v", listen, err)
@@ -139,7 +145,7 @@ func run(ctx context.Context, listen, keyFile, keysDir, logFile, profile string)
 	)
 	allowedIDs := buildAllowedIdentities(cfg)
 
-	ab := newAuthBridge([]byte(keyHex), cfg.AppID, cfg.AppSecret, cfg.Brand, cfg.DPoPMode, factory.Credential, auditLogger)
+	ab := newAuthBridge([]byte(keyHex), cfg, signer, auditLogger)
 
 	handler := &proxyHandler{
 		key:          []byte(keyHex),

@@ -6,7 +6,6 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -261,6 +260,7 @@ func TestRegisterAppWithDiscovery_PollsUntilCredentials(t *testing.T) {
 	responses := []string{
 		`{}`,
 		`{"code":1061045,"msg":"internal service error"}`,
+		`{"code":1107010,"msg":"not a public-key quota error"}`,
 		`{"client_id":"cli_x","user_info":{"open_id":"ou_x","tenant_brand":"feishu"}}`,
 		`{"client_id":"cli_x","client_secret":"test-secret","user_info":{"open_id":"ou_x","tenant_brand":"feishu"}}`,
 	}
@@ -276,31 +276,11 @@ func TestRegisterAppWithDiscovery_PollsUntilCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterAppWithDiscovery error = %v, want nil", err)
 	}
-	if polls != 4 {
-		t.Errorf("polls = %d, want 4", polls)
+	if polls != len(responses) {
+		t.Errorf("polls = %d, want %d", polls, len(responses))
 	}
 	if result.ClientSecret != "test-secret" || finalBrand != core.BrandFeishu {
 		t.Errorf("result = (%q, %q), want (test-secret, feishu)", result.ClientSecret, finalBrand)
-	}
-}
-
-func TestRegisterAppWithDiscovery_PublicKeyCodesAreTerminal(t *testing.T) {
-	for _, code := range []int{
-		AppRegistrationCodeInvalidPublicKey,
-		AppRegistrationCodePublicKeyLimit,
-	} {
-		t.Run(fmt.Sprint(code), func(t *testing.T) {
-			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-				return jsonResponse(fmt.Sprintf(`{"code":%d,"msg":"rejected"}`, code)), nil
-			})}
-			resp := &AppRegistrationResponse{DeviceCode: "device", Interval: 0, ExpiresIn: 5}
-
-			_, _, err := RegisterAppWithDiscovery(context.Background(), client, resp, io.Discard)
-			var remoteErr *AppRegistrationRemoteError
-			if !errors.As(err, &remoteErr) || remoteErr.Code != code {
-				t.Fatalf("error = %v, want registration code %d", err, code)
-			}
-		})
 	}
 }
 
@@ -602,7 +582,7 @@ func TestRegistrationResultComplete(t *testing.T) {
 	}
 }
 
-func TestRequestAppRegistration_BeginPrivateKeyJWT(t *testing.T) {
+func TestRequestAppRegistration_BeginPrivateKeyJWTLocalKeyPair(t *testing.T) {
 	var body url.Values
 	httpClient := captureClient(&body, beginRespJSON)
 
@@ -621,7 +601,7 @@ func TestRequestAppRegistration_BeginPrivateKeyJWT(t *testing.T) {
 	}
 }
 
-func TestRequestAppRegistration_BeginPrivateKeyJWTExistingAppID(t *testing.T) {
+func TestRequestAppRegistration_BeginPrivateKeyJWTLocalKeyPairExistingAppID(t *testing.T) {
 	var body url.Values
 	hc := captureClient(&body, beginRespJSON)
 

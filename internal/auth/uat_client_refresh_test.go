@@ -22,9 +22,11 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/internal/vfs"
@@ -35,6 +37,17 @@ type refreshHTTPTestStep struct {
 	err         error
 	markWritten bool
 	beforeReply func() error
+}
+
+type failSecondAssertionSigner struct {
+	calls atomic.Int32
+}
+
+func (s *failSecondAssertionSigner) SignClientAssertion(context.Context, string, string, string) (string, string, error) {
+	if s.calls.Add(1) == 1 {
+		return jwt.ClientAssertionType, "assertion-first", nil
+	}
+	return "", "", errors.New("second assertion failed")
 }
 
 var invalidProofRefreshResponse = `{"code":` + strconv.Itoa(dpop.ClockSkewErrorCode) + `,"error":"` + dpop.InvalidProofOAuthError + `"}`
@@ -110,6 +123,103 @@ func requireRefreshProblem(t *testing.T, err error, category errs.Category, subt
 			problem.Category, problem.Subtype, problem.Retryable, category, subtype, retryable)
 	}
 	return problem
+}
+
+func TestDoRefreshToken_ProviderResolutionFailsBeforeHTTP(t *testing.T) {
+	stored := newRefreshTestToken()
+	opts := newRefreshTestOptions(stored)
+	opts.AuthMethod = core.AuthMethodPrivateKeyJWTLocalKeyPair
+	opts.KeyProvider = core.KeylessProviderLarkSuite
+	opts.KeyLabel = "openclaw-lark"
+
+	previous := resolveExternalAssertionSigner
+	resolveExternalAssertionSigner = func(context.Context, string) (clientAssertionSigner, error) {
+		return nil, errors.New("provider unavailable")
+	}
+	t.Cleanup(func() { resolveExternalAssertionSigner = previous })
+
+	var calls atomic.Int32
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return nil, errors.New("must not send")
+	})}
+	refreshed, err := doRefreshToken(context.Background(), client, opts, stored)
+	if err == nil || refreshed != nil {
+		t.Fatalf("doRefreshToken() = (%v, %v), want provider error", refreshed, err)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("HTTP calls = %d, want 0", calls.Load())
+	}
+	if stored.RefreshToken != "refresh-old" {
+		t.Fatalf("refresh token mutated to %q", stored.RefreshToken)
+	}
+}
+
+func TestDoRefreshToken_UncertainRequestThenSigningFailurePreservesToken(t *testing.T) {
+	setupStoredTokenTest(t)
+	stored := newRefreshTestToken()
+	if err := SetStoredToken(stored); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+	opts := newRefreshTestOptions(stored)
+	opts.AuthMethod = core.AuthMethodPrivateKeyJWTLocalKeyPair
+	opts.KeyProvider = core.KeylessProviderLarkSuite
+	opts.KeyLabel = "openclaw-lark"
+
+	signer := &failSecondAssertionSigner{}
+	previous := resolveExternalAssertionSigner
+	resolveExternalAssertionSigner = func(context.Context, string) (clientAssertionSigner, error) {
+		return signer, nil
+	}
+	t.Cleanup(func() { resolveExternalAssertionSigner = previous })
+
+	var calls atomic.Int32
+	client := scriptedRefreshClient(t, []refreshHTTPTestStep{{
+		err: errors.New("connection lost after write"), markWritten: true,
+	}}, &calls)
+	refreshed, err := doRefreshToken(context.Background(), client, opts, stored)
+	if err == nil || refreshed != nil {
+		t.Fatalf("doRefreshToken() = (%v, %v), want signing error", refreshed, err)
+	}
+	if calls.Load() != 1 || signer.calls.Load() != 2 {
+		t.Fatalf("HTTP calls=%d sign calls=%d, want 1 and 2", calls.Load(), signer.calls.Load())
+	}
+	if IsNeedUserAuthorizationError(err) {
+		t.Fatalf("signing failure replaced with need-user-authorization: %v", err)
+	}
+	if got := mustGetStoredToken(t, stored.AppId, stored.UserOpenId); got == nil || got.RefreshToken != stored.RefreshToken {
+		t.Fatalf("stored token = %#v, want original token preserved", got)
+	}
+}
+
+func TestGetValidAccessTokenPrivateKeyJWTLocalKeyPairFinishesRefreshAfterCallerCancellation(t *testing.T) {
+	signer := newFakeAuthSigner(t)
+	setupStoredTokenTest(t)
+	stored := newRefreshTestToken()
+	opts := newRefreshTestOptions(stored)
+	opts.AuthMethod, opts.Signer, opts.KeyLabel = core.AuthMethodPrivateKeyJWTLocalKeyPair, signer, "app-key"
+	if err := SetStoredToken(stored); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		cancel()
+		if req.Context().Err() != nil {
+			t.Fatal("caller cancellation interrupted token rotation")
+		}
+		return refreshHTTPResponse(req, `{"access_token":"access-new","refresh_token":"refresh-new","expires_in":120,"refresh_token_expires_in":600}`), nil
+	})}
+	token, err := GetValidAccessToken(ctx, client, opts)
+	if err != nil || token == nil || token.AccessToken != "access-new" {
+		t.Fatalf("refresh result = (%+v, %v)", token, err)
+	}
+	if got := mustGetStoredToken(t, stored.AppId, stored.UserOpenId); got == nil || got.RefreshToken != "refresh-new" {
+		t.Fatalf("rotated token not stored: %#v", got)
+	}
+	if err := withTokenStorageLock(stored.AppId, stored.UserOpenId, func() error { return nil }); err != nil {
+		t.Fatalf("lock not released: %v", err)
+	}
 }
 
 func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
@@ -350,6 +460,65 @@ func TestRefreshDPoPTokenRecoversClockAndKeepsBinding(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRefreshPrivateKeyJWTLocalKeyPairWithDPoPPreservesBinding(t *testing.T) {
+	appSigner := newFakeAuthSigner(t)
+	setupStoredTokenTest(t)
+	store, key := newAuthDPoPStore(t)
+	if err := store.SaveContext(context.Background(), key); err != nil {
+		t.Fatal(err)
+	}
+	jkt, err := key.Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kid, err := keysigner.PublicKeyThumbprint(appSigner.key.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kid == jkt {
+		t.Fatal("keys are not independent")
+	}
+	stored := newRefreshTestToken()
+	stored.TokenType, stored.DPoPKeyID, stored.DPoPJKT, stored.DPoPKeySecurityLevel = StoredTokenTypeDPoP, key.ID(), jkt, string(key.SecurityLevel())
+	if err := SetStoredToken(stored); err != nil {
+		t.Fatal(err)
+	}
+	opts := newRefreshTestOptions(stored)
+	opts.AuthMethod, opts.Signer, opts.KeyLabel = core.AuthMethodPrivateKeyJWTLocalKeyPair, appSigner, "app-key"
+	opts.DPoPMode, opts.DPoPKeyStore = core.DPoPModeRequired, store
+	seen, calls := map[string]bool{}, 0
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == dpop.HeartbeatPath {
+			return refreshHTTPResponse(req, `{"code":0,"data":{"now":"`+strconv.FormatInt(time.Now().Unix(), 10)+`"}}`), nil
+		}
+		calls++
+		var payload map[string]string
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := payload["client_secret"]; ok {
+			t.Fatal("refresh sent client_secret")
+		}
+		proof := req.Header.Get(dpop.ProofHeader)
+		if proof == "" {
+			t.Fatal("refresh lost DPoP proof")
+		}
+		checkPrivateKeyJWTLocalKeyPairRequest(t, payload["client_assertion"], proof, opts.AppId, kid, seen)
+		if calls == 1 {
+			return refreshHTTPResponse(req, `{"code":20050,"error_description":"retry"}`), nil
+		}
+		return refreshHTTPResponse(req, `{"access_token":"access-new","refresh_token":"refresh-new","token_type":"DPoP","expires_in":7200,"refresh_token_expires_in":86400}`), nil
+	})}
+	result, err := GetValidAccessToken(context.Background(), client, opts)
+	if err != nil || result == nil || result.DPoP == nil || calls != 2 {
+		t.Fatalf("refresh = (%+v, %v), calls=%d", result, err, calls)
+	}
+	current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
+	if current == nil || current.DPoPKeyID != key.ID() || current.DPoPJKT != jkt || current.RefreshToken != "refresh-new" {
+		t.Fatal("refresh lost binding or rotation")
 	}
 }
 

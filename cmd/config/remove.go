@@ -4,12 +4,14 @@
 package config
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -55,6 +57,9 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 
 	// Clean up keychain entries for all apps after config is cleared.
 	for _, app := range config.Apps {
+		if err := keylesshelper.CleanupUnreferencedSigningKey(context.Background(), f.Keychain, app, empty); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "Warning: configuration removed; failed to clean up local signing key for app %s: %v\n", app.AppId, err)
+		}
 		core.RemoveSecretStore(app.AppSecret, f.Keychain)
 		for _, user := range app.Users {
 			_ = auth.RemoveStoredToken(app.AppId, user.UserOpenId)

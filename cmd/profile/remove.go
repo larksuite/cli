@@ -4,6 +4,7 @@
 package profile
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 )
@@ -59,6 +61,7 @@ func profileRemoveRun(f *cmdutil.Factory, name string) error {
 	appId := app.AppId
 	appSecret := app.AppSecret
 	users := app.Users
+	authMethod, keyRef := app.AuthMethod, app.KeyRef
 
 	// Remove from slice
 	multi.Apps = append(multi.Apps[:idx], multi.Apps[idx+1:]...)
@@ -76,6 +79,9 @@ func profileRemoveRun(f *cmdutil.Factory, name string) error {
 	}
 
 	// Best-effort credential cleanup after config commit
+	if err := keylesshelper.CleanupUnreferencedSigningKey(context.Background(), f.Keychain, core.AppConfig{AuthMethod: authMethod, KeyRef: keyRef}, multi); err != nil {
+		fmt.Fprintf(f.IOStreams.ErrOut, "Warning: profile removed; failed to clean up local signing key for app %s: %v\n", appId, err)
+	}
 	core.RemoveSecretStore(appSecret, f.Keychain)
 	for _, user := range users {
 		larkauth.RemoveStoredToken(appId, user.UserOpenId)
