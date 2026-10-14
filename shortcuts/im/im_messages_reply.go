@@ -11,6 +11,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
+	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
 )
 
 var ImMessagesReply = common.Shortcut{
@@ -230,11 +231,23 @@ var ImMessagesReply = common.Shortcut{
 			return err
 		}
 
-		runtime.Out(map[string]interface{}{
+		outData := map[string]interface{}{
 			"message_id":  resData["message_id"],
 			"chat_id":     resData["chat_id"],
 			"create_time": common.FormatTimeWithSeconds(resData["create_time"]),
-		}, nil)
+		}
+		message := convertlib.MessageLinkDataFromMap(resData)
+		links := message.AppLinks(runtime.Config.Brand)
+		if message.ThreadID != "" {
+			outData["thread_id"] = message.ThreadID
+		}
+		if links.ThreadAppLink != "" {
+			outData["thread_app_link"] = links.ThreadAppLink
+		}
+		if links.MessageAppLink != "" {
+			outData["message_app_link"] = links.MessageAppLink
+		}
+		runtime.Out(outData, nil)
 		return nil
 	},
 }

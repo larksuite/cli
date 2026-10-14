@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -286,40 +285,7 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 }
 
 func assembleMessageAppLink(m map[string]interface{}, brand core.LarkBrand) string {
-	domain := resolveAppLinkDomain(brand)
-	if domain == "" {
-		return ""
-	}
-
-	chatID, _ := m["chat_id"].(string)
-	threadID, _ := m["thread_id"].(string)
-	msgPos, okMsgPos := normalizeMessagePosition(m["message_position"])
-	threadPos, okThreadPos := normalizeMessagePosition(m["thread_message_position"])
-
-	// Thread app link requires both thread_id and chat_id.
-	// Emit both underscore-less (openthreadid/openchatid) and snake_case (open_thread_id/open_chat_id)
-	// query keys so PC and mobile clients can both resolve the link.
-	var u *url.URL
-	if threadID != "" && chatID != "" && okThreadPos {
-		u = &url.URL{Scheme: "https", Host: domain, Path: "/client/thread/open"}
-		q := url.Values{}
-		q.Set("openthreadid", threadID)
-		q.Set("openchatid", chatID)
-		q.Set("open_thread_id", threadID)
-		q.Set("open_chat_id", chatID)
-		q.Set("thread_position", threadPos)
-		u.RawQuery = q.Encode()
-	} else if chatID != "" && okMsgPos {
-		u = &url.URL{Scheme: "https", Host: domain, Path: "/client/chat/open"}
-		q := url.Values{}
-		q.Set("openChatId", chatID)
-		q.Set("position", msgPos)
-		u.RawQuery = q.Encode()
-	}
-	if u == nil {
-		return ""
-	}
-	return urlrewrite.Rewrite(u.String())
+	return MessageLinkDataFromMap(m).assembleMessageAppLink(brand)
 }
 
 func normalizeMessagePosition(v interface{}) (string, bool) {
