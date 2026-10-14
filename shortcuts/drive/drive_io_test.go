@@ -1899,6 +1899,33 @@ func TestDriveDownloadTypedRateLimitSuggestsBackoff(t *testing.T) {
 	}
 }
 
+func TestDriveDownloadPermissionAuthInvalidParameterStopsRetriesAndExplainsTokenType(t *testing.T) {
+	err := errs.NewAPIError(errs.SubtypeInvalidArgument, "Invalid parameter").
+		WithCode(1063001).
+		WithRetryable().
+		WithLogID("log-drive-auth-invalid")
+
+	got := withDriveDownloadRecoveryHint(err, "file_secret")
+	problem, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", got, got)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Code != 1063001 || problem.LogID != "log-drive-auth-invalid" {
+		t.Fatalf("problem=%+v, want preserved API metadata", problem)
+	}
+	if problem.Retryable {
+		t.Fatalf("problem=%+v, want invalid token/type failure to be non-retryable", problem)
+	}
+	for _, want := range []string{"stop retrying", "uploaded Drive file token", "prefer --url", "drive +export"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint=%q, want %q", problem.Hint, want)
+		}
+	}
+	if strings.Contains(problem.Hint, "file_secret") {
+		t.Fatalf("hint=%q, want no caller token disclosure", problem.Hint)
+	}
+}
+
 // TestDriveDownloadDefaultOutputPathSanitizesSlashOnlyNames verifies slash-only names fall back safely.
 func TestDriveDownloadDefaultOutputPathSanitizesSlashOnlyNames(t *testing.T) {
 	header := http.Header{
