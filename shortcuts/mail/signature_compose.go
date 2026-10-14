@@ -180,36 +180,20 @@ func addSignatureImagesToBuilder(bld emlbuilder.Builder, sig *signatureResult) e
 // that address in the sendable list (for alias/send_as scenarios);
 // otherwise falls back to the first (primary) address.
 func resolveSenderInfo(runtime *common.RuntimeContext, mailboxID, fromEmail string) (name, email string) {
-	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "settings", "send_as"), nil, nil)
-	if err != nil {
-		return "", ""
-	}
-	addrs, ok := data["sendable_addresses"].([]interface{})
-	if !ok || len(addrs) == 0 {
+	addresses := fetchSendableMailAddresses(runtime, mailboxID)
+	if len(addresses) == 0 {
 		return "", ""
 	}
 	// If fromEmail is specified, find the matching address.
 	if fromEmail != "" {
-		for _, a := range addrs {
-			m, ok := a.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			e, _ := m["email_address"].(string)
-			if strings.EqualFold(e, fromEmail) {
-				n, _ := m["name"].(string)
-				return n, e
+		for _, address := range addresses {
+			if strings.EqualFold(address.Email, fromEmail) {
+				return address.Name, address.Email
 			}
 		}
 	}
 	// Fall back to the first sendable address (primary).
-	first, ok := addrs[0].(map[string]interface{})
-	if !ok {
-		return "", ""
-	}
-	n, _ := first["name"].(string)
-	e, _ := first["email_address"].(string)
-	return n, e
+	return addresses[0].Name, addresses[0].Email
 }
 
 // downloadSignatureImage downloads a signature image by its direct URL.

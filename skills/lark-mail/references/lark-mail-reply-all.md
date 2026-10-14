@@ -166,9 +166,9 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 
 ## 实现说明
 
-- 自动收件人规则：原发件人优先进入 To，原 To/Cc 进入 Cc。
-- 地址会去重（大小写不敏感）。
-- 自动排除当前用户地址（enterprise email），并叠加 `--remove` 规则。
+- 自动收件人规则：普通邮件将原发件人优先放入 To、原 To/Cc 放入 Cc；自己发出的邮件保留原 To/Cc 归属，避免自发自收邮件被清空。
+- To、Cc、Bcc 分别按地址去重（大小写不敏感），用户显式指定的跨列表归属会保留。
+- 普通邮件自动排除当前用户的主邮箱、别名和其他 send-as 地址；`--remove` 在原邮件、显式参数和模板收件人合并后统一生效。
 - 通过 raw EML 维护会话头并尽量复用原 `thread_id`。
 
 ## 发送后跟进

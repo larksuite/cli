@@ -446,19 +446,28 @@ func TestApplyTemplate_DraftSubjectWinsOverTemplate(t *testing.T) {
 }
 
 // TestApplyTemplate_ReplyWarnsWhenTemplateHasRecipients verifies the warning
-// emitted for reply/reply-all with template-side tos/ccs/bccs.
+// emitted for reply with template-side tos/ccs/bccs.
 func TestApplyTemplate_ReplyWarnsWhenTemplateHasRecipients(t *testing.T) {
 	tpl := &templatePayload{
 		Tos:             []templateMailAddr{{Address: "t@x"}},
 		TemplateContent: "body",
 	}
 	merged := applyTemplate(
-		templateShortcutReplyAll, tpl,
+		templateShortcutReply, tpl,
 		"orig-to@x", "", "", "Re: foo", "",
 		"", "", "", "", "",
 	)
 	if len(merged.Warnings) == 0 {
 		t.Errorf("expected warning, got none")
+	}
+
+	merged = applyTemplate(
+		templateShortcutReplyAll, tpl,
+		"orig-to@x", "", "", "Re: foo", "",
+		"", "", "", "", "",
+	)
+	if len(merged.Warnings) != 0 {
+		t.Errorf("reply-all de-duplicates merged recipients; got warnings %v", merged.Warnings)
 	}
 }
 
