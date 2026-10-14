@@ -39,9 +39,9 @@ func TestNewUATCallOptions(t *testing.T) {
 	}
 }
 
-// TestNewUATCallOptions_PrivateKeyJWT verifies the auth-method fields propagate
+// TestNewUATCallOptions_PrivateKeyJWTLocalKeyPair verifies the auth-method fields propagate
 // so the refresh path can mint a client_assertion instead of sending a secret.
-func TestNewUATCallOptions_PrivateKeyJWT(t *testing.T) {
+func TestNewUATCallOptions_PrivateKeyJWTLocalKeyPair(t *testing.T) {
 	cfg := &core.CliConfig{
 		AppID:            "cli_pk",
 		Brand:            core.BrandFeishu,

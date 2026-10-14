@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -16,18 +17,24 @@ import (
 )
 
 // RevokeToken revokes a previously issued OAuth token.
-func RevokeToken(httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, token, tokenTypeHint string) error {
+func RevokeToken(ctx context.Context, httpClient *http.Client, ca ClientAuth, brand core.LarkBrand, token, tokenTypeHint string) error {
 	endpoints := ResolveOAuthEndpoints(brand)
 
 	form := url.Values{}
-	form.Set("client_id", appId)
-	form.Set("client_secret", appSecret)
+	form.Set("client_id", ca.AppID)
+	usedAssertion, err := ca.ApplyClientAssertion(ctx, form, core.ClientAssertionAudience(brand))
+	if err != nil {
+		return err
+	}
+	if !usedAssertion {
+		form.Set("client_secret", ca.AppSecret)
+	}
 	form.Set("token", token)
 	if tokenTypeHint != "" {
 		form.Set("token_type_hint", tokenTypeHint)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, endpoints.Revoke, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoints.Revoke, strings.NewReader(form.Encode()))
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeUnknown, "token revoke request creation failed: %v", err).WithCause(err)
 	}

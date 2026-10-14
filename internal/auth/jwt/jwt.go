@@ -96,6 +96,9 @@ func clientAssertionClaims(clientID, aud string, now time.Time, ttl time.Duratio
 	}
 }
 
+// GrantTypeJWTBearer is the RFC 7523 grant_type value for JWT bearer grants.
+const GrantTypeJWTBearer = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+
 // ClientAssertionType is the RFC 7523 client_assertion_type value used for JWT
 // bearer client authentication at the token endpoint.
 const ClientAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"

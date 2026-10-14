@@ -12,7 +12,6 @@ Lark/Feishu API with real credentials injected.
 - HMAC-SHA256 request verification (timestamp drift, body digest, signature)
 - Target host allowlist + https-only target validation (anti-SSRF / anti-downgrade)
 - Identity-based token resolution (UAT for user, TAT for bot)
-- Expiry-aware TAT caching with early renewal
 - Auth-header allowlist: real token may only be injected into `Authorization`
   / `X-Lark-MCP-UAT` / `X-Lark-MCP-TAT`, rejecting attempts to smuggle it into
   `Cookie`, `User-Agent`, or other intermediate-logged headers
@@ -44,8 +43,8 @@ The demo reuses the lark-cli credential pipeline, so the trusted machine must
 have an app configured:
 
 ```bash
-lark-cli config init --new   # configure app_id / app_secret
-lark-cli auth login          # store user refresh_token in local credential storage
+lark-cli config init --new   # configure app_id / app_secret (required)
+lark-cli auth login          # store user refresh_token in keychain
                               # (only required if sandbox will use --as user)
 ```
 

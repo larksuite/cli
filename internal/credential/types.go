@@ -29,8 +29,8 @@ type Account struct {
 	DPoPMode            core.DPoPMode
 	CredentialSource    core.CredentialSource
 	SupportedIdentities uint8
-	AuthMethod          string // "" == client_secret; either private-key JWT method
-	KeySource           string // tee or file for private-key JWT
+	AuthMethod          string // "" == client_secret; private_key_jwt_local_keypair
+	KeySource           string // tee or file for private_key_jwt_local_keypair
 	KeyLabel            string // platform handle or private-key file path
 	KeyProvider         string // built-in backend name, external provider, or empty legacy auto-selection
 }

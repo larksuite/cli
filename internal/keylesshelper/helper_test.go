@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/internal/auth/jwt"
 )
 
 const helperProcessMode = "GO_WANT_KEYLESS_PROVIDER_HELPER"
@@ -110,7 +112,7 @@ func TestHelperProcess(t *testing.T) {
 			os.Exit(2)
 		}
 		_ = json.NewEncoder(os.Stdout).Encode(response{
-			OK: true, ClientAssertionType: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer", ClientAssertion: testClientAssertion(),
+			OK: true, ClientAssertionType: jwt.ClientAssertionType, ClientAssertion: testClientAssertion(),
 		})
 		os.Exit(0)
 	case "hang":
