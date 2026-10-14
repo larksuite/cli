@@ -1,0 +1,40 @@
+# from	denied	owner	reason	added_at
+github.com/larksuite/cli/extension/credential/env	github.com/larksuite/cli/internal/charcheck	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/env	github.com/larksuite/cli/internal/core	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/env	github.com/larksuite/cli/internal/envvars	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/env	github.com/larksuite/cli/internal/i18n	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/env	github.com/larksuite/cli/internal/keychain	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/env	github.com/larksuite/cli/internal/validate	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/env	github.com/larksuite/cli/internal/vfs	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/env	github.com/larksuite/cli/internal/vfs/localfileio	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/sidecar	github.com/larksuite/cli/internal/charcheck	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/sidecar	github.com/larksuite/cli/internal/core	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/sidecar	github.com/larksuite/cli/internal/envvars	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/sidecar	github.com/larksuite/cli/internal/i18n	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/sidecar	github.com/larksuite/cli/internal/keychain	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/sidecar	github.com/larksuite/cli/internal/validate	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/sidecar	github.com/larksuite/cli/internal/vfs	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/credential/sidecar	github.com/larksuite/cli/internal/vfs/localfileio	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/extension/transport/sidecar	github.com/larksuite/cli/internal/envvars	arch-migration	extension pre-module-split (via core/envvars)	2026-07-24
+github.com/larksuite/cli/events	github.com/larksuite/cli/shortcuts/im/convert_lib	arch-migration	events root aggregates the existing im conversion dependency	2026-07-24
+github.com/larksuite/cli/events	github.com/larksuite/cli/shortcuts/common	arch-migration	events root aggregates the existing im conversion dependency	2026-07-24
+github.com/larksuite/cli/events/im	github.com/larksuite/cli/shortcuts/im/convert_lib	arch-migration	events->shortcuts inversion via convert_lib	2026-07-24
+github.com/larksuite/cli/events/im	github.com/larksuite/cli/shortcuts/common	arch-migration	events->shortcuts inversion via convert_lib	2026-07-24
+github.com/larksuite/cli/shortcuts/im	github.com/larksuite/cli/internal/auth	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/mail	github.com/larksuite/cli/internal/auth	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/minutes	github.com/larksuite/cli/internal/auth	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/vc	github.com/larksuite/cli/internal/auth	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/apps	github.com/larksuite/cli/internal/keychain	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/drive	github.com/larksuite/cli/internal/credential	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/im	github.com/larksuite/cli/internal/credential	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/minutes	github.com/larksuite/cli/internal/credential	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/vc	github.com/larksuite/cli/internal/credential	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/apps	github.com/larksuite/cli/internal/client	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/drive	github.com/larksuite/cli/internal/client	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/im	github.com/larksuite/cli/internal/client	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/mail	github.com/larksuite/cli/internal/client	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/markdown	github.com/larksuite/cli/internal/client	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/task	github.com/larksuite/cli/internal/client	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/apps	github.com/larksuite/cli/internal/vfs	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/event	github.com/larksuite/cli/internal/vfs	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
+github.com/larksuite/cli/shortcuts/mail	github.com/larksuite/cli/internal/vfs	arch-migration	shortcut bypasses RuntimeContext gate	2026-07-24
