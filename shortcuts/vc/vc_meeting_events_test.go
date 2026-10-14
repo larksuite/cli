@@ -1964,14 +1964,37 @@ func TestLeaveAction(t *testing.T) {
 		item map[string]interface{}
 		want string
 	}{
+		{name: "user left", item: map[string]interface{}{"leave_reason": leaveReasonUserLeft}, want: "离开了会议"},
 		{name: "meeting ended", item: map[string]interface{}{"leave_reason": leaveReasonMeetingEnded}, want: "因会议结束离开了会议"},
 		{name: "kicked", item: map[string]interface{}{"leave_reason": leaveReasonKicked}, want: "被移出了会议"},
-		{name: "default", item: map[string]interface{}{"leave_reason": leaveReasonUserLeft}, want: "离开了会议"},
+		{name: "unknown", item: map[string]interface{}{"leave_reason": 0}, want: "因未知原因离开了会议"},
+		{name: "future", item: map[string]interface{}{"leave_reason": 99}, want: "因未知原因离开了会议"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := leaveAction(tt.item); got != tt.want {
 				t.Fatalf("leaveAction() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMeetingEventsEndSignalOnlyAcceptsMeetingEndedReason(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		leaveReason int
+		wantEnded   bool
+	}{
+		{name: "unknown", leaveReason: 0, wantEnded: false},
+		{name: "user left", leaveReason: leaveReasonUserLeft, wantEnded: false},
+		{name: "meeting ended", leaveReason: leaveReasonMeetingEnded, wantEnded: true},
+		{name: "kicked", leaveReason: leaveReasonKicked, wantEnded: false},
+		{name: "future", leaveReason: 99, wantEnded: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := meetingEventsEndSignalFromEvents([]interface{}{participantLeftEventWithReason(tt.leaveReason)})
+			if got.Ended != tt.wantEnded {
+				t.Fatalf("meetingEventsEndSignalFromEvents().Ended = %t, want %t", got.Ended, tt.wantEnded)
 			}
 		})
 	}
@@ -2024,6 +2047,27 @@ func TestMeetingEventsIdentityFromParticipant_UserRoleParticipant(t *testing.T) 
 	}
 }
 
+func TestMeetingEventsIdentityFromParticipant_CoHostAndUnknownRole(t *testing.T) {
+	tests := []struct {
+		name string
+		role interface{}
+		want string
+	}{
+		{name: "co host", role: 3, want: "co_host"},
+		{name: "future", role: 99, want: "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := meetingEventsIdentityFromParticipant(map[string]interface{}{
+				"id": "u1", "user_name": "Alice", "user_type": 1, "user_role": tt.role,
+			}, meetingEventsIdentity{})
+			if got.Role != tt.want {
+				t.Fatalf("identity = %#v, want role=%q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMeetingEventsIdentityFromParticipant_UserTypeApp(t *testing.T) {
 	got := meetingEventsIdentityFromParticipant(map[string]interface{}{
 		"id":        "ou_app",
@@ -2034,6 +2078,40 @@ func TestMeetingEventsIdentityFromParticipant_UserTypeApp(t *testing.T) {
 
 	if got.ParticipantType != "bot" {
 		t.Fatalf("identity = %#v, want participant_type=bot", got)
+	}
+}
+
+func TestMeetingEventsIdentityFromParticipant_KnownUserTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		userType int
+		want     string
+	}{
+		{name: "human", userType: 1, want: "human"},
+		{name: "room", userType: 2, want: "room"},
+		{name: "doc user", userType: 3, want: "doc_user"},
+		{name: "neo user", userType: 4, want: "neo_user"},
+		{name: "neo guest", userType: 5, want: "neo_guest_user"},
+		{name: "pstn", userType: 6, want: "pstn"},
+		{name: "sip", userType: 7, want: "sip"},
+		{name: "share box", userType: 8, want: "share_box_user"},
+		{name: "open platform app", userType: 9, want: "app"},
+		{name: "meeting bot", userType: 10, want: "bot"},
+		{name: "auto detect", userType: 100, want: "auto_detect"},
+		{name: "room detect", userType: 101, want: "room_detect"},
+		{name: "sid detect", userType: 102, want: "human"},
+		{name: "webinar attendee", userType: 103, want: "webinar_attendee"},
+		{name: "future", userType: 999, want: "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := meetingEventsIdentityFromParticipant(map[string]interface{}{
+				"id": "u1", "user_name": "Alice", "user_type": tt.userType, "user_role": 1,
+			}, meetingEventsIdentity{})
+			if got.ParticipantType != tt.want {
+				t.Fatalf("identity = %#v, want participant_type=%q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -2057,7 +2135,7 @@ func TestMeetingEventsIdentityFromParticipant_IgnoresGenericTypeField(t *testing
 		"type":      "bot",
 	}, meetingEventsIdentity{})
 
-	if got.ParticipantType != "human" {
+	if got.ParticipantType != "unknown" {
 		t.Fatalf("identity = %#v, generic type field should not drive participant_type", got)
 	}
 }
