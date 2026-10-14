@@ -1165,6 +1165,26 @@ func TestMailRuleReorderShortcutPostsFullAndMoveOrders(t *testing.T) {
 		assertRuleIDsBody(t, post.CapturedBody, "c,b,a")
 	})
 
+	t.Run("partial order fills missing ids", func(t *testing.T) {
+		f, stdout, _, reg := mailShortcutTestFactory(t)
+		reg.Register(mailRuleListStub(
+			mailRuleTestRawRule("a", "A"),
+			mailRuleTestRawRule("b", "B"),
+			mailRuleTestRawRule("c", "C"),
+		))
+		post := &httpmock.Stub{
+			Method: "POST",
+			URL:    "open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		}
+		reg.Register(post)
+
+		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "a,c", "--format", "json"}, f, stdout); err != nil {
+			t.Fatalf("run +rule-reorder partial error = %v", err)
+		}
+		assertRuleIDsBody(t, post.CapturedBody, "a,c,b")
+	})
+
 	t.Run("move to bottom", func(t *testing.T) {
 		f, stdout, _, reg := mailShortcutTestFactory(t)
 		reg.Register(mailRuleListStub(
@@ -1488,11 +1508,11 @@ func TestMailRuleScalarHelpersCoverFallbacks(t *testing.T) {
 }
 
 func TestMailRuleOrderValidationErrors(t *testing.T) {
-	if err := validateFullRuleOrder([]string{"a"}, []string{"a", "b"}); err == nil {
-		t.Fatal("expected length mismatch error")
+	if err := validateRuleIDs([]string{"a", "a"}); err == nil {
+		t.Fatal("expected duplicate ids error")
 	}
-	if err := validateFullRuleOrder([]string{"a", "a"}, []string{"a", "b"}); err == nil {
-		t.Fatal("expected duplicate mismatch error")
+	if _, err := buildRuleTargetOrderWithPrefix([]string{"a", "d"}, []string{"a", "b"}); err == nil {
+		t.Fatal("expected unknown ids error")
 	}
 	if _, err := insertRelative([]string{"a", "b"}, "c", "", true); err == nil {
 		t.Fatal("expected missing target error")
@@ -1527,14 +1547,19 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			want: "is not in current rule order",
 		},
 		{
-			name: "full mismatch",
+			name: "full mismatch with missing",
 			args: []string{"+rule-reorder", "--rule-ids", "a,z"},
-			want: "mismatch",
+			want: "not in current order",
+		},
+		{
+			name: "rule-ids duplicate",
+			args: []string{"+rule-reorder", "--rule-ids", "a,a"},
+			want: "duplicate",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, stdout, _, reg := mailShortcutTestFactory(t)
-			if strings.Contains(tc.want, "current rule order") || strings.Contains(tc.want, "mismatch") {
+			if strings.Contains(tc.want, "current rule order") || strings.Contains(tc.want, "missing") || strings.Contains(tc.want, "not in current order") {
 				reg.Register(mailRuleListStub(mailRuleTestRawRule("a", "A"), mailRuleTestRawRule("b", "B")))
 			}
 			err := runMountedMailShortcut(t, MailRuleReorder, append(tc.args, "--format", "json"), f, stdout)
@@ -1545,6 +1570,82 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestBuildRuleTargetOrderWithPrefix(t *testing.T) {
+	order, err := buildRuleTargetOrderWithPrefix([]string{"a", "c"}, []string{"a", "b", "c"})
+	if err != nil {
+		t.Fatalf("buildRuleTargetOrderWithPrefix() error = %v", err)
+	}
+	if strings.Join(order, ",") != "a,c,b" {
+		t.Fatalf("order = %v, want a,c,b", order)
+	}
+
+	if _, err := buildRuleTargetOrderWithPrefix([]string{"a", "a"}, []string{"a", "b", "c"}); err == nil {
+		t.Fatal("expected duplicate error")
+	}
+	if _, err := buildRuleTargetOrderWithPrefix([]string{"a", "z"}, []string{"a", "b", "c"}); err == nil {
+		t.Fatal("expected missing id error")
+	}
+}
+
+func TestMailRuleReorderValidationDoesNotCallAPIs(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	post := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+		Optional: true,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(post)
+
+	err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "a,a", "--format", "json"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected duplicate validation error")
+	}
+	if !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("error = %v, want duplicate", err)
+	}
+	if len(post.CapturedBodies) != 0 {
+		t.Fatalf("reorder should not be called on duplicate ids, captured %d request(s)", len(post.CapturedBodies))
+	}
+}
+
+func TestMailRuleReorderMissingRuleIDsCallsListAndFails(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	list := mailRuleListStub(
+		mailRuleTestRawRule("a", "A"),
+		mailRuleTestRawRule("b", "B"),
+	)
+	list.Optional = true
+	reg.Register(list)
+	post := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+		Optional: true,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(post)
+
+	err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "a,z", "--format", "json"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected missing rule id error")
+	}
+	if !strings.Contains(err.Error(), "not in current order") {
+		t.Fatalf("error = %v, want missing rule id", err)
+	}
+	if len(list.CapturedBodies) != 1 {
+		t.Fatalf("list should be called exactly once, captured %d request(s)", len(list.CapturedBodies))
+	}
+	if len(post.CapturedBodies) != 0 {
+		t.Fatalf("reorder should not be called on missing rule ids, captured %d request(s)", len(post.CapturedBodies))
 	}
 }
 
