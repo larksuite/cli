@@ -56,6 +56,7 @@ var MailTriage = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
+	Citation:    mailTriageCitationDefinition(),
 	Flags: []common.Flag{
 		{Name: "format", Default: "table", Enum: []string{"table", "json", "data"}, Desc: "output format: table | json | data (json/data output object with pagination fields)"},
 		{Name: "max", Aliases: []string{"page-size"}, Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},
@@ -293,7 +294,11 @@ var MailTriage = common.Shortcut{
 			if notice != "" {
 				outData["notice"] = notice
 			}
-			output.PrintJson(runtime.IO().Out, outData)
+			if common.CitationOutputEnabled() {
+				runtime.Out(outData, nil)
+			} else {
+				output.PrintJson(runtime.IO().Out, outData)
+			}
 		default: // "table"
 			if notice != "" {
 				fmt.Fprintf(runtime.IO().ErrOut, "notice: %s\n", notice)
@@ -832,6 +837,15 @@ func buildTriageMessageMeta(msg map[string]interface{}, fallbackMessageID string
 	item["thread_id"] = strVal(msg["thread_id"])
 	item["subject"] = strVal(msg["subject"])
 	item["folder"] = strVal(msg["folder_id"])
+	if applink := strVal(msg["applink"]); applink != "" {
+		item["applink"] = applink
+	}
+	if preview := strVal(msg["body_preview"]); preview != "" {
+		item["body_preview"] = preview
+	}
+	if internalDate := msg["internal_date"]; internalDate != nil {
+		item["internal_date"] = internalDate
+	}
 	if d := strVal(msg["date"]); d != "" {
 		item["date"] = d
 	} else if ts, ok := msg["internal_date"]; ok {
@@ -876,6 +890,18 @@ func buildTriageMessagesFromSearchItems(raw interface{}) []map[string]interface{
 			message["thread_id"] = strVal(meta["thread_id"])
 			message["subject"] = strVal(meta["title"])
 			message["date"] = strVal(meta["create_time"])
+			if applink := strVal(meta["applink"]); applink != "" {
+				message["applink"] = applink
+			}
+			if createTime := meta["create_time"]; createTime != nil {
+				message["create_time"] = createTime
+			}
+			if preview := strVal(meta["preview"]); preview != "" {
+				message["preview"] = preview
+			}
+			if summary := strVal(meta["summary"]); summary != "" {
+				message["summary"] = summary
+			}
 			if from, ok := meta["from"].(map[string]interface{}); ok {
 				message["from"] = formatAddress(from)
 			}

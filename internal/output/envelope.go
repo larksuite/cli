@@ -3,12 +3,15 @@
 
 package output
 
+import "github.com/larksuite/cli/internal/citation"
+
 // Envelope is the standard success response wrapper.
 type Envelope struct {
 	OK                 bool                   `json:"ok"`
 	Identity           string                 `json:"identity,omitempty"`
 	DryRun             bool                   `json:"dry_run,omitempty"`
 	Data               interface{}            `json:"data,omitempty"`
+	Citations          []citation.Citation    `json:"citations,omitempty"`
 	Meta               *Meta                  `json:"meta,omitempty"`
 	ContentSafetyAlert interface{}            `json:"_content_safety_alert,omitempty"`
 	Notice             map[string]interface{} `json:"_notice,omitempty"`

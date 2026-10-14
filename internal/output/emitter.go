@@ -10,6 +10,7 @@ import (
 	"io"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 )
 
 // NoticeProvider supplies the notice attached to a structured envelope.
@@ -46,6 +47,7 @@ type EmitterConfig struct {
 type EmitOptions struct {
 	Raw             bool
 	Meta            *Meta
+	Citations       []citation.Citation
 	Format          string
 	JQ              string
 	DryRun          bool
@@ -195,12 +197,13 @@ func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) erro
 	}
 
 	env := Envelope{
-		OK:       ok,
-		Identity: e.identity,
-		DryRun:   opts.DryRun,
-		Data:     data,
-		Meta:     opts.Meta,
-		Notice:   e.notice(),
+		OK:        ok,
+		Identity:  e.identity,
+		DryRun:    opts.DryRun,
+		Data:      data,
+		Citations: opts.Citations,
+		Meta:      opts.Meta,
+		Notice:    e.notice(),
 	}
 	if scanResult.Alert != nil {
 		env.ContentSafetyAlert = scanResult.Alert
