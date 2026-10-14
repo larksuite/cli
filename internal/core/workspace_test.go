@@ -144,6 +144,31 @@ func TestDetectWorkspaceFromEnv(t *testing.T) {
 			env:    map[string]string{"HERMES_HOME": "/Users/me/.hermes", "LARK_CHANNEL": "1"},
 			expect: WorkspaceHermes,
 		},
+		{
+			name:   "LARKSUITE_CLI_FORCE_LOCAL=1 overrides inherited HERMES_HOME → local (issue #1405)",
+			env:    map[string]string{"LARKSUITE_CLI_FORCE_LOCAL": "1", "HERMES_HOME": "/Users/me/.hermes"},
+			expect: WorkspaceLocal,
+		},
+		{
+			name:   "LARKSUITE_CLI_FORCE_LOCAL=1 overrides every Agent signal → local",
+			env:    map[string]string{"LARKSUITE_CLI_FORCE_LOCAL": "1", "OPENCLAW_CLI": "1", "HERMES_GATEWAY_TOKEN": "tok", "LARK_CHANNEL": "1"},
+			expect: WorkspaceLocal,
+		},
+		{
+			name:   "LARKSUITE_CLI_FORCE_LOCAL=true → ignored (strict ==1 check), HERMES_HOME still wins",
+			env:    map[string]string{"LARKSUITE_CLI_FORCE_LOCAL": "true", "HERMES_HOME": "/Users/me/.hermes"},
+			expect: WorkspaceHermes,
+		},
+		{
+			name:   "LARKSUITE_CLI_FORCE_LOCAL=0 → ignored, normal detection applies",
+			env:    map[string]string{"LARKSUITE_CLI_FORCE_LOCAL": "0", "HERMES_HOME": "/Users/me/.hermes"},
+			expect: WorkspaceHermes,
+		},
+		{
+			name:   "LARKSUITE_CLI_FORCE_LOCAL=1 with no Agent signals → local (no-op, still safe)",
+			env:    map[string]string{"LARKSUITE_CLI_FORCE_LOCAL": "1"},
+			expect: WorkspaceLocal,
+		},
 	}
 
 	for _, tt := range tests {
