@@ -241,7 +241,7 @@ func classifyExportErr(err error) error {
 		)
 	case http.StatusForbidden:
 		return errs.NewPermissionError(errs.SubtypePermissionDenied, "export failed: %s", detail).
-			WithHint("you need download permission on this app; holding a share token is not enough").
+			WithHint(exportPermissionDeniedHint).
 			WithCause(err)
 	case http.StatusNotFound:
 		return errs.NewAPIError(errs.SubtypeNotFound, "export failed: %s", detail).
@@ -343,6 +343,17 @@ const exportAppNotPublishedCode = 40901
 // and the defensive HTTP-422 branch (classifyExportErr) so the two cannot drift.
 const exportNotPublishedHint = "export serves the app's latest published build and this app has none yet; publish it first (the publish path depends on the app type), then re-run export"
 
+// exportPermissionDeniedCode is the business code the gateway returns (as an
+// HTTP 200 + JSON envelope, not a 403) when the caller cannot download the app —
+// typically a share-link viewer who is not a collaborator. It is not in the shared
+// spark table (that table is global across domains, and 40300 is too generic a
+// number to claim there), so it is classified here, command-scoped.
+const exportPermissionDeniedCode = 40300
+
+// exportPermissionDeniedHint is shared by the live 200+JSON path and the HTTP-403
+// branch so the two cannot drift.
+const exportPermissionDeniedHint = "you need download permission on this app; holding a share token is not enough"
+
 // annotateExportEnvelopeErr adds export-scoped recovery guidance to the typed
 // error the classifier produced from a 200+JSON error envelope.
 //
@@ -362,9 +373,22 @@ func annotateExportEnvelopeErr(err error) error {
 	if !ok {
 		return err
 	}
-	if problem.Code == exportAppNotPublishedCode {
+	switch problem.Code {
+	case exportAppNotPublishedCode:
 		problem.Subtype = errs.SubtypeFailedPrecondition
 		problem.Hint = exportNotPublishedHint
+	case exportPermissionDeniedCode:
+		// Verified on the live gateway: HTTP 200 + {"code":40300,"msg":"permission
+		// denied"}. The classifier leaves it as an untyped APIError, so an agent sees
+		// subtype "unknown" with no next step. Re-type it as the same permission
+		// error the HTTP-403 branch raises, keeping code, log id and cause.
+		denied := errs.NewPermissionError(errs.SubtypePermissionDenied, "export failed: %s", problem.Message).
+			WithHint(exportPermissionDeniedHint).
+			WithCode(problem.Code).
+			WithLogID(problem.LogID).
+			WithCause(err)
+		denied.Troubleshooter = problem.Troubleshooter
+		return denied
 	}
 	return err
 }
