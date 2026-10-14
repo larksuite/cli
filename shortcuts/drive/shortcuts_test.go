@@ -64,6 +64,9 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 
 	seen := make(map[string]bool, len(got))
 	for _, shortcut := range got {
+		if shortcut.Service != "drive" {
+			t.Fatalf("shortcut %q service = %q, want %q", shortcut.Command, shortcut.Service, "drive")
+		}
 		if seen[shortcut.Command] {
 			t.Fatalf("duplicate shortcut command: %s", shortcut.Command)
 		}
