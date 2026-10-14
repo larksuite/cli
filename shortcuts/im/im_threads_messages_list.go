@@ -41,7 +41,7 @@ var ImThreadsMessagesList = common.Shortcut{
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		{Name: "concise", Type: "bool", Desc: "render compact Markdown for message context"},
 		downloadResourcesFlag,
-	}, common.PageAllFlags()...),
+	}, append(common.PageAllFlags(), messageExportFlags()...)...),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		threadFlag := runtime.Str("thread")
 		dir := runtime.Str("order")
@@ -75,9 +75,12 @@ var ImThreadsMessagesList = common.Shortcut{
 		if runtime.Bool("download-resources") {
 			d = d.Desc(downloadResourcesDryRunDesc)
 		}
-		return d
+		return messageExportDryRun(runtime, d, containerID)
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateMessageExportFlags(runtime); err != nil {
+			return err
+		}
 		if err := validateConciseOutputFlags(runtime); err != nil {
 			return err
 		}
@@ -101,6 +104,10 @@ var ImThreadsMessagesList = common.Shortcut{
 		}
 		threadInput := runtime.Str("thread")
 		threadId, err := resolveThreadID(runtime, threadInput)
+		if err != nil {
+			return err
+		}
+		exportTarget, err := prepareMessageExport(runtime, threadId)
 		if err != nil {
 			return err
 		}
@@ -161,8 +168,9 @@ var ImThreadsMessagesList = common.Shortcut{
 			"has_more":   hasMore,
 			"page_token": nextPageToken,
 		}
-		if runtime.Bool("concise") {
-			return outputMessagesConcise(runtime, conciseMessageView{
+		return emitMessageList(runtime, exportTarget, messageListOutput{
+			data: outData, pagination: pagination,
+			concise: conciseMessageView{
 				Type:  conciseMessageViewThread,
 				Title: "Thread messages",
 				ChatSections: []conciseChatSection{{
@@ -171,33 +179,32 @@ var ImThreadsMessagesList = common.Shortcut{
 				}},
 				HasMore:   hasMore,
 				NextToken: nextPageToken,
-			})
-		}
-		runtime.OutFormat(outData, &output.Meta{Pagination: pagination}, func(w io.Writer) {
-			if len(messages) == 0 {
-				fmt.Fprintln(w, "No messages in this thread.")
-				return
-			}
-			var rows []map[string]interface{}
-			for _, msg := range messages {
-				row := map[string]interface{}{
-					"time": msg["create_time"],
-					"type": msg["msg_type"],
+			},
+			pretty: func(w io.Writer) {
+				if len(messages) == 0 {
+					fmt.Fprintln(w, "No messages in this thread.")
+					return
 				}
-				if sender, ok := msg["sender"].(map[string]interface{}); ok {
-					if disp := senderDisplay(sender); disp != "" {
-						row["sender"] = disp
+				var rows []map[string]interface{}
+				for _, msg := range messages {
+					row := map[string]interface{}{
+						"time": msg["create_time"],
+						"type": msg["msg_type"],
 					}
+					if sender, ok := msg["sender"].(map[string]interface{}); ok {
+						if disp := senderDisplay(sender); disp != "" {
+							row["sender"] = disp
+						}
+					}
+					if content, _ := msg["content"].(string); content != "" {
+						row["content"] = convertlib.TruncateContent(content, 40)
+					}
+					rows = append(rows, row)
 				}
-				if content, _ := msg["content"].(string); content != "" {
-					row["content"] = convertlib.TruncateContent(content, 40)
-				}
-				rows = append(rows, row)
-			}
-			output.PrintTable(w, rows)
-			fmt.Fprintf(w, "\n%d thread message(s)\ntip: use --format json to view full message content\n", len(messages))
+				output.PrintTable(w, rows)
+				fmt.Fprintf(w, "\n%d thread message(s)\ntip: use --format json to view full message content\n", len(messages))
+			},
 		})
-		return nil
 	},
 }
 

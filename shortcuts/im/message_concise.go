@@ -94,6 +94,10 @@ func validateConciseOutputFlags(runtime *common.RuntimeContext) error {
 // outputMessagesConcise keeps the command-specific Markdown path inside IM.
 // Generic formats continue to use RuntimeContext.OutFormat unchanged.
 func outputMessagesConcise(runtime *common.RuntimeContext, view conciseMessageView) error {
+	return writeMessagesConcise(runtime, runtime.IO().Out, view)
+}
+
+func writeMessagesConcise(runtime *common.RuntimeContext, w io.Writer, view conciseMessageView) error {
 	streams := runtime.IO()
 	scanResult := output.ScanForSafety(runtime.Cmd.CommandPath(), view, streams.ErrOut)
 	if scanResult.Blocked {
@@ -109,7 +113,7 @@ func outputMessagesConcise(runtime *common.RuntimeContext, view conciseMessageVi
 	if err := renderMessagesConcise(&rendered, view); err != nil {
 		return errs.NewInternalError(errs.SubtypeUnknown, "failed to render concise output").WithCause(err)
 	}
-	if _, err := io.Copy(streams.Out, &rendered); err != nil {
+	if _, err := io.Copy(w, &rendered); err != nil {
 		return errs.NewInternalError(errs.SubtypeUnknown, "failed to write concise output").WithCause(err)
 	}
 	return nil

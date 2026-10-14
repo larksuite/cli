@@ -55,6 +55,10 @@ lark-cli im +chat-members-list --chat-id oc_xxx
 ## +chat-messages-list
 Use this for message history when the conversation is already known.
 
+### Tips
+- For bulk analysis, use --output or --output-dir to keep message bodies in a file and receive only an artifact summary. Check meta.pagination.complete before treating the export as complete; resume with meta.pagination.next_token when needed.
+- --format, --concise and --jq select the saved content; stdout remains a JSON artifact summary. Existing files require --overwrite.
+
 ### Avoid when
 - Searching across conversations → use [[+messages-search]].
 - Fetching full details for known message ids → use [[+messages-mget]].
@@ -226,6 +230,10 @@ lark-cli im +messages-send --chat-id oc_xxx --text "Hello"
 
 ## +threads-messages-list
 Use this when a message or thread id is known and the replies inside that thread are needed.
+
+### Tips
+- For bulk analysis, use --output or --output-dir to keep replies in a file and receive only an artifact summary. Check meta.pagination.complete and resume with meta.pagination.next_token when needed.
+- --format, --concise and --jq select the saved content; stdout remains a JSON artifact summary. Existing files require --overwrite.
 
 ### Examples
 
