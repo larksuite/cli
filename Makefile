@@ -53,7 +53,7 @@ script-test:
 
 # ./extension/... keeps the public plugin SDK in the default test matrix.
 unit-test:
-	go test $(RACE_FLAG) -gcflags="all=-N -l" -count=1 \
+	go test $(RACE_FLAG) -count=1 \
 		./cmd/... ./internal/... ./shortcuts/... ./extension/...
 
 live-skills-test:
