@@ -19,6 +19,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keysigner"
@@ -54,11 +55,11 @@ type tatDPoPAttempt struct {
 	repeatedProofRejection bool
 }
 
-// FetchTAT mints a tenant token using client_credentials and the supplied DPoP
-// mode, serializing issuance per app. Disabled mode does not access key storage,
-// so the post-config-init probe can validate credentials without a keychain read.
-// A non-empty status message is advisory and does not change the successful
-// token result.
+// FetchTAT mints a tenant token using the configured client authentication and
+// DPoP mode, serializing issuance per app. Disabled mode does not access key
+// storage, so the post-config-init probe can validate credentials without a
+// keychain read. A non-empty status message is advisory and does not change the
+// successful token result.
 //
 // A deterministic client-side rejection (e.g. invalid_client) returns the
 // canonical typed error from classifyTATResponseCode — the SAME classification
@@ -70,13 +71,7 @@ type tatDPoPAttempt struct {
 // credential rejection.
 //
 // The caller owns the context timeout.
-func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string, mode core.DPoPMode) (*FetchedToken, error) {
-	return FetchTATWithClientAuth(ctx, httpClient, brand, auth.ClientAuth{AppID: appID, AppSecret: appSecret}, mode)
-}
-
-// FetchTATWithClientAuth combines client authentication with the independent
-// DPoP issuance policy. The application key never becomes the token binding key.
-func FetchTATWithClientAuth(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, ca auth.ClientAuth, mode core.DPoPMode) (*FetchedToken, error) {
+func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, ca auth.ClientAuth, mode core.DPoPMode) (*FetchedToken, error) {
 	var err error
 	ca, err = ca.ResolveSigner(ctx)
 	if err != nil {
@@ -194,16 +189,13 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
 	form.Set("client_id", ca.AppID)
-	if core.IsPrivateKeyJWTAuthMethod(ca.AuthMethod) {
-		// Preserve the registered private-key JWT grant's endpoint contract.
-		endpoint = ep.Open + auth.PathOAuthTokenV2
-		form.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
-	}
 	usedAssertion, err := ca.ApplyClientAssertion(ctx, form, core.ClientAssertionAudience(brand))
 	if err != nil {
 		return nil, err
 	}
-	if !usedAssertion {
+	if usedAssertion {
+		form.Set("grant_type", jwt.GrantTypeJWTBearer)
+	} else {
 		form.Set("client_secret", ca.AppSecret)
 	}
 
@@ -322,7 +314,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 		return requestTAT(ctx, httpClient, brand, ca, proofKey, keyStore, attempt, true, invalidProofsLeft)
 	}
 
-	if core.IsPrivateKeyJWTAuthMethod(ca.AuthMethod) && result.AccessToken == "" {
+	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(ca.AuthMethod) && result.AccessToken == "" {
 		result.AccessToken = result.TenantAccessToken
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 && result.Error == "" && result.Code == 0 && result.AccessToken != "" {
@@ -381,9 +373,6 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 	if desc == "" {
 		desc = result.Msg
 	}
-	if core.IsPrivateKeyJWTAuthMethod(ca.AuthMethod) && result.Code == 0 && result.Error != "" {
-		return nil, classifyAssertionError(result.Error, resp.StatusCode, desc)
-	}
 	return nil, classifyTATResponseCode(result.Code, result.Error, desc, string(brand), ca.AppID)
 }
 
@@ -398,32 +387,14 @@ func tatRetryAfterSeconds(header http.Header) int {
 }
 
 // FetchTATWithAssertion validates an application key without issuing a DPoP
-// binding. Normal credential resolution uses FetchTATWithClientAuth.
+// binding. Normal credential resolution uses FetchTAT.
 func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) (string, error) {
-	result, err := FetchTATWithClientAuth(ctx, httpClient, brand, auth.ClientAuth{
-		AppID: clientID, AuthMethod: core.AuthMethodPrivateKeyJWT,
+	result, err := FetchTAT(ctx, httpClient, brand, auth.ClientAuth{
+		AppID: clientID, AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
 		Signer: signer, KeyLabel: keyLabel,
 	}, core.DPoPModeDisabled)
 	if err != nil {
 		return "", err
 	}
 	return result.AccessToken, nil
-}
-
-// classifyAssertionError maps the OAuth token endpoint's `error` field to a
-// typed or untyped error. Only deterministic client-credential rejections get a
-// typed errs.ConfigError (so runProbePKJWT can tell "this key is not bound to
-// this app" apart from upstream noise); every other error (e.g.
-// temporarily_unavailable) stays untyped and is swallowed by the probe. detail
-// carries only the server's error_description / msg / body text — it never
-// echoes the client_assertion or private key (the assertion lives only in the
-// request form).
-func classifyAssertionError(oauthError string, httpStatus int, detail string) error {
-	switch oauthError {
-	case "invalid_client", "unauthorized_client", "invalid_grant":
-		return errs.NewConfigError(errs.SubtypeInvalidClient,
-			"token endpoint rejected the key (%s): %s", oauthError, detail)
-	default:
-		return fmt.Errorf("token endpoint HTTP %d (%s): %s", httpStatus, oauthError, detail)
-	}
 }

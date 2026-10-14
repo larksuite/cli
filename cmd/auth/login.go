@@ -45,7 +45,7 @@ type LoginOptions struct {
 
 var pollDeviceToken = larkauth.PollDeviceToken
 
-func resolveLoginClientAuth(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) (larkauth.ClientAuth, error) {
+func resolveClientAuth(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) (larkauth.ClientAuth, error) {
 	signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
 	if err != nil {
 		return larkauth.ClientAuth{}, err
@@ -335,7 +335,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	if err != nil {
 		return err
 	}
-	clientAuth, err := resolveLoginClientAuth(opts.Ctx, f, config)
+	clientAuth, err := resolveClientAuth(opts.Ctx, f, config)
 	if err != nil {
 		if errs.IsTyped(err) {
 			return err
@@ -512,7 +512,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	if err != nil {
 		return err
 	}
-	clientAuth, err := resolveLoginClientAuth(opts.Ctx, f, config)
+	clientAuth, err := resolveClientAuth(opts.Ctx, f, config)
 	if err != nil {
 		if errs.IsTyped(err) {
 			return err
@@ -536,8 +536,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(recovery.RenderContext{Profile: f.Invocation.Profile}))
 	}
 	log(msg.WaitingAuth)
-	result, err := pollLoginDeviceToken(opts.Ctx, httpClient, config, clientAuth,
-		opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
+	result, err := pollLoginDeviceToken(opts.Ctx, httpClient, config, clientAuth, opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
 	if err != nil {
 		if problem, ok := errs.ProblemOf(err); ok &&
 			problem.Category == errs.CategoryPolicy && problem.Subtype == errs.SubtypeAccessDenied {

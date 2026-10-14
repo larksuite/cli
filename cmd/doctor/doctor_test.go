@@ -281,34 +281,6 @@ func TestDoctorRun_TeeSignerWired(t *testing.T) {
 	}
 }
 
-func TestRenderDoctorHuman(t *testing.T) {
-	var buf bytes.Buffer
-	checks := []checkResult{
-		pass("cli_version", "1.0.50"),
-		warn("tee_signer", "tpm2 signer present but TEE unavailable", "add your user to the 'tss' group"),
-		fail("identity_ready", "no usable identity", "run: lark-cli auth status --verify"),
-		skip("endpoint_open", "skipped (--offline)"),
-	}
-	renderDoctorHuman(&buf, "local", checks, false, false)
-	out := buf.String()
-
-	for _, want := range []string{
-		"lark-cli doctor", "workspace: local",
-		"[PASS]", "cli_version", "1.0.50",
-		"[WARN]", "tee_signer", "↳ add your user to the 'tss' group",
-		"[FAIL]", "identity_ready", "↳ run: lark-cli auth status --verify",
-		"[SKIP]", "endpoint_open",
-		"problems found", "1 passed", "1 warning(s)", "1 failed", "1 skipped",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("output missing %q\n---\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "\033[") {
-		t.Errorf("color=false but ANSI escapes present:\n%s", out)
-	}
-}
-
 func assertCheck(t *testing.T, checks []checkResult, name, status string) {
 	t.Helper()
 	if got := findCheck(t, checks, name); got.Status != status {

@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	maxPrivateKeyFileBytes = 1 << 20
+	maxPrivateKeyFileBytes = 1_048_576
 	FileSignerName         = "file"
 )
 
