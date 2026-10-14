@@ -25,13 +25,13 @@ func TestMailMessagesExecuteChunksMoreThanTwentyIDs(t *testing.T) {
 		Method:     "POST",
 		URL:        "/user_mailboxes/me/messages/batch_get",
 		BodyFilter: requestMessageIDsEqual(ids[:20]),
-		Body:       batchGetMessagesResponse(ids[:20]),
+		Body:       batchGetMessagesResponse(ids[:20], true),
 	})
 	reg.Register(&httpmock.Stub{
 		Method:     "POST",
 		URL:        "/user_mailboxes/me/messages/batch_get",
 		BodyFilter: requestMessageIDsEqual(ids[20:]),
-		Body:       batchGetMessagesResponse(ids[20:]),
+		Body:       batchGetMessagesResponse(ids[20:], false),
 	})
 
 	err := runMountedMailShortcut(t, MailMessages, []string{
@@ -60,6 +60,13 @@ func TestMailMessagesExecuteChunksMoreThanTwentyIDs(t *testing.T) {
 		if got := msg["message_id"]; got != ids[i] {
 			t.Fatalf("messages[%d].message_id = %v, want %s", i, got, ids[i])
 		}
+		if i == 0 {
+			if got := msg["reply_to_message_id"]; got != "parent-"+ids[i] {
+				t.Fatalf("messages[%d].reply_to_message_id = %v, want %s", i, got, "parent-"+ids[i])
+			}
+		} else if _, ok := msg["reply_to_message_id"]; ok {
+			t.Fatalf("messages[%d].reply_to_message_id should be omitted when absent", i)
+		}
 	}
 }
 
@@ -75,13 +82,17 @@ func requestMessageIDsEqual(want []string) func([]byte) bool {
 	}
 }
 
-func batchGetMessagesResponse(ids []string) map[string]interface{} {
+func batchGetMessagesResponse(ids []string, includeReplyToMessageID bool) map[string]interface{} {
 	messages := make([]map[string]interface{}, 0, len(ids))
 	for _, id := range ids {
-		messages = append(messages, map[string]interface{}{
+		message := map[string]interface{}{
 			"message_id": id,
 			"subject":    id,
-		})
+		}
+		if includeReplyToMessageID && len(messages) == 0 {
+			message["reply_to_message_id"] = "parent-" + id
+		}
+		messages = append(messages, message)
 	}
 	return map[string]interface{}{
 		"code": 0,
