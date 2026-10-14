@@ -101,15 +101,16 @@ jobs:
               }
             }
             if (!prNumber) {
-              const candidatePRs = await github.paginate(github.rest.pulls.list, {
+              const listedPRs = await github.paginate(github.rest.pulls.list, {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 state: "all",
                 per_page: 100,
-              }).then((prs) => prs.filter((candidate) =>
+              });
+              const candidatePRs = listedPRs.filter((candidate) =>
                 candidate.base?.repo?.id === context.payload.repository.id &&
                 candidate.head?.sha === targetHeadSha
-              ));
+              );
               const openCandidatePRs = candidatePRs.filter((candidate) => candidate.state === "open");
               if (openCandidatePRs.length > 1) {
                 throw new Error(`ambiguous open PRs from pull list fallback for workflow_run head ${targetHeadSha}: ${openCandidatePRs.length}`);
@@ -121,6 +122,24 @@ jobs:
                 core.setOutput("stale", "true");
                 return;
               } else {
+                // A superseded commit may have no commit-to-PR association.
+                // Repository identity and branch can identify a stale target,
+                // but never authorise checkout or publication for a new head.
+                const staleTargets = listedPRs.filter((candidate) =>
+                  Number.isSafeInteger(run.head_repository?.id) &&
+                  run.head_repository.id > 0 &&
+                  typeof run.head_branch === "string" && run.head_branch !== "" &&
+                  candidate.base?.repo?.id === context.payload.repository.id &&
+                  candidate.head?.repo?.id === run.head_repository.id &&
+                  candidate.head?.ref === run.head_branch &&
+                  /^[a-f0-9]{40}$/i.test(candidate.head?.sha || "") &&
+                  candidate.head.sha !== targetHeadSha
+                );
+                if (staleTargets.length === 1) {
+                  core.notice("workflow_run skipped: verified source branch has a superseded PR head");
+                  core.setOutput("stale", "true");
+                  return;
+                }
                 throw new Error(`expected one open PR from pull list fallback for workflow_run head ${targetHeadSha}, got ${candidatePRs.length}`);
               }
             }
@@ -327,15 +346,16 @@ jobs:
               }
             }
             if (!prNumber) {
-              const candidatePRs = await github.paginate(github.rest.pulls.list, {
+              const listedPRs = await github.paginate(github.rest.pulls.list, {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 state: "all",
                 per_page: 100,
-              }).then((prs) => prs.filter((candidate) =>
+              });
+              const candidatePRs = listedPRs.filter((candidate) =>
                 candidate.base?.repo?.id === context.payload.repository.id &&
                 candidate.head?.sha === targetHeadSha
-              ));
+              );
               const openCandidatePRs = candidatePRs.filter((candidate) => candidate.state === "open");
               if (openCandidatePRs.length > 1) {
                 throw new Error(`ambiguous open PRs from pull list fallback for workflow_run head ${targetHeadSha}: ${openCandidatePRs.length}`);
@@ -347,6 +367,24 @@ jobs:
                 core.setOutput("stale", "true");
                 return;
               } else {
+                // A superseded commit may have no commit-to-PR association.
+                // Repository identity and branch can identify a stale target,
+                // but never authorise checkout or publication for a new head.
+                const staleTargets = listedPRs.filter((candidate) =>
+                  Number.isSafeInteger(run.head_repository?.id) &&
+                  run.head_repository.id > 0 &&
+                  typeof run.head_branch === "string" && run.head_branch !== "" &&
+                  candidate.base?.repo?.id === context.payload.repository.id &&
+                  candidate.head?.repo?.id === run.head_repository.id &&
+                  candidate.head?.ref === run.head_branch &&
+                  /^[a-f0-9]{40}$/i.test(candidate.head?.sha || "") &&
+                  candidate.head.sha !== targetHeadSha
+                );
+                if (staleTargets.length === 1) {
+                  core.notice("workflow_run skipped: verified source branch has a superseded PR head");
+                  core.setOutput("stale", "true");
+                  return;
+                }
                 throw new Error(`expected one open PR from pull list fallback for workflow_run head ${targetHeadSha}, got ${candidatePRs.length}`);
               }
             }
