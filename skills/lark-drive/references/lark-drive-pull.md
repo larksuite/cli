@@ -98,8 +98,8 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
   },
   "items": [
     {"rel_path": "...", "file_token": "...", "action": "downloaded"},
-    {"rel_path": "...", "source_id": "hash_3a2f4c5d6e7f", "action": "downloaded"},
-    {"rel_path": "...", "source_id": "hash_3a2f4c5d6e7f", "action": "failed", "error": "..."},
+    {"rel_path": "...", "source_id": "hash_example", "action": "downloaded"},
+    {"rel_path": "...", "source_id": "hash_example", "action": "failed", "error": "..."},
     {"rel_path": "...", "action": "deleted_local"},
     {"rel_path": "...", "action": "delete_failed", "error": "..."}
   ]

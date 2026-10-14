@@ -202,7 +202,7 @@ interval | float | 是 | 时长（天）。
     "id": "widget1",
     "type": "document",
     "value": {
-           "token":"TLLKdcpDro9ijQxA33ycNMabcef",
+           "token":"<document_id>",
            "type":"docx",
     }
 }

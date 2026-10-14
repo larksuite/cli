@@ -70,7 +70,7 @@ lark-cli im reactions create \
 
 ```json
 {
-  "reaction_id": "ZCaCIjUBVVWSrm5L-3ZTw_xxx",
+  "reaction_id": "<REACTION_ID>",
   "operator": {
     "operator_id": "ou_xxx",
     "operator_type": "user"
@@ -110,7 +110,7 @@ lark-cli im reactions list --params '{"message_id":"om_xxx","user_id_type":"open
 {
   "items": [
     {
-      "reaction_id": "ZCaCIjUBVVWSrm5L-3ZTw_xxx",
+      "reaction_id": "<REACTION_ID>",
       "operator": {
         "operator_id": "ou_xxx",
         "operator_type": "user"
@@ -122,7 +122,7 @@ lark-cli im reactions list --params '{"message_id":"om_xxx","user_id_type":"open
     }
   ],
   "has_more": true,
-  "page_token": "YhljsPiGfUgnVAg9urvRFd-BvSqRLxxxx"
+  "page_token": "<PAGE_TOKEN>"
 }
 ```
 
@@ -156,7 +156,7 @@ Delete one specific reaction record from one message.
 
 ```bash
 lark-cli im reactions delete \
-  --params '{"message_id":"om_xxx","reaction_id":"ZCaCIjUBVVWSrm5L-3ZTw_xxx"}'
+  --params '{"message_id":"om_xxx","reaction_id":"<REACTION_ID>"}'
 ```
 
 ### Request
