@@ -364,13 +364,13 @@ var MailRuleDisable = makeRuleToggleShortcut("+rule-disable", false)
 var MailRuleReorder = common.Shortcut{
 	Service:     "mail",
 	Command:     "+rule-reorder",
-	Description: "Reorder mailbox rules by full rule_id list or by moving one rule before/after/top/bottom.",
+	Description: "Reorder mailbox rules by partial or full rule_id list, or by moving one rule before/after/top/bottom.",
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.rule:write"},
 	AuthTypes:   mailRuleAuthTypes,
 	HasFormat:   true,
 	Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
-		common.Flag{Name: "rule-ids", Type: "string_slice", Desc: "Full target rule ID order. Must contain every current rule exactly once."},
+		common.Flag{Name: "rule-ids", Type: "string_slice", Desc: "Partial or full target rule ID order. Missing current rules are appended in their existing order."},
 		common.Flag{Name: "move-rule-id", Desc: "Rule ID to move in the current order."},
 		common.Flag{Name: "before-rule-id", Desc: "Place --move-rule-id before this rule."},
 		common.Flag{Name: "after-rule-id", Desc: "Place --move-rule-id after this rule."},
@@ -391,7 +391,7 @@ var MailRuleReorder = common.Shortcut{
 	Execute: func(ctx context.Context, rt *common.RuntimeContext) error {
 		before, err := listMailRuleEnvelopes(rt, ruleMailboxID(rt))
 		if err != nil {
-			return mailDecorateProblemMessage(err, "list mail rules before reorder failed")
+			return mailDecorateProblemMessage(err, "list_rules_failed: list mail rules before reorder failed")
 		}
 		target, err := buildRuleTargetOrder(rt, before)
 		if err != nil {
@@ -399,10 +399,11 @@ var MailRuleReorder = common.Shortcut{
 		}
 		raw := map[string]any{"rule_ids": target}
 		if _, err := rt.CallAPITyped("POST", mailRuleReorderPath(ruleMailboxID(rt)), nil, raw); err != nil {
-			return mailDecorateProblemMessage(err, "reorder mail rules failed")
+			return mailDecorateProblemMessage(err, "reorder_failed: reorder mail rules failed")
 		}
 		out := map[string]any{"before_rule_ids": envelopeRuleIDs(before), "after_rule_ids": target, "raw_request": raw}
-		rt.OutFormat(out, &output.Meta{Count: len(target)}, func(w io.Writer) {
+		submittedRuleIDCount := len(target)
+		rt.OutFormat(out, &output.Meta{Count: len(target), SubmittedRuleIDCount: &submittedRuleIDCount}, func(w io.Writer) {
 			fmt.Fprintf(w, "Reordered %d rule(s).\n", len(target))
 		})
 		return nil
@@ -1630,16 +1631,16 @@ func validateRuleReorderFlags(rt *common.RuntimeContext) error {
 
 func buildRuleTargetOrder(rt *common.RuntimeContext, current []mailRuleEnvelope) ([]string, error) {
 	currentIDs := envelopeRuleIDs(current)
+	if len(currentIDs) == 0 {
+		return nil, mailValidationError("empty_rule_list: current mailbox has no rules to reorder")
+	}
 	if ids := normalizeRuleIDs(rt.StrSlice("rule-ids")); len(ids) > 0 {
-		if err := validateFullRuleOrder(ids, currentIDs); err != nil {
-			return nil, err
-		}
-		return ids, nil
+		return completeRuleOrder(ids, currentIDs)
 	}
 	moveID := strings.TrimSpace(rt.Str("move-rule-id"))
 	order := removeString(currentIDs, moveID)
 	if len(order) == len(currentIDs) {
-		return nil, mailValidationParamError("--move-rule-id", "--move-rule-id %s is not in current rule order", moveID)
+		return nil, mailValidationParamError("--move-rule-id", "unknown_rule_id: --move-rule-id %s is not in current rule order", moveID)
 	}
 	switch {
 	case rt.Bool("to-top"):
@@ -1654,22 +1655,33 @@ func buildRuleTargetOrder(rt *common.RuntimeContext, current []mailRuleEnvelope)
 }
 
 func validateFullRuleOrder(target, current []string) error {
-	if len(target) != len(current) {
-		return mailValidationParamError("--rule-ids", "--rule-ids must contain every current rule id exactly once (got %d, want %d)", len(target), len(current))
-	}
+	_, err := completeRuleOrder(target, current)
+	return err
+}
+
+func completeRuleOrder(userIDs, current []string) ([]string, error) {
 	want := make(map[string]int, len(current))
 	for _, id := range current {
-		want[id]++
+		want[id] = 1
 	}
-	for _, id := range target {
-		want[id]--
+	seen := make(map[string]struct{}, len(userIDs))
+	out := make([]string, 0, len(current))
+	for _, id := range userIDs {
+		if _, ok := seen[id]; ok {
+			return nil, mailValidationParamError("--rule-ids", "duplicate_rule_id: --rule-ids contains duplicate rule id %s", id)
+		}
+		seen[id] = struct{}{}
+		if _, ok := want[id]; !ok {
+			return nil, mailValidationParamError("--rule-ids", "unknown_rule_id: --rule-ids contains unknown rule id %s", id)
+		}
+		out = append(out, id)
 	}
-	for id, count := range want {
-		if count != 0 {
-			return mailValidationParamError("--rule-ids", "--rule-ids mismatch for %s; run +rule-list first and submit the complete order", id)
+	for _, id := range current {
+		if _, ok := seen[id]; !ok {
+			out = append(out, id)
 		}
 	}
-	return nil
+	return out, nil
 }
 
 func normalizeRuleIDs(ids []string) []string {
