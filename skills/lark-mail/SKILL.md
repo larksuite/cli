@@ -1,7 +1,7 @@
 ---
 name: lark-mail
 version: 1.0.0
-description: "飞书邮箱：Use when user mentions 起草邮件、写邮件、草稿、发送/回复/转发邮件、查阅邮件、看邮件、搜索邮件、邮件文件夹、邮件标签、邮件联系人、监听新邮件、邮件收信规则等；use for mail/email intent only. Do not use for docs/sheets/calendar/auth setup/pure contact lookup/IM chat tasks."
+description: "飞书邮箱：Use when user mentions 起草邮件、写邮件、草稿、发送/回复/转发邮件、查阅邮件、看邮件、搜索邮件、邮件文件夹、邮件标签、邮件联系人、监听新邮件、邮件收信规则、自动回复等；use for mail/email intent only. Do not use for docs/sheets/calendar/auth setup/pure contact lookup/IM chat tasks."
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -21,6 +21,7 @@ metadata:
 - **标签（Label）**：邮件的分类标记，内置标签如 `FLAGGED`（星标）。一封邮件可有多个标签。
 - **附件（Attachment）**：分为普通附件和内嵌图片（inline，通过 CID 引用）。
 - **收信规则（Rule）**：自动处理收到的邮件的规则。可设置匹配条件（发件人、主题、收件人等）和执行动作（移动到文件夹、删除、标记已读等）。通过 `user_mailbox.rules` 资源管理，支持创建、删除、列出、排序和更新。
+- **自动回复（Auto Reply）**：用户邮箱的外出/假期自动回复设置；优先使用 `+auto-reply` / `+auto-reply-modify`，详见 [references/lark-mail-auto-reply.md](references/lark-mail-auto-reply.md)。
 - **发件人名单（Sender list）**：用户邮箱级的允许名单与阻止名单，均支持按邮箱地址或域名批量设置、分页查询/关键词搜索和批量删除。通过 `user_mailbox.allow_senders` / `user_mailbox.blocked_senders` 管理。
 - **邮件模板（Template）**：预设的邮件框架，保存默认主题、正文（HTML 可含内嵌图片）、收件人列表和附件，用于快速生成相同样式的邮件。通过 `template_id` 引用。
 
@@ -67,6 +68,7 @@ metadata:
 | 取消定时 | `*.cancel_scheduled_send` | ✅ 必须 |
 | 删除收信规则 | `rules.delete` | ✅ 必须 |
 | 创建 / 更新收信规则 | `rules.create` / `update` | ✅ 必须 |
+| 修改自动回复 | `+auto-reply-modify` | ✅ 必须 |
 | 设置 / 删除发件人名单 | `allow_senders.batch_*` / `blocked_senders.batch_*` | ❌ 普通写操作，免 `--yes` |
 | 启停 / 排序收信规则 | `rules.enable` / `disable` / `reorder` | ❌ 普通写操作，免 `--yes` |
 | 标签变更 | `*.add_label`、`*.remove_label` | ❌ 可逆，免确认 |
@@ -92,7 +94,7 @@ metadata:
 - **`--as user`（推荐）**：以当前登录用户的身份访问其邮箱。需要先通过 `lark-cli auth login --domain mail` 完成用户授权。
 - **`--as bot`**：以应用身份访问邮箱。需要在飞书开发者后台为应用开通相应权限，否则请求会被拒绝。bot 身份不能使用默认 `--mailbox me`，必须显式传邮箱地址。
 
-1. 发信/草稿类写操作（发送、回复、转发、草稿编辑） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
+1. 发信/草稿类写操作（发送、回复、转发、草稿编辑、自动回复更新） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
 2. 读取类操作（查看邮件、会话、收件箱列表等） → 推荐使用 `--as user`；如需应用级批量读取（如管理员代操作），可使用 `--as bot`，确保应用已开通对应权限
 3. 整理类操作按具体 shortcut 的身份支持范围选择：message 级整理仍仅支持 `--as user`；会话级批量整理支持 `--as user` / `--as bot`，使用 bot 时必须显式传 `--mailbox <email>`
 
@@ -108,7 +110,8 @@ metadata:
 8. **HTML body 预检（可选）** — 复杂 HTML body 提交前可先跑 `+lint-html` 看 lint 会改 / 删什么；写信路径（`+send` / `+draft-create` / `+reply` / `+reply-all` / `+forward` / `+draft-edit` body op）已内置 autofix，普通正文不必先跑。详见 [references/lark-mail-html.md](references/lark-mail-html.md) 中的「写入路径内置 HTML lint」章节
 9. **确认投递** — 立即发送后用 `send_status` 查询投递状态，定时发送后在预定时间后再查询；取消定时发送用 `cancel_scheduled_send`
 10. **编辑草稿** — `+draft-edit` 修改已有草稿。正文编辑通过 `--patch-file`：回复/转发草稿用 `set_reply_body` op 保留引用区，普通草稿用 `set_body` op
-11. **已读回执** —
+11. **自动回复设置** — 查看或修改外出回复使用 `+auto-reply` / `+auto-reply-modify`；修改前先预览并取得用户确认。详见 [references/lark-mail-auto-reply.md](references/lark-mail-auto-reply.md)。
+12. **已读回执** —
    - **请求回执（写信侧）**：`--request-receipt` 仅在**用户显式要求**时添加，**不要从 subject / body 内容推断意图**。
    - **响应回执（拉信侧）**：拉信看到 `label_ids` 含 `READ_RECEIPT_REQUEST`（或 `-607`）时，**必须先问用户**是否回执（不要自动回执，涉及隐私）。用户同意 → `+send-receipt` 响应；用户不同意但想消掉提示 → `+decline-receipt` 只清本地标签、不发邮件。
 
@@ -130,6 +133,7 @@ metadata:
 - 软删除邮件：优先使用 `+message-trash`。ref: [`+message-trash`](references/lark-mail-message-trash.md)
 - 软删除会话：已有 `thread_id` 时可使用 `+thread-trash`。ref: [`+thread-trash`](references/lark-mail-thread-trash.md)
 - 收信规则：查看、创建、更新、删除、启停、排序自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
+- 自动回复：查看或修改用户邮箱自动回复设置。ref: [lark-mail-auto-reply](references/lark-mail-auto-reply.md)
 - 用户邮箱允许/阻止发件人：批量设置、分页列出或按关键词搜索、批量删除邮箱地址和域名。ref: [lark-mail-sender-lists](references/lark-mail-sender-lists.md)
 - 分享邮件到 IM：分享邮件或会话到群聊、个人会话。ref: [lark-mail-share-to-chat](references/lark-mail-share-to-chat.md)
 - 发送日程邀请邮件：在邮件中嵌入 `text/calendar` 日程邀请。ref: [lark-mail-calendar-invite](references/lark-mail-calendar-invite.md)
@@ -298,6 +302,8 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+send-receipt`](references/lark-mail-send-receipt.md) | Send a read-receipt reply for an incoming message that requested one (i.e. carries the READ_RECEIPT_REQUEST label). Body is auto-generated (subject / recipient / send time / read time) to match the Lark client's receipt format — callers cannot customize it, matching the industry norm that read-receipt bodies are system-generated templates, not free-form replies. Intended for agent use after the user confirms. |
 | [`+decline-receipt`](references/lark-mail-decline-receipt.md) | Dismiss the read-receipt request banner on an incoming mail by clearing its READ_RECEIPT_REQUEST label, without sending a receipt. Use when the user wants to silence the prompt but refuse to confirm they have read it. Idempotent — safe to re-run. |
 | [`+signature`](references/lark-mail-signature.md) | List or view email signatures with default usage info. |
+| [`+auto-reply`](references/lark-mail-auto-reply.md) | Get mailbox auto-reply settings. |
+| [`+auto-reply-modify`](references/lark-mail-auto-reply.md) | Modify mailbox auto-reply settings with friendly flags after user confirmation. |
 | [`+share-to-chat`](references/lark-mail-share-to-chat.md) | Share an email or thread as a card to a Lark IM chat. |
 | [`+template-create`](references/lark-mail-template-create.md) | Create a personal mail template. Scans HTML <img src> local paths (reusing draft inline-image detection), uploads inline images and non-inline attachments to Drive, rewrites HTML to cid: references, and POSTs a Template payload to mail.user_mailbox.templates.create. |
 | [`+template-update`](references/lark-mail-template-update.md) | Update an existing mail template. Supports --inspect (read-only projection), --print-patch-template (prints a JSON skeleton for --patch-file), and flat flags (--set-subject / --set-name / etc). Internally it GETs the template, applies the patch, rewrites <img> local paths to cid: refs, and PUTs a full-replace update (no optimistic locking: last-write-wins). |

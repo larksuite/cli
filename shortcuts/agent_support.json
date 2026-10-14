@@ -1066,6 +1066,12 @@
     "mail +decline-receipt": {
       "agentSupport": "allowed"
     },
+    "mail +auto-reply": {
+      "agentSupport": "denied"
+    },
+    "mail +auto-reply-modify": {
+      "agentSupport": "denied"
+    },
     "mail +draft-create": {
       "agentSupport": "allowed"
     },

@@ -263,6 +263,7 @@ im.json|$.resources.message_links.methods.query.responseBody.messages.properties
 im.json|$.resources.messages.methods.forward.responseBody.message_app_link.example|https://xxxx/client/thread/open?chatid=xxx&threadid=xxx&thread_position=xxx
 im.json|$.resources.messages.methods.merge_forward.responseBody.message.properties.message_app_link.example|https://xxxx/client/thread/open?chatid=xxx&threadid=xxx&thread_position=xxx
 im.json|$.resources.threads.methods.forward.responseBody.message_app_link.example|https://xxxx/client/thread/open?chatid=xxx&threadid=xxx&thread_position=xxx
+mail.json|$.resources["user_mailbox.auto_reply"].methods.download_url.responseBody.download_urls.properties.download_url.example|https://example.com/download
 mail.json|$.resources["user_mailbox.drafts"].methods.create.responseBody.reference.example|https://{domain}/mail?draftId=MWFhMjA5NzctYTE5OC00ZDcxLTkxYTctNjY1MDVjNDc4MmJm&scene=send-preview&mailbox=user%40company.com
 mail.json|$.resources["user_mailbox.drafts"].methods.send.responseBody.automation_send_disable.properties.reference.example|https://open.larksuite.com/mail/settings/automation
 mail.json|$.resources["user_mailbox.drafts"].methods.update.responseBody.reference.example|https://{domain}/mail?draftId=MWFhMjA5NzctYTE5OC00ZDcxLTkxYTctNjY1MDVjNDc4MmJm&scene=send-preview&mailbox=user%40company.com

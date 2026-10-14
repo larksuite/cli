@@ -35,6 +35,8 @@ func Shortcuts() []common.Shortcut {
 		MailSendReceipt,
 		MailDeclineReceipt,
 		MailSignature,
+		MailAutoReply,
+		MailAutoReplyModify,
 		MailSenderAllowlist,
 		MailSenderBlocklist,
 		MailSenderAllowlistModify,
