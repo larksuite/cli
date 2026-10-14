@@ -40,6 +40,9 @@ func TestLoadScopePriorities(t *testing.T) {
 	if _, ok := priorities["im:message:recall"]; !ok {
 		t.Error("expected im:message:recall in priorities")
 	}
+	if _, ok := priorities["mail:user_mailbox.mail_contact.mail_address:read"]; !ok {
+		t.Error("expected Mail contact-address scope in priorities")
+	}
 }
 
 func TestGetScopeScore(t *testing.T) {
@@ -236,6 +239,46 @@ func TestCollectScopesForProjects_HonorsRequiredScopes(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("expected requiredScope %q in collected scopes, got %v", want, scopes)
+		}
+	}
+}
+
+func TestCollectScopesForProjects_MailContactsKeepsBaseAndAddressScopes(t *testing.T) {
+	scopes := CollectScopesForProjects(scopeTestCatalog(t), []string{"mail"}, "user")
+	for _, want := range []string{
+		"mail:user_mailbox.mail_contact:read",
+		"mail:user_mailbox.mail_contact.mail_address:read",
+	} {
+		found := false
+		for _, scope := range scopes {
+			if scope == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("mail scopes missing %q: %v", want, scopes)
+		}
+	}
+}
+
+func TestDeclaredScopesForMethodCombinesBaseAndRequiredScopes(t *testing.T) {
+	method := meta.Method{
+		Scopes:         []string{"mail:user_mailbox.mail_contact:write", "mail:user_mailbox.mail_contact:read"},
+		RequiredScopes: []string{"mail:user_mailbox.mail_contact.mail_address:read"},
+	}
+
+	got := DeclaredScopesForMethod(method, "user")
+	want := []string{
+		"mail:user_mailbox.mail_contact:read",
+		"mail:user_mailbox.mail_contact.mail_address:read",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("DeclaredScopesForMethod() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("DeclaredScopesForMethod() = %v, want %v", got, want)
 		}
 	}
 }
