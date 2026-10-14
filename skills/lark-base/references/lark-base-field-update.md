@@ -47,6 +47,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
 - 更新 `auto_number.style.rules` 会按新规则更新已有记录的编号；规则结构见 [Field Schema](lark-base-field-schema.md)。
+- 签字字段（`attachment` + `style.type:"signature"`）更新时必须把 `style` 一起写回；漏传会按 `plain` 处理，转成普通附件并丢掉签字专属配置。不要再 `PUT` 回 `signature` 来自动恢复：当前底层 `attachment -> signature` 转换会清空该列的附件值；也不要用“新建字段 + 迁移”，因为签字单元格无法通过 API 写回。若已经误降级，停止后续写操作并报告数据风险；恢复方案必须单独验证后再执行。
 
 **推荐更新示例**
 
@@ -74,7 +75,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 1. 先用 `+field-get` 读取当前定义，只改变目标属性，并把需要保留的其他可写配置完整写回。
 2. `formula/lookup` 类型更新前先阅读对应指南。
-3. 如果这次更新会改变字段 `type`，先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
+3. 如果这次更新会改变字段 `type`，先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全；已知例外是签字字段漏传 `style`，`type` 不变也会丢数据，见上方 JSON 值规范。
 
 ## 字段类型变更规则
 
