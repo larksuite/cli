@@ -91,11 +91,10 @@ func TestConfigBindRun_OpenClawAuthMethodPrecedence(t *testing.T) {
 		name, channel, method string
 		wantError, wantSecret bool
 	}{
-		{"keyless with secret", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"private_key_jwt","keyRef":"key-b"`, core.AuthMethodPrivateKeyJWT, false, false},
-		{"local keypair with secret", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"private_key_jwt_local_keypair","keyRef":"key-b"`, core.AuthMethodPrivateKeyJWTLocalKeyPair, false, false},
-		{"inherited keyless with account secret", `"authMethod":"private_key_jwt","keyRef":"key-b","accounts":{"a":{"appId":"cli_a"},"b":{"appId":"cli_b","appSecret":"leftover-secret"}}`, core.AuthMethodPrivateKeyJWT, false, false},
-		{"unresolvable secret ignored", `"appId":"cli_b","appSecret":"${BIND_TEST_ABSENT_SECRET}","authMethod":"private_key_jwt","keyRef":"key-b"`, core.AuthMethodPrivateKeyJWT, false, false},
-		{"missing key reference", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"private_key_jwt"`, "", true, false},
+		{"private_key_jwt_local_keypair with secret", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"private_key_jwt_local_keypair","keyRef":"key-b"`, core.AuthMethodPrivateKeyJWTLocalKeyPair, false, false},
+		{"inherited keyless with account secret", `"authMethod":"private_key_jwt_local_keypair","keyRef":"key-b","accounts":{"a":{"appId":"cli_a"},"b":{"appId":"cli_b","appSecret":"leftover-secret"}}`, core.AuthMethodPrivateKeyJWTLocalKeyPair, false, false},
+		{"unresolvable secret ignored", `"appId":"cli_b","appSecret":"${BIND_TEST_ABSENT_SECRET}","authMethod":"private_key_jwt_local_keypair","keyRef":"key-b"`, core.AuthMethodPrivateKeyJWTLocalKeyPair, false, false},
+		{"missing key reference", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"private_key_jwt_local_keypair"`, "", true, false},
 		{"unknown method", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"unknown"`, "", true, false},
 		{"explicit client secret", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"client_secret"`, "", false, true},
 		{"implicit client secret", `"appId":"cli_b","appSecret":"leftover-secret"`, "", false, true},

@@ -5,10 +5,12 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keychain"
@@ -22,7 +24,7 @@ import (
 type ClientAuth struct {
 	AppID       string
 	AppSecret   string
-	AuthMethod  string // "" == client_secret; private_key_jwt or private_key_jwt_local_keypair
+	AuthMethod  string // "" == client_secret; private_key_jwt_local_keypair
 	Signer      keysigner.Signer
 	KeyLabel    string
 	KeyProvider string
@@ -43,7 +45,7 @@ var resolveExternalAssertionSigner = func(ctx context.Context, provider string) 
 
 // ResolveConfigSigner resolves the host-local credential signer required by cfg.
 func ResolveConfigSigner(cfg *core.CliConfig, kc keychain.KeychainAccess) (keysigner.Signer, error) {
-	if cfg == nil || !core.IsPrivateKeyJWTAuthMethod(cfg.AuthMethod) {
+	if cfg == nil || !core.IsPrivateKeyJWTLocalKeyPairAuthMethod(cfg.AuthMethod) {
 		return nil, nil
 	}
 	switch cfg.KeySource {
@@ -75,8 +77,8 @@ func ClientAuthFromConfig(cfg *core.CliConfig, signer keysigner.Signer) ClientAu
 	}
 }
 
-func (c ClientAuth) isPrivateKeyJWT() bool {
-	return core.IsPrivateKeyJWTAuthMethod(c.AuthMethod)
+func (c ClientAuth) isPrivateKeyJWTLocalKeyPair() bool {
+	return core.IsPrivateKeyJWTLocalKeyPairAuthMethod(c.AuthMethod)
 }
 
 // ResolveSigner prepares an external private-key JWT signer for reuse within
@@ -86,7 +88,7 @@ func (c ClientAuth) isPrivateKeyJWT() bool {
 // assertion minting: callers may reuse the returned value, while every call to
 // ApplyClientAssertion still asks the signer for a fresh assertion.
 func (c ClientAuth) ResolveSigner(ctx context.Context) (ClientAuth, error) {
-	if !c.isPrivateKeyJWT() || c.KeyProvider == "" ||
+	if !c.isPrivateKeyJWTLocalKeyPair() || c.KeyProvider == "" ||
 		c.KeyProvider == keysigner.SoftwareSignerName ||
 		keysigner.IsPlatformSignerName(c.KeyProvider) || c.externalSigner != nil {
 		return c, nil
@@ -115,17 +117,17 @@ func signClientAssertion(ctx context.Context, signer keysigner.Signer, keyLabel,
 		assertion, err := jwt.SignClientAssertion(ctx, signer, keysigner.KeyRef{Label: keyLabel}, clientID, audience, time.Now())
 		return jwt.ClientAssertionType, assertion, err
 	}
-	store := keylesshelper.NewKeyStoreWithSigner(nil, signer)
+	store := keylesshelper.NewKeyStoreWithSigners(nil, signer)
 	assertion, err := store.SignClientAssertionContext(ctx, signer.Name(), keyLabel, clientID, audience, time.Now())
 	return jwt.ClientAssertionType, assertion, err
 }
 
 // ApplyClientAssertion adds client_assertion(+type) to a token-endpoint form
-// for either private-key JWT method and returns true. For client_secret it
-// returns false, leaving the caller to apply its own secret-based
+// for private_key_jwt_local_keypair and returns true. For client_secret it returns
+// false, leaving the caller to apply its own secret-based
 // authentication. audience is the assertion aud claim.
 func (c ClientAuth) ApplyClientAssertion(ctx context.Context, form url.Values, audience string) (bool, error) {
-	if !c.isPrivateKeyJWT() {
+	if !c.isPrivateKeyJWTLocalKeyPair() {
 		return false, nil
 	}
 	var err error
@@ -146,6 +148,12 @@ func (c ClientAuth) ApplyClientAssertion(ctx context.Context, form url.Values, a
 		assertionType, assertion, err = signClientAssertion(ctx, c.Signer, c.KeyLabel, c.AppID, audience)
 	}
 	if err != nil {
+		if _, typed := errs.ProblemOf(err); !typed && errors.Is(err, keysigner.ErrKeyNotFound) {
+			err = errs.NewAuthenticationError(errs.SubtypeSigningKeyMissing,
+				"application signing key is missing; cannot authenticate with private-key JWT").
+				WithHint("run `lark-cli config init --private-key-jwt` in a terminal, choose the existing-app option, and enter app ID %s to re-register its signing key", c.AppID).
+				WithCause(err)
+		}
 		return false, err
 	}
 	form.Set("client_assertion_type", assertionType)

@@ -11,13 +11,16 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keychain"
@@ -48,30 +51,29 @@ func TestClientAuthRestoresSoftwareSigner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, method := range []string{core.AuthMethodPrivateKeyJWT, core.AuthMethodPrivateKeyJWTLocalKeyPair} {
-		cfg := &core.CliConfig{AppID: "cli_test", AuthMethod: method, KeySource: core.SecretSourceTEE,
-			KeyProvider: keysigner.SoftwareSignerName, KeyLabel: ref.Label}
-		reopened, err := ResolveConfigSigner(cfg, kc)
-		if err != nil {
-			t.Fatal(err)
-		}
-		form := url.Values{}
-		used, err := ClientAuthFromConfig(cfg, reopened).ApplyClientAssertion(ctx, form, "https://example.com/token")
-		if err != nil || !used || form.Get("client_assertion_type") != jwt.ClientAssertionType || form.Has("client_secret") {
-			t.Fatalf("software client assertion: used=%v, error=%v", used, err)
-		}
-		parts := strings.Split(form.Get("client_assertion"), ".")
-		if len(parts) != 3 {
-			t.Fatal("invalid JWT structure")
-		}
-		sig, err := base64.RawURLEncoding.DecodeString(parts[2])
-		if err != nil || len(sig) != 64 {
-			t.Fatalf("invalid ES256 signature: %v", err)
-		}
-		digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
-		if !ecdsa.Verify(public.(*ecdsa.PublicKey), digest[:], new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
-			t.Fatal("restored software signer used a different key")
-		}
+	method := core.AuthMethodPrivateKeyJWTLocalKeyPair
+	cfg := &core.CliConfig{AppID: "cli_test", AuthMethod: method, KeySource: core.SecretSourceTEE,
+		KeyProvider: keysigner.SoftwareSignerName, KeyLabel: ref.Label}
+	reopened, err := ResolveConfigSigner(cfg, kc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{}
+	used, err := ClientAuthFromConfig(cfg, reopened).ApplyClientAssertion(ctx, form, "https://example.com/token")
+	if err != nil || !used || form.Get("client_assertion_type") != jwt.ClientAssertionType || form.Has("client_secret") {
+		t.Fatalf("software client assertion: used=%v, error=%v", used, err)
+	}
+	parts := strings.Split(form.Get("client_assertion"), ".")
+	if len(parts) != 3 {
+		t.Fatal("invalid JWT structure")
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil || len(sig) != 64 {
+		t.Fatalf("invalid ES256 signature: %v", err)
+	}
+	digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	if !ecdsa.Verify(public.(*ecdsa.PublicKey), digest[:], new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
+		t.Fatal("restored software signer used a different key")
 	}
 	if err := signer.DeleteKey(ctx, ref); err != nil {
 		t.Fatal(err)
@@ -82,7 +84,11 @@ func TestClientAuthRestoresSoftwareSigner(t *testing.T) {
 }
 
 // fakeAuthSigner is a real in-memory ECDSA P-256 signer for client-auth tests.
-type fakeAuthSigner struct{ key *ecdsa.PrivateKey }
+type fakeAuthSigner struct {
+	key                *ecdsa.PrivateKey
+	publicErr, signErr error
+	ensureCalls        int
+}
 
 func (*fakeAuthSigner) Name() string { return keysigner.MacOSKeychainSignerName }
 
@@ -110,12 +116,19 @@ func newFakeAuthSigner(t *testing.T) *fakeAuthSigner {
 }
 
 func (f *fakeAuthSigner) EnsureKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	f.ensureCalls++
 	return f.key.Public(), nil
 }
 func (f *fakeAuthSigner) PublicKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	if f.publicErr != nil {
+		return nil, f.publicErr
+	}
 	return f.key.Public(), nil
 }
 func (f *fakeAuthSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) ([]byte, string, error) {
+	if f.signErr != nil {
+		return nil, "", f.signErr
+	}
 	h := sha256.Sum256(in)
 	r, s, err := ecdsa.Sign(rand.Reader, f.key, h[:])
 	if err != nil {
@@ -128,6 +141,98 @@ func (f *fakeAuthSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) 
 }
 
 func (*fakeAuthSigner) DeleteKey(context.Context, keysigner.KeyRef) error { return nil }
+
+func jwtTestPart(t *testing.T, value string, index int) map[string]any {
+	t.Helper()
+	parts := strings.Split(value, ".")
+	if len(parts) != 3 {
+		t.Fatal("invalid compact JWT")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[index])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func checkPrivateKeyJWTLocalKeyPairRequest(t *testing.T, assertion, proof, appID, kid string, seen map[string]bool) {
+	t.Helper()
+	header, claims := jwtTestPart(t, assertion, 0), jwtTestPart(t, assertion, 1)
+	if header["typ"] != "JWT" || header["kid"] != kid || claims["iss"] != appID || claims["sub"] != appID || claims["aud"] != core.ClientAssertionAudience(core.BrandFeishu) {
+		t.Fatalf("unexpected assertion identity: header=%v claims=%v", header, claims)
+	}
+	jti, _ := claims["jti"].(string)
+	if jti == "" || seen[jti] {
+		t.Fatal("client assertion was reused")
+	}
+	seen[jti] = true
+	if proof != "" {
+		proofHeader := jwtTestPart(t, proof, 0)
+		if proofHeader["typ"] != "dpop+jwt" {
+			t.Fatal("assertion used as DPoP proof")
+		}
+		proofClaims := jwtTestPart(t, proof, 1)
+		proofJTI, _ := proofClaims["jti"].(string)
+		if proofJTI == "" || seen[proofJTI] {
+			t.Fatal("DPoP proof was reused")
+		}
+		seen[proofJTI] = true
+	}
+}
+
+func TestClientAuthSigningKeyMissing(t *testing.T) {
+	policyErr := errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "signing denied").WithCause(keysigner.ErrKeyNotFound)
+	for _, tc := range []struct {
+		name    string
+		cause   error
+		missing bool
+	}{
+		{"missing", fmt.Errorf("backend: %w", keysigner.ErrKeyNotFound), true},
+		{"locked", keysigner.ErrUnlockRequired, false},
+		{"unavailable", keysigner.ErrUnavailable, false},
+		{"corrupt", keysigner.ErrCorrupt, false},
+		{"typed policy", policyErr, false},
+	} {
+		for _, stage := range []string{"public key", "sign"} {
+			t.Run(tc.name+"/"+stage, func(t *testing.T) {
+				signer := newFakeAuthSigner(t)
+				if stage == "public key" {
+					signer.publicErr = tc.cause
+				} else {
+					signer.signErr = tc.cause
+				}
+				ca := ClientAuth{AppID: "cli_missing_key", AppSecret: "must-not-send", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: signer, KeyLabel: "lost-key"}
+				calls := 0
+				client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					calls++
+					return nil, errors.New("unexpected HTTP request")
+				})}
+				result, err := RequestDeviceAuthorization(context.Background(), client, ca, core.BrandFeishu, "", nil)
+				if result != nil || !errors.Is(err, tc.cause) || calls != 0 || signer.ensureCalls != 0 {
+					t.Fatalf("result=%v err=%v HTTP calls=%d key creations=%d", result, err, calls, signer.ensureCalls)
+				}
+				problem, typed := errs.ProblemOf(err)
+				if tc.missing {
+					if !typed || problem.Category != errs.CategoryAuthentication || problem.Subtype != errs.SubtypeSigningKeyMissing || problem.Retryable ||
+						!strings.Contains(problem.Hint, "re-register") || !strings.Contains(problem.Hint, "lark-cli config init --private-key-jwt") ||
+						!strings.Contains(problem.Hint, "in a terminal") || !strings.Contains(problem.Hint, "existing-app") || !strings.Contains(problem.Hint, ca.AppID) || strings.Contains(problem.Hint, "--new") {
+						t.Fatalf("missing key error lacks authentication classification or registration hint: %v", err)
+					}
+				} else if tc.cause == policyErr {
+					if !typed || problem.Category != errs.CategoryPolicy || problem.Subtype != errs.SubtypeAccessDenied || problem.Hint != "" {
+						t.Fatalf("typed policy error changed: %v", err)
+					}
+				} else if typed {
+					t.Fatalf("non-missing error reclassified: %v", err)
+				}
+			})
+		}
+	}
+}
 
 func TestClientAuth_ApplyClientAssertion_ClientSecret(t *testing.T) {
 	ca := ClientAuth{AppID: "cli_a", AppSecret: "test-secret"} // AuthMethod "" => client_secret
@@ -144,49 +249,39 @@ func TestClientAuth_ApplyClientAssertion_ClientSecret(t *testing.T) {
 	}
 }
 
-func TestClientAuth_ApplyClientAssertion_PrivateKeyJWT(t *testing.T) {
-	for _, method := range []string{
-		core.AuthMethodPrivateKeyJWT,
-		core.AuthMethodPrivateKeyJWTLocalKeyPair,
-	} {
-		t.Run(method, func(t *testing.T) {
-			ca := ClientAuth{
-				AppID:      "cli_a",
-				AuthMethod: method,
-				Signer:     newFakeAuthSigner(t),
-				KeyLabel:   "k",
-			}
-			form := url.Values{}
-			used, err := ca.ApplyClientAssertion(context.Background(), form, "https://accounts.feishu.cn/open-apis/authen/v2/oauth/token")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !used {
-				t.Fatal("expected client_assertion to be applied")
-			}
-			if form.Get("client_assertion_type") != jwt.ClientAssertionType {
-				t.Errorf("client_assertion_type = %q", form.Get("client_assertion_type"))
-			}
-			if form.Get("client_assertion") == "" {
-				t.Error("client_assertion is empty")
-			}
-			if form.Has("client_secret") {
-				t.Errorf("client_secret must not be present for %s", method)
-			}
-		})
+func TestClientAuth_ApplyClientAssertion_PrivateKeyJWTLocalKeyPair(t *testing.T) {
+	method := core.AuthMethodPrivateKeyJWTLocalKeyPair
+	ca := ClientAuth{
+		AppID:      "cli_a",
+		AuthMethod: method,
+		Signer:     newFakeAuthSigner(t),
+		KeyLabel:   "k",
+	}
+	form := url.Values{}
+	used, err := ca.ApplyClientAssertion(context.Background(), form, "https://accounts.feishu.cn/open-apis/authen/v2/oauth/token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !used {
+		t.Fatal("expected client_assertion to be applied")
+	}
+	if form.Get("client_assertion_type") != jwt.ClientAssertionType {
+		t.Errorf("client_assertion_type = %q", form.Get("client_assertion_type"))
+	}
+	if form.Get("client_assertion") == "" {
+		t.Error("client_assertion is empty")
+	}
+	if form.Has("client_secret") {
+		t.Errorf("client_secret must not be present for %s", method)
 	}
 }
 
 func TestClientAuth_ApplyClientAssertion_NilSigner(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	for _, method := range []string{
-		core.AuthMethodPrivateKeyJWT,
-		core.AuthMethodPrivateKeyJWTLocalKeyPair,
-	} {
-		ca := ClientAuth{AppID: "cli_a", AuthMethod: method}
-		if _, err := ca.ApplyClientAssertion(context.Background(), url.Values{}, "aud"); err == nil {
-			t.Fatalf("expected error when %s has no signer", method)
-		}
+	method := core.AuthMethodPrivateKeyJWTLocalKeyPair
+	ca := ClientAuth{AppID: "cli_a", AuthMethod: method}
+	if _, err := ca.ApplyClientAssertion(context.Background(), url.Values{}, "aud"); err == nil {
+		t.Fatalf("expected error when %s has no signer", method)
 	}
 }
 
@@ -211,7 +306,7 @@ func TestClientAuth_ApplyClientAssertion_ExplicitProviderDoesNotUseBuiltinOrSecr
 	t.Cleanup(func() { resolveExternalAssertionSigner = previous })
 
 	ca := ClientAuth{
-		AppID: "cli_external", AppSecret: "must-not-send", AuthMethod: core.AuthMethodPrivateKeyJWT,
+		AppID: "cli_external", AppSecret: "must-not-send", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
 		Signer: newFakeAuthSigner(t), KeyLabel: "openclaw-lark", KeyProvider: core.KeylessProviderLarkSuite,
 	}
 	form := url.Values{}
@@ -275,23 +370,17 @@ func TestResolveConfigSignerRestoresRecordedNativeBackend(t *testing.T) {
 		t.Skip("current platform has no native signer")
 	}
 
-	for _, method := range []string{
-		core.AuthMethodPrivateKeyJWT,
-		core.AuthMethodPrivateKeyJWTLocalKeyPair,
-	} {
-		t.Run(method, func(t *testing.T) {
-			resolved, err := ResolveConfigSigner(&core.CliConfig{
-				AuthMethod:  method,
-				KeySource:   core.SecretSourceTEE,
-				KeyProvider: names[0],
-				KeyLabel:    "key-1",
-			}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if resolved == nil || resolved.Name() != names[0] {
-				t.Fatalf("resolved signer = %T, want %s", resolved, names[0])
-			}
-		})
+	method := core.AuthMethodPrivateKeyJWTLocalKeyPair
+	resolved, err := ResolveConfigSigner(&core.CliConfig{
+		AuthMethod:  method,
+		KeySource:   core.SecretSourceTEE,
+		KeyProvider: names[0],
+		KeyLabel:    "key-1",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved == nil || resolved.Name() != names[0] {
+		t.Fatalf("resolved signer = %T, want %s", resolved, names[0])
 	}
 }

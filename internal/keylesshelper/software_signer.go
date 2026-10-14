@@ -35,9 +35,9 @@ func newSoftwareSigner(kc keychain.KeychainAccess) softwareSigner {
 }
 
 func (s softwareSigner) open(allowCreate bool) (keysigner.Signer, error) {
-	// Retain the existing PKJWT namespace: DPoP software keys use a different
-	// unlock account. Sharing their directory would mix independently encrypted
-	// key records and strand existing profiles.
+	// Preserve the private_key_jwt_local_keypair key namespace. DPoP software keys
+	// use a different unlock account; sharing their directory would mix
+	// independently encrypted key records and strand existing profiles.
 	directory, err := signerDirectory(filepath.Join("keyless", s.Name()))
 	if err != nil {
 		return nil, err

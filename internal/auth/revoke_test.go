@@ -4,15 +4,23 @@
 package auth
 
 import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
+	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 type revokeRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -54,12 +62,101 @@ func TestRevokeToken_PostsExpectedForm(t *testing.T) {
 	}
 	reg.Register(stub)
 
-	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(context.Background(), httpmock.NewClient(reg), ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "user-access-token", "access_token")
 	if err != nil {
 		t.Fatalf("RevokeToken() error = %v", err)
 	}
 	if got := stub.CapturedHeaders.Get("Content-Type"); got != "application/x-www-form-urlencoded" {
 		t.Fatalf("Content-Type = %q", got)
+	}
+}
+
+func TestRevokeToken_PrivateKeyJWT(t *testing.T) {
+	for _, brand := range []core.LarkBrand{core.BrandFeishu, core.BrandLark} {
+		t.Run(string(brand), func(t *testing.T) {
+			root := t.TempDir()
+			for _, name := range []string{"HOME", "USERPROFILE", "LOCALAPPDATA", "LARKSUITE_CLI_DATA_DIR"} {
+				t.Setenv(name, root)
+			}
+			signer := newFakeAuthSigner(t)
+			ca := ClientAuth{AppID: "cli_revoke", AppSecret: "must-not-send", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+				Signer: signer, KeyLabel: "registered-key"}
+			seen := map[string]bool{}
+			client := &http.Client{Transport: revokeRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if err := req.ParseForm(); err != nil {
+					t.Fatal(err)
+				}
+				form := req.PostForm
+				if req.Method != http.MethodPost || req.URL.Path != PathOAuthRevoke ||
+					form.Get("client_id") != ca.AppID || form.Get("token") != "token-to-revoke" ||
+					form.Get("client_assertion_type") != jwt.ClientAssertionType || form.Has("client_secret") ||
+					req.Header.Get("Authorization") != "" || req.Header.Get("DPoP") != "" {
+					t.Fatal("revoke request did not use assertion-only application authentication")
+				}
+				assertion := form.Get("client_assertion")
+				claims := jwtTestPart(t, assertion, 1)
+				jti, _ := claims["jti"].(string)
+				if claims["iss"] != ca.AppID || claims["sub"] != ca.AppID || claims["aud"] != core.ClientAssertionAudience(brand) || jti == "" || seen[jti] {
+					t.Fatal("revoke assertion identity or freshness is incorrect")
+				}
+				seen[jti] = true
+				parts := strings.Split(assertion, ".")
+				sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+				digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+				if err != nil || len(sig) != 64 || !ecdsa.Verify(&signer.key.PublicKey, digest[:], new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
+					t.Fatal("revoke assertion signature is invalid")
+				}
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"code":0}`)), Header: make(http.Header)}, nil
+			})}
+			for _, hint := range []string{"refresh_token", "access_token"} {
+				if err := RevokeToken(context.Background(), client, ca, brand, "token-to-revoke", hint); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if len(seen) != 2 || signer.ensureCalls != 0 {
+				t.Fatalf("assertions=%d, key creations=%d", len(seen), signer.ensureCalls)
+			}
+		})
+	}
+}
+
+func TestRevokeToken_MissingSigningKeyDoesNotUseSecret(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"HOME", "USERPROFILE", "LOCALAPPDATA", "LARKSUITE_CLI_DATA_DIR"} {
+		t.Setenv(name, root)
+	}
+	signer := newFakeAuthSigner(t)
+	signer.publicErr = keysigner.ErrKeyNotFound
+	client := &http.Client{Transport: revokeRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("missing signing key must fail before HTTP, without Secret fallback")
+		return nil, nil
+	})}
+	err := RevokeToken(context.Background(), client, ClientAuth{AppID: "cli_revoke", AppSecret: "must-not-send",
+		AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: signer, KeyLabel: "missing-key"}, core.BrandFeishu, "token", "refresh_token")
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryAuthentication || p.Subtype != errs.SubtypeSigningKeyMissing || !errors.Is(err, keysigner.ErrKeyNotFound) || signer.ensureCalls != 0 {
+		t.Fatalf("error=%v, key creations=%d", err, signer.ensureCalls)
+	}
+}
+
+func TestRevokeToken_ExternalSigner(t *testing.T) {
+	helper := &fakeExternalAssertionSigner{}
+	ca := ClientAuth{AppID: "cli_revoke", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		KeyProvider: core.KeylessProviderLarkSuite, KeyLabel: "external-key", externalSigner: helper}
+	client := &http.Client{Transport: revokeRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if err := req.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if req.PostForm.Get("client_assertion") != "external.jwt.1" || req.PostForm.Has("client_secret") {
+			t.Fatal("external assertion was not used for revocation")
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
+	})}
+	if err := RevokeToken(context.Background(), client, ca, core.BrandFeishu, "token", "access_token"); err != nil {
+		t.Fatal(err)
+	}
+	if helper.calls != 1 || helper.keyRef != ca.KeyLabel || helper.clientID != ca.AppID || helper.audience != core.ClientAssertionAudience(core.BrandFeishu) {
+		t.Fatalf("external signer did not receive the configured key, app and audience: %+v", helper)
 	}
 }
 
@@ -71,7 +168,7 @@ func TestRevokeToken_DoFailureReturnsTypedNetworkError(t *testing.T) {
 		}),
 	}
 
-	err := RevokeToken(httpClient, "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(context.Background(), httpClient, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "user-access-token", "access_token")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -98,7 +195,7 @@ func TestRevokeToken_ReportsHTTPError(t *testing.T) {
 		Body:   map[string]interface{}{"error": "invalid_token"},
 	})
 
-	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(context.Background(), httpmock.NewClient(reg), ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "user-access-token", "access_token")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -127,7 +224,7 @@ func TestRevokeToken_ReportsOAuthCodeErrorAsTypedAPIError(t *testing.T) {
 		},
 	})
 
-	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(context.Background(), httpmock.NewClient(reg), ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "user-access-token", "access_token")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -156,7 +253,7 @@ func TestRevokeToken_ReportsOAuthErrorFieldAsTypedAPIError(t *testing.T) {
 		},
 	})
 
-	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(context.Background(), httpmock.NewClient(reg), ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "user-access-token", "access_token")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -184,7 +281,7 @@ func TestRevokeToken_ReadFailureReturnsTypedInternalError(t *testing.T) {
 		}),
 	}
 
-	err := RevokeToken(httpClient, "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(context.Background(), httpClient, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "user-access-token", "access_token")
 	if err == nil {
 		t.Fatal("expected error")
 	}

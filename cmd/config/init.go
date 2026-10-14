@@ -27,16 +27,16 @@ import (
 
 // ConfigInitOptions holds all inputs for config init.
 type ConfigInitOptions struct {
-	Factory             *cmdutil.Factory
-	Ctx                 context.Context
-	AppID               string
-	appSecret           string // internal only; populated from stdin, never from a CLI flag
-	AppSecretStdin      bool   // read app-secret from stdin (avoids process list exposure)
-	Brand               string
-	New                 bool
-	PrivateKeyJWT       bool // --private-key-jwt: request private_key_jwt instead of the default client_secret
-	PrivateKeyFile      string
-	registrationSigners []keysigner.Signer
+	Factory                   *cmdutil.Factory
+	Ctx                       context.Context
+	AppID                     string
+	appSecret                 string // internal only; populated from stdin, never from a CLI flag
+	AppSecretStdin            bool   // read app-secret from stdin (avoids process list exposure)
+	Brand                     string
+	New                       bool
+	PrivateKeyJWTLocalKeyPair bool // select private_key_jwt_local_keypair with a generated key or PrivateKeyFile
+	PrivateKeyFile            string
+	registrationSigners       []keysigner.Signer
 
 	Lang         string // raw --lang (string for cobra); normalized to canonical/"" in validateInitLang
 	langExplicit bool   // true when --lang was explicitly passed
@@ -112,7 +112,7 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 	}
 
 	cmd.Flags().BoolVar(&opts.New, "new", false, "create a new app directly (skip mode selection)")
-	cmd.Flags().BoolVar(&opts.PrivateKeyJWT, "private-key-jwt", false, "create a new app with private_key_jwt (signed by a managed key, no app secret)")
+	cmd.Flags().BoolVar(&opts.PrivateKeyJWTLocalKeyPair, "private-key-jwt", false, "use private_key_jwt_local_keypair with a generated key or --private-key-file (no app secret)")
 	cmd.Flags().StringVar(&opts.PrivateKeyFile, "private-key-file", "", "reference an already-registered PEM private key for private_key_jwt_local_keypair (file is not copied)")
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID (non-interactive)")
 	cmd.Flags().BoolVar(&opts.AppSecretStdin, "app-secret-stdin", false, "Read App Secret from stdin to avoid process list exposure")
@@ -134,7 +134,7 @@ func validatePrivateKeyFileFlags(cmd *cobra.Command, opts *ConfigInitOptions) er
 			"--private-key-file requires --app-id for an app whose public key is already registered").
 			WithParam("--app-id")
 	}
-	for _, name := range []string{"new", "private-key-jwt", "app-secret-stdin"} {
+	for _, name := range []string{"new", "app-secret-stdin"} {
 		if cmd.Flags().Changed(name) {
 			flag := "--" + name
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
@@ -163,8 +163,8 @@ func ProjectInitHelp(cmd *cobra.Command, canReferenceBind bool) {
 }
 
 func requestedInitAuthMethod(opts *ConfigInitOptions) string {
-	if opts.PrivateKeyJWT {
-		return core.AuthMethodPrivateKeyJWT
+	if opts.PrivateKeyJWTLocalKeyPair || opts.PrivateKeyFile != "" {
+		return core.AuthMethodPrivateKeyJWTLocalKeyPair
 	}
 	return core.AuthMethodClientSecret
 }
@@ -233,9 +233,9 @@ func cleanupOldConfig(existing *core.MultiAppConfig, f *cmdutil.Factory, skipApp
 	}
 }
 
-// removeStaleSecretForPKJWT clears a secret left in the keychain when the same
-// appId is migrated from client_secret to a private-key JWT method.
-func removeStaleSecretForPKJWT(existing *core.MultiAppConfig, profileName, appID string, kc keychain.KeychainAccess) {
+// removeStaleSecretForPrivateKeyJWTLocalKeyPair clears a secret left in the keychain when
+// the same appId is migrated from client_secret to private_key_jwt_local_keypair.
+func removeStaleSecretForPrivateKeyJWTLocalKeyPair(existing *core.MultiAppConfig, profileName, appID string, kc keychain.KeychainAccess) {
 	if existing == nil {
 		return
 	}
@@ -252,10 +252,10 @@ func removeStaleSecretForPKJWT(existing *core.MultiAppConfig, profileName, appID
 	}
 }
 
-// keyRefFromResult builds the signer reference to persist for either
-// private-key JWT result, or nil for client_secret.
+// keyRefFromResult builds the signer reference for private_key_jwt_local_keypair,
+// or nil for client_secret.
 func keyRefFromResult(r *configInitResult) *core.SecretRef {
-	if r != nil && core.IsPrivateKeyJWTAuthMethod(r.AuthMethod) && r.KeyLabel != "" {
+	if r != nil && core.IsPrivateKeyJWTLocalKeyPairAuthMethod(r.AuthMethod) && r.KeyLabel != "" {
 		source := r.KeySource
 		if source == "" {
 			source = core.SecretSourceTEE
@@ -263,6 +263,18 @@ func keyRefFromResult(r *configInitResult) *core.SecretRef {
 		return &core.SecretRef{Source: source, Provider: r.KeyProvider, ID: r.KeyLabel}
 	}
 	return nil
+}
+
+// cleanupReplacedSigningKeys runs only after the new binding has been saved.
+func cleanupReplacedSigningKeys(ctx context.Context, f *cmdutil.Factory, previous, current *core.MultiAppConfig) {
+	if previous == nil {
+		return
+	}
+	for _, app := range previous.Apps {
+		if err := keylesshelper.CleanupUnreferencedSigningKey(ctx, f.Keychain, app, current); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "Warning: configuration saved; failed to clean up replaced local signing key for app %s: %v\n", app.AppId, err)
+		}
+	}
 }
 
 // saveAsOnlyApp overwrites config.json with a single-app config.
@@ -280,19 +292,39 @@ func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, 
 // With profileName: appends or updates the named profile (preserves other profiles).
 // Without profileName: cleans up old config and saves as the only app.
 // authMethod/keyRef carry the credential type: ("", nil) for client_secret or
-// a private-key JWT method plus its signer reference.
+// private_key_jwt_local_keypair plus its signer reference.
 func saveInitConfig(profileName string, existing *core.MultiAppConfig, f *cmdutil.Factory, appId string, secret core.SecretInput, brand core.LarkBrand, lang, authMethod string, keyRef *core.SecretRef) error {
-	if profileName != "" {
-		return saveAsProfile(existing, f.Keychain, profileName, appId, secret, brand, lang, authMethod, keyRef)
-	}
-	cleanupOldConfig(existing, f, appId)
-	var prior i18n.Lang
+	var previous *core.MultiAppConfig
 	if existing != nil {
-		if app := existing.CurrentAppConfig(""); app != nil {
-			prior = app.Lang
+		copied := *existing
+		copied.Apps = append([]core.AppConfig(nil), existing.Apps...)
+		previous = &copied
+	}
+	if profileName != "" {
+		if err := saveAsProfile(existing, f.Keychain, profileName, appId, secret, brand, lang, authMethod, keyRef); err != nil {
+			return err
+		}
+	} else {
+		cleanupOldConfig(existing, f, appId)
+		var prior i18n.Lang
+		if existing != nil {
+			if app := existing.CurrentAppConfig(""); app != nil {
+				prior = app.Lang
+			}
+		}
+		if err := saveAsOnlyApp(appId, secret, brand, string(preferredLang(i18n.Lang(lang), prior)), authMethod, keyRef); err != nil {
+			return err
 		}
 	}
-	return saveAsOnlyApp(appId, secret, brand, string(preferredLang(i18n.Lang(lang), prior)), authMethod, keyRef)
+	if previous != nil {
+		current, err := core.LoadMultiAppConfig()
+		if err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "Warning: configuration saved; failed to reload config for local signing key cleanup: %v\n", err)
+			return nil
+		}
+		cleanupReplacedSigningKeys(context.Background(), f, previous, current)
+	}
+	return nil
 }
 
 // wrapSaveConfigError passes an already-typed error (e.g. the --name conflict
@@ -452,7 +484,7 @@ func privateKeyFileResult(
 			WithParam("--private-key-file").
 			WithCause(err)
 	}
-	if err := runProbePKJWT(ctx, f, brand, appID, signer, path); err != nil {
+	if err := runProbePrivateKeyJWTLocalKeyPair(ctx, f, brand, appID, signer, path); err != nil {
 		return nil, err
 	}
 	return &configInitResult{
@@ -470,7 +502,7 @@ func persistInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName 
 	existing, _ := core.LoadMultiAppConfig()
 
 	switch {
-	case core.IsPrivateKeyJWTAuthMethod(result.AuthMethod):
+	case core.IsPrivateKeyJWTLocalKeyPairAuthMethod(result.AuthMethod):
 		previous := existing
 		if existing != nil {
 			copied := *existing
@@ -480,7 +512,7 @@ func persistInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName 
 		if err := saveInitConfig(profileName, existing, f, result.AppID, core.SecretInput{}, result.Brand, opts.Lang, result.AuthMethod, keyRefFromResult(result)); err != nil {
 			return wrapSaveConfigError(err)
 		}
-		removeStaleSecretForPKJWT(previous, profileName, result.AppID, f.Keychain)
+		removeStaleSecretForPrivateKeyJWTLocalKeyPair(previous, profileName, result.AppID, f.Keychain)
 		return nil
 	case result.AppSecret != "":
 		secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
@@ -499,10 +531,10 @@ func persistInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName 
 }
 
 func probeInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, result *configInitResult) error {
-	if core.IsPrivateKeyJWTAuthMethod(result.AuthMethod) {
+	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(result.AuthMethod) {
 		signer := result.Signer
 		if signer != nil {
-			return runProbePKJWT(opts.Ctx, f, result.Brand, result.AppID, signer, result.KeyLabel)
+			return runProbePrivateKeyJWTLocalKeyPair(opts.Ctx, f, result.Brand, result.AppID, signer, result.KeyLabel)
 		}
 		if result.KeySource == core.SecretSourceKeyFile {
 			signer = &keylesshelper.FileSigner{}
@@ -513,7 +545,7 @@ func probeInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, result *config
 				return errs.NewConfigError(errs.SubtypeInvalidConfig, "%v", err).WithCause(err)
 			}
 		}
-		return runProbePKJWT(opts.Ctx, f, result.Brand, result.AppID, signer, result.KeyLabel)
+		return runProbePrivateKeyJWTLocalKeyPair(opts.Ctx, f, result.Brand, result.AppID, signer, result.KeyLabel)
 	}
 	if result.AppSecret != "" {
 		return runProbe(opts.Ctx, f, result.AppID, result.AppSecret, result.Brand)
@@ -526,7 +558,7 @@ func persistAndPrintResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileN
 		return err
 	}
 	printLangPreferenceConfirmation(opts)
-	if core.IsPrivateKeyJWTAuthMethod(result.AuthMethod) {
+	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(result.AuthMethod) {
 		data := map[string]interface{}{"appId": result.AppID, "authMethod": result.AuthMethod, "brand": result.Brand}
 		if result.KeyID != "" {
 			data["kid"] = result.KeyID
@@ -538,16 +570,6 @@ func persistAndPrintResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileN
 	return nil
 }
 
-// persistAndProbeResult saves a registration result into profileName and runs
-// the post-registration probe. profileName == "" replaces the single app
-// (legacy); a named profile is updated in place.
-func persistAndProbeResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName string, result *configInitResult) error {
-	if err := persistAndPrintResult(opts, f, profileName, result); err != nil {
-		return err
-	}
-	return probeInitResult(opts, f, result)
-}
-
 func configRegistrationSigners(opts *ConfigInitOptions, f *cmdutil.Factory) []keysigner.Signer {
 	if opts.registrationSigners != nil {
 		return opts.registrationSigners
@@ -557,15 +579,16 @@ func configRegistrationSigners(opts *ConfigInitOptions, f *cmdutil.Factory) []ke
 
 func configInitRun(opts *ConfigInitOptions) error {
 	f := opts.Factory
-	if opts.PrivateKeyJWT {
+	if opts.PrivateKeyJWTLocalKeyPair {
 		switch {
-		case opts.AppID != "":
+		case opts.AppID != "" && opts.PrivateKeyFile == "":
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--private-key-jwt cannot be combined with --app-id; use --new to register a private_key_jwt app").
-				WithParam("--private-key-jwt")
+				"--private-key-jwt with --app-id requires --private-key-file").
+				WithParam("--private-key-jwt").
+				WithHint("use --new to register a new app with a generated key")
 		case opts.AppSecretStdin:
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--private-key-jwt cannot be combined with --app-secret-stdin; private_key_jwt does not use an app secret").
+				"--private-key-jwt cannot be combined with --app-secret-stdin; private_key_jwt_local_keypair does not use an app secret").
 				WithParam("--private-key-jwt")
 		}
 	}
@@ -609,11 +632,10 @@ func configInitRun(opts *ConfigInitOptions) error {
 		return persistAndPrintResult(opts, f, opts.ProfileName, result)
 	}
 
-	// A user who explicitly asks for private_key_jwt needs immediate feedback
-	// before any interactive prompt. Otherwise unsupported machines enter the
-	// TUI and fail only after the user chooses a create flow.
-	if opts.PrivateKeyJWT && !opts.New {
-		if _, err := resolveRegisterAuthMethod(opts.Ctx, core.AuthMethodPrivateKeyJWT, configRegistrationSigners(opts, f)); err != nil {
+	// Check private_key_jwt_local_keypair key generation before showing the TUI,
+	// so unsupported machines fail before the user chooses a create flow.
+	if opts.PrivateKeyJWTLocalKeyPair && !opts.New {
+		if _, err := resolveRegisterAuthMethod(opts.Ctx, core.AuthMethodPrivateKeyJWTLocalKeyPair, configRegistrationSigners(opts, f)); err != nil {
 			return err
 		}
 	}
@@ -660,7 +682,10 @@ func configInitRun(opts *ConfigInitOptions) error {
 		if result == nil {
 			return errs.NewInternalError(errs.SubtypeSDKError, "app creation returned no result")
 		}
-		return persistAndProbeResult(opts, f, opts.ProfileName, result)
+		if err := persistAndPrintResult(opts, f, opts.ProfileName, result); err != nil {
+			return err
+		}
+		return probeInitResult(opts, f, result)
 	}
 
 	// Mode 4: Interactive TUI (terminal)
@@ -677,7 +702,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 		if err := persistInitResult(opts, f, opts.ProfileName, result); err != nil {
 			return err
 		}
-		if core.IsPrivateKeyJWTAuthMethod(result.AuthMethod) {
+		if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(result.AuthMethod) {
 			if err := probeInitResult(opts, f, result); err != nil {
 				return err
 			}
@@ -687,7 +712,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 			output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.ConfigSaved, result.AppID))
 		}
 		printLangPreferenceConfirmation(opts)
-		if !core.IsPrivateKeyJWTAuthMethod(result.AuthMethod) {
+		if !core.IsPrivateKeyJWTLocalKeyPairAuthMethod(result.AuthMethod) {
 			return probeInitResult(opts, f, result)
 		}
 		return nil

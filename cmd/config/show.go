@@ -73,17 +73,29 @@ func configShowRun(opts *ConfigShowOptions) error {
 	// environment) — with a session-level LARKSUITE_CLI_PROFILE in play, the
 	// effective profile and the persisted default can legitimately differ.
 	_, effectiveSource := config.EffectiveProfile(f.Invocation.Profile, f.Invocation.ProfileSource)
-	output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+	authMethod := app.AuthMethod
+	if authMethod == "" {
+		authMethod = core.AuthMethodClientSecret
+	}
+	data := map[string]interface{}{
 		"workspace":     core.CurrentWorkspace().Display(),
 		"profile":       app.ProfileName(),
 		"profileSource": effectiveSource.String(),
 		"appId":         app.AppId,
-		"appSecret":     "****",
+		"authMethod":    authMethod,
 		"brand":         app.Brand,
 		"lang":          app.Lang,
 		"dpopMode":      dpopMode,
 		"users":         users,
-	})
+	}
+	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(authMethod) {
+		if app.KeyRef != nil {
+			data["keyRef"] = app.KeyRef
+		}
+	} else {
+		data["appSecret"] = "****"
+	}
+	output.PrintJson(f.IOStreams.Out, data)
 	fmt.Fprintf(f.IOStreams.ErrOut, "\nConfig file path: %s\n", core.GetConfigPath())
 	return nil
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -40,6 +41,15 @@ func (r *recordingConfigKeychain) Set(service, account, value string) error    {
 func (r *recordingConfigKeychain) Remove(service, account string) error {
 	r.removed = append(r.removed, service+":"+account)
 	return nil
+}
+
+type cleanupTestKeychain struct {
+	noopConfigKeychain
+	readErr error
+}
+
+func (k *cleanupTestKeychain) Get(string, string) (string, error) {
+	return "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", k.readErr
 }
 
 func TestConfigInitCmd_FlagParsing(t *testing.T) {
@@ -68,7 +78,7 @@ func TestConfigInitCmd_FlagParsing(t *testing.T) {
 	}
 }
 
-func TestConfigInitCmd_PrivateKeyJWTFlag(t *testing.T) {
+func TestConfigInitCmd_PrivateKeyJWTLocalKeyPairFlag(t *testing.T) {
 	clearAgentEnv(t) // assumes local workspace; guard refuses init in agent contexts
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 
@@ -81,14 +91,14 @@ func TestConfigInitCmd_PrivateKeyJWTFlag(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !gotOpts.PrivateKeyJWT {
-		t.Error("PrivateKeyJWT = false, want true")
+	if !gotOpts.PrivateKeyJWTLocalKeyPair {
+		t.Error("PrivateKeyJWTLocalKeyPair = false, want true")
 	}
-	if got := requestedInitAuthMethod(gotOpts); got != core.AuthMethodPrivateKeyJWT {
-		t.Fatalf("--private-key-jwt selected %q, want private_key_jwt", got)
+	if got := requestedInitAuthMethod(gotOpts); got != core.AuthMethodPrivateKeyJWTLocalKeyPair {
+		t.Fatalf("--private-key-jwt selected %q, want private_key_jwt_local_keypair", got)
 	}
-	if cmd.Flags().Lookup("private-key-jwt-local-keypair") != nil {
-		t.Fatal("local key-pair authentication must use --private-key-file")
+	if usage := cmd.UsageString(); !strings.Contains(usage, "--private-key-jwt") || strings.Contains(usage, "--private-key-jwt-local-keypair") {
+		t.Fatalf("help does not use the short flag name: %s", usage)
 	}
 }
 
@@ -260,27 +270,23 @@ func TestSaveInitConfig_OmitLangPreservesPrior(t *testing.T) {
 	}
 }
 
-func TestKeyRefFromResult_PrivateKeyJWT(t *testing.T) {
-	for _, method := range []string{
-		core.AuthMethodPrivateKeyJWT,
-		core.AuthMethodPrivateKeyJWTLocalKeyPair,
-	} {
-		ref := keyRefFromResult(&configInitResult{
-			AuthMethod:  method,
-			KeyLabel:    "lark-cli-default",
-			KeyProvider: keysigner.MacOSKeychainSignerName,
-		})
-		if ref == nil {
-			t.Fatalf("%s: keyRefFromResult returned nil", method)
-		}
-		if ref.Source != "tee" || ref.ID != "lark-cli-default" ||
-			ref.Provider != keysigner.MacOSKeychainSignerName {
-			t.Fatalf("%s: key ref = %#v", method, ref)
-		}
+func TestKeyRefFromResult_PrivateKeyJWTLocalKeyPair(t *testing.T) {
+	method := core.AuthMethodPrivateKeyJWTLocalKeyPair
+	ref := keyRefFromResult(&configInitResult{
+		AuthMethod:  method,
+		KeyLabel:    "lark-cli-default",
+		KeyProvider: keysigner.MacOSKeychainSignerName,
+	})
+	if ref == nil {
+		t.Fatalf("%s: keyRefFromResult returned nil", method)
+	}
+	if ref.Source != "tee" || ref.ID != "lark-cli-default" ||
+		ref.Provider != keysigner.MacOSKeychainSignerName {
+		t.Fatalf("%s: key ref = %#v", method, ref)
+	}
 
-		if ref := keyRefFromResult(&configInitResult{AuthMethod: method}); ref != nil {
-			t.Fatalf("%s: missing key label persisted key ref %#v", method, ref)
-		}
+	if ref := keyRefFromResult(&configInitResult{AuthMethod: method}); ref != nil {
+		t.Fatalf("%s: missing key label persisted key ref %#v", method, ref)
 	}
 	if ref := keyRefFromResult(&configInitResult{AuthMethod: core.AuthMethodClientSecret, KeyLabel: "ignored"}); ref != nil {
 		t.Fatalf("client_secret should not persist key ref, got %#v", ref)
@@ -290,7 +296,7 @@ func TestKeyRefFromResult_PrivateKeyJWT(t *testing.T) {
 	}
 }
 
-func TestPersistInitResult_PrivateKeyJWT(t *testing.T) {
+func TestPersistInitResult_PrivateKeyJWTLocalKeyPair(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		profile string
@@ -327,6 +333,127 @@ func TestPersistInitResult_PrivateKeyJWT(t *testing.T) {
 			}
 			if !app.AppSecret.IsZero() {
 				t.Fatalf("private_key_jwt_local_keypair config must stay secretless, AppSecret value %#v", app.AppSecret)
+			}
+		})
+	}
+}
+
+func TestPersistInitResultCleansReplacedSigningKey(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		profile        string
+		oldSource      string
+		oldProvider    string
+		sharedAppID    string
+		newAppID       string
+		newLabel       string
+		saveFailure    bool
+		cleanupFailure bool
+		oldMissing     bool
+		nonCurrentApp  bool
+		wantDeleted    bool
+	}{
+		{name: "single app", wantDeleted: true},
+		{name: "named profile", profile: "prod", wantDeleted: true},
+		{name: "non-current existing app", nonCurrentApp: true, wantDeleted: true},
+		{name: "same key", newLabel: "old-key"},
+		{name: "shared by same app profile", profile: "prod", sharedAppID: "cli_test"},
+		{name: "shared by another app", profile: "prod", sharedAppID: "cli_other"},
+		{name: "different app", newAppID: "cli_other", wantDeleted: true},
+		{name: "user-owned file", oldSource: core.SecretSourceKeyFile},
+		{name: "external provider", oldProvider: core.KeylessProviderLarkSuite},
+		{name: "save fails", profile: "cli_test", saveFailure: true},
+		{name: "cleanup fails", cleanupFailure: true},
+		{name: "already missing", oldMissing: true, wantDeleted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, name := range []string{"HOME", "USERPROFILE", "LOCALAPPDATA", "LARKSUITE_CLI_CONFIG_DIR", "LARKSUITE_CLI_DATA_DIR"} {
+				t.Setenv(name, root)
+			}
+			f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+			kc := &cleanupTestKeychain{}
+			f.Keychain = kc
+			signer, err := keylesshelper.ResolveSigner(keysigner.SoftwareSignerName, kc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			for _, label := range []string{"old-key", "new-key"} {
+				if _, err := signer.EnsureKey(ctx, keysigner.KeyRef{Label: label}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			oldRef := &core.SecretRef{Source: core.SecretSourceTEE, Provider: keysigner.SoftwareSignerName, ID: "old-key"}
+			if tc.oldSource != "" {
+				oldRef.Source = tc.oldSource
+			}
+			if tc.oldProvider != "" {
+				oldRef.Provider = tc.oldProvider
+			}
+			previous := &core.MultiAppConfig{CurrentApp: "prod", Apps: []core.AppConfig{{
+				Name: "prod", AppId: "cli_test", Brand: core.BrandFeishu,
+				AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeyRef: oldRef,
+			}}}
+			if tc.sharedAppID != "" {
+				shared := previous.Apps[0]
+				shared.Name, shared.AppId = "shared", tc.sharedAppID
+				previous.Apps = append(previous.Apps, shared)
+			}
+			if tc.nonCurrentApp {
+				previous.Apps = append(previous.Apps, core.AppConfig{Name: "other", AppId: "cli_other", Brand: core.BrandFeishu})
+				previous.CurrentApp = "other"
+			}
+			if err := core.SaveMultiAppConfig(previous); err != nil {
+				t.Fatal(err)
+			}
+			result := &configInitResult{
+				AppID: "cli_test", Brand: core.BrandFeishu, AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+				KeySource: core.SecretSourceTEE, KeyProvider: signer.Name(), KeyLabel: "new-key", Signer: signer,
+			}
+			if tc.newAppID != "" {
+				result.AppID = tc.newAppID
+			}
+			if tc.newLabel != "" {
+				result.KeyLabel = tc.newLabel
+			}
+			if tc.oldMissing {
+				if err := signer.DeleteKey(ctx, keysigner.KeyRef{Label: "old-key"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.cleanupFailure {
+				kc.readErr = errors.New("credential storage locked")
+			}
+			err = persistInitResult(&ConfigInitOptions{Factory: f, Ctx: ctx}, f, tc.profile, result)
+			if (err != nil) != tc.saveFailure {
+				t.Fatalf("persistInitResult error = %v, want save failure %v", err, tc.saveFailure)
+			}
+			kc.readErr = nil
+			_, oldErr := signer.PublicKey(ctx, keysigner.KeyRef{Label: "old-key"})
+			if tc.wantDeleted {
+				if !errors.Is(oldErr, keysigner.ErrKeyNotFound) {
+					t.Fatalf("replaced key remains: %v", oldErr)
+				}
+			} else if oldErr != nil {
+				t.Fatalf("key that must be preserved was removed: %v", oldErr)
+			}
+			if _, _, err := signer.Sign(ctx, keysigner.KeyRef{Label: result.KeyLabel}, []byte("new configuration")); err != nil {
+				t.Fatalf("current signing key no longer works: %v", err)
+			}
+			current, err := core.LoadMultiAppConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantLabel := result.KeyLabel
+			if tc.saveFailure {
+				wantLabel = "old-key"
+			}
+			if got := current.Apps[0].KeyRef.ID; got != wantLabel {
+				t.Fatalf("saved keyRef = %q, want %q", got, wantLabel)
+			}
+			if (stderr.Len() > 0) != tc.cleanupFailure {
+				t.Fatalf("cleanup warning = %q, want warning %v", stderr.String(), tc.cleanupFailure)
 			}
 		})
 	}
@@ -553,7 +680,7 @@ func TestWrapSaveConfigError_PassesTypedValidationThrough(t *testing.T) {
 	}
 }
 
-func TestSaveAsProfile_UpdatePersistsPrivateKeyJWT(t *testing.T) {
+func TestSaveAsProfile_UpdatePersistsPrivateKeyJWTLocalKeyPair(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	existing := &core.MultiAppConfig{
@@ -586,14 +713,14 @@ func TestSaveAsProfile_UpdatePersistsPrivateKeyJWT(t *testing.T) {
 		t.Fatalf("KeyRef = %#v, want tee/lark-cli-default", app.KeyRef)
 	}
 	if !app.AppSecret.IsZero() {
-		t.Fatalf("same-app local-key update must remove the existing App Secret, got %#v", app.AppSecret)
+		t.Fatalf("same-app private_key_jwt_local_keypair update must remove the existing App Secret, got %#v", app.AppSecret)
 	}
 	if len(app.Users) != 1 || app.Users[0].UserOpenId != "ou_1" {
 		t.Fatalf("same-app update should preserve users, Users=%#v", app.Users)
 	}
 }
 
-func TestPersistInitResult_PrivateKeyJWTRemovesStaleSecret(t *testing.T) {
+func TestPersistInitResult_PrivateKeyJWTLocalKeyPairRemovesStaleSecret(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	existing := &core.MultiAppConfig{
 		CurrentApp: "prod",

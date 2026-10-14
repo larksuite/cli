@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/core"
 )
 
 func assertRegistrationProblem(t *testing.T, got, cause error, category errs.Category, subtype errs.Subtype) *errs.Problem {
@@ -61,7 +62,7 @@ func TestClassifyRegistrationError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := assertRegistrationProblem(t, classifyRegistrationError(tt.err), tt.err, errs.CategoryAuthentication, tt.subtype)
+			p := assertRegistrationProblem(t, classifyRegistrationError(tt.err, core.AuthMethodClientSecret, ""), tt.err, errs.CategoryAuthentication, tt.subtype)
 			if (p.Hint != "") != tt.hint {
 				t.Errorf("hint = %q, want non-empty=%v", p.Hint, tt.hint)
 			}

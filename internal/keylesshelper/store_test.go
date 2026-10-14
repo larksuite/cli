@@ -142,7 +142,7 @@ func TestKeyStoreDoesNotFallbackForExistingOrCorruptKeys(t *testing.T) {
 func TestKeyStoreProbeAndFailedAttestationCleanup(t *testing.T) {
 	isolateSoftwareStorage(t)
 	signer := newStoreTestSigner(t)
-	store := NewKeyStoreWithSigner(nil, signer)
+	store := NewKeyStoreWithSigners(nil, signer)
 	if err := store.ProbeWritableContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -165,10 +165,20 @@ func TestKeyStoreProbeAndFailedAttestationCleanup(t *testing.T) {
 func TestKeyStoreConstructorsAndKeySnapshot(t *testing.T) {
 	kc := &testMetadataStore{values: map[string]string{}}
 	signer := newStoreTestSigner(t)
-	for _, store := range []*KeyStore{NewKeyStore(kc), NewKeyStoreWithSigner(kc, signer), newKeyStoreWithSigners(kc, []keysigner.Signer{signer})} {
+	for _, store := range []*KeyStore{NewKeyStore(kc), NewKeyStoreWithSigners(kc, signer)} {
 		if store.keychain != kc {
 			t.Fatal("constructor discarded credential store")
 		}
+	}
+	if store := NewKeyStoreWithSigners(kc); len(store.signers) != 0 {
+		t.Fatal("explicit empty signer list enabled default backends")
+	}
+	second := &storeTestSigner{name: "second"}
+	signers := []keysigner.Signer{signer, second}
+	store := NewKeyStoreWithSigners(kc, signers...)
+	signers[0] = second
+	if len(store.signers) != 2 || store.signers[0] != signer || store.signers[1] != second {
+		t.Fatal("constructor did not preserve an independent ordered signer list")
 	}
 	var absent *Key
 	if absent.ID() != "" || absent.Provider() != "" || absent.SecurityLevel() != "" {
@@ -217,7 +227,7 @@ func TestKeyStoreProbeFallbackStopsOnCleanupAndCancellation(t *testing.T) {
 	for _, cause := range []error{keysigner.ErrCleanupFailed, context.Canceled, context.DeadlineExceeded} {
 		first := &storeTestSigner{name: "first", ensureErr: errors.Join(keysigner.ErrUnavailable, cause)}
 		next := newStoreTestSigner(t)
-		err := newKeyStoreWithSigners(nil, []keysigner.Signer{first, next}).ProbeWritableContext(context.Background())
+		err := NewKeyStoreWithSigners(nil, first, next).ProbeWritableContext(context.Background())
 		if !errors.Is(err, cause) || next.ensureCalls != 0 {
 			t.Fatalf("unsafe fallback: %v, next=%d", err, next.ensureCalls)
 		}
@@ -245,7 +255,7 @@ func TestSignerDirectoryPreservesSoftwareNamespace(t *testing.T) {
 func TestKeyStoreMissingKeyPreservesBothErrorIdentities(t *testing.T) {
 	isolateSoftwareStorage(t)
 	signer := &storeTestSigner{name: "recorded", publicErr: keysigner.ErrKeyNotFound}
-	_, err := NewKeyStoreWithSigner(nil, signer).LoadContext(context.Background(), signer.Name(), "missing")
+	_, err := NewKeyStoreWithSigners(nil, signer).LoadContext(context.Background(), signer.Name(), "missing")
 	if !errors.Is(err, ErrKeyNotFound) || !errors.Is(err, keysigner.ErrKeyNotFound) {
 		t.Fatalf("missing cause: %v", err)
 	}

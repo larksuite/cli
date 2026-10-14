@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -191,7 +190,7 @@ func identityCheck(name string, id identitydiag.Identity) checkResult {
 // teeSignerCheck checks the configured private-key JWT signer using its existing
 // key. Other authentication methods skip signer checks, including with --offline.
 func teeSignerCheck(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) checkResult {
-	if cfg == nil || !core.IsPrivateKeyJWTAuthMethod(cfg.AuthMethod) {
+	if cfg == nil || !core.IsPrivateKeyJWTLocalKeyPairAuthMethod(cfg.AuthMethod) {
 		return skip("tee_signer", "not required for client_secret authentication")
 	}
 	if cfg.KeySource == core.SecretSourceKeyFile {
@@ -225,7 +224,7 @@ func teeSignerCheck(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig
 	if err != nil {
 		return fail("tee_signer", "configured signing backend is unavailable", err.Error())
 	}
-	store := keylesshelper.NewKeyStoreWithSigner(f.Keychain, signer)
+	store := keylesshelper.NewKeyStoreWithSigners(f.Keychain, signer)
 	key, err := store.ProbeKeyContext(ctx, signer.Name(), cfg.KeyLabel)
 	if err != nil {
 		return fail("tee_signer", "configured signing key is unusable", err.Error())
@@ -342,90 +341,13 @@ func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
 		}
 	}
 
-	workspace := core.CurrentWorkspace().Display()
-	// A terminal on STDOUT gets a readable report; pipes, redirects, scripts and
-	// tests keep the stable JSON contract (NO_COLOR disables ANSI styling).
-	// StdoutIsTerminal checks stdout specifically — IOStreams.IsTerminal reflects
-	// stdin, which would wrongly send the human report into `doctor | jq`.
-	if f.IOStreams.StdoutIsTerminal() {
-		renderDoctorHuman(f.IOStreams.Out, workspace, checks, allOK, os.Getenv("NO_COLOR") == "")
-	} else {
-		output.PrintJson(f.IOStreams.Out, map[string]interface{}{
-			"ok":        allOK,
-			"workspace": workspace,
-			"checks":    checks,
-		})
-	}
+	output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+		"ok":        allOK,
+		"workspace": core.CurrentWorkspace().Display(),
+		"checks":    checks,
+	})
 	if !allOK {
 		return output.ErrBare(1)
 	}
 	return nil
-}
-
-// renderDoctorHuman writes a readable health report: one aligned line per check
-// with a colored status tag, an indented hint when present, and a summary line.
-func renderDoctorHuman(w io.Writer, workspace string, checks []checkResult, allOK, color bool) {
-	const (
-		green  = "\033[32m"
-		yellow = "\033[33m"
-		red    = "\033[31m"
-		gray   = "\033[90m"
-		bold   = "\033[1m"
-		reset  = "\033[0m"
-	)
-	colorOf := map[string]string{"pass": green, "warn": yellow, "fail": red, "skip": gray}
-	tagOf := map[string]string{"pass": "PASS", "warn": "WARN", "fail": "FAIL", "skip": "SKIP"}
-	paint := func(code, s string) string {
-		if !color || code == "" {
-			return s
-		}
-		return code + s + reset
-	}
-
-	nameW := 0
-	for _, c := range checks {
-		if len(c.Name) > nameW {
-			nameW = len(c.Name)
-		}
-	}
-
-	fmt.Fprintf(w, "\n%s  (workspace: %s)\n\n", paint(bold, "lark-cli doctor"), workspace)
-
-	var passN, warnN, failN, skipN int
-	for _, c := range checks {
-		tag := tagOf[c.Status]
-		if tag == "" {
-			tag = "????"
-		}
-		fmt.Fprintf(w, "  %s  %-*s  %s\n", paint(colorOf[c.Status], "["+tag+"]"), nameW, c.Name, c.Message)
-		if c.Hint != "" {
-			fmt.Fprintf(w, "         %-*s  %s\n", nameW, "", paint(gray, "↳ "+c.Hint))
-		}
-		switch c.Status {
-		case "pass":
-			passN++
-		case "warn":
-			warnN++
-		case "fail":
-			failN++
-		case "skip":
-			skipN++
-		}
-	}
-
-	headline := paint(green, "healthy")
-	if !allOK {
-		headline = paint(red, "problems found")
-	}
-	fmt.Fprintf(w, "\n  %s — %d passed", headline, passN)
-	if warnN > 0 {
-		fmt.Fprintf(w, ", %d warning(s)", warnN)
-	}
-	if failN > 0 {
-		fmt.Fprintf(w, ", %d failed", failN)
-	}
-	if skipN > 0 {
-		fmt.Fprintf(w, ", %d skipped", skipN)
-	}
-	fmt.Fprintln(w)
 }

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
@@ -23,11 +24,6 @@ var (
 	ErrRegistrationDenied   = errors.New("app registration denied by user")
 	ErrRegistrationExpired  = errors.New("device code expired, please try again")
 	ErrRegistrationTimedOut = errors.New("app registration timed out, please try again")
-)
-
-const (
-	AppRegistrationCodeInvalidPublicKey = 1108026
-	AppRegistrationCodePublicKeyLimit   = 1107010
 )
 
 // AppRegistrationRemoteError preserves structured registration failures that
@@ -115,14 +111,14 @@ func appRegistrationEndpoint(brand core.LarkBrand) string {
 // AppRegistrationInit is the response from the app registration init endpoint.
 type AppRegistrationInit struct {
 	Nonce                string
-	SupportedAuthMethods []string // e.g. ["client_secret", "private_key_jwt", "private_key_jwt_local_keypair"]
+	SupportedAuthMethods []string // e.g. ["client_secret", "private_key_jwt_local_keypair"]
 }
 
 // AppRegistrationBeginOptions parametrizes the registration begin request.
 // A zero value selects the legacy client_secret flow, preserving prior behavior.
 type AppRegistrationBeginOptions struct {
-	AuthMethod      string // "" => client_secret; either private-key JWT method
-	AuthAttestation string // local key-pair attestation JWT
+	AuthMethod      string // "" => client_secret; private_key_jwt_local_keypair
+	AuthAttestation string // private_key_jwt_local_keypair attestation JWT
 	TargetAppID     string // existing app to update; empty creates a new app
 }
 
@@ -326,9 +322,7 @@ func registrationResultComplete(result *AppRegistrationResult, requestedAuthMeth
 	if result.ClientID == "" {
 		return false
 	}
-	return result.ClientSecret != "" ||
-		requestedAuthMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair ||
-		requestedAuthMethod == core.AuthMethodPrivateKeyJWT
+	return result.ClientSecret != "" || core.IsPrivateKeyJWTLocalKeyPairAuthMethod(requestedAuthMethod)
 }
 
 // BuildVerificationURL appends CLI tracking parameters to the verification URL.
@@ -442,11 +436,8 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 			continue
 		}
 		remoteErr := appRegistrationRemoteError(data)
-		if remoteErr != nil {
-			switch remoteErr.Code {
-			case AppRegistrationCodeInvalidPublicKey, AppRegistrationCodePublicKeyLimit:
-				return nil, effectiveBrand, remoteErr
-			}
+		if remoteErr != nil && errclass.IsClientAssertionPublicKeyError(remoteErr.Code) {
+			return nil, effectiveBrand, remoteErr
 		}
 
 		// A cross-brand tenant report switches the polled domain (once,
@@ -465,9 +456,6 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 				}
 			}
 		}
-		if remoteErr != nil {
-			continue
-		}
 
 		errStr := getStr(data, "error")
 		// A successful response carries the client/app id in client_id. Empty, non-error
@@ -484,7 +472,7 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 				}
 			}
 
-			// Private-key JWT succeeds without returning a client secret.
+			// private_key_jwt_local_keypair succeeds without returning a client secret.
 			// Completion therefore also depends on the requested auth method.
 			if registrationResultComplete(result, resp.RequestedAuthMethod) {
 				// The issuing domain is authoritative; a contradictory final

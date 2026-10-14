@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	helperOutputLimit      = 1 << 20
-	helperStderrLimit      = 64 << 10
+	helperOutputLimit      = 1_048_576
+	helperStderrLimit      = 65_536
 	helperExecutionTimeout = 10 * time.Second
 	defaultKeyLabel        = "larksuite-cli-agent"
 )
