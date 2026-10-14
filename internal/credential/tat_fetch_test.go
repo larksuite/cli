@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keysigner"
@@ -245,7 +246,7 @@ func TestFetchTATDPoPPolicyAndKeyLifetime(t *testing.T) {
 			})}
 
 			token, err := fetchTAT(context.Background(), client, core.BrandFeishu,
-				"cli-dpop", "secret", tc.mode, store)
+				auth.ClientAuth{AppID: "cli-dpop", AppSecret: "secret"}, tc.mode, store)
 			if tc.wantErrSubtype != "" {
 				problem, ok := errs.ProblemOf(err)
 				if token != nil || !ok || problem.Subtype != tc.wantErrSubtype || tokenCalls != 0 {
@@ -298,7 +299,7 @@ func TestRequestTATRecoversClockOnceAndRejectsBindingDowngrade(t *testing.T) {
 		}, nil
 	})}
 	token, err := requestTAT(context.Background(), client, core.BrandFeishu,
-		"cli-dpop", "secret", key, store, nil, false, 0)
+		auth.ClientAuth{AppID: "cli-dpop", AppSecret: "secret"}, key, store, nil, false, 0)
 	if err != nil || token == nil || token.DPoP == nil || len(proofs) != 2 ||
 		proofs[0] == "" || proofs[0] == proofs[1] || key.Clock().State().SyncedAtMillis == 0 {
 		t.Fatalf("clock recovery = (%+v, %v), proofs=%d state=%+v", token, err, len(proofs), key.Clock().State())
@@ -320,7 +321,7 @@ func TestRequestTATRecoversClockOnceAndRejectsBindingDowngrade(t *testing.T) {
 					Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 			})}
 			token, err := requestTAT(context.Background(), client, core.BrandFeishu,
-				"cli-dpop", "secret", tc.key, store, nil, false, 0)
+				auth.ClientAuth{AppID: "cli-dpop", AppSecret: "secret"}, tc.key, store, nil, false, 0)
 			problem, ok := errs.ProblemOf(err)
 			if token != nil || !ok || problem.Subtype != tc.subtype {
 				t.Fatalf("requestTAT() = (%+v, %v), want %s", token, err, tc.subtype)
@@ -354,7 +355,7 @@ func TestFetchTATAcceptsBearerTokenTypeInPreferred(t *testing.T) {
 		}, nil
 	})}
 
-	token, err := fetchTAT(context.Background(), client, core.BrandFeishu, "server-bearer", "secret", core.DPoPModePreferred, store)
+	token, err := fetchTAT(context.Background(), client, core.BrandFeishu, auth.ClientAuth{AppID: "server-bearer", AppSecret: "secret"}, core.DPoPModePreferred, store)
 	if err != nil || token == nil || token.AccessToken != "bearer-token" || token.DPoP != nil || token.proofFallback {
 		t.Fatalf("fetchTAT server Bearer downgrade = (%+v, %v)", token, err)
 	}
@@ -410,14 +411,14 @@ func TestFetchTATLocalFailureBeforeRequestFallsBack(t *testing.T) {
 					t.Fatal(err)
 				}
 				delete(signer.keys, key.ID())
-				_, err = fetchTAT(context.Background(), client, core.BrandFeishu, "proof-failure", "secret", core.DPoPModeRequired, store)
+				_, err = fetchTAT(context.Background(), client, core.BrandFeishu, auth.ClientAuth{AppID: "proof-failure", AppSecret: "secret"}, core.DPoPModeRequired, store)
 				problem, ok := errs.ProblemOf(err)
 				if !ok || problem.Subtype != errs.SubtypeDPoPKeyMissing || !errors.Is(err, tc.deleteErr) ||
 					problem.Hint == "" || strings.Contains(problem.Hint, "auth login") || tokenCalls != 0 {
 					t.Fatalf("required failure = %v, token calls = %d", err, tokenCalls)
 				}
 			}
-			token, err := fetchTAT(context.Background(), client, core.BrandFeishu, "proof-failure", "secret", core.DPoPModePreferred, store)
+			token, err := fetchTAT(context.Background(), client, core.BrandFeishu, auth.ClientAuth{AppID: "proof-failure", AppSecret: "secret"}, core.DPoPModePreferred, store)
 			if err != nil || token == nil || token.AccessToken != "bearer-token" || token.DPoP != nil || token.proofFallback || token.localDPoPFallbackErr == nil {
 				t.Fatalf("fetchTAT proof failure fallback = (%+v, %v)", token, err)
 			}
@@ -776,7 +777,7 @@ func TestFetchTATRepeatedProofFallback(t *testing.T) {
 				}
 				return &http.Response{StatusCode: 200, Header: header, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 			})}
-			token, err := fetchTAT(ctx, client, core.BrandFeishu, "fallback", "secret", tc.mode, store)
+			token, err := fetchTAT(ctx, client, core.BrandFeishu, auth.ClientAuth{AppID: "fallback", AppSecret: "secret"}, tc.mode, store)
 			if calls != len(tc.responses) || (err != nil) != tc.wantError {
 				t.Fatalf("calls=%d token=%+v err=%v", calls, token, err)
 			}
@@ -826,7 +827,7 @@ func TestFetchTATCleanupFailureDoesNotBlockBearerFallback(t *testing.T) {
 		}, nil
 	})}
 
-	token, err := fetchTAT(context.Background(), client, core.BrandFeishu, "cleanup", "secret", core.DPoPModePreferred, store)
+	token, err := fetchTAT(context.Background(), client, core.BrandFeishu, auth.ClientAuth{AppID: "cleanup", AppSecret: "secret"}, core.DPoPModePreferred, store)
 	if err != nil || token == nil || token.AccessToken != "bearer-token" || token.DPoP != nil || !token.proofFallback {
 		t.Fatalf("fetchTAT cleanup fallback = (%+v, %v)", token, err)
 	}

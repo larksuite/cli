@@ -31,20 +31,24 @@ type ChannelsRoot struct {
 // `Brand` stays aligned with our internal terminology, but the JSON
 // tag matches OpenClaw's on-disk format.
 type FeishuChannel struct {
-	Enabled   *bool                     `json:"enabled,omitempty"` // nil = default enabled
-	AppID     string                    `json:"appId,omitempty"`
-	AppSecret SecretInput               `json:"appSecret,omitempty"`
-	Brand     string                    `json:"domain,omitempty"`
-	Accounts  map[string]*FeishuAccount `json:"accounts,omitempty"`
+	Enabled    *bool                     `json:"enabled,omitempty"` // nil = default enabled
+	AppID      string                    `json:"appId,omitempty"`
+	AppSecret  SecretInput               `json:"appSecret,omitempty"`
+	Brand      string                    `json:"domain,omitempty"`
+	Accounts   map[string]*FeishuAccount `json:"accounts,omitempty"`
+	AuthMethod string                    `json:"authMethod,omitempty"`
+	KeyRef     string                    `json:"keyRef,omitempty"`
 }
 
 // FeishuAccount is a single account entry within Accounts.
 // Like FeishuChannel, `Brand` maps to OpenClaw's `domain` key.
 type FeishuAccount struct {
-	Enabled   *bool       `json:"enabled,omitempty"` // nil = default enabled
-	AppID     string      `json:"appId,omitempty"`
-	AppSecret SecretInput `json:"appSecret,omitempty"`
-	Brand     string      `json:"domain,omitempty"`
+	Enabled    *bool       `json:"enabled,omitempty"` // nil = default enabled
+	AppID      string      `json:"appId,omitempty"`
+	AppSecret  SecretInput `json:"appSecret,omitempty"`
+	Brand      string      `json:"domain,omitempty"`
+	AuthMethod string      `json:"authMethod,omitempty"`
+	KeyRef     string      `json:"keyRef,omitempty"`
 }
 
 // isEnabled returns true if the enabled field is nil (default) or explicitly true.
@@ -228,10 +232,18 @@ func LookupProvider(ref *SecretRef, cfg *SecretsConfig) (*ProviderConfig, error)
 
 // CandidateApp represents a bindable app from OpenClaw's feishu channel config.
 type CandidateApp struct {
-	Label     string
-	AppID     string
-	AppSecret SecretInput
-	Brand     string
+	Label      string
+	AppID      string
+	AppSecret  SecretInput
+	Brand      string
+	AuthMethod string
+	KeyRef     string
+}
+
+func bindableCredential(secret SecretInput, authMethod, keyRef string) bool {
+	return !secret.IsZero() ||
+		(strings.TrimSpace(authMethod) != "" &&
+			strings.TrimSpace(keyRef) != "")
 }
 
 // ListCandidateApps enumerates all bindable (enabled) apps from a FeishuChannel.
@@ -254,12 +266,15 @@ func ListCandidateApps(ch *FeishuChannel) []CandidateApp {
 				break
 			}
 		}
-		if !hasDefault && ch.AppID != "" && !ch.AppSecret.IsZero() && isEnabled(ch.Enabled) {
+		if !hasDefault && ch.AppID != "" && isEnabled(ch.Enabled) &&
+			bindableCredential(ch.AppSecret, ch.AuthMethod, ch.KeyRef) {
 			apps = append(apps, CandidateApp{
-				Label:     "default",
-				AppID:     ch.AppID,
-				AppSecret: ch.AppSecret,
-				Brand:     ch.Brand,
+				Label:      "default",
+				AppID:      ch.AppID,
+				AppSecret:  ch.AppSecret,
+				Brand:      ch.Brand,
+				AuthMethod: ch.AuthMethod,
+				KeyRef:     ch.KeyRef,
 			})
 		}
 
@@ -282,11 +297,21 @@ func ListCandidateApps(ch *FeishuChannel) []CandidateApp {
 			if brand == "" {
 				brand = ch.Brand
 			}
+			authMethod := acct.AuthMethod
+			if authMethod == "" {
+				authMethod = ch.AuthMethod
+			}
+			keyRef := acct.KeyRef
+			if keyRef == "" {
+				keyRef = ch.KeyRef
+			}
 			apps = append(apps, CandidateApp{
-				Label:     label,
-				AppID:     appID,
-				AppSecret: appSecret,
-				Brand:     brand,
+				Label:      label,
+				AppID:      appID,
+				AppSecret:  appSecret,
+				Brand:      brand,
+				AuthMethod: authMethod,
+				KeyRef:     keyRef,
 			})
 		}
 		return apps
@@ -295,10 +320,12 @@ func ListCandidateApps(ch *FeishuChannel) []CandidateApp {
 	// Single account at top level — check if channel itself is enabled
 	if ch.AppID != "" && isEnabled(ch.Enabled) {
 		return []CandidateApp{{
-			Label:     "",
-			AppID:     ch.AppID,
-			AppSecret: ch.AppSecret,
-			Brand:     ch.Brand,
+			Label:      "",
+			AppID:      ch.AppID,
+			AppSecret:  ch.AppSecret,
+			Brand:      ch.Brand,
+			AuthMethod: ch.AuthMethod,
+			KeyRef:     ch.KeyRef,
 		}}
 	}
 

@@ -17,22 +17,25 @@ import (
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
 
 	extcred "github.com/larksuite/cli/extension/credential"
 )
 
 // classifyTATResponseCode wraps a deterministic (non-transient) failure from the
-// unified Token Endpoint into the canonical typed errs.* error. The v3 endpoint
-// reports failures using the OAuth 2.0 model — an `error` string plus an
-// optional numeric `code` — instead of the legacy `{code, msg}` shape.
+// Token Endpoint into the canonical typed errs.* error. Client-secret TAT
+// issuance uses the unified v3 endpoint; private-key JWT TAT issuance uses
+// the v2 endpoint. OAuth failures may carry an `error` string and an optional
+// numeric `code`, while gateway failures may still use `{code, msg}`.
 //
-// invalid_client / unauthorized_client mean the configured app_id/app_secret
+// invalid_client / unauthorized_client mean the configured app credentials
 // cannot mint a token; from the user's perspective that is the same actionable
 // CategoryConfig/InvalidClient failure the legacy 10003/10014 codes produced.
 // Every other deterministic error falls through to BuildAPIError, which still
 // yields a typed error so probe callers (errs.IsTyped) surface it rather than
 // swallowing it. Transient/server-side failures (5xx / server_error) are
-// filtered out by FetchTAT before this is called, so they stay untyped.
+// filtered out by the token response handler before this is called, so they
+// stay untyped.
 func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) error {
 	msg := errDesc
 	if msg == "" {
@@ -132,9 +135,10 @@ func strictModeToIdentitySupport(multi *core.MultiAppConfig, profileOverride str
 // DefaultTokenProvider resolves UAT/TAT using keychain + direct HTTP calls.
 // No SDK/LarkClient dependency — eliminates circular dependency with Factory.
 type DefaultTokenProvider struct {
-	defaultAcct *DefaultAccountProvider
-	httpClient  func() (*http.Client, error)
-	errOut      io.Writer
+	defaultAcct   *DefaultAccountProvider
+	httpClient    func() (*http.Client, error)
+	errOut        io.Writer
+	resolveSigner func(*core.CliConfig) (keysigner.Signer, error)
 
 	tatMu        sync.Mutex
 	tatResult    *TokenResult
@@ -155,12 +159,18 @@ const (
 	tatRefreshTimeout  = 30 * time.Second
 )
 
-func NewDefaultTokenProvider(defaultAcct *DefaultAccountProvider, httpClient func() (*http.Client, error), errOut io.Writer) *DefaultTokenProvider {
+func NewDefaultTokenProvider(defaultAcct *DefaultAccountProvider, httpClient func() (*http.Client, error), errOut io.Writer, resolveSigner func(*core.CliConfig) (keysigner.Signer, error)) *DefaultTokenProvider {
+	if resolveSigner == nil {
+		resolveSigner = func(cfg *core.CliConfig) (keysigner.Signer, error) {
+			return auth.ResolveConfigSigner(cfg, defaultAcct.keychain())
+		}
+	}
 	return &DefaultTokenProvider{
-		defaultAcct: defaultAcct,
-		httpClient:  httpClient,
-		errOut:      errOut,
-		timeNow:     time.Now,
+		defaultAcct:   defaultAcct,
+		httpClient:    httpClient,
+		errOut:        errOut,
+		timeNow:       time.Now,
+		resolveSigner: resolveSigner,
 	}
 }
 
@@ -186,7 +196,11 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut))
+	signer, err := p.resolveSigner(acct.ToCliConfig())
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut, signer))
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +294,11 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	if err != nil {
 		return nil, 0, err
 	}
-	token, err := FetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret, acct.DPoPMode)
+	signer, err := p.resolveSigner(acct.ToCliConfig())
+	if err != nil {
+		return nil, 0, err
+	}
+	token, err := FetchTATWithClientAuth(ctx, httpClient, acct.Brand, auth.ClientAuthFromConfig(acct.ToCliConfig(), signer), acct.DPoPMode)
 	if err != nil {
 		return nil, 0, err
 	}

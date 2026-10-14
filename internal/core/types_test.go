@@ -190,3 +190,12 @@ func TestIsPlatformEndpointURL_RequiresSecureStandardOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestClientAssertionAudience(t *testing.T) {
+	if got := ClientAssertionAudience(BrandFeishu); got != "accounts.feishu.cn" {
+		t.Errorf("ClientAssertionAudience(feishu) = %q, want accounts.feishu.cn", got)
+	}
+	if got := ClientAssertionAudience(BrandLark); got != "accounts.larksuite.com" {
+		t.Errorf("ClientAssertionAudience(lark) = %q, want accounts.larksuite.com", got)
+	}
+}

@@ -93,7 +93,7 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	_, err := RequestDeviceAuthorization(context.Background(), httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "", nil)
+	_, err := RequestDeviceAuthorization(context.Background(), httpmock.NewClient(reg), ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "", nil)
 	if err != nil {
 		t.Fatalf("RequestDeviceAuthorization() error: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestPollDeviceToken_DefaultsZeroIntervalToFiveSeconds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	t.Cleanup(cancel)
 
-	result, err := PollDeviceToken(ctx, client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 0, 10, nil)
+	result, err := PollDeviceToken(ctx, client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 0, 10, nil)
 	if err != nil {
 		t.Fatalf("PollDeviceToken() error = %v", err)
 	}
@@ -251,7 +251,7 @@ func TestPollDeviceToken_PreservesStatusMessage(t *testing.T) {
 		}),
 	}
 
-	result, err := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	result, err := PollDeviceToken(context.Background(), client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 1, 3, nil)
 	if err != nil {
 		t.Fatalf("PollDeviceToken() error = %v", err)
 	}
@@ -281,7 +281,7 @@ func TestPollDeviceToken_MissingStatusMessageIsEmpty(t *testing.T) {
 		}),
 	}
 
-	result, err := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	result, err := PollDeviceToken(context.Background(), client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 1, 3, nil)
 	if err != nil {
 		t.Fatalf("PollDeviceToken() error = %v", err)
 	}
@@ -304,7 +304,7 @@ func TestPollDeviceToken_ReturnsPolicyErrorWithoutRetry(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	t.Cleanup(cancel)
 
-	result, err := PollDeviceToken(ctx, client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 10, nil)
+	result, err := PollDeviceToken(ctx, client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 1, 10, nil)
 	if result != nil {
 		t.Fatalf("PollDeviceToken() result = %#v, want nil", result)
 	}
@@ -328,7 +328,7 @@ func TestPollDeviceTokenPolicyWithoutSigner(t *testing.T) {
 				}
 				return refreshHTTPResponse(req, `{"access_token":"synthetic-token","token_type":"Bearer"}`), nil
 			})}
-			result, err := pollDeviceTokenWithKeyStore(context.Background(), client, "cli_test", "synthetic-secret",
+			result, err := pollDeviceTokenWithKeyStore(context.Background(), client, ClientAuth{AppID: "cli_test", AppSecret: "synthetic-secret"},
 				core.BrandFeishu, "device-code", 1, 5, nil, mode, nil)
 			if err != nil {
 				t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
@@ -513,7 +513,7 @@ func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
 				return refreshHTTPResponse(req, step.body), nil
 			})}
 			var warnings bytes.Buffer
-			result, err := pollDeviceTokenWithKeyStore(ctx, client, "cli_test", "synthetic-secret",
+			result, err := pollDeviceTokenWithKeyStore(ctx, client, ClientAuth{AppID: "cli_test", AppSecret: "synthetic-secret"},
 				core.BrandFeishu, "device-code", 1, 10, &warnings, tc.mode, store)
 			if err != nil {
 				t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
@@ -582,7 +582,7 @@ func TestDeviceFlowProofFailureBeforeRequestFallsBack(t *testing.T) {
 		return refreshHTTPResponse(req, body), nil
 	})}
 
-	result, err := pollDeviceTokenWithKeyStore(ctx, client, "app", "secret", core.BrandFeishu, "device", 1, 5, nil, core.DPoPModePreferred, store)
+	result, err := pollDeviceTokenWithKeyStore(ctx, client, ClientAuth{AppID: "app", AppSecret: "secret"}, core.BrandFeishu, "device", 1, 5, nil, core.DPoPModePreferred, store)
 	if err != nil {
 		t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
 	}
@@ -666,7 +666,7 @@ func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
 				return resp, nil
 			})}
 			var warnings bytes.Buffer
-			result, err := pollDeviceTokenWithKeyStore(ctx, client, "app", "secret", core.BrandFeishu, "device", 1, 22, &warnings, tc.mode, store)
+			result, err := pollDeviceTokenWithKeyStore(ctx, client, ClientAuth{AppID: "app", AppSecret: "secret"}, core.BrandFeishu, "device", 1, 22, &warnings, tc.mode, store)
 			if err != nil {
 				t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
 			}

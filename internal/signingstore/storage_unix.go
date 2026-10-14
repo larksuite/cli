@@ -3,14 +3,14 @@
 
 //go:build darwin || linux
 
-package dpop
+package signingstore
 
 import "github.com/larksuite/cli/internal/keychain"
 
-func signerStorageDir() (string, error) {
+func StorageDir() (string, error) {
 	return keychain.StorageDir(keychain.LarkCliService), nil
 }
 
-func unlockSecretLockDirectory(directory string) (string, error) {
+func UnlockLockDirectory(directory, _, _ string) (string, error) {
 	return directory, nil
 }

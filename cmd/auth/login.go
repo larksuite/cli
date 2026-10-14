@@ -17,7 +17,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
-
 	"github.com/larksuite/cli/internal/apicatalog"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -45,6 +44,14 @@ type LoginOptions struct {
 }
 
 var pollDeviceToken = larkauth.PollDeviceToken
+
+func resolveLoginClientAuth(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) (larkauth.ClientAuth, error) {
+	signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
+	if err != nil {
+		return larkauth.ClientAuth{}, err
+	}
+	return larkauth.ClientAuthFromConfig(cfg, signer).ResolveSigner(ctx)
+}
 
 // NewCmdAuthLogin creates the auth login subcommand.
 func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.Command {
@@ -328,9 +335,16 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	if err != nil {
 		return err
 	}
-	authResp, err := larkauth.RequestDeviceAuthorization(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand, finalScope, f.IOStreams.ErrOut)
+	clientAuth, err := resolveLoginClientAuth(opts.Ctx, f, config)
 	if err != nil {
-		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+		if errs.IsTyped(err) {
+			return err
+		}
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "device authorization failed: %v", err).WithCause(err)
+	}
+	authResp, err := larkauth.RequestDeviceAuthorization(opts.Ctx, httpClient, clientAuth, config.Brand, finalScope, f.IOStreams.ErrOut)
+	if err != nil {
+		if errs.IsTyped(err) {
 			return err
 		}
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "device authorization failed: %v", err).WithCause(err)
@@ -385,10 +399,13 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 
 	// Step 3: Poll for token
 	log(msg.WaitingAuth)
-	result, err := pollLoginDeviceToken(opts.Ctx, httpClient, config, authResp.DeviceCode,
-		authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
+	result, err := pollLoginDeviceToken(opts.Ctx, httpClient, config, clientAuth,
+		authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
 	if err != nil {
-		return err
+		if errs.IsTyped(err) {
+			return err
+		}
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "token polling failed: %v", err).WithCause(err)
 	}
 
 	if !result.OK {
@@ -494,6 +511,13 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	if err != nil {
 		return err
 	}
+	clientAuth, err := resolveLoginClientAuth(opts.Ctx, f, config)
+	if err != nil {
+		if errs.IsTyped(err) {
+			return err
+		}
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "authorization failed: %v", err).WithCause(err)
+	}
 	requestedScope, err := loadLoginRequestedScope(opts.DeviceCode)
 	if err != nil {
 		fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to load cached requested scopes: %v\n", err)
@@ -511,13 +535,17 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(recovery.RenderContext{Profile: f.Invocation.Profile}))
 	}
 	log(msg.WaitingAuth)
-	result, err := pollLoginDeviceToken(opts.Ctx, httpClient, config, opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
+	result, err := pollLoginDeviceToken(opts.Ctx, httpClient, config, clientAuth,
+		opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
 	if err != nil {
 		if problem, ok := errs.ProblemOf(err); ok &&
 			problem.Category == errs.CategoryPolicy && problem.Subtype == errs.SubtypeAccessDenied {
 			cleanupRequestedScope()
 		}
-		return err
+		if errs.IsTyped(err) {
+			return err
+		}
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "authorization failed: %v", err).WithCause(err)
 	}
 
 	if !result.OK {
@@ -631,12 +659,12 @@ func rollbackCommittedLoginToken(appID, openID string, cause error) error {
 	return cause
 }
 
-func pollLoginDeviceToken(ctx context.Context, httpClient *http.Client, config *core.CliConfig, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
+func pollLoginDeviceToken(ctx context.Context, httpClient *http.Client, config *core.CliConfig, clientAuth larkauth.ClientAuth, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
 	if config != nil && config.CredentialSource == core.CredentialSourceLocal {
-		return larkauth.PollDeviceTokenWithMode(ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+		return larkauth.PollDeviceTokenWithMode(ctx, httpClient, clientAuth, config.Brand,
 			deviceCode, interval, expiresIn, errOut, core.EffectiveDPoPMode(config.DPoPMode))
 	}
-	return pollDeviceToken(ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	return pollDeviceToken(ctx, httpClient, clientAuth, config.Brand,
 		deviceCode, interval, expiresIn, errOut)
 }
 

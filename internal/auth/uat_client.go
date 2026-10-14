@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -21,6 +22,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/recovery"
 )
 
@@ -33,6 +35,10 @@ type UATCallOptions struct {
 	ErrOut       io.Writer // diagnostic/status output (caller injects f.IOStreams.ErrOut)
 	DPoPMode     core.DPoPMode
 	DPoPKeyStore *dpop.KeyStore
+	AuthMethod   string
+	KeyLabel     string
+	KeyProvider  string
+	Signer       keysigner.Signer
 }
 
 // UATStatus represents the status of a user access token.
@@ -47,7 +53,7 @@ type UATStatus struct {
 }
 
 // NewUATCallOptions creates UATCallOptions from a CLI config.
-func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
+func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer, signer keysigner.Signer) UATCallOptions {
 	if errOut == nil {
 		errOut = os.Stderr
 	}
@@ -63,6 +69,10 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 		ErrOut:       errOut,
 		DPoPMode:     mode,
 		DPoPKeyStore: dpop.NewKeyStore(nil),
+		AuthMethod:   cfg.AuthMethod,
+		KeyLabel:     cfg.KeyLabel,
+		KeyProvider:  cfg.KeyProvider,
+		Signer:       signer,
 	}
 }
 
@@ -194,10 +204,12 @@ const (
 )
 
 type refreshRequest struct {
-	GrantType    string `json:"grant_type"`
-	RefreshToken string `json:"refresh_token"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
+	GrantType           string `json:"grant_type"`
+	RefreshToken        string `json:"refresh_token"`
+	ClientID            string `json:"client_id"`
+	ClientSecret        string `json:"client_secret,omitempty"`
+	ClientAssertionType string `json:"client_assertion_type,omitempty"`
+	ClientAssertion     string `json:"client_assertion,omitempty"`
 }
 
 // refreshResponse contains the OAuth token fields consumed by the refresh
@@ -256,6 +268,13 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 	}
 
 	endpoint := ResolveOAuthEndpoints(opts.Domain).Token
+	clientAuth, err := (ClientAuth{
+		AppID: opts.AppId, AppSecret: opts.AppSecret, AuthMethod: opts.AuthMethod,
+		Signer: opts.Signer, KeyLabel: opts.KeyLabel, KeyProvider: opts.KeyProvider,
+	}).ResolveSigner(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var proofKey *dpop.Key
 	if stored.TokenType == StoredTokenTypeDPoP {
 		binding, err := ResolveDPoPBindingContext(ctx, stored, opts.DPoPKeyStore)
@@ -295,7 +314,7 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 			return nil, nil
 		}
 
-		result := refreshOnce(ctx, httpClient, endpoint, opts, stored, proofKey, !clockRecoveryUsed)
+		result := refreshOnce(ctx, httpClient, endpoint, clientAuth, opts, stored, proofKey, !clockRecoveryUsed)
 		if result.action == refreshSaveResponse {
 			saved, saveErr := saveRefreshResponse(opts, stored, result.response, proofKey)
 			if saveErr != nil {
@@ -393,13 +412,24 @@ func synchronizeStoredTokenClock(ctx context.Context, httpClient *http.Client, o
 	return nil
 }
 
-func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, opts UATCallOptions, stored *StoredUAToken, proofKey *dpop.Key, allowClockRecovery bool) refreshResult {
-	payload, err := json.Marshal(refreshRequest{
+func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, clientAuth ClientAuth, opts UATCallOptions, stored *StoredUAToken, proofKey *dpop.Key, allowClockRecovery bool) refreshResult {
+	request := refreshRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: stored.RefreshToken,
 		ClientID:     opts.AppId,
-		ClientSecret: opts.AppSecret,
-	})
+	}
+	form := url.Values{}
+	usedAssertion, err := clientAuth.ApplyClientAssertion(ctx, form, core.ClientAssertionAudience(opts.Domain))
+	if err != nil {
+		return refreshResult{action: refreshStopAndPreserve, err: err}
+	}
+	if usedAssertion {
+		request.ClientAssertionType = form.Get("client_assertion_type")
+		request.ClientAssertion = form.Get("client_assertion")
+	} else {
+		request.ClientSecret = opts.AppSecret
+	}
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return refreshResult{
 			action: refreshStopAndPreserve,

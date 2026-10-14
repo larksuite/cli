@@ -29,6 +29,10 @@ type Account struct {
 	DPoPMode            core.DPoPMode
 	CredentialSource    core.CredentialSource
 	SupportedIdentities uint8
+	AuthMethod          string // "" == client_secret; either private-key JWT method
+	KeySource           string // tee or file for private-key JWT
+	KeyLabel            string // platform handle or private-key file path
+	KeyProvider         string // built-in backend name, external provider, or empty legacy auto-selection
 }
 
 const runtimePlaceholderAppSecret = "__LARKSUITE_CLI_TOKEN_ONLY__"
@@ -74,6 +78,10 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 		DPoPMode:            cfg.DPoPMode,
 		CredentialSource:    cfg.CredentialSource,
 		SupportedIdentities: cfg.SupportedIdentities,
+		AuthMethod:          cfg.AuthMethod,
+		KeySource:           cfg.KeySource,
+		KeyLabel:            cfg.KeyLabel,
+		KeyProvider:         cfg.KeyProvider,
 	}
 }
 
@@ -95,6 +103,10 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		DPoPMode:            a.DPoPMode,
 		CredentialSource:    a.CredentialSource,
 		SupportedIdentities: a.SupportedIdentities,
+		AuthMethod:          a.AuthMethod,
+		KeySource:           a.KeySource,
+		KeyLabel:            a.KeyLabel,
+		KeyProvider:         a.KeyProvider,
 	}
 }
 

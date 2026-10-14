@@ -5,17 +5,13 @@ package dpop
 
 import (
 	"context"
-	"crypto"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gofrs/flock"
 
@@ -23,49 +19,28 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/signingstore"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
 const softwareUnlockAccount = "dpop:software:unlock:v1"
 
+func signerStorageDir() (string, error) { return signingstore.StorageDir() }
+
+func unlockSecretLockDirectory(directory string) (string, error) {
+	return signingstore.UnlockLockDirectory(directory, keysigner.SoftwareSignerName, "DPoP unlock lock directory")
+}
+
 // softwareSigner supplies DPoP's platform storage policy to software signing.
 type softwareSigner struct {
+	signingstore.SoftwareSigner
 	keychain keychain.KeychainAccess
 }
 
-func (softwareSigner) Name() string                           { return keysigner.SoftwareSignerName }
-func (softwareSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL3 }
-
-func (s softwareSigner) EnsureKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
-	signer, err := s.open(true)
-	if err != nil {
-		return nil, err
-	}
-	return signer.EnsureKey(ctx, ref)
-}
-
-func (s softwareSigner) PublicKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
-	signer, err := s.open(false)
-	if err != nil {
-		return nil, err
-	}
-	return signer.PublicKey(ctx, ref)
-}
-
-func (s softwareSigner) Sign(ctx context.Context, ref keysigner.KeyRef, input []byte) ([]byte, string, error) {
-	signer, err := s.open(false)
-	if err != nil {
-		return nil, "", err
-	}
-	return signer.Sign(ctx, ref, input)
-}
-
-func (s softwareSigner) DeleteKey(ctx context.Context, ref keysigner.KeyRef) error {
-	signer, err := s.open(false)
-	if err != nil {
-		return err
-	}
-	return signer.DeleteKey(ctx, ref)
+func newSoftwareSigner(kc keychain.KeychainAccess) softwareSigner {
+	signer := softwareSigner{keychain: kc}
+	signer.SoftwareSigner = signingstore.SoftwareSigner{Open: signer.open}
+	return signer
 }
 
 func (s softwareSigner) open(allowCreate bool) (keysigner.Signer, error) {
@@ -83,20 +58,7 @@ func acquireUnlockSecretLock(ctx context.Context, directory string) (*flock.Floc
 	if err != nil {
 		return nil, err
 	}
-	if err := vfs.MkdirAll(lockDirectory, 0700); err != nil {
-		return nil, err
-	}
-	lock := flock.New(filepath.Join(lockDirectory, "unlock.lock"))
-	lockCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	locked, err := lock.TryLockContext(lockCtx, 10*time.Millisecond)
-	if err != nil {
-		return nil, err
-	}
-	if !locked {
-		return nil, lockCtx.Err()
-	}
-	return lock, nil
+	return signingstore.AcquireUnlockLock(ctx, lockDirectory)
 }
 
 func (s softwareSigner) unlock(ctx context.Context, directory string, allowCreate bool) (secret []byte, err error) {
@@ -118,42 +80,12 @@ func (s softwareSigner) unlock(ctx context.Context, directory string, allowCreat
 	if err != nil && !errors.Is(err, keychain.ErrNotFound) {
 		return nil, err
 	}
-	if encoded != "" {
-		secret, err := base64.StdEncoding.DecodeString(encoded)
-		if err != nil {
-			clear(secret)
-			return nil, fmt.Errorf("%w: decode DPoP software unlock secret: %w", keysigner.ErrCorrupt, err)
-		}
-		if len(secret) != 32 {
-			clear(secret)
-			return nil, fmt.Errorf("%w: invalid DPoP software unlock secret", keysigner.ErrCorrupt)
-		}
-		return secret, nil
-	}
-	if !allowCreate {
-		return nil, missingSoftwareUnlockSecret(directory)
-	}
-
-	entries, err := vfs.ReadDir(directory)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
-	}
-	for _, entry := range entries {
-		if isSoftwareKeyFile(entry.Name()) {
-			// Missing protection data must not orphan existing encrypted keys.
-			return nil, missingSoftwareUnlockSecret(directory)
-		}
-	}
-	secret = make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
-		clear(secret)
-		return nil, err
-	}
-	if err := s.keychain.Set(keychain.LarkCliService, softwareUnlockAccount, base64.StdEncoding.EncodeToString(secret)); err != nil {
-		clear(secret)
-		return nil, err
-	}
-	return secret, nil
+	return signingstore.ResolveSecret(s.keychain, directory, encoded, allowCreate, signingstore.SecretPolicy{
+		Account:     softwareUnlockAccount,
+		Description: "DPoP software unlock secret",
+		IsKeyFile:   isSoftwareKeyFile,
+		Missing:     missingSoftwareUnlockSecret,
+	})
 }
 
 // resetUnrecoverableKeys removes software keys only after re-checking that the

@@ -34,8 +34,8 @@ type SourceBinder interface {
 	// ListCandidates enumerates bindable accounts from the source config.
 	// An empty slice is valid (selectCandidate will turn it into a typed error).
 	ListCandidates() ([]Candidate, error)
-	// Build resolves secrets, persists to keychain, and returns a ready AppConfig
-	// for the chosen candidate AppID. Must be called after ListCandidates succeeds.
+	// Build resolves credentials and returns a ready AppConfig for the chosen
+	// candidate AppID. Must be called after ListCandidates succeeds.
 	Build(appID string) (*core.AppConfig, error)
 }
 
@@ -182,6 +182,36 @@ func (b *openclawBinder) Build(appID string) (*core.AppConfig, error) {
 	}
 	if selected == nil {
 		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: appID %q not in candidates", appID)
+	}
+	if selected.AuthMethod != "" && selected.AuthMethod != core.AuthMethodClientSecret &&
+		!core.IsPrivateKeyJWTAuthMethod(selected.AuthMethod) {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"unknown authMethod %q for app %s in %s", selected.AuthMethod, selected.AppID, b.path).
+			WithHint("supported keyless values are %s and %s",
+				core.AuthMethodPrivateKeyJWT, core.AuthMethodPrivateKeyJWTLocalKeyPair)
+	}
+	if core.IsPrivateKeyJWTAuthMethod(selected.AuthMethod) &&
+		strings.TrimSpace(selected.KeyRef) == "" {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"keyless app %s in %s is missing keyRef", selected.AppID, b.path).
+			WithHint("re-run OpenClaw onboarding so the account records its signer keyRef")
+	}
+	if core.IsPrivateKeyJWTAuthMethod(selected.AuthMethod) {
+		if !selected.AppSecret.IsZero() {
+			fmt.Fprintf(b.opts.Factory.IOStreams.ErrOut,
+				"Warning: authMethod %s takes precedence for app %s; appSecret is ignored and will not be imported. OpenClaw configuration is unchanged.\n",
+				selected.AuthMethod, selected.AppID)
+		}
+		return &core.AppConfig{
+			AppId:      selected.AppID,
+			Brand:      core.ParseBrand(selected.Brand),
+			AuthMethod: selected.AuthMethod,
+			KeyRef: &core.SecretRef{
+				Source:   core.SecretSourceTEE,
+				Provider: core.KeylessProviderLarkSuite,
+				ID:       strings.TrimSpace(selected.KeyRef),
+			},
+		}, nil
 	}
 
 	if selected.AppSecret.IsZero() {

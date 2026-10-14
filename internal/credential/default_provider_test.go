@@ -56,7 +56,7 @@ func TestDefaultTokenProviderSharesRefreshAndCachesDefensiveCopies(t *testing.T)
 			Request:    req,
 		}, nil
 	})}
-	provider := NewDefaultTokenProvider(account, func() (*http.Client, error) { return client, nil }, io.Discard)
+	provider := NewDefaultTokenProvider(account, func() (*http.Client, error) { return client, nil }, io.Discard, nil)
 	now := time.Unix(1700000000, 0)
 	provider.timeNow = func() time.Time { return now }
 
