@@ -788,19 +788,111 @@ func TestDrivePreviewListOnlyErrorAddsSourceFileHint(t *testing.T) {
 	}
 }
 
-// TestDrivePreviewListOnlyRateLimitKeepsOriginalHint verifies retryable API
-// errors are not reframed as source_file recovery.
-func TestDrivePreviewListOnlyRateLimitKeepsOriginalHint(t *testing.T) {
-	err := withDrivePreviewSourceFileHint(errs.NewAPIError(errs.SubtypeRateLimit, "request trigger frequency limit").WithCode(99991400).WithRetryable())
+// TestDrivePreviewListOnlyRateLimitAddsBackoffHint verifies retryable API
+// errors get generic backoff recovery and are not reframed as a source_file
+// fallback.
+func TestDrivePreviewListOnlyRateLimitAddsBackoffHint(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/medias/file_rate_limited/preview_result",
+		Body: map[string]interface{}{
+			"code": 99991400,
+			"msg":  "request trigger frequency limit",
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePreview, []string{
+		"+preview",
+		"--file-token", "file_rate_limited",
+		"--list-only",
+		"--as", "bot",
+	}, f, nil)
 	problem, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got %T: %v", err, err)
 	}
-	if problem.Hint != "" {
-		t.Fatalf("hint=%q, want empty hint for rate limit", problem.Hint)
+	if problem.Hint != expectedDriveFileReadRateLimitHint {
+		t.Fatalf("hint=%q, want generic rate-limit hint %q", problem.Hint, expectedDriveFileReadRateLimitHint)
 	}
 	if !problem.Retryable {
 		t.Fatal("retryable=false, want true")
+	}
+	if strings.Contains(problem.Hint, "--type source_file") {
+		t.Fatalf("hint=%q, want no source_file fallback for rate limit", problem.Hint)
+	}
+}
+
+func TestDrivePreviewSourceFileStreamClassifiesLarkRecoveryErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		code int
+	}{
+		{name: "app scope not applied", code: 99991672},
+		{name: "rate limited", code: 99991400},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: http.MethodGet,
+				URL:    "/open-apis/drive/v1/medias/file_preview_error/preview_download",
+				Status: http.StatusBadRequest,
+				Body: map[string]interface{}{
+					"code": tt.code,
+					"msg":  "preview stream API error",
+					"error": map[string]interface{}{
+						"permission_violations": []interface{}{
+							map[string]interface{}{"subject": "drive:file:download"},
+						},
+					},
+				},
+			})
+
+			withDriveWorkingDir(t, t.TempDir())
+			err := mountAndRunDrive(t, DrivePreview, []string{
+				"+preview",
+				"--file-token", "file_preview_error",
+				"--type", "source_file",
+				"--output", "blocked.bin",
+				"--as", "bot",
+			}, f, nil)
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Code != tt.code {
+				t.Fatalf("problem=%+v ok=%v, want code=%d", problem, ok, tt.code)
+			}
+			var streamErr *errs.NetworkError
+			if !errors.As(err, &streamErr) || streamErr.Code != http.StatusBadRequest {
+				t.Fatalf("error chain=%T %v, want original HTTP 400 network error preserved as cause", err, err)
+			}
+
+			switch tt.code {
+			case 99991672:
+				var permissionErr *errs.PermissionError
+				if !errors.As(err, &permissionErr) || permissionErr.Subtype != errs.SubtypeAppScopeNotApplied {
+					t.Fatalf("error=%T %v, want authorization/app_scope_not_applied", err, err)
+				}
+				if len(permissionErr.MissingScopes) != 1 || permissionErr.MissingScopes[0] != "drive:file:download" {
+					t.Fatalf("missing_scopes=%v, want drive:file:download", permissionErr.MissingScopes)
+				}
+				if permissionErr.ConsoleURL == "" || !strings.Contains(permissionErr.Hint, "developer console") {
+					t.Fatalf("console_url=%q hint=%q, want developer-console recovery", permissionErr.ConsoleURL, permissionErr.Hint)
+				}
+				for _, want := range []string{"stop retrying now", "retry only after", "approved and enabled"} {
+					if !strings.Contains(permissionErr.Hint, want) {
+						t.Fatalf("hint=%q, want %q", permissionErr.Hint, want)
+					}
+				}
+			case 99991400:
+				if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || !problem.Retryable {
+					t.Fatalf("problem=%+v, want retryable api/rate_limit", problem)
+				}
+				if problem.Hint != expectedDriveFileReadRateLimitHint {
+					t.Fatalf("hint=%q, want generic rate-limit hint %q", problem.Hint, expectedDriveFileReadRateLimitHint)
+				}
+			}
+		})
 	}
 }
 
