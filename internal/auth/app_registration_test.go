@@ -602,7 +602,7 @@ func TestRegistrationResultComplete(t *testing.T) {
 	}
 }
 
-func TestRequestAppRegistration_BeginPrivateKeyJWT(t *testing.T) {
+func TestRequestAppRegistration_BeginPrivateKeyJWTLocalKeyPair(t *testing.T) {
 	var body url.Values
 	httpClient := captureClient(&body, beginRespJSON)
 
@@ -621,7 +621,7 @@ func TestRequestAppRegistration_BeginPrivateKeyJWT(t *testing.T) {
 	}
 }
 
-func TestRequestAppRegistration_BeginPrivateKeyJWTExistingAppID(t *testing.T) {
+func TestRequestAppRegistration_BeginPrivateKeyJWTLocalKeyPairExistingAppID(t *testing.T) {
 	var body url.Values
 	hc := captureClient(&body, beginRespJSON)
 

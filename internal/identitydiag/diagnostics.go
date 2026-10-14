@@ -263,7 +263,7 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 	// Private-key JWT apps have no app secret, so absence of a secret is not
 	// enough to classify the bot identity as unconfigured.
 	if cfg.SupportedIdentities == 0 && !credential.HasRealAppSecret(cfg.AppSecret) &&
-		!core.IsPrivateKeyJWTAuthMethod(cfg.AuthMethod) {
+		!core.IsPrivateKeyJWTLocalKeyPairAuthMethod(cfg.AuthMethod) {
 		return withCommandRecovery(Identity{
 			Status:  StatusNotConfigured,
 			Message: "Bot identity: not configured (missing app secret or bot token)",

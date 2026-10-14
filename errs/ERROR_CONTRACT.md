@@ -122,6 +122,15 @@ already succeeded).
 
 Canonical mapping: `internal/output/exitcode.go` `ExitCodeForCategory`.
 
+`authentication/signing_key_missing` means the registered application signing
+key was lost locally. The CLI stops private-key JWT authentication and includes
+instructions in `hint` to re-register the signing key for the existing app via
+interactive config init; it does not create a new app, fall back to
+`client_secret`, or recreate the key during authentication. This is distinct from
+`dpop_key_missing`, which concerns the key bound to a DPoP token. Locked,
+unavailable, or corrupt signers retain their
+existing errors rather than being treated as lost keys.
+
 > **Note on the `authorization` / `PermissionError` asymmetry.** The wire
 > `type` field uses the RFC 7807 / taxonomy-formal name `"authorization"`,
 > but the Go type is named `PermissionError`. This is deliberate, following

@@ -42,15 +42,13 @@ type AppUser struct {
 // default, client_secret.
 const (
 	AuthMethodClientSecret              = "client_secret" // app_id + app_secret
-	AuthMethodPrivateKeyJWT             = "private_key_jwt"
 	AuthMethodPrivateKeyJWTLocalKeyPair = "private_key_jwt_local_keypair"
 )
 
-// IsPrivateKeyJWTAuthMethod reports whether method authenticates with a signed
-// client assertion instead of an app secret.
-func IsPrivateKeyJWTAuthMethod(method string) bool {
-	return method == AuthMethodPrivateKeyJWT ||
-		method == AuthMethodPrivateKeyJWTLocalKeyPair
+// IsPrivateKeyJWTLocalKeyPairAuthMethod reports whether method signs client assertions
+// with a generated key pair or a local private key file.
+func IsPrivateKeyJWTLocalKeyPairAuthMethod(method string) bool {
+	return method == AuthMethodPrivateKeyJWTLocalKeyPair
 }
 
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
@@ -66,10 +64,10 @@ type AppConfig struct {
 	Users      []AppUser   `json:"users"`
 
 	// AuthMethod selects how tokens are minted. Empty == AuthMethodClientSecret
-	// (back-compat). Both private-key JWT methods use the signer selected by
-	// KeyRef instead of sending an app secret.
+	// (back-compat). private_key_jwt_local_keypair uses the generated key or PEM
+	// file selected by KeyRef instead of sending an app secret.
 	AuthMethod string `json:"authMethod,omitempty"`
-	// KeyRef identifies the signer input for private-key JWT authentication.
+	// KeyRef identifies the signer input for private_key_jwt_local_keypair.
 	// Source "tee" stores an opaque managed-key handle (including software-file);
 	// source "file" stores a resolved PEM path without embedding private material.
 	KeyRef *SecretRef `json:"keyRef,omitempty"`
@@ -233,8 +231,8 @@ type CliConfig struct {
 	DPoPMode            DPoPMode
 	CredentialSource    CredentialSource
 	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
-	AuthMethod          string // "" == client_secret; private_key_jwt or private_key_jwt_local_keypair
-	KeySource           string // tee or file for private-key JWT authentication
+	AuthMethod          string // "" == client_secret; private_key_jwt_local_keypair
+	KeySource           string // tee or file for private_key_jwt_local_keypair
 	KeyLabel            string // resolved platform handle or private-key file path
 	KeyProvider         string // built-in backend name, external provider, or empty legacy auto-selection
 }
@@ -347,23 +345,22 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	// at token-signing. Empty stays empty — downstream treats it as client_secret
 	// (back-compat).
 	switch app.AuthMethod {
-	case "", AuthMethodClientSecret, AuthMethodPrivateKeyJWT, AuthMethodPrivateKeyJWTLocalKeyPair:
+	case "", AuthMethodClientSecret, AuthMethodPrivateKeyJWTLocalKeyPair:
 	default:
 		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
 			"unknown authMethod %q", app.AuthMethod).
-			WithHint("supported: %s, %s, %s (empty defaults to %s)",
-				AuthMethodClientSecret, AuthMethodPrivateKeyJWT,
-				AuthMethodPrivateKeyJWTLocalKeyPair, AuthMethodClientSecret)
+			WithHint("supported: %s, %s (empty defaults to %s)",
+				AuthMethodClientSecret, AuthMethodPrivateKeyJWTLocalKeyPair, AuthMethodClientSecret)
 	}
-	// Private-key JWT authentication does not require a secret. Preserve any
+	// private_key_jwt_local_keypair does not require a secret. Preserve any
 	// stored secret reference for coexistence/recovery, but do not resolve or
-	// send it while either method is selected.
+	// send it while private_key_jwt_local_keypair authentication is selected.
 	var secret string
-	if IsPrivateKeyJWTAuthMethod(app.AuthMethod) {
+	if IsPrivateKeyJWTLocalKeyPairAuthMethod(app.AuthMethod) {
 		if app.KeyRef == nil || app.KeyRef.ID == "" {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
 				"%s requires a valid keyRef", app.AuthMethod).
-				WithHint("re-run: lark-cli config init --new --private-key-jwt")
+				WithHint("run `lark-cli config init --private-key-jwt` in a terminal, choose the existing-app option, and enter app ID %s to re-register its signing key", app.AppId)
 		}
 		provider := strings.TrimSpace(app.KeyRef.Provider)
 		switch app.KeyRef.Source {

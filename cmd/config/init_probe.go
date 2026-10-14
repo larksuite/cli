@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -24,26 +25,16 @@ import (
 const probeTimeout = 3 * time.Second
 
 // runProbe runs a best-effort credential validation after config init has
-// persisted the App ID and App Secret. It returns a non-nil error only for a
-// deterministic credential or policy rejection; every other outcome returns nil
-// so that valid configurations and transient/upstream noise never block the
-// command.
+// persisted the App ID and App Secret. Typed token-endpoint failures propagate;
+// ambiguous transport, parse, timeout, and transient server failures stay silent.
 //
 // The function performs up to two HTTP calls in series, bounded by
 // probeTimeout:
 //
 //  1. A TAT request using the just-saved credentials. The credential helper
-//     returns a typed errs.* error (via the shared classifyTATResponseCode)
-//     only when the unified Token Endpoint deterministically rejected the
-//     credentials — an OAuth2 invalid_client / unauthorized_client classified as
-//     CategoryConfig / SubtypeInvalidClient, or whatever codemeta maps. That
-//     typed error is propagated so the root dispatcher renders the canonical
-//     envelope and `config init` exits non-zero — identical to how every other
-//     token-resolving command reports the same bad credentials. Ambiguous
-//     failures (transport errors, transient 5xx/server_error, JSON parse errors,
-//     timeouts) come back as raw untyped errors and are swallowed (return nil),
-//     so valid configurations are never disturbed by upstream noise.
-//     errs.IsTyped is the discriminator.
+//     returns typed OAuth, policy, and rate-limit failures using the same
+//     classification as normal token resolution. errs.IsTyped is the discriminator
+//     between errors to propagate and ambiguous failures to ignore.
 //
 //  2. If TAT succeeded, a POST to the probe endpoint is fired. Typed policy
 //     errors are propagated; every other outcome remains best-effort and is
@@ -60,13 +51,9 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 
-	result, err := credential.FetchTAT(ctx, httpClient, brand, appID, appSecret, core.DPoPModeDisabled)
+	result, err := credential.FetchTAT(ctx, httpClient, brand, auth.ClientAuth{AppID: appID, AppSecret: appSecret}, core.DPoPModeDisabled)
 	if err != nil {
-		// A typed error from FetchTAT is a deterministic credential rejection
-		// (classifyTATResponseCode). Propagate it so config init exits with the
-		// same envelope the rest of the CLI uses for bad credentials. Untyped
-		// errors are ambiguous (transport / HTTP / parse / timeout) — stay
-		// silent and let the command succeed.
+		// Preserve token resolution's typed failures; ambiguous failures stay silent.
 		if errs.IsTyped(err) {
 			return err
 		}
@@ -98,13 +85,13 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	return nil
 }
 
-// runProbePKJWT does a best-effort key-binding validation after a private_key_jwt
-// config is saved: it signs a client_assertion with the local platform key and
-// mints a token. A typed error (a deterministic server rejection — e.g. the key
+// runProbePrivateKeyJWTLocalKeyPair does a best-effort key-binding validation: it signs a
+// client_assertion with the configured key (file or generated) and mints a token.
+// A typed error (a deterministic server rejection — e.g. the key
 // is not bound to this app) is propagated so `config init` exits non-zero with
 // the canonical envelope; untyped errors (transport / HTTP / parse / timeout)
 // are swallowed (return nil). The mint itself is the probe — no second call.
-func runProbePKJWT(parent context.Context, factory *cmdutil.Factory, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) error {
+func runProbePrivateKeyJWTLocalKeyPair(parent context.Context, factory *cmdutil.Factory, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) error {
 	if factory == nil {
 		return nil
 	}
@@ -121,8 +108,7 @@ func runProbePKJWT(parent context.Context, factory *cmdutil.Factory, brand core.
 	defer cancel()
 
 	if _, err := credential.FetchTATWithAssertion(ctx, httpClient, brand, clientID, signer, keyLabel); err != nil {
-		// Typed = deterministic credential rejection → propagate. Untyped
-		// (transport / HTTP / parse / timeout) is ambiguous → stay silent.
+		// Preserve token resolution's typed failures; ambiguous failures stay silent.
 		if errs.IsTyped(err) {
 			return err
 		}
