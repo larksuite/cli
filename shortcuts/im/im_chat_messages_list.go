@@ -69,6 +69,9 @@ var ImChatMessageList = common.Shortcut{
 			}
 		}
 		d = d.GET(imMessagesListPath).Params(dryParams)
+		if citation.Enabled() {
+			d.Desc("Citation only: user P2P may additionally query chats/batch_query. Missing participant names may use authen/user_info, contact user APIs, or GET /open-apis/bot/v3/bots/basic_batch (max 10 bot_ids; application:bot.basic_info:read). Bot P2P peers may use GET /open-apis/im/v1/chats/{chat_id}/members (im:chat.members:read). Name lookup is best-effort.")
+		}
 		if !runtime.Bool("no-reactions") {
 			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
 				Desc("Reaction enrichment: queries returned messages (including thread_replies expanded inline) in batches of up to 20. Pass --no-reactions to skip.")
@@ -202,6 +205,37 @@ var ImChatMessageList = common.Shortcut{
 				NextToken: nextPageToken,
 			})
 		}
+		// Enrich titles only with LARKSUITE_CLI_CITATION=1; output formatting stays
+		// with the framework. Empty results need no lookups.
+		if citation.Enabled() && len(messages) > 0 {
+			// All messages share one chat. Read metadata from the first typed item;
+			// an empty P2P name is valid and must not be treated as missing metadata.
+			chat := messageChatContext{}
+			for _, message := range messages {
+				chat = messageChatContext{kind: asString(message["chat_type"]), name: asString(message["chat_default_name"])}
+				if chat.kind != "" {
+					break
+				}
+			}
+			if chat.kind == "" {
+				fmt.Fprintln(runtime.IO().ErrOut, "warning: citation conversation metadata unavailable; verify server and gateway chat_type/chat_default_name support")
+			}
+			if chat.kind == "p2p" {
+				// Groups need no extra lookup; P2P titles require the peer's identity.
+				if !runtime.IsBot() {
+					contexts := projectMessageChatContexts(batchQueryChatContexts(runtime, []string{chatId}))
+					chat.partnerID, chat.partnerType = contexts[chatId].partnerID, contexts[chatId].partnerType
+				}
+				if chat.partnerID == "" {
+					// An explicit peer ID is a safe fallback; message senders are not.
+					chat.partnerID = runtime.Str("user-id")
+				}
+			}
+			titles := messageChatTitles(runtime, map[string]messageChatContext{chatId: chat}, messages)
+			// Include the title in scanned data before citation building.
+			// Per-message chat_default_name remains unchanged.
+			outData["chat_name"] = titles[chatId]
+		}
 		runtime.OutFormat(outData, &output.Meta{Pagination: pagination}, func(w io.Writer) {
 			if len(messages) == 0 {
 				fmt.Fprintln(w, "No messages in this time range.")
@@ -311,7 +345,7 @@ func resolveChatIDForMessagesList(runtime *common.RuntimeContext, dryRun bool) (
 }
 
 // chatMessagesListCitations turns this command's output payload into one
-// citation per citable message, including text messages expanded under
+// citation per citable message, including messages of all types expanded under
 // thread_replies.
 //
 // `data` is the exact map Execute passed to runtime.OutFormat — the builder
@@ -321,8 +355,8 @@ func resolveChatIDForMessagesList(runtime *common.RuntimeContext, dryRun bool) (
 // so the payload exposes it once at the top level and the per-message entries
 // may omit it. Passing it as the fallback keeps the URL complete either way.
 //
-// Non-text messages are skipped this round. A skipped parent does not suppress
-// citable replies nested under it.
+// Messages and expanded replies use data.chat_name while retaining their
+// individual links and timestamps.
 func chatMessagesListCitations(rt *common.RuntimeContext, data any) []citation.Citation {
 	items := citationItems(data, "messages")
 	if items == nil {
@@ -330,15 +364,18 @@ func chatMessagesListCitations(rt *common.RuntimeContext, data any) []citation.C
 	}
 	out, _ := data.(map[string]interface{})
 	chatID, _ := out["chat_id"].(string)
+	chatName, _ := out["chat_name"].(string)
 	brand := citationBrand(rt)
 
 	citations := make([]citation.Citation, 0, len(items))
 	for _, msg := range items {
 		if entry, ok := messageCitation(brand, msg, chatID); ok {
+			entry.Title = chatName
 			citations = append(citations, entry)
 		}
 		for _, reply := range citationItems(msg, "thread_replies") {
 			if entry, ok := messageCitation(brand, reply, chatID); ok {
+				entry.Title = chatName
 				citations = append(citations, entry)
 			}
 		}

@@ -13,6 +13,43 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+func TestFormatMessageItemChatMetadata(t *testing.T) {
+	for _, kind := range []string{"text", "image", "file", "interactive", "unknown"} {
+		for _, name := range []string{"Group", ""} {
+			t.Run(kind+"/"+name, func(t *testing.T) {
+				raw := map[string]interface{}{"msg_type": kind, "chat_id": "oc_test", "chat_type": "p2p", "chat_default_name": name}
+				got := FormatMessageItem(raw, nil)
+				if got["chat_id"] != "oc_test" || got["chat_type"] != "p2p" || got["chat_default_name"] != name {
+					t.Fatalf("metadata not preserved: %#v", got)
+				}
+			})
+		}
+	}
+	for _, tc := range []struct {
+		name   string
+		fields map[string]interface{}
+	}{
+		{"absent", map[string]interface{}{}},
+		{"type only", map[string]interface{}{"chat_type": "group"}},
+		{"name only", map[string]interface{}{"chat_default_name": "Group"}},
+		{"empty type", map[string]interface{}{"chat_type": "", "chat_default_name": "Group"}},
+		{"empty name", map[string]interface{}{"chat_default_name": ""}},
+		{"null type", map[string]interface{}{"chat_type": nil}},
+		{"null name", map[string]interface{}{"chat_default_name": nil}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FormatMessageItem(tc.fields, nil)
+			for _, key := range []string{"chat_type", "chat_default_name"} {
+				wantValue, wantExists := tc.fields[key]
+				gotValue, gotExists := got[key]
+				if gotExists != wantExists || gotValue != wantValue {
+					t.Fatalf("%s = %#v (present=%v), want %#v (present=%v)", key, gotValue, gotExists, wantValue, wantExists)
+				}
+			}
+		})
+	}
+}
+
 func mustParseURL(t *testing.T, raw string) *url.URL {
 	t.Helper()
 	u, err := url.Parse(raw)

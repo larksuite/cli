@@ -77,6 +77,9 @@ var ImMessagesSearch = common.Shortcut{
 			Body(req.body).
 			Desc("Step 2 (if results): GET /open-apis/im/v1/messages/mget?message_ids=...  — batch fetch message details (max 50)").
 			Desc("Step 3 (if results): POST /open-apis/im/v1/chats/batch_query  — fetch chat names for context")
+		if citation.Enabled() {
+			d.Desc("Citation only: missing chat context falls back to GET /open-apis/im/v1/chats/{chat_id}. P2P titles may additionally query authen/user_info, contact user APIs, or GET /open-apis/bot/v3/bots/basic_batch (max 10 bot_ids; application:bot.basic_info:read) for missing participant names. Bot P2P peers may also use GET /open-apis/im/v1/chats/{chat_id}/members (im:chat.members:read). Name lookup is best-effort.")
+		}
 		if !runtime.Bool("no-reactions") {
 			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
 				Desc("Step 4 (if results): reaction enrichment in batches of up to 20 messages. Pass --no-reactions to skip.")
@@ -205,6 +208,30 @@ var ImMessagesSearch = common.Shortcut{
 		// Enrich: resolve sender names for outer messages (reuses cache from merge_forward)
 		convertlib.ResolveSenderNames(runtime, enriched, nameCache)
 		convertlib.AttachSenderNames(enriched, nameCache)
+		// Reuse existing chat lookups; only citation title enrichment is gated by
+		// LARKSUITE_CLI_CITATION=1. Output formatting stays with the framework.
+		if citation.Enabled() {
+			chats := projectMessageChatContexts(chatContexts)
+			fillMissingMessageChatContexts(runtime, chats, chatIds)
+			// Search metadata still identifies P2P chats when chat lookup fails.
+			for _, item := range rawItems {
+				row, _ := item.(map[string]interface{})
+				meta, _ := row["meta_data"].(map[string]interface{})
+				hint := struct {
+					chatID string
+					isP2P  bool
+				}{chatID: asString(meta["chat_id"])}
+				hint.isP2P, _ = meta["is_p2p_chat"].(bool)
+				if hint.chatID != "" && hint.isP2P && chats[hint.chatID].kind == "" {
+					chats[hint.chatID] = messageChatContext{kind: "p2p"}
+				}
+			}
+			titles := messageChatTitles(runtime, chats, enriched)
+			for _, msg := range enriched {
+				// Search spans chats: store each title in scanned message data.
+				msg["chat_name"] = titles[asString(msg["chat_id"])]
+			}
+		}
 		if !runtime.Bool("no-reactions") {
 			convertlib.EnrichReactions(runtime, enriched)
 		}

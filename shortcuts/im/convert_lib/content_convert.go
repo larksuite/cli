@@ -236,6 +236,14 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	if v, ok := m["chat_id"]; ok {
 		msg["chat_id"] = v
 	}
+	// Preserve optional chat metadata regardless of the citation gate, including
+	// empty P2P names and null values. Title enrichment happens at the caller.
+	if v, ok := m["chat_type"]; ok {
+		msg["chat_type"] = v
+	}
+	if v, ok := m["chat_default_name"]; ok {
+		msg["chat_default_name"] = v
+	}
 	if v, ok := m["message_position"]; ok {
 		msg["message_position"] = v
 	}

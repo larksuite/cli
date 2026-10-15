@@ -20,6 +20,7 @@ func textMessage() map[string]interface{} {
 		"content":          "hello world",
 		"create_time":      "2026-07-27 21:26",
 		"chat_id":          "oc_1",
+		"chat_name":        "Example group",
 		"message_app_link": testMessageAppLink,
 	}
 }
@@ -35,8 +36,8 @@ func TestMessageCitationPrefersMessageAppLink(t *testing.T) {
 	if c.URL != testMessageAppLink {
 		t.Errorf("url = %q, want the message-level applink", c.URL)
 	}
-	if c.Title != "hello world" {
-		t.Errorf("title = %q, want the message text verbatim", c.Title)
+	if c.Title != "Example group" {
+		t.Errorf("title = %q, want the conversation name", c.Title)
 	}
 	if c.Snippet != "" {
 		t.Errorf("snippet = %q, want empty for messages", c.Snippet)
@@ -85,22 +86,21 @@ func TestMessageCitationWithoutMessageID(t *testing.T) {
 	}
 }
 
-func TestMessageCitationSkipsNonTextMessages(t *testing.T) {
-	for _, msgType := range []string{"image", "file", "post", "merge_forward", "audio", ""} {
+func TestMessageCitationIncludesAllMessageTypes(t *testing.T) {
+	for _, msgType := range []string{"text", "image", "file", "post", "merge_forward", "audio", "media", "video", "sticker", "interactive", "system", "share_chat", "share_user", "future_type", ""} {
 		msg := textMessage()
 		msg["msg_type"] = msgType
-		if _, ok := messageCitation(core.BrandFeishu, msg, ""); ok {
-			t.Errorf("msg_type %q must not be citable this round", msgType)
+		if c, ok := messageCitation(core.BrandFeishu, msg, ""); !ok || c.Title != "Example group" {
+			t.Errorf("msg_type %q citation = %#v, %v", msgType, c, ok)
 		}
 	}
 }
 
 func TestMessageCitationTitleIsNotTruncated(t *testing.T) {
-	// The protocol defines a message's title as the message itself: a long
-	// body is carried whole, with no truncation and no ellipsis.
+	// Conversation names are not truncated or replaced by message bodies.
 	long := strings.Repeat("字", 600)
 	msg := textMessage()
-	msg["content"] = long
+	msg["chat_name"] = long
 	c, _ := messageCitation(core.BrandFeishu, msg, "")
 	if c.Title != long {
 		t.Errorf("title = %d runes, want %d", len([]rune(c.Title)), len([]rune(long)))
@@ -151,7 +151,8 @@ func TestChatCitationWithoutChatIDHasNoURL(t *testing.T) {
 
 func TestChatMessagesListCitationsBuilder(t *testing.T) {
 	data := map[string]interface{}{
-		"chat_id": "oc_outer",
+		"chat_id":   "oc_outer",
+		"chat_name": "Outer group",
 		"messages": []map[string]interface{}{
 			textMessage(),
 			{"message_id": "om_2", "msg_type": "image", "content": "[image]", "create_time": ""},
@@ -159,18 +160,18 @@ func TestChatMessagesListCitationsBuilder(t *testing.T) {
 		},
 	}
 	got := chatMessagesListCitations(nil, data)
-	if len(got) != 2 {
-		t.Fatalf("builder = %#v, want 2 entries (image skipped)", got)
+	if len(got) != 3 {
+		t.Fatalf("builder = %#v, want all 3 entries", got)
 	}
 	if got[0].URL != testMessageAppLink {
 		t.Errorf("first url = %q", got[0].URL)
 	}
-	if got[1].Title != "no chat id" {
+	if got[1].Title != "Outer group" {
 		t.Errorf("second title = %q", got[1].Title)
 	}
 }
 
-func TestChatMessagesListCitationsIncludesTextThreadReplies(t *testing.T) {
+func TestChatMessagesListCitationsIncludesAllThreadReplies(t *testing.T) {
 	parent := textMessage()
 	parent["thread_replies"] = []map[string]interface{}{
 		{
@@ -198,17 +199,17 @@ func TestChatMessagesListCitationsIncludesTextThreadReplies(t *testing.T) {
 	}
 
 	got := chatMessagesListCitations(nil, map[string]interface{}{
-		"chat_id":  "oc_outer",
-		"messages": []map[string]interface{}{parent, nonTextParent},
+		"chat_id":   "oc_outer",
+		"chat_name": "Outer group",
+		"messages":  []map[string]interface{}{parent, nonTextParent},
 	})
-	if len(got) != 3 {
-		t.Fatalf("builder = %#v, want parent and 2 text-reply citations", got)
+	if len(got) != 5 {
+		t.Fatalf("builder = %#v, want both parents and all 3 replies", got)
 	}
-	if got[0].Title != "hello world" {
-		t.Errorf("first citation = %#v, want the parent message text", got[0])
-	}
-	if got[1].Title != "first reply" {
-		t.Errorf("first reply citation = %#v", got[1])
+	for _, c := range got {
+		if c.Title != "Outer group" {
+			t.Errorf("citation = %#v, want owning conversation title", c)
+		}
 	}
 	if got[1].URL != "https://applink.feishu.cn/client/thread/open?thread_position=0" {
 		t.Errorf("first reply url = %q", got[1].URL)
@@ -216,8 +217,8 @@ func TestChatMessagesListCitationsIncludesTextThreadReplies(t *testing.T) {
 	if got[1].PublishTime != citation.Time("2026-08-31 19:31") {
 		t.Errorf("first reply publish_time = %q", got[1].PublishTime)
 	}
-	if got[2].Title != "second reply" {
-		t.Errorf("second reply citation = %#v", got[2])
+	if got[4].URL != "https://applink.feishu.cn/client/thread/open?thread_position=1" {
+		t.Errorf("second reply citation = %#v", got[4])
 	}
 }
 
@@ -225,15 +226,15 @@ func TestMessagesSearchCitationsBuilder(t *testing.T) {
 	data := map[string]interface{}{
 		"messages": []interface{}{
 			textMessage(),
-			map[string]interface{}{"message_id": "om_9", "msg_type": "file", "content": "x"},
+			map[string]interface{}{"message_id": "om_9", "msg_type": "file", "content": "x", "chat_id": "oc_other", "chat_name": "A和B的会话"},
 		},
 	}
 	got := messagesSearchCitations(nil, data)
-	if len(got) != 1 {
-		t.Fatalf("builder = %#v, want 1 entry (file skipped)", got)
+	if len(got) != 2 {
+		t.Fatalf("builder = %#v, want both entries", got)
 	}
-	if got[0].Title != "hello world" {
-		t.Errorf("title = %q, want the message text", got[0].Title)
+	if got[0].Title != "Example group" || got[1].Title != "A和B的会话" {
+		t.Errorf("titles = %#v", got)
 	}
 }
 

@@ -43,7 +43,8 @@
 //
 // The whole capability is behind the LARKSUITE_CLI_CITATION environment
 // variable (exact value "1"). With the gate off, citationProvider returns nil
-// and output is byte-identical to before citations existed.
+// and citation title enrichment is skipped. Server chat metadata passthrough
+// is independent of this gate.
 //
 // # The constraint that matters most
 //
@@ -71,20 +72,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 )
-
-// citationTextMsgType is the only msg_type this round emits citations for.
-//
-// IM messages come in many types (image, file, audio, media, post, sticker,
-// share_chat, share_user, interactive, merge_forward, ...). The protocol
-// defines a message's title as the message itself, and only "text" has such a
-// plain-text body; the others would either cite an empty string or a rendered
-// placeholder like "[image]", which is worse than not citing them at all.
-// Scope for this round is text only, by product decision.
-//
-// Widening this is a one-line change plus a decision about what title each new
-// type should carry — "post" (rich text) is the obvious next candidate, since
-// convert_lib already flattens it to text.
-const citationTextMsgType = "text"
 
 // citationBrand resolves the brand whose applink host is used to build URLs.
 //
@@ -116,10 +103,8 @@ func chatOpenURL(brand core.LarkBrand, chatID string) string {
 
 // messageCitation builds one message's citation.
 //
-// The bool result distinguishes "this message is not citable at all" (a
-// non-text message, skipped entirely) from "citable, though some optional
-// field may be empty". Callers append only when it is true, so skipped
-// messages leave no gap in the citations array.
+// All message types are eligible. The bool result remains true; the framework
+// validates URLs and omits entries without usable links.
 //
 // The msg argument is one element of the command's formatted `messages` list,
 // not a raw API response. convert_lib.formatMessageItem has already flattened
@@ -138,14 +123,10 @@ func chatOpenURL(brand core.LarkBrand, chatID string) string {
 // carries a position anchor); the chat-level link is a degradation that only
 // gets the reader to the right conversation.
 func messageCitation(brand core.LarkBrand, msg map[string]interface{}, fallbackChatID string) (citation.Citation, bool) {
-	if msgType, _ := msg["msg_type"].(string); msgType != citationTextMsgType {
-		return citation.Citation{}, false
-	}
-
 	// Comma-ok on every read: these come from a map[string]interface{} built
 	// from a JSON response, so a missing or differently-typed key must yield
 	// the zero value rather than panic.
-	text, _ := msg["content"].(string)
+	title, _ := msg["chat_name"].(string)
 	createTime, _ := msg["create_time"].(string)
 	chatID, _ := msg["chat_id"].(string)
 	if chatID == "" {
@@ -154,12 +135,9 @@ func messageCitation(brand core.LarkBrand, msg map[string]interface{}, fallbackC
 
 	entry := citation.Citation{
 		SourceType: citation.SourceMessage,
-		// Title is the message itself, verbatim — the protocol defines it that
-		// way, so no truncation and no ellipsis. Snippet stays empty: the
-		// protocol calls it an excerpt of the body, and the whole body is
-		// already in Title, so a copy adds nothing. The product's
-		// atomic-command list maps this command as carrying no snippet.
-		Title: text,
+		// Title is the conversation name, not the message body. The list builder
+		// supplies the shared data.chat_name for messages and expanded replies.
+		Title: title,
 		// citation.Time normalizes to RFC3339 with an explicit offset. It
 		// accepts unix seconds/millis and several formatted layouts, and
 		// returns "" for anything it cannot parse — publish_time is optional,
@@ -177,9 +155,8 @@ func messageCitation(brand core.LarkBrand, msg map[string]interface{}, fallbackC
 
 // chatCitation builds one chat's citation.
 //
-// The cited object is the conversation, not anything said in it, so the
-// text-only rule does not apply — a chat has no msg_type. Title is the group
-// name, verbatim, as the protocol prescribes. Snippet is the group
+// The cited object is the conversation, not anything said in it. Title is
+// the group name, verbatim, as the protocol prescribes. Snippet is the group
 // description: unlike a message's body it is genuinely distinct from the
 // title, and it is the closest a chat has to the protocol's "excerpt". Both
 // may legitimately be empty.

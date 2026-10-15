@@ -30,7 +30,8 @@ func TestExpandThreadReplies(t *testing.T) {
 					"has_more": true,
 					"items": []interface{}{
 						map[string]interface{}{
-							"message_id":  "om_reply_1",
+							"message_id": "om_reply_1",
+							"chat_id":    "oc_test", "chat_type": "group", "chat_default_name": "Group",
 							"msg_type":    "text",
 							"create_time": "1710500000",
 							"thread_id":   "omt_1",
@@ -62,6 +63,9 @@ func TestExpandThreadReplies(t *testing.T) {
 	}
 	if replies[0]["content"] != "reply @Bob" {
 		t.Fatalf("thread reply content = %#v, want %#v", replies[0]["content"], "reply @Bob")
+	}
+	if replies[0]["chat_id"] != "oc_test" || replies[0]["chat_type"] != "group" || replies[0]["chat_default_name"] != "Group" {
+		t.Fatalf("thread reply metadata lost: %#v", replies[0])
 	}
 	if messages[0]["thread_has_more"] != true {
 		t.Fatalf("thread_has_more = %#v, want true", messages[0]["thread_has_more"])
