@@ -165,7 +165,14 @@ func refreshWithLock(ctx context.Context, httpClient *http.Client, opts UATCallO
 				return err
 			}
 			if opts.ErrOut != nil {
-				fmt.Fprintf(opts.ErrOut, "[lark-cli] uat-client: refresh_token expired for %s, clearing\n", opts.UserOpenId)
+				if freshStored.RefreshToken == "" {
+					fmt.Fprintf(opts.ErrOut, "[lark-cli] uat-client: access_token expired and no refresh_token available for %s, clearing\n", opts.UserOpenId)
+				} else {
+					fmt.Fprintf(opts.ErrOut, "[lark-cli] uat-client: refresh_token expired for %s, clearing\n", opts.UserOpenId)
+				}
+			}
+			if freshStored.RefreshToken == "" {
+				return newExpiredWithoutRefreshTokenError(opts)
 			}
 			return nil
 		}
@@ -282,8 +289,15 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 	}
 	ordinaryAttempts := 0
 	for {
-		if tokenNow(stored).UnixMilli() >= stored.RefreshExpiresAt {
-			fmt.Fprintf(errOut, "[lark-cli] uat-client: refresh_token expired for %s, clearing\n", opts.UserOpenId)
+		if stored.RefreshToken == "" && TokenStatus(stored) == "valid" {
+			return stored, nil
+		}
+		if TokenStatus(stored) == "expired" {
+			if stored.RefreshToken == "" {
+				fmt.Fprintf(errOut, "[lark-cli] uat-client: access_token expired and no refresh_token available for %s, clearing\n", opts.UserOpenId)
+			} else {
+				fmt.Fprintf(errOut, "[lark-cli] uat-client: refresh_token expired for %s, clearing\n", opts.UserOpenId)
+			}
 			retained, deleted, err := compareAndDeleteStoredToken(opts.AppId, opts.UserOpenId, stored)
 			if err != nil {
 				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove expired token: %v\n", err)
@@ -291,6 +305,9 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 			}
 			if !deleted {
 				return resolveStoredTokenGenerationConflict(retained, opts.UserOpenId)
+			}
+			if stored.RefreshToken == "" {
+				return nil, newExpiredWithoutRefreshTokenError(opts)
 			}
 			return nil, nil
 		}

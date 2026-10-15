@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/dpop"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 )
 
@@ -368,6 +369,17 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		id.Message = "User identity: needs refresh (will auto-refresh on next user API call)"
 	default:
 		id.Status = StatusMissing
+		if stored.RefreshToken == "" {
+			id.Message = "User identity: missing (access token expired; no refresh token issued — enable offline_access)"
+			hint := "run: lark-cli auth login --help"
+			if consoleURL := errclass.ConsoleURL(string(cfg.Brand), cfg.AppID, []string{"offline_access"}); consoleURL != "" {
+				hint = fmt.Sprintf(
+					"enable the offline_access scope at %s if you want automatic renewal, then run: lark-cli auth login --help",
+					consoleURL,
+				)
+			}
+			return withCommandRecovery(id, recovery.TargetAuthLogin, hint)
+		}
 		id.Message = "User identity: missing (refresh token expired)"
 		return withCommandRecovery(id, recovery.TargetAuthLogin, "run: lark-cli auth login --help")
 	}

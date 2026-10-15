@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 )
@@ -43,6 +44,30 @@ func (e *NeedAuthorizationError) Error() string {
 // errors.As / errors.Is traversal.
 func NewNeedUserAuthorizationError(userOpenID string) error {
 	return newNeedUserAuthorizationError(userOpenID, nil, recovery.UserAuthorization())
+}
+
+// newExpiredWithoutRefreshTokenError builds the typed *errs.AuthenticationError
+// returned when a stored UAT's access_token expires and no refresh_token was
+// issued (typically because the app has not enabled the offline_access scope).
+func newExpiredWithoutRefreshTokenError(opts UATCallOptions) error {
+	reason := "access_token expired without auto-refresh because no refresh_token was issued (enable the offline_access scope in the developer console if you want automatic renewal)"
+	if consoleURL := errclass.ConsoleURL(string(opts.Domain), opts.AppId, []string{"offline_access"}); consoleURL != "" {
+		reason = fmt.Sprintf(
+			"access_token expired without auto-refresh because no refresh_token was issued (enable the offline_access scope at %s if you want automatic renewal)",
+			consoleURL,
+		)
+	}
+	reauthHint := recovery.Join("", recovery.Command(
+		recovery.TargetAuthLogin,
+		"run `lark-cli auth login` to re-authorize",
+	)).WithFallback(
+		"re-authorize through this distribution's supported authorization flow",
+	)
+	return newNeedUserAuthorizationError(
+		opts.UserOpenId,
+		nil,
+		recovery.JoinHints("; ", recovery.Join("", recovery.Text(reason)), reauthHint),
+	)
 }
 
 // newNeedUserAuthorizationError preserves the missing-UAT sentinel alongside
