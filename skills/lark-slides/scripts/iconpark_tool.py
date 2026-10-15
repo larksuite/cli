@@ -330,7 +330,7 @@ def print_usage() -> None:
 
 
 def write_json(value: Any) -> None:
-    print(json.dumps(value, ensure_ascii=False, indent=2))
+    print(json.dumps(value, ensure_ascii=True, indent=2))
 
 
 def run_cli(argv: list[str] | None = None) -> None:
