@@ -25,7 +25,8 @@ func NewCmdConfigSet(f *cmdutil.Factory) *cobra.Command {
 Supported keys:
   dpop  disabled | preferred | required
 
-dpop applies only to credentials issued by the built-in local provider.
+dpop applies only to UAT/TAT credentials issued by the built-in local provider.
+Agent Access Tokens (AAT) remain Bearer because they do not support DPoP.
 disabled issues new local credentials as Bearer. preferred tries DPoP first and
 may fall back during new token issuance. required requires DPoP and fails
 closed. Existing DPoP tokens always keep their original key regardless of the

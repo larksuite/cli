@@ -190,7 +190,8 @@ lark-cli auth login --domain calendar --no-wait
 # Resume polling later
 lark-cli auth login --device-code <DEVICE_CODE>
 
-# DPoP (Demonstrating Proof of Possession) is enabled in preferred mode by default for new local credentials
+# DPoP (Demonstrating Proof of Possession) defaults to preferred for new local UAT/TAT credentials
+# Agent Access Tokens (AAT) do not support DPoP and remain Bearer
 lark-cli config set dpop preferred
 # Or disable DPoP
 lark-cli config set dpop disabled

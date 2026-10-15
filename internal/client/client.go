@@ -68,7 +68,8 @@ func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (*
 	if result.Value == "" {
 		return nil, newTokenMissingError(as, c.credentialKind(), nil)
 	}
-	if c.Config != nil && c.Config.DPoPMode.Required() &&
+	// AAT is Bearer-only; the local DPoP requirement applies to UAT/TAT.
+	if c.Config != nil && c.Config.DPoPMode.Required() && result.Kind != core.CredentialAAT &&
 		result.Source == core.CredentialSourceLocal && result.DPoP == nil {
 		hint := recovery.Join("", recovery.Command(recovery.TargetAuthLogin,
 			"run `lark-cli auth login` to issue a DPoP-bound local token")).
