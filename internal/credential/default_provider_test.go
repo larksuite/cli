@@ -10,13 +10,16 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/zalando/go-keyring"
 )
 
 var _ DefaultTokenResolver = (*DefaultTokenProvider)(nil)
@@ -208,5 +211,140 @@ func TestClassifyTATResponseCode_CodeZeroOtherError_StillTyped(t *testing.T) {
 	var cfgErr *errs.ConfigError
 	if errors.As(err, &cfgErr) {
 		t.Fatalf("code-0 invalid_scope must not be a ConfigError, got %T", err)
+	}
+}
+
+func TestDefaultTokenProviderRetainsClearedUATErrorAcrossRepeatedResolve(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	const (
+		appID      = "cli_offline_repeat"
+		userOpenID = "ou_offline_repeat"
+	)
+	config := &core.MultiAppConfig{Apps: []core.AppConfig{{
+		AppId:     appID,
+		AppSecret: core.PlainSecret("secret"),
+		Brand:     core.BrandFeishu,
+		DPoPMode:  core.DPoPModeDisabled,
+		Users:     []core.AppUser{{UserOpenId: userOpenID, UserName: "Test User"}},
+	}}}
+	if err := core.SaveMultiAppConfig(config); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UnixMilli()
+	if err := auth.SetStoredToken(&auth.StoredUAToken{
+		AppId:            appID,
+		UserOpenId:       userOpenID,
+		AccessToken:      "u-expired-no-refresh",
+		ExpiresAt:        now - 1000,
+		RefreshExpiresAt: now - 1000,
+		Scope:            "im:chat:read",
+		TokenType:        auth.StoredTokenTypeBearer,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	account := NewDefaultAccountProvider(
+		func() keychain.KeychainAccess { return &tenantTokenStoreKeychain{} },
+		"",
+		core.ProfileFromConfig,
+	)
+	provider := NewDefaultTokenProvider(account, func() (*http.Client, error) { return http.DefaultClient, nil }, io.Discard)
+
+	// First call (simulating shortcut/service scope preflight) clears the expired token and returns the offline_access diagnosis.
+	_, firstErr := provider.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: appID})
+	firstProblem, ok := errs.ProblemOf(firstErr)
+	if !ok || !strings.Contains(firstProblem.Hint, "offline_access") {
+		t.Fatalf("first ResolveToken() error = %v (hint=%q), want offline_access diagnosis", firstErr, firstProblem.Hint)
+	}
+
+	// A concurrent call that observed hadStored != nil before deletion and later received a generic no-token error
+	// must not overwrite the first call's offline_access diagnosis.
+	racedErr := provider.recordClearedUATError(appID, userOpenID, auth.NewNeedUserAuthorizationError(userOpenID))
+	racedProblem, ok := errs.ProblemOf(racedErr)
+	if !ok || !strings.Contains(racedProblem.Hint, "offline_access") {
+		t.Fatalf("recordClearedUATError() after race = %v (hint=%q), want preserved offline_access diagnosis", racedErr, racedProblem.Hint)
+	}
+
+	// Conversely, if a generic no-token error was recorded first, a subsequent specific diagnosis must upgrade it.
+	provider.uatMu.Lock()
+	provider.clearCachedUATErrorLocked(appID, userOpenID)
+	provider.uatMu.Unlock()
+	_ = provider.recordClearedUATError(appID, userOpenID, auth.NewNeedUserAuthorizationError(userOpenID))
+	upgradedErr := provider.recordClearedUATError(appID, userOpenID, firstErr)
+	upgradedProblem, ok := errs.ProblemOf(upgradedErr)
+	if !ok || !strings.Contains(upgradedProblem.Hint, "offline_access") {
+		t.Fatalf("recordClearedUATError() when generic recorded first = %v (hint=%q), want upgraded offline_access diagnosis", upgradedErr, upgradedProblem.Hint)
+	}
+
+	// Second call in the same CLI invocation (simulating DoAPI / AccessToken after preflight) must retain the offline_access diagnosis.
+	_, secondErr := provider.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: appID})
+	secondProblem, ok := errs.ProblemOf(secondErr)
+	if !ok || !strings.Contains(secondProblem.Hint, "offline_access") {
+		t.Fatalf("second ResolveToken() error = %v (hint=%q), want retained offline_access diagnosis", secondErr, secondProblem.Hint)
+	}
+
+	// Concurrent ResolveToken calls against a freshly expired access-only token must all receive the offline_access diagnosis.
+	if err := auth.SetStoredToken(&auth.StoredUAToken{
+		AppId:            appID,
+		UserOpenId:       userOpenID,
+		AccessToken:      "u-expired-no-refresh-concurrent",
+		ExpiresAt:        now - 1000,
+		RefreshExpiresAt: now - 1000,
+		Scope:            "im:chat:read",
+		TokenType:        auth.StoredTokenTypeBearer,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	concurrentProvider := NewDefaultTokenProvider(account, func() (*http.Client, error) { return http.DefaultClient, nil }, io.Discard)
+	const workers = 8
+	errsCh := make(chan error, workers)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := concurrentProvider.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: appID})
+			errsCh <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errsCh)
+	for workerErr := range errsCh {
+		workerProblem, ok := errs.ProblemOf(workerErr)
+		if !ok || !strings.Contains(workerProblem.Hint, "offline_access") {
+			t.Fatalf("concurrent ResolveToken() error = %v (hint=%q), want offline_access diagnosis", workerErr, workerProblem.Hint)
+		}
+	}
+
+	// A token-store read/corruption error must surface directly instead of being masked by the retained diagnosis.
+	if err := keychain.Set(keychain.LarkCliService, appID+":"+userOpenID, "{corrupt-json"); err != nil {
+		t.Fatal(err)
+	}
+	_, corruptErr := provider.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: appID})
+	corruptProblem, ok := errs.ProblemOf(corruptErr)
+	if !ok || corruptProblem.Category != errs.CategoryInternal || corruptProblem.Subtype != errs.SubtypeStorage {
+		t.Fatalf("ResolveToken() with corrupt stored token = %v, want internal/storage error", corruptErr)
+	}
+
+	// Once a valid token is stored, ResolveToken clears the retained error and returns the token.
+	if err := auth.SetStoredToken(&auth.StoredUAToken{
+		AppId:            appID,
+		UserOpenId:       userOpenID,
+		AccessToken:      "u-fresh-valid",
+		ExpiresAt:        now + 3600_000,
+		RefreshExpiresAt: now + 3600_000,
+		Scope:            "im:chat:read",
+		TokenType:        auth.StoredTokenTypeBearer,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resolved, thirdErr := provider.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: appID})
+	if thirdErr != nil || resolved == nil || resolved.Token != "u-fresh-valid" {
+		t.Fatalf("third ResolveToken() = (%+v, %v), want fresh valid token", resolved, thirdErr)
 	}
 }

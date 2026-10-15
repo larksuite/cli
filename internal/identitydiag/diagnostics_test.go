@@ -357,6 +357,59 @@ func TestDiagnose_UserIdentityExpired(t *testing.T) {
 	}
 }
 
+func TestDiagnose_UserIdentityExpiredWithoutRefreshToken(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+
+	cfg := &core.CliConfig{
+		AppID:      "test-app-no-rt",
+		AppSecret:  "secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_no_rt",
+		UserName:   "tester",
+	}
+	now := time.Now()
+	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
+		AppId:            cfg.AppID,
+		UserOpenId:       cfg.UserOpenId,
+		AccessToken:      "user-access-token",
+		RefreshToken:     "",
+		ExpiresAt:        now.Add(-time.Minute).UnixMilli(),
+		RefreshExpiresAt: 0,
+		GrantedAt:        now.Add(-2 * time.Hour).UnixMilli(),
+		Scope:            "contact:user.base:readonly",
+	}); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+	got := Diagnose(context.Background(), f, cfg, false)
+	if got.User.Status != StatusMissing || got.User.Available {
+		t.Fatalf("user = %#v, want missing and unavailable", got.User)
+	}
+	if !strings.Contains(got.User.Message, "no refresh token issued") || !strings.Contains(got.User.Message, "offline_access") {
+		t.Fatalf("user message = %q, want missing refresh token + offline_access explanation", got.User.Message)
+	}
+	for _, want := range []string{
+		"offline_access",
+		"scope-apply?clientID=test-app-no-rt&scopes=offline_access",
+		"lark-cli auth login --help",
+	} {
+		if !strings.Contains(got.User.Hint, want) {
+			t.Fatalf("user hint = %q, want substring %q", got.User.Hint, want)
+		}
+	}
+
+	concealed := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	projected := FilterRecovery(got, recovery.NewProjector(func() *surface.Plan { return concealed }))
+	if projected.User.Hint != "" {
+		t.Fatalf("projected user hint = %q, want empty under concealed auth login", projected.User.Hint)
+	}
+}
+
 func TestDiagnose_BotIdentityStrictUserOnly(t *testing.T) {
 	// SupportedIdentities = SupportsUser (1) only — bot path should be
 	// reported as not_configured even though an app secret is present.

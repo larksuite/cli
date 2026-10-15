@@ -311,6 +311,12 @@ func compareAndDeleteStoredToken(appID, userOpenID string, expected *StoredUATok
 // TokenStatus determines the freshness of a stored token.
 func TokenStatus(token *StoredUAToken) string {
 	now := tokenNow(token).UnixMilli()
+	if token.RefreshToken == "" {
+		if now < token.ExpiresAt {
+			return "valid"
+		}
+		return "expired"
+	}
 	if now < token.ExpiresAt-refreshAheadMs {
 		return "valid"
 	}
