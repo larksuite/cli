@@ -18,16 +18,12 @@ import (
 
 const mcpAppPath = apiBasePath + "/apps/%s/mcp/"
 
-// mcpURLAuthParam is the name of the query parameter that carries the runtime
-// credential in the MCP URL; it is a parameter name, not a credential value.
-const mcpURLAuthParam = "x-mcp-token"
-
 // AppsMCPGet retrieves the runtime MCP URL. The upstream GET is get-or-create,
 // so this command is deliberately classified as a write.
 var AppsMCPGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+mcp-get",
-	Description: "Get an app's runtime MCP URL with its app token (a developer's call creates the credential if missing; the MCP client must still complete user OAuth to call tools; use --format pretty to print only the URL)",
+	Description: "Get an app's runtime MCP URL as returned by the server (a developer's call creates the credential if missing; the MCP client must still complete user OAuth to call tools; use --format pretty to print only the URL)",
 	Risk:        "write",
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
@@ -140,8 +136,8 @@ func decodeMCPResponse(data map[string]interface{}, target interface{}) error {
 }
 
 // mcpServerURL extracts the HTTPS URL of the server keyed by the app ID from
-// the upstream connection JSON and requires it to carry a token. The URL
-// carries the credential, so decoder errors are never rendered.
+// the upstream connection JSON. The URL may carry the credential, so decoder
+// errors are never rendered; the URL itself is returned as the server sent it.
 func mcpServerURL(raw, appID string) (string, error) {
 	var config struct {
 		Servers map[string]struct {
@@ -158,11 +154,6 @@ func mcpServerURL(raw, appID string) (string, error) {
 	u, err := url.Parse(server.URL)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
 		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "MCP connection requires an HTTPS server URL")
-	}
-	// The URL is the only thing handed to the client, so a URL without its
-	// token would be reported as success yet unusable.
-	if strings.TrimSpace(u.Query().Get(mcpURLAuthParam)) == "" {
-		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "MCP connection URL is missing the "+mcpURLAuthParam+" credential")
 	}
 	return server.URL, nil
 }

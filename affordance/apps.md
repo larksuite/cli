@@ -11,7 +11,7 @@ Use when connecting an existing Miaoda app to an MCP client.
 - For a developer this may create a missing runtime credential and enable MCP, even though the API uses GET; any other user only reads the existing connection.
 - If it fails with "app MCP is not enabled" (code 40906), ask a developer to enable MCP first by running this command or +mcp-key-create.
 - Pass --format pretty so stdout is only the URL; the default JSON wraps it as data.url.
-- The URL carries the app credential; do not share it or commit it.
+- The URL is returned exactly as the server sent it and usually carries the app credential; do not share it or commit it.
 - This does not publish the app, list tools, or complete the client's user OAuth flow.
 
 ### Examples

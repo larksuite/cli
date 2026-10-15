@@ -79,6 +79,25 @@ func TestMCPGetRejectsRemovedIncludeSecretFlag(t *testing.T) {
 	}
 }
 
+func TestMCPServerURLIsReturnedAsSent(t *testing.T) {
+	// The CLI does not inspect how the server carries the credential: the URL
+	// is returned unchanged, with or without a query parameter.
+	for _, rawURL := range []string{
+		"https://example.com/mcp?x-mcp-token=" + mcpTestSecret,
+		"https://example.com/mcp?token=" + mcpTestSecret,
+		"https://example.com/mcp",
+	} {
+		config, err := json.Marshal(map[string]interface{}{"mcpServers": map[string]interface{}{"app_example": map[string]string{"url": rawURL}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := mcpServerURL(string(config), "app_example")
+		if err != nil || got != rawURL {
+			t.Fatalf("mcpServerURL(%q) = %q, %v; want the URL unchanged", rawURL, got, err)
+		}
+	}
+}
+
 func TestMCPKeyCreateExecute(t *testing.T) {
 	for _, secret := range []bool{false, true} {
 		t.Run(map[bool]string{false: "redacted", true: "secret"}[secret], func(t *testing.T) {
@@ -132,10 +151,6 @@ func TestMCPInvalidResponses(t *testing.T) {
 		{"empty_servers", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{}}`}},
 		{"no_server_for_app", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_other":{"url":"https://example.com/other?x-mcp-token=to"}}}`}},
 		{"app_server_invalid", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"javascript:alert(1)"},"app_other":{"url":"https://example.com/other?x-mcp-token=to"}}}`}},
-		{"url_without_token", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"https://example.com/mcp"}}}`}},
-		{"url_with_empty_token", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"https://example.com/mcp?x-mcp-token="}}}`}},
-		{"url_with_blank_token", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"https://example.com/mcp?x-mcp-token=%20"}}}`}},
-		{"token_only_in_header", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"https://example.com/mcp","headers":{"X-Mcp-Token":"MCP_EXAMPLE_TOKEN"}}}}`}},
 		{"invalid_url", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"javascript:alert(1)"}}}`}},
 		{"missing_key", AppsMCPKeyCreate, map[string]interface{}{"credential_id": "key_example"}},
 		{"missing_id", AppsMCPKeyCreate, map[string]interface{}{"plain_key": mcpTestSecret}},

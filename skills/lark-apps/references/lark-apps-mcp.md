@@ -4,7 +4,7 @@
 
 ## 使用流程
 
-1. 用户明确要接入 MCP 客户端时，调用 `lark-cli apps +mcp-get --app-id <app_id> --as user --format pretty`。stdout 只有一条带 token 的 MCP URL，直接填入客户端；该 URL 即凭证，不要贴到聊天、日志或提交到仓库。客户端连上后仍须完成飞书用户 OAuth 授权。
+1. 用户明确要接入 MCP 客户端时，调用 `lark-cli apps +mcp-get --app-id <app_id> --as user --format pretty`。stdout 只有一条 MCP URL，即服务端返回的原值，直接填入客户端；CLI 不检查其中是否带凭证。该 URL 通常含凭证，不要贴到聊天、日志或提交到仓库。客户端连上后仍须完成飞书用户 OAuth 授权。
 2. 仅需准备应用凭证时，使用 `lark-cli apps +mcp-key-create --app-id <app_id> --as user`。默认只返回 `credential_id` 和 `redacted=true`；显式加 `--include-secret` 才返回 `plain_key`。
 
 参数和输出格式以各命令 `--help` 为准。`--dry-run` 只预览请求，不调用后端，也不创建凭证。
@@ -22,4 +22,4 @@
 
 当前命令不返回工具或 Skill 清单；工具、资源和 Prompt 的发现由 MCP 客户端通过标准协议完成。没有凭证列表、指定 key 查询、删除或重置命令，也不会回退到开发态。
 
-接口返回 404 时核对服务是否支持该 OpenAPI，不自动创建其他类型的 API Key。连接配置无效或凭证字段缺失时命令失败，不输出不完整的成功结果。权限或登录错误按 CLI 的结构化错误提示处理。
+接口返回 404 时核对服务是否支持该 OpenAPI，不自动创建其他类型的 API Key。`+mcp-get` 在连接配置无效、没有与 `--app-id` 对应的条目，或 URL 不是 HTTPS 时失败；`+mcp-key-create` 在 `credential_id` 或 `plain_key` 缺失时失败。两者都不输出不完整的成功结果。权限或登录错误按 CLI 的结构化错误提示处理。
