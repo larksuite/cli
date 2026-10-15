@@ -5,17 +5,19 @@
 Use when connecting an existing Miaoda app to an MCP client.
 
 ### Prerequisites
-- Developer or administrator access to the app.
+- Developer access to the app, or membership in the app's online visible scope once a developer has enabled MCP.
 
 ### Tips
-- This operation may create a missing runtime credential, even though the API uses GET.
-- Default output is display-only: URLs show only the origin, and header values are redacted. Use --include-secret only when a usable client configuration is needed.
+- For a developer this may create a missing runtime credential and enable MCP, even though the API uses GET; any other user only reads the existing connection.
+- If it fails with "app MCP is not enabled" (code 40906), ask a developer to enable MCP first by running this command or +mcp-key-create.
+- Pass --format pretty so stdout is only the URL; the default JSON wraps it as data.url.
+- The URL carries the app credential; do not share it or commit it.
 - This does not publish the app, list tools, or complete the client's user OAuth flow.
 
 ### Examples
-**Prepare a client connection (may create a credential; output is redacted)**
+**Get the bare MCP URL for a client (a developer's call may create a credential)**
 ```bash
-lark-cli apps +mcp-get --app-id <app_id> --as user
+lark-cli apps +mcp-get --app-id <app_id> --as user --format pretty
 ```
 
 ### Skills

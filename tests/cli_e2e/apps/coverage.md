@@ -72,10 +72,10 @@ Blocked: General app create live E2E is intentionally not implemented yet. Apps 
 
 ## MCP connections
 
-- `apps +mcp-get` and `apps +mcp-key-create`: `TestAppsMCPDryRun` covers CLI registration, required app ID and whitespace normalization, exact HTTP method/path, no body/query and explicit secret flag acceptance without network requests.
-- `shortcuts/apps/apps_mcp_test.go` covers successful responses, secret visibility, complete config preservation, invalid responses and typed permission errors.
+- `apps +mcp-get` and `apps +mcp-key-create`: `TestAppsMCPDryRun` covers CLI registration, required app ID and whitespace normalization, exact HTTP method/path and no body/query without network requests (`--include-secret` is exercised for `+mcp-key-create` only).
+- `shortcuts/apps/apps_mcp_test.go` covers the full-URL output of `+mcp-get`, `+mcp-key-create` secret visibility, invalid responses and typed permission errors.
 - Manual live acceptance passed in the test environment with user authorization. The commands declare `spark:app:read` for GET connection and `spark:app:write` for POST credential; this acceptance did not isolate grants to prove minimum required scopes. Both agreed routes return the expected fields; repeated credential requests preserve the credential ID, and the plaintext key matches the connection header. No real credentials or application identifiers are included in this report.
-- Both endpoints may create a persistent runtime credential. There is no documented deletion API, so an automatic create/use/delete live fixture cannot yet be implemented safely. Use a designated disposable app with developer access, a user token with the confirmed scopes, and a pre-provisioned runtime credential. Check connection/key consistency across repeated calls, redacted versus explicit output, and MCP client authorization separately; do not print secrets in test reports.
+- Both endpoints may create a persistent runtime credential. There is no documented deletion API, so an automatic create/use/delete live fixture cannot yet be implemented safely. Use a designated disposable app with developer access, a user token with the confirmed scopes, and a pre-provisioned runtime credential. Check connection/key consistency across repeated calls, `+mcp-get` URL output, `+mcp-key-create` redacted versus explicit output, and MCP client authorization separately; do not print secrets in test reports.
 
 ### Internal port acceptance (2026-09-21)
 

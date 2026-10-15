@@ -18,23 +18,26 @@ import (
 
 const mcpAppPath = apiBasePath + "/apps/%s/mcp/"
 
-// AppsMCPGet retrieves a runtime connection. The upstream GET is get-or-create,
+// mcpURLAuthParam is the name of the query parameter that carries the runtime
+// credential in the MCP URL; it is a parameter name, not a credential value.
+const mcpURLAuthParam = "x-mcp-token"
+
+// AppsMCPGet retrieves the runtime MCP URL. The upstream GET is get-or-create,
 // so this command is deliberately classified as a write.
 var AppsMCPGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+mcp-get",
-	Description: "Get an app's runtime MCP connection (creates a credential if missing; secrets hidden by default)",
+	Description: "Get an app's runtime MCP URL with its app token (a developer's call creates the credential if missing; the MCP client must still complete user OAuth to call tools; use --format pretty to print only the URL)",
 	Risk:        "write",
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Scopes:      []string{"spark:app:read"},
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID", Required: true},
-		{Name: "include-secret", Type: "bool", Desc: "include the complete connection configuration with credentials in stdout"},
 	},
 	Validate: validateMCPAppID,
 	DryRun: func(ctx context.Context, r *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().GET(mcpURL(r, "connection")).Desc("Get runtime MCP connection; creates a credential if missing")
+		return common.NewDryRunAPI().GET(mcpURL(r, "connection")).Desc("Get runtime MCP URL; creates a credential if missing")
 	},
 	Execute: func(ctx context.Context, r *common.RuntimeContext) error {
 		data, err := r.CallAPITyped("GET", mcpURL(r, "connection"), nil, nil)
@@ -47,18 +50,16 @@ var AppsMCPGet = common.Shortcut{
 		if err := decodeMCPResponse(data, &response); err != nil {
 			return err
 		}
-		config, err := mcpConnectionOutput(response.ConfigJSON, r.Bool("include-secret"))
+		// Validate has already rejected blank IDs before Execute.
+		appID, _ := requireAppID(r.Str("app-id"))
+		serverURL, err := mcpServerURL(response.ConfigJSON, appID)
 		if err != nil {
 			return err
 		}
 		out := struct {
-			Config   json.RawMessage `json:"config"`
-			Redacted bool            `json:"redacted"`
-		}{config, !r.Bool("include-secret")}
-		if r.Bool("include-secret") {
-			warnMCPSecret(r)
-		}
-		r.OutFormat(out, nil, func(w io.Writer) { fmt.Fprintln(w, string(config)) })
+			URL string `json:"url"`
+		}{serverURL}
+		r.OutFormat(out, nil, func(w io.Writer) { fmt.Fprintln(w, serverURL) })
 		return nil
 	},
 }
@@ -138,50 +139,32 @@ func decodeMCPResponse(data map[string]interface{}, target interface{}) error {
 	return nil
 }
 
-// Default output is a display-only allowlist, not a runnable config. Redact all
-// headers and omit unknown fields (e.g. env/args), URL paths, queries and userinfo.
-// Explicit secret output preserves the complete upstream JSON, including future
-// client options. The CLI never executes it or writes it to a client config.
-func mcpConnectionOutput(raw string, includeSecret bool) (json.RawMessage, error) {
+// mcpServerURL extracts the HTTPS URL of the server keyed by the app ID from
+// the upstream connection JSON and requires it to carry a token. The URL
+// carries the credential, so decoder errors are never rendered.
+func mcpServerURL(raw, appID string) (string, error) {
 	var config struct {
 		Servers map[string]struct {
-			URL     string            `json:"url"`
-			Headers map[string]string `json:"headers,omitempty"`
+			URL string `json:"url"`
 		} `json:"mcpServers"`
 	}
 	if err := json.Unmarshal([]byte(raw), &config); err != nil {
-		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid MCP connection JSON").WithCause(err)
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid MCP connection JSON").WithCause(err)
 	}
-	if len(config.Servers) == 0 {
-		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "MCP connection has no mcpServers")
+	server, ok := config.Servers[appID]
+	if !ok {
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "MCP connection has no server for the requested app")
 	}
-	for name, server := range config.Servers {
-		u, err := url.Parse(server.URL)
-		if err != nil || u.Scheme != "https" || u.Hostname() == "" || name == "" {
-			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "MCP connection requires named HTTPS servers")
-		}
-		// Only expose the origin: arbitrary path segments may contain credentials.
-		u.Path = ""
-		u.RawPath = ""
-		u.User = nil
-		u.RawQuery = ""
-		u.ForceQuery = false
-		u.Fragment = ""
-		u.RawFragment = ""
-		server.URL = u.String()
-		for key := range server.Headers {
-			server.Headers[key] = "[REDACTED]"
-		}
-		config.Servers[name] = server
+	u, err := url.Parse(server.URL)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "MCP connection requires an HTTPS server URL")
 	}
-	if includeSecret {
-		return json.RawMessage(raw), nil
+	// The URL is the only thing handed to the client, so a URL without its
+	// token would be reported as success yet unusable.
+	if strings.TrimSpace(u.Query().Get(mcpURLAuthParam)) == "" {
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "MCP connection URL is missing the "+mcpURLAuthParam+" credential")
 	}
-	result, err := json.Marshal(config)
-	if err != nil {
-		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "cannot encode MCP connection").WithCause(err)
-	}
-	return result, nil
+	return server.URL, nil
 }
 
 func warnMCPSecret(r *common.RuntimeContext) {

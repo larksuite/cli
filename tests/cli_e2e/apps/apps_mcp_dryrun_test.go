@@ -22,7 +22,11 @@ func TestAppsMCPDryRun(t *testing.T) {
 		t.Run(tc.command, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: []string{"apps", tc.command, "--app-id", " \napp_example\t ", "--include-secret", "--dry-run"}, DefaultAs: "user"})
+			args := []string{"apps", tc.command, "--app-id", " \napp_example\t ", "--dry-run"}
+			if tc.command == "+mcp-key-create" {
+				args = append(args, "--include-secret")
+			}
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "user"})
 			require.NoError(t, err)
 			result.AssertExitCode(t, 0)
 			assert.Equal(t, tc.method, clie2e.DryRunGet(result.Stdout, "api.0.method").String())

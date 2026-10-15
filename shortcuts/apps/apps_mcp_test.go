@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -19,77 +18,104 @@ import (
 )
 
 const mcpTestSecret = "MCP_EXAMPLE_TOKEN"
-const mcpTestConfig = `{"mcpServers":{"example":{"url":"https://example.com/mcp?x-mcp-token=MCP_EXAMPLE_TOKEN","headers":{"X-Mcp-Token":"MCP_EXAMPLE_TOKEN"},"env":{"TOKEN":"MCP_EXAMPLE_TOKEN"},"future":{"enabled":true}}}}`
+const mcpTestConfig = `{"mcpServers":{"app_example":{"url":"https://example.com/mcp?x-mcp-token=MCP_EXAMPLE_TOKEN","headers":{"X-Mcp-Token":"MCP_EXAMPLE_TOKEN"},"env":{"TOKEN":"MCP_EXAMPLE_TOKEN"},"future":{"enabled":true}}}}`
 
-func TestMCPExecute(t *testing.T) {
+func TestMCPGetOutputsFullURL(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	r, out, reg := newAppsRCtx(t, map[string]string{"app-id": "string"}, map[string]string{"app-id": " \napp_example\t "})
+	stub := &httpmock.Stub{Method: "GET", URL: "/open-apis/spark/v1/apps/app_example/mcp/connection", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"config_json": mcpTestConfig}}}
+	reg.Register(stub)
+	if err := AppsMCPGet.Execute(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := envelope.Data["url"], "https://example.com/mcp?x-mcp-token="+mcpTestSecret; got != want {
+		t.Fatalf("url = %v, want %q", got, want)
+	}
+	if len(envelope.Data) != 1 {
+		t.Fatalf("unexpected fields in output: %v", envelope.Data)
+	}
+	if stderr := r.IO().ErrOut.(*bytes.Buffer).String(); stderr != "" {
+		t.Fatalf("+mcp-get must write only the URL result, got stderr %q", stderr)
+	}
+}
+
+func TestMCPServerURLIsLookedUpByAppID(t *testing.T) {
+	// The requested app's entry is selected by key, whatever its position.
+	const config = `{"mcpServers":{"app_other":{"url":"https://example.com/other?x-mcp-token=to"},"app_example":{"url":"https://example.com/mine?x-mcp-token=tm"}}}`
+	got, err := mcpServerURL(config, "app_example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://example.com/mine?x-mcp-token=tm" {
+		t.Fatalf("url = %q, want the entry keyed by the app ID", got)
+	}
+}
+
+func TestMCPGetPrettyPrintsOnlyURL(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/mcp/connection", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"config_json": strings.ReplaceAll(mcpTestConfig, `"app_example"`, `"app_x"`)}}})
+	if err := runAppsShortcut(t, AppsMCPGet, []string{"+mcp-get", "--app-id", "app_x", "--format", "pretty", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "https://example.com/mcp?x-mcp-token="+mcpTestSecret; got != want {
+		t.Fatalf("pretty output = %q, want only the URL %q", got, want)
+	}
+}
+
+func TestMCPGetRejectsRemovedIncludeSecretFlag(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsMCPGet, []string{"+mcp-get", "--app-id", "app_x", "--include-secret", "--as", "user"}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "include-secret") {
+		t.Fatalf("expected unknown flag error for --include-secret, got %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatal("rejected flag emitted success output")
+	}
+}
+
+func TestMCPKeyCreateExecute(t *testing.T) {
 	for _, secret := range []bool{false, true} {
-		for _, credential := range []bool{false, true} {
-			name := "connection"
-			sc := AppsMCPGet
-			method := "GET"
-			data := map[string]interface{}{"config_json": mcpTestConfig}
-			if credential {
-				name = "credential"
-				sc = AppsMCPKeyCreate
-				method = "POST"
-				data = map[string]interface{}{"credential_id": "key_example", "plain_key": mcpTestSecret}
+		t.Run(map[bool]string{false: "redacted", true: "secret"}[secret], func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			flags := map[string]string{"app-id": " \napp_example\t "}
+			if secret {
+				flags["include-secret"] = "true"
 			}
-			t.Run(name+map[bool]string{false: "_redacted", true: "_secret"}[secret], func(t *testing.T) {
-				t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-				flags := map[string]string{"app-id": " \napp_example\t "}
-				if secret {
-					flags["include-secret"] = "true"
-				}
-				r, out, reg := newAppsRCtx(t, map[string]string{"app-id": "string", "include-secret": "bool"}, flags)
-				stub := &httpmock.Stub{Method: method, URL: "/open-apis/spark/v1/apps/app_example/mcp/" + name, Body: map[string]interface{}{"code": 0, "data": data}}
-				reg.Register(stub)
-				if err := sc.Execute(context.Background(), r); err != nil {
-					t.Fatal(err)
-				}
-				if strings.Contains(out.String(), mcpTestSecret) != secret {
-					t.Fatalf("secret visibility incorrect: %s", out.String())
-				}
-				warning := r.IO().ErrOut.(*bytes.Buffer).String()
-				if strings.Contains(warning, "output contains MCP credentials") != secret {
-					t.Fatalf("incorrect credential warning: %q", warning)
-				}
-				if strings.Contains(warning, mcpTestSecret) {
-					t.Fatal("warning leaked a credential")
-				}
-				var envelope struct {
-					Data struct {
-						Config       json.RawMessage `json:"config"`
-						CredentialID string          `json:"credential_id"`
-						Redacted     bool            `json:"redacted"`
-					} `json:"data"`
-				}
-				if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
-					t.Fatal(err)
-				}
-				if envelope.Data.Redacted == secret {
-					t.Fatal("incorrect redaction flag")
-				}
-				if credential && envelope.Data.CredentialID != "key_example" {
-					t.Fatal("missing credential ID")
-				}
-				if !credential && secret {
-					var got, want interface{}
-					_ = json.Unmarshal(envelope.Data.Config, &got)
-					_ = json.Unmarshal([]byte(mcpTestConfig), &want)
-					gotJSON, _ := json.Marshal(got)
-					wantJSON, _ := json.Marshal(want)
-					if string(gotJSON) != string(wantJSON) {
-						t.Fatal("explicit output lost config fields")
-					}
-				}
-				if !credential && !secret && (strings.Contains(out.String(), "future") || strings.Contains(out.String(), "?")) {
-					t.Fatal("unexpected fields in redacted config")
-				}
-				if len(stub.CapturedBody) != 0 {
-					t.Fatalf("unexpected request body %s", stub.CapturedBody)
-				}
-			})
-		}
+			r, out, reg := newAppsRCtx(t, map[string]string{"app-id": "string", "include-secret": "bool"}, flags)
+			stub := &httpmock.Stub{Method: "POST", URL: "/open-apis/spark/v1/apps/app_example/mcp/credential", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"credential_id": "key_example", "plain_key": mcpTestSecret}}}
+			reg.Register(stub)
+			if err := AppsMCPKeyCreate.Execute(context.Background(), r); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(out.String(), mcpTestSecret) != secret {
+				t.Fatalf("secret visibility incorrect: %s", out.String())
+			}
+			warning := r.IO().ErrOut.(*bytes.Buffer).String()
+			if strings.Contains(warning, "output contains MCP credentials") != secret {
+				t.Fatalf("incorrect credential warning: %q", warning)
+			}
+			var envelope struct {
+				Data struct {
+					CredentialID string `json:"credential_id"`
+					Redacted     bool   `json:"redacted"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if envelope.Data.Redacted == secret || envelope.Data.CredentialID != "key_example" {
+				t.Fatalf("incorrect output: %+v", envelope.Data)
+			}
+			if len(stub.CapturedBody) != 0 {
+				t.Fatalf("unexpected request body %s", stub.CapturedBody)
+			}
+		})
 	}
 }
 
@@ -104,7 +130,13 @@ func TestMCPInvalidResponses(t *testing.T) {
 		{"malformed_config", AppsMCPGet, map[string]interface{}{"config_json": "invalid"}},
 		{"empty_config", AppsMCPGet, map[string]interface{}{"config_json": "{}"}},
 		{"empty_servers", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{}}`}},
-		{"invalid_url", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"x":{"url":"javascript:alert(1)"}}}`}},
+		{"no_server_for_app", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_other":{"url":"https://example.com/other?x-mcp-token=to"}}}`}},
+		{"app_server_invalid", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"javascript:alert(1)"},"app_other":{"url":"https://example.com/other?x-mcp-token=to"}}}`}},
+		{"url_without_token", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"https://example.com/mcp"}}}`}},
+		{"url_with_empty_token", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"https://example.com/mcp?x-mcp-token="}}}`}},
+		{"url_with_blank_token", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"https://example.com/mcp?x-mcp-token=%20"}}}`}},
+		{"token_only_in_header", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"https://example.com/mcp","headers":{"X-Mcp-Token":"MCP_EXAMPLE_TOKEN"}}}}`}},
+		{"invalid_url", AppsMCPGet, map[string]interface{}{"config_json": `{"mcpServers":{"app_example":{"url":"javascript:alert(1)"}}}`}},
 		{"missing_key", AppsMCPKeyCreate, map[string]interface{}{"credential_id": "key_example"}},
 		{"missing_id", AppsMCPKeyCreate, map[string]interface{}{"plain_key": mcpTestSecret}},
 	} {
@@ -182,60 +214,5 @@ func TestMCPMetadataAndDryRun(t *testing.T) {
 				t.Fatalf("expected validation error: %v", err)
 			}
 		})
-	}
-}
-
-func TestMCPRedactionHidesURLCredentialsAndAllHeaders(t *testing.T) {
-	// Build a synthetic credential-bearing URL without publishing a URL literal
-	// that scanners or documentation tools could mistake for a real credential.
-	fixtureURL := url.URL{Scheme: "https", Host: "example.com", Path: "/mcp/" + mcpTestSecret,
-		User: url.UserPassword("user", mcpTestSecret), RawQuery: "key=" + mcpTestSecret, Fragment: mcpTestSecret}
-	fixture, err := json.Marshal(map[string]interface{}{"mcpServers": map[string]interface{}{"x": map[string]interface{}{
-		"url": fixtureURL.String(), "headers": map[string]string{"Authorization": mcpTestSecret, "unexpected": mcpTestSecret}, "args": []string{mcpTestSecret},
-	}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw := string(fixture)
-	got, err := mcpConnectionOutput(raw, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(got), mcpTestSecret) || strings.Contains(string(got), "user") || strings.Contains(string(got), "args") {
-		t.Fatalf("leaked credentials: %s", got)
-	}
-}
-
-func TestMCPRedactionReturnsOnlyURLOrigin(t *testing.T) {
-	for _, rawURL := range []string{
-		"https://example.com/mcp/" + mcpTestSecret,
-		"https://example.com:8443/mcp/%4dCP_EXAMPLE_TOKEN",
-	} {
-		config, err := json.Marshal(map[string]interface{}{"mcpServers": map[string]interface{}{
-			"example": map[string]interface{}{"url": rawURL},
-		}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		redacted, err := mcpConnectionOutput(string(config), false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var result struct {
-			Servers map[string]struct {
-				URL string `json:"url"`
-			} `json:"mcpServers"`
-		}
-		if err := json.Unmarshal(redacted, &result); err != nil {
-			t.Fatal(err)
-		}
-		original, _ := url.Parse(rawURL)
-		if got, want := result.Servers["example"].URL, "https://"+original.Host; got != want {
-			t.Fatalf("URL = %q, want origin %q", got, want)
-		}
-		complete, err := mcpConnectionOutput(string(config), true)
-		if err != nil || string(complete) != string(config) {
-			t.Fatal("explicit config must preserve credential-bearing paths")
-		}
 	}
 }
