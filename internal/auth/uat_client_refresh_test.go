@@ -788,10 +788,12 @@ func TestDPoPTokenWithoutRefreshTokenSynchronizesClockBeforeExpiryDecision(t *te
 		t.Fatal(err)
 	}
 	now := time.Now()
+	var heartbeatCalls atomic.Int32
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != dpop.HeartbeatPath {
 			t.Fatalf("unexpected request path %q", req.URL.Path)
 		}
+		heartbeatCalls.Add(1)
 		return refreshHTTPResponse(req, `{"code":0,"data":{"now":"`+strconv.FormatInt(now.Unix(), 10)+`"}}`), nil
 	})}
 
@@ -808,34 +810,55 @@ func TestDPoPTokenWithoutRefreshTokenSynchronizesClockBeforeExpiryDecision(t *te
 		DPoPKeyID:            key.ID(),
 		DPoPJKT:              jkt,
 		DPoPKeySecurityLevel: string(key.SecurityLevel()),
-		ClockOffsetMs:        int64((30 * time.Minute).Milliseconds()),
+		ClockOffsetMs:        (30 * time.Minute).Milliseconds(),
 		ClockSyncedAtMs:      now.Add(-time.Hour).UnixMilli(),
 	}
 	if err := SetStoredToken(staleClockToken); err != nil {
 		t.Fatal(err)
 	}
+	var errBuf bytes.Buffer
 	opts := newRefreshTestOptions(staleClockToken)
 	opts.DPoPMode = core.DPoPModeRequired
 	opts.DPoPKeyStore = store
+	opts.ErrOut = &errBuf
 	got, err := GetValidAccessToken(context.Background(), client, opts)
-	if err != nil || got == nil || got.AccessToken != "access-dpop-valid" {
-		t.Fatalf("GetValidAccessToken(stale clock) = (%+v, %v), want valid token after clock sync", got, err)
+	if err != nil || got == nil || got.AccessToken != "access-dpop-valid" || heartbeatCalls.Load() != 1 {
+		t.Fatalf("GetValidAccessToken(stale positive clock) = (%+v, %v, heartbeats=%d), want valid token after 1 sync", got, err, heartbeatCalls.Load())
 	}
 
-	// 2. Truly expired DPoP token without refresh_token is cleared after clock
-	//    sync and returns the offline_access explanation without calling token endpoint.
-	expiredDPoPToken := *staleClockToken
-	expiredDPoPToken.ExpiresAt = now.Add(-time.Minute).UnixMilli()
-	expiredDPoPToken.ClockOffsetMs = 0
-	if err := SetStoredToken(&expiredDPoPToken); err != nil {
+	// 2. Near-expiry DPoP token without refresh_token synchronizes its clock
+	//    before returning; when still valid on server time, it returns the token
+	//    without logging a false "already refreshed" message.
+	nearExpiryValidToken := *staleClockToken
+	nearExpiryValidToken.ExpiresAt = now.Add(2 * time.Minute).UnixMilli()
+	nearExpiryValidToken.ClockOffsetMs = -(time.Minute).Milliseconds()
+	if err := SetStoredToken(&nearExpiryValidToken); err != nil {
+		t.Fatal(err)
+	}
+	errBuf.Reset()
+	got, err = GetValidAccessToken(context.Background(), client, opts)
+	if err != nil || got == nil || got.AccessToken != "access-dpop-valid" || heartbeatCalls.Load() != 2 {
+		t.Fatalf("GetValidAccessToken(near-expiry valid) = (%+v, %v, heartbeats=%d), want valid token after sync", got, err, heartbeatCalls.Load())
+	}
+	if strings.Contains(errBuf.String(), "already refreshed") {
+		t.Fatalf("stderr = %q, must not log false already-refreshed message", errBuf.String())
+	}
+
+	// 3. Stale negative clock offset (-2m) makes an already-expired token (-1m)
+	//    appear locally valid within the 5-minute pre-expiry window; clock sync
+	//    detects actual expiry, clears the token, and returns offline_access hint.
+	negativeSkewExpiredToken := *staleClockToken
+	negativeSkewExpiredToken.ExpiresAt = now.Add(-time.Minute).UnixMilli()
+	negativeSkewExpiredToken.ClockOffsetMs = -(2 * time.Minute).Milliseconds()
+	if err := SetStoredToken(&negativeSkewExpiredToken); err != nil {
 		t.Fatal(err)
 	}
 	got, err = GetValidAccessToken(context.Background(), client, opts)
-	if got != nil || !IsNeedUserAuthorizationError(err) {
-		t.Fatalf("GetValidAccessToken(expired DPoP) = (%+v, %v), want authorization required", got, err)
+	if got != nil || !IsNeedUserAuthorizationError(err) || heartbeatCalls.Load() != 3 {
+		t.Fatalf("GetValidAccessToken(negative skew expired) = (%+v, %v, heartbeats=%d), want authorization required after sync", got, err, heartbeatCalls.Load())
 	}
 	problem := requireRefreshProblem(t, err, errs.CategoryAuthentication, errs.SubtypeTokenMissing, false)
-	if !strings.Contains(problem.Hint, "offline_access") || mustGetStoredToken(t, expiredDPoPToken.AppId, expiredDPoPToken.UserOpenId) != nil {
+	if !strings.Contains(problem.Hint, "offline_access") || mustGetStoredToken(t, negativeSkewExpiredToken.AppId, negativeSkewExpiredToken.UserOpenId) != nil {
 		t.Fatalf("expired DPoP hint = %q or token still stored", problem.Hint)
 	}
 }
