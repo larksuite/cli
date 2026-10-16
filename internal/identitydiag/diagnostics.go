@@ -412,6 +412,13 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		)
 	}
 
+	if refreshed, err := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId); err == nil && refreshed != nil {
+		fillTokenFields(&id, refreshed)
+		if larkauth.TokenStatus(refreshed) == "valid" {
+			id.Status = StatusReady
+			id.Available = true
+		}
+	}
 	id.Verified = boolPtr(true)
 	if id.Status == StatusReady {
 		id.Message = "User identity: ready"

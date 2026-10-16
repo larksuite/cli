@@ -1173,6 +1173,7 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {
 	// Step 1: determine identity (--as > default-as > auto-detect).
 	asFlag, _ := cmd.Flags().GetString("as")
+	explicitAs := cmd != nil && cmd.Flags().Changed("as") && core.Identity(asFlag) != core.AsAuto
 	as := f.ResolveAs(cmd.Context(), cmd, core.Identity(asFlag))
 
 	if err := f.CheckStrictMode(cmd.Context(), as); err != nil {
@@ -1180,10 +1181,33 @@ func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut
 	}
 
 	// Step 2: check if this shortcut supports the resolved identity.
+	// When --as was not explicitly specified and the shortcut only supports a single
+	// identity, adopt that identity if strict mode permits it and (for user-only
+	// shortcuts) a logged-in user is configured.
+	if !explicitAs && len(s.AuthTypes) == 1 && string(as) != s.AuthTypes[0] {
+		only := core.Identity(s.AuthTypes[0])
+		if f.CheckStrictMode(cmd.Context(), only) == nil && canImplicitlyUseShortcutIdentity(f, only) {
+			as = only
+		}
+	}
 	if err := f.CheckIdentity(as, s.AuthTypes); err != nil {
 		return "", err
 	}
 	return as, nil
+}
+
+func canImplicitlyUseShortcutIdentity(f *cmdutil.Factory, target core.Identity) bool {
+	if target == core.AsBot {
+		return true
+	}
+	if f == nil || f.Config == nil {
+		return false
+	}
+	cfg, err := f.Config()
+	if err != nil || cfg == nil || cfg.UserOpenId == "" {
+		return false
+	}
+	return true
 }
 
 // checkShortcutScopes verifies that the selected identity satisfies the shortcut scope contract.

@@ -146,6 +146,9 @@ func TestResolveAs_DefaultAs_FromConfig(t *testing.T) {
 	if f.IdentityAutoDetected {
 		t.Error("IdentityAutoDetected should be false for default-as path")
 	}
+	if !f.IdentityDefaultAs {
+		t.Error("IdentityDefaultAs should be true for default-as path")
+	}
 }
 
 func TestResolveAs_DefaultAs_EnvDoesNotBypassConfigSource(t *testing.T) {
@@ -246,6 +249,23 @@ func TestCheckIdentity_Unsupported_AutoDetected(t *testing.T) {
 	}
 	if !strings.Contains(ve.Hint, "use --as bot") {
 		t.Errorf("expected hint to suggest --as bot, got: %v", ve.Hint)
+	}
+}
+
+func TestCheckIdentity_Unsupported_DefaultAs(t *testing.T) {
+	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	f.IdentityDefaultAs = true
+
+	err := f.CheckIdentity(core.AsBot, []string{"user"})
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if !strings.Contains(ve.Message, "resolved identity") {
+		t.Errorf("expected 'resolved identity' in message, got: %v", ve.Message)
+	}
+	if !strings.Contains(ve.Hint, "use --as user") {
+		t.Errorf("expected hint to suggest --as user, got: %v", ve.Hint)
 	}
 }
 

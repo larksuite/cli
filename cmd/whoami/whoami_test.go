@@ -72,6 +72,18 @@ func TestBuildResult_UserValid(t *testing.T) {
 	}
 }
 
+func TestBuildResult_UserNeedsRefreshNormalizesToReady(t *testing.T) {
+	cfg := &core.CliConfig{ProfileName: "my-app", AppID: "cli_x", Brand: core.BrandFeishu, DefaultAs: core.AsBot}
+	diag := identitydiag.Result{
+		User: identitydiag.Identity{Available: true, Status: identitydiag.StatusNeedsRefresh, TokenStatus: "needs_refresh", OpenID: "ou_x", UserName: "Alice"},
+	}
+	r := buildResult(cfg, core.AsUser, "flag", diag)
+
+	if !r.Available || r.TokenStatus != identitydiag.StatusReady {
+		t.Fatalf("available=%v tokenStatus=%q, want true/%q", r.Available, r.TokenStatus, identitydiag.StatusReady)
+	}
+}
+
 func TestBuildResult_UserMissingToken(t *testing.T) {
 	cfg := &core.CliConfig{ProfileName: "p", AppID: "cli_x", Brand: core.BrandLark}
 	diag := identitydiag.Result{

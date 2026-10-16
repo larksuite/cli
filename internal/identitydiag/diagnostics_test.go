@@ -437,6 +437,86 @@ func TestDiagnose_UserIdentityNeedsRefresh(t *testing.T) {
 	}
 }
 
+func TestDiagnose_VerifyUserIdentityNeedsRefreshUpdatesFields(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+
+	cfg := &core.CliConfig{
+		AppID:      "test-app-verify-refresh",
+		AppSecret:  "secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_verify_refresh",
+		UserName:   "tester",
+	}
+	now := time.Now()
+	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
+		AppId:            cfg.AppID,
+		UserOpenId:       cfg.UserOpenId,
+		AccessToken:      "expired-access-token",
+		RefreshToken:     "refresh-token-1",
+		ExpiresAt:        now.Add(-time.Minute).UnixMilli(),
+		RefreshExpiresAt: now.Add(24 * time.Hour).UnixMilli(),
+		GrantedAt:        now.Add(-2 * time.Hour).UnixMilli(),
+		Scope:            "offline_access",
+		TokenType:        larkauth.StoredTokenTypeBearer,
+	}); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+
+	f, _, _, reg := cmdutil.TestFactory(t, cfg)
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/bot/v3/info",
+		Body: map[string]interface{}{
+			"code": 0,
+			"bot":  map[string]interface{}{"open_id": "ou_bot", "app_name": "bot"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    core.OAuthTokenV3Path,
+		Body: map[string]interface{}{
+			"code":                     0,
+			"access_token":             "refreshed-access-token",
+			"expires_in":               7200,
+			"refresh_token":            "refresh-token-2",
+			"refresh_token_expires_in": 604800,
+			"token_type":               "Bearer",
+			"scope":                    "offline_access",
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    larkauth.PathUserInfoV1,
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+		},
+	})
+
+	got := Diagnose(context.Background(), f, cfg, true)
+	if got.User.Status != StatusReady || !got.User.Available {
+		t.Fatalf("user = %#v, want ready and available after verify refresh", got.User)
+	}
+	if got.User.TokenStatus != "valid" {
+		t.Fatalf("tokenStatus = %q, want valid after verify refresh", got.User.TokenStatus)
+	}
+	if got.User.Verified == nil || !*got.User.Verified {
+		t.Fatalf("verified = %v, want true", got.User.Verified)
+	}
+	if got.User.Message != "User identity: ready" {
+		t.Fatalf("message = %q, want 'User identity: ready'", got.User.Message)
+	}
+	expiresAt, err := time.Parse(time.RFC3339, got.User.ExpiresAt)
+	if err != nil {
+		t.Fatalf("time.Parse(ExpiresAt=%q) error = %v", got.User.ExpiresAt, err)
+	}
+	if !expiresAt.After(now) {
+		t.Fatalf("ExpiresAt = %v, want future timestamp after %v", expiresAt, now)
+	}
+}
+
 // fakeExtProvider is a minimal credential.extcred.Provider for exercising the
 // external-credential diagnosis path. account makes the provider "active";
 // token (when set) satisfies ResolveToken during verify.

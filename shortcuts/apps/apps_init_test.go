@@ -2021,3 +2021,38 @@ func TestAppsInit_WithAppType_AlreadyInitialized(t *testing.T) {
 		t.Errorf("app_type = %v, want html", data["app_type"])
 	}
 }
+
+func TestAppsInit_ForwardsResolvedIdentityWhenAsFlagOmitted(t *testing.T) {
+	dir := relCloneDir(t)
+	envFile := filepath.Join(dir, ".env.local")
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"credential-init": credInitOK("http://u:t@h/app_omit_as.git"),
+		"git clone":       {},
+		"git checkout":    {},
+		"git ls-files":    {stdout: "package.json\n"},
+		"git status":      {},
+		"env-pull":        envPullOK(envFile),
+	}}
+	withFakeRunner(t, f)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_omit_as", "FULL_STACK")
+
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_omit_as", "--dir", dir}, factory, stdout); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var gotCredAsUser, gotEnvAsUser bool
+	for _, c := range f.calls {
+		if containsAll(c, "apps", "+git-credential-init", "--as", "user") {
+			gotCredAsUser = true
+		}
+		if containsAll(c, "apps", "+env-pull", "--as", "user") {
+			gotEnvAsUser = true
+		}
+	}
+	if !gotCredAsUser {
+		t.Errorf("expected +git-credential-init to receive --as user; calls=%v", f.calls)
+	}
+	if !gotEnvAsUser {
+		t.Errorf("expected +env-pull to receive --as user; calls=%v", f.calls)
+	}
+}

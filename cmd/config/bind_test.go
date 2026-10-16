@@ -1890,3 +1890,55 @@ func TestConfigBindRun_LangExplicit_PrintsConfirmation(t *testing.T) {
 		t.Errorf("stderr = %q, want it to contain confirmation %q", got, want)
 	}
 }
+
+func TestConfigBindRun_RebindSameAppPreservesUsers(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_keep_users\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	f1, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f1, Source: "hermes", Identity: "user-default"}); err != nil {
+		t.Fatalf("first bind: %v", err)
+	}
+
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	multi.Apps[0].Users = []core.AppUser{{UserOpenId: "ou_keep", UserName: "Keep User"}}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig: %v", err)
+	}
+
+	f2, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f2, Source: "hermes", Identity: "bot-only"}); err != nil {
+		t.Fatalf("re-bind same app: %v", err)
+	}
+
+	after, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig after re-bind: %v", err)
+	}
+	app := after.CurrentAppConfig("")
+	if app == nil || len(app.Users) != 1 || app.Users[0].UserOpenId != "ou_keep" {
+		t.Fatalf("Users after re-bind = %#v, want preserved user ou_keep", app)
+	}
+}
+
+func TestPriorUsers_EdgeCases(t *testing.T) {
+	if got := priorUsers([]byte(`{"apps":[{"appId":"cli_a"}]}`), ""); got != nil {
+		t.Fatalf("priorUsers(empty appID) = %#v, want nil", got)
+	}
+	if got := priorUsers([]byte(`not json`), "cli_a"); got != nil {
+		t.Fatalf("priorUsers(invalid json) = %#v, want nil", got)
+	}
+	if got := priorUsers([]byte(`{"apps":[{"appId":"cli_other","users":[{"userOpenId":"ou_1"}]}]}`), "cli_a"); got != nil {
+		t.Fatalf("priorUsers(mismatched appID) = %#v, want nil", got)
+	}
+}

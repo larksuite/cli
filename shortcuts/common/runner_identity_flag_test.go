@@ -43,3 +43,77 @@ func TestShortcutMount_StrictModeHidesAsFlag(t *testing.T) {
 		t.Fatalf("default value = %q, want %q", got, "bot")
 	}
 }
+
+func TestShortcutMount_SingleAuthUserShortcutUsesUserWhenDefaultAsBotAndUserConfigured(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID:      "test-app",
+		AppSecret:  "test-secret",
+		Brand:      core.BrandFeishu,
+		DefaultAs:  core.AsBot,
+		UserOpenId: "ou_test_user",
+	})
+	var gotAs core.Identity
+	parent := &cobra.Command{Use: "root"}
+	shortcut := Shortcut{
+		Service:     "apps",
+		Command:     "+get",
+		Description: "get app",
+		AuthTypes:   []string{"user"},
+		Execute: func(_ context.Context, rctx *RuntimeContext) error {
+			gotAs = rctx.As()
+			return nil
+		},
+	}
+
+	shortcut.Mount(parent, f)
+	parent.SetArgs([]string{"+get"})
+	if err := parent.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if gotAs != core.AsUser {
+		t.Fatalf("resolved identity = %q, want %q", gotAs, core.AsUser)
+	}
+}
+
+func TestShortcutMount_SingleAuthUserShortcutRejectsExplicitBot(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID:      "test-app",
+		AppSecret:  "test-secret",
+		Brand:      core.BrandFeishu,
+		DefaultAs:  core.AsBot,
+		UserOpenId: "ou_test_user",
+	})
+	parent := &cobra.Command{Use: "root"}
+	shortcut := Shortcut{
+		Service:     "apps",
+		Command:     "+get",
+		Description: "get app",
+		AuthTypes:   []string{"user"},
+		Execute: func(context.Context, *RuntimeContext) error {
+			return nil
+		},
+	}
+
+	shortcut.Mount(parent, f)
+	parent.SilenceErrors = true
+	parent.SilenceUsage = true
+	parent.SetArgs([]string{"+get", "--as", "bot"})
+	if err := parent.Execute(); err == nil {
+		t.Fatal("Execute(--as bot) = nil, want validation error")
+	}
+}
+
+func TestCanImplicitlyUseShortcutIdentity(t *testing.T) {
+	if !canImplicitlyUseShortcutIdentity(nil, core.AsBot) {
+		t.Fatal("expected AsBot to be implicitly usable")
+	}
+	if canImplicitlyUseShortcutIdentity(nil, core.AsUser) {
+		t.Fatal("expected nil factory to reject AsUser")
+	}
+	fNoUser, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	if canImplicitlyUseShortcutIdentity(fNoUser, core.AsUser) {
+		t.Fatal("expected missing UserOpenId to reject AsUser")
+	}
+}

@@ -412,6 +412,20 @@ func priorLang(previousConfigBytes []byte) i18n.Lang {
 	return ""
 }
 
+func priorUsers(previousConfigBytes []byte, appID string) []core.AppUser {
+	if appID == "" {
+		return nil
+	}
+	var multi core.MultiAppConfig
+	if json.Unmarshal(previousConfigBytes, &multi) != nil {
+		return nil
+	}
+	if app := multi.CurrentAppConfig(""); app != nil && app.AppId == appID {
+		return app.Users
+	}
+	return nil
+}
+
 // commitBinding finalizes the bind: atomic write of the new workspace config,
 // best-effort cleanup of stale keychain entries from the previous binding (if
 // any), and a JSON success envelope. Cleanup runs only after the new config
@@ -424,6 +438,9 @@ func commitBinding(
 	source, configPath string,
 	projector *recovery.Projector,
 ) error {
+	if len(appConfig.Users) == 0 {
+		appConfig.Users = priorUsers(previousConfigBytes, appConfig.AppId)
+	}
 	multi := &core.MultiAppConfig{Apps: []core.AppConfig{*appConfig}}
 
 	if err := vfs.MkdirAll(core.GetConfigDir(), 0700); err != nil {

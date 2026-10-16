@@ -7,8 +7,8 @@
 | 获取全部权限 | `lark-cli auth login --domain all --no-wait --json` |
 | 按业务域授权 | `lark-cli auth login --domain docs --domain drive --no-wait --json`；`--domain` 可重复，也可用逗号分隔 |
 | 指定单个 scope 授权 | `lark-cli auth login --scope "<scope>" --no-wait --json` |
-| 检查当前登录态、是谁登录、token 是否有效 | `lark-cli auth status --json --verify`；回答时引用 `identity`、`verified`、`identities.user.status`、`identities.user.userName`、`identities.user.openId`（用户 open id）、`identities.user.tokenStatus`、`identities.user.scope` |
-| 快速查看当前身份状态 | `lark-cli whoami`；实际生效的那一个身份 |
+| 检查当前登录态、是谁登录、token 是否有效 | `lark-cli auth status --json --verify`；回答时引用 `identity`、`verified`、`identities.user.status`、`identities.user.userName`、`identities.user.openId`（用户 open id）、`identities.user.tokenStatus`、`identities.user.scope`（`available: true` 且 `needs_refresh` 表示下次调用会自动刷新，无需重新 `auth login`） |
+| 快速查看当前身份状态 | `lark-cli whoami`；实际生效的那一个身份（`available: true` 表示可直接调用，无需重新 `auth login`） |
 | 退出当前机器的用户登录态 | `lark-cli auth logout --json`；`loggedOut:true` 表示注销成功 |
 | bot 缺少权限 | 不要执行 `auth login`；引导用户在开发者后台开通 bot scope，优先复用错误里的 `console_url` |
 | 取消用户对应用的全部服务端授权 | `auth logout` 只清本机登录态；服务端授权需用户在飞书授权管理页取消 |

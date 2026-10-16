@@ -55,6 +55,7 @@ type Factory struct {
 	Invocation           InvocationContext       // Immutable call context; do not mutate after Factory construction.
 	Keychain             keychain.KeychainAccess // secret storage (real keychain in prod, mock in tests)
 	IdentityAutoDetected bool                    // set by ResolveAs when identity was auto-detected
+	IdentityDefaultAs    bool                    // set by ResolveAs when identity was resolved from default-as
 	ResolvedIdentity     core.Identity           // identity resolved by the last ResolveAs call
 	CurrentCommand       *cobra.Command          // last matched command being executed; set during PersistentPreRun
 
@@ -124,6 +125,7 @@ func (f *Factory) ResolveFileIO(ctx context.Context) fileio.FileIO {
 // When the value is "auto" (or unset), auto-detect based on credential hints.
 func (f *Factory) ResolveAs(ctx context.Context, cmd *cobra.Command, flagAs core.Identity) core.Identity {
 	f.IdentityAutoDetected = false
+	f.IdentityDefaultAs = false
 
 	if cmd != nil && cmd.Flags().Changed("as") {
 		if flagAs != core.AsAuto {
@@ -144,6 +146,7 @@ func (f *Factory) ResolveAs(ctx context.Context, cmd *cobra.Command, flagAs core
 	hint := f.resolveIdentityHint(ctx)
 	if cmd == nil || !cmd.Flags().Changed("as") {
 		if defaultAs := resolveDefaultAsFromHint(hint); defaultAs != "" && defaultAs != core.AsAuto {
+			f.IdentityDefaultAs = true
 			f.ResolvedIdentity = defaultAs
 			return f.ResolvedIdentity
 		}
@@ -192,7 +195,7 @@ func (f *Factory) CheckIdentity(as core.Identity, supported []string) error {
 		}
 	}
 	list := strings.Join(supported, ", ")
-	if f.IdentityAutoDetected {
+	if f.IdentityAutoDetected || f.IdentityDefaultAs {
 		base := errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"resolved identity %q (via auto-detect or default-as) is not supported, this command only supports: %s",
 			as, list).

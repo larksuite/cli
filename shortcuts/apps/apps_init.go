@@ -751,7 +751,11 @@ func pullEnv(ctx context.Context, rctx *common.RuntimeContext, appID, dir string
 		return "", redactURLCredentials(fmt.Sprintf("cannot locate lark-cli executable: %v", err))
 	}
 	args := []string{"apps", "+env-pull", "--app-id", appID, "--project-path", dir, "--format", "json"}
-	if as := strings.TrimSpace(rctx.Str("as")); as != "" {
+	as := strings.TrimSpace(rctx.Str("as"))
+	if as == "" {
+		as = string(rctx.As())
+	}
+	if as != "" {
 		args = append(args, "--as", as)
 	}
 	stdout, stderr, runErr := initRunner.Run(ctx, "", self, args...)
@@ -777,7 +781,11 @@ func issueCredentials(ctx context.Context, rctx *common.RuntimeContext, appID st
 		return credentialInitResult{}, errs.NewInternalError(errs.SubtypeUnknown, "cannot locate lark-cli executable: %v", err).WithCause(err)
 	}
 	args := []string{"apps", "+git-credential-init", "--app-id", appID, "--format", "json"}
-	if as := strings.TrimSpace(rctx.Str("as")); as != "" {
+	as := strings.TrimSpace(rctx.Str("as"))
+	if as == "" {
+		as = string(rctx.As())
+	}
+	if as != "" {
 		args = append(args, "--as", as)
 	}
 	stdout, stderr, err := initRunner.Run(ctx, "", self, args...)

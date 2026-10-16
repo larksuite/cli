@@ -164,6 +164,9 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 		// branch: "ready" means usable for both. available stays the canonical
 		// usable signal; tokenStatus is the readable state behind it.
 		res.TokenStatus = diag.User.Status
+		if res.TokenStatus == identitydiag.StatusNeedsRefresh {
+			res.TokenStatus = identitydiag.StatusReady
+		}
 		// Set onBehalfOf only when a user is actually resolved; an unresolved
 		// user identity (not signed in) has no one to act on behalf of yet.
 		if diag.User.UserName != "" || diag.User.OpenID != "" {
