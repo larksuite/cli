@@ -39,6 +39,8 @@ func Shortcuts() []common.Shortcut {
 		AppsReleaseList,
 		AppsReleaseGet,
 		AppsEnvPull,
+		AppsFeatures,
+		AppsFeatureEnable,
 		withExtraTips(AppsLogList, "Tip: logs are online-only; keep --environment omitted or set --environment online."),
 		withExtraTips(AppsLogGet, "Tip: logs are online-only; keep --environment omitted or set --environment online."),
 		withExtraTips(AppsTraceList, "Tip: traces are online-only; keep --environment omitted or set --environment online."),

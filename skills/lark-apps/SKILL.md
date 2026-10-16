@@ -38,6 +38,8 @@ lark-cli auth login --domain apps
 | 阅读 / 分析 / 总结一个妙搭应用的内容（任意应用模式，含创意模式应用的 `/page/<token>` 链接）；只要一份源码快照、不做本地开发；或要取**别人分享给你的**应用源码（你对其仓库无权限） | `+export`（下载 zip 后解压读源码；不配 git 凭证、不建工作区）。创意模式应用的 `/page/` 链接直接传 `--meta-token <token>`，不必先 `+get` 换 app_id。要继续开发用 `+init` 而非本命令 | [`lark-apps-export.md`](references/lark-apps-export.md) |
 | 本地开发时 `.env.local` 损坏/丢失，重新拉取启动期环境变量 | `+env-pull` | [`lark-apps-env-pull.md`](references/lark-apps-env-pull.md) |
 | 管理应用环境变量（查看/设置/删除） | `+env-list`, `+env-set`, `+env-delete` | [`lark-apps-env.md`](references/lark-apps-env.md) |
+| 网页/另一台电脑开通数据库后同步本地环境变量 | `+env-pull`（之后重启本地开发进程） | [`lark-apps-env-pull.md`](references/lark-apps-env-pull.md) |
+| 查应用是否已开启数据库；给应用开启数据库 | `+features --app-id <app_id>`；确认需求后 `+feature-enable --feature database --app-id <app_id>` | [`lark-apps-features.md`](references/lark-apps-features.md) |
 | 查线上日志、Trace、请求数、错误率、延迟、CPU、memory、PV/UV/访问量 | `+log-list`, `+log-get`, `+trace-list`, `+trace-get`, `+metric-list`, `+analytics-list` | [`lark-apps-observability.md`](references/lark-apps-observability.md) |
 | 看表 / 看结构 / 初始化多环境 / 导入导出数据 / 变更追溯 / 行级审计 / dev→online 发布 / 时间点恢复 / 查 DB 用量 | `+db-table-list`、`+db-table-get`、`+db-env-create`、`+db-data-export`/`+db-data-import`、`+db-changelog-list`、`+db-audit-status`/`+db-audit-enable`/`+db-audit-disable`/`+db-audit-list`、`+db-env-diff`/`+db-env-migrate`、`+db-recovery-diff`/`+db-recovery-apply`、`+db-quota-get` | [`lark-apps-db.md`](references/lark-apps-db.md) |
 | 逐条执行 SQL（SELECT / DML / DDL）；建表 / 改表 / 写 SQL 的平台规范 | `+db-execute` | [`lark-apps-db-execute.md`](references/lark-apps-db-execute.md)（含「平台 SQL 规范」：审计列 / RLS / `user_profile` / 禁用 SQL / PG 陷阱） |
@@ -98,7 +100,7 @@ lark-cli apps +member-settings-set --app-id <app_id> --external-access disabled 
 
 | 信号 | 判定 |
 |---|---|
-| 含数据库 / 后端持久化：登录 / 增删改查 / 报名·投票·站会存记录 / 多人协作 / 泛称"系统·工具"且明确要存数据 | `app_type=full_stack` |
+| 含数据库 / 后端持久化：登录 / 增删改查 / 报名·投票·站会存记录 / 多人协作 / 泛称"系统·工具"且明确要存数据 | `app_type=full_stack`；创建后用 `+features` 看 `database` 的 `enabled`，为 `false` 时按 [`lark-apps-features.md`](references/lark-apps-features.md) 用 `+feature-enable --feature database` 开数据库 |
 | 纯静态展示（给人"看"的物料，无 JS 交互）：PPT/deck / demo / 落地页 / 海报 / UI mockup / 线框图 / 静态仪表盘 / 视觉探索 | `app_type=html`，加载 [`creative-design/creative-design.md`](creative-design/creative-design.md)（含完整开发与发布流程） |
 | 有 JS 交互但无数据库（给人"用"的前端应用）：可交互原型 / SPA / 表单校验 / 动态计算 / 调用外部 API / 泛称"工具·系统"但未明确要存数据 | `app_type=frontend`（**默认倾向**：用户未明确提出数据库需求时默认引导 frontend，不默认 full_stack） |
 | 类型模糊（尤其"要不要存数据"不清） | **追问**，话术偏向 frontend，例："看起来是个前端应用，需要保存数据吗？"；确认要存数据再转 full_stack，确认纯展示再转 html |
@@ -108,7 +110,7 @@ lark-cli apps +member-settings-set --app-id <app_id> --external-access disabled 
 | 修改已有 + 当前目录是 `.spark/meta.json` 项目 | 直接继续本地按意图路由，不必问也不必判云端 |
 | 修改已有 + 有云端偏好 | 云端会话；未表达偏好且非本地项目 → 默认本地；判不准先问 |
 
-**类型升级**：`frontend` 应用后续需要数据库/后端能力时，本地 CLI 不提供类型升级；引导用户到云端会话（打开 `https://miaoda.feishu.cn/app/{app_id}`），用自然语言描述后端需求（如"给这个应用加登录和数据存储"）即可触发升级，无需特殊指令。
+**后续加数据库 / 类型升级**：应用后续需要数据库时，先 `+features --app-id <app_id>`：列出 `database` 且 `enabled=false` 时经用户确认后 `+feature-enable --feature database`，再 `+env-pull` 并重启本地开发进程（见 [`lark-apps-features.md`](references/lark-apps-features.md)）；没列出 `database`、`+features` 报错或服务端拒绝启用时，本地 CLI 不提供类型升级，引导用户到云端会话（打开 `https://miaoda.feishu.cn/app/{app_id}`），用自然语言描述后端需求（如"给这个应用加登录和数据存储"）即可触发升级，无需特殊指令。
 
 ## 发布态护栏
 

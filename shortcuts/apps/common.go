@@ -43,12 +43,16 @@ const (
 // It deliberately drops internal workspace / db-branch terms.
 const appNoDatabaseMessage = "this app does not have a database yet"
 
-// appNoDatabaseHint guides adding a database via Miaoda cloud development. It
-// only uses existing commands with stable placeholder args, so a harness can
-// execute it without matching natural-language error text. Adding a database is
-// a cloud write: a failed read alone does not authorize it — confirm with the
-// user before starting a +chat.
-const appNoDatabaseHint = "ask the user whether to add a database through Miaoda cloud development; if confirmed, run `lark-cli apps +session-list --app-id <app_id>` and reuse an active session, or run `lark-cli apps +session-create --app-id <app_id>`; send the database requirement with `lark-cli apps +chat --app-id <app_id> --session-id <session_id> --message \"<database requirement>\"`, poll `lark-cli apps +session-get --app-id <app_id> --session-id <session_id>` until `latest_turn.status=completed`, then retry the original db command"
+// appNoDatabaseHint guides adding a database. Apps whose +features lists database
+// enable it with +feature-enable, whose next_steps say how the database takes
+// effect where the command runs; an already enabled database only has to take
+// effect; apps that cannot (database not listed, or not a new-contract app) keep the
+// Miaoda cloud development flow. It only uses
+// existing commands with stable placeholder args, so a harness can execute it
+// without matching natural-language error text. Adding a database is a cloud
+// write: a failed read alone does not authorize it — confirm with the user
+// before enabling it or starting a +chat.
+const appNoDatabaseHint = "ask the user whether to add a database; if confirmed, run `lark-cli apps +features --app-id <app_id>`: when it lists database with enabled=false, run `lark-cli apps +feature-enable --feature database --app-id <app_id>`, follow the next_steps it prints and retry the original db command; when database is already enabled=true, the database only has to take effect: locally run `lark-cli apps +env-pull --app-id <app_id>` and restart the local dev process, in a Miaoda sandbox wait a moment for the platform, then retry; when database is not listed, +features fails, or +feature-enable reports the app is not a new-contract app, add it through Miaoda cloud development: run `lark-cli apps +session-list --app-id <app_id>` and reuse an active session, or run `lark-cli apps +session-create --app-id <app_id>`; send the database requirement with `lark-cli apps +chat --app-id <app_id> --session-id <session_id> --message \"<database requirement>\"`, poll `lark-cli apps +session-get --app-id <app_id> --session-id <session_id>` until `latest_turn.status=completed`, then retry the original db command"
 
 // appNoContainerCode is the Spark business code returned by the online
 // observability endpoints (query_metrics_data / query_analytics_data) when the

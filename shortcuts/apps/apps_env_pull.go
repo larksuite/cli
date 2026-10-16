@@ -37,6 +37,8 @@ var AppsEnvPull = common.Shortcut{
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +env-pull --app-id <app_id>",
+		"Tip: the output describes only the pulled environment, not whether the app's database feature is enabled; check that with +features.",
+		"Tip: restart the whole local dev process after pulling (nothing restarts it automatically), then verify one real database read/write.",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
@@ -93,7 +95,7 @@ var AppsEnvPull = common.Shortcut{
 		if envVars == nil {
 			envVars = map[string]string{}
 		}
-		envVars["FORCE_DB_BRANCH"] = "dev"
+		dbExport := applyEnvPullDBKeys(envVars)
 		original, err := readEnvPullFile(envFile)
 		if err != nil {
 			return err
@@ -107,8 +109,18 @@ var AppsEnvPull = common.Shortcut{
 		}
 
 		result := buildEnvPullSuccessData(appID, envFile, databaseInfo)
+		if dbExport != "" {
+			conflicts := envPullShellConflicts(envVars)
+			addEnvPullDBData(result, conflicts)
+			if len(conflicts) > 0 {
+				fmt.Fprintf(rctx.IO().ErrOut, "⚠ %s\n", envPullShellConflictMessage(conflicts))
+			}
+		}
 		rctx.OutFormat(result, nil, func(w io.Writer) {
 			writeEnvPullPretty(w, appID, envFile, databaseInfo, skippedKeys)
+			if dbExport != "" {
+				writeEnvPullDBPretty(w, dbExport)
+			}
 		})
 		_ = updated
 		_ = created
@@ -233,7 +245,7 @@ func extractEnvPullVars(data map[string]interface{}) (map[string]string, envPull
 				continue
 			}
 			out[key] = value
-			if key == "SUDA_DATABASE_URL" {
+			if key == envKeyTempDatabaseURL && strings.TrimSpace(value) != "" {
 				info.Detected = true
 				info.ExpiresAtRaw, info.ExpiresAtText = extractEnvPullDatabaseExpiry(entry["extras"])
 			}
@@ -356,9 +368,10 @@ func buildEnvPullSuccessData(appID, envFile string, databaseInfo envPullDatabase
 	return result
 }
 
+// hasEnvPullDatabase reports a usable database only for a non-empty
+// connection: an explicitly cleared key means the database is not available.
 func hasEnvPullDatabase(envVars map[string]string) bool {
-	_, ok := envVars["SUDA_DATABASE_URL"]
-	return ok
+	return strings.TrimSpace(envVars[envKeyTempDatabaseURL]) != ""
 }
 
 func extractEnvPullDatabaseExpiry(rawExtras interface{}) (string, string) {

@@ -25,6 +25,7 @@ var sparkCodeMeta = map[int]CodeMeta{
 	3344041: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},          // invalid member ID
 
 	221800:    {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // Miaoda not activated for this tenant
+	221801:    {Category: errs.CategoryAuthentication, Subtype: errs.SubtypeTokenExpired},   // Miaoda user credential expired and cannot be refreshed; the user must reactivate
 	400002484: {Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument},    // app id does not identify an app (missing or malformed)
 	400002465: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // app has no database yet
 	500002759: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // app has no database yet, pre-4xx renumber
