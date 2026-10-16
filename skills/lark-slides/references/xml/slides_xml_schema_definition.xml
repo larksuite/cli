@@ -698,6 +698,9 @@
             <xs:enumeration value="area"><xs:annotation><xs:documentation>面积图</xs:documentation></xs:annotation></xs:enumeration>
             <xs:enumeration value="radar"><xs:annotation><xs:documentation>雷达图</xs:documentation></xs:annotation></xs:enumeration>
             <xs:enumeration value="combo"><xs:annotation><xs:documentation>组合图</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bubble"><xs:annotation><xs:documentation>气泡图</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="waterfall"><xs:annotation><xs:documentation>瀑布图</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="pareto"><xs:annotation><xs:documentation>帕累托图</xs:documentation></xs:annotation></xs:enumeration>
         </xs:restriction>
     </xs:simpleType>
 
@@ -2950,13 +2953,14 @@
         <xs:annotation>
             <xs:documentation>
                 组合图系列类型枚举
-                可选值: column(柱状) | line(折线) | area(面积)
+                可选值: column(柱状) | line(折线) | area(面积) | scatter(散点)
             </xs:documentation>
         </xs:annotation>
         <xs:restriction base="xs:string">
             <xs:enumeration value="column"/>
             <xs:enumeration value="line"/>
             <xs:enumeration value="area"/>
+            <xs:enumeration value="scatter"/>
         </xs:restriction>
     </xs:simpleType>
 
@@ -3015,6 +3019,34 @@
         </xs:complexContent>
     </xs:complexType>
 
+    <xs:complexType name="ChartTitleLayoutType">
+        <xs:annotation><xs:documentation>OOXML 主标题手动定位，x/y 是 [0,1] 比例；仅支持 edge 模式。</xs:documentation></xs:annotation>
+        <xs:attribute name="xMode" use="optional">
+            <xs:simpleType><xs:restriction base="xs:string"><xs:enumeration value="edge"/></xs:restriction></xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="x" type="sml:RatioType" use="optional"/>
+        <xs:attribute name="yMode" use="optional">
+            <xs:simpleType><xs:restriction base="xs:string"><xs:enumeration value="edge"/></xs:restriction></xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="y" type="sml:RatioType" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartMainTitleType" mixed="true">
+        <xs:annotation><xs:documentation>主标题专用样式；副标题、坐标轴标题不扩展 overlay/layout/background/border。</xs:documentation></xs:annotation>
+        <xs:complexContent>
+            <xs:extension base="sml:ChartFontStyleType">
+                <xs:all>
+                    <xs:element name="chartLayout" type="sml:ChartTitleLayoutType" minOccurs="0"/>
+                    <xs:element name="chartBorder" type="sml:ChartBorderType" minOccurs="0"/>
+                </xs:all>
+                <xs:attribute name="overlay" type="xs:boolean" use="optional"/>
+                <xs:attribute name="background" type="sml:SolidColor" use="optional"/>
+                <xs:attribute name="textAlign" type="sml:ChartTextAlignType" use="optional" default="left"/>
+                <xs:attribute name="fontFamily" type="sml:FontFamilyType" use="optional"/>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+
     <xs:complexType name="ChartLegendType">
         <xs:annotation>
             <xs:documentation>
@@ -3056,6 +3088,10 @@
                 - strikethrough: 是否删除线, 默认false
                 - color: 文本颜色
 
+                - separator: 标签要素之间的分隔符；换行使用 &amp;#10;，保留首尾空白
+                - legendKey: 是否显示系列图例色块
+                - showGuidLine: 是否显示标签引导线（沿用快照字段拼写）
+
                 注意: category、value、percentage至少有一项为true
             </xs:documentation>
         </xs:annotation>
@@ -3066,6 +3102,9 @@
                 <xs:attribute name="category" type="xs:boolean" use="optional" default="false"/>
                 <xs:attribute name="value" type="xs:boolean" use="optional" default="true"/>
                 <xs:attribute name="percentage" type="xs:boolean" use="optional" default="false"/>
+                <xs:attribute name="separator" type="xs:string" use="optional"/>
+                <xs:attribute name="legendKey" type="xs:boolean" use="optional"/>
+                <xs:attribute name="showGuidLine" type="xs:boolean" use="optional"/>
                 <xs:attribute name="format" type="xs:string" use="optional"/>
             </xs:extension>
         </xs:complexContent>
@@ -3085,6 +3124,20 @@
         <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
     </xs:complexType>
 
+    <xs:simpleType name="ChartDashType">
+        <xs:annotation><xs:documentation>空白分隔的非负数列表（像素），如 "8 3 2 3"；空字符串表示实线。</xs:documentation></xs:annotation>
+        <xs:list itemType="sml:NonNegativeDouble"/>
+    </xs:simpleType>
+
+    <xs:complexType name="ChartRegionType">
+        <xs:annotation><xs:documentation>完整绘图区样式，与图表区背景独立；字段缺省时保持既有渲染。</xs:documentation></xs:annotation>
+        <xs:all>
+            <xs:element name="chartBackgroundGradient" type="sml:ChartGradientType" minOccurs="0"/>
+            <xs:element name="chartBorder" type="sml:ChartBorderType" minOccurs="0"/>
+        </xs:all>
+        <xs:attribute name="background" type="sml:SolidColor" use="optional"/>
+    </xs:complexType>
+
     <xs:complexType name="ChartBorderType">
         <xs:annotation>
             <xs:documentation>
@@ -3095,12 +3148,18 @@
                 - width: 边框宽度(像素), 默认 1；无边框可设置为0，或不设置chartBorder
                 - style: 边框样式(solid|dashed|dotted), 默认 solid
                 - radius: 圆角半径(像素), 默认 6
+                - dash: OOXML 原始虚线列表，空白分隔；设置时优先于 style
+                子元素: chartGradient 为边框渐变
             </xs:documentation>
         </xs:annotation>
+        <xs:all>
+            <xs:element name="chartGradient" type="sml:ChartGradientType" minOccurs="0"/>
+        </xs:all>
         <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
-        <xs:attribute name="width" type="xs:nonNegativeInteger" use="optional" default="1"/>
+        <xs:attribute name="width" type="sml:NonNegativeDouble" use="optional" default="1"/>
         <xs:attribute name="style" type="sml:ChartLineStyleType" use="optional" default="solid"/>
         <xs:attribute name="radius" type="xs:nonNegativeInteger" use="optional" />
+        <xs:attribute name="dash" type="sml:ChartDashType" use="optional"/>
     </xs:complexType>
 
     <xs:complexType name="ChartGradientStopType">
@@ -3210,6 +3269,8 @@
                 - chartBorder: 边框配置(可选)，无需边框时不设置
                 - chartColorTheme: 配色主题(可选)
                 - chartColorGradient: 渐变填充开关(可选)
+                - chartBackgroundGradient: 图表区背景渐变(可选)
+                - chartRegion: 完整绘图区的填充、渐变和边框(可选)
             </xs:documentation>
         </xs:annotation>
         <xs:all>
@@ -3218,6 +3279,8 @@
             <xs:element name="chartBorder" type="sml:ChartBorderType" minOccurs="0"/>
             <xs:element name="chartColorTheme" type="sml:ChartColorThemeType" minOccurs="0"/>
             <xs:element name="chartColorGradient" type="sml:ChartColorGradientType" minOccurs="0"/>
+            <xs:element name="chartBackgroundGradient" type="sml:ChartGradientType" minOccurs="0"/>
+            <xs:element name="chartRegion" type="sml:ChartRegionType" minOccurs="0"/>
         </xs:all>
     </xs:complexType>
 
@@ -3291,10 +3354,12 @@
 
                                     子元素:
                                     - fillGradient: 该点填充渐变(可选)
+                                    - chartLabels: 单点标签覆盖，支持 separator/legendKey/showGuidLine
                                 </xs:documentation>
                             </xs:annotation>
                             <xs:sequence>
                                 <xs:element name="fillGradient" type="sml:ChartGradientType" minOccurs="0"/>
+                                <xs:element name="chartLabels" type="sml:ChartDataLabelsType" minOccurs="0"/>
                             </xs:sequence>
                             <xs:attribute name="index" type="xs:positiveInteger" use="required"/>
                             <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
@@ -3312,7 +3377,7 @@
         <xs:annotation>
             <xs:documentation>
                 图表全局线条配置（第一层：所有系列的默认样式）
-                适用于: 折线图、面积图、组合图的折线部分
+                适用于: 折线图、面积图、组合图的折线部分、帕累托图累计百分比线
 
                 属性:
                 - color: 线条颜色
@@ -3382,7 +3447,7 @@
         <xs:annotation>
             <xs:documentation>
                 图表全局柱子配置（第一层：所有系列的默认柱子样式）
-                适用于: 柱状图、条形图、组合图的柱状部分
+                适用于: 柱状图、条形图、组合图的柱状部分、帕累托图数值柱
 
                 属性:
                 - color: 柱子填充颜色
@@ -3391,7 +3456,8 @@
                 - borderStyle: 柱子边框样式(solid|dashed|dotted), 默认solid
                 - backgroundColor: 柱子背景颜色
                 - width: 柱子宽度(像素), 未设置时自动计算
-                - gap: 柱子间距比例[0,1], 0表示无间距, 1表示间距等于柱宽
+                - overlap: OOXML 系列重叠率[-100,100]
+                - gapWidth: OOXML 柱间距百分比[0,500]，不是像素
             </xs:documentation>
         </xs:annotation>
         <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
@@ -3400,15 +3466,30 @@
         <xs:attribute name="borderStyle" type="sml:ChartLineStyleType" use="optional" default="solid"/>
         <xs:attribute name="backgroundColor" type="sml:SolidColor" use="optional" />
         <xs:attribute name="width" type="xs:nonNegativeInteger" use="optional"/>
-        <xs:attribute name="gap" type="sml:RatioType" use="optional"/>
+        <xs:attribute name="overlap" use="optional">
+            <xs:simpleType>
+                <xs:restriction base="xs:double">
+                    <xs:minInclusive value="-100"/>
+                    <xs:maxInclusive value="100"/>
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="gapWidth" use="optional">
+            <xs:simpleType>
+                <xs:restriction base="xs:double">
+                    <xs:minInclusive value="0"/>
+                    <xs:maxInclusive value="500"/>
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
     </xs:complexType>
 
     <xs:complexType name="ChartSeriesBarsType">
         <xs:annotation>
             <xs:documentation>
                 图表系列柱子配置（第二层：单系列统一配置 + 单柱精确定制）
-                继承ChartGlobalBarsType的所有属性，但注意backgroundColor，width，gap不能作为系列设置
-                适用于: 柱状图、条形图、组合图的柱状部分
+                继承ChartGlobalBarsType的所有属性；普通柱状/条形/组合图系列不建议设置backgroundColor、width
+                适用于: 柱状图、条形图、组合图的柱状部分、帕累托图数值柱
 
                 属性:
                 - color: 该系列所有柱子的填充颜色
@@ -3528,6 +3609,16 @@
         </xs:sequence>
     </xs:complexType>
 
+    <xs:complexType name="ChartInvertIfNegativeType">
+        <xs:annotation>
+            <xs:documentation>
+                负值反色配置：enable 控制开关，color 指定反色填充；省略 color 时使用 Office 缺省反色
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="enable" type="xs:boolean" use="required"/>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+    </xs:complexType>
+
     <xs:complexType name="ChartSeriesType">
         <xs:annotation>
             <xs:documentation>
@@ -3546,9 +3637,11 @@
                 - chartSectors: 扇区样式配置(可选)
                 - chartLabels: 数据标签配置(可选)
                 - chartTooltip: 数据提示框配置(可选)
+                - chartInvertIfNegative: 柱/条负值反色配置(可选)
+                - chartWaterfall: 瀑布图单系列配置(可选), 仅瀑布图使用
             </xs:documentation>
         </xs:annotation>
-        <xs:sequence>
+        <xs:all>
             <xs:element name="chartPoints" type="sml:ChartSeriesPointsType" minOccurs="0"/>
             <xs:element name="chartLine" type="sml:ChartSeriesLineType" minOccurs="0"/>
             <xs:element name="chartArea" type="sml:ChartSeriesAreaType" minOccurs="0"/>
@@ -3556,7 +3649,9 @@
             <xs:element name="chartSectors" type="sml:ChartSectorsType" minOccurs="0"/>
             <xs:element name="chartLabels" type="sml:ChartDataLabelsType" minOccurs="0"/>
             <xs:element name="chartTooltip" type="sml:ChartTooltipType" minOccurs="0"/>
-        </xs:sequence>
+            <xs:element name="chartInvertIfNegative" type="sml:ChartInvertIfNegativeType" minOccurs="0"/>
+            <xs:element name="chartWaterfall" type="sml:ChartWaterfallSeriesConfigType" minOccurs="0"/>
+        </xs:all>
         <xs:attribute name="index" type="xs:positiveInteger" use="required"/>
         <xs:attribute name="comboType" type="sml:ChartComboSeriesType" use="optional"/>
         <xs:attribute name="yAxisPosition" type="sml:ChartYAxisPositionType" use="optional"/>
@@ -3571,10 +3666,12 @@
                 属性:
                 - width: 网格线宽度(像素)
                 - color: 网格线颜色
+                - dash: 空白分隔的非负虚线列表，支持小数
             </xs:documentation>
         </xs:annotation>
-        <xs:attribute name="width" type="xs:nonNegativeInteger" use="optional"/>
+        <xs:attribute name="width" type="sml:NonNegativeDouble" use="optional"/>
         <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="dash" type="sml:ChartDashType" use="optional"/>
     </xs:complexType>
 
     <xs:complexType name="ChartAxisLineType">
@@ -3624,12 +3721,18 @@
                 - position: 坐标轴位置(可选)(left|right), 仅对y轴有效
                 - max: 坐标轴最大值(不设置时自动计算)
                 - min: 坐标轴最小值(不设置时自动计算)
+                - orientation: minMax(正序)|maxMin(逆序)，与旧 reverse 语义不同
+                - crosses: autoZero(自动零点)|min(最小端)|max(最大端)
+                - domainColor/domainWidth: 轴线颜色/非负宽度
+                - domainDash: 空白分隔的轴线虚线列表
 
                 子元素:
                 - chartTitle: 坐标轴标题(可选)
                 - chartLabel: 坐标轴刻度标签格式(可选)
                 - chartAxisLine: 坐标轴线配置(可选), 未设置时不显示轴线
                 - chartGridLine: 网格线配置(可选), 未设置时不显示网格线
+                - chartMinorGridLine: 次网格线配置(可选)，支持 color/width/dash
+                - chartDomainGradient: 轴线渐变(可选)
             </xs:documentation>
         </xs:annotation>
         <xs:all>
@@ -3637,11 +3740,33 @@
             <xs:element name="chartLabel" type="sml:ChartAxisLabelType" minOccurs="0"/>
             <xs:element name="chartAxisLine" type="sml:ChartAxisLineType" minOccurs="0"/>
             <xs:element name="chartGridLine" type="sml:ChartGridLineType" minOccurs="0"/>
+            <xs:element name="chartMinorGridLine" type="sml:ChartGridLineType" minOccurs="0"/>
+            <xs:element name="chartDomainGradient" type="sml:ChartGradientType" minOccurs="0"/>
         </xs:all>
         <xs:attribute name="type" type="sml:ChartAxisKindType" use="required"/>
         <xs:attribute name="position" type="sml:ChartYAxisPositionType" use="optional"/>
         <xs:attribute name="max" type="xs:integer" use="optional"/>
         <xs:attribute name="min" type="xs:integer" use="optional"/>
+        <xs:attribute name="orientation" use="optional">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="minMax"/>
+                    <xs:enumeration value="maxMin"/>
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="crosses" use="optional">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="autoZero"/>
+                    <xs:enumeration value="min"/>
+                    <xs:enumeration value="max"/>
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="domainColor" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="domainWidth" type="sml:NonNegativeDouble" use="optional"/>
+        <xs:attribute name="domainDash" type="sml:ChartDashType" use="optional"/>
     </xs:complexType>
 
     <xs:complexType name="ChartAxesType">
@@ -3714,6 +3839,260 @@
         <xs:attribute name="area" type="xs:boolean" use="optional" default="true"/>
     </xs:complexType>
 
+    <xs:complexType name="ChartBubbleType">
+        <xs:annotation>
+            <xs:documentation>
+                气泡图专用配置
+
+                属性:
+                - aggregate: 是否聚合相同维度的数据
+                - showNegativeSize: 是否显示大小为负数的气泡, 默认false
+                - opacityGradientStyle: 气泡透明度渐变方式(linear|radial)
+
+                子元素:
+                - chartIdLabel: 气泡标识标签及字体样式(可选)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:all>
+            <xs:element name="chartIdLabel" type="sml:ChartFontStyleType" minOccurs="0"/>
+        </xs:all>
+        <xs:attribute name="aggregate" type="xs:boolean" use="optional"/>
+        <xs:attribute name="showNegativeSize" type="xs:boolean" use="optional" default="false"/>
+        <xs:attribute name="opacityGradientStyle" type="sml:ChartGradientKindType" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartWaterfallSeriesStyleType">
+        <xs:annotation>
+            <xs:documentation>
+                瀑布图负值或汇总柱样式
+
+                属性:
+                - color: 填充颜色
+                - opacity: 填充透明度[0,1]
+                - borderColor: 边框颜色
+                - borderWidth: 非负边框宽度(像素)
+                - borderStyle: 边框样式(solid|dashed|dotted)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="opacity" type="sml:RatioType" use="optional"/>
+        <xs:attribute name="borderColor" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="borderWidth" type="sml:NonNegativeDouble" use="optional"/>
+        <xs:attribute name="borderStyle" type="sml:ChartLineStyleType" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartWaterfallConnectorLineType">
+        <xs:annotation>
+            <xs:documentation>
+                瀑布图柱体连接线样式
+
+                属性:
+                - color: 连接线颜色
+                - width: 非负线宽(像素)
+                - style: 线条样式(solid|dashed|dotted)
+                - opacity: 线条透明度[0,1]
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="width" type="sml:NonNegativeDouble" use="optional"/>
+        <xs:attribute name="style" type="sml:ChartLineStyleType" use="optional"/>
+        <xs:attribute name="opacity" type="sml:RatioType" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartWaterfallTotalLabelsType">
+        <xs:annotation>
+            <xs:documentation>
+                瀑布图汇总标签配置
+                继承图表通用字体样式
+
+                属性:
+                - template: 标签模板
+                - position: 标签位置(default|top|middle|bottom)
+                - category: 是否显示类别名
+                - value: 是否显示数值
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexContent>
+            <xs:extension base="sml:ChartFontStyleType">
+                <xs:attribute name="template" type="xs:string" use="optional"/>
+                <xs:attribute name="position" use="optional">
+                    <xs:simpleType>
+                        <xs:restriction base="xs:string">
+                            <xs:enumeration value="default"/>
+                            <xs:enumeration value="top"/>
+                            <xs:enumeration value="middle"/>
+                            <xs:enumeration value="bottom"/>
+                        </xs:restriction>
+                    </xs:simpleType>
+                </xs:attribute>
+                <xs:attribute name="category" type="xs:boolean" use="optional"/>
+                <xs:attribute name="value" type="xs:boolean" use="optional"/>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+
+    <xs:complexType name="ChartWaterfallTitleTextType">
+        <xs:annotation>
+            <xs:documentation>
+                瀑布图标题文本
+
+                属性:
+                - positive: 正值标题
+                - negative: 负值标题
+                - subtotal: 小计标题
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="positive" type="xs:string" use="optional"/>
+        <xs:attribute name="negative" type="xs:string" use="optional"/>
+        <xs:attribute name="subtotal" type="xs:string" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartWaterfallSubtotalType">
+        <xs:annotation>
+            <xs:documentation>
+                瀑布图小计节点
+
+                属性:
+                - index: 小计节点索引, 从0开始
+                - mode: 小计计算模式(0|1)
+                - alias: 小计别名
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="index" type="xs:nonNegativeInteger" use="required"/>
+        <xs:attribute name="mode" use="required">
+            <xs:simpleType>
+                <xs:restriction base="xs:integer">
+                    <xs:enumeration value="0"/>
+                    <xs:enumeration value="1"/>
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="alias" type="xs:string" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartWaterfallSubtotalsType">
+        <xs:sequence>
+            <xs:element name="chartSubtotal" type="sml:ChartWaterfallSubtotalType" minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="ChartWaterfallSeriesConfigType">
+        <xs:annotation>
+            <xs:documentation>
+                瀑布图单系列配置
+
+                属性:
+                - firstValueAsTotal: 是否将首值作为汇总值
+                - lastValueAsSubtotal: 是否将末值作为小计值
+
+                子元素:
+                - chartNegativeStyle: 负值柱样式
+                - chartTotalStyle: 汇总柱样式
+                - chartTitleText: 正值、负值和小计标题文本
+                - chartSubtotals: 小计节点列表
+
+                正值柱样式复用同一 chartSeries 下的 chartBars
+            </xs:documentation>
+        </xs:annotation>
+        <xs:all>
+            <xs:element name="chartNegativeStyle" type="sml:ChartWaterfallSeriesStyleType" minOccurs="0"/>
+            <xs:element name="chartTotalStyle" type="sml:ChartWaterfallSeriesStyleType" minOccurs="0"/>
+            <xs:element name="chartTitleText" type="sml:ChartWaterfallTitleTextType" minOccurs="0"/>
+            <xs:element name="chartSubtotals" type="sml:ChartWaterfallSubtotalsType" minOccurs="0"/>
+        </xs:all>
+        <xs:attribute name="firstValueAsTotal" type="xs:boolean" use="optional"/>
+        <xs:attribute name="lastValueAsSubtotal" type="xs:boolean" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartWaterfallType">
+        <xs:annotation>
+            <xs:documentation>
+                瀑布图全局配置
+
+                属性:
+                - firstValueAsTotal: 是否将首值作为汇总值
+                - lastValueAsSubtotal: 是否将末值作为小计值
+                - cornerRadius: 柱体圆角(default|small|large)
+                - gradient: 是否启用渐变填充
+                - connectorLine: false 时隐藏柱体连接线
+                - totalLabels: false 时隐藏汇总标签
+
+                子元素:
+                - chartConnectorLine: 柱体连接线样式
+                - chartTotalLabels: 汇总标签样式
+                - chartNegativeStyle: 负值柱样式
+                - chartTotalStyle: 汇总柱样式
+                - chartTitleText: 正值、负值和小计标题文本
+                - chartSubtotals: 小计节点列表
+
+                正值柱样式复用 chartPlot 下的 chartBars
+            </xs:documentation>
+        </xs:annotation>
+        <xs:all>
+            <xs:element name="chartConnectorLine" type="sml:ChartWaterfallConnectorLineType" minOccurs="0"/>
+            <xs:element name="chartTotalLabels" type="sml:ChartWaterfallTotalLabelsType" minOccurs="0"/>
+            <xs:element name="chartNegativeStyle" type="sml:ChartWaterfallSeriesStyleType" minOccurs="0"/>
+            <xs:element name="chartTotalStyle" type="sml:ChartWaterfallSeriesStyleType" minOccurs="0"/>
+            <xs:element name="chartTitleText" type="sml:ChartWaterfallTitleTextType" minOccurs="0"/>
+            <xs:element name="chartSubtotals" type="sml:ChartWaterfallSubtotalsType" minOccurs="0"/>
+        </xs:all>
+        <xs:attribute name="firstValueAsTotal" type="xs:boolean" use="optional"/>
+        <xs:attribute name="lastValueAsSubtotal" type="xs:boolean" use="optional"/>
+        <xs:attribute name="cornerRadius" use="optional">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="default"/>
+                    <xs:enumeration value="small"/>
+                    <xs:enumeration value="large"/>
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="gradient" type="xs:boolean" use="optional"/>
+        <xs:attribute name="connectorLine" use="optional">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="false"/>
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="totalLabels" use="optional">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="false"/>
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+    </xs:complexType>
+
+    <xs:complexType name="ChartParetoType">
+        <xs:annotation>
+            <xs:documentation>
+                帕累托图专用配置
+
+                属性:
+                - aggregateType: 数值聚合方式, 默认sum
+                - categoryNumber: 展示的正整数分类数量
+
+                系列样式复用 chartSeries: index=1 配置数值柱的 chartBars/chartLabels，
+                index=2 配置累计百分比线的 chartLine/chartPoints/chartLabels
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="aggregateType" use="optional" default="sum">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="sum"/>
+                    <xs:enumeration value="average"/>
+                    <xs:enumeration value="count"/>
+                    <xs:enumeration value="counta"/>
+                    <xs:enumeration value="min"/>
+                    <xs:enumeration value="max"/>
+                    <xs:enumeration value="median"/>
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="categoryNumber" type="xs:positiveInteger" use="optional"/>
+    </xs:complexType>
+
     <!-- ==================== 绘图区配置 ==================== -->
 
     <xs:complexType name="ChartPlotAreaType">
@@ -3737,6 +4116,7 @@
                 - type: 图表类型(必需)
                 * line(折线图) | area(面积图) | bar(条形图) | column(柱状图)
                 * pie(饼图) | radar(雷达图) | combo(组合图)
+                * bubble(气泡图) | waterfall(瀑布图) | pareto(帕累托图)
                 - comboType: 组合图系列类型(可选), 仅组合图使用
                 - yAxisPosition: 右Y轴位置(可选), 只有在笛卡尔坐标系下, 默认值 left, 其他坐标系图表如饼图, 没有 yAxisPosition
 
@@ -3772,6 +4152,9 @@
                 - chartSmooth: 平滑折线开关(可选), 适用于折线/面积/雷达/组合图
                 - chartStep: 阶梯折线开关(可选), 适用于折线/面积/组合图
                 - chartStack: 堆叠设置(可选), 适用于面积/条形/柱状/组合图
+                - chartBubble: 气泡图专用配置(可选), 仅气泡图使用
+                - chartWaterfall: 瀑布图全局配置(可选), 仅瀑布图使用
+                - chartPareto: 帕累托图专用配置(可选), 仅帕累托图使用
             </xs:documentation>
         </xs:annotation>
         <xs:all>
@@ -3779,6 +4162,9 @@
             <xs:element name="chartSmooth" type="sml:ChartLineSmoothType" minOccurs="0"/>
             <xs:element name="chartStep" type="sml:ChartLineStepType" minOccurs="0"/>
             <xs:element name="chartStack" type="sml:ChartStackType" minOccurs="0"/>
+            <xs:element name="chartBubble" type="sml:ChartBubbleType" minOccurs="0"/>
+            <xs:element name="chartWaterfall" type="sml:ChartWaterfallType" minOccurs="0"/>
+            <xs:element name="chartPareto" type="sml:ChartParetoType" minOccurs="0"/>
         </xs:all>
     </xs:complexType>
 
@@ -3807,6 +4193,29 @@
         </xs:simpleContent>
     </xs:complexType>
 
+    <xs:complexType name="ChartDataDim2FieldType">
+        <xs:annotation>
+            <xs:documentation>
+                图表第二维度字段
+                继承通用图表数据字段；role 仅用于气泡图，标识x、y、group、size字段角色
+            </xs:documentation>
+        </xs:annotation>
+        <xs:simpleContent>
+            <xs:extension base="sml:ChartDataFieldType">
+                <xs:attribute name="role" use="optional">
+                    <xs:simpleType>
+                        <xs:restriction base="xs:string">
+                            <xs:enumeration value="x"/>
+                            <xs:enumeration value="y"/>
+                            <xs:enumeration value="group"/>
+                            <xs:enumeration value="size"/>
+                        </xs:restriction>
+                    </xs:simpleType>
+                </xs:attribute>
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
     <xs:complexType name="ChartDataDim1Type">
         <xs:annotation>
             <xs:documentation>
@@ -3827,13 +4236,15 @@
             <xs:documentation>
                 图表数值维度（第二维度：Y轴/数值）
                 包含数值系列数据, 每个field代表一个系列
+                气泡图使用4个字段并通过role标识x、y、group、size；group可为字符串，其余角色为数值
+                瀑布图至少包含1个数值字段；帕累托图严格输入包含1个数值字段
 
                 子元素:
                 - chartField: 数据字段(至少1个), 每个字段代表一个数据系列
             </xs:documentation>
         </xs:annotation>
         <xs:sequence>
-            <xs:element name="chartField" type="sml:ChartDataFieldType" minOccurs="1" maxOccurs="unbounded"/>
+            <xs:element name="chartField" type="sml:ChartDataDim2FieldType" minOccurs="1" maxOccurs="unbounded"/>
         </xs:sequence>
     </xs:complexType>
 
@@ -3872,6 +4283,7 @@
                 - flipX: 水平翻转, 默认false
                 - flipY: 垂直翻转, 默认false
                 - alpha: 透明度 [0,1], 默认1
+                - ooxml: 是否按 Office OOXML 导入图语义渲染整张图表
 
                 子元素:
                 - chartTitle: 标题设置 (可选)
@@ -3889,7 +4301,7 @@
         </xs:annotation>
         <xs:complexType>
             <xs:all>
-                <xs:element name="chartTitle" type="sml:ChartTitleType" minOccurs="0"/>
+                <xs:element name="chartTitle" type="sml:ChartMainTitleType" minOccurs="0"/>
                 <xs:element name="chartSubTitle" type="sml:ChartTitleType" minOccurs="0"/>
                 <xs:element name="chartStyle" type="sml:ChartStyleType" minOccurs="0"/>
                 <xs:element name="chartLegend" type="sml:ChartLegendType" minOccurs="0"/>
@@ -3910,6 +4322,7 @@
             <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
             <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
             <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
+            <xs:attribute name="ooxml" type="xs:boolean" use="optional"/>
         </xs:complexType>
     </xs:element>
 
