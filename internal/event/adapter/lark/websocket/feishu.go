@@ -18,6 +18,7 @@ import (
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/transport"
 )
 
 const maxEventBodyBytes = 1 << 20 // bound per-subscriber sendCh memory under runaway payloads
@@ -40,7 +41,10 @@ func (s *FeishuSource) Start(ctx context.Context, eventTypes []string, emit func
 		d.OnCustomizedEvent(et, rawHandler)
 	}
 
-	opts := []larkws.ClientOption{larkws.WithEventHandler(d)}
+	opts := []larkws.ClientOption{
+		larkws.WithEventHandler(d),
+		larkws.WithHttpClient(transport.SDKBootstrapHTTPClient()),
+	}
 	if s.Domain != "" {
 		opts = append(opts, larkws.WithDomain(s.Domain))
 	}

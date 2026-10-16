@@ -727,11 +727,14 @@ func TestDefaultClientBridgeCoversWebSocketSDKBootstrap(t *testing.T) {
 		return req.URL != nil && req.URL.Host == strings.TrimPrefix(server.URL, "http://")
 	}, identityTransportPolicy)
 
+	// v3.12.2 no longer captures http.DefaultClient. Production passes this
+	// same pinned pointer via larkws.WithHttpClient; the bridge still wraps it.
 	client := larkws.NewClient(
 		"test-app",
 		"test-secret",
 		larkws.WithDomain(server.URL),
 		larkws.WithAutoReconnect(false),
+		larkws.WithHttpClient(sdkBootstrapHTTPClient),
 	)
 	if err := client.Start(context.Background()); err == nil {
 		t.Fatal("WebSocket SDK Start() error = nil, want bootstrap failure")
@@ -781,10 +784,12 @@ func TestSDKTransportBridgeUsesPinnedClientAfterGlobalReplacement(t *testing.T) 
 		})
 	})
 
+	// Pass the init-captured client, not the replaced http.DefaultClient.
 	client := larkws.NewClient(
 		"test-app",
 		"test-secret",
 		larkws.WithAutoReconnect(false),
+		larkws.WithHttpClient(sdkBootstrapHTTPClient),
 	)
 	if err := client.Start(context.Background()); err == nil {
 		t.Fatal("WebSocket SDK Start() error = nil, want bootstrap failure")
