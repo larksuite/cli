@@ -203,7 +203,7 @@ lark-cli base +app-page-delete --app-token <app_token> --page-id <page_id> --yes
 
 | 用户诉求 | 本期状态 | 正确动作 |
 |---|---|---|
-| 自动排版 / 重新布局 / 美化页面组件 | 没有 App page arrange | 直接告知不支持；不要调用 `+dashboard-arrange` |
+| 自动排版 / 重新布局 / 美化页面组件 | 没有 App page arrange | 直接告知不支持；不要调用 `+dashboard-layout` |
 | 删除页面组件 | 没有 App block delete | 直接告知不支持，只能在 UI 处理；不要调用 `+dashboard-block-delete` |
 | 修改组件位置 / 大小 / 置顶 | 布局、位置、尺寸不属于公开 Create/Update 协议 | 直接告知不支持；不要用 `+app-block-update` 做空更新伪装成移动 |
 | 修改已有组件的 `type/sub_type` | `type/sub_type` 创建后不可修改 | 先读取当前 Block；无论是否已为目标类型，最终答复都要说明此约束。已匹配时说明无需写入；不匹配时说明只能在 UI 处理；不得调用或承诺用 `+app-block-update` 修改类型 |

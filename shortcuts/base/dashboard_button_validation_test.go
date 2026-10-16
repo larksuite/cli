@@ -27,7 +27,7 @@ func TestDashboardButtonCreatePreservesConfig(t *testing.T) {
 				"--name", "Run workflow", "--type", "button", "--data-config", config,
 			}, factory, stdout)
 			require.NoError(t, err)
-			require.JSONEq(t, `{"name":"Run workflow","type":"button","data_config":`+config+`}`, string(stub.CapturedBody))
+			require.JSONEq(t, `{"name":"Run workflow","type":"button","fine_grid":true,"data_config":`+config+`}`, string(stub.CapturedBody))
 			require.True(t, gjson.Get(stdout.String(), "data.created").Bool(), stdout.String())
 			require.Equal(t, "blk_button", gjson.Get(stdout.String(), "data.block.block_id").String(), stdout.String())
 		})

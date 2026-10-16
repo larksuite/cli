@@ -23,7 +23,7 @@ var BaseDashboardCreate = common.Shortcut{
 		{Name: "theme-style", Desc: "theme style, defaults to platform default when omitted"},
 	},
 	Tips: []string{
-		"Record the returned dashboard_id; dashboard block create/get/update/delete/arrange commands need it.",
+		"Record the returned dashboard_id; the dashboard block create/get/update/delete commands and +dashboard-layout all need it.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := map[string]interface{}{}

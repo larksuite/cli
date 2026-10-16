@@ -6,9 +6,11 @@ package base
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/dashboardlayout"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -20,6 +22,37 @@ func dashboardIDFlag(required bool) common.Flag {
 // blockIDFlag returns a Flag for dashboard block ID.
 func blockIDFlag(required bool) common.Flag {
 	return common.Flag{Name: "block-id", Desc: "dashboard block ID", Required: required}
+}
+
+// fineGridKey is the backward-compatibility switch the dashboard write API added
+// for the grid change: omitting it means the legacy 12-col grid, i.e.
+// byte-for-byte the old behavior every already-released CLI depends on. Only an
+// explicit JSON boolean true selects the fine-grained 48-col grid. The switch
+// used to be a numeric grid_cols=48; the server now rejects a body that still
+// carries grid_cols with InvalidParam, so that key must never be sent again.
+//
+// This repository is 48-col end to end — internal/dashboardlayout's GridCols and
+// the size tables in the skill docs are all calibrated for 48 —
+// so every request that writes coordinates declares the fine grid explicitly and
+// never relies on the server default. That includes creates WITHOUT --position:
+// the server auto-packs those, and auto-packing on a 12-col grid lands pixels
+// that do not line up with anything else this CLI computes.
+//
+// Reads carry no grid parameter at all: the read endpoints accept none, and the
+// 48-col coordinates are converted from standard_position on the CLI side (see
+// dashboard_block_position.go). TestDashboardFineGridContract pins the wire shape.
+const fineGridKey = "fine_grid"
+
+// withFineGrid stamps the fine-grid declaration onto a write request's body.
+// Call it at every coordinate-carrying call site rather than burying it in one
+// transport helper: DryRun and Execute build their maps separately, and a preview
+// that omits a parameter the real request sends is worse than no preview.
+func withFineGrid(fields map[string]interface{}) map[string]interface{} {
+	if fields == nil {
+		fields = map[string]interface{}{}
+	}
+	fields[fineGridKey] = true
+	return fields
 }
 
 // includeBlockType / omitBlockType name buildDashboardBlockBody's bool at the
@@ -55,7 +88,13 @@ func validateDashboardBlockWriteConfig(cfg map[string]interface{}) error {
 //     this same parse before either DryRun or Execute, so malformed input cannot
 //     disappear from a preview while failing only on the live request.
 func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, includeType bool) (map[string]interface{}, error) {
+	// create 一律声明 fine_grid：不带 position 时服务端会自动装箱，装箱也按这个栅格算。
+	// update 只在带 position 时声明：不传坐标的 update 不触发装箱，栅格声明无意义，
+	// 不带上可保持纯配置更新（name / data_config / linkage）的请求体与主干一致。
 	body := map[string]interface{}{}
+	if includeType || strings.TrimSpace(runtime.Str("position")) != "" {
+		body = withFineGrid(body)
+	}
 	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
 		body["name"] = name
 	}
@@ -87,6 +126,31 @@ func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, inclu
 		body["linkage"] = linkage
 	}
 	return body, nil
+}
+
+// 仪表盘布局只有一条流程：读现有组件 → 规划全部组件坐标 → 新建时带 --position →
+// 最后用 +dashboard-layout 提交盘上全部组件的坐标（它只写变化的组件，并总是调服务端
+// 兜底整理空洞、重叠与越界）。help 里的 Tips 是静态的，调用方不一定每次读，所以每次
+// 成功的 create/update 之后都走 stderr 把「最后一定要调 +dashboard-layout」再说一遍。
+//
+// 按"调用方当前在走哪条路"分两条：
+//   - create 没传 --position：组件由服务端自动放置，提示下一个组件起带上规划好的坐标；
+//   - create/update 传了 --position：这是推荐做法，只提示收尾那一步。
+//
+// 两条互斥，每次调用最多一条，不会把 stderr 刷成两行。
+const (
+	dashboardBlockNoPositionHint = "Tip: the block was created without coordinates, so the server placed it. Plan the coordinates of every block first and pass them to +dashboard-block-create with --position. With or without --position, finish by calling base +dashboard-layout with the coordinates of every block on the dashboard, existing blocks included; it writes only the blocks that changed and then runs the server's tidy pass for holes, overlaps and out-of-bounds blocks."
+	dashboardWithPositionHint    = "Tip: --position placed this block exactly as given. After the last block is created or moved, finish by calling base +dashboard-layout with the coordinates of every block on the dashboard, existing blocks included; it writes only the blocks that changed and then runs the server's tidy pass for holes, overlaps and out-of-bounds blocks."
+)
+
+// emitDashboardPositionHint 在一次成功的 create/update 之后把对应提示写到 stderr。
+// 必须在 runtime.Out 之前调用，且只走 stderr——stdout 的 JSON 是契约，不能掺提示文本。
+func emitDashboardPositionHint(runtime *common.RuntimeContext, createdWithoutPosition bool) {
+	hint := dashboardWithPositionHint
+	if createdWithoutPosition {
+		hint = dashboardBlockNoPositionHint
+	}
+	fmt.Fprintln(runtime.IO().ErrOut, hint)
 }
 
 // positionKeys are the four grid coordinates a position object must carry.
@@ -222,6 +286,7 @@ func dryRunDashboardDelete(_ context.Context, runtime *common.RuntimeContext) *c
 
 // dryRunDashboardBlockList returns a DryRunAPI for listing dashboard blocks.
 func dryRunDashboardBlockList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	// 读接口不带任何栅格参数：网关只透传分页参数，48 列坐标由 CLI 从 standard_position 换算。
 	params := map[string]interface{}{}
 	params["page_size"] = runtime.Int("page-size")
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
@@ -367,6 +432,26 @@ func executeDashboardDelete(runtime *common.RuntimeContext) error {
 
 // ── Dashboard Block CRUD ────────────────────────────────────────────
 
+// dashboardBlockListPageSize is the page size +dashboard-layout uses to walk the
+// block list. It matches the documented maximum so a whole dashboard normally
+// arrives in one page.
+const dashboardBlockListPageSize = 100
+
+// fetchDashboardBlockPage retrieves one page of a dashboard's blocks. It is the
+// single fetch path behind both +dashboard-block-list and the whole-dashboard
+// walk in +dashboard-layout, so the two cannot drift apart.
+//
+// Every item's coordinates come back already rewritten to the 48-col grid (see
+// dashboard_block_position.go); lossy lists the blocks that had no standard_position
+// and fell back to the 12-col rounded value, for the caller to report.
+func fetchDashboardBlockPage(runtime *common.RuntimeContext, params map[string]interface{}) (data map[string]interface{}, lossy []string, err error) {
+	data, err = baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id"), "blocks"), params, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	return data, normalizeDashboardBlockItems(data), nil
+}
+
 // executeDashboardBlockList lists all blocks in a dashboard.
 func executeDashboardBlockList(runtime *common.RuntimeContext) error {
 	params := map[string]interface{}{}
@@ -374,12 +459,123 @@ func executeDashboardBlockList(runtime *common.RuntimeContext) error {
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id"), "blocks"), params, nil)
+	data, lossy, err := fetchDashboardBlockPage(runtime, params)
 	if err != nil {
 		return err
 	}
+	emitLegacyPositionNotice(runtime, lossy)
 	runtime.Out(data, nil)
 	return nil
+}
+
+// dashboardBlockSnapshot 是从组件列表投影出来的类型化组件快照，
+// 布局计算只消费这几项，不把松散 map 带到下游。
+type dashboardBlockSnapshot struct {
+	ID          string
+	ChartType   string
+	HasPosition bool
+	Position    dashboardlayout.Component
+}
+
+// listAllDashboardBlocks 分页读完一个仪表盘的全部组件。
+// +dashboard-layout 要校验 --layout 覆盖了盘上全部组件，所以必须收齐，不能只看第一页。
+func listAllDashboardBlocks(runtime *common.RuntimeContext) ([]dashboardBlockSnapshot, error) {
+	var blocks []dashboardBlockSnapshot
+	var lossy []string
+	pageToken := ""
+	for {
+		params := map[string]interface{}{"page_size": dashboardBlockListPageSize}
+		if pageToken != "" {
+			params["page_token"] = pageToken
+		}
+		data, pageLossy, err := fetchDashboardBlockPage(runtime, params)
+		if err != nil {
+			return nil, err
+		}
+		lossy = append(lossy, pageLossy...)
+		items, _ := data["items"].([]interface{})
+		for _, item := range items {
+			obj, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if snapshot, ok := projectDashboardBlockSnapshot(obj); ok {
+				blocks = append(blocks, snapshot)
+			}
+		}
+		hasMore, _ := data["has_more"].(bool)
+		nextToken, _ := data["page_token"].(string)
+		if !hasMore || strings.TrimSpace(nextToken) == "" {
+			// 收齐后只陈述一次，不按页各报一行。
+			emitLegacyPositionNotice(runtime, lossy)
+			return blocks, nil
+		}
+		pageToken = nextToken
+	}
+}
+
+// projectDashboardBlockSnapshot 把一条组件记录投影成 dashboardBlockSnapshot。
+// 写入用的字段名是 position，而读回侧历史上也出现过 layout，两个名字都认，
+// 谁都读不到就当作"没有可读坐标"，由调用方决定怎么处理。
+// 入参必须已经过 normalizeDashboardBlockPosition：这里读到的坐标按 48 列使用。
+func projectDashboardBlockSnapshot(obj map[string]interface{}) (dashboardBlockSnapshot, bool) {
+	id, _ := obj["block_id"].(string)
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return dashboardBlockSnapshot{}, false
+	}
+	chartType, _ := obj["type"].(string)
+	if strings.TrimSpace(chartType) == "" {
+		chartType, _ = obj["block_type"].(string)
+	}
+	snapshot := dashboardBlockSnapshot{ID: id, ChartType: normalizeDashboardBlockType(chartType)}
+	for _, key := range []string{"position", "layout"} {
+		pos, ok := obj[key].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		x, okX := toIntStrict(pos["x"])
+		y, okY := toIntStrict(pos["y"])
+		w, okW := toIntStrict(pos["w"])
+		h, okH := toIntStrict(pos["h"])
+		if okX && okY && okW && okH {
+			snapshot.HasPosition = true
+			snapshot.Position = dashboardlayout.Component{ID: id, ChartType: snapshot.ChartType, X: x, Y: y, W: w, H: h}
+			break
+		}
+	}
+	return snapshot, true
+}
+
+// submitDashboardPositions 把整批坐标一次提交到 arrange 端点。
+//
+// 相对逐个 PATCH 的关键差别不是快，是**原子**：服务端把整批变更合成一次 OT 提交，
+// 要么全部生效要么全部不生效。逐个 PATCH 时中途失败会把盘面留在"前几个已经挪了、
+// 后几个还在原位"的状态，且没有可回滚的位置。
+//
+// comps 为空时不发请求——空 positions 会被服务端按参数非法拒绝。
+func submitDashboardPositions(runtime *common.RuntimeContext, comps []dashboardlayout.Component) error {
+	if len(comps) == 0 {
+		return nil
+	}
+	_, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id"), "arrange"), nil, dashboardPositionsBody(comps))
+	return err
+}
+
+// dashboardPositionsBody 是批量写坐标的请求体，预览与真实请求共用。
+// fine_grid 必须显式声明：服务端默认 12 列，漏掉会把这批 48 列坐标按 12 列换算成像素。
+func dashboardPositionsBody(comps []dashboardlayout.Component) map[string]interface{} {
+	positions := make([]map[string]interface{}, 0, len(comps))
+	for _, comp := range comps {
+		positions = append(positions, map[string]interface{}{
+			"block_id": comp.ID,
+			"x":        comp.X,
+			"y":        comp.Y,
+			"w":        comp.W,
+			"h":        comp.H,
+		})
+	}
+	return withFineGrid(map[string]interface{}{"positions": positions})
 }
 
 // executeDashboardBlockGet retrieves a dashboard block by ID.
@@ -392,6 +588,7 @@ func executeDashboardBlockGet(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	normalizeSingleBlockOutput(runtime, data, runtime.Str("block-id"))
 	runtime.Out(map[string]interface{}{"block": data}, nil)
 	return nil
 }
@@ -423,6 +620,8 @@ func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	emitDashboardPositionHint(runtime, strings.TrimSpace(runtime.Str("position")) == "")
+	normalizeSingleBlockOutput(runtime, data, "")
 	runtime.Out(map[string]interface{}{"block": data, "created": true}, nil)
 	return nil
 }
@@ -443,6 +642,11 @@ func executeDashboardBlockUpdate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	// 不带 --position 的 update 只改 name/data_config，没碰布局，不提示。
+	if strings.TrimSpace(runtime.Str("position")) != "" {
+		emitDashboardPositionHint(runtime, false)
+	}
+	normalizeSingleBlockOutput(runtime, data, runtime.Str("block-id"))
 	runtime.Out(map[string]interface{}{"block": data, "updated": true}, nil)
 	return nil
 }

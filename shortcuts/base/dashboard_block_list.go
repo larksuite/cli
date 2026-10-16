@@ -5,7 +5,6 @@ package base
 
 import (
 	"context"
-	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -27,24 +26,15 @@ var BaseDashboardBlockList = common.Shortcut{
 	Tips: []string{
 		"lark-cli base +dashboard-block-list --base-token <base_token> --dashboard-id <dashboard_id>",
 		"Use returned block_id and type values for +dashboard-block-get/update/delete/get-data.",
+		"Each block's position is on the 48-col grid (converted by the CLI from the server's pixel coordinates), the same grid +dashboard-layout takes; plan new coordinates against these numbers directly.",
 		"For a complete dashboard, use --page-size 100; while has_more=true, pass the returned page_token to --page-token and continue until has_more=false.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := common.ValidatePageSizeTyped(runtime, "page-size", 20, 1, 100)
 		return err
 	},
-	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		params := map[string]interface{}{}
-		params["page_size"] = runtime.Int("page-size")
-		if pt := strings.TrimSpace(runtime.Str("page-token")); pt != "" {
-			params["page_token"] = pt
-		}
-		return common.NewDryRunAPI().
-			GET("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks").
-			Params(params).
-			Set("base_token", runtime.Str("base-token")).
-			Set("dashboard_id", runtime.Str("dashboard-id"))
-	},
+	// 预览走 dashboard_ops.go 的共享构造，理由同 +dashboard-block-get。
+	DryRun: dryRunDashboardBlockList,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeDashboardBlockList(runtime)
 	},

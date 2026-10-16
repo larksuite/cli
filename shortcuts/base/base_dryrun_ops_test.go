@@ -565,8 +565,18 @@ func TestDryRunDashboardOps(t *testing.T) {
 
 	assertDryRunContains(t, dryRunDashboardBlockList(ctx, rt), "GET /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks", "page_size=50", "page_token=pt_1")
 	assertDryRunContains(t, dryRunDashboardBlockGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1", "user_id_type=open_id")
-	assertDryRunContains(t, dryRunDashboardBlockCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks", "user_id_type=open_id")
+	// 读接口不带栅格参数：网关会丢掉查询串里的栅格参数，48 列坐标由 CLI 从 standard_position 换算。
+	for _, dr := range []interface{ Format() string }{dryRunDashboardBlockList(ctx, rt), dryRunDashboardBlockGet(ctx, rt)} {
+		if out := dr.Format(); strings.Contains(out, "grid_cols") || strings.Contains(out, "fine_grid") {
+			t.Fatalf("read preview must not carry a grid parameter:\n%s", out)
+		}
+	}
+	assertDryRunContains(t, dryRunDashboardBlockCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks", "user_id_type=open_id", `"fine_grid":true`)
+	// 不带 --position 的 update 不触发装箱，不声明栅格；带坐标的 update 见 TestDryRunDashboardBlockPositionAndNumberFormat。
 	assertDryRunContains(t, dryRunDashboardBlockUpdate(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1", "user_id_type=open_id")
+	if out := dryRunDashboardBlockUpdate(ctx, rt).Format(); strings.Contains(out, "fine_grid") {
+		t.Fatalf("update without --position must not declare the grid:\n%s", out)
+	}
 	assertDryRunContains(t, dryRunDashboardBlockDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1")
 }
 
@@ -594,10 +604,10 @@ func TestDryRunDashboardBlockPositionAndNumberFormat(t *testing.T) {
 
 	assertDryRunContains(t, dryRunDashboardBlockCreate(ctx, rt),
 		"POST /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks",
-		`"position"`, `"w":6`, `"number_format"`, `"dollar_rounded"`)
+		`"position"`, `"w":6`, `"number_format"`, `"dollar_rounded"`, `"fine_grid":true`)
 	assertDryRunContains(t, dryRunDashboardBlockUpdate(ctx, rt),
 		"PATCH /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1",
-		`"position"`, `"w":6`)
+		`"position"`, `"w":6`, `"fine_grid":true`)
 
 	pc := newParseCtx(rt)
 	updateBody, err := buildDashboardBlockBody(pc, rt, false)

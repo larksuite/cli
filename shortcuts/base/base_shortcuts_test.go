@@ -195,7 +195,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+form-display-settings-get", "+form-display-settings-update",
 		"+form-share-qrcode-get", "+form-share-qrcode-download",
 		"+dashboard-list", "+dashboard-get", "+dashboard-share-get", "+dashboard-share-update", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
-		"+dashboard-block-list", "+dashboard-block-get", "+dashboard-block-get-data", "+dashboard-block-create", "+dashboard-block-update", "+dashboard-block-delete",
+		"+dashboard-layout", "+dashboard-block-list", "+dashboard-block-get", "+dashboard-block-get-data", "+dashboard-block-create", "+dashboard-block-update", "+dashboard-block-delete",
 		"+workspace-create", "+workspace-entity-list", "+workspace-move-in",
 		"+app-create", "+app-get",
 		"+app-page-list", "+app-page-get", "+app-page-create", "+app-page-update", "+app-page-delete",
@@ -887,10 +887,17 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			},
 		},
 		{
-			name:     "dashboard arrange",
-			shortcut: BaseDashboardArrange,
+			name:     "dashboard layout",
+			shortcut: BaseDashboardLayout,
 			wantTips: []string{
-				"not deterministic or position-specific",
+				"The grid is 48 columns wide.",
+				// 唯一流程：读现有组件 → 规划全部坐标 → 建组件带 --position → 最后调本命令。
+				"+dashboard-block-list",
+				"plan the coordinates of ALL blocks",
+				"+dashboard-block-create --position",
+				"Always finish a layout change (creating, moving or resizing blocks) with this command",
+				"Do not call this command after only deleting blocks",
+				"--layout must list every block on the dashboard",
 			},
 		},
 		{

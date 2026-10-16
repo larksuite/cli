@@ -442,6 +442,9 @@
     "base +dashboard-get": {
       "agentSupport": "allowed"
     },
+    "base +dashboard-layout": {
+      "agentSupport": "allowed"
+    },
     "base +dashboard-list": {
       "agentSupport": "allowed"
     },

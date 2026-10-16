@@ -32,7 +32,7 @@ func TestDashboardLinkageRequest(t *testing.T) {
 		{"replace targets", []string{"--linkage", `{"target_block_ids":["chtcnC","chtcnB"]}`}, `{"linkage":{"target_block_ids":["chtcnC","chtcnB"]}}`},
 		{"clear", []string{"--linkage", `{"target_block_ids":[]}`}, `{"linkage":{"target_block_ids":[]}}`},
 		{"no validate", []string{"--linkage", `{"target_block_ids":["chtcnB"]}`, "--no-validate"}, `{"linkage":{"target_block_ids":["chtcnB"]}}`},
-		{"combined update", []string{"--name", "Regions", "--data-config", `{"count_all":true}`, "--position", `{"x":0,"y":0,"w":6,"h":4}`, "--linkage", `{"target_block_ids":["chtcnB"]}`}, `{"name":"Regions","data_config":{"count_all":true},"position":{"x":0,"y":0,"w":6,"h":4},"linkage":{"target_block_ids":["chtcnB"]}}`},
+		{"combined update", []string{"--name", "Regions", "--data-config", `{"count_all":true}`, "--position", `{"x":0,"y":0,"w":6,"h":4}`, "--linkage", `{"target_block_ids":["chtcnB"]}`}, `{"name":"Regions","data_config":{"count_all":true},"position":{"x":0,"y":0,"w":6,"h":4},"fine_grid":true,"linkage":{"target_block_ids":["chtcnB"]}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			factory, stdout, reg := newExecuteFactory(t)

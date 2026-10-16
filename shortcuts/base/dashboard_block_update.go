@@ -26,7 +26,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		{Name: "name", Desc: "new block name"},
 		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-config.md for the SSOT"},
 		{Name: "linkage", Desc: `same-datasource chart linkage JSON or @file: {"target_block_ids":["<block_id>"]}. Replaces the source's complete target list; [] clears it; omit to preserve. field_mappings is not supported. Datasource equality is validated by the API`},
-		{Name: "position", Desc: `optional. component position+size in 12-col grid, JSON {"x","y","w","h"}; all four keys required and numeric (position is submitted whole, so a partial object cannot express a complete placement). Advisory bounds x/y>=0, 1<=w<=12 and x+w<=12, h>=1 — coordinate VALUES are not validated locally and pass through as given; the server auto-arranges out-of-range or overlapping positions. Omit to leave layout unchanged`},
+		{Name: "position", Desc: `optional new placement for this block. Moving or resizing blocks is part of the dashboard layout: plan every block's coordinates and finish with +dashboard-layout carrying all of them (it writes the changed blocks and runs the server's tidy pass), so you normally put the new coordinates there instead of here. Component position+size in the 48-col grid, JSON {"x","y","w","h"}; all four keys required and numeric (position is submitted whole, so a partial object cannot express a complete placement). Advisory bounds x/y>=0, 1<=w<=48 and x+w<=48, h>=1 — coordinate VALUES are not validated locally and pass through as given. Omit to leave layout unchanged`},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local SEMANTIC validation: data_config checks + normalization, and the --position x/y/w/h completeness check. JSON syntax and linkage constraints are always checked. Sends data_config and position as-is"},
 	},
@@ -34,7 +34,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"number_format":{"formatName":"dollar_rounded","precision":0}}'`,
-		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --position '{"x":6,"y":0,"w":6,"h":4}'`,
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --position '{"x":12,"y":0,"w":36,"h":12}'`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <ranking_block_id> --data-config '{"limit_size":20}'`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <slicer_block_id> --data-config '{"order":"desc"}'`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <slicer_block_id> --data-config '{"filter":null}'`,
@@ -49,7 +49,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		`For progress, {"progress":{"target":{"value":200}}} updates an existing custom target. current/target subfields merge server-side and arrays replace whole. Omitted fields are preserved; field-source filter:null clears a filter. Source or mode changes require complete target configuration. See lark-base-dashboard-progress.md.`,
 		"For view blocks, pass the returned tableId/viewId as --table-id/--view-id to +view-get-filter, +view-get-sort, +view-get-group, or +view-get-visible-fields to inspect persisted configuration. Submit only the changed data_config fields, such as sort_by or visible_fields; do not resend the full configuration because block GET omits the write fields. The server validates the patch against the existing component. Read lark-base-dashboard-view.md for update and readback guidance.",
 		"Dashboard block create/update reject top-level data_config.timebar and data_config.card, including null, unless --no-validate is set. This does not restrict view_type or change reads of existing blocks.",
-		"--position is optional precise layout in a 12-col grid; omit it to leave the current layout unchanged. Coordinate values are not validated locally; the server auto-arranges out-of-range or overlapping positions. To re-tidy an existing dashboard use +dashboard-arrange instead.",
+		"--position is optional (48-col grid, 1<=w<=48, x+w<=48); omit it to leave the current layout unchanged. Whether or not you pass it, a layout change ends with +dashboard-layout carrying the coordinates of every block on the dashboard.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pc := newParseCtx(runtime)

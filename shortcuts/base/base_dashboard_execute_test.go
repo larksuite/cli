@@ -1423,6 +1423,13 @@ func TestBaseDashboardBlockExecuteUpdate_TextType(t *testing.T) {
 
 // ── Dashboard Arrange ────────────────────────────────────────────────
 
+// TestBaseDashboardArrangeHidden 确认 +dashboard-arrange 仅为兼容旧 skill 保留：可执行但不出现在 --help。
+func TestBaseDashboardArrangeHidden(t *testing.T) {
+	if !BaseDashboardArrange.Hidden {
+		t.Fatal("+dashboard-arrange must stay hidden from --help; prefer +dashboard-layout")
+	}
+}
+
 // TestBaseDashboardExecuteArrange tests the +dashboard-arrange command for auto-arranging dashboard blocks.
 func TestBaseDashboardExecuteArrange(t *testing.T) {
 	t.Run("arrange dashboard blocks", func(t *testing.T) {

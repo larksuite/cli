@@ -29,6 +29,8 @@ func TestDashboardCountdownCreateAndGet(t *testing.T) {
 			readback := strings.ReplaceAll(config, `"fieldName":"Deadline"}`, `"fieldName":"Deadline","mode":"integrated"}`)
 			block := `{"block_id":"blk_countdown","name":"Deadline","type":"countdown","position":{"x":0,"y":0,"w":4,"h":4},"data_config":` + readback + `}`
 			response := []byte(`{"code":0,"data":` + block + `}`)
+			// 服务端回包没有 standard_position 时，CLI 把 12 列取整坐标 ×4 回落成 48 列输出
+			wantBlock := strings.Replace(block, `"w":4,"h":4`, `"w":16,"h":16`, 1)
 			create := &httpmock.Stub{Method: "POST", URL: "/bases/app_x/dashboards/dsh_x/blocks", RawBody: response}
 			reg.Register(create)
 			reg.Register(&httpmock.Stub{Method: "GET", URL: "/bases/app_x/dashboards/dsh_x/blocks/blk_countdown", RawBody: response})
@@ -39,12 +41,12 @@ func TestDashboardCountdownCreateAndGet(t *testing.T) {
 			require.JSONEq(t, config, gjson.GetBytes(create.CapturedBody, "data_config").Raw)
 			require.Equal(t, "countdown", gjson.GetBytes(create.CapturedBody, "type").String())
 			require.True(t, gjson.Get(stdout.String(), "data.created").Bool())
-			require.JSONEq(t, block, gjson.Get(stdout.String(), "data.block").Raw)
+			require.JSONEq(t, wantBlock, gjson.Get(stdout.String(), "data.block").Raw)
 			err = runShortcut(t, BaseDashboardBlockGet, []string{
 				"+dashboard-block-get", "--base-token", "app_x", "--dashboard-id", "dsh_x", "--block-id", "blk_countdown",
 			}, factory, stdout)
 			require.NoError(t, err)
-			require.JSONEq(t, block, gjson.Get(stdout.String(), "data.block").Raw)
+			require.JSONEq(t, wantBlock, gjson.Get(stdout.String(), "data.block").Raw)
 		})
 	}
 }

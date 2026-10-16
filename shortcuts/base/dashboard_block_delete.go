@@ -25,6 +25,7 @@ var BaseDashboardBlockDelete = common.Shortcut{
 	Tips: []string{
 		"lark-cli base +dashboard-block-delete --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --yes",
 		baseHighRiskYesTip,
+		"Deleting a block is not a layout change: do not call +dashboard-layout afterwards, because its tidy pass would fill the hole and move the remaining blocks.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().

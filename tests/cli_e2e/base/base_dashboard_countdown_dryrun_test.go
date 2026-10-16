@@ -41,7 +41,7 @@ func TestDashboardCountdownCreateDryRun(t *testing.T) {
 				require.Empty(t, result.Stderr)
 				require.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
 				require.Equal(t, "/open-apis/base/v3/bases/app_x/dashboards/dsh_x/blocks", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
-				require.JSONEq(t, `{"name":"Deadline","type":"countdown","data_config":`+config+`}`, clie2e.DryRunGet(result.Stdout, "api.0.body").Raw)
+				require.JSONEq(t, `{"name":"Deadline","type":"countdown","data_config":`+config+`,"fine_grid":true}`, clie2e.DryRunGet(result.Stdout, "api.0.body").Raw)
 			})
 		}
 	}

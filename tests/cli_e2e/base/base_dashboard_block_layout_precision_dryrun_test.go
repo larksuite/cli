@@ -46,6 +46,10 @@ func TestBaseDashboardBlockCreateDryRun_PositionAndNumberFormat(t *testing.T) {
 	require.Equal(t, int64(6), clie2e.DryRunGet(out, "api.0.body.position.w").Int(), out)
 	require.Equal(t, int64(4), clie2e.DryRunGet(out, "api.0.body.position.h").Int(), out)
 	require.False(t, clie2e.DryRunGet(out, "api.0.body.data_config.position").Exists(), out)
+	// fine_grid rides at the top level next to position: without it the server
+	// reads the coordinates on the legacy 12-col grid.
+	require.True(t, clie2e.DryRunGet(out, "api.0.body.fine_grid").Bool(), out)
+	require.False(t, clie2e.DryRunGet(out, "api.0.body.grid_cols").Exists(), out)
 	// number_format nested inside data_config
 	require.Equal(t, "dollar_rounded", clie2e.DryRunGet(out, "api.0.body.data_config.number_format.formatName").String(), out)
 	require.Equal(t, int64(2), clie2e.DryRunGet(out, "api.0.body.data_config.number_format.precision").Int(), out)
@@ -77,6 +81,8 @@ func TestBaseDashboardBlockUpdateDryRun_Position(t *testing.T) {
 	out := result.Stdout
 	require.Equal(t, "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a", clie2e.DryRunGet(out, "api.0.url").String(), out)
 	require.Equal(t, "PATCH", clie2e.DryRunGet(out, "api.0.method").String(), out)
+	require.True(t, clie2e.DryRunGet(out, "api.0.body.fine_grid").Bool(), out)
+	require.False(t, clie2e.DryRunGet(out, "api.0.body.grid_cols").Exists(), out)
 	require.Equal(t, int64(6), clie2e.DryRunGet(out, "api.0.body.position.x").Int(), out)
 	require.Equal(t, int64(6), clie2e.DryRunGet(out, "api.0.body.position.w").Int(), out)
 	// update must not carry type; the API rejects a type change

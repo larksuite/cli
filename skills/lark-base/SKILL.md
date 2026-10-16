@@ -300,14 +300,14 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 ## Dashboard Block
 
-Dashboard Block 是 Base Block 树中的仪表盘容器，承载主题、布局和内部组件。图表、指标卡和文本等内部组件在 Dashboard API 中也称为 Block，但不属于 Base Block 树。
+Dashboard Block 是 Base Block 树中的仪表盘容器，承载主题、布局和内部组件。图表、指标卡和文本等内部组件在 Dashboard API 中也称为 Block，但不属于 Base Block 树。布局收尾使用 `+dashboard-layout` 提交盘上全部内部组件的 48 列坐标。
 
 - [Dashboard](references/lark-base-dashboard.md)：仪表盘的读取、建设、布局和分享，所有仪表盘及组件操作前读取；由该入口继续路由专项文档。
   - `+dashboard-list`：列出仪表盘并定位目标。
   - `+dashboard-get`：读取仪表盘整体信息。
   - `+dashboard-create`：创建仪表盘。
   - `+dashboard-update`：修改仪表盘名称或主题。
-  - `+dashboard-arrange`：统一编排内部组件布局。
+  - `+dashboard-layout`：提交盘上全部内部组件的 48 列坐标并完成布局收尾。
   - `+dashboard-share-get`：读取仪表盘分享设置。
   - `+dashboard-share-update`：修改分享启停、访问范围和返回源 Base 入口。
   - `+dashboard-block-list`：列出仪表盘内部组件。
@@ -316,6 +316,8 @@ Dashboard Block 是 Base Block 树中的仪表盘容器，承载主题、布局�
   - `+dashboard-block-update`：修改已有组件的配置。
   - `+dashboard-block-delete`：删除指定组件。
   - `+dashboard-block-get-data`：读取数据组件的计算结果。
+
+**布局：** 只要涉及布局（新建、追加组件，调整位置或大小，重排、美化），规划任何坐标之前必须先完整读 [仪表盘布局与视觉规范](references/lark-base-dashboard-visual-standards.md)，再按 [Dashboard](references/lark-base-dashboard.md) 的「仪表盘布局工作流」操作：读现有组件 → 规划坐标 → 新建组件时带 `--position` → 最后用 `+dashboard-layout` 提交盘上全部组件的坐标。只删除组件不算布局改动，删完不调 `+dashboard-layout`。
 
 ## 应用模式与 Workspace 心智模型
 

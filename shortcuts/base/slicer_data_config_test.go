@@ -50,6 +50,8 @@ func TestBaseDashboardBlockSlicerRequests(t *testing.T) {
 				args[0] = "+dashboard-block-create"
 				args = append(args, "--type", "slicer")
 				want["type"] = "slicer"
+				// create 一律声明 48 列栅格（服务端自动装箱也按它算）
+				want["fine_grid"] = true
 			} else {
 				url += "/blk_x"
 				args = append(args, "--block-id", "blk_x")

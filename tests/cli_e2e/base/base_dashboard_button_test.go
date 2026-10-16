@@ -25,7 +25,7 @@ func TestBaseDashboardButtonDryRun(t *testing.T) {
 			name: "create", command: "+dashboard-block-create",
 			args:   []string{"--name", "Run workflow", "--type", "button"},
 			method: "POST", path: "/open-apis/base/v3/bases/app_x/dashboards/dsh_x/blocks",
-			body: `{"name":"Run workflow","type":"button","data_config":{"label":"  Run workflow  "}}`,
+			body: `{"name":"Run workflow","type":"button","data_config":{"label":"  Run workflow  "},"fine_grid":true}`,
 		},
 		{
 			name: "update label", command: "+dashboard-block-update",

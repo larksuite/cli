@@ -9,6 +9,9 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// BaseDashboardArrange 已被 +dashboard-layout 取代，只为兼容保留：
+// golang 代码与 skill 跨仓库发布，旧版 skill 仍会调用本命令，直接删除会让 agent 执行报错。
+// 因此保留可执行、但从 --help 隐藏，skill 中也不再引导使用。
 var BaseDashboardArrange = common.Shortcut{
 	Service:     "base",
 	Command:     "+dashboard-arrange",
@@ -16,6 +19,7 @@ var BaseDashboardArrange = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"base:dashboard:update"},
 	AuthTypes:   authTypes(),
+	Hidden:      true, // hidden from --help; prefer +dashboard-layout
 	HasFormat:   true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
