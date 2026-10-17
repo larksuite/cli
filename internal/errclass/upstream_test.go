@@ -124,6 +124,34 @@ func TestBuildAPIError_PermissionDiagnosticRedaction(t *testing.T) {
 	}
 }
 
+func TestBuildAPIError_PermissionDiagnosticRedactsCompleteSensitiveValues(t *testing.T) {
+	// A narrower redaction must not split a larger sensitive value and leave
+	// its identifying or credential-bearing fragments visible to later passes.
+	cases := map[string]string{
+		"email_with_subdomain": "first.last@team.example.test",
+		"email_with_identity":  "ou_exampleUserID@team.example.test",
+		"opaque_with_digits":   "prefixKeyExample12345678901234567890suffixKeyExample",
+		"opaque_with_identity": "prefixPrivateKey-ou_exampleUserID0123456789suffix",
+		"jwt_with_digits":      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature",
+		"url_with_email":       "https://first.last@example.test/path/12345678901234567890",
+		"bearer_with_digits":   "Bearer prefixKeyExample12345678901234567890suffixKeyExample",
+	}
+	for name, value := range cases {
+		t.Run(name, func(t *testing.T) {
+			text := "Request denied for " + value
+			err := errclass.BuildAPIError(map[string]any{
+				"code": 1061004, "msg": text,
+				"error": map[string]any{"details": []any{map[string]any{"value": text}}},
+			}, errclass.ClassifyContext{})
+			diagnostic := requirePermissionError(t, err).Upstream
+			const want = "Request denied for [REDACTED]"
+			if diagnostic == nil || diagnostic.Message != want || len(diagnostic.Details) != 1 || diagnostic.Details[0] != want {
+				t.Fatalf("sensitive value was only partially redacted: %+v", diagnostic)
+			}
+		})
+	}
+}
+
 func TestBuildAPIError_PermissionDiagnosticAllowlistAndMalformedShapes(t *testing.T) {
 	const secret = "ignored-sensitive-payload"
 	response := map[string]any{

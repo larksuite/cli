@@ -77,14 +77,16 @@ var diagnosticRedactions = []*regexp.Regexp{
 	// Drop complete URLs, including userinfo, path, query and fragment. None
 	// of those components is needed to classify a permission error.
 	regexp.MustCompile(`(?i)\b(?:https?|wss?|ftp)://[^\s<>"']+`),
-	regexp.MustCompile(`\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]+\b`),
-	regexp.MustCompile(`(?i)\b(?:[uat]-[a-z0-9_-]{8,}|(?:ou|on|oc|om)_[a-z0-9_-]+)\b`),
+	// Redact complete values before narrower patterns can split them: email
+	// domains can resemble JWTs, and opaque tokens can contain IDs or phones.
 	regexp.MustCompile(`[\p{L}\p{N}._%+\-]+@[\p{L}\p{N}.\-]+\.[\p{L}]{2,}`),
+	regexp.MustCompile(`\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]+\b`),
+	regexp.MustCompile(`\b[A-Za-z0-9_-]{32,}\b`),
+	regexp.MustCompile(`(?i)\b(?:[uat]-[a-z0-9_-]{8,}|(?:ou|on|oc|om)_[a-z0-9_-]+)\b`),
 	regexp.MustCompile(`\+?[0-9][0-9 ()-]{7,}[0-9]`),
 	// Quoted fragments can be echoed personal values or request payloads.
 	// Redact escaped quotes and incomplete strings through the end of input.
 	regexp.MustCompile(`(?s)"(?:\\.|[^"\\])*(?:"|\\?\z)`),
-	regexp.MustCompile(`\b[A-Za-z0-9_-]{32,}\b`),
 }
 
 // A single quote inside a word is an apostrophe, not the start of an echoed
