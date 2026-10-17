@@ -112,6 +112,38 @@ func TestHandleRootErrorRedactsEncodedAndObfuscatedDiagnostics(t *testing.T) {
 	}
 }
 
+func TestHandleRootErrorRedactsCredentialsJoinedToPrefix(t *testing.T) {
+	for _, scheme := range []string{"Bearer", "Basic"} {
+		for name, separator := range map[string]string{
+			"zero_width": "\u200b", "nul": "\x00", "ansi": "\x1b[31m", "invalid_utf8": "\xff",
+		} {
+			t.Run(scheme+"/"+name, func(t *testing.T) {
+				t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+				f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+				text := "Denied" + separator + scheme + " private-value-example"
+				source := errclass.BuildAPIError(map[string]any{
+					"code": 1061004, "msg": text,
+					"error": map[string]any{"details": []any{map[string]any{"value": text}}},
+				}, errclass.ClassifyContext{})
+				if exit := handleRootError(f, source, recovery.NewProjector(nil)); exit != 3 || stdout.Len() != 0 {
+					t.Fatalf("exit = %d, stdout = %q; want exit 3 and stderr-only failure", exit, stdout.String())
+				}
+				var envelope struct {
+					Error errs.PermissionError `json:"error"`
+				}
+				if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+					t.Fatalf("invalid stderr JSON: %v", err)
+				}
+				got := envelope.Error.Upstream
+				const want = "Denied[REDACTED]"
+				if got == nil || got.Message != want || len(got.Details) != 1 || got.Details[0] != want {
+					t.Fatalf("prefix cleanup exposed a credential on stderr: %s", stderr.String())
+				}
+			})
+		}
+	}
+}
+
 func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProducer(t *testing.T) {
 	cause := errors.New("permission cause")
 	source := errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope").

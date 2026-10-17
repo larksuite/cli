@@ -154,7 +154,8 @@ an object containing only that marker is valid. Redaction alone does not set it.
 
 Sanitization conservatively redacts credential/header assignments (including
 their remaining line and folded continuation lines), Bearer/Basic-prefixed values
-(including values joined to the scheme by terminal/control cleanup), JWT-shaped
+(including schemes joined to preceding prose or their values by terminal/control
+cleanup; matching deliberately does not require a leading word boundary), JWT-shaped
 values including empty signatures, standard/URL-safe Base64-like opaque strings
 including padding, known token/identity values, full URLs, email-like tokens and
 phone patterns, quoted fragments and long opaque strings. Quoted payload echoes are discarded

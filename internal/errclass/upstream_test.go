@@ -238,6 +238,35 @@ func TestBuildAPIError_PermissionDiagnosticCredentialWhitespace(t *testing.T) {
 	}
 }
 
+func TestBuildAPIError_PermissionDiagnosticCredentialPrefixCleanup(t *testing.T) {
+	const secret = "private-value"
+	for _, scheme := range []string{"Bearer", "Basic"} {
+		for name, separator := range map[string]string{
+			"attached": "", "zero_width": "\u200b", "soft_hyphen": "\u00ad",
+			"nul": "\x00", "ansi": "\x1b[31m", "osc": "\x1b]title\x07", "invalid_utf8": "\xff",
+		} {
+			for placement, value := range map[string]string{
+				"prefix":         scheme + " " + secret,
+				"within_scheme":  scheme[:2] + separator + scheme[2:] + " " + secret,
+				"attached_value": scheme + separator + secret,
+			} {
+				t.Run(scheme+"/"+name+"/"+placement, func(t *testing.T) {
+					text := "Denied" + separator + value
+					err := errclass.BuildAPIError(map[string]any{
+						"code": 1061004, "msg": text,
+						"error": map[string]any{"details": []any{map[string]any{"value": text}}},
+					}, errclass.ClassifyContext{})
+					diagnostic := requirePermissionError(t, err).Upstream
+					const want = "Denied[REDACTED]"
+					if diagnostic == nil || diagnostic.Message != want || len(diagnostic.Details) != 1 || diagnostic.Details[0] != want || diagnostic.Truncated {
+						t.Fatalf("prefix cleanup exposed a credential: %+v", diagnostic)
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestBuildAPIError_PermissionDiagnosticAllowlistAndMalformedShapes(t *testing.T) {
 	const secret = "ignored-sensitive-payload"
 	response := map[string]any{

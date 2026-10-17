@@ -73,9 +73,9 @@ var diagnosticRedactions = []*regexp.Regexp{
 	// A credential/header assignment consumes the rest of its line. This is
 	// deliberately conservative for unquoted values, spaces and nested JSON.
 	regexp.MustCompile(`(?i)["']?\b(?:[a-z0-9_-]*(?:token|secret|password|passwd|pwd|api[_-]?key|authorization|cookie)|email|phone|mobile|address|(?:open|union|user)[_-]?id)\b["']?[ \t]*[:=][ \t\r\n]*[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*`),
-	// Terminal sanitization can join a scheme and its value by removing ANSI
-	// or invisible characters. Conservatively redact attached values too.
-	regexp.MustCompile(`(?i)\b(?:bearer|basic)\s*[^\s,;"'<>]+`),
+	// Cleanup can join a scheme to preceding prose as well as its value.
+	// Do not depend on word boundaries removed with ANSI/invisible characters.
+	regexp.MustCompile(`(?i)(?:bearer|basic)\s*[^\s,;"'<>]+`),
 	// Drop complete URLs, including userinfo, path, query and fragment. None
 	// of those components is needed to classify a permission error.
 	regexp.MustCompile(`(?i)\b(?:https?|wss?|ftp)://[^\s<>"]+`),
