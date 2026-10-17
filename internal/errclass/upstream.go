@@ -73,15 +73,21 @@ var diagnosticRedactions = []*regexp.Regexp{
 	// A credential/header assignment consumes the rest of its line. This is
 	// deliberately conservative for unquoted values, spaces and nested JSON.
 	regexp.MustCompile(`(?i)["']?\b(?:[a-z0-9_-]*(?:token|secret|password|passwd|pwd|api[_-]?key|authorization|cookie)|email|phone|mobile|address|(?:open|union|user)[_-]?id)\b["']?[ \t]*[:=][ \t\r\n]*[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*`),
-	regexp.MustCompile(`(?i)\b(?:bearer|basic)\s+[^\s,;"'<>]+`),
+	// Terminal sanitization can join a scheme and its value by removing ANSI
+	// or invisible characters. Conservatively redact attached values too.
+	regexp.MustCompile(`(?i)\b(?:bearer|basic)\s*[^\s,;"'<>]+`),
 	// Drop complete URLs, including userinfo, path, query and fragment. None
 	// of those components is needed to classify a permission error.
 	regexp.MustCompile(`(?i)\b(?:https?|wss?|ftp)://[^\s<>"]+`),
 	// Treat email-like tokens conservatively rather than validating addresses;
 	// punctuation such as apostrophes must not leave identifying fragments.
 	regexp.MustCompile(`[^\s<>"(),;@]*@[^\s<>"(),;@]+`),
-	regexp.MustCompile(`\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]+\b`),
-	regexp.MustCompile(`\b[A-Za-z0-9_-]{32,}\b`),
+	// Unsecured JWTs have an empty signature; retain the trailing dot in the
+	// redaction. Base64url signatures may end in non-word characters.
+	regexp.MustCompile(`\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]*`),
+	// Include both Base64 alphabets and padding without word boundaries that
+	// could leave leading/trailing punctuation from an opaque value visible.
+	regexp.MustCompile(`[A-Za-z0-9_+/=-]{32,}`),
 	regexp.MustCompile(`(?i)\b(?:[uat]-[a-z0-9_-]{8,}|(?:ou|on|oc|om)_[a-z0-9_-]+)\b`),
 	regexp.MustCompile(`\+?[0-9][0-9 ()-]{7,}[0-9]`),
 }
@@ -100,7 +106,9 @@ func redactDiagnostic(text string) string {
 			mark(match[0], match[1])
 		}
 	}
-	word := func(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r) }
+	word := func(r rune) bool {
+		return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r) || unicode.IsMark(r)
+	}
 	for offset := 0; offset < len(text); {
 		quote := text[offset]
 		previous, _ := utf8.DecodeLastRuneInString(text[:offset])

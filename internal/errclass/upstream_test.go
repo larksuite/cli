@@ -136,6 +136,11 @@ func TestBuildAPIError_PermissionDiagnosticRedactsCompleteSensitiveValues(t *tes
 		"jwt_with_digits":      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature",
 		"url_with_email":       "https://first.last@example.test/path/12345678901234567890",
 		"bearer_with_digits":   "Bearer prefixKeyExample12345678901234567890suffixKeyExample",
+		"unsigned_jwt":         "eyJhbGciOiJub25lIn0.eyJzdWIiOiJBbGljZSJ9.",
+		"jwt_signature_dash":   "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJBbGljZSJ9.signature-",
+		"base64":               "4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8=",
+		"base64_leading_plus":  "+/Hi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8=",
+		"base64_leading_slash": "/+Hi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8=",
 	}
 	for name, value := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -194,6 +199,9 @@ func TestBuildAPIError_PermissionDiagnosticApostrophes(t *testing.T) {
 		"quoted_name":       "'O'Connor private payroll'",
 		"unclosed_quote":    "'Alice's private payroll",
 		"adjacent_quotes":   "'Alice's private payroll''O'Connor private payroll'",
+		"combining_mark":    "'Jose\u0301's private payroll'",
+		"multiple_marks":    "'Jose\u0301\u0327's private payroll'",
+		"unclosed_mark":     "'Jose\u0301's private payroll",
 	}
 	for name, value := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -213,7 +221,7 @@ func TestBuildAPIError_PermissionDiagnosticApostrophes(t *testing.T) {
 
 func TestBuildAPIError_PermissionDiagnosticCredentialWhitespace(t *testing.T) {
 	for _, scheme := range []string{"Bearer", "Basic"} {
-		for i, separator := range []string{"\r", "\v", "\f", "\r\n", "\t", "\n", "\u0085", "\u2028", "\u2029"} {
+		for i, separator := range []string{"\r", "\v", "\f", "\r\n", "\t", "\n", "\u0085", "\u2028", "\u2029", "\x1b[31m", "\u200b", "\u00ad", "\x00", "\xff"} {
 			t.Run(fmt.Sprintf("%s/%d", scheme, i), func(t *testing.T) {
 				text := "Request denied for " + scheme + separator + "private-value-example"
 				err := errclass.BuildAPIError(map[string]any{
@@ -354,7 +362,7 @@ func TestBuildAPIError_PermissionDiagnosticNormalizesUntrustedText(t *testing.T)
 			t.Fatalf("diagnostic retains control or format character: %U", r)
 		}
 	}
-	for _, prose := range []string{"User's account isn't allowed to access this resource.", "O'Connor's account isn't allowed.", "用户's account isn't allowed."} {
+	for _, prose := range []string{"User's account isn't allowed to access this resource.", "O'Connor's account isn't allowed.", "用户's account isn't allowed.", "Jose\u0301's account isn't allowed."} {
 		err = errclass.BuildAPIError(map[string]any{"code": 1061004, "msg": prose}, errclass.ClassifyContext{})
 		if got := requirePermissionError(t, err).Upstream.Message; got != prose {
 			t.Fatalf("apostrophes in prose must not be treated as quoted values: %q", got)

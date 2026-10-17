@@ -153,13 +153,16 @@ bytes and each detail to 256 UTF-8 bytes, including a truncation ellipsis.
 an object containing only that marker is valid. Redaction alone does not set it.
 
 Sanitization conservatively redacts credential/header assignments (including
-their remaining line and folded continuation lines), Bearer/Basic values,
-JWT-shaped and known token/identity values, full URLs, email-like tokens and
+their remaining line and folded continuation lines), Bearer/Basic-prefixed values
+(including values joined to the scheme by terminal/control cleanup), JWT-shaped
+values including empty signatures, standard/URL-safe Base64-like opaque strings
+including padding, known token/identity values, full URLs, email-like tokens and
 phone patterns, quoted fragments and long opaque strings. Quoted payload echoes are discarded
 even when their keys are unknown; an unfinished quoted value is redacted through
 the end of input. Word-internal apostrophes remain prose and do not close a
-single-quoted echo. URL and email-like matching includes apostrophes and other
-token punctuation. Whitespace separators are normalized before terminal
+single-quoted echo, including after combining Unicode marks. URL and email-like
+matching includes apostrophes and other token punctuation. Whitespace separators
+are normalized before terminal
 sanitization can remove them. All matches are found in the original normalized
 text, and overlapping or adjacent sensitive spans
 are redacted together. Assignment matching cannot split multiline quoted

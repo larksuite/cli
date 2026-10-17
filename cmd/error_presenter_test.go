@@ -80,6 +80,38 @@ func TestHandleRootErrorPreservesSanitizedPermissionDiagnostic(t *testing.T) {
 	}
 }
 
+func TestHandleRootErrorRedactsEncodedAndObfuscatedDiagnostics(t *testing.T) {
+	for name, payload := range map[string]string{
+		"unsigned_jwt": "eyJhbGciOiJub25lIn0.eyJzdWIiOiJBbGljZSJ9.",
+		"base64":       "/+Hi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8=",
+		"ansi_scheme":  "Bear\x1b[31mer\x1b[0mprivate-value-example",
+		"unicode_name": "'Jose\u0301's private payroll'",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+			source := errclass.BuildAPIError(map[string]any{
+				"code": 1061004, "msg": "Request denied for " + payload,
+				"error": map[string]any{"details": []any{map[string]any{"value": "Request denied for " + payload}}},
+			}, errclass.ClassifyContext{})
+			if exit := handleRootError(f, source, recovery.NewProjector(nil)); exit != 3 || stdout.Len() != 0 {
+				t.Fatalf("exit = %d, stdout = %q; want exit 3 and stderr-only failure", exit, stdout.String())
+			}
+			var envelope struct {
+				Error errs.PermissionError `json:"error"`
+			}
+			if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+				t.Fatalf("invalid stderr JSON: %v", err)
+			}
+			got := envelope.Error.Upstream
+			const want = "Request denied for [REDACTED]"
+			if got == nil || got.Message != want || len(got.Details) != 1 || got.Details[0] != want {
+				t.Fatalf("encoded or obfuscated content reached stderr: %s", stderr.String())
+			}
+		})
+	}
+}
+
 func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProducer(t *testing.T) {
 	cause := errors.New("permission cause")
 	source := errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope").
