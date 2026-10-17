@@ -152,6 +152,37 @@ func TestBuildAPIError_PermissionDiagnosticRedactsCompleteSensitiveValues(t *tes
 	}
 }
 
+func TestBuildAPIError_PermissionDiagnosticMultilineQuotedAssignments(t *testing.T) {
+	const secret = "private-value-example"
+	cases := map[string]string{
+		"double_assignment":         "password=\"first-line\n" + secret + "\"",
+		"single_assignment":         "password='first-line\n" + secret + "'",
+		"double_payload":            "\"token=first-line\n" + secret + "\"",
+		"single_payload":            "'token=first-line\n" + secret + "'",
+		"double_assignment_escaped": "password=\"first-line\\\n" + secret + "\"",
+		"single_assignment_escaped": "password='first-line\\\n" + secret + "'",
+		"double_payload_escaped":    "\"token=first-line\\\n" + secret + "\"",
+		"single_payload_escaped":    "'token=first-line\\\n" + secret + "'",
+		"adjacent_single_payload":   "'previous''token=first-line\n" + secret + "'",
+	}
+	for name, value := range cases {
+		for closure, payload := range map[string]string{"closed": value, "unclosed": value[:len(value)-1]} {
+			t.Run(name+"/"+closure, func(t *testing.T) {
+				text := "Request denied for " + payload
+				err := errclass.BuildAPIError(map[string]any{
+					"code": 1061004, "msg": text,
+					"error": map[string]any{"details": []any{map[string]any{"value": text}}},
+				}, errclass.ClassifyContext{})
+				diagnostic := requirePermissionError(t, err).Upstream
+				const want = "Request denied for [REDACTED]"
+				if diagnostic == nil || diagnostic.Message != want || len(diagnostic.Details) != 1 || diagnostic.Details[0] != want {
+					t.Fatalf("multiline quoted content leaked: %+v", diagnostic)
+				}
+			})
+		}
+	}
+}
+
 func TestBuildAPIError_PermissionDiagnosticAllowlistAndMalformedShapes(t *testing.T) {
 	const secret = "ignored-sensitive-payload"
 	response := map[string]any{

@@ -157,8 +157,10 @@ their remaining line and folded continuation lines), Bearer/Basic values,
 JWT-shaped and known token/identity values, full URLs, email/phone patterns,
 quoted fragments and long opaque strings. Quoted payload echoes are discarded
 even when their keys are unknown; an unfinished quoted value is redacted through
-the end of input. Apostrophes within words remain prose. Redaction runs before
-output truncation.
+the end of input. Apostrophes within words remain prose. All matches are found
+in the original normalized text, and overlapping or adjacent sensitive spans
+are redacted together. Assignment matching cannot split multiline quoted
+content and expose its continuation. Redaction runs before output truncation.
 This is a bounded diagnostic summary, not a lossless response capture or a
 general-purpose PII detector: arbitrary names or secrets in unlabelled prose
 cannot be identified reliably. Do not use it to forward raw business payloads

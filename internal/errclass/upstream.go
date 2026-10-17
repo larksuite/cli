@@ -77,8 +77,6 @@ var diagnosticRedactions = []*regexp.Regexp{
 	// Drop complete URLs, including userinfo, path, query and fragment. None
 	// of those components is needed to classify a permission error.
 	regexp.MustCompile(`(?i)\b(?:https?|wss?|ftp)://[^\s<>"']+`),
-	// Redact complete values before narrower patterns can split them: email
-	// domains can resemble JWTs, and opaque tokens can contain IDs or phones.
 	regexp.MustCompile(`[\p{L}\p{N}._%+\-]+@[\p{L}\p{N}.\-]+\.[\p{L}]{2,}`),
 	regexp.MustCompile(`\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]+\b`),
 	regexp.MustCompile(`\b[A-Za-z0-9_-]{32,}\b`),
@@ -92,6 +90,48 @@ var diagnosticRedactions = []*regexp.Regexp{
 // A single quote inside a word is an apostrophe, not the start of an echoed
 // value. Retain the preceding delimiter when redacting a single-quoted value.
 var diagnosticSingleQuotes = regexp.MustCompile(`(?s)(^|[^[:alnum:]_])'(?:\\.|[^'\\])*(?:'|\\?\z)`)
+
+// redactDiagnostic matches all rules against unchanged text before replacing
+// their union. A line-based assignment cannot split an enclosing quoted value.
+func redactDiagnostic(text string) string {
+	redacted := make([]bool, len(text))
+	mark := func(start, end int) {
+		for i := start; i < end; i++ {
+			redacted[i] = true
+		}
+	}
+	for _, pattern := range diagnosticRedactions {
+		for _, match := range pattern.FindAllStringIndex(text, -1) {
+			mark(match[0], match[1])
+		}
+	}
+	for offset := 0; offset < len(text); {
+		match := diagnosticSingleQuotes.FindStringSubmatchIndex(text[offset:])
+		if match == nil {
+			break
+		}
+		// Keep the captured delimiter outside the redaction. Resuming after
+		// the closing quote also permits adjacent single-quoted values.
+		mark(offset+match[3], offset+match[1])
+		offset += match[1]
+	}
+	var output strings.Builder
+	for i := 0; i < len(text); {
+		if redacted[i] {
+			output.WriteString("[REDACTED]")
+			for i < len(text) && redacted[i] {
+				i++
+			}
+		} else {
+			start := i
+			for i < len(text) && !redacted[i] {
+				i++
+			}
+			output.WriteString(text[start:i])
+		}
+	}
+	return output.String()
+}
 
 func diagnosticText(text string, limit int) (string, bool) {
 	// Do not slice an uninspected credential and then attempt to redact its
@@ -111,10 +151,7 @@ func diagnosticText(text string, limit int) (string, bool) {
 			return r
 		}
 	}, validate.SanitizeForTerminal(strings.ToValidUTF8(text, "")))
-	for _, pattern := range diagnosticRedactions {
-		text = pattern.ReplaceAllLiteralString(text, "[REDACTED]")
-	}
-	text = diagnosticSingleQuotes.ReplaceAllString(text, "${1}[REDACTED]")
+	text = redactDiagnostic(text)
 	text = strings.Join(strings.Fields(text), " ")
 	if len(text) <= limit {
 		return text, false

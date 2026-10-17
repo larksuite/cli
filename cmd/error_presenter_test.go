@@ -33,8 +33,8 @@ func TestHandleRootErrorPreservesSanitizedPermissionDiagnostic(t *testing.T) {
 				source := errclass.BuildAPIError(map[string]any{
 					"code": code, "msg": "Static denial", "log_id": "example-log-id",
 					"error": map[string]any{
-						"message":               "Rendered denial. Bearer " + secret,
-						"details":               []any{map[string]any{"value": "Resource is in another tenant."}},
+						"message":               "Rendered denial. password=\"first-line\n" + secret + "\"",
+						"details":               []any{map[string]any{"value": "Resource is in another tenant. 'token=first-line\n" + secret + "'"}},
 						"permission_violations": []any{map[string]any{"subject": "docx:document"}},
 						"troubleshooter":        "https://example.test/diagnostic",
 					},
@@ -69,7 +69,7 @@ func TestHandleRootErrorPreservesSanitizedPermissionDiagnostic(t *testing.T) {
 					t.Fatalf("canonical machine/recovery fields changed: %s", stderr.String())
 				}
 				if got.Upstream == nil || got.Upstream.Message != "Rendered denial. [REDACTED]" ||
-					len(got.Upstream.Details) != 1 || got.Upstream.Details[0] != "Resource is in another tenant." {
+					len(got.Upstream.Details) != 1 || got.Upstream.Details[0] != "Resource is in another tenant. [REDACTED]" {
 					t.Fatalf("root presentation dropped sanitized diagnostic: %s", stderr.String())
 				}
 				if strings.Contains(stderr.String(), secret) || strings.Contains(stderr.String(), cause.Error()) {
