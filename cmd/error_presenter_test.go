@@ -4,7 +4,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -19,6 +21,128 @@ import (
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/spf13/cobra"
 )
+
+func TestHandleRootErrorPreservesSanitizedPermissionDiagnostic(t *testing.T) {
+	for _, identity := range []string{"user", "bot"} {
+		for _, code := range []int{1061004, 99991679, 99991672} {
+			t.Run(fmt.Sprintf("%s/%d", identity, code), func(t *testing.T) {
+				t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+				f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+				f.ResolvedIdentity = core.Identity(identity)
+				const secret = "private-credential-example"
+				source := errclass.BuildAPIError(map[string]any{
+					"code": code, "msg": "Static denial", "log_id": "example-log-id",
+					"error": map[string]any{
+						"message":               "Rendered denial. password=\"first-line\n" + secret + "\"",
+						"details":               []any{map[string]any{"value": "Resource is in another tenant. 'token=first-line\n" + secret + "'"}},
+						"permission_violations": []any{map[string]any{"subject": "docx:document"}},
+						"troubleshooter":        "https://example.test/diagnostic",
+					},
+				}, errclass.ClassifyContext{Brand: "lark", AppID: "cli_demo", Identity: identity})
+				var permission *errs.PermissionError
+				if !errors.As(source, &permission) {
+					t.Fatalf("source = %T, want permission error", source)
+				}
+				cause := errors.New("private unexported cause")
+				permission.WithCause(cause)
+				wrapped := fmt.Errorf("request failed: %w", source)
+				presented := presentRootError(f, wrapped, recovery.NewProjector(nil))
+				if !errors.Is(presented, cause) {
+					t.Fatal("presentation lost wrapped cause")
+				}
+				exit := handleRootError(f, wrapped, recovery.NewProjector(nil))
+				if exit != 3 || stdout.Len() != 0 {
+					t.Fatalf("exit = %d, stdout = %q; want exit 3 and stderr-only envelope", exit, stdout.String())
+				}
+				var envelope struct {
+					OK       bool                 `json:"ok"`
+					Identity string               `json:"identity"`
+					Error    errs.PermissionError `json:"error"`
+				}
+				if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+					t.Fatalf("invalid stderr JSON: %v", err)
+				}
+				got := envelope.Error
+				if envelope.OK || envelope.Identity != identity || got.Identity != identity ||
+					got.Problem != permission.Problem || got.ConsoleURL != permission.ConsoleURL ||
+					strings.Join(got.MissingScopes, ",") != "docx:document" {
+					t.Fatalf("canonical machine/recovery fields changed: %s", stderr.String())
+				}
+				if got.Upstream == nil || got.Upstream.Message != "Rendered denial. [REDACTED]" ||
+					len(got.Upstream.Details) != 1 || got.Upstream.Details[0] != "Resource is in another tenant. [REDACTED]" {
+					t.Fatalf("root presentation dropped sanitized diagnostic: %s", stderr.String())
+				}
+				if strings.Contains(stderr.String(), secret) || strings.Contains(stderr.String(), cause.Error()) {
+					t.Fatalf("stderr leaked a credential or cause: %s", stderr.String())
+				}
+			})
+		}
+	}
+}
+
+func TestHandleRootErrorRedactsEncodedAndObfuscatedDiagnostics(t *testing.T) {
+	for name, payload := range map[string]string{
+		"unsigned_jwt": "eyJhbGciOiJub25lIn0.eyJzdWIiOiJBbGljZSJ9.",
+		"base64":       "/+Hi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8=",
+		"ansi_scheme":  "Bear\x1b[31mer\x1b[0mprivate-value-example",
+		"unicode_name": "'Jose\u0301's private payroll'",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+			source := errclass.BuildAPIError(map[string]any{
+				"code": 1061004, "msg": "Request denied for " + payload,
+				"error": map[string]any{"details": []any{map[string]any{"value": "Request denied for " + payload}}},
+			}, errclass.ClassifyContext{})
+			if exit := handleRootError(f, source, recovery.NewProjector(nil)); exit != 3 || stdout.Len() != 0 {
+				t.Fatalf("exit = %d, stdout = %q; want exit 3 and stderr-only failure", exit, stdout.String())
+			}
+			var envelope struct {
+				Error errs.PermissionError `json:"error"`
+			}
+			if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+				t.Fatalf("invalid stderr JSON: %v", err)
+			}
+			got := envelope.Error.Upstream
+			const want = "Request denied for [REDACTED]"
+			if got == nil || got.Message != want || len(got.Details) != 1 || got.Details[0] != want {
+				t.Fatalf("encoded or obfuscated content reached stderr: %s", stderr.String())
+			}
+		})
+	}
+}
+
+func TestHandleRootErrorRedactsCredentialsJoinedToPrefix(t *testing.T) {
+	for _, scheme := range []string{"Bearer", "Basic"} {
+		for name, separator := range map[string]string{
+			"zero_width": "\u200b", "nul": "\x00", "ansi": "\x1b[31m", "invalid_utf8": "\xff",
+		} {
+			t.Run(scheme+"/"+name, func(t *testing.T) {
+				t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+				f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+				text := "Denied" + separator + scheme + " private-value-example"
+				source := errclass.BuildAPIError(map[string]any{
+					"code": 1061004, "msg": text,
+					"error": map[string]any{"details": []any{map[string]any{"value": text}}},
+				}, errclass.ClassifyContext{})
+				if exit := handleRootError(f, source, recovery.NewProjector(nil)); exit != 3 || stdout.Len() != 0 {
+					t.Fatalf("exit = %d, stdout = %q; want exit 3 and stderr-only failure", exit, stdout.String())
+				}
+				var envelope struct {
+					Error errs.PermissionError `json:"error"`
+				}
+				if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+					t.Fatalf("invalid stderr JSON: %v", err)
+				}
+				got := envelope.Error.Upstream
+				const want = "Denied[REDACTED]"
+				if got == nil || got.Message != want || len(got.Details) != 1 || got.Details[0] != want {
+					t.Fatalf("prefix cleanup exposed a credential on stderr: %s", stderr.String())
+				}
+			})
+		}
+	}
+}
 
 func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProducer(t *testing.T) {
 	cause := errors.New("permission cause")

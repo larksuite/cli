@@ -219,17 +219,28 @@ func (e *AuthenticationError) WithCause(cause error) *AuthenticationError {
 
 // ============================= PermissionError ===============================
 
+// UpstreamDiagnostic is an informational, sanitized summary of an API error
+// before permission classification replaces its message and recovery hint.
+// It is not a raw response or a machine-readable reason. Producers must redact
+// sensitive content and bound both the input they inspect and the output.
+type UpstreamDiagnostic struct {
+	Message   string   `json:"message,omitempty"`
+	Details   []string `json:"details,omitempty"`
+	Truncated bool     `json:"truncated,omitempty"`
+}
+
 // PermissionError is the typed error for CategoryAuthorization.
 // Cause preserves an optional wrapped sentinel for errors.Is / errors.Unwrap;
 // it is intentionally not serialized.
 type PermissionError struct {
 	Problem
-	MissingScopes   []string `json:"missing_scopes,omitempty"`
-	RequestedScopes []string `json:"requested_scopes,omitempty"`
-	GrantedScopes   []string `json:"granted_scopes,omitempty"`
-	Identity        string   `json:"identity,omitempty"`
-	ConsoleURL      string   `json:"console_url,omitempty"`
-	Cause           error    `json:"-"`
+	MissingScopes   []string            `json:"missing_scopes,omitempty"`
+	RequestedScopes []string            `json:"requested_scopes,omitempty"`
+	GrantedScopes   []string            `json:"granted_scopes,omitempty"`
+	Identity        string              `json:"identity,omitempty"`
+	ConsoleURL      string              `json:"console_url,omitempty"`
+	Upstream        *UpstreamDiagnostic `json:"upstream,omitempty"`
+	Cause           error               `json:"-"`
 }
 
 // Unwrap is nil-receiver safe; see ValidationError.Unwrap.
@@ -300,6 +311,18 @@ func (e *PermissionError) WithIdentity(identity string) *PermissionError {
 
 func (e *PermissionError) WithConsoleURL(url string) *PermissionError {
 	e.ConsoleURL = url
+	return e
+}
+
+// WithUpstream copies an already sanitized diagnostic, including its details.
+// Passing nil clears the optional diagnostic.
+func (e *PermissionError) WithUpstream(upstream *UpstreamDiagnostic) *PermissionError {
+	e.Upstream = nil
+	if upstream != nil {
+		clone := *upstream
+		clone.Details = slices.Clone(upstream.Details)
+		e.Upstream = &clone
+	}
 	return e
 }
 

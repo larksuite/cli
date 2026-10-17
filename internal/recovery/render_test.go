@@ -79,6 +79,7 @@ func TestRenderClonesEveryConcreteTypedErrorAndPreservesWireExtensions(t *testin
 				GrantedScopes:   []string{"scope.granted"},
 				Identity:        "user",
 				ConsoleURL:      "https://example.test/console",
+				Upstream:        &errs.UpstreamDiagnostic{Message: "API reason", Details: []string{"API detail"}, Truncated: true},
 				Cause:           sentinel,
 			},
 		},
@@ -274,6 +275,7 @@ func TestRenderDeepClonesSliceExtensions(t *testing.T) {
 		MissingScopes:   []string{"missing"},
 		RequestedScopes: []string{"requested"},
 		GrantedScopes:   []string{"granted"},
+		Upstream:        &errs.UpstreamDiagnostic{Message: "API reason", Details: []string{"API detail"}, Truncated: true},
 	}
 	content := &errs.ContentSafetyError{
 		Problem: errs.Problem{Message: "message"},
@@ -287,6 +289,9 @@ func TestRenderDeepClonesSliceExtensions(t *testing.T) {
 	renderedPermission.MissingScopes[0] = "changed"
 	renderedPermission.RequestedScopes[0] = "changed"
 	renderedPermission.GrantedScopes[0] = "changed"
+	renderedPermission.Upstream.Message = "changed"
+	renderedPermission.Upstream.Details[0] = "changed"
+	renderedPermission.Upstream.Truncated = false
 	renderedContent.Rules[0] = "changed"
 
 	if validation.Params[0].Suggestions[0] != "--title" {
@@ -296,6 +301,9 @@ func TestRenderDeepClonesSliceExtensions(t *testing.T) {
 		permission.RequestedScopes[0] != "requested" ||
 		permission.GrantedScopes[0] != "granted" {
 		t.Error("PermissionError scope slices alias the source")
+	}
+	if permission.Upstream.Message != "API reason" || permission.Upstream.Details[0] != "API detail" || !permission.Upstream.Truncated {
+		t.Error("PermissionError upstream diagnostic aliases the source")
 	}
 	if content.Rules[0] != "rule" {
 		t.Error("ContentSafetyError rules alias the source")
