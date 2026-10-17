@@ -4,7 +4,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -19,6 +21,64 @@ import (
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/spf13/cobra"
 )
+
+func TestHandleRootErrorPreservesSanitizedPermissionDiagnostic(t *testing.T) {
+	for _, identity := range []string{"user", "bot"} {
+		for _, code := range []int{1061004, 99991679, 99991672} {
+			t.Run(fmt.Sprintf("%s/%d", identity, code), func(t *testing.T) {
+				t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+				f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+				f.ResolvedIdentity = core.Identity(identity)
+				const secret = "private-credential-example"
+				source := errclass.BuildAPIError(map[string]any{
+					"code": code, "msg": "Static denial", "log_id": "example-log-id",
+					"error": map[string]any{
+						"message":               "Rendered denial. Bearer " + secret,
+						"details":               []any{map[string]any{"value": "Resource is in another tenant."}},
+						"permission_violations": []any{map[string]any{"subject": "docx:document"}},
+						"troubleshooter":        "https://example.test/diagnostic",
+					},
+				}, errclass.ClassifyContext{Brand: "lark", AppID: "cli_demo", Identity: identity})
+				var permission *errs.PermissionError
+				if !errors.As(source, &permission) {
+					t.Fatalf("source = %T, want permission error", source)
+				}
+				cause := errors.New("private unexported cause")
+				permission.WithCause(cause)
+				wrapped := fmt.Errorf("request failed: %w", source)
+				presented := presentRootError(f, wrapped, recovery.NewProjector(nil))
+				if !errors.Is(presented, cause) {
+					t.Fatal("presentation lost wrapped cause")
+				}
+				exit := handleRootError(f, wrapped, recovery.NewProjector(nil))
+				if exit != 3 || stdout.Len() != 0 {
+					t.Fatalf("exit = %d, stdout = %q; want exit 3 and stderr-only envelope", exit, stdout.String())
+				}
+				var envelope struct {
+					OK       bool                 `json:"ok"`
+					Identity string               `json:"identity"`
+					Error    errs.PermissionError `json:"error"`
+				}
+				if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+					t.Fatalf("invalid stderr JSON: %v", err)
+				}
+				got := envelope.Error
+				if envelope.OK || envelope.Identity != identity || got.Identity != identity ||
+					got.Problem != permission.Problem || got.ConsoleURL != permission.ConsoleURL ||
+					strings.Join(got.MissingScopes, ",") != "docx:document" {
+					t.Fatalf("canonical machine/recovery fields changed: %s", stderr.String())
+				}
+				if got.Upstream == nil || got.Upstream.Message != "Rendered denial. [REDACTED]" ||
+					len(got.Upstream.Details) != 1 || got.Upstream.Details[0] != "Resource is in another tenant." {
+					t.Fatalf("root presentation dropped sanitized diagnostic: %s", stderr.String())
+				}
+				if strings.Contains(stderr.String(), secret) || strings.Contains(stderr.String(), cause.Error()) {
+					t.Fatalf("stderr leaked a credential or cause: %s", stderr.String())
+				}
+			})
+		}
+	}
+}
 
 func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProducer(t *testing.T) {
 	cause := errors.New("permission cause")
