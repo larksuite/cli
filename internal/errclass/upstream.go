@@ -76,20 +76,15 @@ var diagnosticRedactions = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\b(?:bearer|basic)\s+[^\s,;"'<>]+`),
 	// Drop complete URLs, including userinfo, path, query and fragment. None
 	// of those components is needed to classify a permission error.
-	regexp.MustCompile(`(?i)\b(?:https?|wss?|ftp)://[^\s<>"']+`),
-	regexp.MustCompile(`[\p{L}\p{N}._%+\-]+@[\p{L}\p{N}.\-]+\.[\p{L}]{2,}`),
+	regexp.MustCompile(`(?i)\b(?:https?|wss?|ftp)://[^\s<>"]+`),
+	// Treat email-like tokens conservatively rather than validating addresses;
+	// punctuation such as apostrophes must not leave identifying fragments.
+	regexp.MustCompile(`[^\s<>"(),;@]*@[^\s<>"(),;@]+`),
 	regexp.MustCompile(`\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]+\b`),
 	regexp.MustCompile(`\b[A-Za-z0-9_-]{32,}\b`),
 	regexp.MustCompile(`(?i)\b(?:[uat]-[a-z0-9_-]{8,}|(?:ou|on|oc|om)_[a-z0-9_-]+)\b`),
 	regexp.MustCompile(`\+?[0-9][0-9 ()-]{7,}[0-9]`),
-	// Quoted fragments can be echoed personal values or request payloads.
-	// Redact escaped quotes and incomplete strings through the end of input.
-	regexp.MustCompile(`(?s)"(?:\\.|[^"\\])*(?:"|\\?\z)`),
 }
-
-// A single quote inside a word is an apostrophe, not the start of an echoed
-// value. Retain the preceding delimiter when redacting a single-quoted value.
-var diagnosticSingleQuotes = regexp.MustCompile(`(?s)(^|[^[:alnum:]_])'(?:\\.|[^'\\])*(?:'|\\?\z)`)
 
 // redactDiagnostic matches all rules against unchanged text before replacing
 // their union. A line-based assignment cannot split an enclosing quoted value.
@@ -105,15 +100,35 @@ func redactDiagnostic(text string) string {
 			mark(match[0], match[1])
 		}
 	}
+	word := func(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r) }
 	for offset := 0; offset < len(text); {
-		match := diagnosticSingleQuotes.FindStringSubmatchIndex(text[offset:])
-		if match == nil {
-			break
+		quote := text[offset]
+		previous, _ := utf8.DecodeLastRuneInString(text[:offset])
+		if (quote != '\'' && quote != '"') || (quote == '\'' && word(previous)) {
+			offset++
+			continue
 		}
-		// Keep the captured delimiter outside the redaction. Resuming after
-		// the closing quote also permits adjacent single-quoted values.
-		mark(offset+match[3], offset+match[1])
-		offset += match[1]
+		start := offset
+		offset++
+		for offset < len(text) {
+			if text[offset] == '\\' {
+				offset = min(offset+2, len(text))
+				continue
+			}
+			if text[offset] == quote {
+				previous, _ = utf8.DecodeLastRuneInString(text[:offset])
+				next, _ := utf8.DecodeRuneInString(text[offset+1:])
+				// An in-word apostrophe is payload, including inside an echo.
+				if quote == '\'' && word(previous) && word(next) {
+					offset++
+					continue
+				}
+				offset++
+				break
+			}
+			offset++
+		}
+		mark(start, offset)
 	}
 	var output strings.Builder
 	for i := 0; i < len(text); {
@@ -139,18 +154,24 @@ func diagnosticText(text string, limit int) (string, bool) {
 	if len(text) > diagnosticInputBytes {
 		return "", true
 	}
+	// Preserve separators before terminal sanitization removes C0 whitespace.
+	// Keep newlines for assignment/header and quoted-content matching.
+	text = strings.Map(func(r rune) rune {
+		if r != '\n' && unicode.IsSpace(r) {
+			return ' '
+		}
+		return r
+	}, strings.ToValidUTF8(text, ""))
 	text = strings.Map(func(r rune) rune {
 		switch {
 		case r == '\n':
 			return r
-		case unicode.IsSpace(r):
-			return ' '
 		case unicode.IsControl(r) || unicode.Is(unicode.Cf, r):
 			return -1
 		default:
 			return r
 		}
-	}, validate.SanitizeForTerminal(strings.ToValidUTF8(text, "")))
+	}, validate.SanitizeForTerminal(text))
 	text = redactDiagnostic(text)
 	text = strings.Join(strings.Fields(text), " ")
 	if len(text) <= limit {

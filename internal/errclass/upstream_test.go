@@ -5,6 +5,7 @@ package errclass_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -183,6 +184,52 @@ func TestBuildAPIError_PermissionDiagnosticMultilineQuotedAssignments(t *testing
 	}
 }
 
+func TestBuildAPIError_PermissionDiagnosticApostrophes(t *testing.T) {
+	cases := map[string]string{
+		"url_path":          "https://example.test/owner's/private-value-example",
+		"url_query":         "https://example.test/path?name=owner's&value=private-value-example",
+		"email":             "first.o'connor@example.test",
+		"email_punctuation": "first.!#$%&'*+-/=?^_`{|}~last@example.test",
+		"quoted_possessive": "'Alice's private payroll'",
+		"quoted_name":       "'O'Connor private payroll'",
+		"unclosed_quote":    "'Alice's private payroll",
+		"adjacent_quotes":   "'Alice's private payroll''O'Connor private payroll'",
+	}
+	for name, value := range cases {
+		t.Run(name, func(t *testing.T) {
+			text := "Request denied for " + value
+			err := errclass.BuildAPIError(map[string]any{
+				"code": 1061004, "msg": text,
+				"error": map[string]any{"details": []any{map[string]any{"value": text}}},
+			}, errclass.ClassifyContext{})
+			diagnostic := requirePermissionError(t, err).Upstream
+			const want = "Request denied for [REDACTED]"
+			if diagnostic == nil || diagnostic.Message != want || len(diagnostic.Details) != 1 || diagnostic.Details[0] != want {
+				t.Fatalf("apostrophe split a sensitive value: %+v", diagnostic)
+			}
+		})
+	}
+}
+
+func TestBuildAPIError_PermissionDiagnosticCredentialWhitespace(t *testing.T) {
+	for _, scheme := range []string{"Bearer", "Basic"} {
+		for i, separator := range []string{"\r", "\v", "\f", "\r\n", "\t", "\n", "\u0085", "\u2028", "\u2029"} {
+			t.Run(fmt.Sprintf("%s/%d", scheme, i), func(t *testing.T) {
+				text := "Request denied for " + scheme + separator + "private-value-example"
+				err := errclass.BuildAPIError(map[string]any{
+					"code": 1061004, "msg": text,
+					"error": map[string]any{"details": []any{map[string]any{"value": text}}},
+				}, errclass.ClassifyContext{})
+				diagnostic := requirePermissionError(t, err).Upstream
+				const want = "Request denied for [REDACTED]"
+				if diagnostic == nil || diagnostic.Message != want || len(diagnostic.Details) != 1 || diagnostic.Details[0] != want {
+					t.Fatalf("normalization joined a credential to its scheme: %+v", diagnostic)
+				}
+			})
+		}
+	}
+}
+
 func TestBuildAPIError_PermissionDiagnosticAllowlistAndMalformedShapes(t *testing.T) {
 	const secret = "ignored-sensitive-payload"
 	response := map[string]any{
@@ -307,10 +354,11 @@ func TestBuildAPIError_PermissionDiagnosticNormalizesUntrustedText(t *testing.T)
 			t.Fatalf("diagnostic retains control or format character: %U", r)
 		}
 	}
-	const prose = "User's account isn't allowed to access this resource."
-	err = errclass.BuildAPIError(map[string]any{"code": 1061004, "msg": prose}, errclass.ClassifyContext{})
-	if got := requirePermissionError(t, err).Upstream.Message; got != prose {
-		t.Fatalf("apostrophes in prose must not be treated as quoted values: %q", got)
+	for _, prose := range []string{"User's account isn't allowed to access this resource.", "O'Connor's account isn't allowed.", "用户's account isn't allowed."} {
+		err = errclass.BuildAPIError(map[string]any{"code": 1061004, "msg": prose}, errclass.ClassifyContext{})
+		if got := requirePermissionError(t, err).Upstream.Message; got != prose {
+			t.Fatalf("apostrophes in prose must not be treated as quoted values: %q", got)
+		}
 	}
 }
 
