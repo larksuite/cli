@@ -15,10 +15,11 @@ import (
 // It is propagated up the call chain and handled by main.go to produce
 // a JSON error envelope on stderr and the correct exit code.
 type ExitError struct {
-	Code   int
-	Detail *ErrDetail
-	Err    error
-	Raw    bool // when true, skip enrichment (e.g. enrichPermissionError) and preserve original error
+	Code    int
+	Detail  *ErrDetail
+	Err     error
+	Printed bool // true only after an error envelope has actually been written
+	Raw     bool // when true, skip enrichment (e.g. enrichPermissionError) and preserve original error
 }
 
 func (e *ExitError) Error() string {
@@ -53,7 +54,9 @@ func WriteErrorEnvelope(w io.Writer, err *ExitError, identity string) {
 		return
 	}
 	// Encode appends a trailing newline; write directly.
-	buf.WriteTo(w)
+	if _, writeErr := buf.WriteTo(w); writeErr == nil {
+		err.Printed = true
+	}
 }
 
 // --- Convenience constructors ---

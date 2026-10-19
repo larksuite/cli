@@ -263,8 +263,9 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	// Store token
 	now := time.Now().UnixMilli()
 	storedToken := &larkauth.StoredUAToken{
-		UserOpenId:       openId,
-		AppId:            config.AppID,
+		UserOpenId:   openId,
+		AppId:        config.AppID,
+		AuthProtocol: "oauth_v2", Authority: core.ResolveOpenBaseURL(config.Brand),
 		AccessToken:      result.Token.AccessToken,
 		RefreshToken:     result.Token.RefreshToken,
 		ExpiresAt:        now + int64(result.Token.ExpiresIn)*1000,
@@ -277,18 +278,8 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	}
 
 	// Update config — overwrite Users to single user, clean old tokens
-	multi, _ := core.LoadMultiAppConfig()
-	if multi != nil && len(multi.Apps) > 0 {
-		app := &multi.Apps[0]
-		for _, oldUser := range app.Users {
-			if oldUser.UserOpenId != openId {
-				larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-			}
-		}
-		app.Users = []core.AppUser{{UserOpenId: openId, UserName: userName}}
-		if err := core.SaveMultiAppConfig(multi); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-		}
+	if err := core.MergeAppUser(config.AppID, core.AppUser{UserOpenId: openId, UserName: userName}); err != nil {
+		return output.Errorf(output.ExitInternal, "internal", "token stored but config merge failed: %v", err)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
@@ -395,7 +386,10 @@ func authLoginWithAuthCodeFlow(opts *LoginOptions, config *core.CliConfig, scope
 	}
 
 	// Get domain from Brand (which may be a custom domain URL)
-	endpoints := core.ResolveEndpoints(config.Brand)
+	endpoints, err := config.ResolveServiceEndpoints()
+	if err != nil {
+		return err
+	}
 
 	flowOpts := &larkauth.AuthCodeFlowOptions{
 		AppID:       config.AppID,
@@ -414,8 +408,9 @@ func authLoginWithAuthCodeFlow(opts *LoginOptions, config *core.CliConfig, scope
 	// Store token
 	now := time.Now().UnixMilli()
 	storedToken := &larkauth.StoredUAToken{
-		UserOpenId:       result.OpenID,
-		AppId:            config.AppID,
+		UserOpenId:   result.OpenID,
+		AppId:        config.AppID,
+		AuthProtocol: "oauth_v2", Authority: endpoints.Open,
 		AccessToken:      result.AccessToken,
 		RefreshToken:     result.RefreshToken,
 		ExpiresAt:        now + int64(result.ExpiresIn)*1000,
@@ -428,18 +423,8 @@ func authLoginWithAuthCodeFlow(opts *LoginOptions, config *core.CliConfig, scope
 	}
 
 	// Update config
-	multi, _ := core.LoadMultiAppConfig()
-	if multi != nil && len(multi.Apps) > 0 {
-		app := &multi.Apps[0]
-		for _, oldUser := range app.Users {
-			if oldUser.UserOpenId != result.OpenID {
-				larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-			}
-		}
-		app.Users = []core.AppUser{{UserOpenId: result.OpenID, UserName: result.UserName}}
-		if err := core.SaveMultiAppConfig(multi); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-		}
+	if err := core.MergeAppUser(config.AppID, core.AppUser{UserOpenId: result.OpenID, UserName: result.UserName}); err != nil {
+		return output.Errorf(output.ExitInternal, "internal", "token stored but config merge failed: %v", err)
 	}
 
 	if opts.JSON {
@@ -465,16 +450,20 @@ func authLoginWithOIDCFlow(opts *LoginOptions, config *core.CliConfig, scope str
 		return err
 	}
 
-	endpoints := core.ResolveEndpoints(config.Brand)
+	endpoints, err := config.ResolveServiceEndpoints()
+	if err != nil {
+		return err
+	}
 
 	flowOpts := &larkauth.OIDCFlowOptions{
-		AppID:       config.AppID,
-		AppSecret:   config.AppSecret,
-		Domain:      endpoints.Accounts,
-		OpenDomain:  endpoints.Open,
-		RedirectURI: opts.RedirectURI,
-		Timeout:     time.Duration(opts.Timeout) * time.Second,
-		Scope:       scope, // 传递 scope 参数以请求 API 权限
+		AuthProtocol: config.AuthProtocol,
+		AppID:        config.AppID,
+		AppSecret:    config.AppSecret,
+		Domain:       endpoints.Accounts,
+		OpenDomain:   endpoints.Open,
+		RedirectURI:  opts.RedirectURI,
+		Timeout:      time.Duration(opts.Timeout) * time.Second,
+		Scope:        scope, // 传递 scope 参数以请求 API 权限
 	}
 
 	result, err := larkauth.StartOIDCFlow(opts.Ctx, flowOpts, httpClient, f.IOStreams.ErrOut)
@@ -494,42 +483,23 @@ func authLoginWithOIDCFlow(opts *LoginOptions, config *core.CliConfig, scope str
 	}
 
 	// Update config
-	multi, _ := core.LoadMultiAppConfig()
-	if multi != nil && len(multi.Apps) > 0 {
-		app := &multi.Apps[0]
-		for _, oldUser := range app.Users {
-			if oldUser.UserOpenId != result.OpenID {
-				larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-			}
-		}
-		app.Users = []core.AppUser{{UserOpenId: result.OpenID, UserName: result.UserName}}
-		if err := core.SaveMultiAppConfig(multi); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-		}
+	if err := core.MergeAppUser(config.AppID, core.AppUser{UserOpenId: result.OpenID, UserName: result.UserName}); err != nil {
+		return output.Errorf(output.ExitInternal, "internal", "token stored but config merge failed: %v", err)
 	}
 
 	if opts.JSON {
 		b, _ := json.Marshal(map[string]interface{}{
-			"event":         "oidc_authorization_complete",
-			"user_open_id":  result.OpenID,
-			"user_name":     result.UserName,
-			"email":         result.Email,
-			"scope":         result.Scope,
-			"access_token":  result.AccessToken,
-			"refresh_token": result.RefreshToken,
-			"id_token":      result.IDToken,
-			"expires_in":    result.ExpiresIn,
+			"event":        "oidc_authorization_complete",
+			"user_open_id": result.OpenID,
+			"user_name":    result.UserName,
+			"email":        result.Email,
+			"scope":        result.Scope,
+			"expires_in":   result.ExpiresIn,
 		})
 		fmt.Fprintln(f.IOStreams.Out, string(b))
 	} else {
 		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("OIDC login successful: %s (%s)", result.UserName, result.OpenID))
-		fmt.Fprintf(f.IOStreams.ErrOut, "\n--- Token Information (for debugging) ---\n")
-		fmt.Fprintf(f.IOStreams.ErrOut, "Access Token:  %s\n", result.AccessToken)
-		fmt.Fprintf(f.IOStreams.ErrOut, "Refresh Token: %s\n", result.RefreshToken)
-		fmt.Fprintf(f.IOStreams.ErrOut, "ID Token:      %s\n", result.IDToken)
-		fmt.Fprintf(f.IOStreams.ErrOut, "Expires In:    %d seconds\n", result.ExpiresIn)
-		fmt.Fprintf(f.IOStreams.ErrOut, "Scope:         %s\n", result.Scope)
-		fmt.Fprintf(f.IOStreams.ErrOut, "--- End Token Information ---\n")
+
 	}
 	return nil
 }

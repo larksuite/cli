@@ -214,3 +214,5 @@ func platformListKeys(service string) ([]string, error) {
 
 	return accounts, nil
 }
+
+func platformCredentialBackend() KeychainAccess { return &defaultKeychain{} }

@@ -3,15 +3,13 @@
 
 package keychain
 
-import "fmt"
-
 // defaultKeychain implements KeychainAccess using the real platform keychain.
 type defaultKeychain struct{}
 
 func (d *defaultKeychain) Get(service, account string) (string, error) {
 	val := Get(service, account)
 	if val == "" {
-		return "", fmt.Errorf("keychain entry not found: %s/%s", service, account)
+		return "", ErrNotFound
 	}
 	return val, nil
 }
@@ -26,5 +24,5 @@ func (d *defaultKeychain) Remove(service, account string) error {
 
 // Default returns a KeychainAccess backed by the real platform keychain.
 func Default() KeychainAccess {
-	return &defaultKeychain{}
+	return platformCredentialBackend()
 }

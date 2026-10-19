@@ -6,19 +6,14 @@
 package keychain
 
 import (
-	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"encoding/base64"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/google/uuid"
-	"github.com/zalando/go-keyring"
 )
 
 const keychainTimeout = 5 * time.Second
@@ -49,47 +44,10 @@ func unsafeFileName(safeName string) string {
 	return strings.ReplaceAll(unsafeName, "_", "")
 }
 
-func getMasterKey(service string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), keychainTimeout)
-	defer cancel()
-
-	type result struct {
-		key []byte
-		err error
-	}
-	resCh := make(chan result, 1)
-	go func() {
-		defer func() { recover() }()
-
-		encodedKey, err := keyring.Get(service, "master.key")
-		if err == nil {
-			key, decodeErr := base64.StdEncoding.DecodeString(encodedKey)
-			if decodeErr == nil && len(key) == masterKeyBytes {
-				resCh <- result{key: key, err: nil}
-				return
-			}
-		}
-
-		// Generate new master key if not found or invalid
-		key := make([]byte, masterKeyBytes)
-		if _, randErr := rand.Read(key); randErr != nil {
-			resCh <- result{key: nil, err: randErr}
-			return
-		}
-
-		encodedKey = base64.StdEncoding.EncodeToString(key)
-		setErr := keyring.Set(service, "master.key", encodedKey)
-		resCh <- result{key: key, err: setErr}
-	}()
-
-	select {
-	case res := <-resCh:
-		return res.key, res.err
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+func defaultFileBackend() *FileCredentialBackend {
+	return NewFileCredentialBackend(filepath.Dir(StorageDir(LarkCliService)), systemMasterKeyring{})
 }
-
+func platformCredentialBackend() KeychainAccess { return defaultFileBackend() }
 func encryptData(plaintext string, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -135,56 +93,14 @@ func decryptData(data []byte, key []byte) (string, error) {
 }
 
 func platformGet(service, account string) string {
-	key, err := getMasterKey(service)
-	if err != nil {
-		return ""
-	}
-	data, err := os.ReadFile(filepath.Join(StorageDir(service), safeFileName(account)))
-	if err != nil {
-		return ""
-	}
-	plaintext, err := decryptData(data, key)
-	if err != nil {
-		return ""
-	}
-	return plaintext
+	value, _ := defaultFileBackend().Get(service, account)
+	return value
 }
-
 func platformSet(service, account, data string) error {
-	key, err := getMasterKey(service)
-	if err != nil {
-		return err
-	}
-	dir := StorageDir(service)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	encrypted, err := encryptData(data, key)
-	if err != nil {
-		return err
-	}
-
-	targetPath := filepath.Join(dir, safeFileName(account))
-	tmpPath := filepath.Join(dir, safeFileName(account)+"."+uuid.New().String()+".tmp")
-	defer os.Remove(tmpPath)
-
-	if err := os.WriteFile(tmpPath, encrypted, 0600); err != nil {
-		return err
-	}
-
-	// Atomic rename to prevent file corruption during multi-process writes
-	if err := os.Rename(tmpPath, targetPath); err != nil {
-		return err
-	}
-	return nil
+	return defaultFileBackend().Set(service, account, data)
 }
-
 func platformRemove(service, account string) error {
-	err := os.Remove(filepath.Join(StorageDir(service), safeFileName(account)))
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
+	return defaultFileBackend().Remove(service, account)
 }
 
 // platformListKeys lists all keys in the keychain for a given service.

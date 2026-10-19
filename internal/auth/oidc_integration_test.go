@@ -157,6 +157,12 @@ func TestTokenRefresher_RefreshFlow(t *testing.T) {
 	var logBuf bytes.Buffer
 	refresher := NewTokenRefresher(ctx, &http.Client{}, server.URL, "test_app", "test_secret", &logBuf)
 
+	store := NewCredentialStore(&memoryCredentials{values: map[string]string{}}, t.TempDir())
+	storedToken.AuthProtocol = "legacy_oidc"
+	if err := store.Save(ctx, storedToken); err != nil {
+		t.Fatal(err)
+	}
+	refresher.Store = store
 	refreshed, err := refresher.RefreshToken(storedToken)
 	if err != nil {
 		t.Fatalf("RefreshToken failed: %v", err)
@@ -271,7 +277,7 @@ func TestTokenStatus_VariousStates(t *testing.T) {
 				IDToken:          testExpiredIDToken,
 				IDTokenExpiresAt: 1000000000000, // 已过期
 			},
-			expectedStatus: "id_token_expired",
+			expectedStatus: "valid",
 		},
 		{
 			name: "refresh_token expired",

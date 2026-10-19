@@ -332,13 +332,10 @@ func TestApiCmd_PageAll_NonBatchAPI_ErrorStillOutputsJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for non-zero code")
 	}
-	// Should still output the response body so user can see the error details
-	if !strings.Contains(stdout.String(), "230001") {
-		t.Errorf("expected error response in stdout, got: %s", stdout.String())
+	if stdout.Len() != 0 {
+		t.Fatalf("error response must not be emitted as successful stdout: %s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "no permission") {
-		t.Errorf("expected error message in stdout, got: %s", stdout.String())
-	}
+
 }
 
 func TestApiCmd_PageAll_BatchAPI_StreamsItems(t *testing.T) {
@@ -496,8 +493,8 @@ func TestApiCmd_APIError_PreservesOriginalMessage(t *testing.T) {
 	if exitErr.Detail == nil {
 		t.Fatal("expected non-nil Detail")
 	}
-	if exitErr.Detail.Detail == nil {
-		t.Error("expected raw Detail.Detail to be preserved (not cleared by enrichment)")
+	if exitErr.Detail.Detail != nil {
+		t.Error("raw server error must not be reflected")
 	}
 }
 

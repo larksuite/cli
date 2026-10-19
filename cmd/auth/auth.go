@@ -30,6 +30,7 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(NewCmdAuthLoginOIDC(f, nil)) // 添加OIDC登录命令
 	cmd.AddCommand(NewCmdAuthLogout(f, nil))
 	cmd.AddCommand(NewCmdAuthStoreToken(f, nil))
+	cmd.AddCommand(NewCmdAuthConfirmProtocol(f))
 	cmd.AddCommand(NewCmdAuthStatus(f, nil))
 	cmd.AddCommand(NewCmdAuthScopes(f, nil))
 	cmd.AddCommand(NewCmdAuthList(f, nil))

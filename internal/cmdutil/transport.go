@@ -6,6 +6,8 @@ package cmdutil
 import (
 	"net/http"
 	"time"
+
+	"github.com/larksuite/cli/internal/auth"
 )
 
 // RetryTransport is an http.RoundTripper that retries on 5xx responses
@@ -32,6 +34,9 @@ func (t *RetryTransport) delay() time.Duration {
 
 // RoundTrip implements http.RoundTripper.
 func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if auth.IsAuthenticationRequest(req) {
+		return t.base().RoundTrip(req)
+	}
 	resp, err := t.base().RoundTrip(req)
 	if t.MaxRetries <= 0 {
 		return resp, err

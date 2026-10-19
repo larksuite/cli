@@ -63,11 +63,13 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return fmt.Errorf("too many redirects")
 	}
-	if len(via) > 0 && req.URL.Host != via[0].URL.Host {
-		req.Header.Del("Authorization")
-		req.Header.Del("X-Lark-MCP-UAT")
-		req.Header.Del("X-Lark-MCP-TAT")
+	if req.URL.Scheme != "https" {
+		return fmt.Errorf("redirect rejected: HTTPS required")
 	}
+	if len(via) > 0 && req.URL.Host != via[0].URL.Host {
+		return fmt.Errorf("redirect rejected: host is outside configured tenant")
+	}
+
 	return nil
 }
 
@@ -105,7 +107,10 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			Transport:     sdkTransport,
 			CheckRedirect: safeRedirectPolicy,
 		}))
-		ep := core.ResolveEndpoints(cfg.Brand)
+		ep, err := cfg.ResolveServiceEndpoints()
+		if err != nil {
+			return nil, err
+		}
 		opts = append(opts, lark.WithOpenBaseUrl(ep.Open))
 		client := lark.NewClient(cfg.AppID, cfg.AppSecret, opts...)
 		return client, nil

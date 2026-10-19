@@ -66,7 +66,10 @@ func authStatusRun(opts *StatusOptions) error {
 		return nil
 	}
 
-	stored := larkauth.GetStoredToken(config.AppID, config.UserOpenId)
+	stored, readErr := larkauth.GetStoredTokenWithError(config.AppID, config.UserOpenId)
+	if readErr != nil {
+		return output.Errorf(output.ExitInternal, "credential_storage_error", "credential storage unavailable: %v", readErr)
+	}
 	if stored == nil {
 		result["identity"] = "bot"
 		result["userName"] = config.UserName

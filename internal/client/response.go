@@ -6,17 +6,20 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -43,11 +46,8 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 		check = CheckLarkResponse
 	}
 
-	// Non-JSON error responses (e.g. 404 text/plain from gateway): return error directly
-	// instead of falling through to the binary-save path.
-	if resp.StatusCode >= 400 && !IsJSONContentType(ct) && ct != "" {
-		body := util.TruncateStrWithEllipsis(strings.TrimSpace(string(resp.RawBody)), 500)
-		return output.Errorf(httpExitCode(resp.StatusCode), "http_error", "HTTP %d: %s", resp.StatusCode, body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return responseHTTPFailure(resp)
 	}
 
 	// JSON responses: always check for business errors before saving.
@@ -57,6 +57,10 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 			return output.ErrNetwork("API call failed: %v", err)
 		}
 		if apiErr := check(result); apiErr != nil {
+			var structured *output.ExitError
+			if errors.As(apiErr, &structured) && structured.Detail != nil {
+				structured.Detail.HTTPStatus = resp.StatusCode
+			}
 			return apiErr
 		}
 		if opts.OutputPath != "" {
@@ -104,7 +108,7 @@ func ParseJSONResponse(resp *larkcore.ApiResp) (interface{}, error) {
 	dec := json.NewDecoder(bytes.NewReader(resp.RawBody))
 	dec.UseNumber()
 	if err := dec.Decode(&result); err != nil {
-		return nil, fmt.Errorf("response parse error: %v (body: %s)", err, util.TruncateStr(string(resp.RawBody), 500))
+		return nil, fmt.Errorf("response parse error: invalid JSON")
 	}
 	return result, nil
 }
@@ -185,4 +189,25 @@ func httpExitCode(status int) int {
 		return output.ExitNetwork
 	}
 	return output.ExitAPI
+}
+
+func responseHTTPFailure(resp *larkcore.ApiResp) *output.ExitError {
+	err := output.Errorf(httpExitCode(resp.StatusCode), "http_error", "HTTP %d: upstream request failed", resp.StatusCode)
+	err.Detail.HTTPStatus = resp.StatusCode
+	if seconds, e := strconv.ParseInt(resp.Header.Get("Retry-After"), 10, 64); e == nil && seconds > 0 && seconds < 3600 {
+		err.Detail.RetryAfterMS = seconds * 1000
+	} else if date, e := http.ParseTime(resp.Header.Get("Retry-After")); e == nil && time.Until(date) > 0 {
+		err.Detail.RetryAfterMS = time.Until(date).Milliseconds()
+	}
+	var safeEnvelope struct {
+		Code int `json:"code"`
+	}
+	if json.Unmarshal(resp.RawBody, &safeEnvelope) == nil && safeEnvelope.Code != 0 {
+		err.Detail.Code = safeEnvelope.Code
+		err.Detail.Message = fmt.Sprintf("HTTP %d: upstream error code %d", resp.StatusCode, safeEnvelope.Code)
+	}
+	retry := resp.StatusCode == 429 || resp.StatusCode >= 500
+	err.Detail.Retryable = &retry
+	err.Detail.NextAction = "check endpoint and gateway policy using request identifier"
+	return err
 }

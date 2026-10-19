@@ -4,26 +4,35 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"github.com/larksuite/cli/internal/keychain"
 )
 
 // StoredUAToken represents a stored user access token.
+type RefreshAttempt struct {
+	Generation uint64 `json:"generation"`
+	AttemptID  string `json:"attempt_id"`
+	StartedAt  int64  `json:"started_at"`
+}
 type StoredUAToken struct {
-	UserOpenId       string                 `json:"userOpenId"`
-	AppId            string                 `json:"appId"`
-	AccessToken      string                 `json:"accessToken"`
-	RefreshToken     string                 `json:"refreshToken"`
-	IDToken          string                 `json:"idToken"`          // OIDC 特有
-	ExpiresAt        int64                  `json:"expiresAt"`        // Unix ms - 访问 Token 过期时间
-	RefreshExpiresAt int64                  `json:"refreshExpiresAt"` // Unix ms - 刷新 Token 过期时间
-	IDTokenExpiresAt int64                  `json:"idTokenExpiresAt"` // Unix ms - ID Token 过期时间
-	Scope            string                 `json:"scope"`
-	GrantedAt        int64                  `json:"grantedAt"` // Unix ms
-	UserInfo         map[string]interface{} `json:"userInfo"`  // 用户信息
+	UnknownFields    map[string]json.RawMessage `json:"-"`
+	RefreshInFlight  *RefreshAttempt            `json:"refresh_in_flight,omitempty"`
+	Generation       uint64                     `json:"generation,omitempty"`
+	AuthProtocol     string                     `json:"authProtocol,omitempty"`
+	Authority        string                     `json:"authority,omitempty"`
+	UserOpenId       string                     `json:"userOpenId"`
+	AppId            string                     `json:"appId"`
+	AccessToken      string                     `json:"accessToken"`
+	RefreshToken     string                     `json:"refreshToken"`
+	IDToken          string                     `json:"idToken"`          // OIDC 特有
+	ExpiresAt        int64                      `json:"expiresAt"`        // Unix ms - 访问 Token 过期时间
+	RefreshExpiresAt int64                      `json:"refreshExpiresAt"` // Unix ms - 刷新 Token 过期时间
+	IDTokenExpiresAt int64                      `json:"idTokenExpiresAt"` // Unix ms - ID Token 过期时间
+	Scope            string                     `json:"scope"`
+	GrantedAt        int64                      `json:"grantedAt"` // Unix ms
+	UserInfo         map[string]interface{}     `json:"userInfo"`  // 用户信息
 }
 
 const refreshAheadMs = 5 * 60 * 1000 // 5 minutes
@@ -42,46 +51,32 @@ func MaskToken(token string) string {
 
 // GetStoredToken reads the stored UAT for a given (appId, userOpenId) pair.
 func GetStoredToken(appId, userOpenId string) *StoredUAToken {
-	jsonStr := keychain.Get(keychain.LarkCliService, accountKey(appId, userOpenId))
-	if jsonStr == "" {
-		return nil
-	}
-	var token StoredUAToken
-	if err := json.Unmarshal([]byte(jsonStr), &token); err != nil {
-		return nil
-	}
-	return &token
+	record, _ := GetStoredTokenWithError(appId, userOpenId)
+	return record
 }
 
-// SetStoredToken persists a UAT.
+// GetStoredTokenWithError distinguishes unavailable/corrupt storage from an absent account.
+func GetStoredTokenWithError(appId, userOpenId string) (*StoredUAToken, error) {
+	return defaultCredentialStore().Load(context.Background(), appId, userOpenId)
+}
 func SetStoredToken(token *StoredUAToken) error {
-	key := accountKey(token.AppId, token.UserOpenId)
-	data, err := json.Marshal(token)
-	if err != nil {
-		return err
-	}
-	return keychain.Set(keychain.LarkCliService, key, string(data))
+	return defaultCredentialStore().Save(context.Background(), token)
 }
-
-// RemoveStoredToken removes a stored UAT.
 func RemoveStoredToken(appId, userOpenId string) error {
-	return keychain.Remove(keychain.LarkCliService, accountKey(appId, userOpenId))
+	return defaultCredentialStore().Remove(context.Background(), appId, userOpenId)
 }
 
 // TokenStatus determines the freshness of a stored token.
-// Returns: "valid", "needs_refresh", "expired", or "id_token_expired"
+// Returns: "valid", "needs_refresh", or "expired".
 func TokenStatus(token *StoredUAToken) string {
 	now := time.Now().UnixMilli()
 
-	// 首先检查 ID Token 状态（如果是 OIDC 令牌）
-	if token.IDToken != "" && token.IDTokenExpiresAt > 0 {
-		if now >= token.IDTokenExpiresAt {
-			return "id_token_expired"
-		}
-	}
-
+	// Identity-token metadata does not govern API access or refresh lifetime.
 	// 检查访问 Token 是否即将过期（提前 5 分钟刷新）
 	if now+refreshAheadMs >= token.ExpiresAt {
+		if token.RefreshToken != "" && token.RefreshExpiresAt == 0 {
+			return "refresh_lifetime_unknown"
+		}
 		if token.RefreshToken != "" && token.RefreshExpiresAt > now {
 			return "needs_refresh"
 		}
@@ -131,6 +126,8 @@ func (t *StoredUAToken) GetUserInfoString(key string) string {
 
 // UpdateFromOIDCResult 使用 OIDCFlowResult 更新 Token 信息
 func (t *StoredUAToken) UpdateFromOIDCResult(result *OIDCFlowResult) {
+	t.AuthProtocol = result.AuthProtocol
+	t.Authority = result.Authority
 	t.AccessToken = result.AccessToken
 	t.RefreshToken = result.RefreshToken
 	t.IDToken = result.IDToken

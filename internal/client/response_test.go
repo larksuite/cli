@@ -274,7 +274,7 @@ func TestHandleResponse_NonJSONError_404(t *testing.T) {
 		t.Fatal("expected error for 404 text/plain")
 	}
 	got := err.Error()
-	if !strings.Contains(got, "HTTP 404") || !strings.Contains(got, "404 page not found") {
+	if !strings.Contains(got, "HTTP 404") {
 		t.Errorf("expected 'HTTP 404: 404 page not found', got: %s", got)
 	}
 	var exitErr *output.ExitError
@@ -292,7 +292,7 @@ func TestHandleResponse_NonJSONError_502(t *testing.T) {
 		t.Fatal("expected error for 502 text/html")
 	}
 	got := err.Error()
-	if !strings.Contains(got, "HTTP 502") || !strings.Contains(got, "Bad Gateway") {
+	if !strings.Contains(got, "HTTP 502") {
 		t.Errorf("expected 'HTTP 502' and 'Bad Gateway' in error, got: %s", got)
 	}
 	var exitErr *output.ExitError
@@ -330,5 +330,31 @@ func TestHandleResponse_403JSON_CheckLarkResponse(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "99991400") {
 		t.Errorf("expected lark error code in message, got: %s", err.Error())
+	}
+}
+
+func TestHTTPFailureNeverReflectsHTMLOrAcceptsFakeSuccess(t *testing.T) {
+	for _, ct := range []string{"text/html", "", "application/json"} {
+		t.Run(ct, func(t *testing.T) {
+			var out, stderr bytes.Buffer
+			resp := newApiRespWithStatus(403, []byte(`{"code":0,"msg":"seed-secret"}`), map[string]string{"Content-Type": ct})
+			err := HandleResponse(resp, ResponseOptions{Out: &out, ErrOut: &stderr, Format: output.FormatJSON})
+			if err == nil {
+				t.Fatal("HTTP failure accepted")
+			}
+			if strings.Contains(err.Error(), "seed-secret") || out.Len() != 0 {
+				t.Fatalf("response leaked: %v stdout=%s", err, out.String())
+			}
+		})
+	}
+}
+
+func TestBusinessErrorPreservesSafeNestedLogIDAndRealHTTPStatus(t *testing.T) {
+	resp := newApiRespWithStatus(200, []byte(`{"code":1770032,"msg":"seed-secret","error":{"log_id":"req-123","token":"seed-secret"}}`), map[string]string{"Content-Type": "application/json"})
+	var out, stderr bytes.Buffer
+	err := HandleResponse(resp, ResponseOptions{Out: &out, ErrOut: &stderr})
+	var detail *output.ExitError
+	if !errors.As(err, &detail) || detail.Detail.HTTPStatus != 200 || detail.Detail.LogID != "req-123" || detail.Detail.Detail != nil || strings.Contains(err.Error(), "seed-secret") {
+		t.Fatalf("safe diagnostic lost or reflected raw detail: %v", err)
 	}
 }

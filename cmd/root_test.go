@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -65,7 +66,7 @@ func TestPersistentPreRunE_ConfigSubcommands(t *testing.T) {
 	}
 }
 
-func TestHandleRootError_RawError_SkipsEnrichmentAndEnvelope(t *testing.T) {
+func TestHandleRootError_PrintedError_SkipsEnrichmentAndEnvelope(t *testing.T) {
 	f, _, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
@@ -77,6 +78,7 @@ func TestHandleRootError_RawError_SkipsEnrichmentAndEnvelope(t *testing.T) {
 		},
 	})
 	err.Raw = true
+	err.Printed = true
 
 	code := handleRootError(f, err)
 	if code != output.ExitAPI {
@@ -185,5 +187,36 @@ func TestEnrichPermissionError_SpecialCharsEscaped(t *testing.T) {
 				t.Errorf("console_url contains unescaped dangerous value\n  deny substring: %s\n  got url:        %s", tt.denyInURL, consoleURL)
 			}
 		})
+	}
+}
+
+func TestRawUnprintedFailureStillEmitsOneErrorEnvelope(t *testing.T) {
+	f, _, errOut, _ := cmdutil.TestFactory(t, nil)
+	f.ResolvedIdentity = core.AsBot
+	err := output.MarkRaw(output.ErrNetwork("request failed"))
+	if got := handleRootError(f, err); got != output.ExitNetwork {
+		t.Fatalf("exit %d", got)
+	}
+	if strings.Count(errOut.String(), `"ok": false`) != 1 {
+		t.Fatalf("missing/duplicate envelope: %s", errOut.String())
+	}
+}
+
+func TestPaginatedPartialThenHTTPFailureEmitsOneSafeRealStatus(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test-page-failure-once", AppSecret: "synthetic", Brand: core.BrandFeishu})
+	reg.Register(&httpmock.Stub{URL: "/open-apis/auth/v3/tenant_access_token/internal", Body: map[string]interface{}{"code": 0, "tenant_access_token": "synthetic-tenant", "expire": 7200}})
+	reg.Register(&httpmock.Stub{URL: "/open-apis/contact/v3/users", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"items": []interface{}{map[string]interface{}{"id": "first-item"}}, "has_more": true, "page_token": "next"}}})
+	reg.Register(&httpmock.Stub{URL: "/open-apis/contact/v3/users", Status: 403, ContentType: "text/html", RawBody: []byte("<html>seed-secret</html>")})
+	command := api.NewCmdApi(f, nil)
+	command.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson", "--page-delay", "1"})
+	err := command.Execute()
+	if err == nil {
+		t.Fatal("pagination failure accepted")
+	}
+	if code := handleRootError(f, err); code == 0 {
+		t.Fatal("failed read exited zero")
+	}
+	if !strings.Contains(stdout.String(), "first-item") || strings.Contains(stdout.String()+stderr.String(), "seed-secret") || strings.Count(stderr.String(), `"ok": false`) != 1 || !strings.Contains(stderr.String(), `"http_status": 403`) {
+		t.Fatalf("partial/error contract broken: stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
 }

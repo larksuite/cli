@@ -11,22 +11,28 @@ import (
 	"net/url"
 	"os/exec"
 	"runtime"
+	"strings"
+	"sync"
 	"time"
 )
 
 // OIDCFlowOptions 包含 OIDC 认证选项
 type OIDCFlowOptions struct {
-	AppID       string
-	AppSecret   string
-	Domain      string // Accounts domain (for authorization)
-	OpenDomain  string // Open domain (for token exchange)
-	RedirectURI string
-	Timeout     time.Duration
-	Scope       string // 可选的 scope 参数，用于请求 API 权限
+	AuthProtocol string
+	OpenBrowser  func(string) error // Optional interactive browser adapter.
+	AppID        string
+	AppSecret    string
+	Domain       string // Accounts domain (for authorization)
+	OpenDomain   string // Open domain (for token exchange)
+	RedirectURI  string
+	Timeout      time.Duration
+	Scope        string // 可选的 scope 参数，用于请求 API 权限
 }
 
 // OIDCFlowResult 包含 OIDC 认证结果
 type OIDCFlowResult struct {
+	AuthProtocol     string
+	Authority        string
 	AccessToken      string
 	RefreshToken     string
 	IDToken          string // OIDC 特有
@@ -61,78 +67,78 @@ func StartOIDCFlow(ctx context.Context, opts *OIDCFlowOptions, httpClient *http.
 	codeChan := make(chan string, 1)
 	errorChan := make(chan string, 1)
 
-	// 创建回调处理器 - 监听所有路径，因为飞书可能回调到 / 或 /callback
+	var consume sync.Once
 	callbackHandler := func(w http.ResponseWriter, r *http.Request) {
+		expectedPath := redirectURL.Path
+		if expectedPath == "" {
+			expectedPath = "/"
+		}
+		if r.URL.Path != expectedPath {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		query := r.URL.Query()
-
-		// 检查是否有错误
-		if err := query.Get("error"); err != "" {
-			errDesc := query.Get("error_description")
-			fmt.Fprintf(errOut, "OIDC flow error: %s - %s\n", err, errDesc)
-			errorChan <- fmt.Sprintf("%s: %s", err, errDesc)
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf("Authentication failed: %s - %s", err, errDesc)))
+		if query.Get("state") != state {
+			consume.Do(func() { errorChan <- "invalid callback state" })
+			http.Error(w, "Invalid callback state", http.StatusForbidden)
 			return
 		}
-
-		// 验证 state 参数以防止 CSRF 攻击
-		stateParam := query.Get("state")
-		if stateParam != state {
-			errMsg := "Invalid state parameter - possible CSRF attack"
-			fmt.Fprintf(errOut, "%s (received: %s, expected: %s)\n", errMsg, stateParam, state)
-			errorChan <- errMsg
-			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte(errMsg))
+		if query.Get("error") != "" {
+			consume.Do(func() { errorChan <- "authorization rejected" })
+			http.Error(w, "Authorization rejected", http.StatusBadRequest)
 			return
 		}
-
-		// 获取授权码
 		code := query.Get("code")
 		if code == "" {
-			errMsg := "No authorization code received"
-			fmt.Fprintf(errOut, "%s\n", errMsg)
-			errorChan <- errMsg
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(errMsg))
+			consume.Do(func() { errorChan <- "missing authorization code" })
+			http.Error(w, "Missing authorization code", http.StatusBadRequest)
 			return
 		}
-
-		// 验证成功，发送授权码
-		codeChan <- code
-
-		// 发送成功响应给浏览器
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><title>授权成功</title></head><body><h1>授权成功</h1><p>可以关闭此页面并返回终端。</p></body></html>`))
+		accepted := false
+		consume.Do(func() { codeChan <- code; accepted = true })
+		if !accepted {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("回调已收到，请返回终端查看最终结果。"))
 	}
 
 	// 在 goroutine 中启动 HTTP 服务器
 	server := &http.Server{
 		Handler: http.HandlerFunc(callbackHandler),
 	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+	}()
 	go func() {
 		if serveErr := server.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
 			fmt.Fprintf(errOut, "[WARN] callback server error: %v\n", serveErr)
 		}
 	}()
 
-	// 构建授权请求 URL
-	authURL := fmt.Sprintf("%s/open-apis/authen/v1/user_auth_page_beta", opts.Domain)
-	params := url.Values{}
-	params.Add("app_id", opts.AppID)
-	params.Add("redirect_uri", opts.RedirectURI)
-	params.Add("state", state)
-	// 如果指定了 scope，则添加到授权请求中（OIDC 模式支持 scope 参数）
-	if opts.Scope != "" {
-		params.Add("scope", opts.Scope)
+	authRequestURL, err := BuildOIDCAuthorizationURL(opts, state)
+	if err != nil {
+		return nil, err
 	}
-
-	authRequestURL := fmt.Sprintf("%s?%s", authURL, params.Encode())
 
 	fmt.Fprintf(errOut, "Opening browser for authentication...\n")
 	fmt.Fprintf(errOut, "If the browser does not open, visit the following URL:\n%s\n", authRequestURL)
 
 	// 尝试打开浏览器
-	openBrowser(authRequestURL)
+	opener := opts.OpenBrowser
+	if opener == nil {
+		opener = openBrowser
+	}
+	if err := opener(authRequestURL); err != nil {
+		return nil, fmt.Errorf("failed to open authentication browser")
+	}
 
 	// 等待授权码或超时
 	var authCode string
@@ -149,7 +155,9 @@ func StartOIDCFlow(ctx context.Context, opts *OIDCFlowOptions, httpClient *http.
 	}
 
 	// 停止 HTTP 服务器
-	server.Shutdown(context.Background())
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	_ = server.Shutdown(shutdownCtx)
+	shutdownCancel()
 
 	// 使用新的 OIDC API 客户端交换 Token
 	client := NewOidcAccessTokenClient(httpClient, opts.OpenDomain)
@@ -168,45 +176,27 @@ func StartOIDCFlow(ctx context.Context, opts *OIDCFlowOptions, httpClient *http.
 	var openID, userName, email string
 	var claims map[string]interface{}
 
-	// 首先尝试从 ID Token 获取用户信息
+	// ID-token claims are non-authoritative metadata, never account identifiers.
 	if tokenResp.IDToken != "" {
-		claims, err = parseIDTokenClaims(tokenResp.IDToken)
-		if err != nil {
-			fmt.Fprintf(errOut, "Warning: Failed to parse ID token claims: %v\n", err)
-		} else {
-			// 从 claims 中提取用户信息
-			if sub, ok := claims["sub"].(string); ok {
-				openID = sub
-			}
-			if name, ok := claims["name"].(string); ok {
-				userName = name
-			}
-			if emailVal, ok := claims["email"].(string); ok {
-				email = emailVal
-			}
-		}
+		claims, _ = parseIDTokenClaims(tokenResp.IDToken)
 	}
-
-	// 如果 ID Token 不可用或没有用户信息，调用用户信息 API
-	if openID == "" && tokenResp.AccessToken != "" {
-		fmt.Fprintf(errOut, "Fetching user info from API...\n")
-		userInfo, err := client.GetUserInfo(ctx, tokenResp.AccessToken)
-		if err != nil {
-			fmt.Fprintf(errOut, "Warning: Failed to get user info: %v\n", err)
-		} else {
-			openID = userInfo.OpenID
-			userName = userInfo.Name
-			email = userInfo.Email
-			fmt.Fprintf(errOut, "User info retrieved: %s (%s)\n", userName, openID)
-		}
+	userInfo, err := client.GetUserInfo(ctx, tokenResp.AccessToken)
+	if err != nil {
+		return nil, fmt.Errorf("trusted user_info required: %w", err)
 	}
+	if tokenResp.OpenID != "" && tokenResp.OpenID != userInfo.OpenID {
+		return nil, fmt.Errorf("identity_conflict")
+	}
+	openID, userName, email = userInfo.OpenID, userInfo.Name, userInfo.Email
 
 	return &OIDCFlowResult{
+		AuthProtocol: "legacy_oidc", Authority: opts.OpenDomain,
 		AccessToken:      tokenResp.AccessToken,
 		RefreshToken:     tokenResp.RefreshToken,
 		IDToken:          tokenResp.IDToken,
 		ExpiresIn:        tokenResp.ExpiresIn,
 		RefreshExpiresIn: tokenResp.RefreshExpiresIn,
+		Scope:            tokenResp.Scope,
 		OpenID:           openID,
 		UserName:         userName,
 		Email:            email,
@@ -241,4 +231,25 @@ func generateState() string {
 		return fmt.Sprintf("state_%d", time.Now().UnixNano())
 	}
 	return base64.URLEncoding.EncodeToString(b)
+}
+
+// BuildOIDCAuthorizationURL constructs only parameters belonging to the selected protocol.
+func BuildOIDCAuthorizationURL(opts *OIDCFlowOptions, state string) (string, error) {
+	base, err := url.Parse(opts.Domain)
+	if err != nil || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" || (base.Scheme != "https" && base.Scheme != "http") {
+		return "", fmt.Errorf("invalid authorization base")
+	}
+	path := "/open-apis/authen/v1/user_auth_page_beta"
+	if opts.AuthProtocol == "legacy_oidc" {
+		path = "/open-apis/authen/v1/index"
+	} else if opts.AuthProtocol != "" {
+		return "", fmt.Errorf("unsupported OIDC authorization protocol")
+	}
+	base.Path = strings.TrimRight(base.Path, "/") + path
+	params := url.Values{"app_id": {opts.AppID}, "redirect_uri": {opts.RedirectURI}, "state": {state}}
+	if opts.AuthProtocol != "legacy_oidc" && opts.Scope != "" {
+		params.Set("scope", opts.Scope)
+	}
+	base.RawQuery = params.Encode()
+	return base.String(), nil
 }

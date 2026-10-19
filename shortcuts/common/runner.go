@@ -106,7 +106,9 @@ func (ctx *RuntimeContext) AccessToken() (string, error) {
 	if err != nil {
 		return "", output.ErrAuth("failed to get HTTP client: %s", err)
 	}
-	token, err := auth.GetValidAccessToken(httpClient, auth.NewUATCallOptions(ctx.Config, ctx.IO().ErrOut))
+	uatOpts := auth.NewUATCallOptions(ctx.Config, ctx.IO().ErrOut)
+	uatOpts.Context = ctx.ctx
+	token, err := auth.GetValidAccessToken(httpClient, uatOpts)
 	if err != nil {
 		return "", output.ErrAuth("failed to get access token: %s", err)
 	}

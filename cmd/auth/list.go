@@ -54,7 +54,10 @@ func authListRun(opts *ListOptions) error {
 
 	var items []map[string]interface{}
 	for _, u := range app.Users {
-		stored := larkauth.GetStoredToken(app.AppId, u.UserOpenId)
+		stored, readErr := larkauth.GetStoredTokenWithError(app.AppId, u.UserOpenId)
+		if readErr != nil {
+			return output.Errorf(output.ExitInternal, "credential_storage_error", "credential storage unavailable: %v", readErr)
+		}
 		status := "no_token"
 		if stored != nil {
 			status = larkauth.TokenStatus(stored)

@@ -4,6 +4,7 @@
 package cmdutil
 
 import (
+	"net/http"
 	"testing"
 )
 
@@ -40,5 +41,15 @@ func TestCachedHttpClientFunc_HasRedirectPolicy(t *testing.T) {
 	c, _ := fn()
 	if c.CheckRedirect == nil {
 		t.Error("expected CheckRedirect to be set (safeRedirectPolicy)")
+	}
+}
+
+func TestReadRedirectRejectsForeignHostAndDowngrade(t *testing.T) {
+	origin, _ := http.NewRequest("GET", "https://tenant.test/data", nil)
+	for _, target := range []string{"https://foreign.test/data", "http://tenant.test/data"} {
+		req, _ := http.NewRequest("GET", target, nil)
+		if err := safeRedirectPolicy(req, []*http.Request{origin}); err == nil {
+			t.Fatalf("unsafe redirect allowed: %s", target)
+		}
 	}
 }

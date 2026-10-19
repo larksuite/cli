@@ -59,7 +59,10 @@ func authCheckRun(opts *CheckOptions) error {
 		return output.ErrBare(1)
 	}
 
-	stored := larkauth.GetStoredToken(config.AppID, config.UserOpenId)
+	stored, readErr := larkauth.GetStoredTokenWithError(config.AppID, config.UserOpenId)
+	if readErr != nil {
+		return output.Errorf(output.ExitInternal, "credential_storage_error", "credential storage unavailable: %v", readErr)
+	}
 	if stored == nil {
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"ok": false, "error": "no_token", "missing": required})
 		return output.ErrBare(1)

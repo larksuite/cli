@@ -17,6 +17,7 @@ import (
 
 // StoreTokenOptions holds all inputs for auth store-token.
 type StoreTokenOptions struct {
+	AuthProtocol     string
 	Factory          *cmdutil.Factory
 	UserOpenID       string
 	UserName         string
@@ -49,6 +50,7 @@ func NewCmdAuthStoreToken(f *cmdutil.Factory, runF func(*StoreTokenOptions) erro
 	cmd.Flags().StringVar(&opts.RefreshToken, "refresh-token", "", "user refresh token")
 	cmd.Flags().Int64Var(&opts.ExpiresIn, "expires-in", 0, "access token lifetime in seconds")
 	cmd.Flags().Int64Var(&opts.RefreshExpiresIn, "refresh-expires-in", 0, "refresh token lifetime in seconds")
+	cmd.Flags().StringVar(&opts.AuthProtocol, "auth-protocol", "", "explicit credential protocol: legacy_oidc or oauth_v2")
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "granted scopes")
 
 	_ = cmd.MarkFlagRequired("user-name")
@@ -76,10 +78,29 @@ func authStoreTokenRun(opts *StoreTokenOptions) error {
 		return err
 	}
 
+	protocol := opts.AuthProtocol
+	if protocol == "" {
+		protocol = config.AuthProtocol
+	}
+	if protocol == "" {
+		if config.Brand == core.BrandFeishu || config.Brand == core.BrandLark || config.Brand == "" {
+			protocol = "oauth_v2"
+		} else {
+			return output.ErrValidation("private credentials require explicit --auth-protocol")
+		}
+	}
+	if protocol != "legacy_oidc" && protocol != "oauth_v2" {
+		return output.ErrValidation("unsupported auth protocol")
+	}
+	endpoints, err := config.ResolveServiceEndpoints()
+	if err != nil {
+		return err
+	}
 	now := time.Now().UnixMilli()
 	storedToken := &larkauth.StoredUAToken{
-		UserOpenId:       opts.UserOpenID,
-		AppId:            config.AppID,
+		UserOpenId:   opts.UserOpenID,
+		AppId:        config.AppID,
+		AuthProtocol: protocol, Authority: endpoints.Open,
 		AccessToken:      opts.AccessToken,
 		RefreshToken:     opts.RefreshToken,
 		ExpiresAt:        now + opts.ExpiresIn*1000,
@@ -91,26 +112,8 @@ func authStoreTokenRun(opts *StoreTokenOptions) error {
 		return output.Errorf(output.ExitInternal, "internal", "failed to save token: %v", err)
 	}
 
-	multi, err := core.LoadMultiAppConfig()
-	if err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to load config: %v", err)
-	}
-	if len(multi.Apps) == 0 {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save token: no apps in config")
-	}
-
-	app := &multi.Apps[0]
-	for _, oldUser := range app.Users {
-		if oldUser.UserOpenId != opts.UserOpenID {
-			larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-		}
-	}
-	app.Users = []core.AppUser{{
-		UserOpenId: opts.UserOpenID,
-		UserName:   opts.UserName,
-	}}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+	if err := core.MergeAppUser(config.AppID, core.AppUser{UserOpenId: opts.UserOpenID, UserName: opts.UserName}); err != nil {
+		return output.Errorf(output.ExitInternal, "internal", "token stored but config merge failed: %v", err)
 	}
 
 	output.PrintSuccess(opts.Factory.IOStreams.ErrOut, fmt.Sprintf("Stored token for %s (%s)", opts.UserName, opts.UserOpenID))

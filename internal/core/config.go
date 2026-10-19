@@ -32,13 +32,16 @@ type AppUser struct {
 
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
-	AppId     string      `json:"appId"`
-	AppSecret SecretInput `json:"appSecret"`
-	Brand     LarkBrand   `json:"brand"`
-	Domain    string      `json:"domain,omitempty"`    // Custom domain for private deployments (e.g., "https://open.example.com")
-	Lang      string      `json:"lang,omitempty"`
-	DefaultAs string      `json:"defaultAs,omitempty"` // "user" | "bot" | "auto"
-	Users     []AppUser   `json:"users"`
+	AuthProtocol         string      `json:"authProtocol,omitempty"`
+	APIBaseURL           string      `json:"apiBaseURL,omitempty"`
+	AuthorizationBaseURL string      `json:"authorizationBaseURL,omitempty"`
+	AppId                string      `json:"appId"`
+	AppSecret            SecretInput `json:"appSecret"`
+	Brand                LarkBrand   `json:"brand"`
+	Domain               string      `json:"domain,omitempty"` // Custom domain for private deployments (e.g., "https://open.example.com")
+	Lang                 string      `json:"lang,omitempty"`
+	DefaultAs            string      `json:"defaultAs,omitempty"` // "user" | "bot" | "auto"
+	Users                []AppUser   `json:"users"`
 }
 
 // MultiAppConfig is the multi-app config file format.
@@ -48,12 +51,15 @@ type MultiAppConfig struct {
 
 // CliConfig is the resolved single-app config used by downstream code.
 type CliConfig struct {
-	AppID      string
-	AppSecret  string
-	Brand      LarkBrand
-	DefaultAs  string // "user" | "bot" | "auto" | "" (from config file)
-	UserOpenId string
-	UserName   string
+	AuthProtocol         string
+	APIBaseURL           string
+	AuthorizationBaseURL string
+	AppID                string
+	AppSecret            string
+	Brand                LarkBrand
+	DefaultAs            string // "user" | "bot" | "auto" | "" (from config file)
+	UserOpenId           string
+	UserName             string
 }
 
 // GetConfigDir returns the config directory path.
@@ -94,6 +100,9 @@ func LoadMultiAppConfig() (*MultiAppConfig, error) {
 
 // SaveMultiAppConfig saves config to disk.
 func SaveMultiAppConfig(config *MultiAppConfig) error {
+	return withConfigLock(func() error { return saveMultiAppConfigUnlocked(config) })
+}
+func saveMultiAppConfigUnlocked(config *MultiAppConfig) error {
 	dir := GetConfigDir()
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
@@ -116,18 +125,22 @@ func RequireConfig(kc keychain.KeychainAccess) (*CliConfig, error) {
 	if err != nil {
 		return nil, &ConfigError{Code: 2, Type: "config", Message: err.Error()}
 	}
-	
+
 	// Use Domain if specified, otherwise use Brand
 	brand := app.Brand
 	if app.Domain != "" {
 		brand = LarkBrand(app.Domain)
 	}
-	
+
 	cfg := &CliConfig{
-		AppID:     app.AppId,
+		AppID:        app.AppId,
+		AuthProtocol: app.AuthProtocol, APIBaseURL: app.APIBaseURL, AuthorizationBaseURL: app.AuthorizationBaseURL,
 		AppSecret: secret,
 		Brand:     brand,
 		DefaultAs: app.DefaultAs,
+	}
+	if _, err := cfg.ResolveServiceEndpoints(); err != nil {
+		return nil, err
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId

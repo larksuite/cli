@@ -5,6 +5,10 @@
 // macOS uses the system Keychain; Linux uses AES-256-GCM encrypted files; Windows uses DPAPI + registry.
 package keychain
 
+import "errors"
+
+var ErrNotFound = errors.New("credential_not_found")
+
 const (
 	// LarkCliService is the unified keychain service name for all secrets
 	// (both AppSecret and UAT). Entries are distinguished by account key format:

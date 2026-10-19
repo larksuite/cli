@@ -63,7 +63,10 @@ func authLoginCodeRun(opts *LoginCodeOptions) error {
 	}
 
 	// Get domain from Brand (which may be a custom domain URL)
-	endpoints := core.ResolveEndpoints(config.Brand)
+	endpoints, err := config.ResolveServiceEndpoints()
+	if err != nil {
+		return err
+	}
 
 	flowOpts := &larkauth.AuthCodeFlowOptions{
 		AppID:       config.AppID,
@@ -82,8 +85,9 @@ func authLoginCodeRun(opts *LoginCodeOptions) error {
 	// Store token
 	now := time.Now().UnixMilli()
 	storedToken := &larkauth.StoredUAToken{
-		UserOpenId:       result.OpenID,
-		AppId:            config.AppID,
+		UserOpenId:   result.OpenID,
+		AppId:        config.AppID,
+		AuthProtocol: "oauth_v2", Authority: endpoints.Open,
 		AccessToken:      result.AccessToken,
 		RefreshToken:     result.RefreshToken,
 		ExpiresAt:        now + int64(result.ExpiresIn)*1000,
@@ -96,18 +100,8 @@ func authLoginCodeRun(opts *LoginCodeOptions) error {
 	}
 
 	// Update config
-	multi, _ := core.LoadMultiAppConfig()
-	if multi != nil && len(multi.Apps) > 0 {
-		app := &multi.Apps[0]
-		for _, oldUser := range app.Users {
-			if oldUser.UserOpenId != result.OpenID {
-				larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-			}
-		}
-		app.Users = []core.AppUser{{UserOpenId: result.OpenID, UserName: result.UserName}}
-		if err := core.SaveMultiAppConfig(multi); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-		}
+	if err := core.MergeAppUser(config.AppID, core.AppUser{UserOpenId: result.OpenID, UserName: result.UserName}); err != nil {
+		return output.Errorf(output.ExitInternal, "internal", "token stored but config merge failed: %v", err)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Login successful: %s (%s)", result.UserName, result.OpenID))

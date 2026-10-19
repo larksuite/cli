@@ -6,6 +6,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -190,7 +191,7 @@ func apiRun(opts *APIOptions) error {
 
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
-		return output.MarkRaw(output.ErrNetwork("API call failed: %v", err))
+		return apiRequestFailure(err)
 	}
 	err = client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath: opts.Output,
@@ -198,15 +199,8 @@ func apiRun(opts *APIOptions) error {
 		Out:        out,
 		ErrOut:     f.IOStreams.ErrOut,
 	})
-	// MarkRaw tells root error handler that the API response was already written
-	// to stdout, so it should skip the stderr error envelope. Only apply when
-	// HandleResponse actually wrote output (i.e. returned a business/API error
-	// after printing JSON to stdout). Non-JSON HTTP errors (e.g. 404 text/plain)
-	// produce no stdout output and need the envelope.
-	if err != nil && client.IsJSONContentType(resp.Header.Get("Content-Type")) {
-		return output.MarkRaw(err)
-	}
-	return err
+
+	return output.MarkRaw(err)
 }
 
 func apiDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, format string) error {
@@ -221,10 +215,9 @@ func apiPaginate(ctx context.Context, ac *client.APIClient, request client.RawAp
 			pf.FormatPage(items)
 		}, pagOpts)
 		if err != nil {
-			return output.MarkRaw(output.ErrNetwork("API call failed: %v", err))
+			return apiRequestFailure(err)
 		}
 		if apiErr := client.CheckLarkResponse(result); apiErr != nil {
-			output.FormatValue(out, result, output.FormatJSON)
 			return output.MarkRaw(apiErr)
 		}
 		if !hasItems {
@@ -235,13 +228,22 @@ func apiPaginate(ctx context.Context, ac *client.APIClient, request client.RawAp
 	default:
 		result, err := ac.PaginateAll(ctx, request, pagOpts)
 		if err != nil {
-			return output.MarkRaw(output.ErrNetwork("API call failed: %v", err))
+			return apiRequestFailure(err)
 		}
 		if apiErr := client.CheckLarkResponse(result); apiErr != nil {
-			output.FormatValue(out, result, output.FormatJSON)
 			return output.MarkRaw(apiErr)
 		}
 		output.FormatValue(out, result, format)
 		return nil
 	}
+}
+
+func apiRequestFailure(err error) error {
+	var structured *output.ExitError
+	if errors.As(err, &structured) {
+		return output.MarkRaw(err)
+	}
+	failure := output.ErrNetwork("API request failed")
+	failure.Err = err
+	return failure
 }

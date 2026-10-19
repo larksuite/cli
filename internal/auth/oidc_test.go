@@ -63,7 +63,7 @@ func TestTokenStatus(t *testing.T) {
 		RefreshExpiresAt: now + 3600*1000,
 		RefreshToken:     "refresh-token",
 	}
-	assert.Equal(t, "id_token_expired", TokenStatus(expiredIDToken))
+	assert.Equal(t, "valid", TokenStatus(expiredIDToken))
 }
 
 func TestOIDCFlowResult(t *testing.T) {

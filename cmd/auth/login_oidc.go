@@ -18,16 +18,17 @@ import (
 
 // OIDCLoginOptions OIDC 登录选项
 type OIDCLoginOptions struct {
-	Factory     *cmdutil.Factory
-	Ctx         context.Context
-	JSON        bool
-	Scope       string
-	RedirectURI string
-	Timeout     int
-	Prompt      string // 登录提示参数
-	AppID       string
-	AppSecret   string
-	Domain      string
+	AuthProtocol string
+	Factory      *cmdutil.Factory
+	Ctx          context.Context
+	JSON         bool
+	Scope        string
+	RedirectURI  string
+	Timeout      int
+	Prompt       string // 登录提示参数
+	AppID        string
+	AppSecret    string
+	Domain       string
 }
 
 // NewCmdAuthLoginOIDC 创建 OIDC 登录子命令
@@ -50,6 +51,7 @@ func NewCmdAuthLoginOIDC(f *cmdutil.Factory, runF func(*OIDCLoginOptions) error)
 		},
 	}
 
+	cmd.Flags().StringVar(&opts.AuthProtocol, "auth-protocol", "", "per-invocation user protocol override: legacy_oidc")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Print session data in JSON format to stdout")
 	cmd.Flags().StringVar(&opts.Scope, "scope", "openid email profile", "Scopes to request during login")
 	cmd.Flags().StringVar(&opts.RedirectURI, "redirect-uri", "http://localhost:3000/callback", "Callback URL for the OIDC flow")
@@ -60,9 +62,6 @@ func NewCmdAuthLoginOIDC(f *cmdutil.Factory, runF func(*OIDCLoginOptions) error)
 	cmd.Flags().StringVar(&opts.Domain, "domain", "", "Domain for the OIDC provider")
 
 	// 标记为必需的参数
-	_ = cmd.MarkFlagRequired("app-id")
-	_ = cmd.MarkFlagRequired("app-secret")
-	_ = cmd.MarkFlagRequired("domain")
 
 	return cmd
 }
@@ -76,38 +75,19 @@ func authLoginWithOIDCCommand(opts *OIDCLoginOptions) error {
 		return err
 	}
 
-	// Use command-line provided credentials if given
-	appID := opts.AppID
-	appSecret := opts.AppSecret
-
-	if appID == "" {
-		appID = config.AppID
+	oidcOpts, err := oidcLoginFlowOptions(opts, config)
+	if err != nil {
+		return err
 	}
-	if appSecret == "" {
-		appSecret = config.AppSecret
-	}
+	appID := oidcOpts.AppID
 
 	httpClient, err := f.HttpClient()
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
-	timeout := time.Duration(opts.Timeout) * time.Second
-	ctx, cancel := context.WithTimeout(opts.Ctx, timeout)
+	ctx, cancel := context.WithTimeout(opts.Ctx, oidcOpts.Timeout)
 	defer cancel()
-
-	// OIDC mode does not use scope parameter
-
-	endpoints := core.ResolveEndpoints(config.Brand)
-
-	oidcOpts := &larkauth.OIDCFlowOptions{
-		AppID:       appID,
-		AppSecret:   appSecret,
-		Domain:      endpoints.Accounts, // Authorization endpoint is on Accounts domain
-		OpenDomain:  endpoints.Open,     // Token endpoint is on Open domain
-		RedirectURI: opts.RedirectURI,
-		Timeout:     timeout,
-	}
 
 	result, err := larkauth.StartOIDCFlow(ctx, oidcOpts, httpClient, f.IOStreams.ErrOut)
 	if err != nil {
@@ -127,18 +107,8 @@ func authLoginWithOIDCCommand(opts *OIDCLoginOptions) error {
 	}
 
 	// Update config
-	multi, _ := core.LoadMultiAppConfig()
-	if multi != nil && len(multi.Apps) > 0 {
-		app := &multi.Apps[0]
-		for _, oldUser := range app.Users {
-			if oldUser.UserOpenId != result.OpenID {
-				larkauth.RemoveStoredToken(appID, oldUser.UserOpenId)
-			}
-		}
-		app.Users = []core.AppUser{{UserOpenId: result.OpenID, UserName: result.UserName}}
-		if err := core.SaveMultiAppConfig(multi); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-		}
+	if err := core.MergeAppUser(appID, core.AppUser{UserOpenId: result.OpenID, UserName: result.UserName}); err != nil {
+		return output.Errorf(output.ExitInternal, "internal", "token stored but config merge failed: %v", err)
 	}
 
 	if opts.JSON {
@@ -152,13 +122,6 @@ func authLoginWithOIDCCommand(opts *OIDCLoginOptions) error {
 			"scope":      result.Scope,
 			"expires_in": result.ExpiresIn,
 			"token_type": "Bearer",
-		}
-
-		// 添加 ID Token 信息（如果存在）
-		if result.IDToken != "" {
-			// 只输出解析后的 claims，不输出完整的 token（安全考虑）
-			outputData["id_token_claims"] = result.Claims
-			outputData["id_token_expires_at"] = storedToken.IDTokenExpiresAt
 		}
 
 		output.PrintJson(f.IOStreams.Out, outputData)
@@ -178,22 +141,33 @@ func authLoginWithOIDCCommand(opts *OIDCLoginOptions) error {
 		fmt.Fprintf(f.IOStreams.Out, "  Refresh Token expires in: %d seconds (%.1f days)\n",
 			result.RefreshExpiresIn, float64(result.RefreshExpiresIn)/3600.0/24.0)
 
-		// 输出 ID Token 信息（如果存在）
-		if result.IDToken != "" && result.Claims != nil {
-			fmt.Fprintf(f.IOStreams.Out, "\nID Token Information:\n")
-			if exp, ok := result.Claims["exp"].(float64); ok {
-				expTime := time.Unix(int64(exp), 0)
-				fmt.Fprintf(f.IOStreams.Out, "  ID Token expires at: %s\n", expTime.Format("2006-01-02 15:04:05"))
-			}
-			// 输出其他有用的 claims
-			if aud, ok := result.Claims["aud"].(string); ok {
-				fmt.Fprintf(f.IOStreams.Out, "  Audience: %s\n", aud)
-			}
-			if iss, ok := result.Claims["iss"].(string); ok {
-				fmt.Fprintf(f.IOStreams.Out, "  Issuer: %s\n", iss)
-			}
-		}
 	}
 
 	return nil
+}
+
+func oidcLoginFlowOptions(opts *OIDCLoginOptions, config *core.CliConfig) (*larkauth.OIDCFlowOptions, error) {
+	endpointConfig := *config
+	if opts.Domain != "" {
+		endpointConfig.APIBaseURL = opts.Domain
+		endpointConfig.AuthorizationBaseURL = opts.Domain
+	}
+	if opts.AuthProtocol != "" {
+		if opts.AuthProtocol != "legacy_oidc" {
+			return nil, output.ErrValidation("unsupported OIDC protocol override")
+		}
+		endpointConfig.AuthProtocol = opts.AuthProtocol
+	}
+	endpoints, err := endpointConfig.ResolveServiceEndpoints()
+	if err != nil {
+		return nil, err
+	}
+	appID, secret := opts.AppID, opts.AppSecret
+	if appID == "" {
+		appID = config.AppID
+	}
+	if secret == "" {
+		secret = config.AppSecret
+	}
+	return &larkauth.OIDCFlowOptions{AuthProtocol: endpointConfig.AuthProtocol, AppID: appID, AppSecret: secret, Domain: endpoints.Accounts, OpenDomain: endpoints.Open, RedirectURI: opts.RedirectURI, Timeout: time.Duration(opts.Timeout) * time.Second}, nil
 }

@@ -8,32 +8,34 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keychain"
 )
 
 // TokenRefresher 负责自动刷新即将过期的 Token
 type TokenRefresher struct {
-	httpClient  *http.Client
-	domain      string
-	appID       string
-	appSecret   string
-	ticker      *time.Ticker
-	stopCh      chan struct{}
-	ctx         context.Context
-	errOut      io.Writer
+	Store      *CredentialStore
+	httpClient *http.Client
+	domain     string
+	appID      string
+	appSecret  string
+	ticker     *time.Ticker
+	stopCh     chan struct{}
+	ctx        context.Context
+	errOut     io.Writer
 }
 
 // NewTokenRefresher 创建新的 Token 刷新器
 func NewTokenRefresher(ctx context.Context, httpClient *http.Client, domain, appID, appSecret string, errOut io.Writer) *TokenRefresher {
 	return &TokenRefresher{
-		httpClient:  httpClient,
-		domain:      domain,
-		appID:       appID,
-		appSecret:   appSecret,
-		ticker:      time.NewTicker(5 * time.Minute), // 每 5 分钟检查一次
-		stopCh:      make(chan struct{}),
-		ctx:         ctx,
-		errOut:      errOut,
+		httpClient: httpClient,
+		domain:     domain,
+		appID:      appID,
+		appSecret:  appSecret,
+		ticker:     time.NewTicker(5 * time.Minute), // 每 5 分钟检查一次
+		stopCh:     make(chan struct{}),
+		ctx:        ctx,
+		errOut:     errOut,
 	}
 }
 
@@ -63,50 +65,7 @@ func (tr *TokenRefresher) Stop() {
 
 // RefreshToken 刷新指定的 Token
 func (tr *TokenRefresher) RefreshToken(storedToken *StoredUAToken) (*StoredUAToken, error) {
-	if !storedToken.IsRefreshable() {
-		return nil, fmt.Errorf("token is not refreshable")
-	}
-
-	// 使用新的 OIDC Refresh API 客户端
-	client := NewOidcAccessTokenClient(tr.httpClient, tr.domain)
-	client.SetAppCredentials(tr.appID, tr.appSecret)
-	resp, err := client.RefreshAccessToken(tr.ctx, RefreshAccessTokenParams{
-		AppID:        tr.appID,
-		AppSecret:    tr.appSecret,
-		RefreshToken: storedToken.RefreshToken,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to refresh token via OIDC API: %w", err)
-	}
-
-	// 更新 Token 信息
-	newStoredToken := *storedToken
-	newStoredToken.AccessToken = resp.AccessToken
-	// 如果 API 返回了新的刷新 Token，则使用它；否则保留原有的
-	if resp.RefreshToken != "" {
-		newStoredToken.RefreshToken = resp.RefreshToken
-	}
-	// 如果 API 返回了 ID Token，则更新它
-	if resp.IDToken != "" {
-		newStoredToken.IDToken = resp.IDToken
-	}
-	now := time.Now().UnixMilli()
-	newStoredToken.ExpiresAt = now + int64(resp.ExpiresIn)*1000
-	newStoredToken.RefreshExpiresAt = now + int64(resp.RefreshExpiresIn)*1000
-
-	// 更新 ID Token 过期时间
-	if resp.IDToken != "" {
-		claims, err := GetClaims(resp.IDToken)
-		if err == nil {
-			if exp, exists := claims["exp"]; exists {
-				if expFloat, ok := exp.(float64); ok {
-					newStoredToken.IDTokenExpiresAt = int64(expFloat) * 1000
-				}
-			}
-		}
-	}
-
-	return &newStoredToken, nil
+	return refreshWithLock(tr.httpClient, UATCallOptions{Context: tr.ctx, Store: tr.Store, Domain: core.LarkBrand(tr.domain), AppId: tr.appID, AppSecret: tr.appSecret, UserOpenId: storedToken.UserOpenId, ErrOut: tr.errOut}, storedToken)
 }
 
 // checkAndRefreshTokens 检查并刷新所有即将过期的 Token
@@ -140,15 +99,9 @@ func (tr *TokenRefresher) checkAndRefreshTokens() {
 		if status == "needs_refresh" {
 			fmt.Fprintf(tr.errOut, "Refreshing token for app %s...\n", storedToken.AppId)
 
-			refreshedToken, err := tr.RefreshToken(&storedToken)
+			_, err := tr.RefreshToken(&storedToken)
 			if err != nil {
 				fmt.Fprintf(tr.errOut, "Failed to refresh token for app %s: %v\n", storedToken.AppId, err)
-				continue
-			}
-
-			err = SetStoredToken(refreshedToken)
-			if err != nil {
-				fmt.Fprintf(tr.errOut, "Failed to store refreshed token for app %s: %v\n", storedToken.AppId, err)
 				continue
 			}
 

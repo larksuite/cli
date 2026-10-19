@@ -28,6 +28,9 @@ func (t *SecurityPolicyTransport) base() http.RoundTripper {
 
 // RoundTrip implements http.RoundTripper.
 func (t *SecurityPolicyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if IsAuthenticationRequest(req) {
+		return t.base().RoundTrip(req)
+	}
 	resp, err := t.base().RoundTrip(req)
 	if err != nil {
 		if resp != nil && resp.Body != nil {

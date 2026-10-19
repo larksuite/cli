@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
@@ -126,12 +127,13 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 
 	// All other structured errors normalize to ExitError.
 	if exitErr := asExitError(err); exitErr != nil {
-		if exitErr.Raw {
-			// Raw errors (e.g. from `api` command) already printed the full API
-			// response to stdout; skip enrichment and duplicate stderr envelope.
+		if exitErr.Printed {
 			return exitErr.Code
 		}
-		enrichPermissionError(f, exitErr)
+		if !exitErr.Raw {
+			enrichPermissionError(f, exitErr)
+		}
+
 		output.WriteErrorEnvelope(errOut, exitErr, string(f.ResolvedIdentity))
 		return exitErr.Code
 	}
@@ -144,6 +146,40 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 // asExitError converts known structured error types to *output.ExitError.
 // Returns nil for unrecognized errors (e.g. cobra flag errors).
 func asExitError(err error) *output.ExitError {
+	var needAuthorization *internalauth.NeedAuthorizationError
+	if errors.As(err, &needAuthorization) {
+		return output.ErrAuth("user authorization required; no login was started automatically")
+	}
+	var credentialState interface{ CredentialState() string }
+	if errors.As(err, &credentialState) {
+		failure := output.ErrAuth("credential state requires explicit confirmation; stored credentials have been preserved")
+		failure.Detail.Type = credentialState.CredentialState()
+		failure.Detail.NextAction = "confirm the existing app/account protocol and lifetime without replaying unknown refresh attempts"
+		return failure
+	}
+	if strings.Contains(err.Error(), "refresh_outcome_unknown") {
+		failure := output.ErrAuth("refresh outcome is unknown; preserved credentials must not be replayed, use explicit account recovery or new authorization")
+		failure.Detail.Type = "refresh_outcome_unknown"
+		retry := false
+		failure.Detail.Retryable = &retry
+		return failure
+	}
+	var authHTTP interface {
+		HTTPStatus() int
+		BusinessCode() int
+		RequestID() string
+	}
+	if errors.As(err, &authHTTP) {
+		converted := output.ErrAuth("authentication request failed")
+		converted.Detail.HTTPStatus = authHTTP.HTTPStatus()
+		converted.Detail.Code = authHTTP.BusinessCode()
+		converted.Detail.LogID = authHTTP.RequestID()
+		converted.Detail.NextAction = "check configured authentication endpoint and request identifier"
+		retryable := false
+		converted.Detail.Retryable = &retryable
+		return converted
+	}
+
 	var cfgErr *core.ConfigError
 	if errors.As(err, &cfgErr) {
 		return output.ErrWithHint(cfgErr.Code, cfgErr.Type, cfgErr.Message, cfgErr.Hint)

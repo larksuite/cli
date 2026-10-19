@@ -8,29 +8,50 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
 
 // OidcAccessTokenClient OIDC Access Token API 客户端
 type OidcAccessTokenClient struct {
-	httpClient  *http.Client
-	domain      string // API domain (Open domain for token endpoints)
-	appID       string
-	appSecret   string
+	endpointError  error
+	httpClient     *http.Client
+	domain         string // API domain (Open domain for token endpoints)
+	appID          string
+	appSecret      string
 	appAccessToken string // 缓存的 App Access Token
 	tokenExpiresAt int64  // App Access Token 过期时间
 }
 
 // NewOidcAccessTokenClient 创建新的 OIDC Access Token 客户端
 func NewOidcAccessTokenClient(httpClient *http.Client, domain string) *OidcAccessTokenClient {
+	injected := httpClient != nil
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &OidcAccessTokenClient{
-		httpClient: httpClient,
-		domain:     domain,
+	safeClient := *httpClient
+	safeClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	base := strings.TrimRight(strings.TrimSpace(domain), "/")
+	if !strings.Contains(base, "://") {
+		base = "https://" + base
+	}
+	parsed, parseErr := url.Parse(base)
+	var endpointError error
+	if parseErr != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		endpointError = fmt.Errorf("invalid authentication endpoint")
+	} else if parsed.Scheme != "https" {
+		host := net.ParseIP(parsed.Hostname())
+		if !injected || parsed.Scheme != "http" || host == nil || !host.IsLoopback() {
+			endpointError = fmt.Errorf("invalid authentication endpoint: HTTPS required")
+		}
+	}
+	return &OidcAccessTokenClient{endpointError: endpointError,
+		httpClient: &safeClient,
+		domain:     base,
 	}
 }
 
@@ -44,6 +65,9 @@ func (c *OidcAccessTokenClient) SetAppCredentials(appID, appSecret string) {
 
 // getAppAccessToken 获取 App Access Token（内部使用）
 func (c *OidcAccessTokenClient) getAppAccessToken(ctx context.Context) (string, error) {
+	if c.endpointError != nil {
+		return "", c.endpointError
+	}
 	now := time.Now().Unix()
 
 	// 检查缓存的 Token 是否有效
@@ -73,32 +97,42 @@ func (c *OidcAccessTokenClient) getAppAccessToken(ctx context.Context) (string, 
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(AuthenticationRequest(req))
 	if err != nil {
-		return "", fmt.Errorf("failed to get app_access_token: %w", err)
+		return "", &AuthenticationHTTPError{Kind: "transport_error"}
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readAuthBody(resp)
 	if err != nil {
 		return "", fmt.Errorf("failed to read app_access_token response: %w", err)
 	}
 
 	var result struct {
-		Code              int    `json:"code"`
-		Msg               string `json:"msg"`
-		AppAccessToken    string `json:"app_access_token"`
-		AppAccessTokenExpire int `json:"app_access_token_expire"`
+		Code                 int    `json:"code"`
+		Msg                  string `json:"msg"`
+		AppAccessToken       string `json:"app_access_token"`
+		AppAccessTokenExpire int    `json:"app_access_token_expire"`
+		Expire               int    `json:"expire"`
 	}
 
 	if err := json.Unmarshal(bodyBytes, &result); err != nil {
-		return "", fmt.Errorf("failed to parse app_access_token response: %w", err)
+		return "", authHTTPFailure(resp, "invalid_response", 0)
 	}
 
 	if result.Code != 0 {
-		return "", fmt.Errorf("failed to get app_access_token [%d]: %s", result.Code, result.Msg)
+		return "", fmt.Errorf("authentication api_error: code %d", result.Code)
 	}
 
+	if result.AppAccessTokenExpire > 0 && result.Expire > 0 && result.AppAccessTokenExpire != result.Expire {
+		return "", authHTTPFailure(resp, "invalid_response", 0)
+	}
+	if result.AppAccessTokenExpire == 0 {
+		result.AppAccessTokenExpire = result.Expire
+	}
+	if result.AppAccessToken == "" || result.AppAccessTokenExpire <= 0 {
+		return "", authHTTPFailure(resp, "invalid_response", 0)
+	}
 	c.appAccessToken = result.AppAccessToken
 	c.tokenExpiresAt = now + int64(result.AppAccessTokenExpire) - 60 // 提前 60 秒过期
 
@@ -115,15 +149,17 @@ type CreateAccessTokenParams struct {
 
 // CreateAccessTokenResponse API 响应
 type CreateAccessTokenResponse struct {
-	AccessToken      string `json:"access_token"`
-	RefreshToken     string `json:"refresh_token"`
-	IDToken          string `json:"id_token"`
-	ExpiresIn        int    `json:"expires_in"`
-	RefreshExpiresIn int    `json:"refresh_expires_in"`
-	TokenType        string `json:"token_type"`
-	OpenID           string `json:"open_id"`
-	Name             string `json:"name"`
-	Email            string `json:"email"`
+	AccessToken           string `json:"access_token"`
+	RefreshToken          string `json:"refresh_token"`
+	IDToken               string `json:"id_token"`
+	ExpiresIn             int    `json:"expires_in"`
+	RefreshExpiresIn      int    `json:"refresh_expires_in"`
+	RefreshTokenExpiresIn int    `json:"refresh_token_expires_in"`
+	Scope                 string `json:"scope"`
+	TokenType             string `json:"token_type"`
+	OpenID                string `json:"open_id"`
+	Name                  string `json:"name"`
+	Email                 string `json:"email"`
 }
 
 // UserInfoResponse 用户信息 API 响应
@@ -186,13 +222,13 @@ func (c *OidcAccessTokenClient) CreateAccessToken(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+appAccessToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(AuthenticationRequest(req))
 	if err != nil {
-		return nil, fmt.Errorf("failed to call OIDC API: %w", err)
+		return nil, &AuthenticationHTTPError{Kind: "transport_error"}
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err = io.ReadAll(resp.Body)
+	bodyBytes, err = readAuthBody(resp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -206,21 +242,33 @@ func (c *OidcAccessTokenClient) CreateAccessToken(
 	}
 
 	if err := json.Unmarshal(bodyBytes, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
 	}
 
 	// 检查错误 - CreateAccessToken
 	if result.Error != "" {
-		return nil, fmt.Errorf("API error: %s (response: %s)", result.Error, string(bodyBytes))
+		return nil, fmt.Errorf("authentication api_error")
 	}
 	if result.Code != 0 {
-		return nil, fmt.Errorf("API error [%d]: %s (response: %s)", result.Code, result.Msg, string(bodyBytes))
+		return nil, fmt.Errorf("authentication api_error: code %d", result.Code)
 	}
 	if result.Data == nil {
-		return nil, fmt.Errorf("missing data in response: %s", string(bodyBytes))
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
+	}
+	if result.Data.RefreshExpiresIn < 0 || result.Data.RefreshTokenExpiresIn < 0 || (result.Data.RefreshExpiresIn > 0 && !validAccessLifetime(result.Data.RefreshExpiresIn)) || (result.Data.RefreshTokenExpiresIn > 0 && !validAccessLifetime(result.Data.RefreshTokenExpiresIn)) {
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
+	}
+	if result.Data.RefreshExpiresIn > 0 && result.Data.RefreshTokenExpiresIn > 0 && result.Data.RefreshExpiresIn != result.Data.RefreshTokenExpiresIn {
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
+	}
+	if result.Data.RefreshExpiresIn == 0 {
+		result.Data.RefreshExpiresIn = result.Data.RefreshTokenExpiresIn
+	}
+	if !validAccessLifetime(result.Data.ExpiresIn) {
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
 	}
 	if result.Data.AccessToken == "" {
-		return nil, fmt.Errorf("missing access_token in response")
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
 	}
 
 	return result.Data, nil
@@ -232,6 +280,9 @@ func (c *OidcAccessTokenClient) GetUserInfo(
 	ctx context.Context,
 	accessToken string,
 ) (*UserInfoResponse, error) {
+	if c.endpointError != nil {
+		return nil, c.endpointError
+	}
 	// 处理 domain 可能包含协议前缀的情况
 	scheme := "https"
 	baseURL := strings.TrimSpace(c.domain)
@@ -248,40 +299,43 @@ func (c *OidcAccessTokenClient) GetUserInfo(
 
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(AuthenticationRequest(req))
 	if err != nil {
-		return nil, fmt.Errorf("failed to call user info API: %w", err)
+		return nil, &AuthenticationHTTPError{Kind: "transport_error"}
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readAuthBody(resp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// 解析响应
 	var result struct {
-		Code  int             `json:"code"`
-		Msg   string          `json:"msg"`
-		Error string          `json:"error"`
+		Code  int               `json:"code"`
+		Msg   string            `json:"msg"`
+		Error string            `json:"error"`
 		Data  *UserInfoResponse `json:"data"`
 	}
 
 	if err := json.Unmarshal(bodyBytes, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
 	}
 
 	// 检查错误
 	if result.Error != "" {
-		return nil, fmt.Errorf("API error: %s (response: %s)", result.Error, string(bodyBytes))
+		return nil, fmt.Errorf("authentication api_error")
 	}
 	if result.Code != 0 {
-		return nil, fmt.Errorf("API error [%d]: %s (response: %s)", result.Code, result.Msg, string(bodyBytes))
+		return nil, fmt.Errorf("authentication api_error: code %d", result.Code)
 	}
 	if result.Data == nil {
-		return nil, fmt.Errorf("missing data in response: %s", string(bodyBytes))
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
 	}
 
+	if result.Data.OpenID == "" {
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
+	}
 	return result.Data, nil
 }
 
@@ -342,13 +396,13 @@ func (c *OidcAccessTokenClient) RefreshAccessToken(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+appAccessToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(AuthenticationRequest(req))
 	if err != nil {
-		return nil, fmt.Errorf("failed to call OIDC Refresh API: %w", err)
+		return nil, &AuthenticationHTTPError{Kind: "transport_error"}
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err = io.ReadAll(resp.Body)
+	bodyBytes, err = readAuthBody(resp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -362,22 +416,105 @@ func (c *OidcAccessTokenClient) RefreshAccessToken(
 	}
 
 	if err := json.Unmarshal(bodyBytes, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
 	}
 
 	// 检查错误 - CreateAccessToken
 	if result.Error != "" {
-		return nil, fmt.Errorf("API error: %s (response: %s)", result.Error, string(bodyBytes))
+		return nil, fmt.Errorf("authentication api_error")
 	}
 	if result.Code != 0 {
-		return nil, fmt.Errorf("API error [%d]: %s (response: %s)", result.Code, result.Msg, string(bodyBytes))
+		return nil, fmt.Errorf("authentication api_error: code %d", result.Code)
 	}
 	if result.Data == nil {
-		return nil, fmt.Errorf("missing data in response: %s", string(bodyBytes))
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
+	}
+	if result.Data.RefreshExpiresIn < 0 || result.Data.RefreshTokenExpiresIn < 0 || (result.Data.RefreshExpiresIn > 0 && !validAccessLifetime(result.Data.RefreshExpiresIn)) || (result.Data.RefreshTokenExpiresIn > 0 && !validAccessLifetime(result.Data.RefreshTokenExpiresIn)) {
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
+	}
+	if result.Data.RefreshExpiresIn > 0 && result.Data.RefreshTokenExpiresIn > 0 && result.Data.RefreshExpiresIn != result.Data.RefreshTokenExpiresIn {
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
+	}
+	if result.Data.RefreshExpiresIn == 0 {
+		result.Data.RefreshExpiresIn = result.Data.RefreshTokenExpiresIn
+	}
+	if !validAccessLifetime(result.Data.ExpiresIn) {
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
 	}
 	if result.Data.AccessToken == "" {
-		return nil, fmt.Errorf("missing access_token in response")
+		return nil, authHTTPFailure(resp, "invalid_response", 0)
 	}
 
 	return result.Data, nil
+}
+
+// readAuthBody bounds untrusted authentication responses and never returns body text in errors.
+func readAuthBody(resp *http.Response) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
+	if err != nil {
+		return nil, authHTTPFailure(resp, "response_read_failed", 0)
+	}
+	if len(b) > 1<<20 {
+		return nil, authHTTPFailure(resp, "response_too_large", 0)
+	}
+	var envelope struct {
+		Code  int             `json:"code"`
+		Error json.RawMessage `json:"error"`
+		LogID string          `json:"log_id"`
+	}
+	_ = json.Unmarshal(b, &envelope)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || envelope.Code != 0 || (len(envelope.Error) > 0 && string(envelope.Error) != "null" && string(envelope.Error) != `""`) {
+		kind := "api_error"
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			kind = "http_error"
+		}
+		logID := safeRequestID(resp.Header.Get("X-Request-Id"))
+		if logID == "" {
+			logID = safeRequestID(envelope.LogID)
+		}
+		if logID == "" {
+			var nested struct {
+				LogID string `json:"log_id"`
+			}
+			if json.Unmarshal(envelope.Error, &nested) == nil {
+				logID = safeRequestID(nested.LogID)
+			}
+		}
+		return nil, &AuthenticationHTTPError{Kind: kind, Status: resp.StatusCode, Code: envelope.Code, LogID: logID}
+	}
+	return b, nil
+}
+
+// AuthenticationHTTPError contains only allowlisted non-secret diagnostic metadata.
+type AuthenticationHTTPError struct {
+	Kind   string
+	Status int
+	Code   int
+	LogID  string
+}
+
+func (e *AuthenticationHTTPError) Error() string {
+	return fmt.Sprintf("authentication %s: status %d code %d", e.Kind, e.Status, e.Code)
+}
+func (e *AuthenticationHTTPError) HTTPStatus() int   { return e.Status }
+func (e *AuthenticationHTTPError) BusinessCode() int { return e.Code }
+func (e *AuthenticationHTTPError) RequestID() string { return e.LogID }
+func safeRequestID(s string) string {
+	if len(s) > 128 {
+		return ""
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return ""
+		}
+	}
+	return s
+}
+
+func authHTTPFailure(resp *http.Response, kind string, code int) error {
+	return &AuthenticationHTTPError{Kind: kind, Status: resp.StatusCode, Code: code, LogID: safeRequestID(resp.Header.Get("X-Request-Id"))}
+}
+
+func validAccessLifetime(seconds int) bool {
+	return seconds > 0 && int64(seconds) <= (math.MaxInt64-time.Now().UnixMilli())/1000
 }

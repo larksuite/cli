@@ -32,9 +32,9 @@ func TestCreateAccessToken_Success(t *testing.T) {
 		if r.URL.Path == "/open-apis/auth/v3/app_access_token/internal" {
 			// Mock app_access_token 响应
 			response := map[string]interface{}{
-				"code":                 0,
-				"msg":                  "success",
-				"app_access_token":     "mock_app_token",
+				"code":                    0,
+				"msg":                     "success",
+				"app_access_token":        "mock_app_token",
 				"app_access_token_expire": 7200,
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -128,8 +128,8 @@ func TestCreateAccessToken_ErrorResponse(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "API error: invalid_grant") {
-		t.Errorf("expected error to contain 'API error: invalid_grant', got '%v'", err)
+	if !strings.Contains(err.Error(), "authentication api_error") {
+		t.Errorf("expected sanitized authentication error, got '%v'", err)
 	}
 }
 

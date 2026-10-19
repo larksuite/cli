@@ -81,7 +81,9 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 		if c.Config.UserOpenId == "" {
 			return nil, fmt.Errorf("login required: lark-cli auth login (or use --as bot)")
 		}
-		token, err := auth.GetValidAccessToken(c.HTTP, auth.NewUATCallOptions(c.Config, c.ErrOut))
+		uatOpts := auth.NewUATCallOptions(c.Config, c.ErrOut)
+		uatOpts.Context = ctx
+		token, err := auth.GetValidAccessToken(c.HTTP, uatOpts)
 		if err != nil {
 			return nil, err
 		}
@@ -107,6 +109,9 @@ func (c *APIClient) CallAPI(ctx context.Context, request RawApiRequest) (interfa
 	resp, err := c.DoAPI(ctx, request)
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, responseHTTPFailure(resp)
 	}
 	return ParseJSONResponse(resp)
 }
@@ -142,23 +147,10 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 			ExtraOpts: request.ExtraOpts,
 		})
 		if err != nil {
-			if page == 1 {
-				return nil, err
-			}
-			fmt.Fprintf(c.ErrOut, "[page %d] error, stopping pagination\n", page)
-			break
+			return allResults, err
 		}
-
-		if resultMap, ok := result.(map[string]interface{}); ok {
-			code, _ := util.ToFloat64(resultMap["code"])
-			if code != 0 {
-				allResults = append(allResults, result)
-				if page == 1 {
-					return allResults, nil
-				}
-				fmt.Fprintf(c.ErrOut, "[page %d] API error (code=%.0f), stopping pagination\n", page, code)
-				break
-			}
+		if apiErr := CheckLarkResponse(result); apiErr != nil {
+			return allResults, apiErr
 		}
 
 		if onResult != nil {
@@ -265,6 +257,24 @@ func CheckLarkResponse(result interface{}) error {
 		return nil
 	}
 	larkCode := int(code)
-	msg, _ := resultMap["msg"].(string)
-	return output.ErrAPI(larkCode, fmt.Sprintf("API error: [%d] %s", larkCode, msg), resultMap["error"])
+	err := output.ErrAPI(larkCode, fmt.Sprintf("API error: [%d] upstream request rejected", larkCode), nil)
+	err.Detail.NextAction = "check application scopes, published capabilities and resource access; denial alone does not identify the missing permission"
+	logID, _ := resultMap["log_id"].(string)
+	if logID == "" {
+		if nested, ok := resultMap["error"].(map[string]interface{}); ok {
+			logID, _ = nested["log_id"].(string)
+		}
+	}
+	if len(logID) <= 128 {
+		safe := true
+		for _, r := range logID {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+				safe = false
+			}
+		}
+		if safe {
+			err.Detail.LogID = logID
+		}
+	}
+	return err
 }

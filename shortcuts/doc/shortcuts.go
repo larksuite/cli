@@ -11,6 +11,7 @@ func Shortcuts() []common.Shortcut {
 		DocsSearch,
 		DocsCreate,
 		DocsFetch,
+		DocsRead,
 		DocsUpdate,
 		DocMediaInsert,
 		DocMediaDownload,
