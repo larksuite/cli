@@ -28,13 +28,14 @@ metadata:
    - 从候选项拿到 URL 或 token 后，再用 `+url-resolve` 或 `+base-get` 进入 Base 业务命令。
 4. **BaseApp：** 优先使用真实 `/app/` URL；已有 `workspace_token` 时可用 `+workspace-entity-list --type baseapp` 定位。两者都没有时请用户补充应用链接或 Workspace，不按名称全局猜测 `app_token`。
 
-**读取 Base：** Base 信息用 `+base-get`，资源目录按下方 Base Block 资源模型读取。
-
-**写入 Base：** 创建新 Base 使用一次 `+base-create --name <base-name> --table-name <table-name> --fields '<field-array>'` 同时创建 Base、首表和 fields；`+base-copy` 复制整个 Base；更新 Base 级时区使用 `+base-update --base-token <base-token> --time-zone <IANA-time-zone>`（如 `Asia/Shanghai`）；Base 内资源统一按下方 Block 生命周期管理。
-
 ## Base 模板中心
 
-模板中心是公开的 Base 模板库，不是用户云空间里的已有 Base。用户想用现成模板创建新 Base，且没有指向已有对象的锚点（没有 Base URL、没有“我的/最近访问的表”、没有具体已存在的 Base 名）时，可读取 [lark-base-template-center.md](references/lark-base-template-center.md) 查找模板中心模板；`+template-categories` 列出公开模板分类，`+template-list` 按分类列出公开模板，`+template-search` 按业务关键词搜索公开模板。
+多维表格为不同行业和业务流程沉淀了丰富的高质量 Base 模板。用户需要创建 Base 时，如果有适配其需求的模板，可以直接基于模板创建。
+
+- [模板中心](references/lark-base-template-center.md)：查找模板中心模板并据此创建 Base，操作前读取。
+  - `+template-categories`：列出公开模板分类。
+  - `+template-list`：按分类列出公开模板。
+  - `+template-search`：按业务关键词搜索公开模板。
 
 ## Base Block 资源模型
 
@@ -56,9 +57,18 @@ Base
     └── Advanced Permission / Roles
 ```
 
-每个 Base Block 都有 `id`、`type`、可修改的 `name`、所在 Folder 的 `parent_id`，并在同级目录中具有顺序。`+base-block-list` 是统一发现入口；`+base-block-create` 创建 Block，`+base-block-rename` 修改名称，`+base-block-move` 通过 `--parent-id` 调整目录并通过 `--before-id` / `--after-id` 调整顺序，`+base-block-delete` 删除 Block。类型专属内容再由对应模块命令处理。
+每个 Base Block 都有 `id`、`type`、可修改的 `name`、所在 Folder 的 `parent_id`，并在同级目录中具有顺序。类型专属内容由对应模块命令处理。
 
-创建时已经明确类型专属初始内容，可直接使用对应构造命令一次完成：Table 用 `+table-create --fields`，Dashboard 用 `+dashboard-create` 设置主题，Workflow 用 `+workflow-create --json` 提交完整定义；Folder 和 Docx 使用 `+base-block-create`。
+- `lark-cli base +base-block-list --base-token "<base_token>" --as user`：列出 Base 中的全部资源。
+- [Base 与 Block 管理](references/lark-base-resource-management.md)：Base 信息读取、创建、复制、设置及资源目录管理；其他操作或按目录筛选时读取。
+  - `+base-get`：读取 Base 信息。
+  - `+base-create`：一次创建 Base、首表及字段。
+  - `+base-copy`：复制 Base，可仅复制结构。
+  - `+base-update`：修改 Base 级时区。
+  - `+base-block-create`：创建 Folder、Docx 等 Base 资源入口。
+  - `+base-block-rename`：修改资源名称。
+  - `+base-block-move`：调整资源所在目录和同级顺序。
+  - `+base-block-delete`：删除指定资源。
 
 Block 的 `id` 按类型直接作为对应模块坐标：
 
@@ -74,17 +84,31 @@ Block 的 `id` 按类型直接作为对应模块坐标：
 
 Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Record、View 和 Form 是 Table 内部对象，不是 Base Block。业务数据查询、写入、关联、统计和分析都从 Table 开始。先用 `+table-list` 定位 Table；字段名和目标已知的普通读取可直接进入 Record 命令，只有写入、筛选或关联等依赖字段类型/schema 的任务才补 `+field-list`。多表的 `+field-list` 可以并发执行。基础的 Record / CellValue 读写直接按下方路径。
 
-**读取 Table：** `+table-list` 定位表，`+table-get` 读取详情。Table 专属复制使用 `+table-copy`，异步状态用 `+table-copy-status`；schema 和 records 由下方内部对象操作。
+- `lark-cli base +table-list --base-token "<base_token>" --as user`：列出 Base 中的全部数据表，定位目标 Table。
 
-Table 下的实体更新均异步生效。更新接口返回成功即表示变更成功，应以该响应为准；立即回读可能仍返回旧状态，不能据此判定更新失败或重复提交。部分失败只处理未成功项。
+- [Table 创建与复制](references/lark-base-table-create-and-copy.md)：新建表、复制结构或记录及查询复制结果，操作前读取。
+  - `+table-create`：按指定字段定义创建表。
+  - `+table-copy`：复制表结构，或连同记录复制。
+  - `+table-copy-status`：查询异步复制任务的状态。
 
 ### Field
 
-Field 定义列 schema。`field_id` 是稳定列标识，`name` 是可修改的展示名称；Formula、Lookup、Link、Select 等属于 Field 类型或能力。
+- `lark-cli base +field-list --base-token "<base_token>" --table-id "<table_id>" --as user`：列出表内全部字段及其定义。
 
-**读取 Field：** `+field-list` / `+field-get`；需要查看更多 select 选项时用 `+field-search-options`。**写入 Field：** 已有 Table 中创建多个字段时，优先向一次 `+field-create --json` 传字段对象数组；静态 select 字段的选项增删改用 `+manage-select-options`，其他单字段属性更新和删除用 `+field-update` / `+field-delete`。创建和更新分别读取 [field-create](references/lark-base-field-create.md) / [field-update](references/lark-base-field-update.md)，由命令文档继续路由 Field JSON、Formula 和 Lookup 协议。需要从人员或创建人字段生成部门、直属上级、工号等通讯录信息列时，读取 [contact-field-enrichment](references/lark-base-contact-field-enrichment.md)。`字段插件` 用于扩展基础字段能力：按同一行其他字段内容触发 LLM 生成，并写回已有目标字段；当前已确认目标字段支持文本、单选、数字，配置或触发前先读 [field-extension](references/lark-base-field-extension.md)。
+**写入 Field：** 按操作读取对应指南，由指南继续路由 Field JSON、Formula 和 Lookup 协议。
 
-**字段编组（Field group）：** 将相关字段组织在一起，在 WebUI 中聚合展示并提供共同说明，方便用户浏览和操作。创建字段较多的数据表时，建议按业务用途编组；操作方法见 [字段编组](references/lark-base-field-groups.md)。
+- [字段创建](references/lark-base-field-create.md)：新增字段及批量创建示例。
+  - `+field-create`：创建一个或多个字段；同一表的多个字段优先一次创建。
+- [字段更新](references/lark-base-field-update.md)：修改字段定义和维护静态选项。
+  - `+field-update`：更新单个字段的属性。
+  - `+manage-select-options`：新增、重命名或删除静态 select 选项。
+- `+field-delete`：删除已有字段。
+- [通讯录信息列](references/lark-base-contact-field-enrichment.md)：从人员或创建人字段生成部门、直属上级、工号等列。
+- [字段插件](references/lark-base-field-extension.md)：`字段插件` 用于扩展基础字段能力，根据同行内容生成并写回已有目标字段。
+  - `+field-extension-get`：读取字段插件配置。
+  - `+field-extension-update`：配置或清空字段插件。
+  - `+field-extension-update-cells`：触发字段单元格的异步生成任务。
+- [字段编组](references/lark-base-field-groups.md)：按业务用途组织字段、聚合展示并提供共同说明，字段较多时建议使用。
 
 ### Record
 
@@ -241,9 +265,11 @@ lark-cli base +record-batch-update \
 #### 3. 其他 Record 操作
 
 - `+record-delete --base-token <base_token> --table-id <table_id> --record-id <id1> --record-id <id2>` 删除若干个记录
-- `+record-share-link-create --base-token <base_token> --table-id <table_id> --record-id <id1> --record-id <id2>` 创建记录分享链接
 - `+record-history-list` 查询单条记录的变更事件，读取 [历史记录协议](references/lark-base-record-history-list.md)
-- 附件必须使用 `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` 操作。
+- `+record-upload-attachment --base-token <base_token> --table-id <table_id> --record-id <record_id> --field-id <field_id> --file ./report.pdf` 上传并追加附件。
+- `+record-download-attachment --base-token <base_token> --table-id <table_id> --record-id <record_id> --file-token <file_token> --output ./report.pdf` 下载指定附件。
+- `+record-remove-attachment --base-token <base_token> --table-id <table_id> --record-id <record_id> --field-id <field_id> --file-token <file_token> --yes` 从附件单元格移除指定附件。
+- `+record-share-link-create --base-token <base_token> --table-id <table_id> --record-id <id1> --record-id <id2>` 生成记录分享链接。
 
 ### View
 
@@ -257,76 +283,100 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 1. **读取 Table 中的表单配置：** 使用 `+form-list` / `+form-get` 读取表单，使用 `+form-questions-list` 读取题目配置；这些命令使用表单所属的 `base_token + table_id`。
 2. **创建或修改 Table 中的表单配置：** 使用 `+form-create` / `+form-update` / `+form-delete` 管理表单；题目由 Table Field 承载，question ID 对应 `field_id`，创建和更新分别读取 [questions create](references/lark-base-form-questions-create.md) / [questions update](references/lark-base-form-questions-update.md)，删除使用 `+form-questions-delete`。
-3. **调整表单题目显隐和顺序：** Form 在 `visible_fields` 接口中作为 View，`form_id` 传给 `--view-id`；用 `+view-get-visible-fields` 读、`+view-set-visible-fields` 写。提交语义、回读核验与题序调整步骤读取 [questions update](references/lark-base-form-questions-update.md) 的「调整题目顺序」一节。
-4. **设置题目输入范围限制：** 题目支持限制填写的字数、数值区间和可选日期区间，配置项是题目上的 `input_range_limit`，写在 `+form-questions-create` / `+form-questions-update` 的 `--questions` 里。三类 `type` 的字段名、相对日期与固定日期的写法，构造 JSON 前读取 [questions create](references/lark-base-form-questions-create.md) 的「`input_range_limit` 输入范围限制」一节。
+3. **调整表单题目显隐和顺序：** `+view-get-visible-fields` 读取题目显隐和顺序，`+view-set-visible-fields` 调整题目显隐和顺序；操作前读取 [questions update](references/lark-base-form-questions-update.md) 的「调整题目顺序」一节。
+4. **设置题目输入范围限制：** `+form-questions-create` / `+form-questions-update` 支持限制字数、数值区间和可选日期区间；操作前读取 [questions create](references/lark-base-form-questions-create.md) 的「`input_range_limit` 输入范围限制」一节。
 5. **管理表单分享：** 表单可以开启/关闭分享，并控制谁能填写（组织内 / 任何人）、是否允许匿名、是否要求登录。读写用 `+form-share-get` / `+form-share-update`，字段含义、命令写法、访问范围取值与回读验收读取 [Form share](references/lark-base-form-share.md)。
 6. **填写分享表单并提交：** 对表单分享链接使用 `+url-resolve` 取得 `share_token`，按 [Form detail](references/lark-base-form-detail.md) 执行 `+form-detail` 读取真实题目、必填项和显示条件，再按 [Form submit](references/lark-base-form-submit.md) 构造字段与附件并执行 `+form-submit`。
 7. **配置提交后回查（查询页）：** 表单可以配一个查询入口，让填写人提交后凭自己的提交记录回查、修改已填内容。读写用 `+form-query-page-get` / `+form-query-page-create`，创建流程与失败后的恢复方式读取 [Form query page](references/lark-base-form-query-page.md)。
-8. **切换填写页布局：** 填写页支持两种模式——题目列表（默认，一页展示全部题目，信息密度高、便于通览和回改）和一页一题（每屏只显示一道题，减少长表单的压迫感，移动端填写和逐题引导更友好），适合不同风格的收集场景。读写用 `+form-display-settings-get` / `+form-display-settings-update --display-mode`，取值与使用方法读取 [Form display settings](references/lark-base-form-display-settings.md)。
-9. **获取分享二维码：** 表单的分享入口除链接外还有二维码，便于线下张贴或群内扫码填写。用 `+form-share-qrcode-get` 查看二维码结构（响应含 `share_url` 与 base64 图片），用 `+form-share-qrcode-download` 把二维码存成 PNG 文件；只要分享链接本身用第 5 条的 `+form-share-get`。具体用法读取 [Form share QR code](references/lark-base-form-share-qrcode.md)。
+8. **切换填写页布局：** `+form-display-settings-get` 读取当前布局，`+form-display-settings-update` 切换题目列表或一页一题；操作前读取 [Form display settings](references/lark-base-form-display-settings.md)。
+9. **获取分享二维码：** `+form-share-qrcode-get` 读取表单分享二维码，`+form-share-qrcode-download` 下载二维码；操作前读取 [Form share QR code](references/lark-base-form-share-qrcode.md)。只要分享链接时用 `+form-share-get`。
 10. **管理提交与通知配置：** 使用 `+form-submission-settings-get/update` 管理提交时间、次数和修改权限，使用 `+form-notifications-get/update` 管理提交或定时通知，使用 `+form-submit-actions-get/update` 管理结果页和跳转，使用 `+form-lottery-get/action` 管理抽奖；每组都先 get，再只更新用户要求的配置。执行前读取 [表单配置](references/lark-base-form-config.md)。
 
 表单题目和字段的关系：
 
-- `+form-questions-create` 支持两种形态：新建字段题目需要 `title` + `type`；已有字段题目需要 `use_existing_field:true` + `field_id`。已有字段题目只是把该字段加入表单，不创建新字段，也不改变已有记录数据；不要给该形态携带 `type`、`style`、`options` 等字段定义属性。
+- `+form-questions-create` 支持新建字段题目或复用已有字段；操作前读取 [questions create](references/lark-base-form-questions-create.md) 的两种创建形态。
 - 创建问题前先 `+form-questions-list`。若目标标题已经存在，除非用户明确要求同名独立问题，否则优先用 `+form-questions-update` 修改题目配置，不要先创建同名问题再删除旧问题。
-- `+form-questions-delete` 是高风险写操作。默认会删除承载问题的底层 Field 及该字段所有记录数据；只想把题目移出表单并保留字段/数据时必须传 `--keep-field`。保留字段后可用 `+form-questions-create --questions '[{"use_existing_field":true,"field_id":"<field_id>"}]'` 加回表单。
+- `+form-questions-delete` 是高风险写操作。默认会删除承载问题的底层 Field 及该字段所有记录数据；只想把题目移出表单并保留字段/数据时必须传 `--keep-field`。重新加回题目的方法见 [questions create](references/lark-base-form-questions-create.md) 的「形态 B：已有字段题目」。
 
 ## Dashboard Block
 
-Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题，`+dashboard-arrange` 统一编排内部组件布局。
+Dashboard Block 是 Base Block 树中的仪表盘容器，承载主题、布局和内部组件。图表、指标卡和文本等内部组件在 Dashboard API 中也称为 Block，但不属于 Base Block 树。
 
-**管理 Dashboard 分享：** 使用 `+dashboard-share-get` / `+dashboard-share-update` 管理启停、访问范围和返回源 Base 入口；更新前先读取现状，每次只修改一个字段，显式 `false` 会被保留。
-
-容器内部的图表、指标卡和文本等组件在 Dashboard API 中也称为 Block，但不属于 Base Block 树。内部 Block 分为三条操作路径：
-
-1. **读取配置：** `+dashboard-block-list` / `+dashboard-block-get` 读取组件类型、布局和 `data_config`；文本组件的正文也属于配置。
-2. **写入配置：** `+dashboard-block-create` / `+dashboard-block-update` / `+dashboard-block-delete` 管理组件，`data_config` 定义数据源、维度、指标、聚合或文本内容。
-3. **读取内容：** `+dashboard-block-get-data` 读取图表、指标卡等数据组件的计算结果。
-
-仪表盘及内部组件操作前先读 [Dashboard](references/lark-base-dashboard.md)，由该入口按任务继续读取对应专项文档。
+- [Dashboard](references/lark-base-dashboard.md)：仪表盘的读取、建设、布局和分享，所有仪表盘及组件操作前读取；由该入口继续路由专项文档。
+  - `+dashboard-list`：列出仪表盘并定位目标。
+  - `+dashboard-get`：读取仪表盘整体信息。
+  - `+dashboard-create`：创建仪表盘。
+  - `+dashboard-update`：修改仪表盘名称或主题。
+  - `+dashboard-arrange`：统一编排内部组件布局。
+  - `+dashboard-share-get`：读取仪表盘分享设置。
+  - `+dashboard-share-update`：修改分享启停、访问范围和返回源 Base 入口。
+  - `+dashboard-block-list`：列出仪表盘内部组件。
+  - `+dashboard-block-get`：读取组件配置；文本组件的正文也在配置中。
+  - `+dashboard-block-create`：创建图表、指标卡、文本等组件。
+  - `+dashboard-block-update`：修改已有组件的配置。
+  - `+dashboard-block-delete`：删除指定组件。
+  - `+dashboard-block-get-data`：读取数据组件的计算结果。
 
 ## 应用模式与 Workspace 心智模型
 
-Workspace 是组织 Base 和 BaseApp 的空间容器；BaseApp 创建时必须归属一个 Workspace。BaseApp 用 Page 组织界面，每个 Page 包含图表、列表或富文本组件；组件通过 `data_config` 引用 Base 数据，但不会改变 Base、Table、Field 和 Record 的归属关系。Workspace 负责资源归属，App 负责页面和组件，Base 负责数据。
+Workspace 是组织 Base 和 BaseApp 的空间容器。BaseApp 用 Page 和组件组织界面并引用 Base 数据，不是 Base 的别名，也不走 `lark-apps`。Workspace 负责资源归属，App 负责页面和组件，Base 负责数据。
 
-1. **Workspace：** 使用 `+workspace-create`、`+workspace-entity-list` 和 `+workspace-move-in` 创建目录、列出其中的 Base/BaseApp 或移入资源。
-2. **应用：** 使用 `+app-create` / `+app-get`；应用查询和创建依赖真实 `app_token` / `workspace_token`。
-3. **页面：** 使用 `+app-page-list/get/create/rename/delete` 管理 Page。
-4. **组件：** 使用 `+app-block-list/get/create/update` 读写组件配置，使用 `+app-block-get-data` 读取组件计算结果。
-
-BaseApp、Workspace、Page 或组件任务开始前完整读取 [应用模式与 Workspace](references/lark-base-app.md)；构造组件 `data_config` 时继续读取 [应用组件配置](references/lark-base-app-block-data-config.md)。BaseApp 不走 `lark-apps`。当前不支持 BaseApp 复制、Page 完整复制、页面图标以及从 Workspace 移出资源；遇到这些目标按 reference 的能力边界处理，不以新建空对象或 Drive 移动冒充。
-
-- BaseApp（应用模式）中的 Page 和组件使用 `app_token` / `page_id` / `block_id`，表、字段和记录仍使用组件所引用 Base 的 `base_token`；不要混用 token 或把 BaseApp 当作 Base 的别名。
-- 复用现有 BaseApp block 的 `data_config` 只能作为结构模板，首次 Create/Update 前仍要逐项对齐用户显式要求；用户要求排序时必须显式写 `group_by[].sort.order` 或顶层 `sort.order`，不能用旧配置省略的方向或当前 `get-data` 结果顺序代替。
-- 应用页面的 block 与仪表盘 block 是同一套底层实体，但 ID 体系不通用；按当前模块 reference 选择命令和配置协议。
+- [应用模式与 Workspace](references/lark-base-app.md)：Workspace、BaseApp、Page 和组件的操作及能力边界，相关任务开始前完整读取；组件配置由该入口继续引导。
+  - `+workspace-create`：创建 Workspace。
+  - `+workspace-entity-list`：列出 Workspace 中的 Base 和 BaseApp。
+  - `+workspace-move-in`：将 Base 或 BaseApp 移入 Workspace。
+  - `+app-create`：在 Workspace 中创建 BaseApp。
+  - `+app-get`：读取应用信息及页面摘要。
+  - `+app-page-list`：列出应用页面。
+  - `+app-page-get`：读取单个页面。
+  - `+app-page-create`：创建页面。
+  - `+app-page-update`：修改页面名称。
+  - `+app-page-delete`：删除页面。
+  - `+app-block-list`：列出页面组件。
+  - `+app-block-get`：读取组件配置。
+  - `+app-block-create`：创建页面组件。
+  - `+app-block-update`：修改页面组件配置。
+  - `+app-block-get-data`：读取图表组件的计算结果。
 
 ## Workflow Block
 
-Workflow 本身是 Base Block，其内部是一张由 `next` / `children` 连接的 steps 执行图；触发器、动作、条件分支和循环都是 step 类型。它适合定时执行、Record 新增或变更联动、消息通知、记录读写和跨系统调用。Workflow 分为三条操作路径：
+Workflow 本身是 Base Block，内部由触发器、动作、条件分支和循环组成执行图，适合定时执行、Record 变更联动、消息通知、记录读写和跨系统调用。
 
-1. **读取配置：** `+workflow-list` 定位流程，`+workflow-get` 读取 `title`、`status` 和完整 `steps` 执行图。
-2. **写入配置：** `+workflow-create` 创建完整定义，`+workflow-update` 更新完整定义；构造或修改配置前读取 [Workflow](references/lark-base-workflow.md)，由该入口继续路由 step 类型和 schema。
-3. **运行状态控制：** `+workflow-enable` / `+workflow-disable` 启用或停用已有 Workflow，不修改 steps 执行图。
+- [Workflow](references/lark-base-workflow.md)：流程读取、创建、修改和运行状态控制，相关操作前读取；由该入口继续路由 step 类型和 schema。
+  - `+workflow-list`：列出工作流并定位目标。
+  - `+workflow-get`：读取流程定义和运行状态。
+  - `+workflow-create`：创建完整流程定义。
+  - `+workflow-update`：更新完整流程定义。
+  - `+workflow-enable`：启用已有流程。
+  - `+workflow-disable`：停用已有流程。
 
 ## Advanced Permission（AdvPerm）
 
 AdvPerm 为 Base 开启细粒度权限模式；Role 在此基础上配置 Base、Table、View、Field、Record、Dashboard 和 Docx 等资源的访问能力，适合按团队或职责限制可见范围、编辑能力、复制下载和数据访问规则。
 
-**读取 AdvPerm：** `+base-get` 查看 `is_advanced`，`+role-list` / `+role-get` 查看角色。**写入 AdvPerm：** `+advperm-enable` / `+advperm-disable` 启停高级权限，`+role-create` / `+role-update` / `+role-delete` 管理角色。先读 [权限与角色](references/lark-base-advanced-permission-and-role.md)，由该入口继续路由权限 JSON 协议。
+- [权限与角色](references/lark-base-advanced-permission-and-role.md)：查询权限现状、启停高级权限和管理角色，相关操作前读取；由该入口继续路由权限 JSON 协议。
+  - `+base-get`：查看 Base 的高级权限开启状态。
+  - `+role-list`：列出角色。
+  - `+role-get`：读取角色的完整权限配置。
+  - `+advperm-enable`：开启高级权限。
+  - `+advperm-disable`：关闭高级权限。
+  - `+role-create`：创建自定义角色。
+  - `+role-update`：修改角色权限配置。
+  - `+role-delete`：删除自定义角色。
 
 ## Docx Block
 
 Docx Block 是组织在 Base 目录中的飞书文档资源，适合把说明、方案和报告与数据表、仪表盘及流程放在同一 Base 中；正文仍使用标准 Docx 数据模型。
 
-从 Base Block 资源目录按 `--type docx` 定位文档并取得 `docx_token`；正文读取、创建与编辑使用 `lark-doc`。
+按上方 Base Block 管理入口定位文档并取得 `docx_token`；正文读取、创建与编辑使用 `lark-doc`。
 
 ## Folder Block
 
-Folder Block 只承担 Base 目录分组和层级组织。用 `+base-block-list --parent-id <folder_block_id>` 读取直接子项。
+Folder Block 只承担 Base 目录分组和层级组织。创建、读取子项和调整目录使用上方 Base Block 管理入口。
 
 ## 通用执行契约
 
+- Table 下的实体更新异步生效，以更新响应为准；立即回读可能仍是旧状态，不能据此判定失败或重复提交。
 - Update 先确认命令是完整替换还是 delta：完整替换使用可信当前配置做 read-modify-write，delta 只提交目标变更。
 - 以写入响应确认成功项；检查失败项和 `ignored_fields`，只处理未成功项并说明原因。
 - 命令具有 confirmation gate 时，确认目标和影响后使用 `--yes`。

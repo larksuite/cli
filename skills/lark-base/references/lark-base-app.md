@@ -31,6 +31,10 @@
 
 ## Token 与命令
 
+- BaseApp（应用模式）中的 Page 和组件使用 `app_token` / `page_id` / `block_id`，表、字段和记录仍使用组件所引用 Base 的 `base_token`；不要混用 token 或把 BaseApp 当作 Base 的别名。
+- 复用现有 BaseApp block 的 `data_config` 只能作为结构模板，首次 Create/Update 前仍要逐项对齐用户显式要求；用户要求排序时必须显式写 `group_by[].sort.order` 或顶层 `sort.order`，不能用旧配置省略的方向或当前 `get-data` 结果顺序代替。
+- 应用页面的 block 与仪表盘 block 是同一套底层实体，但 ID 体系不通用；按当前模块 reference 选择命令和配置协议。
+
 | 对象 | 标识 | 命令 |
 |---|---|---|
 | Workspace | `workspace_token` | `+workspace-create` / `+workspace-entity-list` / `+workspace-move-in` |
@@ -39,7 +43,7 @@
 | Page | `page_id` | `+app-page-list/get/create/update/delete` |
 | Block | `block_id` | `+app-block-list/get/create/update` |
 
-页面和组件命令使用 `app_token`；Base 数据命令使用 `base_token`。`+app-block-get-data` 使用 `app_token + base_token + chart_token`：CLI 参数名仍为 `--block-id`，但必须传组件返回的 `chart_token`，不能传普通 `block_id`。请求路径与仪表盘图表数据接口相同。
+`+app-block-get-data` 使用 `app_token + base_token + chart_token`：CLI 参数名仍为 `--block-id`，但必须传组件返回的 `chart_token`，不能传普通 `block_id`。请求路径与仪表盘图表数据接口相同。
 
 BaseApp / AppMode 是 Base 域能力。用户提供 `/app/` 链接时，先用 `+url-resolve`；它会返回 `app_token`，并忠实提取链接实际携带的 `workspace_token` 与 `page_id`。直接使用本指引和 `lark-cli base +...`，不要先尝试 `lark-cli apps`。
 

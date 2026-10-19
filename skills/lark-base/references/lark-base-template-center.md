@@ -1,6 +1,6 @@
 # Base 模板中心
 
-模板中心是一个**公开的 Base 模板库**。当用户想“用一个现成的模板快速搭一个多维表格”时，这套命令帮助 AI 找到最合适的模板，最终通过 `+base-copy` 复制成用户自己的新 Base。
+模板中心是一个**公开的 Base 模板库**，为不同行业和业务流程提供高质量 Base 模板。用户需要创建 Base 时，可以查找适配需求的模板，通过 `+base-copy` 直接创建用户自己的新 Base。
 
 模板中心里也可能返回 BaseApp / 应用模板。若模板预览链接 `templates[].link` 包含 `/app/`，它只是可展示的应用模板预览，不支持通过 `+base-copy` 复制创建。用户要求“基于这个应用模板创建 / 复制应用模板”时，应明确拒绝，并说明当前 CLI 只支持复制 Base 模板，不支持复制应用模板。
 
@@ -12,7 +12,7 @@
 
 ## 何时使用模板中心
 
-满足以下特征时走模板中心：用户有**创建新 Base 的意图**，但**没有指向已有对象的锚点**（没有 Base URL、没有“我的/最近访问的表”、没有具体已存在的 Base 名）。
+用户需要创建新 Base 时，可以根据行业和业务流程查找模板；结合模板的 `introduction` 和 `scenarios` 判断是否适配用户需求，适配时直接基于模板创建。
 
 典型触发：
 
@@ -20,11 +20,11 @@
 - “有没有适合项目管理的模板”
 - “找个 OKR 跟进的 Base 模板照着做”
 
-**不要**走模板中心的情况（即使用户嘴上说“模板”）：
+以下任务按对应入口处理：
 
-- 用户给了 Base/Wiki 链接或 token → 走 `+url-resolve`。
-- 用户说“我之前那张表 / 我的模板 / 最近访问的” → 走 `+title-resolve` 或转 `lark-drive` 搜索。
-- 用户要从零定义字段 schema，而不是套现成模板 → 走 `+base-create --table-name --fields`。
+- 用户要读取或修改 Base/Wiki 链接所指的已有资源 → 走 `+url-resolve`。
+- 用户要查找“我之前那张表 / 我的模板 / 最近访问的”等已有资源 → 走 `+title-resolve` 或转 `lark-drive` 搜索。
+- 用户明确要求从零定义字段 schema，或没有适配需求的模板 → 走 `+base-create --table-name --fields`。
 
 模板中心是独立的公开数据集，**不能**用 `drive +search` 找到，`drive +search` 只搜用户自己可访问的云空间对象。
 
@@ -184,7 +184,7 @@ lark-cli base +base-copy --base-token <模板 token> --name "<新 Base 名>" --a
 
 - `--name` 用用户想要的新 Base 名；不传则沿用模板名。
 - 只有用户明确说“只要结构 / 不要内容”时，才加 `--without-content`。
-- `+base-copy` 的返回和权限说明见 SKILL.md 中 `+base-copy` 的相关规则。
+- `+base-copy` 的返回和权限说明见 [Base 与 Block 管理](lark-base-resource-management.md) 的「复制 Base」一节。
 - 如果选中的模板 `link` 包含 `/app/`，不要调用 `+base-copy`。这类应用模板当前仅支持展示给用户，不支持复制创建；用户要求基于应用模板创建时应拒绝并说明能力边界。
 
 ## 注意事项
