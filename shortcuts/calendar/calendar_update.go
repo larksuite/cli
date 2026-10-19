@@ -68,6 +68,9 @@ func validateCalendarUpdate(runtime *common.RuntimeContext) error {
 	if strings.TrimSpace(runtime.Str("event-id")) == "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --event-id").WithParam("--event-id")
 	}
+	if err := normalizeCalendarRrule(runtime); err != nil {
+		return err
+	}
 	if _, _, err := buildCalendarUpdateEventData(runtime); err != nil {
 		return err
 	}

@@ -1162,3 +1162,171 @@ func TestUpdate_Recurring_MissingApplyTo_Rejected(t *testing.T) {
 		t.Errorf("param=%q", ve.Param)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// normalizeRecurrenceUntil
+// ---------------------------------------------------------------------------
+
+func TestNormalizeRecurrenceUntil(t *testing.T) {
+	// Pin the local timezone so the no-Z (floating) → UTC conversion is
+	// deterministic: 10:00 in Asia/Shanghai (+08:00) is 02:00 UTC.
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := time.Local
+	time.Local = loc
+	t.Cleanup(func() { time.Local = orig })
+
+	cases := []struct {
+		name        string
+		rrule       string
+		want        string
+		wantChanged bool
+		wantErr     bool
+	}{
+		{"empty", "", "", false, false},
+		{"no until open-ended", "FREQ=WEEKLY", "FREQ=WEEKLY", false, false},
+		{"no until with count", "FREQ=DAILY;COUNT=5", "FREQ=DAILY;COUNT=5", false, false},
+		{"already utc unchanged", "FREQ=DAILY;INTERVAL=1;UNTIL=20270116T100000Z", "FREQ=DAILY;INTERVAL=1;UNTIL=20270116T100000Z", false, false},
+		{"already utc with rrule prefix", "RRULE:FREQ=WEEKLY;UNTIL=20270116T100000Z", "RRULE:FREQ=WEEKLY;UNTIL=20270116T100000Z", false, false},
+		{"already utc lowercase key unchanged", "FREQ=DAILY;until=20270116T100000Z", "FREQ=DAILY;until=20270116T100000Z", false, false},
+		{"local datetime normalized to utc", "FREQ=DAILY;UNTIL=20270116T100000", "FREQ=DAILY;UNTIL=20270116T020000Z", true, false},
+		{"local datetime with rrule prefix normalized", "RRULE:FREQ=WEEKLY;UNTIL=20270116T100000", "RRULE:FREQ=WEEKLY;UNTIL=20270116T020000Z", true, false},
+		{"local datetime lowercase key normalized and uppercased", "FREQ=DAILY;until=20270116T100000", "FREQ=DAILY;UNTIL=20270116T020000Z", true, false},
+		{"date-only rejected", "FREQ=DAILY;UNTIL=20270116", "", false, true},
+		{"with offset rejected", "FREQ=DAILY;UNTIL=20270116T100000+0800", "", false, true},
+		{"garbage rejected", "FREQ=DAILY;UNTIL=soon", "", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, changed, err := normalizeRecurrenceUntil(tc.rrule)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("normalizeRecurrenceUntil(%q) = nil error, want error", tc.rrule)
+				}
+				var ve *errs.ValidationError
+				if !errors.As(err, &ve) {
+					t.Fatalf("got %T, want *errs.ValidationError", err)
+				}
+				if ve.Param != "--rrule" {
+					t.Errorf("param = %q, want --rrule", ve.Param)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("normalizeRecurrenceUntil(%q) = %v, want nil", tc.rrule, err)
+			}
+			if got != tc.want {
+				t.Errorf("normalizeRecurrenceUntil(%q) = %q, want %q", tc.rrule, got, tc.want)
+			}
+			if changed != tc.wantChanged {
+				t.Errorf("normalizeRecurrenceUntil(%q) changed = %v, want %v", tc.rrule, changed, tc.wantChanged)
+			}
+		})
+	}
+}
+
+func TestUpdate_Validate_RejectsBadRruleUntil(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update", "--event-id", "uid_0", "--calendar-id", "cal_test",
+		"--rrule", "FREQ=DAILY;UNTIL=20270116", "--dry-run", "--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for date-only UNTIL")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("got %T, want *errs.ValidationError", err)
+	}
+	if ve.Param != "--rrule" {
+		t.Errorf("param = %q, want --rrule", ve.Param)
+	}
+}
+
+func TestCreate_Validate_RejectsBadRruleUntil(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create", "--summary", "x",
+		"--start", "2027-01-15T10:00:00+08:00",
+		"--end", "2027-01-15T11:00:00+08:00",
+		"--rrule", "FREQ=DAILY;UNTIL=20270116", "--dry-run", "--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for date-only UNTIL")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("got %T, want *errs.ValidationError", err)
+	}
+	if ve.Param != "--rrule" {
+		t.Errorf("param = %q, want --rrule", ve.Param)
+	}
+}
+
+func TestCreate_Validate_AcceptsValidRruleUntil(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create", "--summary", "x",
+		"--start", "2027-01-15T10:00:00+08:00",
+		"--end", "2027-01-15T11:00:00+08:00",
+		"--rrule", "FREQ=DAILY;INTERVAL=1;UNTIL=20270116T100000Z", "--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error for valid UTC UNTIL: %v", err)
+	}
+}
+
+// TestCreate_Validate_NormalizesLocalRruleUntil proves the no-Z (floating)
+// UNTIL is accepted and the normalized UTC form reaches the dry-run body via
+// the --rrule flag write-back, not just the pure helper. Local is pinned to
+// Asia/Shanghai so 10:00 local → 02:00Z deterministically.
+func TestCreate_Validate_NormalizesLocalRruleUntil(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := time.Local
+	time.Local = loc
+	t.Cleanup(func() { time.Local = orig })
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err = mountAndRun(t, CalendarCreate, []string{
+		"+create", "--summary", "x",
+		"--start", "2027-01-15T10:00:00+08:00",
+		"--end", "2027-01-15T11:00:00+08:00",
+		"--rrule", "FREQ=DAILY;UNTIL=20270116T100000", "--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error for local UNTIL: %v", err)
+	}
+	if want := "FREQ=DAILY;UNTIL=20270116T020000Z"; !strings.Contains(stdout.String(), want) {
+		t.Fatalf("dry-run body should carry normalized recurrence %q, got: %s", want, stdout.String())
+	}
+}
+
+// TestUpdate_Validate_NormalizesLocalRruleUntil mirrors the +create case for
+// +update: the normalized UTC rrule must surface in the room-check preview's
+// event_rrule, confirming the flag write-back is observed downstream.
+func TestUpdate_Validate_NormalizesLocalRruleUntil(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := time.Local
+	time.Local = loc
+	t.Cleanup(func() { time.Local = orig })
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err = mountAndRun(t, CalendarUpdate, []string{
+		"+update", "--event-id", "uid_0", "--calendar-id", "cal_test",
+		"--rrule", "FREQ=DAILY;UNTIL=20270116T100000", "--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error for local UNTIL: %v", err)
+	}
+	if want := "FREQ=DAILY;UNTIL=20270116T020000Z"; !strings.Contains(stdout.String(), want) {
+		t.Fatalf("dry-run should carry normalized recurrence %q, got: %s", want, stdout.String())
+	}
+}

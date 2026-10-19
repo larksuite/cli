@@ -32,10 +32,11 @@ type searchEventTimeRange struct {
 
 // searchEventFilter represents the filter object for the search_event API request.
 type searchEventFilter struct {
-	AttendeeUserIDs []string              `json:"attendee_user_ids,omitempty"`
-	AttendeeChatIDs []string              `json:"attendee_chat_ids,omitempty"`
-	MeetingRoomIDs  []string              `json:"meeting_room_ids,omitempty"`
-	TimeRange       *searchEventTimeRange `json:"time_range,omitempty"`
+	AttendeeUserIDs  []string              `json:"attendee_user_ids,omitempty"`
+	AttendeeChatIDs  []string              `json:"attendee_chat_ids,omitempty"`
+	MeetingRoomIDs   []string              `json:"meeting_room_ids,omitempty"`
+	OrganizerUserIDs []string              `json:"organizer_user_ids,omitempty"`
+	TimeRange        *searchEventTimeRange `json:"time_range,omitempty"`
 }
 
 // searchEventRequestBody is the request body for the search_event API.
@@ -129,20 +130,54 @@ func buildSearchEventFilter(runtime *common.RuntimeContext, startTime, endTime s
 		}
 	}
 
+	organizerUserIDs := common.SplitCSV(runtime.Str("organizer-ids"))
+
 	var tr *searchEventTimeRange
 	if startTime != "" || endTime != "" {
 		tr = &searchEventTimeRange{StartTime: startTime, EndTime: endTime}
 	}
 
-	if len(userIDs) == 0 && len(chatIDs) == 0 && len(roomIDs) == 0 && tr == nil {
+	if len(userIDs) == 0 && len(chatIDs) == 0 && len(roomIDs) == 0 && len(organizerUserIDs) == 0 && tr == nil {
 		return nil
 	}
 	return &searchEventFilter{
-		AttendeeUserIDs: userIDs,
-		AttendeeChatIDs: chatIDs,
-		MeetingRoomIDs:  roomIDs,
-		TimeRange:       tr,
+		AttendeeUserIDs:  userIDs,
+		AttendeeChatIDs:  chatIDs,
+		MeetingRoomIDs:   roomIDs,
+		OrganizerUserIDs: organizerUserIDs,
+		TimeRange:        tr,
 	}
+}
+
+// buildSearchEventRequest assembles the query params and request body for
+// search_event. It is the single source of truth shared by DryRun and Execute,
+// so the preview always reflects exactly what the live call sends (query,
+// filter incl. organizer_user_ids, page_size, page_token).
+func buildSearchEventRequest(runtime *common.RuntimeContext) (map[string]any, *searchEventRequestBody, error) {
+	startTime, endTime, err := parseSearchEventTimeRange(runtime)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Always send query (even if empty), matching the API contract.
+	body := &searchEventRequestBody{
+		Query: strings.TrimSpace(runtime.Str("query")),
+	}
+	if filter := buildSearchEventFilter(runtime, startTime, endTime); filter != nil {
+		body.Filter = filter
+	}
+
+	params := map[string]any{}
+	pageSize, _ := strconv.Atoi(strings.TrimSpace(runtime.Str("page-size")))
+	if pageSize <= 0 {
+		pageSize = defaultSearchEventPageSize
+	}
+	params["page_size"] = strconv.Itoa(pageSize)
+	if pt := strings.TrimSpace(runtime.Str("page-token")); pt != "" {
+		params["page_token"] = pt
+	}
+
+	return params, body, nil
 }
 
 // extractTimeInfo extracts time info from a meta_data start/end map.
@@ -179,6 +214,7 @@ var CalendarSearchEvent = common.Shortcut{
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},
 		{Name: "query", Desc: "search keyword"},
 		{Name: "attendee-ids", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_, room omm_). Same-type IDs are OR/union — e.g. --attendee-ids \"ou_A,ou_B\" matches events A or B joined, not both."},
+		{Name: "organizer-ids", Desc: "organizer user IDs (ou_), comma-separated. Same-type IDs are OR/union — e.g. --organizer-ids \"ou_A,ou_B\" matches events organized by A or B."},
 		{Name: "start", Desc: "search time range start (ISO 8601 or YYYY-MM-DD)"},
 		{Name: "end", Desc: "search time range end (ISO 8601 or YYYY-MM-DD)"},
 		{Name: "page-token", Desc: "page token for next page"},
@@ -201,13 +237,21 @@ var CalendarSearchEvent = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		calendarID := runtime.Str("calendar-id")
-		if calendarID == "" {
-			calendarID = "<primary>"
+		calendarID := strings.TrimSpace(runtime.Str("calendar-id"))
+		displayCalendarID := calendarID
+		if displayCalendarID == "" || displayCalendarID == PrimaryCalendarIDStr {
+			displayCalendarID = "<primary>"
 		}
-		return common.NewDryRunAPI().
-			POST(fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/search_event", calendarID)).
-			Set("calendar_id", calendarID)
+		params, body, err := buildSearchEventRequest(runtime)
+		if err != nil {
+			return common.NewDryRunAPI().Set("error", err.Error())
+		}
+		d := common.NewDryRunAPI().
+			POST("/open-apis/calendar/v4/calendars/:calendar_id/events/search_event").
+			Params(params).
+			Body(body).
+			Set("calendar_id", displayCalendarID)
+		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		calendarID := strings.TrimSpace(runtime.Str("calendar-id"))
@@ -215,28 +259,9 @@ var CalendarSearchEvent = common.Shortcut{
 			calendarID = PrimaryCalendarIDStr
 		}
 
-		startTime, endTime, err := parseSearchEventTimeRange(runtime)
+		params, body, err := buildSearchEventRequest(runtime)
 		if err != nil {
 			return err
-		}
-
-		// Build request body — always send query (even if empty)
-		body := &searchEventRequestBody{
-			Query: strings.TrimSpace(runtime.Str("query")),
-		}
-		if filter := buildSearchEventFilter(runtime, startTime, endTime); filter != nil {
-			body.Filter = filter
-		}
-
-		// Build query params
-		params := map[string]any{}
-		pageSize, _ := strconv.Atoi(strings.TrimSpace(runtime.Str("page-size")))
-		if pageSize <= 0 {
-			pageSize = defaultSearchEventPageSize
-		}
-		params["page_size"] = strconv.Itoa(pageSize)
-		if pt := strings.TrimSpace(runtime.Str("page-token")); pt != "" {
-			params["page_token"] = pt
 		}
 
 		data, err := runtime.CallAPITyped("POST",

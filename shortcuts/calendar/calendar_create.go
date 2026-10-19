@@ -142,6 +142,10 @@ var CalendarCreate = common.Shortcut{
 			}
 		}
 
+		if err := normalizeCalendarRrule(runtime); err != nil {
+			return err
+		}
+
 		if attendeesStr := runtime.Str("attendee-ids"); attendeesStr != "" {
 			for _, id := range strings.Split(attendeesStr, ",") {
 				id = strings.TrimSpace(id)

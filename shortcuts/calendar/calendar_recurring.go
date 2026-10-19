@@ -387,6 +387,85 @@ func parseRRuleUntil(v string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// rruleUntilLayout is the canonical UNTIL grammar sent to Lark for --rrule
+// input: RFC5545 UTC date-time "YYYYMMDDThhmmssZ" (e.g. 20060102T150405Z).
+// This is the same form the CLI itself emits via truncateRecurrenceUntil, so
+// round-tripping a CLI-written rule stays valid.
+const rruleUntilLayout = "20060102T150405Z"
+
+// rruleUntilLocalLayout is the same wall-clock date-time without the trailing
+// "Z". Per RFC5545 this denotes a floating/local time; we interpret it in the
+// process-local timezone and convert it to the UTC rruleUntilLayout.
+const rruleUntilLocalLayout = "20060102T150405"
+
+// normalizeRecurrenceUntil canonicalizes the UNTIL clause of a user-supplied
+// RRULE so Lark always receives an explicit UTC instant:
+//
+//   - "YYYYMMDDThhmmssZ" (UTC) is used as-is.
+//   - "YYYYMMDDThhmmss" (no Z) is read as local wall-clock time, converted to
+//     UTC, and rewritten in the "...Z" form.
+//
+// Other UNTIL spellings Lark tolerates elsewhere (e.g. date-only "YYYYMMDD")
+// carry no time-of-day and cannot be expressed as "YYYYMMDDThhmmssZ", so they
+// are rejected with a typed --rrule error. Rules without UNTIL (open-ended or
+// COUNT-based) and the empty string pass through unchanged. It returns the
+// normalized rule and reports whether the value changed.
+func normalizeRecurrenceUntil(rrule string) (string, bool, error) {
+	body := strings.TrimSpace(rrule)
+	if body == "" {
+		return rrule, false, nil
+	}
+	prefix := ""
+	if strings.HasPrefix(body, "RRULE:") {
+		prefix = "RRULE:"
+		body = strings.TrimPrefix(body, "RRULE:")
+	}
+
+	parts := strings.Split(body, ";")
+	changed := false
+	for i, part := range parts {
+		p := strings.TrimSpace(part)
+		if !strings.HasPrefix(strings.ToUpper(p), "UNTIL=") {
+			continue
+		}
+		val := strings.TrimSpace(p[len("UNTIL="):])
+		if _, err := time.ParseInLocation(rruleUntilLayout, val, time.UTC); err == nil {
+			continue // already canonical UTC form
+		}
+		local, err := time.ParseInLocation(rruleUntilLocalLayout, val, time.Local)
+		if err != nil {
+			return rrule, false, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--rrule UNTIL must be an RFC5545 date-time YYYYMMDDThhmmss[Z] (e.g. 20060102T150405Z, or 20060102T150405 in local time), got %q", val).
+				WithParam("--rrule")
+		}
+		parts[i] = "UNTIL=" + local.UTC().Format(rruleUntilLayout)
+		changed = true
+	}
+	if !changed {
+		return rrule, false, nil
+	}
+	return prefix + strings.Join(parts, ";"), true, nil
+}
+
+// normalizeCalendarRrule reads the --rrule flag, canonicalizes any UNTIL clause
+// via normalizeRecurrenceUntil, and writes the result back to the flag so every
+// downstream consumer (buildEventData, buildCalendarUpdateEventData, room-check
+// preview) observes the UTC form. It is a no-op when --rrule is unset/empty or
+// already canonical. Shared by +create and +update.
+func normalizeCalendarRrule(runtime *common.RuntimeContext) error {
+	normalized, changed, err := normalizeRecurrenceUntil(runtime.Str("rrule"))
+	if err != nil {
+		return err
+	}
+	if !changed {
+		return nil
+	}
+	if err := runtime.Cmd.Flags().Set("rrule", normalized); err != nil {
+		return errs.NewInternalError(errs.SubtypeUnknown, "failed to normalize --rrule: %v", err)
+	}
+	return nil
+}
+
 func recurringFreqDuration(freq string) time.Duration {
 	switch strings.ToUpper(strings.TrimSpace(freq)) {
 	case "DAILY":

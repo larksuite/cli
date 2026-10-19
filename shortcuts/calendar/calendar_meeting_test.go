@@ -281,6 +281,36 @@ func TestSearchEvent_DryRun(t *testing.T) {
 	}
 }
 
+// TestSearchEvent_DryRun_PreviewsFilter guards against the preview drifting from
+// the live request: the dry-run body must carry the query and every filter the
+// Execute path would send, including organizer_user_ids and attendee splits.
+func TestSearchEvent_DryRun_PreviewsFilter(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, calDefaultConfig())
+	err := calMountAndRun(t, CalendarSearchEvent, []string{
+		"+search-event", "--query", "周会",
+		"--attendee-ids", "ou_u1,oc_c1,omm_r1",
+		"--organizer-ids", "ou_org1,ou_org2",
+		"--page-size", "30", "--page-token", "pt_1",
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		`"query": "周会"`,
+		`"organizer_user_ids"`, `"ou_org1"`, `"ou_org2"`,
+		`"attendee_user_ids"`, `"ou_u1"`,
+		`"attendee_chat_ids"`, `"oc_c1"`,
+		`"meeting_room_ids"`, `"omm_r1"`,
+		`"page_size": "30"`, `"page_token": "pt_1"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dry-run preview missing %s, got: %s", want, out)
+		}
+	}
+}
+
 func TestSearchEvent_Execute_Success(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, calDefaultConfig())
 	reg.Register(&httpmock.Stub{
@@ -356,6 +386,44 @@ func TestSearchEvent_Execute_Empty(t *testing.T) {
 	err := calMountAndRun(t, CalendarSearchEvent, []string{"+search-event", "--query", "nonexistent", "--as", "user"}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSearchEvent_Execute_OrganizerFilter(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, calDefaultConfig())
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/primary/events/search_event",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{},
+				"has_more": false,
+			},
+		},
+	}
+	reg.Register(stub)
+
+	err := calMountAndRun(t, CalendarSearchEvent,
+		[]string{"+search-event", "--query", "周会", "--organizer-ids", "ou_org1,ou_org2", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var body searchEventRequestBody
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("failed to parse captured request body: %v (%s)", err, stub.CapturedBody)
+	}
+	if body.Filter == nil {
+		t.Fatal("expected filter in request body")
+	}
+	if len(body.Filter.OrganizerUserIDs) != 2 ||
+		body.Filter.OrganizerUserIDs[0] != "ou_org1" ||
+		body.Filter.OrganizerUserIDs[1] != "ou_org2" {
+		t.Errorf("organizer_user_ids = %v, want [ou_org1 ou_org2]", body.Filter.OrganizerUserIDs)
+	}
+	if !strings.Contains(string(stub.CapturedBody), `"organizer_user_ids"`) {
+		t.Errorf("captured body missing organizer_user_ids: %s", stub.CapturedBody)
 	}
 }
 
@@ -436,7 +504,9 @@ func TestParseSearchEventTimeRange(t *testing.T) {
 func TestBuildSearchEventFilter(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().String("attendee-ids", "", "")
+	cmd.Flags().String("organizer-ids", "", "")
 	_ = cmd.Flags().Set("attendee-ids", "ou_user1,oc_chat1,omm_room1")
+	_ = cmd.Flags().Set("organizer-ids", "ou_org1,ou_org2")
 	runtime := common.TestNewRuntimeContext(cmd, calDefaultConfig())
 
 	filter := buildSearchEventFilter(runtime, "", "")
@@ -451,6 +521,28 @@ func TestBuildSearchEventFilter(t *testing.T) {
 	}
 	if len(filter.MeetingRoomIDs) != 1 || filter.MeetingRoomIDs[0] != "omm_room1" {
 		t.Errorf("meeting_room_ids = %v, want [omm_room1]", filter.MeetingRoomIDs)
+	}
+	if len(filter.OrganizerUserIDs) != 2 || filter.OrganizerUserIDs[0] != "ou_org1" || filter.OrganizerUserIDs[1] != "ou_org2" {
+		t.Errorf("organizer_user_ids = %v, want [ou_org1 ou_org2]", filter.OrganizerUserIDs)
+	}
+}
+
+func TestBuildSearchEventFilter_OrganizerOnly(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("attendee-ids", "", "")
+	cmd.Flags().String("organizer-ids", "", "")
+	_ = cmd.Flags().Set("organizer-ids", "ou_org1")
+	runtime := common.TestNewRuntimeContext(cmd, calDefaultConfig())
+
+	filter := buildSearchEventFilter(runtime, "", "")
+	if filter == nil {
+		t.Fatal("expected filter to be non-nil for organizer-only input")
+	}
+	if len(filter.AttendeeUserIDs) != 0 {
+		t.Errorf("attendee_user_ids = %v, want empty", filter.AttendeeUserIDs)
+	}
+	if len(filter.OrganizerUserIDs) != 1 || filter.OrganizerUserIDs[0] != "ou_org1" {
+		t.Errorf("organizer_user_ids = %v, want [ou_org1]", filter.OrganizerUserIDs)
 	}
 }
 

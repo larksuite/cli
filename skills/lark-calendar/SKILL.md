@@ -70,14 +70,16 @@ lark-cli calendar +get --calendar-id <calendar_id> --event-id <event_id>
 # query 按关键词 可选
 # start/end 按时间范围（ISO 8601 或 YYYY-MM-DD）可选
 # attendee-ids 按参会人（自动识别 ou_ 用户 / oc_ 群聊 / omm_ 会议室前缀）可选
+# organizer-ids 按组织者用户 ID（ou_）可选
 # page-token 分页游标，用于继续翻页 可选
 # page-size 每页数量，默认 30 可选
-lark-cli calendar +search-event --query "周会" --start 2026-04-20 --end 2026-04-27 --attendee-ids "ou_user1,oc_chat1,omm_room1" --page-token <page_token> --page-size 30
+lark-cli calendar +search-event --query "周会" --start 2026-04-20 --end 2026-04-27 --attendee-ids "ou_user1,oc_chat1,omm_room1" --organizer-ids "ou_org1" --page-token <page_token> --page-size 30
 ```
 
-`--attendee-ids` 的多值语义：**同类型内为 OR（并集）**——只要日程命中列表中的任意一个同类型 ID，就会返回。
+`--attendee-ids` / `--organizer-ids` 的多值语义：**同类型内为 OR（并集）**——只要日程命中列表中的任意一个同类型 ID，就会返回。
 
 - `--attendee-ids "ou_A,ou_B"` = A **或** B 参加的日程（**不是** A 和 B 都参加的）。
+- `--organizer-ids "ou_A,ou_B"` = A **或** B 组织的日程。
 
 ### `+delete` — 删除日程
 
