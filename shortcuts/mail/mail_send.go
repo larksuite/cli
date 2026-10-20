@@ -28,8 +28,8 @@ var MailSend = common.Shortcut{
 		{Name: "subject", Desc: "Email subject. Required unless --template-id supplies a non-empty subject."},
 		{Name: "body", Desc: "Email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file. Required unless --template-id supplies a non-empty body."},
 		bodyFileFlag,
-		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
-		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
+		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to --mailbox when it is not me, then the mailbox's default send_as address, then primary address fallback."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: me). When --from is omitted and this is not me, it is also used as the sender identity."},
 		{Name: "cc", Type: "string_array", Desc: "CC email address. Repeat --cc once per recipient; quote each value. Display-name format is supported."},
 		{Name: "bcc", Type: "string_array", Desc: "BCC email address. Repeat --bcc once per recipient; quote each value. Display-name format is supported."},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
@@ -58,7 +58,8 @@ var MailSend = common.Shortcut{
 			api = api.GET(templateMailboxPath(mailboxID, tid)).
 				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
 		}
-		api = api.GET(mailboxPath(mailboxID, "profile")).
+		api = api.GET(mailboxPath(mailboxID, "settings", "send_as")).
+			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
 				"raw": "<base64url-EML>",
@@ -148,14 +149,14 @@ var MailSend = common.Shortcut{
 		confirmSend := runtime.Bool("confirm-send")
 		sendTime := runtime.Str("send-time")
 
-		senderEmail := resolveComposeSenderEmail(runtime)
+		mailboxID := resolveComposeMailboxID(runtime)
+		senderInfo := resolveComposeSenderInfo(runtime, mailboxID)
+		senderEmail := senderInfo.Email
 		signatureID := runtime.Str("signature-id")
 		priority, err := parsePriority(runtime.Str("priority"))
 		if err != nil {
 			return err
 		}
-
-		mailboxID := resolveComposeMailboxID(runtime)
 
 		// Auto-resolve default signature when neither --no-signature nor --signature-id is set.
 		noSignature := runtime.Bool("no-signature")
@@ -225,13 +226,13 @@ var MailSend = common.Shortcut{
 			Subject(subject).
 			ToAddrs(parseNetAddrs(to))
 		if senderEmail != "" {
-			bld = bld.From("", senderEmail)
+			bld = bld.From(senderInfo.Name, senderEmail)
 		}
 		if err := requireSenderForRequestReceipt(runtime, senderEmail); err != nil {
 			return err
 		}
 		if runtime.Bool("request-receipt") {
-			bld = bld.DispositionNotificationTo("", senderEmail)
+			bld = bld.DispositionNotificationTo(senderInfo.Name, senderEmail)
 		}
 		if ccFlag != "" {
 			bld = bld.CCAddrs(parseNetAddrs(ccFlag))
