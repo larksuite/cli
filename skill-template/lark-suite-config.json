@@ -34,7 +34,7 @@
       {
         "skill": "lark-skill-maker",
         "match": "../lark-shared/SKILL.md",
-        "replacement": "../lark-suite/references/lark-shared/GUIDE.md"
+        "replacement": "../lark-shared/GUIDE.md"
       }
     ],
     "preserve": [

@@ -65,3 +65,32 @@ func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
 	sort.Strings(keys)
 	assertStrings(t, keys, directories)
 }
+
+func TestSuiteSkillMakerGuideRewriteUsesSiblingGuidePath(t *testing.T) {
+	repoRoot := filepath.Join("..", "..")
+	raw, err := vfs.ReadFile(filepath.Join(repoRoot, "skill-template", "lark-suite-config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		GuideRewrite struct {
+			PathOverrides []struct {
+				Skill       string `json:"skill"`
+				Match       string `json:"match"`
+				Replacement string `json:"replacement"`
+			} `json:"pathOverrides"`
+		} `json:"guideRewrite"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	for _, override := range config.GuideRewrite.PathOverrides {
+		if override.Skill == "lark-skill-maker" && override.Match == "../lark-shared/SKILL.md" {
+			if override.Replacement != "../lark-shared/GUIDE.md" {
+				t.Fatalf("lark-skill-maker shared guide rewrite = %q, want ../lark-shared/GUIDE.md", override.Replacement)
+			}
+			return
+		}
+	}
+	t.Fatal("lark-skill-maker shared guide rewrite is missing")
+}
