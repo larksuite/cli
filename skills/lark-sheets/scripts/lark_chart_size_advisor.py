@@ -341,7 +341,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--series-y-axes", type=_series_y_axes_argument)
     parser.add_argument("--series-data-labels", type=_series_data_labels_argument)
     parser.add_argument("--data-labels")
-    parser.add_argument("--aggregate-categories", type=_boolean_argument, default=True)
+    parser.add_argument("--aggregate-categories", type=_boolean_argument)
     parser.add_argument("--legend-position", default="bottom")
     parser.add_argument("--title", default="")
     parser.add_argument("--timeout", type=int, default=60)

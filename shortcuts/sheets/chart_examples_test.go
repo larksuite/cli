@@ -31,6 +31,38 @@ func TestChartPrintExample(t *testing.T) {
 		}
 	})
 
+	t.Run("waterfall disables added subtotals", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+chart-create")
+		parent, _, _, _ := newTestRig(t, sc)
+		var buf bytes.Buffer
+		parent.SetOut(&buf)
+		parent.SetArgs([]string{sc.Command, "--print-example", "waterfall"})
+		if err := parent.Execute(); err != nil {
+			t.Fatalf("print-example should run standalone, got: %v", err)
+		}
+		var properties struct {
+			Snapshot struct {
+				PlotArea struct {
+					Plot struct {
+						Extra struct {
+							Waterfall struct {
+								LastValueAsSubtotal *bool `json:"lastValueAsSubtotal"`
+							} `json:"waterfall"`
+						} `json:"extra"`
+					} `json:"plot"`
+				} `json:"plotArea"`
+			} `json:"snapshot"`
+		}
+		if err := json.Unmarshal(buf.Bytes(), &properties); err != nil {
+			t.Fatalf("template is not valid JSON: %v", err)
+		}
+		setting := properties.Snapshot.PlotArea.Plot.Extra.Waterfall.LastValueAsSubtotal
+		if setting == nil || *setting {
+			t.Fatal("waterfall template must explicitly disable added subtotals")
+		}
+	})
+
 	t.Run("unknown type lists available", func(t *testing.T) {
 		t.Parallel()
 		sc := shortcutFromRegistry(t, "+chart-create")
@@ -56,6 +88,14 @@ func TestChartExampleTemplates_ValidateAgainstSchema(t *testing.T) {
 			var v interface{}
 			if err := json.Unmarshal([]byte(tmpl), &v); err != nil {
 				t.Fatalf("template is not valid JSON: %v", err)
+			}
+			if typ != "bubble" && typ != "pareto" {
+				snapshot := v.(map[string]interface{})["snapshot"].(map[string]interface{})
+				data := snapshot["data"].(map[string]interface{})
+				serie := data["dim1"].(map[string]interface{})["serie"].(map[string]interface{})
+				if serie["aggregate"] == true {
+					t.Fatal("ordinary chart templates must preserve source rows instead of enabling category aggregation")
+				}
 			}
 			fv := newMapFlagViewForCommand("+chart-create", map[string]interface{}{"properties": v})
 			if err := validateValueAgainstSchema(fv, "properties", v); err != nil {

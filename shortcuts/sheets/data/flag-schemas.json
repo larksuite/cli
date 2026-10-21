@@ -1755,7 +1755,7 @@
                                   },
                                   "lastValueAsSubtotal": {
                                     "type": "boolean",
-                                    "description": "是否将最后一个值视为小计"
+                                    "description": "是否在最后一个数据点之后新增小计（不是转换最后一个值）。创建时未指定默认 false；兼容 Excel 时保持 false，先在数据源写入小计项，再通过 subtotals 的 mode=1 转成小计。"
                                   },
                                   "negativeStyle": {
                                     "type": "object",
@@ -1846,7 +1846,7 @@
                                         "index": {
                                           "type": "integer",
                                           "minimum": 0,
-                                          "description": "小计节点索引，从 0 开始"
+                                          "description": "数据源数据点索引，从 0 开始，不包含表头；不是工作表行号或系列索引。"
                                         },
                                         "mode": {
                                           "type": "integer",
@@ -1854,7 +1854,7 @@
                                             0,
                                             1
                                           ],
-                                          "description": "小计计算模式"
+                                          "description": "0=在该数据点之后新增小计；1=将该数据点转成小计，使用该点的源数值。兼容 Excel 时使用 1，并先在数据源写入实际小计值。"
                                         },
                                         "alias": {
                                           "type": "string",
@@ -2989,7 +2989,7 @@
                                     },
                                     "lastValueAsSubtotal": {
                                       "type": "boolean",
-                                      "description": "是否将该系列最后一个值视为小计"
+                                      "description": "是否在该系列最后一个数据点之后新增小计（不是转换最后一个值）；未指定时继承全局配置。兼容 Excel 时保持 false，使用数据源小计项与 subtotals 的 mode=1。"
                                     },
                                     "negativeStyle": {
                                       "type": "object",
@@ -3080,7 +3080,7 @@
                                           "index": {
                                             "type": "integer",
                                             "minimum": 0,
-                                            "description": "小计节点索引，从 0 开始"
+                                            "description": "数据源数据点索引，从 0 开始，不包含表头；不是工作表行号或系列索引。"
                                           },
                                           "mode": {
                                             "type": "integer",
@@ -3088,7 +3088,7 @@
                                               0,
                                               1
                                             ],
-                                            "description": "小计计算模式"
+                                            "description": "0=在该数据点之后新增小计；1=将该数据点转成小计，使用该点的源数值。兼容 Excel 时使用 1，并先在数据源写入实际小计值。"
                                           },
                                           "alias": {
                                             "type": "string",
@@ -3662,7 +3662,7 @@
                               },
                               "aggregate": {
                                 "type": "boolean",
-                                "description": "是否汇总相同的类别，默认为true，true 情况下 aggregateType 才生效"
+                                "description": "是否汇总相同的类别。新建普通引用数据图表默认 false；更新时省略保留原设置；true 时 aggregateType 才生效。气泡图和排列图使用各自的汇总配置。"
                               },
                               "nameRef": {
                                 "type": "string",
@@ -4556,7 +4556,7 @@
                                   },
                                   "lastValueAsSubtotal": {
                                     "type": "boolean",
-                                    "description": "是否将最后一个值视为小计"
+                                    "description": "是否在最后一个数据点之后新增小计（不是转换最后一个值）。创建时未指定默认 false；兼容 Excel 时保持 false，先在数据源写入小计项，再通过 subtotals 的 mode=1 转成小计。"
                                   },
                                   "negativeStyle": {
                                     "type": "object",
@@ -4647,7 +4647,7 @@
                                         "index": {
                                           "type": "integer",
                                           "minimum": 0,
-                                          "description": "小计节点索引，从 0 开始"
+                                          "description": "数据源数据点索引，从 0 开始，不包含表头；不是工作表行号或系列索引。"
                                         },
                                         "mode": {
                                           "type": "integer",
@@ -4655,7 +4655,7 @@
                                             0,
                                             1
                                           ],
-                                          "description": "小计计算模式"
+                                          "description": "0=在该数据点之后新增小计；1=将该数据点转成小计，使用该点的源数值。兼容 Excel 时使用 1，并先在数据源写入实际小计值。"
                                         },
                                         "alias": {
                                           "type": "string",
@@ -5790,7 +5790,7 @@
                                     },
                                     "lastValueAsSubtotal": {
                                       "type": "boolean",
-                                      "description": "是否将该系列最后一个值视为小计"
+                                      "description": "是否在该系列最后一个数据点之后新增小计（不是转换最后一个值）；未指定时继承全局配置。兼容 Excel 时保持 false，使用数据源小计项与 subtotals 的 mode=1。"
                                     },
                                     "negativeStyle": {
                                       "type": "object",
@@ -5881,7 +5881,7 @@
                                           "index": {
                                             "type": "integer",
                                             "minimum": 0,
-                                            "description": "小计节点索引，从 0 开始"
+                                            "description": "数据源数据点索引，从 0 开始，不包含表头；不是工作表行号或系列索引。"
                                           },
                                           "mode": {
                                             "type": "integer",
@@ -5889,7 +5889,7 @@
                                               0,
                                               1
                                             ],
-                                            "description": "小计计算模式"
+                                            "description": "0=在该数据点之后新增小计；1=将该数据点转成小计，使用该点的源数值。兼容 Excel 时使用 1，并先在数据源写入实际小计值。"
                                           },
                                           "alias": {
                                             "type": "string",
@@ -6463,7 +6463,7 @@
                               },
                               "aggregate": {
                                 "type": "boolean",
-                                "description": "是否汇总相同的类别，默认为true，true 情况下 aggregateType 才生效"
+                                "description": "是否汇总相同的类别。新建普通引用数据图表默认 false；更新时省略保留原设置；true 时 aggregateType 才生效。气泡图和排列图使用各自的汇总配置。"
                               },
                               "nameRef": {
                                 "type": "string",

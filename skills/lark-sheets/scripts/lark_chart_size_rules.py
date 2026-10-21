@@ -104,7 +104,7 @@ def estimate_legend_rows(items: list[str], width: int) -> int:
 
 
 def effective_category_labels(
-    categories: list[Any], *, aggregate_categories: bool = True
+    categories: list[Any], *, aggregate_categories: bool = False
 ) -> list[str]:
     labels = [str(value if value is not None else "") for value in categories]
     if aggregate_categories:
@@ -185,7 +185,7 @@ def recommend_chart_size(
     legend_position: str = "bottom",
     title: str = "",
     values: list[float] | None = None,
-    aggregate_categories: bool = True,
+    aggregate_categories: bool | None = None,
     series_types: list[str] | None = None,
     series_y_axes: list[str] | None = None,
     series_data_labels: list[str] | None = None,
@@ -193,6 +193,8 @@ def recommend_chart_size(
     chart_type = str(chart_type).lower()
     if chart_type not in SUPPORTED_CHART_TYPES:
         raise ValueError(f"unsupported chart type: {chart_type}")
+    if aggregate_categories is None:
+        aggregate_categories = chart_type in {"bubble", "pareto"}
     category_text = effective_category_labels(
         categories,
         aggregate_categories=aggregate_categories,

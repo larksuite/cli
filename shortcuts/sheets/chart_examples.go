@@ -68,7 +68,7 @@ var chartExampleTemplates = map[string]string{
       "type": "waterfall",
       "extra": {"waterfall": {
         "firstValueAsTotal": true,
-        "lastValueAsSubtotal": true,
+        "lastValueAsSubtotal": false,
         "connectorLine": {"style": "solid", "width": 1},
         "totalLabels": {"template": "{{value}}"}
       }}
@@ -127,7 +127,7 @@ var chartExampleTemplates = map[string]string{
     }},
     "data": {
       "refs": [{"value": "'Sheet1'!A1:B11"}],
-      "dim1": {"serie": {"index": 1, "aggregate": true}},
+      "dim1": {"serie": {"index": 1, "aggregate": false}},
       "dim2": {"series": [{"index": 2, "aggregateType": "sum"}]}
     }
   }

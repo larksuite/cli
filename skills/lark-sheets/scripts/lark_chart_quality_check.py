@@ -687,7 +687,8 @@ def fetch_thumbnail_assets_with_fallback(
 
 
 def chart_rectangle(
-    chart: dict[str, Any], row_edges: list[float], column_edges: list[float]
+    chart: dict[str, Any], row_edges: list[float], column_edges: list[float],
+    *, frozen_rows: int = 0, frozen_columns: int = 0,
 ) -> dict[str, Any]:
     details = chart.get("details") if isinstance(chart.get("details"), dict) else chart
     position = details.get("position") if isinstance(details.get("position"), dict) else {}
@@ -704,9 +705,15 @@ def chart_rectangle(
     if width <= 0 or height <= 0:
         raise ValueError(f"invalid chart size: {size!r}")
 
-    left = column_edges[column] + float(offset.get("col_offset", 0) or 0)
-    top = row_edges[row] + float(offset.get("row_offset", 0) or 0)
-    return {
+    # Match floatBlocks.cellPosToViewPos: anchors inside frozen panes are displayed
+    # from the first unfrozen row/column, without changing their stored position.
+    display_row = max(row, frozen_rows)
+    display_column = max(column, frozen_columns)
+    if display_row >= len(row_edges) - 1 or display_column >= len(column_edges) - 1:
+        raise ValueError("frozen anchor projects outside sheet")
+    left = column_edges[display_column] + float(offset.get("col_offset", 0) or 0)
+    top = row_edges[display_row] + float(offset.get("row_offset", 0) or 0)
+    rectangle = {
         "chart_id": str(chart.get("chart_id") or chart.get("id") or ""),
         "anchor_cell": f"{index_to_column(column)}{row + 1}",
         "left": left,
@@ -716,6 +723,9 @@ def chart_rectangle(
         "width": width,
         "height": height,
     }
+    if (display_row, display_column) != (row, column):
+        rectangle["display_anchor_cell"] = f"{index_to_column(display_column)}{display_row + 1}"
+    return rectangle
 
 
 def intersection(first: dict[str, Any], second: dict[str, Any]) -> dict[str, float] | None:
@@ -733,7 +743,7 @@ def intersection(first: dict[str, Any], second: dict[str, Any]) -> dict[str, flo
 
 
 def chart_context(rectangle: dict[str, Any]) -> dict[str, Any]:
-    return {
+    context = {
         "chart_id": rectangle["chart_id"],
         "anchor_cell": rectangle["anchor_cell"],
         "rectangle_px": {
@@ -745,6 +755,9 @@ def chart_context(rectangle: dict[str, Any]) -> dict[str, Any]:
             "height": round(rectangle["height"], 2),
         },
     }
+    if "display_anchor_cell" in rectangle:
+        context["display_anchor_cell"] = rectangle["display_anchor_cell"]
+    return context
 
 
 def _covered_indexes(edges: list[float], start: float, end: float) -> list[int]:
@@ -1814,13 +1827,14 @@ def check_sheet(
             "+sheet-info",
             **locator,
             sheet_id=sheet_id,
-            flags={"include": "row_heights,col_widths"},
+            flags={"include": "row_heights,col_widths,frozen"},
             timeout=timeout,
         )
     )
-    row_edges, column_edges, warnings = build_layout(
-        extract_sheet_structure(structure_data), row_count, column_count
-    )
+    structure = extract_sheet_structure(structure_data)
+    row_edges, column_edges, warnings = build_layout(structure, row_count, column_count)
+    frozen_rows = int(structure.get("frozen_rows") or 0)
+    frozen_columns = int(structure.get("frozen_columns") or 0)
 
     rectangles: list[dict[str, Any]] = []
     for chart in charts:
@@ -1829,7 +1843,17 @@ def check_sheet(
             unverifiable.append({"chart_id": "", "reason": "chart is missing chart_id"})
             continue
         try:
-            rectangles.append(chart_rectangle(chart, row_edges, column_edges))
+            rectangle = chart_rectangle(
+                chart, row_edges, column_edges,
+                frozen_rows=frozen_rows, frozen_columns=frozen_columns,
+            )
+            rectangles.append(rectangle)
+            if "display_anchor_cell" in rectangle:
+                warnings.append(
+                    f"{chart_id}: 图表锚点 {rectangle['anchor_cell']} 位于冻结区域，"
+                    f"实际显示从 {rectangle['display_anchor_cell']} 开始；"
+                    "请移到冻结区外并重新检查图表间距"
+                )
         except (KeyError, TypeError, ValueError) as exc:
             unverifiable.append({"chart_id": chart_id, "reason": str(exc)})
 

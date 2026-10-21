@@ -3751,7 +3751,8 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Whether to aggregate duplicate categories; use --aggregate-categories=false for sparse markers or row-level data points, and omit it to use the chart default"
+        "desc": "Whether to aggregate duplicate categories; ordinary charts default to false and preserve row-level points; set true for category summaries; bubble and Pareto charts use their own aggregation rules",
+        "default": "false"
       },
       {
         "name": "x-axis-numbers-as",

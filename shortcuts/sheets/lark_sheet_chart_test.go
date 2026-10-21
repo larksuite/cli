@@ -4,6 +4,7 @@
 package sheets
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -859,6 +860,33 @@ func TestChartCreateBasic_SelectsDimensionsAtCreation(t *testing.T) {
 	indexes := basic["dim2_indexes"].([]interface{})
 	if len(indexes) != 3 || indexes[0] != float64(2) || indexes[1] != float64(6) || indexes[2] != float64(8) {
 		t.Fatalf("basic_chart.dim2_indexes = %#v", indexes)
+	}
+}
+
+func TestChartAggregateCategoriesDefaults(t *testing.T) {
+	t.Parallel()
+	for _, explicit := range []bool{false, true} {
+		t.Run(fmt.Sprintf("explicit_opt_in=%t", explicit), func(t *testing.T) {
+			t.Parallel()
+			args := []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C7"}
+			if explicit {
+				args = append(args, "--aggregate-categories=true")
+			}
+			body := parseDryRunBody(t, ChartCreateBasic, args)
+			basic := decodeToolInput(t, body, "manage_chart_object")["basic_chart"].(map[string]interface{})
+			value, present := basic["aggregate_categories"]
+			if present != explicit || (explicit && value != true) {
+				t.Fatalf("aggregate_categories = %#v (present=%t), explicit opt-in=%t", value, present, explicit)
+			}
+		})
+	}
+
+	updateBody := parseDryRunBody(t, ChartConfigUpdate, []string{
+		"--url", testURL, "--sheet-id", testSheetID, "--chart-id", "chart-1", "--title", "Updated",
+	})
+	snapshot := chartDryRunSnapshot(t, decodeToolInput(t, updateBody, "manage_chart_object"))
+	if _, present := snapshot["data"]; present {
+		t.Fatalf("title-only update must preserve category aggregation, got data=%#v", snapshot["data"])
 	}
 }
 

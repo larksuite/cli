@@ -82,6 +82,8 @@ python3 scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" 
 
 运行建议器时，参数必须与后续创建保持一致：创建命令显式设置 `--aggregate-categories` 时传入同一值，组合图同步传入 `--series-types`、`--series-y-axes` 和 `--series-data-labels`；创建命令不传全局或逐系列标签时，建议器按无标签估算。将返回的 `data.create_flags.width` / `height` 原样用于创建命令（包括 `--dry-run`），不要凭经验改小；`data.minimum_size` 仅表示兜底下限。若 `data.size_alone_is_insufficient=true`，先按 `data.layout_advice` 调整图表结构或标签策略，再用新配置重新计算尺寸。建议器只负责创建前预估，图表创建后仍须运行质量检查器。
 
+**类别汇总**：新建普通引用数据图表默认不汇总同名类别，按源数据行保留数据点；只有需要按类别求和、平均或计数时，才传 `--aggregate-categories=true`。高级 `+chart-create --properties` 对应 `snapshot.data.dim1.serie.aggregate`，省略时同样默认 `false`，指定 `aggregateType` 不会自动开启汇总。更新已有图表时省略该开关保留原设置。气泡图和排列图使用各自汇总配置。类别汇总与空值显示方式独立，关闭汇总不会覆盖已有的空值展示设置。
+
 **坐标轴语义与范围**：所有带坐标轴的图表都要在清单中记录每条轴对应的字段语义、类别轴 / 连续轴类型、单位以及主副轴归属，不能只核对轴标题。Y 轴显示范围默认交给图表引擎；用户未明确要求固定范围时，不传 `--y-axis-min` / `--y-axis-max`，需要固定范围时必须同时传上下界，重点只处理确有必要收紧的连续数值 X 轴。堆积图的峰值来自同一类别内系列累加，组合图还要按左右轴分别计算；不得直接把数据源单列的最小值 / 最大值当成 Y 轴边界。瀑布图的显示范围取决于逐项累计后的全部中间值、小计和总计，不得主动传 `--y-axis-min` / `--y-axis-max`；只有用户明确指定固定范围时才能例外，且必须覆盖所有累计节点。其它图表只有在用户明确要求或视觉验收证明自动范围不可读时，才按图表类型的实际绘制值计算并设置 Y 轴范围。多图对比时，先判断“范围 / 尺度一致”指绝对边界相同，还是跨度和刻度可比；对比同一指标时保持值轴口径一致，不同单位或量级的指标不强行共用边界。
 
 **横向类别行配方**：当日期/月份等类别横向排列在一行、目标数值在另一行时，把“类别行 + 数值行”一起放进 `--data-range` 并传 `--data-direction row`，例如 `--data-range "'Sheet1'!A1:M1,'Sheet1'!A3:M3" --data-direction row`。此时类别行属于数据映射，**不要**传给 `--header-range`。`--header-range` 仅表示与纯数据分离的“维度/系列名称”：column 方向必须是一行，row 方向必须是一列。row 方向却传入多列表头，通常说明把类别行误当成了分离表头。
@@ -108,9 +110,9 @@ python3 scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" 
 **常见配置错误（必须注意）**：
 - **图表类型选择错误**：用户说"堆积柱形图 / 百分比堆积"时，用 `+chart-create-basic --stack normal|percent` 或 `+chart-config-update --stack normal|percent`；用户说"占比 / 比例"时，优先考虑饼图或百分比堆积图。注意 `column` 是纵向柱形图、`bar` 是横向条形图，"对比 / 各 XX" 类纵向柱默认用 `column`；面积图原生支持 `snapshot.plotArea.plot.type="area"`，别因速查表没列就判"不支持"。
 - **数据标签开关与避让**：普通基础图先按拟开启 `--data-labels value` 运行尺寸建议器，再用建议宽高创建；不要仅凭数据点或系列数预先传 `none`。若使用建议尺寸后标签仍重叠，先在高级更新中给全局 `plotArea.plot.labels` 保留所需内容并设置 `overlap: true` 尝试自动平移避让；它只控制全局标签避让，不控制显隐，也不支持逐系列设置。仍无法辨认时再依次改为稀疏标签、Top-N 或拆图；用户明确要求隐藏全部标签时才传 `none`。已有图用 `+chart-config-update --data-labels`，不要为普通标签开关构造原始 `labels` 对象；只有语义 shortcut 无法表达的避让等高级字段才走 `+chart-update`。高级配置中 `plotArea.plot.labels` 对象的存在性即开关：创建时关闭标签应省略该字段，更新时删除已有全局标签传 `labels: null`，不能用全部字段置为 `false` 代替。组合图各系列的标签要求不同时，禁止传全局 `--data-labels`，改用 `--series-data-labels` 按显式 `--dim2-indexes` 顺序逐项设置；已有图的高级调整仍须读取并完整回写系列数组。
-- **辅助线与单点标签**：用户要求基准线、目标线、阈值线、平均线或上下限时，先在源数据旁新增一列重复目标值作为辅助线；如果只需要在线尾或某个关键位置显示一个标签，再新增一列稀疏标点数据，仅在目标行写入同一数值，其余单元格保持真正空白。数据准备完成后创建组合图：辅助值列用 `line`，稀疏标点列用 `scatter`，省略全局 `--data-labels`，用 `--series-data-labels` 为每个数值系列逐项设置标签并将辅助线设为 `none`，同时传 `--aggregate-categories=false` 关闭“汇总相同类别”；已有图用 `+chart-config-update --aggregate-categories=false`。不得用重复值辅助线的全系列标签模拟单点标签，也不得用 0 代替空白标点，否则聚合会把空标点物化为每个类别的数据点，导致标签重复出现。
-- **常量系列标签**：目标线、阈值线和上下限等重复常量系列默认不显示逐点标签；名称和值放在系列名、图例、标题或单个稀疏标记中。创建后若质量检查器提示“常量系列重复标签”，移除该系列标签或改成只有一个非空点的稀疏标记。
-- **数据标签位置**：只有用户明确要求且已有标签时才传 `--data-label-position`；它只调整已有标签的位置，不会单独开启标签。需要同时显示标签时一并传 `--data-labels` 或 `--series-data-labels`，逐系列模式下统一作用于非 `none` 的系列；未明确位置时省略，让图表按类型自动选择。标签位置只控制摆放方式，不能实现仅显示末点或关键点。普通非堆叠柱形图显示数据标签位置一般传 `outside`。
+- **辅助线与单点标签**：基准线、目标线、阈值线、平均线或上下限用重复值列作为 `line` 系列。只标折线的线尾、峰值或关键点时，关闭全局及该系列的逐点标签，在该系列的 `points.point[]` 中设置目标点的 `labels`；需要突出标记时同时设置 `size`。不要叠加稀疏 `scatter` 系列，折线与散点混合会影响 Excel 导出。`series[].index` 与 `data.dim2.series[].index` 对齐，点的 `index` 从 1 开始、不含表头；按源数据行定位时传 `--aggregate-categories=false`。更新前回读并保留完整 `series` 数组及已有点配置。
+- **常量系列标签**：目标线、阈值线和上下限等重复常量系列默认不显示逐点标签；名称和值放在系列名、图例、标题或单点标签中。质量检查器提示“常量系列重复标签”时，移除该系列标签或改为单点标签。
+- **数据标签位置**：只有用户明确要求且已有标签时才传 `--data-label-position`；它只调整已有标签的位置，不会单独开启标签。需要同时显示标签时一并传 `--data-labels` 或 `--series-data-labels`，逐系列模式下统一作用于非 `none` 的系列；未明确位置时省略，让图表按类型自动选择。标签位置只控制摆放方式；仅显示末点或关键点用该点的 `labels`。普通非堆叠柱形图显示数据标签位置一般传 `outside`。
 - **数据源范围与系列名来源要对齐**：
   - 默认让 `--data-range` 包含真正的表头行 / 列；表头上方的合并大标题必须跳过。
   - 数据和语义表头分离时，`--data-range` 只传纯数据，`--header-range` 传对应的一行（column）或一列（row）表头。范围可以是不连续多范围，也支持来自多个子表；不要因为跨子表就退回原始 snapshot。
@@ -125,6 +127,14 @@ python3 scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" 
 > **⚠️ 硬性规则：当用户通过列标题名称（而非列索引）指定横轴/纵轴系列时，必须先读取表格首行（表头）来确定列名与列索引的对应关系，再设置普通图表的 `--dim1-index` / `--dim2-indexes` 或气泡图的角色索引。**
 > 例如用户说"横轴为车型系列，纵轴为 Q1-Q4 的销量"，不能猜测列索引；先用 `+cells-get` 读取数据源范围的表头，再将确认后的 1-based 索引传给 `+chart-create-basic`。
 
+## 瀑布图「转成小计」
+
+先在数据源写入小计项及累计值，再用 `+chart-update --properties` 设置对应数据点的 `subtotals`（索引从 0 开始、不含表头）。例如将第 4 个数据点转成小计：
+
+```json
+{"snapshot":{"plotArea":{"plot":{"extra":{"waterfall":{"subtotals":[{"index":3,"mode":1}]}}}}}}
+```
+
 ## ⚠️ chart 数据源引用 pivot 时必须排除总计行
 
 当 chart 要基于刚创建的 pivot 产物画图时，**禁止凭猜写 `refs`**。pivot 默认启用 `show_row_grand_total` / `show_col_grand_total`，产物最后一行/一列通常是"总计"。如果 `refs` 把总计行一并框进去：
@@ -134,7 +144,7 @@ python3 scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" 
 **正确流程**：
 1. `+pivot-create create` 返回 `sheet_id` + `pivot_table_id`
 2. 调 `+csv-get(sheet_id, 'A1:E30')` 或 `+pivot-list` 读 pivot 产物的**实际数据范围**
-3. 识别并排除"总计"/"小计"行（通常最后一行；嵌套 pivot 还要排除中间层小计）
+3. 识别并排除"总计"/"小计"行（通常最后一行；嵌套 pivot 还要排除中间层小计）。瀑布图确需展示汇总节点时，保留所需项并按「瀑布图小计」将对应数据点设为 `mode=1`，不要把汇总值当作普通增减量。
 4. 用 `+chart-create-basic` 创建图表，`--data-range` 精确到数据行（如 pivot 占 A1:D9、总计在 row9 → chart 用 `A1:D8`）
 
 ## 图表位置选择（创建前必做）
@@ -221,7 +231,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--data-range` | string | required | 数据范围；未传 --header-range 时须包含表头，传入时只传纯数据；支持逗号分隔及跨子表多范围 |
 | `--header-range` | string | optional | 可选的分离表头范围；column 方向须为一行、row 方向须为一列，表头数须等于数据维度数 |
 | `--data-direction` | string | optional | 数据系列方向；column 表示首列为类别，row 表示首行为类别（可选值：`column` / `row`）（默认 `column`） |
-| `--aggregate-categories` | bool | optional | 是否汇总相同类别；稀疏标点或需要保留逐行数据点时使用 --aggregate-categories=false，省略时沿用图表默认行为 |
+| `--aggregate-categories` | bool | optional | 是否汇总相同类别；普通图表默认 false，保留逐行数据点；按类别汇总时显式设为 true；气泡图和排列图沿用各自汇总规则 |
 | `--x-axis-numbers-as` | string | optional | 横轴数字的解释方式；text 将数字视为等间距文本类别，values 按连续数值及真实间距绘制（可选值：`text` / `values`）（默认 `text`） |
 | `--x-axis-min` | float64 | optional | 连续数值 X 轴的显示范围下界；需同时使用 --x-axis-numbers-as values |
 | `--x-axis-max` | float64 | optional | 连续数值 X 轴的显示范围上界；需同时使用 --x-axis-numbers-as values |
@@ -371,14 +381,23 @@ lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \
   --title "价格与效率" --y-axis-title "价格" --secondary-y-axis-title "效率" \
   --anchor-cell F2 --width 720 --height 420
 
-# 辅助线只显示一个标签：C 列为重复目标值，D 列仅目标位置有值、其余单元格为空
+# 辅助线只显示末点标签：B 列为实际值，C 列为重复目标值
 lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \
-  --chart-type combo --data-range "'Sheet1'!A1:D7" \
-  --dim1-index 1 --dim2-indexes 2,3,4 \
-  --series-types line,line,scatter --series-y-axes left,left,left \
-  --series-data-labels value,none,value \
-  --aggregate-categories=false \
-  --title "趋势与目标线" --anchor-cell F2 --width 720 --height 420
+  --chart-type combo --data-range "'Sheet1'!A1:C7" \
+  --dim1-index 1 --dim2-indexes 2,3 \
+  --series-types line,line --series-y-axes left,left \
+  --series-data-labels value,none --aggregate-categories=false \
+  --title "趋势与目标线" --anchor-cell E2 --width 720 --height 420
+
+# 用返回的 chart_id 更新刚创建的示例图；已有图须先回读并保留完整 series 数组
+# 系列 index=3 对应目标值列，点 index=6 对应第 6 个数据点（不含表头）
+lark-cli sheets +chart-update --url "..." --sheet-name "Sheet1" --chart-id "$CHART_ID" \
+  --properties - <<'JSON'
+{"snapshot":{"plotArea":{"plot":{"series":[
+  {"index":2,"comboType":"line","yAxisPosition":"left","labels":{"value":true}},
+  {"index":3,"comboType":"line","yAxisPosition":"left","points":{"point":[{"index":6,"size":6,"labels":{"value":true}}]}}
+]}}}}
+JSON
 
 # 气泡图：x、y 必填，group、size 可选
 lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \
