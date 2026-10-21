@@ -16,6 +16,10 @@ import (
 const (
 	defaultAppsEnvVarEnv   = "dev"
 	defaultAppsEnvVarScene = 2
+	// envVarReleaseNote tells users that mutations only propagate to the online
+	// runtime after a release — the config write succeeds immediately but the
+	// running app keeps serving the previously released snapshot until then.
+	envVarReleaseNote = "changes take effect online only after a release; run `lark-cli apps +release-create --app-id APP_ID`"
 )
 
 // AppsEnvVarList lists app environment variables without values by default.
@@ -148,6 +152,7 @@ var AppsEnvVarSet = common.Shortcut{
 			"key":    key,
 			"env":    env,
 			"action": action,
+			"note":   envVarReleaseNote,
 		}, nil, nil)
 		return nil
 	},
@@ -176,6 +181,10 @@ var AppsEnvVarDelete = common.Shortcut{
 		}
 		if err := validateEnvVarEnv(envVarEnv(rctx)); err != nil {
 			return err
+		}
+		if envVarEnv(rctx) == "online" {
+			return appsFailedPreconditionParamError("--environment",
+				"deleting online env vars via CLI is disabled; delete the key in dev with --environment dev and run `lark-cli apps +release-create --app-id <app_id>` to apply, or remove it from the developer console")
 		}
 		_, err := requireEnvVarKeys(rctx.StrArray("key"))
 		return err
@@ -209,6 +218,7 @@ var AppsEnvVarDelete = common.Shortcut{
 		rctx.OutFormat(map[string]interface{}{
 			"env":          env,
 			"deleted_keys": deletedKeys,
+			"note":         envVarReleaseNote,
 		}, nil, nil)
 		return nil
 	},
