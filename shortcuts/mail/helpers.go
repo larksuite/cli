@@ -1372,7 +1372,34 @@ func buildMessageOutput(msg map[string]interface{}, html bool) map[string]interf
 	}
 	out["attachments"] = buildPublicAttachments(msg)
 
-	return out
+	return withoutEffectiveSnippets(out).(map[string]interface{})
+}
+
+// withoutEffectiveSnippets returns a deep copy of JSON-shaped output with every
+// snippet value cleared. Mail APIs can attach snippet content to reference
+// objects at different nesting levels; keeping the field while emptying its
+// value preserves the response shape without exposing the referenced content.
+func withoutEffectiveSnippets(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(typed))
+		for key, item := range typed {
+			if key == "snippet" {
+				out[key] = ""
+				continue
+			}
+			out[key] = withoutEffectiveSnippets(item)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(typed))
+		for i, item := range typed {
+			out[i] = withoutEffectiveSnippets(item)
+		}
+		return out
+	default:
+		return value
+	}
 }
 
 // buildPublicAttachments returns the unified "attachments" list for

@@ -277,8 +277,10 @@ var MailTriage = common.Shortcut{
 		// Inject mailbox_id into every message so downstream consumers
 		// (e.g. mail +message) can preserve the mailbox context for
 		// public/shared mailbox scenarios.
-		for _, msg := range messages {
+		for i, msg := range messages {
+			msg = withoutEffectiveSnippets(msg).(map[string]interface{})
 			msg["mailbox_id"] = mailbox
+			messages[i] = msg
 		}
 
 		switch outFormat {

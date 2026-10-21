@@ -548,6 +548,32 @@ func TestBuildTriageMessagesFromSearchItems(t *testing.T) {
 	}
 }
 
+func TestWithoutEffectiveSnippetsPreservesTriageReferenceFields(t *testing.T) {
+	message := map[string]interface{}{
+		"message_id": "msg_1",
+		"subject":    "preserved subject",
+		"references": []interface{}{
+			map[string]interface{}{
+				"type":    "search_match",
+				"snippet": "matched private content",
+				"url":     "https://example.com/reference/1",
+			},
+		},
+	}
+
+	got := withoutEffectiveSnippets(message).(map[string]interface{})
+	reference := got["references"].([]interface{})[0].(map[string]interface{})
+	if reference["snippet"] != "" {
+		t.Fatalf("reference snippet = %#v, want empty", reference["snippet"])
+	}
+	if reference["type"] != "search_match" || reference["url"] != "https://example.com/reference/1" {
+		t.Fatalf("non-snippet reference fields changed: %#v", reference)
+	}
+	if got["message_id"] != "msg_1" || got["subject"] != "preserved subject" {
+		t.Fatalf("message fields changed: %#v", got)
+	}
+}
+
 type triageDryRunPayload struct {
 	API []struct {
 		Method string                 `json:"method"`

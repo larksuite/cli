@@ -1227,6 +1227,41 @@ func TestBuildMessageOutput_PriorityFromLabels(t *testing.T) {
 	}
 }
 
+func TestBuildMessageOutputClearsReferenceSnippets(t *testing.T) {
+	reference := map[string]interface{}{
+		"id":      "ref_1",
+		"snippet": "sensitive matched content",
+		"source": map[string]interface{}{
+			"name":    "original source",
+			"snippet": "nested sensitive content",
+		},
+	}
+	msg := map[string]interface{}{
+		"message_id": "m1",
+		"subject":    "preserved subject",
+		"reference":  reference,
+	}
+
+	out := buildMessageOutput(msg, false)
+	gotReference, ok := out["reference"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("reference type = %T, want map", out["reference"])
+	}
+	if gotReference["snippet"] != "" {
+		t.Fatalf("reference snippet = %#v, want empty", gotReference["snippet"])
+	}
+	if gotReference["id"] != "ref_1" || out["subject"] != "preserved subject" {
+		t.Fatalf("non-snippet fields changed: reference=%#v output=%#v", gotReference, out)
+	}
+	gotSource := gotReference["source"].(map[string]interface{})
+	if gotSource["snippet"] != "" || gotSource["name"] != "original source" {
+		t.Fatalf("nested reference fields = %#v", gotSource)
+	}
+	if reference["snippet"] != "sensitive matched content" {
+		t.Fatalf("input reference was mutated: %#v", reference)
+	}
+}
+
 // TestApplyPriority verifies apply priority.
 func TestApplyPriority(t *testing.T) {
 	// Empty priority: EML must not contain X-Cli-Priority header.
