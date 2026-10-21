@@ -548,10 +548,11 @@ func TestBuildTriageMessagesFromSearchItems(t *testing.T) {
 	}
 }
 
-func TestWithoutEffectiveSnippetsPreservesTriageReferenceFields(t *testing.T) {
+func TestWithoutEffectiveReferenceSnippetsPreservesTriageFields(t *testing.T) {
 	message := map[string]interface{}{
 		"message_id": "msg_1",
 		"subject":    "preserved subject",
+		"snippet":    "unrelated top-level content",
 		"references": []interface{}{
 			map[string]interface{}{
 				"type":    "search_match",
@@ -561,7 +562,7 @@ func TestWithoutEffectiveSnippetsPreservesTriageReferenceFields(t *testing.T) {
 		},
 	}
 
-	got := withoutEffectiveSnippets(message).(map[string]interface{})
+	got := withoutEffectiveReferenceSnippets(message).(map[string]interface{})
 	reference := got["references"].([]interface{})[0].(map[string]interface{})
 	if reference["snippet"] != "" {
 		t.Fatalf("reference snippet = %#v, want empty", reference["snippet"])
@@ -571,6 +572,9 @@ func TestWithoutEffectiveSnippetsPreservesTriageReferenceFields(t *testing.T) {
 	}
 	if got["message_id"] != "msg_1" || got["subject"] != "preserved subject" {
 		t.Fatalf("message fields changed: %#v", got)
+	}
+	if got["snippet"] != "unrelated top-level content" {
+		t.Fatalf("non-reference snippet changed: %#v", got["snippet"])
 	}
 }
 

@@ -1372,29 +1372,34 @@ func buildMessageOutput(msg map[string]interface{}, html bool) map[string]interf
 	}
 	out["attachments"] = buildPublicAttachments(msg)
 
-	return withoutEffectiveSnippets(out).(map[string]interface{})
+	return withoutEffectiveReferenceSnippets(out).(map[string]interface{})
 }
 
-// withoutEffectiveSnippets returns a deep copy of JSON-shaped output with every
-// snippet value cleared. Mail APIs can attach snippet content to reference
-// objects at different nesting levels; keeping the field while emptying its
-// value preserves the response shape without exposing the referenced content.
-func withoutEffectiveSnippets(value interface{}) interface{} {
+// withoutEffectiveReferenceSnippets returns a deep copy of JSON-shaped output
+// with snippet values cleared inside reference/references objects. Mail APIs can
+// attach references at different nesting levels; keeping the snippet field while
+// emptying its value preserves the response shape and all unrelated content.
+func withoutEffectiveReferenceSnippets(value interface{}) interface{} {
+	return copyWithoutReferenceSnippets(value, false)
+}
+
+func copyWithoutReferenceSnippets(value interface{}, insideReference bool) interface{} {
 	switch typed := value.(type) {
 	case map[string]interface{}:
 		out := make(map[string]interface{}, len(typed))
 		for key, item := range typed {
-			if key == "snippet" {
+			if insideReference && key == "snippet" {
 				out[key] = ""
 				continue
 			}
-			out[key] = withoutEffectiveSnippets(item)
+			childInsideReference := insideReference || key == "reference" || key == "references"
+			out[key] = copyWithoutReferenceSnippets(item, childInsideReference)
 		}
 		return out
 	case []interface{}:
 		out := make([]interface{}, len(typed))
 		for i, item := range typed {
-			out[i] = withoutEffectiveSnippets(item)
+			out[i] = copyWithoutReferenceSnippets(item, insideReference)
 		}
 		return out
 	default:
