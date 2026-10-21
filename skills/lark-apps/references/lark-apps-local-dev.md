@@ -1,6 +1,6 @@
 # lark-apps 本地开发
 
-适用：用户要把妙搭应用（full_stack、frontend 或 html）源码拉到本地，用本地 code agent/IDE 开发、再发布。其中调试数据库仅 full_stack 适用（frontend / html 无数据库）。
+适用：用户要把妙搭应用（full_stack、frontend 或 html）源码拉到本地，用本地 code agent/IDE 开发、再发布。调试数据库只适用于 `+get` 返回 `full_stack`、且 `+features` 里 `database` 为 `enabled=true` 的应用；frontend / html 应用没有数据库。
 
 ## 新建 vs 已有应用
 
@@ -13,12 +13,16 @@
 
 ### full_stack
 
-`+create(full_stack)` -> `+init`（或手动 `+git-credential-init` + `git clone`）-> 读仓库 Skill -> `npm install && npm run dev` -> 按需 `+db-*` 调库 -> 非自动化改动按本页 commit/push/release；包含自动化 handler 时，在任何 release 前转到 [automation SOP](lark-apps-automation.md)，由它接管状态门禁和完整发布。
+`+create(full_stack)` -> 需要数据库时 `+features` 看 `database`，`enabled=false` 时 `+feature-enable --feature database`（见 [`lark-apps-features.md`](lark-apps-features.md)）-> `+init`（或手动 `+git-credential-init` + `git clone`）-> 读仓库 Skill -> `npm install && npm run dev` -> 按需 `+db-*` 调库 -> 非自动化改动按本页 commit/push/release；包含自动化 handler 时，在任何 release 前转到 [automation SOP](lark-apps-automation.md)，由它接管状态门禁和完整发布。
 
 ```bash
 # 新建 full_stack 应用
 lark-cli apps +create --as user --name "审批系统" --app-type full_stack \
   --description "支持登录、提交申请、多级审批、状态查询"
+
+# 需要数据库且 +features 显示 database enabled=false 时，先在服务端开启（+init 不会自动开库）
+lark-cli apps +features --as user --app-id app_xxx
+lark-cli apps +feature-enable --feature database --as user --app-id app_xxx
 
 # 初始化本地仓库（--dir 取值见下方「领域规则」，勿照抄此处示例值）
 lark-cli apps +init --as user --app-id app_xxx --dir ./approval-app
@@ -38,7 +42,12 @@ lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default
 
 ### frontend
 
-纯前端应用（vite-react，无数据库）。流程与 full_stack 基本一致——`+init` 装依赖、`npm run dev`、commit/push/release——差别是无 `+db-*` 调库步骤。后续需要数据库/后端能力时不在本地升级，按 SKILL.md「类型升级」引导到云端会话。
+`--app-type frontend` 表示用户没提数据库需求，建出来是哪种工程由服务端决定：以 `+create` 之后 `+get` 返回的 `app_type` 为准，`+init` 也按它拉工程。
+
+- 返回 `frontend`：纯前端应用（vite-react，无数据库）。流程与 full_stack 基本一致——`+init` 装依赖、`npm run dev`、commit/push/release——差别是无 `+db-*` 调库步骤。后续需要数据库/后端能力时不在本地升级，按 SKILL.md「后续加数据库 / 类型升级」引导到云端会话。
+- 返回 `full_stack`：按上面 full_stack 的流程开发，数据库默认未开启。需要数据库时按 [`lark-apps-features.md`](lark-apps-features.md) 用 `+features` / `+feature-enable --feature database` 开启，不用去云端会话。
+
+下面示例是返回 `frontend` 的情况：
 
 ```bash
 # 新建 frontend 应用
@@ -127,6 +136,7 @@ lark-cli apps +release-create --app-id app_xxx
 - 已拉到本地后，pull/push/diff/log 都用原生 git；云端 `sprint/default` 比本地新时，先 `git pull --rebase origin sprint/default`，解决冲突后再 push 和 publish。
 - `git clone` / `git pull` / `git push` 如果报认证失败、401/403、credential helper 缺失或 token 过期，优先重新执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 更新本地 Git 凭证，然后重试原 git 命令；刷新凭证也失败时，停止并向用户报告错误，不要换路；不要手动复制 token、不要把 token 拼进 remote URL。
 - 环境变量由脚手架在本地启动时处理；需要手动刷新时用 `+env-pull`。
+- 已在本地开发、后来才需要数据库：`+features` → 用户确认后 `+feature-enable --feature database` → `+env-pull` → 停掉并重启 `npm run dev` → 建表 / 读写验证。`+init`、`+env-pull` 和启动脚本都不会自动开库；网页或另一台电脑开通后，从 `+env-pull` 这一步接续。
 - 资源型文件（图片、字体、音视频等）不要直接引用本地路径，也不要提交到 git 仓库或以 base64 内联到代码中。先通过 `lark-cli apps +file-upload --app-id <app_id> --file <local_path>` 上传到应用文件存储，拿到返回的远端 URL 后在代码中引用该 URL。详情读 [`lark-apps-file.md`](lark-apps-file.md)。上传返回的链接按 app 隔离，不同应用必须各自重新上传，不能跨应用复用同一链接。
 - DB 调试用 `+db-table-list` / `+db-table-get` / `+db-execute`；不要裸连数据库或自行拼连接串。
 - DB 分 `dev` / `online`；使用 `--environment dev|online`，不要使用旧的 `--env`。只有确认应用已开启多环境时才引导 `--environment dev`；单环境应用省略 `--environment`（服务端选 online）或显式传 `--environment online`。在 dev 写入不能证明线上 handler 已验证。dev 的库结构变更要上线时，仍按应用发布链路走 `+release-create`，不要另造“数据库发布”步骤。

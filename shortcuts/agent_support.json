@@ -143,6 +143,12 @@
     "apps +export": {
       "agentSupport": "denied"
     },
+    "apps +feature-enable": {
+      "agentSupport": "denied"
+    },
+    "apps +features": {
+      "agentSupport": "denied"
+    },
     "apps +file-delete": {
       "agentSupport": "denied"
     },
