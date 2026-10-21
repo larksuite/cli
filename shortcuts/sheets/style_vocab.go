@@ -805,6 +805,9 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 			}
 			if bs, ok := cell["border_styles"].(map[string]interface{}); ok {
 				expandBorderAllShorthand(bs)
+				if err := requireBorderSideAttributes(bs, fmt.Sprintf("%s[%d][%d].border_styles", path, r, c)); err != nil {
+					return err
+				}
 			}
 			st, ok := cell["cell_styles"].(map[string]interface{})
 			if !ok {
@@ -861,6 +864,17 @@ func expandBorderAllShorthand(border map[string]interface{}) {
 	}
 }
 
+// Empty side objects select edges that attribute flags can fill later. Check
+// them only after all attributes have been merged, at the input-builder boundary.
+func requireBorderSideAttributes(border map[string]interface{}, path string) error {
+	for _, side := range sortedKeys(border) {
+		if spec, ok := border[side].(map[string]interface{}); ok && len(spec) == 0 {
+			return common.ValidationErrorf("%s.%s must include at least one border attribute (style/weight/color)", path, side)
+		}
+	}
+	return nil
+}
+
 // borderWeightWord folds a thickness word onto the weight enum, returning
 // "" for anything that is not one. The wire contract splits a border into
 // style (line type) x weight (thickness) while openpyxl packs both into one
@@ -889,6 +903,16 @@ func borderWeightWord(s string) string {
 // thin SOLID line), the weight slot folds casing and hair, and a numeric
 // weight reads as a line width. Unknown values are left for the enum error.
 func normalizeBorderSideVocab(side map[string]interface{}) {
+	// An empty optional thickness is the serialized form produced by several
+	// spreadsheet libraries when the line style is present but no width was
+	// selected. It does not request a zero-width border: it leaves thickness at
+	// the API default. Dropping only the empty string preserves every explicit
+	// weight, including numeric zero, which remains an intentional error.
+	if weight, present := side["weight"]; present {
+		if text, isString := weight.(string); isString && strings.TrimSpace(text) == "" {
+			delete(side, "weight")
+		}
+	}
 	// "width" is the Google Sheets API name for weight (35 hits / 3 tasks).
 	// Only when weight is free — a side carrying both is contradictory
 	// input, left intact for the validator.
@@ -1409,6 +1433,9 @@ func borderStylesFromFlag(runtime flagView) (map[string]interface{}, error) {
 		return nil, sheetsValidationForFlag("border-styles", "--border-styles must be a JSON object")
 	}
 	expandBorderAllShorthand(m)
+	if err := requireBorderSideAttributes(m, "--border-styles"); err != nil {
+		return nil, sheetsValidationForFlag("border-styles", "%v", err).WithCause(err)
+	}
 	return m, nil
 }
 
@@ -1470,18 +1497,25 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		in["border_styles"] = bs
 		return bs, nil
 	}
-	setSideAttr := func(side, attr string, v interface{}, from string) error {
+	ensureSide := func(side, from string) (map[string]interface{}, error) {
 		bs, err := ensureBorder()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		sideObj, ok := bs[side].(map[string]interface{})
 		if !ok {
 			if _, exists := bs[side]; exists {
-				return common.ValidationErrorf("%s.%s conflicts with border_styles.%s; keep one form", path, from, side)
+				return nil, common.ValidationErrorf("%s.%s conflicts with border_styles.%s; keep one form", path, from, side)
 			}
 			sideObj = map[string]interface{}{}
 			bs[side] = sideObj
+		}
+		return sideObj, nil
+	}
+	setSideAttr := func(side, attr string, v interface{}, from string) error {
+		sideObj, err := ensureSide(side, from)
+		if err != nil {
+			return err
 		}
 		if _, exists := sideObj[attr]; exists {
 			return common.ValidationErrorf("%s.%s conflicts with border_styles.%s.%s; keep one form", path, from, side, attr)
@@ -1500,6 +1534,12 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		// only reading; normalizeBorderSideVocab then sorts a thickness word
 		// out of the style slot as it does for any other spelling.
 		normalizeBorderSideVocab(obj)
+		if len(obj) == 0 {
+			// Preserve explicit side selection even when normalization removes
+			// an empty weight. Attribute flags can fill it before final validation.
+			_, err := ensureSide(side, from)
+			return err
+		}
 		for _, attr := range sortedKeys(obj) {
 			if !attrs[attr] {
 				return common.ValidationErrorf("%s.%s.%s is not a border attribute (want style/weight/color)", path, from, attr)

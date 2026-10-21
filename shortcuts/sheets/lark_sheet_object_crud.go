@@ -1726,10 +1726,27 @@ func normalizeCondFormatFontValue(style map[string]interface{}) {
 // comparison spelled as `operator` / in symbol form under a rule whose
 // contract is {compare_type, value|text}, and cell-style vocabulary in the
 // rule's style block.
-func normalizeCondFormatProperties(_ flagView, v interface{}) interface{} {
+func normalizeCondFormatProperties(runtime flagView, v interface{}) interface{} {
 	props, ok := v.(map[string]interface{})
 	if !ok {
 		return v
+	}
+	// Data bars, color scales, and icon sets carry their complete visual
+	// definition in attrs. The wire schema still requires the shared style
+	// object, but an empty object adds no formatting and is the only faithful
+	// representation when the caller omitted that inapplicable section. Keep
+	// explicit style values (including null) visible to schema validation.
+	if _, present := props["style"]; !present {
+		ruleType, _ := props["rule_type"].(string)
+		if runtime != nil {
+			if fromFlag := strings.TrimSpace(runtime.Str("rule-type")); fromFlag != "" {
+				ruleType = fromFlag
+			}
+		}
+		switch strings.TrimSpace(ruleType) {
+		case "dataBar", "colorScale", "iconSet":
+			props["style"] = map[string]interface{}{}
+		}
 	}
 	if style, isMap := props["style"].(map[string]interface{}); isMap {
 		normalizeCondFormatStyle(style)

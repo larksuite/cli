@@ -57,6 +57,10 @@ func borderAttributeFlags(flags interface {
 		}
 		probe := map[string]interface{}{attr: flags.Str(name)}
 		normalizeBorderSideVocab(probe)
+		normalized, present := probe[attr]
+		if !present {
+			continue
+		}
 		if err := validateWorkbookBorderStyles(map[string]interface{}{"top": probe}, "--"+name); err != nil {
 			var validation *errs.ValidationError
 			if errors.As(err, &validation) {
@@ -69,11 +73,14 @@ func borderAttributeFlags(flags interface {
 			if !ok {
 				return "", true, sheetsValidationForFlag("border-styles", "--border-styles.%s must be a JSON object", side)
 			}
-			if given, present := spec[attr]; present && given != probe[attr] {
+			if given, present := spec[attr]; present && given != normalized {
 				return "", true, sheetsValidationForFlag(name, "--%s conflicts with --border-styles.%s.%s; keep one value", name, side, attr)
 			}
-			spec[attr] = probe[attr]
+			spec[attr] = normalized
 		}
+	}
+	if err := requireBorderSideAttributes(border, "--border-styles"); err != nil {
+		return "", true, sheetsValidationForFlag("border-styles", "%v", err).WithCause(err)
 	}
 	encoded, err := json.Marshal(border)
 	if err != nil {

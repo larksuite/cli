@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // TestPivotPlacementWarn pins the advisory that fires only on the risky
@@ -720,6 +722,57 @@ func TestCondFormatAttrs_ShapeMatchesRuleType(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCondFormatSelfStyledRulesOmitSharedStyle(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, command, ruleType, attrs string
+		sc                             common.Shortcut
+		extra                          []string
+	}{
+		{
+			name: "data bar create", command: "+cond-format-create", ruleType: "dataBar",
+			attrs: `[{"value_type":"minValue","color":"#63BE7B"},{"value_type":"maxValue","color":"#F8696B"}]`,
+			sc:    CondFormatCreate,
+		},
+		{
+			name: "color scale update", command: "+cond-format-update", ruleType: "colorScale",
+			attrs: `[{"value_type":"minValue","color":"#FFFFFF"},{"value_type":"maxValue","color":"#FF0000"}]`,
+			sc:    CondFormatUpdate, extra: []string{"--rule-id", "ruleA"},
+		},
+		{
+			name: "icon set create", command: "+cond-format-create", ruleType: "iconSet",
+			attrs: `[{"icon_type":"3Arrows","value_type":"percent","operator":"greaterThanOrEqual","value":0}]`,
+			sc:    CondFormatCreate,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			args := []string{
+				"--url", testURL, "--sheet-id", testSheetID,
+				"--rule-type", tc.ruleType, "--ranges", `["A1:A10"]`,
+				"--properties", `{"attrs":` + tc.attrs + `}`,
+			}
+			args = append(args, tc.extra...)
+			calls := parseDryRunAPI(t, tc.sc, args)
+			body := calls[0].(map[string]interface{})["body"].(map[string]interface{})
+			input := gjson.Parse(body["input"].(string))
+			require.True(t, input.Get("properties.style").IsObject(), "%s should add an empty shared style", tc.command)
+			require.Empty(t, input.Get("properties.style").Map(), "%s should not invent style fields", tc.command)
+		})
+	}
+}
+
+func TestCondFormatOrdinaryRuleStillRequiresStyle(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, CondFormatCreate, []string{
+		"--url", testURL, "--sheet-id", testSheetID,
+		"--rule-type", "cellIs", "--ranges", `["A1:A10"]`,
+		"--properties", `{"attrs":[{"compare_type":"greaterThan","value":"0"}]}`,
+		"--dry-run",
+	})
+	requireValidation(t, err, `required property "style" is missing`)
 }
 
 // TestCondFormatAttrsRequired_MatchesSchemaOneOf guards against drift

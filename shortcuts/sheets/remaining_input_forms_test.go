@@ -339,3 +339,14 @@ func TestBorderAttributeFlagsKeepExplicitSideSelection(t *testing.T) {
 		require.Empty(t, out)
 	}
 }
+
+func TestBorderAttributeFlagsOmitEmptyWeight(t *testing.T) {
+	border, changed, err := borderAttributeFlags(newMapFlagViewForCommand("+cells-set-style", map[string]interface{}{
+		"border-styles": `{"left":{"style":"dashed"}}`,
+		"border-weight": "",
+	}))
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "dashed", gjson.Get(border, "left.style").String(), border)
+	require.False(t, gjson.Get(border, "left.weight").Exists(), border)
+}

@@ -201,6 +201,25 @@ var stylesPriorCorpus = []struct {
 	{name: "numeric weight as string",
 		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "solid", "weight": "2"}}},
 		check:  wantBorder("top", "weight", "medium")},
+	{name: "empty optional weight is omitted",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "solid", "weight": ""}}},
+		check: func(proto map[string]interface{}) string {
+			bs, _ := proto["border_styles"].(map[string]interface{})
+			top, _ := bs["top"].(map[string]interface{})
+			if top["style"] != "solid" {
+				return fmt.Sprintf("top.style = %v, want solid", top["style"])
+			}
+			if _, present := top["weight"]; present {
+				return fmt.Sprintf("top.weight should be omitted, got %v", top["weight"])
+			}
+			return ""
+		}},
+	{name: "empty weight alone does not form a border operation",
+		fields:  map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"weight": ""}}},
+		wantErr: "must include at least one border attribute"},
+	{name: "empty weight leaves width alias available",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "solid", "weight": "", "width": float64(3)}}},
+		check:  wantBorder("top", "weight", "thick")},
 	{name: "Google Sheets width key aliases to weight",
 		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "solid", "width": float64(3)}}},
 		check:  wantBorder("top", "weight", "thick")},
@@ -708,6 +727,38 @@ func TestStylesAcceptance_ResizeAndMergeCorpus(t *testing.T) {
 		if v := pixelValue(t, ops, "resize_width"); v != 120 {
 			t.Fatalf("value = %v, want 120", v)
 		}
+	})
+
+	for _, tc := range []struct {
+		name, section, rng, typ string
+	}{
+		{"row dimension plural", "row_sizes", "1:3", "rows"},
+		{"row dimension casing", "row_sizes", "1:3", "ROWS"},
+		{"row size word", "row_sizes", "1:3", "height"},
+		{"pixel unit", "row_sizes", "1:3", "px"},
+		{"column dimension plural", "col_sizes", "A:C", "columns"},
+		{"column size word", "col_sizes", "A:C", "width"},
+	} {
+		t.Run(tc.name+" with size implies pixel", func(t *testing.T) {
+			t.Parallel()
+			ops, err := runSection(tc.section, map[string]interface{}{"range": tc.rng, "type": tc.typ, "size": float64(42)})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			tool := "resize_height"
+			if tc.section == "col_sizes" {
+				tool = "resize_width"
+			}
+			if v := pixelValue(t, ops, tool); v != 42 {
+				t.Fatalf("value = %v, want 42", v)
+			}
+		})
+	}
+
+	t.Run("dimension word without size remains invalid", func(t *testing.T) {
+		t.Parallel()
+		_, err := runSection("row_sizes", map[string]interface{}{"range": "1:3", "type": "rows"})
+		requireValidation(t, err, `type "rows" is invalid`)
 	})
 
 	t.Run("type auto still works on rows", func(t *testing.T) {

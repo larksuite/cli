@@ -1717,6 +1717,13 @@ func parseWorkbookCreateCellStyleOp(raw interface{}, path string) (workbookCreat
 	if err != nil {
 		return workbookCreateCellStyleOp{}, err
 	}
+	// The shared style parser also feeds --style envelopes whose border flags
+	// merge later. A declarative item is complete here, so reject empty sides.
+	if border, ok := style["border_styles"].(map[string]interface{}); ok {
+		if err := requireBorderSideAttributes(border, path+".border_styles"); err != nil {
+			return workbookCreateCellStyleOp{}, err
+		}
+	}
 	if len(style) == 0 {
 		return workbookCreateCellStyleOp{}, common.ValidationErrorf("%s must include at least one style field", path)
 	}
@@ -1859,16 +1866,23 @@ func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workb
 	}
 	resizeType, _ := op["type"].(string)
 	resizeType = strings.TrimSpace(resizeType)
-	// "custom" is the word both Excel's UI and the Lark UI use for a
-	// hand-set dimension, and an op that carries an explicit size is asking
-	// for exactly the pixel mode. Only rewritten when a size is present:
-	// without one, "custom" states no dimension at all and the enum error is
-	// the right answer. The alias counts as a size — the two spellings are
-	// interchangeable everywhere else, so "custom" must not depend on which
-	// one the caller reached for.
-	if strings.EqualFold(resizeType, "custom") {
-		_, hasSize := op["size"]
-		if _, hasAlias := op[alias]; hasSize || hasAlias {
+	_, hasCanonicalSize := op["size"]
+	_, hasDimensionSize := op[alias]
+	// A hand-set dimension with an explicit numeric size is pixel mode. Besides
+	// the UI word "custom", callers put the already-known dimension (rows /
+	// columns, height / width) or the unit (px) in type. The surrounding array
+	// and range already carry the axis, while size carries the mode, so these
+	// words add no competing interpretation. Keep refusing them without a size:
+	// then they still do not state standard / auto / a pixel count.
+	if hasCanonicalSize || hasDimensionSize {
+		word := strings.ToLower(resizeType)
+		pixelAlias := word == "custom" || word == "px" || word == "pixels"
+		if dimension == "row" {
+			pixelAlias = pixelAlias || word == "row" || word == "rows" || word == "height"
+		} else {
+			pixelAlias = pixelAlias || word == "column" || word == "columns" || word == "col" || word == "cols" || word == "width"
+		}
+		if pixelAlias {
 			resizeType = "pixel"
 			op["type"] = resizeType
 		}
