@@ -68,12 +68,10 @@ func mailCitationMessages(value any) []map[string]interface{} {
 
 func mailCitationFromMessage(message map[string]interface{}, search bool) citation.Citation {
 	title := common.GetString(message, "subject")
-	snippet := firstMailCitationString(message, "body_preview", "body_plain_text")
 	internalDate, hasInternalDate := message["internal_date"]
 	publishTime := common.GetStringLoose(message, "internal_date")
 	if search {
 		title = firstMailCitationString(message, "title", "subject")
-		snippet = firstMailCitationString(message, "body_preview", "body_plain_text")
 		if !hasInternalDate || mailCitationTimeMissing(internalDate) {
 			publishTime = common.GetStringLoose(message, "create_time")
 		}
@@ -82,7 +80,6 @@ func mailCitationFromMessage(message map[string]interface{}, search bool) citati
 		SourceType:  citation.SourceMail,
 		URL:         common.GetString(message, "applink"),
 		Title:       title,
-		Snippet:     snippet,
 		PublishTime: citation.Time(publishTime),
 	}
 }

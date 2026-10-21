@@ -73,7 +73,7 @@ func TestMailCitationBuildersMapFieldsAndTimes(t *testing.T) {
 	if len(nonSearch) != 1 {
 		t.Fatalf("mailMessageCitations() = %#v", nonSearch)
 	}
-	if got := nonSearch[0]; got.SourceType != citation.SourceMail || got.Title != "Subject" || got.Snippet != "Preview" || got.PublishTime != citation.Time("1700000000000") {
+	if got := nonSearch[0]; got.SourceType != citation.SourceMail || got.URL != "https://example.com/client/mail/message/1" || got.Title != "Subject" || got.Snippet != "" || got.PublishTime != citation.Time("1700000000000") {
 		t.Fatalf("non-search citation = %#v", got)
 	}
 
@@ -83,8 +83,8 @@ func TestMailCitationBuildersMapFieldsAndTimes(t *testing.T) {
 		"body_preview":    "",
 		"body_plain_text": "Plain fallback",
 	})
-	if len(nonSearch) != 1 || nonSearch[0].Snippet != "Plain fallback" {
-		t.Fatalf("non-search citation snippet fallback = %#v", nonSearch)
+	if len(nonSearch) != 1 || nonSearch[0].Snippet != "" || nonSearch[0].Title != "Subject" || nonSearch[0].URL != "https://example.com/client/mail/message/1-plain" {
+		t.Fatalf("non-search citation must clear snippet and preserve metadata = %#v", nonSearch)
 	}
 
 	runtime := runtimeForMailTriageTest(t, map[string]string{"query": "quarterly"})
@@ -103,7 +103,7 @@ func TestMailCitationBuildersMapFieldsAndTimes(t *testing.T) {
 	if len(search) != 1 {
 		t.Fatalf("mailTriageCitations() = %#v", search)
 	}
-	if got := search[0]; got.Title != "Search title" || got.Snippet != "Plain search body" || got.PublishTime != citation.Time("1700000001") {
+	if got := search[0]; got.URL != "https://example.com/client/mail/message/2" || got.Title != "Search title" || got.Snippet != "" || got.PublishTime != citation.Time("1700000001") {
 		t.Fatalf("search citation = %#v", got)
 	}
 
@@ -115,8 +115,8 @@ func TestMailCitationBuildersMapFieldsAndTimes(t *testing.T) {
 			"create_time":     "1700000001",
 		}},
 	})
-	if len(search) != 1 || search[0].Snippet != "Plain search fallback" {
-		t.Fatalf("search citation snippet fallback = %#v", search)
+	if len(search) != 1 || search[0].Snippet != "" || search[0].Title != "Search title" || search[0].URL != "https://example.com/client/mail/message/2-plain" {
+		t.Fatalf("search citation must clear snippet and preserve metadata = %#v", search)
 	}
 
 	search = mailTriageCitations(runtime, map[string]interface{}{
@@ -198,7 +198,7 @@ func TestMailMessageMountedCitationUsesFinalPayloadWithoutExtraRequest(t *testin
 		t.Fatalf("message envelope = %#v\n%s", envelope, stdout.String())
 	}
 	document := decodeMailCitationDocument(t, envelope.Citations[0])
-	if document.SourceType != citation.SourceMail || document.Title != "Subject" || document.Snippet != "Preview" {
+	if document.SourceType != citation.SourceMail || document.URL != "https://example.com/client/mail/message/1" || document.Title != "Subject" || document.Snippet != "" || document.PublishTime != "2023-11-14T22:13:20Z" {
 		t.Fatalf("message citation = %#v", document)
 	}
 }
@@ -275,7 +275,7 @@ func TestMailTriageDefaultFormatUsesCitationEnvelope(t *testing.T) {
 		t.Fatalf("triage list output = %#v\n%s", output, stdout.String())
 	}
 	document := decodeMailCitationDocument(t, output.Citations[0])
-	if document.Title != "List subject" || document.Snippet != "List preview" || document.PublishTime != citation.Time("1700000000000") {
+	if document.SourceType != citation.SourceMail || document.URL != "https://example.com/client/mail/message/list" || document.Title != "List subject" || document.Snippet != "" || document.PublishTime != citation.Time("1700000000000") {
 		t.Fatalf("triage list citation = %#v", document)
 	}
 	if strings.Contains(stderr.String(), "confirm your email identity") {
@@ -371,7 +371,7 @@ func TestMailTriageSearchCitationUsesExistingPayloadWithoutBatchGet(t *testing.T
 		t.Fatalf("triage search output = %#v\n%s", output, stdout.String())
 	}
 	document := decodeMailCitationDocument(t, output.Citations[0])
-	if document.Title != "Search title" || document.Snippet != "Plain search body" || document.PublishTime != citation.Time("1700000001") {
+	if document.SourceType != citation.SourceMail || document.URL != "https://example.com/client/mail/message/search" || document.Title != "Search title" || document.Snippet != "" || document.PublishTime != citation.Time("1700000001") {
 		t.Fatalf("triage search citation = %#v", document)
 	}
 }
