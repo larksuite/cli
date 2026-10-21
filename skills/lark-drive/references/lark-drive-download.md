@@ -49,6 +49,7 @@ Wiki URL / 裸 Wiki node token 会先解析到底层文档，解析后会在输�
 ## 关键约束
 
 - Wiki 节点解析后的 `obj_type` 必须是 `file`；不确定 token 类型时，先用 `lark-cli drive +inspect --url <TOKEN> --type wiki` 检查。
+- 文件按 128 MiB 分段（HTTP Range）下载，失败的分段自动重试。拼接分段前会先读文件的 `latest_modify_time`，下载结束再核对一次；期间文件被原地覆盖（如 `+upload --file-token`）会返回 `representation_changed` 错误且不写入输出，重新执行即可。读不到元数据时退回单请求下载，超大文件可能被服务端中途断开。
 
 ## 排障
 
