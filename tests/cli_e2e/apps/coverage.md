@@ -1,9 +1,9 @@
 # Apps CLI E2E Coverage
 
 ## Metrics
-- Denominator: 26 leaf commands in the selected apps E2E coverage set (not all 88 apps shortcuts)
-- Selected command coverage: 100% (26/26)
-- API dry-run coverage: 100% (24/24 API-backed commands)
+- Denominator: 28 leaf commands in the selected apps E2E coverage set (not all 99 apps shortcuts)
+- Selected command coverage: 100% (28/28)
+- API dry-run coverage: 100% (26/26 API-backed commands)
 - Local E2E coverage: 100% (2/2 local-only commands)
 - Live coverage: file and role workflows are fixture-gated and skipped by default CI. File upload covers absolute-path upload, metadata readback, and cleanup; role workflows cover role lifecycle and member mutations with cleanup. Release creation has manual BOE evidence through same-ID terminal polling, but is not run in default CI because it triggers a deployment and has no rollback endpoint. All six Miaoda collaborator commands have manual Feishu BOE evidence: user/department/chat CRUD was verified with cleanup on 2026-08-04, and unpaginated list plus settings get/set, read-only errors, combined writes, readback, and rollback were reverified on 2026-08-06.
 
@@ -40,6 +40,8 @@ Blocked: General app create live E2E is intentionally not implemented yet. Apps 
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
 | ✓ | apps +create | shortcut | apps_create_dryrun_test.go::TestAppsCreateDryRun | `--name`, `--app-type` (required, case-sensitive, `html`/`frontend`/`full_stack`), `--description`, `--icon-url` | live blocked: no +delete to clean up |
+| ✓ | apps +features | shortcut | apps_features_dryrun_test.go::TestAppsFeaturesDryRun | `--app-id`; optional `--operation-ref` query; GET with no body; positional arguments rejected | live blocked: needs a deployed app features server and fixture app |
+| ✓ | apps +feature-enable | shortcut | apps_features_dryrun_test.go::TestAppsFeatureEnableDryRun | required `--feature` (enum, only `database`); `--app-id`; optional UUID `--idempotent-key`; plan is one POST `/features/database/enable` whose body is only `idempotent_key` (placeholder in dry-run); with `--idempotent-key` it first GETs features with `operation_ref`; missing/empty/unsupported `--feature` and malformed key exit 2 validation; positional arguments (such as `+feature-enable database`) rejected | live blocked: enabling the database allocates one and there is no disable endpoint to clean up |
 | ✓ | apps +update | shortcut | apps_update_dryrun_test.go::TestAppsUpdateDryRun | `--app-id`; at least one of `--name`/`--description` | live blocked: no +delete |
 | ✓ | apps +list | shortcut | apps_list_dryrun_test.go::TestAppsListDryRun | `--keyword`; `--ownership` (enum all/mine/shared); `--app-type` (enum html/frontend/full_stack); `--page-size` default 20; `--page-token` cursor | live blocked: needs tenant fixtures |
 | ✓ | apps +access-scope-set | shortcut | apps_access_scope_set_dryrun_test.go::TestAppsAccessScopeSetDryRun | `--scope specific/public/tenant`; `--targets` JSON; `--apply-enabled --approver`; `--require-login` | live blocked: needs real open_ids |
@@ -68,4 +70,4 @@ Blocked: General app create live E2E is intentionally not implemented yet. Apps 
 | ✓ | apps +member-remove | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun; ../dryrun/apps_member_dryrun_test.go::TestAppsMemberHighRiskWritesRequireYesButDryRunDoesNot | typed external ID; `POST /members/remove`; no raw/internal numeric IDs | BOE live verified for user/department/chat with absence readback; high-risk write remains excluded from default CI |
 | ✓ | apps +member-settings-get | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun | `--app-id`; GET without body | BOE live verified with all six returned settings |
 | ✓ | apps +member-settings-set | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun; ../dryrun/apps_member_dryrun_test.go::TestAppsMemberHighRiskWritesRequireYesButDryRunDoesNot; ../dryrun/apps_member_dryrun_test.go::TestAppsMemberUnsupportedWriteFlagsAreNotRegistered | partial PATCH of external access, link sharing, collaborator management, and comments; unsupported `--external-invite` and `--copy-download-by` flags are not registered | BOE live verified for four-field combined write/readback/rollback, no-op, invalid enum, and server-side read-only errors |
-| ✓ | apps +export | shortcut | apps_export_content_type_test.go::TestAppsExportContentTypeE2E | `--app-id`; `--output`; response Content-Type gate (JSON blacklist, not archive whitelist) | added outside the 26-command denominator above; covers response handling only, request shapes remain uncovered |
+| ✓ | apps +export | shortcut | apps_export_content_type_test.go::TestAppsExportContentTypeE2E | `--app-id`; `--output`; response Content-Type gate (JSON blacklist, not archive whitelist) | added outside the 28-command denominator above; covers response handling only, request shapes remain uncovered |
