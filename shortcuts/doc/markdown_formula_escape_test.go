@@ -27,6 +27,8 @@ func TestProtectMarkdownFormulaEscapes(t *testing.T) {
 		{name: "inline code", in: "`$q \\| p$` and ``$a \\| b$`` then $c \\| d$", want: "`$q \\| p$` and ``$a \\| b$`` then $c \\\\| d$"},
 		{name: "escaped dollars", in: `\$q \| p\$`, want: `\$q \| p\$`},
 		{name: "unclosed inline", in: "$q \\| p\nplain \\| text", want: "$q \\| p\nplain \\| text"},
+		{name: "price before formula", in: "Cost $5\n\n$q \\| p$", want: "Cost $5\n\n$q \\\\| p$"},
+		{name: "unmatched backtick before formula", in: "`plain\n\n$q \\| p$", want: "`plain\n\n$q \\\\| p$"},
 		{name: "unclosed block", in: "$$\nq \\| p", want: "$$\nq \\| p"},
 		{name: "already protected", in: `$q \\| p$`, want: `$q \\| p$`},
 		{name: "mixed protection", in: `$a \| b \\| c$`, want: `$a \\| b \\| c$`},

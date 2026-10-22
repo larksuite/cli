@@ -49,8 +49,9 @@ func protectMarkdownFormulaSegment(segment string) string {
 			run := countByteRun(segment, i, '`')
 			end := findMatchingBacktickRun(segment, i+run, run)
 			if end < 0 {
-				out.WriteString(segment[i:])
-				break
+				out.WriteString(segment[i : i+run])
+				i += run
+				continue
 			}
 			out.WriteString(segment[i:end])
 			i = end
@@ -70,8 +71,9 @@ func protectMarkdownFormulaSegment(segment string) string {
 		}
 		close := findMarkdownFormulaClose(segment, i+delimiterLen, delimiterLen)
 		if close < 0 {
-			out.WriteString(segment[i:])
-			break
+			out.WriteString(segment[i : i+delimiterLen])
+			i += delimiterLen
+			continue
 		}
 		out.WriteString(segment[i : i+delimiterLen])
 		out.WriteString(protectLatexPipeEscapes(segment[i+delimiterLen : close]))
