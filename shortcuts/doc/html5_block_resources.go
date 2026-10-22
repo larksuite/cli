@@ -150,6 +150,9 @@ func prepareDocsV2WriteInputForFormat(runtime *common.RuntimeContext, format str
 	if err != nil {
 		return docsV2WriteInput{}, err
 	}
+	if strings.TrimSpace(format) == "markdown" {
+		content = protectMarkdownFormulaEscapes(content)
+	}
 	if err := resolveReferenceMapPaths(runtime, html5RefMap); err != nil {
 		return docsV2WriteInput{}, err
 	}
