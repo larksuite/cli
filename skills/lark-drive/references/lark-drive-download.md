@@ -50,6 +50,14 @@ https://xxx.feishu.cn/drive/file/boxbc_xxx
 
 Wiki URL / 裸 Wiki node token 会先解析到底层文档，解析后会在输出里附带 `wiki_token` 和 `wiki_node`（含底层 `obj_token`/`obj_type`）。
 
+## 分片与文件一致性
+
+普通下载与 `+pull` 在修改时间可用时采用 128 MiB 顺序 Range 请求，并在保存提交前复查 `latest_modify_time`。发现变化时返回 `network/representation_changed`，不发布本次下载结果。
+
+`latest_modify_time` 只有秒级精度，同秒内覆盖可能漏检；它不等价于强 ETag 或固定版本标识。将来端点提供强 validator 或可读取的固定版本时，应改用该证据。
+
+指定 `--output` 也会尝试读取修改时间，但普通下载不新增必需 scope。修改时间缺失或查询失败时回退到单流下载；大文件会在 stderr 提示长连接仍可能失败。
+
 ## 关键约束
 
 - Wiki 节点解析后的 `obj_type` 必须是 `file`；不确定 token 类型时，先用 `lark-cli drive +inspect --url <TOKEN> --type wiki` 检查。

@@ -5,8 +5,9 @@ package common
 
 // DriveMeta is the subset of drive metas/batch_query fields used by shortcuts.
 type DriveMeta struct {
-	Title string
-	URL   string
+	Title            string
+	URL              string
+	LatestModifyTime string
 }
 
 // FetchDriveMeta looks up document metadata via the drive metas batch_query API.
@@ -39,8 +40,9 @@ func FetchDriveMeta(runtime *RuntimeContext, token, docType string, withURL bool
 	}
 	meta, _ := metas[0].(map[string]interface{})
 	return DriveMeta{
-		Title: GetString(meta, "title"),
-		URL:   GetString(meta, "url"),
+		Title:            GetString(meta, "title"),
+		URL:              GetString(meta, "url"),
+		LatestModifyTime: GetStringLoose(meta, "latest_modify_time"),
 	}, nil
 }
 

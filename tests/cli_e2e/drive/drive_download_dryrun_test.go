@@ -58,18 +58,24 @@ func TestDriveDownloadDryRun_EntityLookup(t *testing.T) {
 			require.Equal(t, "file", clie2e.DryRunGet(out, field("params.type")).String())
 			require.Equal(t, "view", clie2e.DryRunGet(out, field("params.action")).String())
 			index++
+			require.Equal(t, "POST", clie2e.DryRunGet(out, field("method")).String())
+			require.Equal(t, "/open-apis/drive/v1/metas/batch_query", clie2e.DryRunGet(out, field("url")).String())
+			require.Equal(t, "resolved_file_token", clie2e.DryRunGet(out, field("body.request_docs.0.doc_token")).String())
+			require.Equal(t, "file", clie2e.DryRunGet(out, field("body.request_docs.0.doc_type")).String())
+			index++
 			if !tc.explicit {
-				require.Equal(t, "POST", clie2e.DryRunGet(out, field("method")).String())
-				require.Equal(t, "/open-apis/drive/v1/metas/batch_query", clie2e.DryRunGet(out, field("url")).String())
-				require.Equal(t, "resolved_file_token", clie2e.DryRunGet(out, field("body.request_docs.0.doc_token")).String())
-				require.Equal(t, "file", clie2e.DryRunGet(out, field("body.request_docs.0.doc_type")).String())
 				require.Equal(t, "<Content-Disposition filename | metadata title | token>", clie2e.DryRunGet(out, "output").String())
-				index++
 			} else {
 				require.Equal(t, "./artifacts/report.bin", clie2e.DryRunGet(out, "output").String())
 			}
 			require.Equal(t, "GET", clie2e.DryRunGet(out, field("method")).String())
 			require.Equal(t, "/open-apis/drive/v1/files/resolved_file_token/download", clie2e.DryRunGet(out, field("url")).String())
+			require.Contains(t, clie2e.DryRunGet(out, field("desc")).String(), "128 MiB")
+			index++
+			require.Equal(t, "POST", clie2e.DryRunGet(out, field("method")).String())
+			require.Equal(t, "/open-apis/drive/v1/metas/batch_query", clie2e.DryRunGet(out, field("url")).String())
+			require.Equal(t, "resolved_file_token", clie2e.DryRunGet(out, field("body.request_docs.0.doc_token")).String())
+			require.Contains(t, clie2e.DryRunGet(out, field("desc")).String(), "Only when")
 			require.Equal(t, int64(index+1), clie2e.DryRunGet(out, "api.#").Int())
 		})
 

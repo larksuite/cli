@@ -25,11 +25,10 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// driveDownloadPartSize bounds each ranged request of a drive download. 64 MiB
-// keeps per-request overhead low for multi-GB files while staying far below the
-// stream lifetime observed on the drive download endpoint, so a failed part is
-// cheap to replay.
-const driveDownloadPartSize int64 = 64 << 20
+// driveDownloadPartSize bounds each response to 128 MiB, matching #2839.
+// The limit reduces exposure to long-lived stream resets; it is not a server
+// lifetime guarantee on slow connections.
+var driveDownloadPartSize int64 = 128 << 20
 
 // driveDownloadProgressEvery reports transfer progress every 64 MiB.
 const driveDownloadProgressEvery int64 = 64 << 20
@@ -187,26 +186,38 @@ var DriveDownload = common.Shortcut{
 		)
 		step++
 
-		downloadDesc := fmt.Sprintf("[%d] Download file bytes to the explicit output path", step)
+		metadataDesc := fmt.Sprintf("[%d] Read the file revision (latest_modify_time) so ranged parts can be combined; on failure the download uses one full response", step)
+		downloadDesc := fmt.Sprintf("[%d] Download file bytes to the explicit output path", step+1)
 		if outputPath == "" {
 			outputPath = "<Content-Disposition filename | metadata title | token>"
-			plan.
-				POST("/open-apis/drive/v1/metas/batch_query").
-				Desc(fmt.Sprintf("[%d] Resolve metadata title before downloading; fails before the download request if metadata scope is missing", step)).
-				Body(map[string]interface{}{
-					"request_docs": []map[string]interface{}{
-						{
-							"doc_token": fileToken,
-							"doc_type":  "file",
-						},
-					},
-				})
-			step++
-			downloadDesc = fmt.Sprintf("[%d] Download file bytes; Content-Disposition filename wins over metadata title when present", step)
+			metadataDesc = fmt.Sprintf("[%d] Resolve metadata title and file revision before downloading; fails before the download request if metadata scope is missing", step)
+			downloadDesc = fmt.Sprintf("[%d] Download file bytes; Content-Disposition filename wins over metadata title when present", step+1)
 		}
+		plan.
+			POST("/open-apis/drive/v1/metas/batch_query").
+			Desc(metadataDesc).
+			Body(map[string]interface{}{
+				"request_docs": []map[string]interface{}{
+					{
+						"doc_token": fileToken,
+						"doc_type":  "file",
+					},
+				},
+			})
+		downloadDesc += fmt.Sprintf(" in %d MiB Range requests", driveDownloadPartSize>>20)
 		return plan.
 			GET("/open-apis/drive/v1/files/:file_token/download").
 			Desc(downloadDesc).
+			POST("/open-apis/drive/v1/metas/batch_query").
+			Desc(fmt.Sprintf("[%d] Only when the file spans more than one part: re-read latest_modify_time and fail before committing the output if it changed", step+2)).
+			Body(map[string]interface{}{
+				"request_docs": []map[string]interface{}{
+					{
+						"doc_token": fileToken,
+						"doc_type":  "file",
+					},
+				},
+			}).
 			Set("file_token", fileToken).
 			Set("output", outputPath)
 	},
@@ -241,20 +252,24 @@ var DriveDownload = common.Shortcut{
 			return driveDownloadPermissionDeniedError()
 		}
 
-		var metadataTitle string
-		if outputPath == "" {
-			title, err := common.FetchDriveMetaTitle(runtime, fileToken, "file")
-			if err != nil {
-				if driveDownloadShouldFailOnMetadataTitleError(ctx, err) {
-					if ctxErr := ctx.Err(); ctxErr != nil {
-						return ctxErr
-					}
-					return err
+		// Metadata supplies the default file name and the revision that lets
+		// ranged parts be combined. With --output it is best-effort: without a
+		// revision the download keeps using one full response.
+		meta, metaErr := common.FetchDriveMeta(runtime, fileToken, "file", false)
+		if metaErr != nil {
+			if outputPath == "" && driveDownloadShouldFailOnMetadataTitleError(ctx, metaErr) {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return ctxErr
 				}
-				fmt.Fprintf(runtime.IO().ErrOut, "warning: metadata title lookup failed; continuing with Content-Disposition or token filename: %v\n", err)
-			} else {
-				metadataTitle = title
+				return metaErr
 			}
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			if outputPath == "" {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: metadata title lookup failed; continuing with Content-Disposition or token filename: %v\n", metaErr)
+			}
+			meta = common.DriveMeta{}
 		}
 
 		// Resumable, chunked download. The drive download API honors HTTP
@@ -361,7 +376,12 @@ var DriveDownload = common.Shortcut{
 				ExpectedETag: etag,
 			})
 		}
-		stream, err := openStream(startOffset, resumeETag)
+		var stream *extdownload.Stream
+		if cont {
+			stream, err = openStream(startOffset, resumeETag)
+		} else {
+			stream, err = openDriveFileDownload(ctx, runtime, fileToken, meta.LatestModifyTime)
+		}
 		if err != nil && cont && startOffset > 0 && driveDownloadShouldRestartResume(err) {
 			if cleanupErr := driveDownloadDiscardResume(resumeIO, partialPath, checkpointPath); cleanupErr != nil {
 				return driveDownloadResumeArtifactError("discard partial before full restart", cleanupErr)
@@ -387,7 +407,7 @@ var DriveDownload = common.Shortcut{
 
 		if outputPath == "" {
 			var resolveErr error
-			outputPath, resolveErr = driveDownloadDefaultOutputPath(stream.Header, metadataTitle, fileToken, func(path string) error {
+			outputPath, resolveErr = driveDownloadDefaultOutputPath(stream.Header, meta.Title, fileToken, func(path string) error {
 				_, err := runtime.ResolveSavePath(path)
 				return err
 			})
@@ -399,8 +419,15 @@ var DriveDownload = common.Shortcut{
 			return err
 		}
 
+		body := io.Reader(stream.Body)
+		if !cont {
+			body = driveDownloadRevisionBody(runtime, fileToken, meta.LatestModifyTime, stream)
+			if meta.LatestModifyTime == "" && stream.ContentLength > driveDownloadPartSize {
+				fmt.Fprintln(runtime.IO().ErrOut, "warning: file revision unavailable; downloading in one full response, which may fail on long transfers")
+			}
+		}
 		progress := &driveDownloadProgressReader{
-			r:       stream.Body,
+			r:       body,
 			total:   stream.ContentLength,
 			written: startOffset,
 			out:     runtime.IO().ErrOut,
@@ -412,6 +439,9 @@ var DriveDownload = common.Shortcut{
 				ContentLength: stream.ContentLength,
 			}, progress)
 			if saveErr != nil {
+				if _, typed := errs.ProblemOf(saveErr); typed {
+					return withDriveDownloadRecoveryHint(saveErr, fileToken)
+				}
 				return driveSaveError(saveErr)
 			}
 			written := result.Size()

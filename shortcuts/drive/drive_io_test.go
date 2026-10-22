@@ -2180,8 +2180,8 @@ func TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted(t *testing.T) {
 
 	data := decodeDriveEnvelope(t, stdout)
 	apis, _ := data["api"].([]interface{})
-	if len(apis) != 4 {
-		t.Fatalf("api count = %d, want 4\nstdout=%s", len(apis), stdout.String())
+	if len(apis) != 5 {
+		t.Fatalf("api count = %d, want 5\nstdout=%s", len(apis), stdout.String())
 	}
 	lookup, _ := apis[0].(map[string]interface{})
 	params, _ := lookup["params"].(map[string]interface{})
@@ -2204,13 +2204,13 @@ func TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted(t *testing.T) {
 	if third["method"] != "GET" || third["url"] != "/open-apis/drive/v1/files/resolved_file_token/download" {
 		t.Fatalf("third api = %#v, want file download", third)
 	}
-	if third["desc"] != "[4] Download file bytes; Content-Disposition filename wins over metadata title when present" {
+	if third["desc"] != "[4] Download file bytes; Content-Disposition filename wins over metadata title when present in 128 MiB Range requests" {
 		t.Fatalf("third desc = %#v, want metadata-aware step 4", third["desc"])
 	}
 }
 
-// TestDriveDownloadDryRunExplicitOutputSkipsMetadata verifies explicit output skips title lookup after resolving the entity.
-func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
+// TestDriveDownloadDryRunExplicitOutputReadsRevision verifies explicit output reads revision metadata after resolving the entity.
+func TestDriveDownloadDryRunExplicitOutputReadsRevision(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
@@ -2226,8 +2226,8 @@ func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
 
 	data := decodeDriveEnvelope(t, stdout)
 	apis, _ := data["api"].([]interface{})
-	if len(apis) != 3 {
-		t.Fatalf("api count = %d, want 3\nstdout=%s", len(apis), stdout.String())
+	if len(apis) != 5 {
+		t.Fatalf("api count = %d, want 5\nstdout=%s", len(apis), stdout.String())
 	}
 	lookup, _ := apis[0].(map[string]interface{})
 	params, _ := lookup["params"].(map[string]interface{})
@@ -2238,11 +2238,15 @@ func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
 	if first["method"] != "GET" || first["url"] != "/open-apis/drive/v1/permissions/resolved_file_token/members/auth" {
 		t.Fatalf("permission api = %#v, want view permission auth", first)
 	}
-	second, _ := apis[2].(map[string]interface{})
+	metadata, _ := apis[2].(map[string]interface{})
+	if metadata["method"] != "POST" || metadata["url"] != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("metadata request = %#v", metadata)
+	}
+	second, _ := apis[3].(map[string]interface{})
 	if second["method"] != "GET" || second["url"] != "/open-apis/drive/v1/files/resolved_file_token/download" {
 		t.Fatalf("second api = %#v, want file download", second)
 	}
-	if second["desc"] != "[3] Download file bytes to the explicit output path" {
+	if second["desc"] != "[4] Download file bytes to the explicit output path in 128 MiB Range requests" {
 		t.Fatalf("api desc = %#v, want explicit-output step 3", second["desc"])
 	}
 	if data["output"] != "report.bin" {
@@ -3276,7 +3280,7 @@ func TestDriveDownloadContinueRestartsWhenRangeIsUnsupported(t *testing.T) {
 	if !bytes.Equal(got, payload) {
 		t.Fatalf("restarted file corrupt: got %d bytes, want %d", len(got), len(payload))
 	}
-	if len(ranges) != 3 || ranges[0] != "bytes=0-0" || !strings.HasPrefix(ranges[1], "bytes=30000-") || ranges[2] != "bytes=0-67108863" {
+	if len(ranges) != 3 || ranges[0] != "bytes=0-0" || !strings.HasPrefix(ranges[1], "bytes=30000-") || ranges[2] != fmt.Sprintf("bytes=0-%d", driveDownloadPartSize-1) {
 		t.Fatalf("ranges = %v, want probe, rejected resume range, then a fresh range probe from byte 0", ranges)
 	}
 }

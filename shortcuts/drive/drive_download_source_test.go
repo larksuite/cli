@@ -61,7 +61,7 @@ func TestDriveDownloadResolvesEntityToken(t *testing.T) {
 				}
 			}
 			wantCalls := []string{"resolve", "auth"}
-			if tc.defaultName {
+			{
 				reg.Register(&httpmock.Stub{
 					Method: http.MethodPost, URL: "/open-apis/drive/v1/metas/batch_query",
 					OnMatch: func(r *http.Request) { calls = append(calls, "metadata") },
