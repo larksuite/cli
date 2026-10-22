@@ -71,6 +71,7 @@ func TestShortcutServiceNames(t *testing.T) {
 		"drive",
 		"event",
 		"im",
+		"lingo",
 		"mail",
 		"markdown",
 		"minutes",
