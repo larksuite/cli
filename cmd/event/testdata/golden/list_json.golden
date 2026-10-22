@@ -539,6 +539,120 @@
     }
   },
   {
+    "key": "drive.notice.comment_add_v1",
+    "display_name": "Comment notice added",
+    "description": "Triggered when a cloud document comment or reply notifies the current user or bot, for example by @mentioning it.",
+    "event_type": "drive.notice.comment_add_v1",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "docs:document.comment:read"
+    ],
+    "auth_types": [
+      "user",
+      "bot"
+    ],
+    "required_console_events": [
+      "drive.notice.comment_add_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "app_id": {
+          "type": "string",
+          "description": "Application ID from the event header"
+        },
+        "comment_id": {
+          "type": "string",
+          "description": "Comment ID; for a reply this is the parent comment"
+        },
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "file_token": {
+          "type": "string",
+          "description": "Token of the commented document; pass it with file_type to the drive comment APIs"
+        },
+        "file_type": {
+          "type": "string",
+          "description": "Type of the commented document, for example docx, doc, sheet, or file"
+        },
+        "from_open_id": {
+          "type": "string",
+          "description": "Comment author open_id",
+          "format": "open_id"
+        },
+        "from_union_id": {
+          "type": "string",
+          "description": "Comment author union_id",
+          "format": "union_id"
+        },
+        "from_user_id": {
+          "type": "string",
+          "description": "Comment author user_id",
+          "format": "user_id"
+        },
+        "from_user_type": {
+          "type": "string",
+          "description": "Comment author type reported by the server"
+        },
+        "is_mentioned": {
+          "type": "boolean",
+          "description": "Whether the notice receiver (to_*) was @mentioned in the comment or reply"
+        },
+        "notice_type": {
+          "type": "string",
+          "description": "Comment operation that produced the notice",
+          "enum": [
+            "add_comment",
+            "add_reply"
+          ]
+        },
+        "reply_id": {
+          "type": "string",
+          "description": "Reply ID; present when the notice is about a reply in the comment thread"
+        },
+        "tenant_key": {
+          "type": "string",
+          "description": "Tenant key from the event header"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string) from header.create_time",
+          "format": "timestamp_ms"
+        },
+        "to_open_id": {
+          "type": "string",
+          "description": "Notice receiver open_id: the subscribed user, or the bot when consuming as bot",
+          "format": "open_id"
+        },
+        "to_union_id": {
+          "type": "string",
+          "description": "Notice receiver union_id",
+          "format": "union_id"
+        },
+        "to_user_id": {
+          "type": "string",
+          "description": "Notice receiver user_id",
+          "format": "user_id"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always drive.notice.comment_add_v1"
+        },
+        "visibility": {
+          "type": "string",
+          "description": "Comment visibility reported by the server"
+        }
+      }
+    }
+  },
+  {
     "key": "im.chat.disbanded_v1",
     "display_name": "Chat disbanded",
     "description": "Triggered after a chat is disbanded",
