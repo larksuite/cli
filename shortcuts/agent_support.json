@@ -826,6 +826,9 @@
     "contact +search-user": {
       "agentSupport": "allowed"
     },
+    "contact +update-self": {
+      "agentSupport": "allowed"
+    },
     "docs +create": {
       "agentSupport": "allowed"
     },

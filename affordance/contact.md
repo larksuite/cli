@@ -72,6 +72,28 @@ Fetch one user's profile by id, or your own with --user-id omitted. Use it under
 - Self lookup (omit --user-id) needs user identity; a bot must pass --user-id
 - --user-id-type must match the id you pass (default open_id)
 
+## +update-self
+Use when the user explicitly asks to change their own avatar. The current user is resolved automatically.
+
+### Skills
+- lark-contact/references/lark-contact-update-self.md
+
+### Avoid when
+- Updating another employee or acting as an administrator
+- Running as a bot
+
+### Examples
+
+**Preview your own avatar change**
+```bash
+lark-cli contact +update-self --avatar-file ./avatar.png --as user --dry-run
+```
+
+**Update your own avatar from a local image**
+```bash
+lark-cli contact +update-self --avatar-file ./avatar.png --as user
+```
+
 ## user_profiles batch_query
 Bulk-fetch personal status and signature for user ids you already have.
 

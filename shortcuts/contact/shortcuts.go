@@ -11,5 +11,6 @@ func Shortcuts() []common.Shortcut {
 		ContactSearchUser,
 		ContactSearchBot,
 		ContactGetUser,
+		ContactUpdateSelf,
 	}
 }
