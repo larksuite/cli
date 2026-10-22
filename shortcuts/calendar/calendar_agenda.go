@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -173,6 +174,10 @@ var CalendarAgenda = common.Shortcut{
 	Scopes:      []string{"calendar:calendar.event:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceCalendar},
+		Build:       calendarAgendaCitations,
+	},
 	Flags: []common.Flag{
 		{Name: "start", Desc: "start time (ISO 8601, default: start of today)"},
 		{Name: "end", Desc: "end time (ISO 8601, default: end of start day)"},
@@ -230,7 +235,9 @@ var CalendarAgenda = common.Shortcut{
 			if status != "cancelled" {
 				delete(e, "status")
 				delete(e, "attendees")
-				delete(e, "app_link")
+				// app_link is intentionally kept on the map: it is the citation
+				// builder's raw material and is stripped from the wire by
+				// agendaOutput.MarshalJSON, so it never surfaces in the payload.
 
 				// Replace timestamp with datetime (RFC3339, device timezone)
 				if startMap, ok := e["start_time"].(map[string]interface{}); ok {
@@ -264,7 +271,7 @@ var CalendarAgenda = common.Shortcut{
 			}
 		}
 
-		runtime.OutFormat(filtered, &output.Meta{Count: len(filtered)}, func(w io.Writer) {
+		runtime.OutFormat(agendaOutput{events: filtered}, &output.Meta{Count: len(filtered)}, func(w io.Writer) {
 			if len(filtered) == 0 {
 				fmt.Fprintln(w, "No events in this time range.")
 				return

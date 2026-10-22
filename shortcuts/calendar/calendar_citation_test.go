@@ -185,3 +185,113 @@ func TestCalendarMeetingSkipsTopicLookupWhenGateIsOff(t *testing.T) {
 		t.Errorf("data.meetings[0] = %#v, want no url/topic with the gate off", first)
 	}
 }
+
+const calAgendaAppLink = "https://applink.feishu.cn/client/calendar/event/detail?xxx"
+
+// calAgendaEnvelope decodes the agenda success envelope, whose data is a bare
+// event array rather than the object the +meeting command emits.
+type calAgendaEnvelope struct {
+	Data      []map[string]interface{} `json:"data"`
+	Citations []string                 `json:"citations"`
+}
+
+func decodeCalAgendaEnvelope(t *testing.T, stdout *bytes.Buffer) calAgendaEnvelope {
+	t.Helper()
+	var envelope calAgendaEnvelope
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("json.Unmarshal(stdout) error = %v\nstdout=%s", err, stdout.String())
+	}
+	return envelope
+}
+
+func agendaInstanceViewStub(appLink string) *httpmock.Stub {
+	event := map[string]interface{}{
+		"event_id":   calCitationEventID,
+		"summary":    "周会",
+		"status":     "confirmed",
+		"start_time": map[string]interface{}{"timestamp": "1742515200"},
+		"end_time":   map[string]interface{}{"timestamp": "1742518800"},
+	}
+	if appLink != "" {
+		event["app_link"] = appLink
+	}
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"items": []interface{}{event}},
+		},
+	}
+}
+
+func TestCalendarAgendaCitationUsesAppLinkAndSummary(t *testing.T) {
+	t.Setenv(envvars.CliCitation, "1")
+	f, stdout, _, reg := cmdutil.TestFactory(t, calDefaultConfig())
+	reg.Register(agendaInstanceViewStub(calAgendaAppLink))
+
+	if err := calMountAndRun(t, CalendarAgenda,
+		[]string{"+agenda", "--start", "2025-03-21", "--end", "2025-03-21", "--format", "json", "--as", "user"}, f, stdout); err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+
+	envelope := decodeCalAgendaEnvelope(t, stdout)
+	if len(envelope.Citations) != 1 {
+		t.Fatalf("citations = %#v, want exactly 1", envelope.Citations)
+	}
+	doc := decodeCalCitationDoc(t, envelope.Citations[0])
+	if doc.SourceType != citation.SourceCalendar {
+		t.Errorf("source_type = %d, want %d", doc.SourceType, citation.SourceCalendar)
+	}
+	if doc.URL != calAgendaAppLink {
+		t.Errorf("url = %q, want the event app_link", doc.URL)
+	}
+	if doc.Title != "周会" {
+		t.Errorf("title = %q, want the event summary", doc.Title)
+	}
+
+	// app_link only feeds the builder; it must never surface in data even when
+	// citations are on.
+	if len(envelope.Data) != 1 {
+		t.Fatalf("data = %#v, want 1 event", envelope.Data)
+	}
+	if envelope.Data[0]["app_link"] != nil {
+		t.Errorf("data[0] = %#v, want app_link to stay off the wire", envelope.Data[0])
+	}
+}
+
+func TestCalendarAgendaCitationsSkipEventsWithoutAppLink(t *testing.T) {
+	t.Setenv(envvars.CliCitation, "1")
+	f, stdout, _, reg := cmdutil.TestFactory(t, calDefaultConfig())
+	reg.Register(agendaInstanceViewStub(""))
+
+	if err := calMountAndRun(t, CalendarAgenda,
+		[]string{"+agenda", "--start", "2025-03-21", "--end", "2025-03-21", "--format", "json", "--as", "user"}, f, stdout); err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	if got := decodeCalAgendaEnvelope(t, stdout); got.Citations != nil {
+		t.Errorf("citations = %#v, want none without an event app_link", got.Citations)
+	}
+}
+
+func TestCalendarAgendaEmitsNoCitationsWhenGateIsOff(t *testing.T) {
+	t.Setenv(envvars.CliCitation, "0")
+	f, stdout, _, reg := cmdutil.TestFactory(t, calDefaultConfig())
+	reg.Register(agendaInstanceViewStub(calAgendaAppLink))
+
+	if err := calMountAndRun(t, CalendarAgenda,
+		[]string{"+agenda", "--start", "2025-03-21", "--end", "2025-03-21", "--format", "json", "--as", "user"}, f, stdout); err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	envelope := decodeCalAgendaEnvelope(t, stdout)
+	if envelope.Citations != nil {
+		t.Errorf("citations = %#v, want none with the gate off", envelope.Citations)
+	}
+	// With the gate off the payload must look exactly as before: no app_link.
+	if len(envelope.Data) != 1 {
+		t.Fatalf("data = %#v, want 1 event", envelope.Data)
+	}
+	if envelope.Data[0]["app_link"] != nil {
+		t.Errorf("data[0] = %#v, want no app_link with the gate off", envelope.Data[0])
+	}
+}

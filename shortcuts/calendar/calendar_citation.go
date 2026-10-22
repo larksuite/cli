@@ -5,6 +5,7 @@ package calendar
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -12,6 +13,53 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+// agendaOutput wraps the agenda event list so the citation builder can read
+// each event's app_link while keeping it off the wire. app_link stays on the
+// in-memory map as builder raw material; MarshalJSON strips it so the
+// serialized payload is exactly the bare event array as before.
+type agendaOutput struct {
+	events []map[string]interface{}
+}
+
+func (a agendaOutput) MarshalJSON() ([]byte, error) {
+	cleaned := make([]map[string]interface{}, len(a.events))
+	for i, e := range a.events {
+		c := make(map[string]interface{}, len(e))
+		for k, v := range e {
+			if k == "app_link" {
+				continue
+			}
+			c[k] = v
+		}
+		cleaned[i] = c
+	}
+	return json.Marshal(cleaned)
+}
+
+// calendarAgendaCitations builds one citation per event that carries an
+// app_link, drawing title and url straight from the payload the command
+// already has in hand. It runs only when the citation gate is on.
+func calendarAgendaCitations(_ *common.RuntimeContext, data any) []citation.Citation {
+	out, ok := data.(agendaOutput)
+	if !ok {
+		return nil
+	}
+	citations := make([]citation.Citation, 0, len(out.events))
+	for _, e := range out.events {
+		appLink, _ := e["app_link"].(string)
+		if appLink == "" {
+			continue
+		}
+		summary, _ := e["summary"].(string)
+		citations = append(citations, citation.Citation{
+			SourceType: citation.SourceCalendar,
+			URL:        appLink,
+			Title:      summary,
+		})
+	}
+	return citations
+}
 
 func calendarMeetingCitations(_ *common.RuntimeContext, data any) []citation.Citation {
 	out, ok := data.(map[string]any)
