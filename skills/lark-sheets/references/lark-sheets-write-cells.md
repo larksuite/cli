@@ -324,7 +324,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--background-color` | string | optional | 背景颜色（十六进制，如 `#ffffff`） |
 | `--font-color` | string | optional | 字体颜色（十六进制，如 `#000000`） |
 | `--font-family` | string | optional | 字体名称（如 `Arial`、`微软雅黑`） |
-| `--font-size` | float64 | optional | 字体大小（px，例：10、12、14） |
+| `--font-size` | float64 | optional | 字体大小（pt/磅，例：10、12、14） |
 | `--font-style` | string | optional | 字体样式（可选值：`normal` / `italic`） |
 | `--font-weight` | string | optional | 字重（可选值：`normal` / `bold`） |
 | `--font-line` | string | optional | 字体线条样式（可选值：`none` / `underline` / `line-through`） |

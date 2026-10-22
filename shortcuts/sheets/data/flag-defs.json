@@ -1979,7 +1979,7 @@
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Font size in px (e.g. 10, 12, 14)"
+        "desc": "Font size in pt (points) (e.g. 10, 12, 14)"
       },
       {
         "name": "font-style",
@@ -3255,7 +3255,7 @@
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Font size in px (e.g. 10, 12, 14)"
+        "desc": "Font size in pt (points) (e.g. 10, 12, 14)"
       },
       {
         "name": "font-style",

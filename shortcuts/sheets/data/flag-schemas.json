@@ -450,7 +450,7 @@
                     "type": "string"
                   },
                   "font_size": {
-                    "description": "字体大小（单位：px/像素，例如 10、12、14）",
+                    "description": "字体大小（单位：pt/磅，与页面字号一致；整数，例如 10、11、12）",
                     "type": "number"
                   },
                   "font_weight": {
