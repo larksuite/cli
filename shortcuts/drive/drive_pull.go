@@ -359,7 +359,7 @@ func drivePullDownload(ctx context.Context, runtime *common.RuntimeContext, file
 	if metaErr != nil {
 		meta = common.DriveMeta{}
 	}
-	stream, err := openDriveFileDownload(ctx, runtime, fileToken, meta.LatestModifyTime)
+	stream, err := openDriveFileDownload(ctx, runtime, fileToken, meta.LatestModifyTime, 0)
 	if err != nil {
 		return wrapDriveNetworkErr(err, "download %s: %s", common.MaskToken(fileToken), err)
 	}

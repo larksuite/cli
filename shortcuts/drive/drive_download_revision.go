@@ -25,7 +25,13 @@ import (
 // Ceiling: latest_modify_time has one-second resolution, so a replacement that
 // lands in the same second as the revision read is not detected. A server
 // validator (ETag or a readable version) would close that window.
-func openDriveFileDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken, revision string) (*extdownload.Stream, error) {
+func openDriveFileDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken, revision string, offset int64) (*extdownload.Stream, error) {
+	return extdownload.Open(ctx, driveDownloadSource(runtime, fileToken, revision), extdownload.Options{
+		PartSize: driveDownloadPartSize, StartOffset: offset,
+	})
+}
+
+func driveDownloadSource(runtime *common.RuntimeContext, fileToken, revision string) extdownload.Source {
 	transport := downloadtransport.NewOAPI(runtime.DoAPIStream).Get(
 		"/open-apis/drive/v1/files/:file_token/download",
 		downloadtransport.PathParam("file_token", fileToken),
@@ -34,7 +40,7 @@ func openDriveFileDownload(ctx context.Context, runtime *common.RuntimeContext, 
 	if revision != "" {
 		source = extdownload.ImmutableSource(transport)
 	}
-	return extdownload.Open(ctx, source, extdownload.Options{PartSize: driveDownloadPartSize})
+	return source
 }
 
 // driveRevisionCheckReader runs verify before reporting EOF, so a file that
@@ -55,6 +61,7 @@ func (r *driveRevisionCheckReader) Read(p []byte) (int, error) {
 			r.err = verifyErr
 			return n, verifyErr
 		}
+		r.err = io.EOF
 	}
 	return n, err
 }
@@ -63,6 +70,10 @@ func verifyDriveDownloadRevision(runtime *common.RuntimeContext, fileToken, revi
 	meta, err := common.FetchDriveMeta(runtime, fileToken, "file", false)
 	if err != nil {
 		return wrapDriveNetworkErr(err, "cannot confirm the file was unchanged during a multipart download: %s", err)
+	}
+	if meta.LatestModifyTime == "" {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "cannot confirm the file revision before publishing").
+			WithHint("retry after revision metadata is available; resumable download artifacts are kept")
 	}
 	if meta.LatestModifyTime != revision {
 		return errs.NewNetworkError(errs.SubtypeNetworkRepresentationChanged,

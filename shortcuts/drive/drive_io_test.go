@@ -2135,25 +2135,6 @@ func TestDriveDownloadDefaultOutputPathFallsBackWhenHeaderCandidateFailsPathVali
 	}
 }
 
-func TestDriveDownloadStrongETagRejectsWeakOrUnquotedValues(t *testing.T) {
-	for _, tt := range []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{name: "strong", input: `"v1"`, want: `"v1"`},
-		{name: "weak", input: `W/"v1"`},
-		{name: "unquoted", input: "v1"},
-		{name: "control character", input: "\"v\n1\""},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := driveDownloadStrongETag(tt.input); got != tt.want {
-				t.Fatalf("driveDownloadStrongETag(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 // mustDriveDownloadDefaultOutputPath resolves a default download path or fails the test.
 func mustDriveDownloadDefaultOutputPath(t *testing.T, header http.Header, title, fileToken string, validatePath driveDownloadOutputPathValidator) string {
 	t.Helper()
@@ -3129,7 +3110,7 @@ func (t *fullOnlyDownloadTransport) RoundTrip(req *http.Request) (*http.Response
 	}
 	return &http.Response{
 		StatusCode:    http.StatusOK,
-		Header:        http.Header{"Content-Type": {"application/octet-stream"}, "Etag": {`"v1"`}},
+		Header:        http.Header{"Content-Type": {"application/octet-stream"}},
 		Body:          io.NopCloser(bytes.NewReader(t.payload)),
 		ContentLength: int64(len(t.payload)),
 	}, nil
@@ -3147,7 +3128,7 @@ func (t *rangeDownloadTransport) RoundTrip(req *http.Request) (*http.Response, e
 	if req.Header.Get("Range") == "" {
 		return &http.Response{
 			StatusCode:    http.StatusOK,
-			Header:        http.Header{"Content-Type": {"application/octet-stream"}, "Etag": {`"v1"`}},
+			Header:        http.Header{"Content-Type": {"application/octet-stream"}},
 			Body:          io.NopCloser(bytes.NewReader(t.payload)),
 			ContentLength: int64(len(t.payload)),
 		}, nil
@@ -3156,7 +3137,10 @@ func (t *rangeDownloadTransport) RoundTrip(req *http.Request) (*http.Response, e
 	parts := strings.SplitN(rangeHeader, "-", 2)
 	start, startErr := strconv.ParseInt(parts[0], 10, 64)
 	end, endErr := strconv.ParseInt(parts[1], 10, 64)
-	if startErr != nil || endErr != nil || start > end {
+	if startErr != nil || endErr != nil {
+		return nil, errors.Join(startErr, endErr)
+	}
+	if start > end {
 		return &http.Response{
 			StatusCode: http.StatusRequestedRangeNotSatisfiable,
 			Header:     http.Header{"Content-Type": {"text/plain"}},
@@ -3171,7 +3155,6 @@ func (t *rangeDownloadTransport) RoundTrip(req *http.Request) (*http.Response, e
 		Header: http.Header{
 			"Content-Type":  {"application/octet-stream"},
 			"Content-Range": {fmt.Sprintf("bytes %d-%d/%d", start, end, len(t.payload))},
-			"Etag":          {`"v1"`},
 		},
 		Body:          io.NopCloser(bytes.NewReader(t.payload[start : end+1])),
 		ContentLength: end - start + 1,
@@ -3192,8 +3175,12 @@ func driveDownloadRangePayload() []byte {
 // download requests from payload with Range support and records every range
 // header, while preflight/SDK calls go through the same registry.
 func driveDownloadRangeFactory(t *testing.T, fileToken string, payload []byte, requests *[]string) (*cmdutil.Factory, *httpmock.Registry) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveDownloadViewAuth(reg, fileToken, true)
+	revision := registerDriveDownloadRevision(reg, fileToken, "1792558577")
+	revision.Reusable = true
+	revision.Optional = true
 	f.HttpClient = func() (*http.Client, error) {
 		return &http.Client{Transport: &rangeDownloadTransport{base: reg, payload: payload, requests: requests}}, nil
 	}
@@ -3248,10 +3235,14 @@ func TestDriveDownloadContinueRequiresResumableBackend(t *testing.T) {
 }
 
 func TestDriveDownloadContinueRestartsWhenRangeIsUnsupported(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	payload := driveDownloadRangePayload()
 	var ranges []string
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveDownloadViewAuth(reg, "file_no_range", true)
+	revision := registerDriveDownloadRevision(reg, "file_no_range", "1792558577")
+	revision.Reusable = true
+	revision.Optional = true
 	f.HttpClient = func() (*http.Client, error) {
 		return &http.Client{Transport: &fullOnlyDownloadTransport{base: reg, payload: payload, requests: &ranges}}, nil
 	}
@@ -3261,7 +3252,7 @@ func TestDriveDownloadContinueRestartsWhenRangeIsUnsupported(t *testing.T) {
 	if err := os.WriteFile("out.bin.partial", payload[:30000], 0600); err != nil {
 		t.Fatalf("WriteFile(partial) error: %v", err)
 	}
-	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", int64(len(payload)), `"v1"`)
+	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", "file_no_range", int64(len(payload)), "1792558577")
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
 		"+download",
@@ -3296,7 +3287,7 @@ func TestDriveDownloadContinueResumesPartial(t *testing.T) {
 	if err := os.WriteFile(partial, payload[:30000], 0600); err != nil {
 		t.Fatalf("WriteFile() error: %v", err)
 	}
-	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", int64(len(payload)), `"v1"`)
+	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", "file_resume", int64(len(payload)), "1792558577")
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
 		"+download",
@@ -3341,7 +3332,7 @@ func TestDriveDownloadContinueRejectsChangedPartialSize(t *testing.T) {
 	if err := os.WriteFile("out.bin.partial", payload[:30000], 0600); err != nil {
 		t.Fatalf("WriteFile(partial) error: %v", err)
 	}
-	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", int64(len(payload)), `"v1"`)
+	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", "file_resume_size", int64(len(payload)), "1792558577")
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
 		"+download",
@@ -3368,7 +3359,7 @@ func TestDriveDownloadContinueCommitsCompletePartial(t *testing.T) {
 	if err := os.WriteFile("out.bin.partial", payload, 0600); err != nil {
 		t.Fatalf("WriteFile() error: %v", err)
 	}
-	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", int64(len(payload)), `"v1"`)
+	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", "file_complete", int64(len(payload)), "1792558577")
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
 		"+download",
@@ -3405,7 +3396,7 @@ func TestDriveDownloadContinueStalePartialRestarts(t *testing.T) {
 	if err := os.WriteFile("out.bin.partial", make([]byte, len(payload)+1024), 0600); err != nil {
 		t.Fatalf("WriteFile() error: %v", err)
 	}
-	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", int64(len(payload)), `"v1"`)
+	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", "file_stale", int64(len(payload)), "1792558577")
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
 		"+download",
@@ -3472,46 +3463,33 @@ func TestDriveDownloadWithoutContinueIgnoresPartial(t *testing.T) {
 
 // driveDownloadWriteTestCheckpoint writes a resume checkpoint the same way the
 // production code does, so tests can simulate an interrupted --continue run.
-func driveDownloadWriteTestCheckpoint(t *testing.T, path string, size int64, etag string) {
+func driveDownloadWriteTestCheckpoint(t *testing.T, path, token string, size int64, revision string) {
 	t.Helper()
-	data, err := json.Marshal(struct {
-		Size int64  `json:"size"`
-		ETag string `json:"etag,omitempty"`
-	}{Size: size, ETag: etag})
+	data, err := json.Marshal(map[string]interface{}{
+		"base_url": core.ResolveOpenBaseURL(core.BrandFeishu), "file_token": token,
+		"size": size, "latest_modify_time": revision,
+	})
 	if err != nil {
-		t.Fatalf("Marshal() error: %v", err)
+		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, data, 0600); err != nil {
-		t.Fatalf("WriteFile() error: %v", err)
+		t.Fatal(err)
 	}
 }
 
-func TestDriveDownloadContinueETagMismatchRestarts(t *testing.T) {
+func TestDriveDownloadContinueRevisionMismatchRestarts(t *testing.T) {
 	payload := driveDownloadRangePayload()
 	var ranges []string
-	f, reg := driveDownloadRangeFactory(t, "file_etag", payload, &ranges)
+	f, _ := driveDownloadRangeFactory(t, "file_etag", payload, &ranges)
 
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
-	// Partial and checkpoint from an older remote representation: the probe
-	// answers ETag "v1" while the checkpoint holds "v0", so a resume must be
+	// The current revision differs from this older checkpoint, so a resume must be
 	// refused and the download must restart from byte 0.
 	if err := os.WriteFile("out.bin.partial", payload[:50000], 0600); err != nil {
 		t.Fatalf("WriteFile() error: %v", err)
 	}
-	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", int64(len(payload)), `"v0"`)
-
-	etagTransport := &rangeDownloadTransport{base: reg, payload: payload, requests: &ranges}
-	// Override ETag responses to simulate the remote file having changed.
-	f.HttpClient = func() (*http.Client, error) {
-		return &http.Client{Transport: driveRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-			resp, err := etagTransport.RoundTrip(req)
-			if err == nil && strings.Contains(req.URL.Path, "/download") {
-				resp.Header.Set("ETag", `"v2"`)
-			}
-			return resp, err
-		})}, nil
-	}
+	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", "file_etag", int64(len(payload)), "1792558576")
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
 		"+download",
@@ -3528,10 +3506,10 @@ func TestDriveDownloadContinueETagMismatchRestarts(t *testing.T) {
 		t.Fatalf("ReadFile() error: %v", err)
 	}
 	if !bytes.Equal(got, payload) {
-		t.Fatalf("downloaded file corrupt after ETag-mismatch restart")
+		t.Fatalf("downloaded file corrupt after revision-mismatch restart")
 	}
 	if len(ranges) == 0 || !strings.HasPrefix(ranges[0], "bytes=0-") {
-		t.Fatalf("first range = %v, want restart from byte 0 after ETag change", ranges)
+		t.Fatalf("first range = %v, want restart from byte 0 after revision change", ranges)
 	}
 }
 
@@ -3570,31 +3548,20 @@ func TestDriveDownloadContinueMissingCheckpointRestarts(t *testing.T) {
 	}
 }
 
-func TestDriveDownloadContinueCompletePartialETagMismatchRestarts(t *testing.T) {
+func TestDriveDownloadContinueCompletePartialRevisionMismatchRestarts(t *testing.T) {
 	payload := driveDownloadRangePayload()
 	var ranges []string
-	f, reg := driveDownloadRangeFactory(t, "file_etag_full", payload, &ranges)
+	f, _ := driveDownloadRangeFactory(t, "file_etag_full", payload, &ranges)
 
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
-	// A complete partial whose checkpoint ETag no longer matches the remote
+	// A complete partial whose checkpoint revision no longer matches the remote
 	// file must not be committed: the remote content changed, so the download
 	// restarts from byte 0.
 	if err := os.WriteFile("out.bin.partial", payload, 0600); err != nil {
 		t.Fatalf("WriteFile() error: %v", err)
 	}
-	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", int64(len(payload)), `"v0"`)
-
-	etagTransport := &rangeDownloadTransport{base: reg, payload: payload, requests: &ranges}
-	f.HttpClient = func() (*http.Client, error) {
-		return &http.Client{Transport: driveRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-			resp, err := etagTransport.RoundTrip(req)
-			if err == nil && strings.Contains(req.URL.Path, "/download") {
-				resp.Header.Set("ETag", `"v2"`)
-			}
-			return resp, err
-		})}, nil
-	}
+	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", "file_etag_full", int64(len(payload)), "1792558576")
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
 		"+download",
@@ -3611,7 +3578,7 @@ func TestDriveDownloadContinueCompletePartialETagMismatchRestarts(t *testing.T) 
 		t.Fatalf("ReadFile() error: %v", err)
 	}
 	if !bytes.Equal(got, payload) {
-		t.Fatalf("downloaded file corrupt after ETag-mismatch restart")
+		t.Fatalf("downloaded file corrupt after revision-mismatch restart")
 	}
 	if len(ranges) == 0 || !strings.HasPrefix(ranges[0], "bytes=0-") {
 		t.Fatalf("first range = %v, want a fresh download from byte 0 (not a commit)", ranges)

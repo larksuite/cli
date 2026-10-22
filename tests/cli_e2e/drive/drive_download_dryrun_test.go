@@ -17,11 +17,12 @@ import (
 // fallback, and downstream requests for every accepted input form.
 func TestDriveDownloadDryRun_EntityLookup(t *testing.T) {
 	for _, tc := range []struct {
-		name, flag, input string
-		wiki, explicit    bool
+		name, flag, input      string
+		wiki, explicit, resume bool
 	}{
 		{name: "file default name", flag: "--file-token", input: "inputToken"},
 		{name: "file explicit output", flag: "--file-token", input: "inputToken", explicit: true},
+		{name: "persistent resume", flag: "--file-token", input: "inputToken", explicit: true, resume: true},
 		{name: "file URL", flag: "--url", input: "https://example.com/file/inputToken", explicit: true},
 		{name: "wiki URL", flag: "--url", input: "https://example.com/wiki/inputToken", wiki: true},
 		{name: "wiki token", flag: "--wiki-token", input: "inputToken", wiki: true, explicit: true},
@@ -33,6 +34,9 @@ func TestDriveDownloadDryRun_EntityLookup(t *testing.T) {
 			args := []string{"drive", "+download", tc.flag, tc.input, "--dry-run"}
 			if tc.explicit {
 				args = append(args, "--output", "./artifacts/report.bin")
+			}
+			if tc.resume {
+				args = append(args, "--continue")
 			}
 			result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "bot"})
 			require.NoError(t, err)
@@ -75,7 +79,14 @@ func TestDriveDownloadDryRun_EntityLookup(t *testing.T) {
 			require.Equal(t, "POST", clie2e.DryRunGet(out, field("method")).String())
 			require.Equal(t, "/open-apis/drive/v1/metas/batch_query", clie2e.DryRunGet(out, field("url")).String())
 			require.Equal(t, "resolved_file_token", clie2e.DryRunGet(out, field("body.request_docs.0.doc_token")).String())
-			require.Contains(t, clie2e.DryRunGet(out, field("desc")).String(), "Only when")
+			if tc.resume {
+				require.Contains(t, clie2e.DryRunGet(out, field("desc")).String(), "Before publishing")
+				require.Equal(t, "./artifacts/report.bin.partial", clie2e.DryRunGet(out, "partial").String())
+				require.Equal(t, "./artifacts/report.bin.partial.meta", clie2e.DryRunGet(out, "checkpoint").String())
+				require.Contains(t, clie2e.DryRunGet(out, fmt.Sprintf("api.%d.desc", index-2)).String(), "preserve them")
+			} else {
+				require.Contains(t, clie2e.DryRunGet(out, field("desc")).String(), "Only when")
+			}
 			require.Equal(t, int64(index+1), clie2e.DryRunGet(out, "api.#").Int())
 		})
 

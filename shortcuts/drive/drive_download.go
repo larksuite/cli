@@ -20,7 +20,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	extdownload "github.com/larksuite/cli/extension/download"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/downloadtransport"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -139,7 +139,7 @@ var DriveDownload = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"drive:file:download"},
 	// Entity lookup uses metadata permission best-effort. Metadata is required
-	// only for default naming; wiki permission is required only if an explicit
+	// for default naming and --continue; wiki permission is required only if an explicit
 	// wiki input falls back to get_node. Permission auth scope failures are also
 	// non-blocking so they do not prevent the download API call.
 	ConditionalScopes: []string{common.DrivePermissionMemberAuthScope, driveMetadataReadScope, driveWikiNodeRetrieveScope},
@@ -193,6 +193,12 @@ var DriveDownload = common.Shortcut{
 			metadataDesc = fmt.Sprintf("[%d] Resolve metadata title and file revision before downloading; fails before the download request if metadata scope is missing", step)
 			downloadDesc = fmt.Sprintf("[%d] Download file bytes; Content-Disposition filename wins over metadata title when present", step+1)
 		}
+		recheckCondition := "Only when the file spans more than one part"
+		if runtime.Bool("continue") {
+			metadataDesc = fmt.Sprintf("[%d] Read latest_modify_time before touching resume artifacts; preserve them and fail if the revision cannot be read", step)
+			recheckCondition = "Before publishing a resumed or newly completed partial"
+			plan.Set("continue", true).Set("partial", outputPath+".partial").Set("checkpoint", outputPath+".partial.meta")
+		}
 		plan.
 			POST("/open-apis/drive/v1/metas/batch_query").
 			Desc(metadataDesc).
@@ -209,7 +215,7 @@ var DriveDownload = common.Shortcut{
 			GET("/open-apis/drive/v1/files/:file_token/download").
 			Desc(downloadDesc).
 			POST("/open-apis/drive/v1/metas/batch_query").
-			Desc(fmt.Sprintf("[%d] Only when the file spans more than one part: re-read latest_modify_time and fail before committing the output if it changed", step+2)).
+			Desc(fmt.Sprintf("[%d] %s: re-read latest_modify_time and fail before committing the output if it changed", step+2, recheckCondition)).
 			Body(map[string]interface{}{
 				"request_docs": []map[string]interface{}{
 					{
@@ -252,11 +258,23 @@ var DriveDownload = common.Shortcut{
 			return driveDownloadPermissionDeniedError()
 		}
 
+		cont := runtime.Bool("continue")
+		var resumeIO fileio.ResumableFileIO
+		if cont {
+			var ok bool
+			resumeIO, ok = runtime.FileIO().(fileio.ResumableFileIO)
+			if !ok {
+				return errs.NewInternalError(errs.SubtypeFileIO, "file backend does not support --continue downloads").WithHint("configure a resumable file backend or omit --continue")
+			}
+		}
 		// Metadata supplies the default file name and the revision that lets
 		// ranged parts be combined. With --output it is best-effort: without a
 		// revision the download keeps using one full response.
 		meta, metaErr := common.FetchDriveMeta(runtime, fileToken, "file", false)
 		if metaErr != nil {
+			if cont {
+				return withDriveDownloadRecoveryHint(metaErr, fileToken)
+			}
 			if outputPath == "" && driveDownloadShouldFailOnMetadataTitleError(ctx, metaErr) {
 				if ctxErr := ctx.Err(); ctxErr != nil {
 					return ctxErr
@@ -272,30 +290,18 @@ var DriveDownload = common.Shortcut{
 			meta = common.DriveMeta{}
 		}
 
-		// Resumable, chunked download. The drive download API honors HTTP
-		// Range (206), so long transfers are split into bounded parts with
-		// per-part retries, and --continue can resume from an existing
-		// <output>.partial instead of restarting from byte 0.
-		transport := downloadtransport.NewOAPI(runtime.DoAPIStream).Get(
-			"/open-apis/drive/v1/files/:file_token/download",
-			downloadtransport.PathParam("file_token", fileToken),
-		)
-		dlSource := extdownload.MutableSource(transport)
-
-		cont := runtime.Bool("continue")
-		var resumeIO fileio.ResumableFileIO
-		if cont {
-			var ok bool
-			resumeIO, ok = runtime.FileIO().(fileio.ResumableFileIO)
-			if !ok {
-				return errs.NewInternalError(errs.SubtypeFileIO, "file backend does not support --continue downloads").
-					WithHint("configure a resumable file backend or omit --continue")
-			}
+		if cont && meta.LatestModifyTime == "" {
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "cannot continue without the file modification time").
+				WithHint("keep the partial and retry after revision metadata is available; check metadata read permissions")
+		}
+		dlSource := driveDownloadSource(runtime, fileToken, meta.LatestModifyTime)
+		checkpointIdentity := driveDownloadCheckpoint{
+			BaseURL: core.ResolveOpenBaseURL(runtime.Config.Brand), FileToken: fileToken,
+			LatestModifyTime: meta.LatestModifyTime,
 		}
 
 		var startOffset int64
 		var resumeSize int64
-		var resumeETag string
 		var partialPath string
 		var checkpointPath string
 		if cont {
@@ -315,16 +321,14 @@ var DriveDownload = common.Shortcut{
 				localSize := fi.Size()
 				if localSize > 0 {
 					checkpoint, checkpointErr := driveDownloadReadCheckpoint(resumeIO, checkpointPath)
-					checkpointETag := ""
-					if checkpoint != nil {
-						checkpointETag = driveDownloadStrongETag(checkpoint.ETag)
-					}
-					if checkpointErr != nil || checkpoint == nil || checkpoint.Size <= 0 || checkpointETag == "" {
+					if checkpointErr != nil || checkpoint == nil || checkpoint.Size <= 0 ||
+						checkpoint.BaseURL != checkpointIdentity.BaseURL || checkpoint.FileToken != checkpointIdentity.FileToken ||
+						checkpoint.LatestModifyTime != checkpointIdentity.LatestModifyTime {
 						if cleanupErr := driveDownloadDiscardResume(resumeIO, partialPath, checkpointPath); cleanupErr != nil {
 							return driveDownloadResumeArtifactError("discard unverifiable partial", cleanupErr)
 						}
 					} else {
-						probe, probeErr := extdownload.ProbeRange(ctx, dlSource, checkpointETag)
+						probe, probeErr := extdownload.ProbeRange(ctx, dlSource, "")
 						if probeErr != nil && driveDownloadRangeProbeRejected(probeErr) {
 							if cleanupErr := driveDownloadDiscardResume(resumeIO, partialPath, checkpointPath); cleanupErr != nil {
 								return driveDownloadResumeArtifactError("discard partial after unsupported Range", cleanupErr)
@@ -332,14 +336,17 @@ var DriveDownload = common.Shortcut{
 						} else if probeErr != nil {
 							return withDriveDownloadRecoveryHint(wrapDriveNetworkErr(probeErr, "resume probe failed: %s", probeErr), fileToken)
 						} else {
-							probeTotal, probeETag := probe.TotalSize, probe.ETag
-							checkpointValid := checkpoint.Size == probeTotal && probeETag != "" && probeETag == checkpointETag
+							probeTotal := probe.TotalSize
+							checkpointValid := checkpoint.Size == probeTotal
 							switch {
 							case !checkpointValid || localSize > probeTotal:
 								if cleanupErr := driveDownloadDiscardResume(resumeIO, partialPath, checkpointPath); cleanupErr != nil {
 									return driveDownloadResumeArtifactError("discard stale partial", cleanupErr)
 								}
 							case localSize == probeTotal:
+								if err := verifyDriveDownloadRevision(runtime, fileToken, meta.LatestModifyTime); err != nil {
+									return driveDownloadResumeVerificationError(resumeIO, partialPath, checkpointPath, err)
+								}
 								if err := driveDownloadEnsureOutputAbsent(runtime, outputPath, overwrite); err != nil {
 									return err
 								}
@@ -359,7 +366,6 @@ var DriveDownload = common.Shortcut{
 							default:
 								startOffset = localSize
 								resumeSize = checkpoint.Size
-								resumeETag = checkpointETag
 							}
 						}
 					}
@@ -369,25 +375,16 @@ var DriveDownload = common.Shortcut{
 			}
 		}
 
-		openStream := func(offset int64, etag string) (*extdownload.Stream, error) {
-			return extdownload.Open(ctx, dlSource, extdownload.Options{
-				PartSize:     driveDownloadPartSize,
-				StartOffset:  offset,
-				ExpectedETag: etag,
-			})
+		openStream := func(offset int64) (*extdownload.Stream, error) {
+			return openDriveFileDownload(ctx, runtime, fileToken, meta.LatestModifyTime, offset)
 		}
-		var stream *extdownload.Stream
-		if cont {
-			stream, err = openStream(startOffset, resumeETag)
-		} else {
-			stream, err = openDriveFileDownload(ctx, runtime, fileToken, meta.LatestModifyTime)
-		}
+		stream, err := openStream(startOffset)
 		if err != nil && cont && startOffset > 0 && driveDownloadShouldRestartResume(err) {
 			if cleanupErr := driveDownloadDiscardResume(resumeIO, partialPath, checkpointPath); cleanupErr != nil {
 				return driveDownloadResumeArtifactError("discard partial before full restart", cleanupErr)
 			}
-			startOffset, resumeSize, resumeETag = 0, 0, ""
-			stream, err = openStream(0, "")
+			startOffset = 0
+			stream, err = openStream(0)
 		}
 		if err != nil {
 			return withDriveDownloadRecoveryHint(wrapDriveNetworkErr(err, "download failed: %s", err), fileToken)
@@ -397,8 +394,8 @@ var DriveDownload = common.Shortcut{
 			if cleanupErr := driveDownloadDiscardResume(resumeIO, partialPath, checkpointPath); cleanupErr != nil {
 				return driveDownloadResumeArtifactError("discard partial after size change", cleanupErr)
 			}
-			startOffset, resumeSize, resumeETag = 0, 0, ""
-			stream, err = openStream(0, "")
+			startOffset = 0
+			stream, err = openStream(0)
 			if err != nil {
 				return withDriveDownloadRecoveryHint(wrapDriveNetworkErr(err, "download failed: %s", err), fileToken)
 			}
@@ -464,8 +461,10 @@ var DriveDownload = common.Shortcut{
 		// The checkpoint is written before the append so a failed stream leaves
 		// enough remote identity for the next --continue attempt to validate the
 		// bytes already kept in the partial file.
-		if cpErr := driveDownloadWriteCheckpoint(resumeIO, checkpointPath, stream.ContentLength, driveDownloadStrongETag(stream.Header.Get("ETag"))); cpErr != nil {
-			fmt.Fprintf(runtime.IO().ErrOut, "warning: could not write resume checkpoint: %v\n", cpErr)
+		if startOffset == 0 {
+			if cpErr := driveDownloadWriteCheckpoint(resumeIO, checkpointPath, checkpointIdentity, stream.ContentLength); cpErr != nil {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: could not write resume checkpoint: %v\n", cpErr)
+			}
 		}
 		appendLength := stream.ContentLength
 		if appendLength >= 0 {
@@ -476,7 +475,7 @@ var DriveDownload = common.Shortcut{
 			ContentLength: appendLength,
 		}, progress)
 		if copyErr != nil {
-			return withDriveDownloadRecoveryHint(driveAppendError(copyErr), fileToken)
+			return withDriveDownloadRecoveryHint(driveDownloadResumeVerificationError(resumeIO, partialPath, checkpointPath, driveAppendError(copyErr)), fileToken)
 		}
 		written := result.Size()
 		if stream.ContentLength > 0 && written != stream.ContentLength-startOffset {
@@ -498,6 +497,9 @@ var DriveDownload = common.Shortcut{
 				"download size mismatch after append: got %d of %d bytes", finalPartialSize, stream.ContentLength)
 		}
 
+		if err := verifyDriveDownloadRevision(runtime, fileToken, meta.LatestModifyTime); err != nil {
+			return driveDownloadResumeVerificationError(resumeIO, partialPath, checkpointPath, err)
+		}
 		if err := resumeIO.CommitResumeArtifact(partialPath, outputPath, overwrite); err != nil {
 			return driveDownloadCommitError(err, outputPath, overwrite)
 		}
@@ -514,12 +516,14 @@ var DriveDownload = common.Shortcut{
 	},
 }
 
-// driveDownloadCheckpoint ties a <output>.partial file to the remote
-// representation it was downloaded from. A resume is only allowed when both
-// the size and strong ETag still match the current remote file.
+// driveDownloadCheckpoint binds a partial to a Drive source and revision.
+// The local file size is the resume offset; a stored offset can lag a killed
+// writer. Legacy ETag-only checkpoints lack this identity and restart safely.
 type driveDownloadCheckpoint struct {
-	Size int64  `json:"size"`
-	ETag string `json:"etag,omitempty"`
+	BaseURL          string `json:"base_url"`
+	FileToken        string `json:"file_token"`
+	Size             int64  `json:"size"`
+	LatestModifyTime string `json:"latest_modify_time"`
 }
 
 // driveDownloadPaths resolves the output path and derives the sibling
@@ -585,8 +589,9 @@ func driveDownloadDiscardResume(resumeIO fileio.ResumableFileIO, partialPath, ch
 // driveDownloadWriteCheckpoint persists the checkpoint next to the partial
 // file. A failure is non-fatal for the current download; without a checkpoint
 // a later --continue conservatively restarts from byte 0.
-func driveDownloadWriteCheckpoint(resumeIO fileio.ResumableFileIO, path string, size int64, etag string) error {
-	data, err := json.Marshal(driveDownloadCheckpoint{Size: size, ETag: etag})
+func driveDownloadWriteCheckpoint(resumeIO fileio.ResumableFileIO, path string, checkpoint driveDownloadCheckpoint, size int64) error {
+	checkpoint.Size = size
+	data, err := json.Marshal(checkpoint)
 	if err != nil {
 		return err
 	}
@@ -608,20 +613,15 @@ func driveDownloadReadCheckpoint(resumeIO fileio.ResumableFileIO, path string) (
 	return &cp, nil
 }
 
-// driveDownloadStrongETag accepts only a quoted, non-weak validator. It keeps
-// checkpoint identity compatible with download.Options.ExpectedETag, which
-// deliberately rejects weak validators for If-Range.
-func driveDownloadStrongETag(value string) string {
-	value = strings.TrimSpace(value)
-	if strings.HasPrefix(value, "W/") || len(value) < 2 || value[0] != '"' || value[len(value)-1] != '"' {
-		return ""
-	}
-	for i := 1; i < len(value)-1; i++ {
-		if c := value[i]; c != 0x21 && !(c >= 0x23 && c <= 0x7e) && c < 0x80 {
-			return ""
+// Only confirmed representation changes invalidate retained bytes. Query and
+// transport failures leave both artifacts available for a later attempt.
+func driveDownloadResumeVerificationError(resumeIO fileio.ResumableFileIO, partial, checkpoint string, err error) error {
+	if problem, ok := errs.ProblemOf(err); ok && problem.Subtype == errs.SubtypeNetworkRepresentationChanged {
+		if cleanupErr := driveDownloadDiscardResume(resumeIO, partial, checkpoint); cleanupErr != nil {
+			return driveDownloadResumeArtifactError("discard changed download", errors.Join(err, cleanupErr))
 		}
 	}
-	return value
+	return err
 }
 
 func driveDownloadResumeArtifactError(action string, err error) error {
