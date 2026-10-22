@@ -13,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/validate"
@@ -118,7 +116,7 @@ var DrivePull = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
-			Desc("Recursively list --folder-token, download each type=file entry into --local-dir, and (when --delete-local --yes is set) remove local files absent from Drive.").
+			Desc("Recursively list --folder-token, download each type=file entry into --local-dir using revision-checked ranged parts when metadata is available, and (when --delete-local --yes is set) remove local files absent from Drive.").
 			GET("/open-apis/drive/v1/files").
 			Set("folder_token", runtime.Str("folder-token"))
 	},
@@ -330,6 +328,8 @@ var DrivePull = common.Shortcut{
 	},
 }
 
+// drivePullFailedItem builds the pull item reported when one file of a pull
+// run fails, keeping the original error for the JSON envelope.
 func drivePullFailedItem(relPath, fileToken, sourceID, action, phase string, err error) (drivePullItem, bool) {
 	decision := driveClassifyBatchFailure(err)
 	item := drivePullItem{
@@ -348,20 +348,32 @@ func drivePullFailedItem(relPath, fileToken, sourceID, action, phase string, err
 }
 
 // drivePullDownload streams one Drive file into the local mirror target and
-// then best-effort aligns the local mtime to Drive's modified_time.
+// then best-effort aligns the local mtime to Drive's modified_time. The
+// transfer uses the chunked ranged downloader, so a transient stream failure
+// is retried per part instead of restarting the whole file from byte 0.
 func drivePullDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken, target, remoteModifiedTime string) error {
-	resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
-		HttpMethod: "GET",
-		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
-	})
+	meta, metaErr := common.FetchDriveMeta(runtime, fileToken, "file", false)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if metaErr != nil {
+		meta = common.DriveMeta{}
+	}
+	stream, err := openDriveFileDownload(ctx, runtime, fileToken, meta.LatestModifyTime, 0)
 	if err != nil {
 		return wrapDriveNetworkErr(err, "download %s: %s", common.MaskToken(fileToken), err)
 	}
-	defer resp.Body.Close()
+	defer stream.Body.Close()
+	if meta.LatestModifyTime == "" && stream.ContentLength > driveDownloadPartSize {
+		fmt.Fprintln(runtime.IO().ErrOut, "warning: file revision unavailable; downloading in one full response, which may fail on long transfers")
+	}
 	if _, err := runtime.FileIO().Save(target, fileio.SaveOptions{
-		ContentType:   resp.Header.Get("Content-Type"),
-		ContentLength: resp.ContentLength,
-	}, resp.Body); err != nil {
+		ContentType:   stream.Header.Get("Content-Type"),
+		ContentLength: stream.ContentLength,
+	}, driveDownloadRevisionBody(runtime, fileToken, meta.LatestModifyTime, stream)); err != nil {
+		if _, typed := errs.ProblemOf(err); typed {
+			return err
+		}
 		return driveSaveError(err)
 	}
 	if err := drivePullApplyRemoteModifiedTime(target, remoteModifiedTime, runtime); err != nil {
