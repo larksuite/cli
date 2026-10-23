@@ -73,9 +73,21 @@ func TestAttendanceSkillDescriptionIncludesTriggerAndBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	var descriptionLine string
-	for _, line := range strings.Split(string(raw), "\n") {
-		if strings.HasPrefix(line, "description:") {
-			descriptionLine = line
+	inFrontmatter := false
+	for i, line := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if i == 0 && trimmed == "---" {
+			inFrontmatter = true
+			continue
+		}
+		if !inFrontmatter {
+			break
+		}
+		if trimmed == "---" {
+			break
+		}
+		if strings.HasPrefix(trimmed, "description:") {
+			descriptionLine = trimmed
 			break
 		}
 	}
@@ -83,8 +95,8 @@ func TestAttendanceSkillDescriptionIncludesTriggerAndBoundary(t *testing.T) {
 		t.Fatal("lark-attendance SKILL.md is missing frontmatter description")
 	}
 	for _, required := range []string{
-		"当用户",
-		"仅用于个人考勤打卡记录查询",
+		"当用户提到查询考勤打卡记录、上下班打卡情况、迟到早退或漏卡结果等个人考勤查询意图时使用",
+		"仅用于个人考勤打卡记录查询，不负责考勤排班管理或请假审批",
 	} {
 		if !strings.Contains(descriptionLine, required) {
 			t.Fatalf("lark-attendance description %q must contain %q", descriptionLine, required)
