@@ -1299,11 +1299,11 @@ func TestParseIssueCredentialData_SharedClassifierCoverage(t *testing.T) {
 	})
 }
 
-// The hidden helper is the one apps entry point that is not a shortcut, so
-// neither the verdict table nor the shortcut gate sees it. It has to refuse an
-// Agent Employee itself, in the helper protocol: a message on stderr, nothing
-// on stdout, exit 0, and no request.
-func TestRunGitCredentialHelperRefusesAgentEmployee(t *testing.T) {
+// The hidden helper is not a shortcut, so the verdict table never sees it, and
+// it no longer refuses an Agent Employee by itself: the request goes to the
+// issuing API like any other profile's, which decides whether the token is
+// accepted.
+func TestRunGitCredentialHelperDoesNotRefuseAgentEmployee(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cfg := &core.CliConfig{
@@ -1314,18 +1314,15 @@ func TestRunGitCredentialHelperRefusesAgentEmployee(t *testing.T) {
 		PrincipalOpenID: "ou_agent",
 		UserOpenId:      "ou_agent",
 	}
-	factory, stdout, stderr, _ := cmdutil.TestFactory(t, cfg)
+	factory, _, stderr, _ := cmdutil.TestFactory(t, cfg)
 	factory.Keychain = newAppsTestKeychain()
 	factory.IOStreams.In = bytes.NewBufferString("protocol=https\nhost=example.com\npath=/git/u/app.git\n\n")
 
 	if err := runGitCredentialHelper(context.Background(), factory, "app_xxx", "get"); err != nil {
 		t.Fatalf("helper get returned error: %v", err)
 	}
-	if stdout.Len() != 0 {
-		t.Fatalf("stdout = %q, want nothing", stdout.String())
-	}
-	if !strings.Contains(stderr.String(), "Git credential unavailable") || !strings.Contains(stderr.String(), "Agent Employee") {
-		t.Fatalf("stderr = %q, want the Agent Employee refusal", stderr.String())
+	if strings.Contains(stderr.String(), "Agent Employee profiles cannot issue Git credentials") {
+		t.Fatalf("stderr = %q, the helper must not refuse an Agent Employee by itself", stderr.String())
 	}
 }
 

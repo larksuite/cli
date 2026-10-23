@@ -355,14 +355,6 @@ func runGitCredentialHelper(ctx context.Context, f *cmdutil.Factory, appID, acti
 		fmt.Fprintln(f.IOStreams.ErrOut, "Git credential unavailable: missing app_id; rerun lark-cli apps +git-credential-init --app-id <app_id>")
 		return nil
 	}
-	// The helper is the one apps entry point that is not a shortcut, so the
-	// verdict table never sees it. The issuing API does not accept an Agent
-	// Employee token, which is why the public +git-credential-init is denied;
-	// the hidden entry point has to say the same thing, in the helper protocol.
-	if f.IsAgentPrincipal(ctx) {
-		fmt.Fprintln(f.IOStreams.ErrOut, "Git credential unavailable: Agent Employee profiles cannot issue Git credentials; use a profile backed by a human account")
-		return nil
-	}
 	manager := newGitCredentialManager(appID, f.Keychain, factoryIssuer{f: f})
 	switch action {
 	case "get":

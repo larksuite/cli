@@ -94,8 +94,10 @@ for POST credential. These successful user-token calls do not independently prov
 that a read-only grant can create a first credential. Minimum scopes for first
 creation still require provider confirmation. The feature maintainer confirmed on
 2026-09-21 that neither endpoint supports Agent Employee accessTokens (AAT). Both
-`agent_support.json` entries record that confirmation and remain `denied`; the
-table-wide registry reconciliation timestamp is unchanged.
+`agent_support.json` entries record that confirmation; on 2026-10-23 they were
+opened with every other apps command on request, without re-checking the live
+registry, so a call may still be rejected by the server. The table-wide registry
+reconciliation timestamp is unchanged.
 
 Both commands remain `write`: repeated calls reuse the existing credential and
 do not rotate it. Lack of a public deletion command alone is not treated as

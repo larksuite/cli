@@ -15,315 +15,315 @@
       "agentSupport": "denied"
     },
     "apps +access-scope-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +access-scope-set": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +analytics-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +automation-create": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +automation-disable": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +automation-enable": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +automation-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +automation-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +automation-update": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +cache-clear": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +cache-delete": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +cache-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +chat": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +create": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-audit-disable": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-audit-enable": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-audit-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-audit-status": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-changelog-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-data-export": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-data-import": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-env-create": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-env-diff": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-env-migrate": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-execute": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-quota-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-recovery-apply": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-recovery-diff": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-sync-create": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-sync-delete": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-sync-disable": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-sync-enable": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-sync-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-sync-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-sync-update": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-table-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +db-table-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +deploy": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +env-delete": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +env-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +env-pull": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +env-set": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +export": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +feature-enable": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +features": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +file-delete": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +file-download": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +file-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +file-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +file-quota-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +file-sign": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +file-upload": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +git-credential-init": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +git-credential-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +git-credential-remove": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +html-publish": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +init": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +init-template": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +log-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +log-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +mcp-get": {
-      "agentSupport": "denied",
-      "note": "2026-09-21: feature maintainer confirmed that these MCP endpoints do not support Agent Employee accessTokens (AAT); user authorization only. This is a per-entry confirmation, not a full registry reconciliation."
+      "agentSupport": "allowed",
+      "note": "Allowed on request (2026-10-23) but unverified: a 2026-09-21 feature-maintainer confirmation said this endpoint does not accept an Agent Employee accessToken (AAT), and that has not been re-checked."
     },
     "apps +mcp-key-create": {
-      "agentSupport": "denied",
-      "note": "2026-09-21: feature maintainer confirmed that these MCP endpoints do not support Agent Employee accessTokens (AAT); user authorization only. This is a per-entry confirmation, not a full registry reconciliation."
+      "agentSupport": "allowed",
+      "note": "Allowed on request (2026-10-23) but unverified: a 2026-09-21 feature-maintainer confirmation said this endpoint does not accept an Agent Employee accessToken (AAT), and that has not been re-checked."
     },
     "apps +member-add": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +member-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +member-remove": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +member-settings-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +member-settings-set": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +member-update": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +metric-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +openapi-key-create": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +openapi-key-delete": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +openapi-key-disable": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +openapi-key-enable": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +openapi-key-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +openapi-key-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +openapi-key-reset": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +openapi-key-update": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +plugin-install": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +plugin-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +plugin-uninstall": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +release-create": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +release-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +release-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +role-create": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +role-delete": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +role-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +role-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +role-match-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +role-member-add": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +role-member-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +role-member-remove": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +role-update": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +session-create": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +session-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +session-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +session-messages-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +session-stop": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +trace-get": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +trace-list": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +update": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "apps +user-id-convert": {
-      "agentSupport": "denied"
+      "agentSupport": "allowed"
     },
     "base +advperm-apply": {
       "agentSupport": "allowed"
