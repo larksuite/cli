@@ -13,6 +13,9 @@ board.whiteboard.updated_v1                     user|bot  1       Pushed when th
 ── card ──
 card.action.trigger                             bot       0       Triggered when a user interacts with an interactive card (button click, form submit, dropdown select, etc.). Output includes: token (valid 30 min, max 2 updates), action details (tag, value, name, form_value), and card_content (original card in userDSL text format, auto-fetched at consume time). To update the card: parse card_content to understand the current state, construct the new card JSON, then call `lark-cli api POST /open-apis/interactive/v1/card/update` with the token (see lark-im-card-action-reply.md).
 
+── drive ──
+drive.notice.comment_add_v1                     user|bot  0       Triggered when a cloud document comment or reply notifies the current user or bot, for example by @mentioning it.
+
 ── im ──
 im.chat.disbanded_v1                            bot       0       Triggered after a chat is disbanded
 im.chat.member.bot.added_v1                     bot       0       Triggered when the bot is added to a chat
