@@ -65,3 +65,24 @@ func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
 	sort.Strings(keys)
 	assertStrings(t, keys, directories)
 }
+
+func TestDocXMLSkillOrderedListSeqGuidance(t *testing.T) {
+	repoRoot := filepath.Join("..", "..")
+	raw, err := vfs.ReadFile(filepath.Join(repoRoot, "skills", "lark-doc", "references", "lark-doc-xml.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(raw)
+	for _, required := range []string{
+		`<li seq="auto">`,
+		`<li seq="3">`,
+		"`<ol>` 本身不支持 `seq`",
+	} {
+		if !strings.Contains(doc, required) {
+			t.Fatalf("lark-doc-xml.md must contain %q", required)
+		}
+	}
+	if strings.Contains(doc, `<ol seq=`) {
+		t.Fatal("lark-doc-xml.md must not instruct placing seq on <ol>")
+	}
+}
