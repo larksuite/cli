@@ -599,7 +599,7 @@
         },
         "from_user_type": {
           "type": "string",
-          "description": "Comment author type reported by the server"
+          "description": "Comment author type, for example user or bot"
         },
         "is_mentioned": {
           "type": "boolean",
@@ -615,7 +615,7 @@
         },
         "reply_id": {
           "type": "string",
-          "description": "Reply ID; present when the notice is about a reply in the comment thread"
+          "description": "ID of the reply that triggered the notice; for add_comment it is the first reply, which holds the comment body"
         },
         "tenant_key": {
           "type": "string",

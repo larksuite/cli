@@ -21,14 +21,14 @@ type CommentAddOutput struct {
 	FileToken    string `json:"file_token"                desc:"Token of the commented document; pass it with file_type to the drive comment APIs"`
 	FileType     string `json:"file_type,omitempty"       desc:"Type of the commented document, for example docx, doc, sheet, or file"`
 	CommentID    string `json:"comment_id"                desc:"Comment ID; for a reply this is the parent comment"`
-	ReplyID      string `json:"reply_id,omitempty"        desc:"Reply ID; present when the notice is about a reply in the comment thread"`
+	ReplyID      string `json:"reply_id,omitempty"        desc:"ID of the reply that triggered the notice; for add_comment it is the first reply, which holds the comment body"`
 	NoticeType   string `json:"notice_type,omitempty"     desc:"Comment operation that produced the notice"                                                                 enum:"add_comment,add_reply"`
 	IsMentioned  bool   `json:"is_mentioned"              desc:"Whether the notice receiver (to_*) was @mentioned in the comment or reply"`
 	Visibility   string `json:"visibility,omitempty"      desc:"Comment visibility reported by the server"`
 	FromOpenID   string `json:"from_open_id,omitempty"    desc:"Comment author open_id"                                                                                     kind:"open_id"`
 	FromUnionID  string `json:"from_union_id,omitempty"   desc:"Comment author union_id"                                                                                    kind:"union_id"`
 	FromUserID   string `json:"from_user_id,omitempty"    desc:"Comment author user_id"                                                                                     kind:"user_id"`
-	FromUserType string `json:"from_user_type,omitempty"  desc:"Comment author type reported by the server"`
+	FromUserType string `json:"from_user_type,omitempty"  desc:"Comment author type, for example user or bot"`
 	ToOpenID     string `json:"to_open_id,omitempty"      desc:"Notice receiver open_id: the subscribed user, or the bot when consuming as bot"                            kind:"open_id"`
 	ToUnionID    string `json:"to_union_id,omitempty"     desc:"Notice receiver union_id"                                                                                   kind:"union_id"`
 	ToUserID     string `json:"to_user_id,omitempty"      desc:"Notice receiver user_id"                                                                                    kind:"user_id"`
