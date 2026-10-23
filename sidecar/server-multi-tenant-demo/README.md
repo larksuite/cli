@@ -111,6 +111,11 @@ go build -tags authsidecar_multi_tenant_demo \
 lark-cli config init --new   # set app_id / app_secret
 ```
 
+For keyless authentication, run `lark-cli config init --private-key-jwt` and
+choose the existing-app option, or add `--new` to create an app. The server
+uses the selected profile's signing key for device authorization, polling,
+and token refresh.
+
 ### 2. Prepare the keys directory
 
 ```text

@@ -18,20 +18,23 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	larkauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/dpop"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 type tatResponse struct {
-	Code             int    `json:"code"`
-	AccessToken      string `json:"access_token"`
-	ExpiresIn        int64  `json:"expires_in"`
-	Error            string `json:"error"`
-	ErrorDescription string `json:"error_description"`
-	Msg              string `json:"msg"`
-	StatusMessage    string `json:"status_message"`
-	TokenType        string `json:"token_type"`
+	Code              int    `json:"code"`
+	AccessToken       string `json:"access_token"`
+	TenantAccessToken string `json:"tenant_access_token"`
+	ExpiresIn         int64  `json:"expires_in"`
+	Error             string `json:"error"`
+	ErrorDescription  string `json:"error_description"`
+	Msg               string `json:"msg"`
+	StatusMessage     string `json:"status_message"`
+	TokenType         string `json:"token_type"`
 }
 
 type FetchedToken struct {
@@ -44,11 +47,19 @@ type FetchedToken struct {
 	clockSyncErr         error // Initial synchronization is best-effort; the caller may warn.
 }
 
-// FetchTAT mints a tenant token using client_credentials and the supplied DPoP
-// mode, serializing issuance per app. Disabled mode does not access key storage,
-// so the post-config-init probe can validate credentials without a keychain read.
-// A non-empty status message is advisory and does not change the successful
-// token result.
+// tatDPoPAttempt records fallback provenance at the DPoP failure site. Application
+// authentication can return the same error types and must never trigger fallback.
+type tatDPoPAttempt struct {
+	requestSent            bool
+	localFailure           bool
+	repeatedProofRejection bool
+}
+
+// FetchTAT mints a tenant token using the configured client authentication and
+// DPoP mode, serializing issuance per app. Disabled mode does not access key
+// storage, so the post-config-init probe can validate credentials without a
+// keychain read. A non-empty status message is advisory and does not change the
+// successful token result.
 //
 // A deterministic client-side rejection (e.g. invalid_client) returns the
 // canonical typed error from classifyTATResponseCode — the SAME classification
@@ -60,11 +71,16 @@ type FetchedToken struct {
 // credential rejection.
 //
 // The caller owns the context timeout.
-func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string, mode core.DPoPMode) (*FetchedToken, error) {
+func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, ca auth.ClientAuth, mode core.DPoPMode) (*FetchedToken, error) {
+	var err error
+	ca, err = ca.ResolveSigner(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var result *FetchedToken
-	err := larkauth.WithTATIssuanceLock(ctx, appID, func() error {
+	err = auth.WithTATIssuanceLock(ctx, ca.AppID, func() error {
 		var issueErr error
-		result, issueErr = fetchTAT(ctx, httpClient, brand, appID, appSecret, mode, nil)
+		result, issueErr = fetchTAT(ctx, httpClient, brand, ca, mode, nil)
 		return issueErr
 	})
 	return result, err
@@ -72,12 +88,12 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 
 // fetchTAT runs under the issuance lock and reuses a stable per-app key handle.
 // The resulting binding stays in memory with the cached TAT.
-func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string, mode core.DPoPMode, keyStore *dpop.KeyStore) (result *FetchedToken, retErr error) {
+func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, ca auth.ClientAuth, mode core.DPoPMode, keyStore *dpop.KeyStore) (result *FetchedToken, retErr error) {
 	mode = core.EffectiveDPoPMode(mode)
 	var proofKey *dpop.Key
 	createdKey := false
 	keepKey := false
-	dpopRequestSent := false
+	attempt := tatDPoPAttempt{}
 	var clockSyncErr error
 	defer func() {
 		if createdKey && !keepKey {
@@ -100,14 +116,13 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		}
 		// Preferred permits fallback after local DPoP failures before a Token
 		// Endpoint request is sent, or after three explicit proof rejections.
-		if mode == core.DPoPModePreferred && (!dpopRequestSent || errors.Is(retErr, dpop.ErrRepeatedInvalidProof)) && retErr != nil && ctx.Err() == nil &&
+		if mode == core.DPoPModePreferred && ((!attempt.requestSent && attempt.localFailure) || attempt.repeatedProofRejection) && retErr != nil && ctx.Err() == nil &&
 			!errors.Is(retErr, context.Canceled) && !errors.Is(retErr, context.DeadlineExceeded) {
-			repeatedProofRejection := errors.Is(retErr, dpop.ErrRepeatedInvalidProof)
 			fallbackErr := retErr
-			result, retErr = requestTAT(ctx, httpClient, brand, appID, appSecret, nil, keyStore, nil, false, 0)
+			result, retErr = requestTAT(ctx, httpClient, brand, ca, nil, keyStore, nil, false, 0)
 			if retErr == nil && result != nil {
-				result.proofFallback = repeatedProofRejection
-				if !repeatedProofRejection {
+				result.proofFallback = attempt.repeatedProofRejection
+				if !attempt.repeatedProofRejection {
 					result.localDPoPFallbackErr = fallbackErr
 				}
 			}
@@ -118,8 +133,9 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 			keyStore = dpop.NewKeyStore(nil)
 		}
 		var err error
-		proofKey, createdKey, err = keyStore.PrepareReplaceableContext(ctx, tatDPoPKeyID(brand, appID))
+		proofKey, createdKey, err = keyStore.PrepareReplaceableContext(ctx, tatDPoPKeyID(brand, ca.AppID))
 		if err != nil {
+			attempt.localFailure = true
 			if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
 			}
@@ -129,6 +145,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 				WithHint("%s", dpop.KeyStorePreExchangeUnavailableHint)
 		}
 		if err := keyStore.SaveContext(ctx, proofKey); err != nil {
+			attempt.localFailure = true
 			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 				"failed to persist DPoP key reference: %v", err).
 				WithCause(err).
@@ -140,6 +157,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		}
 		if clockSyncErr == nil {
 			if err := keyStore.SaveContext(ctx, proofKey); err != nil {
+				attempt.localFailure = true
 				return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
 					"failed to persist synchronized DPoP clock: %v", err).
 					WithCause(err).
@@ -151,7 +169,7 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	if mode == core.DPoPModePreferred {
 		invalidProofsLeft = 3
 	}
-	result, retErr = requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, &dpopRequestSent, false, invalidProofsLeft)
+	result, retErr = requestTAT(ctx, httpClient, brand, ca, proofKey, keyStore, &attempt, false, invalidProofsLeft)
 	if retErr == nil && result != nil {
 		result.clockSyncErr = clockSyncErr
 		keepKey = result.DPoP != nil
@@ -164,14 +182,22 @@ func tatDPoPKeyID(brand core.LarkBrand, appID string) string {
 	return "tat-" + base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
-func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string, proofKey *dpop.Key, keyStore *dpop.KeyStore, dpopRequestSent *bool, clockRetried bool, invalidProofsLeft int) (*FetchedToken, error) {
+func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, ca auth.ClientAuth, proofKey *dpop.Key, keyStore *dpop.KeyStore, attempt *tatDPoPAttempt, clockRetried bool, invalidProofsLeft int) (*FetchedToken, error) {
 	ep := core.ResolveEndpoints(brand)
 	endpoint := ep.Accounts + core.OAuthTokenV3Path
 
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
-	form.Set("client_id", appID)
-	form.Set("client_secret", appSecret)
+	form.Set("client_id", ca.AppID)
+	usedAssertion, err := ca.ApplyClientAssertion(ctx, form, core.ClientAssertionAudience(brand))
+	if err != nil {
+		return nil, err
+	}
+	if usedAssertion {
+		form.Set("grant_type", jwt.GrantTypeJWTBearer)
+	} else {
+		form.Set("client_secret", ca.AppSecret)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -182,14 +208,17 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 		req = req.WithContext(dpop.WithTokenEndpointKey(req.Context(), proofKey))
 		proof, proofErr := proofKey.SignProofContext(req.Context(), http.MethodPost, endpoint)
 		if proofErr != nil {
+			if attempt != nil {
+				attempt.localFailure = true
+			}
 			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPProofFailed,
 				"failed to generate TAT DPoP proof: %v", proofErr).WithCause(proofErr)
 		}
 		req.Header.Set(dpop.ProofHeader, proof)
 	}
 
-	if proofKey != nil && dpopRequestSent != nil {
-		*dpopRequestSent = true
+	if proofKey != nil && attempt != nil {
+		attempt.requestSent = true
 	}
 	resp, err := httpClient.Do(req)
 	localReceiveTime := time.Now()
@@ -210,7 +239,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 			if desc == "" {
 				desc = result.Msg
 			}
-			classified := classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+			classified := classifyTATResponseCode(result.Code, result.Error, desc, string(brand), ca.AppID)
 			var apiErr *errs.APIError
 			if errors.As(classified, &apiErr) &&
 				apiErr.Subtype == errs.SubtypeRateLimit && apiErr.Retryable {
@@ -241,6 +270,9 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 	if proofKey != nil && invalidProofsLeft > 0 && result.Error == dpop.InvalidProofOAuthError {
 		invalidProofsLeft--
 		if invalidProofsLeft == 0 {
+			if attempt != nil {
+				attempt.repeatedProofRejection = true
+			}
 			return nil, errs.NewAuthenticationError(errs.SubtypeDPoPTokenRejected,
 				"Token Endpoint rejected three consecutive DPoP proofs").
 				WithCode(result.Code).WithCause(dpop.ErrRepeatedInvalidProof)
@@ -255,7 +287,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 				clockRetried = true
 			}
 		}
-		return requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, dpopRequestSent, clockRetried, invalidProofsLeft)
+		return requestTAT(ctx, httpClient, brand, ca, proofKey, keyStore, attempt, clockRetried, invalidProofsLeft)
 	}
 	if dpop.IsClockRecoverySignal(result.Code, result.Error) && proofKey != nil {
 		if clockRetried {
@@ -279,10 +311,13 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 				WithCause(err).
 				WithHint("%s", dpop.KeyStoreUnavailableHint)
 		}
-		return requestTAT(ctx, httpClient, brand, appID, appSecret, proofKey, keyStore, dpopRequestSent, true, invalidProofsLeft)
+		return requestTAT(ctx, httpClient, brand, ca, proofKey, keyStore, attempt, true, invalidProofsLeft)
 	}
 
-	if result.Code == 0 && result.AccessToken != "" {
+	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(ca.AuthMethod) && result.AccessToken == "" {
+		result.AccessToken = result.TenantAccessToken
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 && result.Error == "" && result.Code == 0 && result.AccessToken != "" {
 		if result.ExpiresIn <= 0 {
 			return nil, fmt.Errorf("TAT response has invalid expires_in %d", result.ExpiresIn)
 		}
@@ -292,7 +327,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 			StatusMessage: result.StatusMessage,
 		}
 		if proofKey != nil {
-			if strings.EqualFold(result.TokenType, larkauth.StoredTokenTypeBearer) && invalidProofsLeft > 0 {
+			if strings.EqualFold(result.TokenType, auth.StoredTokenTypeBearer) && invalidProofsLeft > 0 {
 				return fetched, nil
 			}
 			if !strings.EqualFold(result.TokenType, dpop.TokenType) {
@@ -338,7 +373,7 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 	if desc == "" {
 		desc = result.Msg
 	}
-	return nil, classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+	return nil, classifyTATResponseCode(result.Code, result.Error, desc, string(brand), ca.AppID)
 }
 
 func tatRetryAfterSeconds(header http.Header) int {
@@ -349,4 +384,17 @@ func tatRetryAfterSeconds(header http.Header) int {
 		}
 	}
 	return 0
+}
+
+// FetchTATWithAssertion validates an application key without issuing a DPoP
+// binding. Normal credential resolution uses FetchTAT.
+func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) (string, error) {
+	result, err := FetchTAT(ctx, httpClient, brand, auth.ClientAuth{
+		AppID: clientID, AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		Signer: signer, KeyLabel: keyLabel,
+	}, core.DPoPModeDisabled)
+	if err != nil {
+		return "", err
+	}
+	return result.AccessToken, nil
 }

@@ -19,6 +19,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -84,6 +85,19 @@ type KeyRef struct {
 	Algorithm string
 }
 
+// NewKeyLabel returns a random 128-bit key label with the caller's prefix.
+func NewKeyLabel(prefix string) (string, error) {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", fmt.Errorf("keysigner: generate key label: %w", err)
+	}
+	label := prefix + hex.EncodeToString(id[:])
+	if err := validateRefContext(nil, KeyRef{Label: label}); err != nil {
+		return "", err
+	}
+	return label, nil
+}
+
 // Signer owns signing keys behind stable references. Sign hashes signingInput
 // as required by ref.Algorithm and returns a JOSE signature and that algorithm.
 type Signer interface {
@@ -118,6 +132,19 @@ func PlatformSignerNames() []string {
 	}
 }
 
+// IsPlatformSignerName reports whether name identifies a built-in native
+// backend on any supported OS.
+func IsPlatformSignerName(name string) bool {
+	switch name {
+	case MacOSSecureEnclaveSignerName, MacOSKeychainSignerName,
+		WindowsPlatformKSPSignerName, WindowsSoftwareKSPSignerName,
+		LinuxTPMSignerName:
+		return true
+	default:
+		return false
+	}
+}
+
 // NewPlatformSigners constructs the current OS's native backends in fallback
 // order. Storage location remains caller policy through directory.
 func NewPlatformSigners(directory func(string) (string, error)) []Signer {
@@ -131,11 +158,51 @@ func NewPlatformSigners(directory func(string) (string, error)) []Signer {
 	return signers
 }
 
+// ResolvePlatformSigner restores one recorded native backend. An empty name
+// selects the strongest backend available on the current OS for legacy records.
+func ResolvePlatformSigner(name string, directory func(string) (string, error)) (Signer, error) {
+	if name == "" {
+		signers := NewPlatformSigners(directory)
+		if len(signers) == 0 {
+			return nil, ErrUnavailable
+		}
+		return signers[0], nil
+	}
+	if !IsPlatformSignerName(name) {
+		return nil, fmt.Errorf("keysigner: unknown platform signer %q", name)
+	}
+	signer := NewSigner(name, directory)
+	if signer == nil {
+		return nil, fmt.Errorf("%w: platform signer %q is not supported on %s", ErrUnavailable, name, runtime.GOOS)
+	}
+	return signer, nil
+}
+
 // CanFallback reports whether a new binding may try another backend.
 // Cancellation and incomplete cleanup always take precedence over unavailability.
 func CanFallback(err error) bool {
 	return errors.Is(err, ErrUnavailable) && !errors.Is(err, ErrCleanupFailed) &&
 		!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+}
+
+// ProbeSigners tries backends in order, retaining the caller's probe labels,
+// payload and error context. Only unavailability permits another backend.
+func ProbeSigners(ctx context.Context, signers []Signer, probe func(Signer) error) error {
+	var unavailable []error
+	for _, signer := range signers {
+		err := probe(signer)
+		if err == nil {
+			return nil
+		}
+		if ctx != nil && ctx.Err() != nil {
+			return errors.Join(ctx.Err(), err)
+		}
+		if !CanFallback(err) {
+			return err
+		}
+		unavailable = append(unavailable, err)
+	}
+	return errors.Join(append([]error{ErrUnavailable}, unavailable...)...)
 }
 
 // EnsureKeyWithFallback creates or opens a key with the strongest usable
@@ -221,21 +288,46 @@ type signingAlgorithm interface {
 	clearPrivateKey(crypto.Signer)
 }
 
+// SignWithPrivateKey signs with an already-loaded key using its public key's
+// JOSE algorithm. It neither accesses storage nor owns the key's lifecycle.
+func SignWithPrivateKey(key crypto.Signer, input []byte) ([]byte, string, error) {
+	if key == nil {
+		return nil, "", errors.New("keysigner: private key is nil")
+	}
+	name, err := AlgForKey(key.Public())
+	if err != nil {
+		return nil, "", err
+	}
+	algorithm, err := algorithmByName(name)
+	if err != nil {
+		return nil, "", err
+	}
+	signature, err := algorithm.sign(key, input)
+	if err != nil {
+		return nil, "", err
+	}
+	return signature, name, nil
+}
+
 func algorithmForRef(ctx context.Context, ref KeyRef) (signingAlgorithm, error) {
 	if err := validateRefContext(ctx, ref); err != nil {
 		return nil, err
 	}
-	switch ref.Algorithm {
+	return algorithmByName(ref.Algorithm)
+}
+
+func algorithmByName(name string) (signingAlgorithm, error) {
+	switch name {
 	case "", AlgES256:
 		return es256Algorithm{}, nil
 	case AlgES384, AlgES512:
-		return newECDSAAlgorithm(ref.Algorithm)
+		return newECDSAAlgorithm(name)
 	case AlgEdDSA:
 		return edDSAAlgorithm{}, nil
 	case AlgRS256:
 		return rs256Algorithm{}, nil
 	default:
-		return nil, fmt.Errorf("keysigner: %w: %q", ErrUnsupportedAlgorithm, ref.Algorithm)
+		return nil, fmt.Errorf("keysigner: %w: %q", ErrUnsupportedAlgorithm, name)
 	}
 }
 

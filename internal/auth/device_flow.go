@@ -76,7 +76,7 @@ func ResolveOAuthEndpoints(brand core.LarkBrand) OAuthEndpoints {
 }
 
 // RequestDeviceAuthorization requests a device authorization code.
-func RequestDeviceAuthorization(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, scope string, errOut io.Writer) (*DeviceAuthResponse, error) {
+func RequestDeviceAuthorization(ctx context.Context, httpClient *http.Client, ca ClientAuth, brand core.LarkBrand, scope string, errOut io.Writer) (*DeviceAuthResponse, error) {
 	endpoints := ResolveOAuthEndpoints(brand)
 
 	if !strings.Contains(scope, "offline_access") {
@@ -87,18 +87,23 @@ func RequestDeviceAuthorization(ctx context.Context, httpClient *http.Client, ap
 		}
 	}
 
-	basicAuth := base64.StdEncoding.EncodeToString([]byte(appId + ":" + appSecret))
-
 	form := url.Values{}
-	form.Set("client_id", appId)
+	form.Set("client_id", ca.AppID)
 	form.Set("scope", scope)
+	usedAssertion, err := ca.ApplyClientAssertion(ctx, form, core.ClientAssertionAudience(brand))
+	if err != nil {
+		return nil, err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoints.DeviceAuthorization, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Authorization", "Basic "+basicAuth)
+	if !usedAssertion {
+		basicAuth := base64.StdEncoding.EncodeToString([]byte(ca.AppID + ":" + ca.AppSecret))
+		req.Header.Set("Authorization", "Basic "+basicAuth)
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -151,25 +156,25 @@ func RequestDeviceAuthorization(ctx context.Context, httpClient *http.Client, ap
 // PollDeviceToken polls the token endpoint until authorization completes or times out.
 // Typed policy errors are returned unchanged so callers can surface their
 // recovery fields instead of treating them as transient network failures.
-func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*DeviceFlowResult, error) {
-	return pollDeviceToken(ctx, httpClient, appId, appSecret, brand, deviceCode, interval, expiresIn, errOut, nil, nil, false)
+func PollDeviceToken(ctx context.Context, httpClient *http.Client, ca ClientAuth, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*DeviceFlowResult, error) {
+	return pollDeviceToken(ctx, httpClient, ca, brand, deviceCode, interval, expiresIn, errOut, nil, nil, false)
 }
 
 // PollDeviceTokenWithMode applies the local three-state DPoP policy. Preferred
 // mode may fall back for local DPoP failures before polling sends a Token
 // Endpoint request, or after three consecutive dpop.InvalidProofOAuthError
 // responses. Cancellation never permits fallback.
-func PollDeviceTokenWithMode(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, mode core.DPoPMode) (*DeviceFlowResult, error) {
-	return pollDeviceTokenWithKeyStore(ctx, httpClient, appId, appSecret, brand, deviceCode,
+func PollDeviceTokenWithMode(ctx context.Context, httpClient *http.Client, ca ClientAuth, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, mode core.DPoPMode) (*DeviceFlowResult, error) {
+	return pollDeviceTokenWithKeyStore(ctx, httpClient, ca, brand, deviceCode,
 		interval, expiresIn, errOut, mode, dpop.NewKeyStore(nil))
 }
 
 // pollDeviceTokenWithKeyStore owns policy selection and the key's lifetime;
 // pollDeviceToken below only performs the exchange with the selected key.
-func pollDeviceTokenWithKeyStore(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, mode core.DPoPMode, keyStore *dpop.KeyStore) (*DeviceFlowResult, error) {
+func pollDeviceTokenWithKeyStore(ctx context.Context, httpClient *http.Client, ca ClientAuth, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, mode core.DPoPMode, keyStore *dpop.KeyStore) (*DeviceFlowResult, error) {
 	mode = core.EffectiveDPoPMode(mode)
 	if mode == core.DPoPModeDisabled {
-		return PollDeviceToken(ctx, httpClient, appId, appSecret, brand, deviceCode, interval, expiresIn, errOut)
+		return PollDeviceToken(ctx, httpClient, ca, brand, deviceCode, interval, expiresIn, errOut)
 	}
 	requestSent := false
 	var key *dpop.Key
@@ -190,7 +195,7 @@ func pollDeviceTokenWithKeyStore(ctx context.Context, httpClient *http.Client, a
 			errs.SubtypeDPoPProofFailed, "failed to generate DPoP key: %v", err).WithCause(err)}
 	} else {
 		var pollErr error
-		result, pollErr = pollDeviceToken(ctx, httpClient, appId, appSecret, brand, deviceCode, interval, expiresIn, errOut, key, &requestSent, mode == core.DPoPModePreferred)
+		result, pollErr = pollDeviceToken(ctx, httpClient, ca, brand, deviceCode, interval, expiresIn, errOut, key, &requestSent, mode == core.DPoPModePreferred)
 		if pollErr != nil {
 			if cleanupErr := keyStore.DeleteKeyContext(context.WithoutCancel(ctx), key); cleanupErr != nil {
 				return nil, errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
@@ -233,7 +238,7 @@ func pollDeviceTokenWithKeyStore(ctx context.Context, httpClient *http.Client, a
 		if errors.Is(result.Err, keysigner.ErrCleanupFailed) && errOut != nil {
 			fmt.Fprintln(errOut, "[lark-cli] [WARN] DPoP key cleanup failed; retrying new token issuance as Bearer")
 		}
-		return PollDeviceToken(ctx, httpClient, appId, appSecret, brand, deviceCode, interval, expiresIn, errOut)
+		return PollDeviceToken(ctx, httpClient, ca, brand, deviceCode, interval, expiresIn, errOut)
 	}
 	return result, nil
 }
@@ -259,7 +264,7 @@ func deviceFlowFallbackAllowed(result *DeviceFlowResult) bool {
 	return ok && (problem.Subtype == errs.SubtypeDPoPProofFailed || problem.Subtype == errs.SubtypeDPoPClockSyncFailed)
 }
 
-func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, proofKey *dpop.Key, requestSent *bool, allowProofFallback bool) (*DeviceFlowResult, error) {
+func pollDeviceToken(ctx context.Context, httpClient *http.Client, ca ClientAuth, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer, proofKey *dpop.Key, requestSent *bool, allowProofFallback bool) (*DeviceFlowResult, error) {
 	if errOut == nil {
 		errOut = io.Discard
 	}
@@ -273,6 +278,10 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 
 	endpoints := ResolveOAuthEndpoints(brand)
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
+	ca, err := ca.ResolveSigner(ctx)
+	if err != nil {
+		return nil, err
+	}
 	currentInterval := interval
 	attempts := 0
 	invalidProofs := 0
@@ -299,8 +308,14 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 		form := url.Values{}
 		form.Set("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
 		form.Set("device_code", deviceCode)
-		form.Set("client_id", appId)
-		form.Set("client_secret", appSecret)
+		form.Set("client_id", ca.AppID)
+		usedAssertion, err := ca.ApplyClientAssertion(ctx, form, core.ClientAssertionAudience(brand))
+		if err != nil {
+			return nil, err
+		}
+		if !usedAssertion {
+			form.Set("client_secret", ca.AppSecret)
+		}
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoints.Token, strings.NewReader(form.Encode()))
 		if err != nil {

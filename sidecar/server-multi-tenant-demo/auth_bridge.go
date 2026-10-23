@@ -28,6 +28,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/dpop"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -37,14 +38,11 @@ import (
 //
 // Identity chain:  PROXY_KEY → clientName → feishuOpenId → keychain token
 type authBridge struct {
-	key       []byte
-	appID     string
-	appSecret string
-	brand     core.LarkBrand
-	cred      *credential.CredentialProvider
-	logger    *log.Logger
-	httpCl    *http.Client
-	dpopMode  core.DPoPMode
+	key    []byte
+	config core.CliConfig
+	signer keysigner.Signer
+	logger *log.Logger
+	httpCl *http.Client
 
 	mu           sync.Mutex
 	pendingPolls map[string]context.CancelFunc
@@ -54,7 +52,7 @@ type authBridge struct {
 	mapFile string
 }
 
-func newAuthBridge(key []byte, appID, appSecret string, brand core.LarkBrand, dpopMode core.DPoPMode, cred *credential.CredentialProvider, logger *log.Logger) *authBridge {
+func newAuthBridge(key []byte, cfg *core.CliConfig, signer keysigner.Signer, logger *log.Logger) *authBridge {
 	configDir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR")
 	mapFile := ""
 	if configDir != "" {
@@ -63,13 +61,10 @@ func newAuthBridge(key []byte, appID, appSecret string, brand core.LarkBrand, dp
 
 	ab := &authBridge{
 		key:          key,
-		appID:        appID,
-		appSecret:    appSecret,
-		brand:        brand,
-		cred:         cred,
+		config:       *cfg,
+		signer:       signer,
 		logger:       logger,
 		httpCl:       &http.Client{Transport: &dpop.Transport{Base: http.DefaultTransport}, Timeout: 30 * time.Second},
-		dpopMode:     dpopMode,
 		pendingPolls: make(map[string]context.CancelFunc),
 		userMap:      make(map[string]string),
 		mapFile:      mapFile,
@@ -208,7 +203,7 @@ func (ab *authBridge) handleLogin(w http.ResponseWriter, r *http.Request, body [
 		len(strings.Fields(scope)), req.Domains, clientID)
 
 	authResp, err := larkauth.RequestDeviceAuthorization(
-		r.Context(), ab.httpCl, ab.appID, ab.appSecret, ab.brand, scope, io.Discard,
+		r.Context(), ab.httpCl, larkauth.ClientAuthFromConfig(&ab.config, ab.signer), ab.config.Brand, scope, io.Discard,
 	)
 	if err != nil {
 		jsonError(w, http.StatusBadGateway, "device authorization failed: "+err.Error())
@@ -258,8 +253,10 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 		ab.mu.Unlock()
 	}()
 
-	result, err := larkauth.PollDeviceTokenWithMode(ctx, ab.httpCl, ab.appID, ab.appSecret, ab.brand,
-		req.DeviceCode, 5, 600, io.Discard, ab.dpopMode)
+	result, err := larkauth.PollDeviceTokenWithMode(
+		ctx, ab.httpCl, larkauth.ClientAuthFromConfig(&ab.config, ab.signer), ab.config.Brand,
+		req.DeviceCode, 5, 600, io.Discard, ab.config.DPoPMode,
+	)
 	if err != nil {
 		jsonError(w, http.StatusBadGateway, "token polling failed: "+err.Error())
 		ab.logger.Printf("AUTH_BRIDGE_ERROR action=poll device_code_prefix=%s error=%q",
@@ -296,7 +293,7 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 		now = result.Token.DPoP.Key().Clock().Now().UnixMilli()
 	}
 	storedToken := &larkauth.StoredUAToken{
-		AppId:            ab.appID,
+		AppId:            ab.config.AppID,
 		AccessToken:      result.Token.AccessToken,
 		RefreshToken:     result.Token.RefreshToken,
 		ExpiresAt:        now + int64(result.Token.ExpiresIn)*1000,
@@ -315,7 +312,7 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 		storedToken.ClockSyncedAtMs = clockState.SyncedAtMillis
 	}
 
-	ep := core.ResolveEndpoints(ab.brand)
+	ep := core.ResolveEndpoints(ab.config.Brand)
 	openID, userName, err := fetchUserInfoDirect(ctx, ab.httpCl, ep.Open, result.Token.AccessToken, result.Token.DPoP)
 	if err != nil {
 		err = cleanupAuthBridgeDPoPKey(ctx, keyStore, result.Token.DPoP, err)
@@ -340,9 +337,9 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 		return
 	}
 
-	if err := addUserToConfig(ab.appID, openID, userName); err != nil {
+	if err := addUserToConfig(ab.config.AppID, openID, userName); err != nil {
 		if storedToken.DPoPKeyID != "" {
-			if cleanupErr := larkauth.RemoveStoredToken(ab.appID, openID); cleanupErr != nil {
+			if cleanupErr := larkauth.RemoveStoredToken(ab.config.AppID, openID); cleanupErr != nil {
 				err = fmt.Errorf("sync login profile and roll back stored token: %w", errors.Join(err, cleanupErr))
 			}
 			jsonError(w, http.StatusInternalServerError, "failed to sync login profile: "+err.Error())
@@ -398,11 +395,11 @@ func (ab *authBridge) handleStatus(w http.ResponseWriter, _ *http.Request, body 
 
 	var users []map[string]interface{}
 	for _, app := range multi.Apps {
-		if app.AppId != ab.appID {
+		if app.AppId != ab.config.AppID {
 			continue
 		}
 		for _, u := range app.Users {
-			stored, _ := larkauth.GetStoredToken(ab.appID, u.UserOpenId)
+			stored, _ := larkauth.GetStoredToken(ab.config.AppID, u.UserOpenId)
 			status := "unknown"
 			if stored != nil {
 				status = larkauth.TokenStatus(stored)
@@ -428,7 +425,7 @@ func (ab *authBridge) handleStatus(w http.ResponseWriter, _ *http.Request, body 
 		resp["client_id"] = clientID
 		resp["mapped_open_id"] = mappedOpenID
 		if mappedOpenID != "" {
-			stored, _ := larkauth.GetStoredToken(ab.appID, mappedOpenID)
+			stored, _ := larkauth.GetStoredToken(ab.config.AppID, mappedOpenID)
 			if stored != nil {
 				resp["mapped_status"] = larkauth.TokenStatus(stored)
 				for _, u := range users {
@@ -463,14 +460,8 @@ func (ab *authBridge) resolveUserTokenByClient(ctx context.Context, clientName s
 
 	ab.logger.Printf("AUTH_BRIDGE_RESOLVE client=%s feishu=%s", clientName, openID)
 
-	opts := larkauth.UATCallOptions{
-		UserOpenId:   openID,
-		AppId:        ab.appID,
-		AppSecret:    ab.appSecret,
-		Domain:       ab.brand,
-		DPoPMode:     ab.dpopMode,
-		DPoPKeyStore: dpop.NewKeyStore(nil),
-	}
+	opts := larkauth.NewUATCallOptions(&ab.config, nil, ab.signer)
+	opts.UserOpenId = openID
 	token, err := larkauth.GetValidAccessToken(ctx, ab.httpCl, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve token for user %s: %v", openID, err)

@@ -267,11 +267,11 @@ func configRecoveryHint(subtype errs.Subtype) recovery.Hint {
 	switch subtype {
 	case errs.SubtypeInvalidClient:
 		return recovery.Join("", recovery.Command(recovery.TargetConfigInit,
-			"run `lark-cli config init` to set valid app_id and app_secret")).
+			"run `lark-cli config init` to configure valid app credentials")).
 			WithFallback("configure valid app credentials through this distribution's supported setup flow")
 	case errs.SubtypeNotConfigured:
 		return recovery.Join("", recovery.Command(recovery.TargetConfigInit,
-			"run `lark-cli config init` to set up app_id and app_secret")).
+			"run `lark-cli config init` to configure app credentials")).
 			WithFallback("configure app credentials through this distribution's supported setup flow")
 	case errs.SubtypeInvalidConfig:
 		return recovery.Join("; ",
