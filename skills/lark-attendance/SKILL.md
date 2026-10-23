@@ -1,7 +1,7 @@
 ---
 name: lark-attendance
 version: 1.0.0
-description: "飞书考勤打卡：查询自己的考勤打卡记录"
+description: "飞书考勤打卡：查询自己的考勤打卡记录。当用户提到查询考勤打卡记录、上下班打卡情况、迟到早退或漏卡结果等个人考勤查询意图时使用。仅用于个人考勤打卡记录查询，不负责考勤排班管理或请假审批。"
 metadata:
   requires:
     bins: ["lark-cli"]

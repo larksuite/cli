@@ -65,3 +65,29 @@ func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
 	sort.Strings(keys)
 	assertStrings(t, keys, directories)
 }
+
+func TestAttendanceSkillDescriptionIncludesTriggerAndBoundary(t *testing.T) {
+	repoRoot := filepath.Join("..", "..")
+	raw, err := vfs.ReadFile(filepath.Join(repoRoot, "skills", "lark-attendance", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var descriptionLine string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(line, "description:") {
+			descriptionLine = line
+			break
+		}
+	}
+	if descriptionLine == "" {
+		t.Fatal("lark-attendance SKILL.md is missing frontmatter description")
+	}
+	for _, required := range []string{
+		"当用户",
+		"仅用于个人考勤打卡记录查询",
+	} {
+		if !strings.Contains(descriptionLine, required) {
+			t.Fatalf("lark-attendance description %q must contain %q", descriptionLine, required)
+		}
+	}
+}
