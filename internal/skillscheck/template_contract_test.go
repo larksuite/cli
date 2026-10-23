@@ -74,8 +74,7 @@ func TestDocXMLSkillOrderedListSeqGuidance(t *testing.T) {
 	}
 	doc := string(raw)
 	for _, required := range []string{
-		`<li seq="auto">`,
-		`<li seq="3">`,
+		`<ol><li seq="auto">第一项</li><li seq="3">第二项</li></ol>`,
 		"`<ol>` 本身不支持 `seq`",
 	} {
 		if !strings.Contains(doc, required) {
