@@ -226,7 +226,7 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 		form.Set("auth_attestation", opts.AuthAttestation)
 	}
 	if opts.TargetAppID != "" {
-		form.Set("client_id", opts.TargetAppID)
+		form.Set("clientID", opts.TargetAppID)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(form.Encode()))
@@ -343,8 +343,8 @@ func BuildVerificationURL(baseURL, cliVersion, targetAppID string) string {
 	if q.Get("from") == "" {
 		q.Set("from", "cli")
 	}
-	if targetAppID != "" && q.Get("client_id") == "" {
-		q.Set("client_id", targetAppID)
+	if targetAppID != "" && q.Get("clientID") == "" {
+		q.Set("clientID", targetAppID)
 	}
 	u.RawQuery = q.Encode()
 	return u.String()
@@ -358,8 +358,8 @@ func appendVerificationURLFallback(baseURL, cliVersion, targetAppID string) stri
 	out := baseURL + sep + "lpv=" + url.QueryEscape(cliVersion) +
 		"&ocv=" + url.QueryEscape(cliVersion) +
 		"&from=cli"
-	if targetAppID != "" && !strings.Contains(baseURL, "client_id=") {
-		out += "&client_id=" + url.QueryEscape(targetAppID)
+	if targetAppID != "" && !strings.Contains(baseURL, "clientID=") {
+		out += "&clientID=" + url.QueryEscape(targetAppID)
 	}
 	return out
 }
