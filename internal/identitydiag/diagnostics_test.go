@@ -663,41 +663,70 @@ func TestDiagnose_CorruptStoredTokenCarriesReauthorizationRecovery(t *testing.T)
 }
 
 func TestDiagnose_UserIdentityValidWithoutRefreshTokenWarnsBeforeExpiry(t *testing.T) {
-	keyring.MockInit()
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+	for _, tc := range []struct {
+		name   string
+		verify bool
+	}{
+		{name: "local", verify: false},
+		{name: "verified", verify: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keyring.MockInit()
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
 
-	cfg := &core.CliConfig{
-		AppID:      "test-app-no-rt",
-		AppSecret:  "secret",
-		Brand:      core.BrandFeishu,
-		UserOpenId: "ou_no_rt",
-		UserName:   "tester",
-	}
-	now := time.Now()
-	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
-		AppId:            cfg.AppID,
-		UserOpenId:       cfg.UserOpenId,
-		AccessToken:      "user-access-token",
-		ExpiresAt:        now.Add(90 * time.Minute).UnixMilli(),
-		RefreshExpiresAt: now.Add(90 * time.Minute).UnixMilli(),
-		GrantedAt:        now.Add(-30 * time.Minute).UnixMilli(),
-		Scope:            "contact:user.base:readonly offline_access",
-	}); err != nil {
-		t.Fatalf("SetStoredToken() error = %v", err)
-	}
+			cfg := &core.CliConfig{
+				AppID:      "test-app-no-rt",
+				AppSecret:  "secret",
+				Brand:      core.BrandFeishu,
+				UserOpenId: "ou_no_rt",
+				UserName:   "tester",
+			}
+			now := time.Now()
+			if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
+				AppId:            cfg.AppID,
+				UserOpenId:       cfg.UserOpenId,
+				AccessToken:      "user-access-token",
+				ExpiresAt:        now.Add(90 * time.Minute).UnixMilli(),
+				RefreshExpiresAt: now.Add(90 * time.Minute).UnixMilli(),
+				GrantedAt:        now.Add(-30 * time.Minute).UnixMilli(),
+				Scope:            "contact:user.base:readonly offline_access",
+			}); err != nil {
+				t.Fatalf("SetStoredToken() error = %v", err)
+			}
 
-	f, _, _, _ := cmdutil.TestFactory(t, cfg)
-	got := Diagnose(context.Background(), f, cfg, false)
-	if got.User.Status != StatusReady || !got.User.Available {
-		t.Fatalf("user = %#v, want ready and available until the access token expires", got.User)
-	}
-	if !strings.Contains(got.User.Message, "received no refresh token") || !strings.Contains(got.User.Message, got.User.ExpiresAt) {
-		t.Fatalf("user message = %q, want expiry time and missing refresh token", got.User.Message)
-	}
-	for _, want := range []string{`"Refresh user_access_token"`, "publish a new app version", "/app/test-app-no-rt/safe"} {
-		if !strings.Contains(got.User.Hint, want) {
-			t.Fatalf("user hint = %q, want substring %q", got.User.Hint, want)
-		}
+			f, _, _, reg := cmdutil.TestFactory(t, cfg)
+			if tc.verify {
+				reg.Register(&httpmock.Stub{
+					Method: http.MethodGet,
+					URL:    "/open-apis/bot/v3/info",
+					Body: map[string]interface{}{
+						"code": 0,
+						"msg":  "ok",
+						"bot":  map[string]interface{}{"open_id": "ou_bot", "app_name": "diagnostic bot"},
+					},
+				})
+				reg.Register(&httpmock.Stub{
+					Method: http.MethodGet,
+					URL:    larkauth.PathUserInfoV1,
+					Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+				})
+			}
+			got := Diagnose(context.Background(), f, cfg, tc.verify)
+			if got.User.Status != StatusReady || !got.User.Available {
+				t.Fatalf("user = %#v, want ready and available until the access token expires", got.User)
+			}
+			if tc.verify && (got.User.Verified == nil || !*got.User.Verified) {
+				t.Fatalf("user verified = %v, want true", got.User.Verified)
+			}
+			if !strings.Contains(got.User.Message, "received no refresh token") || !strings.Contains(got.User.Message, got.User.ExpiresAt) {
+				t.Fatalf("user message = %q, want expiry time and missing refresh token", got.User.Message)
+			}
+			for _, want := range []string{`"Refresh user_access_token"`, "publish a new app version", "/app/test-app-no-rt/safe"} {
+				if !strings.Contains(got.User.Hint, want) {
+					t.Fatalf("user hint = %q, want substring %q", got.User.Hint, want)
+				}
+			}
+		})
 	}
 }

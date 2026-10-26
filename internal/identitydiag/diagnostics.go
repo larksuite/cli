@@ -425,9 +425,9 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	}
 
 	id.Verified = boolPtr(true)
-	if id.Status == StatusReady {
-		id.Message = "User identity: ready"
-	} else {
+	// A ready identity keeps the message set above, which may carry the
+	// no-refresh-token expiry warning.
+	if id.Status != StatusReady {
 		id.Message = "User identity: needs refresh (server verification succeeded after refresh)"
 	}
 	return id
