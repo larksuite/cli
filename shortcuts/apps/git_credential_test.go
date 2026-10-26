@@ -897,8 +897,7 @@ func TestFactoryIssuerBranches(t *testing.T) {
 
 // A helper that cannot answer a "get" for its own repository must tell git to
 // quit; otherwise git falls back to an interactive prompt and hangs in agents.
-func TestRunGitCredentialHelperGetQuitsWhenItCannotAnswer(t *testing.T) {
-	const quit = "quit=1\n\n"
+func TestRunGitCredentialHelperStaysSilentBeforeAManagedURLIsFound(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	cases := []struct {
@@ -907,18 +906,19 @@ func TestRunGitCredentialHelperGetQuitsWhenItCannotAnswer(t *testing.T) {
 		action string
 		in     io.Reader
 		config func() (*core.CliConfig, error)
-		stdout string
+		stderr string
 	}{
-		{name: "missing app id", appID: "", action: "get", in: bytes.NewBufferString("protocol=https\nhost=example.com\n\n"), stdout: quit},
-		{name: "unreadable input", appID: "app_xxx", action: "get", in: errorReader{}, stdout: quit},
+		{name: "missing app id", appID: "", action: "get", in: bytes.NewBufferString("protocol=https\nhost=example.com\n\n"), stderr: "missing app_id"},
+		{name: "unreadable input", appID: "app_xxx", action: "get", in: errorReader{}, stderr: "Git credential unavailable"},
 		{name: "config error", appID: "app_xxx", action: "get", in: bytes.NewBufferString("protocol=https\nhost=example.com\npath=/git/u/app.git\n\n"),
-			config: func() (*core.CliConfig, error) { return nil, errors.New("config failed") }, stdout: quit},
-		{name: "store without app id stays silent", appID: "", action: "store", in: bytes.NewBufferString("protocol=https\nhost=example.com\n\n"), stdout: ""},
+			config: func() (*core.CliConfig, error) { return nil, errors.New("config failed") }, stderr: "config failed"},
+		{name: "store without app id", appID: "", action: "store", in: bytes.NewBufferString("protocol=https\nhost=example.com\n\n"), stderr: "missing app_id"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			factory, stdout, _ := newAppsExecuteFactory(t)
-			factory.IOStreams.ErrOut = &bytes.Buffer{}
+			errOut := &bytes.Buffer{}
+			factory.IOStreams.ErrOut = errOut
 			factory.IOStreams.In = tc.in
 			if tc.config != nil {
 				factory.Config = tc.config
@@ -926,8 +926,11 @@ func TestRunGitCredentialHelperGetQuitsWhenItCannotAnswer(t *testing.T) {
 			if err := runGitCredentialHelper(context.Background(), factory, tc.appID, tc.action); err != nil {
 				t.Fatalf("runGitCredentialHelper returned error: %v", err)
 			}
-			if got := stdout.String(); got != tc.stdout {
-				t.Fatalf("stdout = %q, want %q", got, tc.stdout)
+			if got := stdout.String(); got != "" {
+				t.Fatalf("stdout = %q, want empty so other helpers can still answer", got)
+			}
+			if !strings.Contains(errOut.String(), tc.stderr) {
+				t.Fatalf("stderr = %q, want %q", errOut.String(), tc.stderr)
 			}
 		})
 	}

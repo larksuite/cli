@@ -1657,8 +1657,17 @@ func TestManagerGetBranches(t *testing.T) {
 	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https"}, testProfile(), &out, &errOut); err != nil {
 		t.Fatalf("Get invalid input returned error: %v", err)
 	}
-	if !strings.Contains(errOut.String(), "protocol and host") {
-		t.Fatalf("stderr = %q, want protocol/host validation", errOut.String())
+	if out.Len() != 0 || !strings.Contains(errOut.String(), "protocol and host") {
+		t.Fatalf("invalid input stdout=%q stderr=%q, want empty stdout and protocol/host validation", out.String(), errOut.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if err := manager.Get(context.Background(), CredentialInput{Protocol: "ssh", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), &out, &errOut); err != nil {
+		t.Fatalf("Get unsupported protocol returned error: %v", err)
+	}
+	if out.Len() != 0 || !strings.Contains(errOut.String(), "only supports http/https") {
+		t.Fatalf("unsupported protocol stdout=%q stderr=%q, want empty stdout so other helpers can answer", out.String(), errOut.String())
 	}
 
 	out.Reset()

@@ -199,11 +199,12 @@ func (m *Manager) List() (*ListResult, error) {
 	return &ListResult{Records: out}, nil
 }
 
-// Get answers a git credential "get" request. When it manages the URL but
-// cannot supply a credential it tells git to quit instead of falling through
-// to an interactive username/password prompt, which never returns in a
-// non-interactive agent session and leaves `git push` hanging. URLs without a
-// lark-cli record stay silent so other helpers can still answer them.
+// Get answers a git credential "get" request. When the URL has a lark-cli
+// record but no credential can be supplied it tells git to quit instead of
+// falling through to an interactive username/password prompt, which never
+// returns in a non-interactive agent session and leaves `git push` hanging.
+// Requests lark-cli does not manage (no record, or not an HTTP(S) URL) stay
+// silent so other helpers can still answer them.
 func (m *Manager) Get(ctx context.Context, input CredentialInput, current ProfileContext, out, errOut io.Writer) error {
 	tracked := &credentialWriter{w: out}
 	if err := m.get(ctx, input, current, tracked, errOut); err != nil {
@@ -219,6 +220,7 @@ func (m *Manager) get(ctx context.Context, input CredentialInput, current Profil
 	url, err := NormalizeCredentialInput(input)
 	if err != nil {
 		writeCredentialError(errOut, "Git credential unavailable", err)
+		out.unmanaged = true
 		return nil
 	}
 	record, pat, ok, err := m.readConfirmed(url, current)
@@ -540,7 +542,7 @@ func parseNormalizedForInput(raw string) (CredentialInput, error) {
 }
 
 // credentialWriter records whether a credential reached git and whether the
-// requested URL has no lark-cli record at all.
+// request is outside what lark-cli manages.
 type credentialWriter struct {
 	w         io.Writer
 	wrote     bool
