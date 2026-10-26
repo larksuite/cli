@@ -1,15 +1,16 @@
 # Apps CLI E2E Coverage
 
 ## Metrics
-- Denominator: 28 leaf commands in the selected apps E2E coverage set (not all 103 apps shortcuts)
-- Selected command coverage: 100% (28/28)
-- API dry-run coverage: 100% (26/26 API-backed commands)
+- Denominator: 29 leaf commands in the selected apps E2E coverage set (not all 104 apps shortcuts)
+- Selected command coverage: 100% (29/29)
+- API dry-run coverage: 100% (27/27 API-backed commands)
 - Local E2E coverage: 100% (2/2 local-only commands)
 - Live coverage: file and role workflows are fixture-gated and skipped by default CI. File upload covers absolute-path upload, metadata readback, and cleanup; role workflows cover role lifecycle and member mutations with cleanup. Release creation has manual BOE evidence through same-ID terminal polling, but is not run in default CI because it triggers a deployment and has no rollback endpoint. All six Miaoda collaborator commands have manual Feishu BOE evidence: user/department/chat CRUD was verified with cleanup on 2026-08-04, and unpaginated list plus settings get/set, read-only errors, combined writes, readback, and rollback were reverified on 2026-08-06.
 
 ## Summary
 - `TestAppsCreateDryRun`: happy path with `--app-type html`, all-fields shape (including `--access-scope tenant`), rejection paths (missing name, missing app-type, invalid app-type, legacy uppercase `HTML`, invalid access-scope). `--app-type` is a strict lowercase enum (`html`/`frontend`/`full_stack`) and `--access-scope` a strict lowercase enum (`self`/`tenant`/`public`) forwarded verbatim as `access_scope`; the CLI does not normalize case — legacy uppercase compatibility is a server concern.
 - `TestAppsUpdateDryRun`: partial-field PATCH semantics; `--app-id` and at-least-one-field validation.
+- `TestAppsDeleteDryRun`: two-step plan (GET the app to check `--confirm-name`, then DELETE the same path, nothing else); missing `--app-id` / `--confirm-name` and a blank `--confirm-name` are rejected with exit 2.
 - `TestAppsListDryRun`: default `page_size=20`; empty `--page-token` omitted; negative size passed through to server (no client-side bound check); `--keyword`/`--ownership`/`--app-type` pass-through + empty-omission; invalid `--ownership` and legacy uppercase `--app-type` enum rejection.
 - `TestAppsAccessScopeSetDryRun`: CLI input `specific`/`public`/`tenant` -> server enum `Range`/`All`/`Tenant`; `apply_config.approvers` shape; four mutex rejection paths.
 - `TestAppsAccessScopeGetDryRun`: URL shape; no body/params on GET; `--app-id` required.
@@ -33,16 +34,17 @@
 - `TestAppsMemberUnsupportedWriteFlagsAreNotRegistered`: `external_invite` and `copy_download_by` remain readable, while their unsupported setter flags are absent from the real CLI command and rejected as unknown flags.
 - `TestAppsExportContentTypeE2E`: response-handling proof for `+export` against a local CONNECT-terminating HTTPS gateway. An archive served as `application/x-zip-compressed`, `binary/octet-stream`, `application/force-download`, or with no Content-Type reaches disk byte-for-byte; a `application/json` or `application/problem+json` error envelope fails the command, writes no file, and surfaces the server's reason. Dry-run cannot cover this: the request is identical across all six cases and only the response differs.
 
-Blocked: General app create live E2E is intentionally not implemented yet. Apps has no `+delete` endpoint, so a create-and-cleanup workflow would leak tenant state. Release-create live E2E is also intentionally manual: it starts a deployment (and may start approval), while the CLI has no deterministic rollback/cancel endpoint for cleanup. File upload and selected role live workflows remain fixture-gated; each uses dedicated fixtures and cleans up the resources it mutates. Miaoda collaborator live coverage is currently manual rather than default-CI automation because its write cases require isolated user, department, and chat fixtures; the BOE contract and cleanup workflows have been exercised end to end.
+Blocked: General app create live E2E is intentionally not implemented yet. Apps shortcuts are user-only, and `+delete` moves an app to the caller's trash rather than removing it, so every create-and-cleanup run would leave an app behind until the trash retention period ends. Release-create live E2E is also intentionally manual: it starts a deployment (and may start approval), while the CLI has no deterministic rollback/cancel endpoint for cleanup. File upload and selected role live workflows remain fixture-gated; each uses dedicated fixtures and cleans up the resources it mutates. Miaoda collaborator live coverage is currently manual rather than default-CI automation because its write cases require isolated user, department, and chat fixtures; the BOE contract and cleanup workflows have been exercised end to end.
 
 ## Command Table
 
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
-| ✓ | apps +create | shortcut | apps_create_dryrun_test.go::TestAppsCreateDryRun | `--name`, `--app-type` (required, case-sensitive, `html`/`frontend`/`full_stack`), `--description`, `--icon-url`, `--access-scope` (optional, `self`/`tenant`/`public`, verbatim passthrough; omitted when unset) | live blocked: no +delete to clean up |
+| ✓ | apps +create | shortcut | apps_create_dryrun_test.go::TestAppsCreateDryRun | `--name`, `--app-type` (required, case-sensitive, `html`/`frontend`/`full_stack`), `--description`, `--icon-url`, `--access-scope` (optional, `self`/`tenant`/`public`, verbatim passthrough; omitted when unset) | live blocked: +delete only moves the created app to trash |
 | ✓ | apps +features | shortcut | apps_features_dryrun_test.go::TestAppsFeaturesDryRun | `--app-id`; optional `--operation-ref` query; GET with no body; positional arguments rejected | live blocked: needs a deployed app features server and fixture app |
 | ✓ | apps +feature-enable | shortcut | apps_features_dryrun_test.go::TestAppsFeatureEnableDryRun | required `--feature` (enum, only `database`); `--app-id`; optional UUID `--idempotent-key`; plan is one POST `/features/database/enable` whose body is only `idempotent_key` (placeholder in dry-run); with `--idempotent-key` it first GETs features with `operation_ref`; missing/empty/unsupported `--feature` and malformed key exit 2 validation; positional arguments (such as `+feature-enable database`) rejected | live blocked: enabling the database allocates one and there is no disable endpoint to clean up |
-| ✓ | apps +update | shortcut | apps_update_dryrun_test.go::TestAppsUpdateDryRun | `--app-id`; at least one of `--name`/`--description` | live blocked: no +delete |
+| ✓ | apps +update | shortcut | apps_update_dryrun_test.go::TestAppsUpdateDryRun | `--app-id`; at least one of `--name`/`--description` | live blocked: needs a disposable fixture app |
+| ✓ | apps +delete | shortcut | apps_delete_dryrun_test.go::TestAppsDeleteDryRun | `--app-id`; `--confirm-name` (required, must equal the app's current name); high-risk confirmation | live blocked: user-only, and each run leaves the app in trash |
 | ✓ | apps +list | shortcut | apps_list_dryrun_test.go::TestAppsListDryRun | `--keyword`; `--ownership` (enum all/mine/shared); `--app-type` (enum html/frontend/full_stack); `--page-size` default 20; `--page-token` cursor | live blocked: needs tenant fixtures |
 | ✓ | apps +access-scope-set | shortcut | apps_access_scope_set_dryrun_test.go::TestAppsAccessScopeSetDryRun | `--scope specific/public/tenant`; `--targets` JSON; `--apply-enabled --approver`; `--require-login` | live blocked: needs real open_ids |
 | ✓ | apps +access-scope-get | shortcut | apps_access_scope_get_dryrun_test.go::TestAppsAccessScopeGetDryRun | `--app-id` | live blocked: depends on +access-scope-set state |

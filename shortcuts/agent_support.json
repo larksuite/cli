@@ -125,6 +125,9 @@
     "apps +db-table-list": {
       "agentSupport": "allowed"
     },
+    "apps +delete": {
+      "agentSupport": "allowed"
+    },
     "apps +deploy": {
       "agentSupport": "allowed"
     },
