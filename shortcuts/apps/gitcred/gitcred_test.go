@@ -521,6 +521,31 @@ func TestManagerGetUsesValidPATWithoutRefresh(t *testing.T) {
 	}
 }
 
+func TestManagerGetReturnsCredentialWriteErrorWithoutQuit(t *testing.T) {
+	now := time.Unix(1780000000, 0)
+	kc := newFakeKeychain()
+	issuer := &fakeIssuer{next: &IssuedCredential{
+		GitHTTPURL: "https://example.com/git/u/app.git",
+		Username:   "x-access-token",
+		PAT:        "valid-pat",
+		ExpiresAt:  now.Add(24 * time.Hour).Unix(),
+	}}
+	manager := NewManager(NewStoreAt(filepath.Join(t.TempDir(), MetadataFilename)), NewSecretStore(kc), nil, issuer)
+	manager.Now = func() time.Time { return now }
+	if _, err := manager.Init(context.Background(), testProfile(), "app_xxx"); err != nil {
+		t.Fatalf("Init returned error: %v", err)
+	}
+
+	out := &failWriter{failAt: 2}
+	err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), out, &bytes.Buffer{})
+	if err == nil || err.Error() != "write 2 failed" {
+		t.Fatalf("Get error = %v, want the credential write error", err)
+	}
+	if out.writes != 2 {
+		t.Fatalf("writes = %d, want 2: no quit after a partially written credential", out.writes)
+	}
+}
+
 func TestManagerGetQuitsWhenRefreshFails(t *testing.T) {
 	now := time.Unix(1780000000, 0)
 	kc := newFakeKeychain()
