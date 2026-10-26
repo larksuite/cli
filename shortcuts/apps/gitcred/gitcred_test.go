@@ -2007,12 +2007,15 @@ func TestManagerGetReadErrorsStayOnStderr(t *testing.T) {
 		t.Fatalf("write invalid metadata: %v", err)
 	}
 	manager := NewManager(NewStoreAt(path), NewSecretStore(newFakeKeychain()), nil, nil)
-	var errOut bytes.Buffer
-	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/repo.git"}, testProfile(), &bytes.Buffer{}, &errOut); err != nil {
+	var out, errOut bytes.Buffer
+	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/repo.git"}, testProfile(), &out, &errOut); err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
 	if !strings.Contains(errOut.String(), "invalid git.json") {
 		t.Fatalf("stderr = %q, want config parse error", errOut.String())
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty: a failed store read has not found a lark-cli record", out.String())
 	}
 }
 

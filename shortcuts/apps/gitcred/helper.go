@@ -226,6 +226,9 @@ func (m *Manager) get(ctx context.Context, input CredentialInput, current Profil
 	record, pat, ok, err := m.readConfirmed(url, current)
 	if err != nil {
 		writeCredentialError(errOut, "Git credential unavailable", err)
+		// Only a found record (login mismatch) shows that lark-cli manages
+		// the URL; a failed store read leaves the request to other helpers.
+		out.unmanaged = record.AppID == ""
 		return nil
 	}
 	if !ok {
@@ -461,13 +464,16 @@ func (m *Manager) Erase(r io.Reader) error {
 	return m.Secrets.Remove(record.PATRef)
 }
 
+// readConfirmed returns the record for url and its PAT. On a login mismatch
+// the found record is returned along with the error, so callers can tell it
+// apart from a failed store read, which returns an empty record.
 func (m *Manager) readConfirmed(url string, current ProfileContext) (CredentialRecord, string, bool, error) {
 	record, err := m.Store.FindByURL(url)
 	if err != nil || record == nil {
 		return CredentialRecord{}, "", false, err
 	}
 	if record.ProfileAppID != current.ProfileAppID || record.UserOpenID != current.UserOpenID {
-		return CredentialRecord{}, "", false, errs.NewValidationError(errs.SubtypeFailedPrecondition, "current login does not match initialized credential").
+		return *record, "", false, errs.NewValidationError(errs.SubtypeFailedPrecondition, "current login does not match initialized credential").
 			WithHint(fmt.Sprintf("run `lark-cli apps +git-credential-init --app-id %s` with the current login or switch back to the original account", record.AppID))
 	}
 	pat, err := m.Secrets.Get(record.PATRef)
