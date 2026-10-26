@@ -48,6 +48,6 @@ lark-cli lingo +search --query "服务树" --page-token "<page_token>"
 
 ## 3. 权限与授权
 
-- `+get` 与 `+search` 均为只读命令（`risk: read`），默认使用应用身份（`--as bot`，即 `tenant_access_token`），也支持显式传入 `--as user`，所需权限为 `baike:entity:readonly`。
+- `+get` 与 `+search` 均为只读命令（`risk: read`），默认使用应用身份（`--as bot`，即 `tenant_access_token`），所需权限为 `baike:entity:readonly`。显式 `--as user` 会被接受，但该权限不能授予用户身份，因此 `--as user` 会因缺权限失败。
 - 飞书开放平台中 `baike:entity*` 权限仅作为**应用身份权限（Tenant token scopes）**提供，因此不带 `--as` 时默认以 `bot` 身份调用，无需对 `user` 执行 `auth login`。
 - 若报缺权限（`99991672`）：请前往飞书开放平台开发者后台，在「权限管理」中为应用开通 `baike:entity:readonly`（应用身份权限），并在「版本管理与发布」中创建版本并申请发布生效。
