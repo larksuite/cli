@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -270,9 +271,15 @@ func TestLingoSearchValidateAndExecute(t *testing.T) {
 
 	t.Run("execute returns entities and pagination", func(t *testing.T) {
 		f, stdout, _, reg := cmdutil.TestFactory(t, lingoTestConfig(t))
+		var repoID, pageToken, pageSize string
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/lingo/v1/entities/search",
+			OnMatch: func(req *http.Request) {
+				repoID = req.URL.Query().Get("repo_id")
+				pageToken = req.URL.Query().Get("page_token")
+				pageSize = req.URL.Query().Get("page_size")
+			},
 			Body: map[string]interface{}{
 				"code": 0,
 				"msg":  "ok",
@@ -291,9 +298,12 @@ func TestLingoSearchValidateAndExecute(t *testing.T) {
 		})
 
 		if err := runLingoShortcut(t, LingoSearch, f, stdout, []string{
-			"+search", "--query", "AML", "--repo-id", "repo_1", "--page-size", "10",
+			"+search", "--query", "AML", "--repo-id", "repo_1", "--page-size", "10", "--page-token", "token_1",
 		}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if repoID != "repo_1" || pageToken != "token_1" || pageSize != "10" {
+			t.Fatalf("unexpected search query: repo_id=%q page_token=%q page_size=%q", repoID, pageToken, pageSize)
 		}
 		data := decodeEnvelope(t, stdout)
 		entities := common.GetSlice(data, "entities")
