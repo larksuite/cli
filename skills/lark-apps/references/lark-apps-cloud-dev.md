@@ -26,7 +26,7 @@
 - `latest_turn.user_message`：本轮用户发的消息。
 - `latest_turn.messages`：本轮完成后回看全貌的消息列表，按时序排列、每条带 `role`（用户消息、模型回复、工具调用等都在内，role 取值如 `user` / `assistant` / `tool`）。注意它在 `latest_turn` 仍 running/初始化期可能为空——该轮**进行中**的实时进展改用 `+session-messages-list --turn-id <latest_turn.turn_id>` 读（见下方轮询规则）。
 - `queued_messages` / `queued_count`：还没开始跑、排在后面的消息。
-- `next_poll_after_ms`：建议的下次轮询间隔（毫秒）。服务端每次都会返回，取值不随初始化 / 增量变化。
+- `next_poll_after_ms`：建议的下次轮询间隔（毫秒），取值不随初始化 / 增量变化。有值时按它轮询；该字段可能缺失，缺失时按下方轮询规则的兜底间隔。
 
 轮询规则：
 
