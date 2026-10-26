@@ -199,7 +199,23 @@ func (m *Manager) List() (*ListResult, error) {
 	return &ListResult{Records: out}, nil
 }
 
+// Get answers a git credential "get" request. When it manages the URL but
+// cannot supply a credential it tells git to quit instead of falling through
+// to an interactive username/password prompt, which never returns in a
+// non-interactive agent session and leaves `git push` hanging. URLs without a
+// lark-cli record stay silent so other helpers can still answer them.
 func (m *Manager) Get(ctx context.Context, input CredentialInput, current ProfileContext, out, errOut io.Writer) error {
+	tracked := &credentialWriter{w: out}
+	if err := m.get(ctx, input, current, tracked, errOut); err != nil {
+		return err
+	}
+	if !tracked.wrote && !tracked.unmanaged {
+		return WriteGitQuit(out)
+	}
+	return nil
+}
+
+func (m *Manager) get(ctx context.Context, input CredentialInput, current ProfileContext, out *credentialWriter, errOut io.Writer) error {
 	url, err := NormalizeCredentialInput(input)
 	if err != nil {
 		writeCredentialError(errOut, "Git credential unavailable", err)
@@ -211,6 +227,7 @@ func (m *Manager) Get(ctx context.Context, input CredentialInput, current Profil
 		return nil
 	}
 	if !ok {
+		out.unmanaged = true
 		return nil
 	}
 	if m.usable(record, pat) {
@@ -520,6 +537,26 @@ func parseNormalizedForInput(raw string) (CredentialInput, error) {
 		return CredentialInput{Protocol: parts[0], Host: hostPath, Path: "/"}, nil
 	}
 	return CredentialInput{Protocol: parts[0], Host: hostPath[:idx], Path: hostPath[idx:]}, nil
+}
+
+// credentialWriter records whether a credential reached git and whether the
+// requested URL has no lark-cli record at all.
+type credentialWriter struct {
+	w         io.Writer
+	wrote     bool
+	unmanaged bool
+}
+
+func (c *credentialWriter) Write(p []byte) (int, error) {
+	c.wrote = true
+	return c.w.Write(p)
+}
+
+// WriteGitQuit tells git to stop consulting helpers and not to prompt, so a
+// missing credential fails the git command instead of blocking on stdin.
+func WriteGitQuit(w io.Writer) error {
+	_, err := fmt.Fprint(w, "quit=1\n\n")
+	return err
 }
 
 func writeGitCredential(w io.Writer, username, pat string) error {

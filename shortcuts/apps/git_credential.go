@@ -344,6 +344,9 @@ func runGitCredentialHelper(ctx context.Context, f *cmdutil.Factory, appID, acti
 	}
 	if appID == "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, "Git credential unavailable: missing app_id; rerun lark-cli apps +git-credential-init --app-id <app_id>")
+		if action == "get" {
+			return gitcred.WriteGitQuit(f.IOStreams.Out)
+		}
 		return nil
 	}
 	manager := newGitCredentialManager(appID, f.Keychain, factoryIssuer{f: f})
@@ -352,12 +355,12 @@ func runGitCredentialHelper(ctx context.Context, f *cmdutil.Factory, appID, acti
 		input, err := gitcred.ParseCredentialInput(f.IOStreams.In)
 		if err != nil {
 			fmt.Fprintf(f.IOStreams.ErrOut, "Git credential unavailable: %s\n", err)
-			return nil
+			return gitcred.WriteGitQuit(f.IOStreams.Out)
 		}
 		cfg, err := f.Config()
 		if err != nil {
 			fmt.Fprintf(f.IOStreams.ErrOut, "Git credential unavailable: %s\n", err)
-			return nil
+			return gitcred.WriteGitQuit(f.IOStreams.Out)
 		}
 		return manager.Get(ctx, input, profileFromConfig(cfg), f.IOStreams.Out, f.IOStreams.ErrOut)
 	case "store":

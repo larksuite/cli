@@ -486,8 +486,8 @@ func TestManagerGetDoesNotReuseUnusableRecordWhenRefreshReturnsOlderExpiry(t *te
 	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), &out, &bytes.Buffer{}); err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
-	if out.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty because reread record is still not usable", out.String())
+	if out.String() != gitQuitResponse {
+		t.Fatalf("stdout = %q, want quit because reread record is still not usable", out.String())
 	}
 	if issuer.calls != 2 {
 		t.Fatalf("issuer calls = %d, want 2", issuer.calls)
@@ -521,7 +521,7 @@ func TestManagerGetUsesValidPATWithoutRefresh(t *testing.T) {
 	}
 }
 
-func TestManagerGetKeepsStdoutEmptyWhenRefreshFails(t *testing.T) {
+func TestManagerGetQuitsWhenRefreshFails(t *testing.T) {
 	now := time.Unix(1780000000, 0)
 	kc := newFakeKeychain()
 	issuer := &fakeIssuer{next: &IssuedCredential{
@@ -557,8 +557,8 @@ func TestManagerGetKeepsStdoutEmptyWhenRefreshFails(t *testing.T) {
 	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), &out, &errOut); err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
-	if out.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty", out.String())
+	if out.String() != gitQuitResponse {
+		t.Fatalf("stdout = %q, want quit", out.String())
 	}
 	stderr := errOut.String()
 	for _, leaked := range []string{samplePAT, testCredentialAssignment("password", samplePassword), "user:" + samplePAT + "@"} {
@@ -581,7 +581,7 @@ func TestManagerGetKeepsStdoutEmptyWhenRefreshFails(t *testing.T) {
 	}
 }
 
-func TestManagerGetKeepsStdoutEmptyOnLoginMismatch(t *testing.T) {
+func TestManagerGetQuitsOnLoginMismatch(t *testing.T) {
 	now := time.Unix(1780000000, 0)
 	kc := newFakeKeychain()
 	issuer := &fakeIssuer{next: &IssuedCredential{
@@ -601,8 +601,8 @@ func TestManagerGetKeepsStdoutEmptyOnLoginMismatch(t *testing.T) {
 	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, other, &out, &errOut); err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
-	if out.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty", out.String())
+	if out.String() != gitQuitResponse {
+		t.Fatalf("stdout = %q, want quit", out.String())
 	}
 	if !bytes.Contains(errOut.Bytes(), []byte("current login does not match")) {
 		t.Fatalf("stderr missing login mismatch: %q", errOut.String())
@@ -1404,8 +1404,8 @@ func TestManagerGetPreservesTypedLockAppError(t *testing.T) {
 	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), &out, &errOut); err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
-	if out.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty", out.String())
+	if out.String() != gitQuitResponse {
+		t.Fatalf("stdout = %q, want quit", out.String())
 	}
 	stderr := errOut.String()
 	if !strings.Contains(stderr, "create Git credential lock dir") {
@@ -1676,8 +1676,8 @@ func TestManagerGetBranches(t *testing.T) {
 	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), &out, &errOut); err != nil {
 		t.Fatalf("Get stale refresh returned error: %v", err)
 	}
-	if got := out.String(); got != "" {
-		t.Fatalf("stale refresh output = %q, want empty", got)
+	if got := out.String(); got != gitQuitResponse {
+		t.Fatalf("stale refresh output = %q, want quit", got)
 	}
 
 	kc.setErr = errors.New("keychain locked")
@@ -1832,8 +1832,8 @@ func TestManagerGetSecondReadBranches(t *testing.T) {
 	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), &out, &bytes.Buffer{}); err != nil {
 		t.Fatalf("Get second read missing returned error: %v", err)
 	}
-	if out.Len() != 0 {
-		t.Fatalf("second read missing stdout = %q, want empty", out.String())
+	if out.String() != gitQuitResponse {
+		t.Fatalf("second read missing stdout = %q, want quit", out.String())
 	}
 
 	kc = newFakeKeychain()
@@ -2326,3 +2326,7 @@ func mustReadMetadata(t *testing.T, manager *Manager) []byte {
 func jsonMarshal(v interface{}) ([]byte, error) {
 	return json.Marshal(v)
 }
+
+// gitQuitResponse is what Get prints when it manages the URL but has no
+// credential: it stops git from prompting for a username/password.
+const gitQuitResponse = "quit=1\n\n"

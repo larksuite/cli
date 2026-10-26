@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -891,6 +892,44 @@ func TestFactoryIssuerBranches(t *testing.T) {
 	factory, _, _ = newAppsExecuteFactory(t)
 	if _, err := (factoryIssuer{f: factory}).Issue(context.Background(), "app_xxx", gitcred.ProfileContext{}); err == nil {
 		t.Fatal("factory issuer request error returned nil")
+	}
+}
+
+// A helper that cannot answer a "get" for its own repository must tell git to
+// quit; otherwise git falls back to an interactive prompt and hangs in agents.
+func TestRunGitCredentialHelperGetQuitsWhenItCannotAnswer(t *testing.T) {
+	const quit = "quit=1\n\n"
+	t.Setenv("HOME", t.TempDir())
+
+	cases := []struct {
+		name   string
+		appID  string
+		action string
+		in     io.Reader
+		config func() (*core.CliConfig, error)
+		stdout string
+	}{
+		{name: "missing app id", appID: "", action: "get", in: bytes.NewBufferString("protocol=https\nhost=example.com\n\n"), stdout: quit},
+		{name: "unreadable input", appID: "app_xxx", action: "get", in: errorReader{}, stdout: quit},
+		{name: "config error", appID: "app_xxx", action: "get", in: bytes.NewBufferString("protocol=https\nhost=example.com\npath=/git/u/app.git\n\n"),
+			config: func() (*core.CliConfig, error) { return nil, errors.New("config failed") }, stdout: quit},
+		{name: "store without app id stays silent", appID: "", action: "store", in: bytes.NewBufferString("protocol=https\nhost=example.com\n\n"), stdout: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			factory.IOStreams.ErrOut = &bytes.Buffer{}
+			factory.IOStreams.In = tc.in
+			if tc.config != nil {
+				factory.Config = tc.config
+			}
+			if err := runGitCredentialHelper(context.Background(), factory, tc.appID, tc.action); err != nil {
+				t.Fatalf("runGitCredentialHelper returned error: %v", err)
+			}
+			if got := stdout.String(); got != tc.stdout {
+				t.Fatalf("stdout = %q, want %q", got, tc.stdout)
+			}
+		})
 	}
 }
 
