@@ -294,7 +294,7 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 			base = ep.Open + "/page/launcher"
 		}
 		// The server may return verification_uri with its own query (e.g.
-		// client_id when registering against an existing app), so join with
+		// clientID when registering against an existing app), so join with
 		// the same ?/& logic as BuildVerificationURL.
 		sep := "?"
 		if strings.Contains(base, "?") {
