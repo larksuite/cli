@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 )
@@ -48,15 +47,12 @@ func NewNeedUserAuthorizationError(userOpenID string) error {
 
 // newExpiredWithoutRefreshTokenError builds the typed *errs.AuthenticationError
 // returned when a stored UAT's access_token expires and no refresh_token was
-// issued (typically because the app has not enabled the offline_access scope).
+// issued at login (see NoRefreshTokenCause).
 func newExpiredWithoutRefreshTokenError(opts UATCallOptions) error {
-	reason := "access_token expired without auto-refresh because no refresh_token was issued (enable the offline_access scope in the developer console if you want automatic renewal)"
-	if consoleURL := errclass.ConsoleURL(string(opts.Domain), opts.AppId, []string{"offline_access"}); consoleURL != "" {
-		reason = fmt.Sprintf(
-			"access_token expired without auto-refresh because no refresh_token was issued (enable the offline_access scope at %s if you want automatic renewal)",
-			consoleURL,
-		)
-	}
+	reason := fmt.Sprintf(
+		"access_token expired and cannot be renewed automatically because this login received no refresh_token: %s; to avoid logging in again every 2 hours, %s",
+		NoRefreshTokenCause, NoRefreshTokenFix(opts.Domain, opts.AppId),
+	)
 	reauthHint := recovery.Join("", recovery.Command(
 		recovery.TargetAuthLogin,
 		"run `lark-cli auth login` to re-authorize",

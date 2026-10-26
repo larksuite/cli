@@ -671,13 +671,16 @@ func TestExpiredRefreshTokenIsClearedWithoutRequest(t *testing.T) {
 func TestTokenWithoutRefreshTokenRemainsValidUntilAccessExpiry(t *testing.T) {
 	setupStoredTokenTest(t)
 	now := time.Now()
-	for _, refreshExpiresAt := range []int64{0, now.Add(24 * time.Hour).UnixMilli()} {
+	expiresAt := now.Add(2 * time.Minute).UnixMilli()
+	// 0 = never set; expiresAt = what the device flow stores when no
+	// refresh_token is issued; +24h = an inconsistent future value.
+	for _, refreshExpiresAt := range []int64{0, expiresAt, now.Add(24 * time.Hour).UnixMilli()} {
 		stored := &StoredUAToken{
 			AppId:            "cli_no_rt",
 			UserOpenId:       "ou_no_rt",
 			AccessToken:      "access-only",
 			RefreshToken:     "",
-			ExpiresAt:        now.Add(2 * time.Minute).UnixMilli(),
+			ExpiresAt:        expiresAt,
 			RefreshExpiresAt: refreshExpiresAt,
 			Scope:            "contact:user.base:readonly",
 			GrantedAt:        now.Add(-118 * time.Minute).UnixMilli(),
@@ -707,7 +710,7 @@ func TestTokenWithoutRefreshTokenRemainsValidUntilAccessExpiry(t *testing.T) {
 	}
 }
 
-func TestExpiredTokenWithoutRefreshTokenExplainsOfflineAccessAndClearsWithoutRequest(t *testing.T) {
+func TestExpiredTokenWithoutRefreshTokenExplainsRefreshSettingAndClearsWithoutRequest(t *testing.T) {
 	setupStoredTokenTest(t)
 	now := time.Now()
 	stored := &StoredUAToken{
@@ -748,9 +751,10 @@ func TestExpiredTokenWithoutRefreshTokenExplainsOfflineAccessAndClearsWithoutReq
 
 	problem := requireRefreshProblem(t, err, errs.CategoryAuthentication, errs.SubtypeTokenMissing, false)
 	for _, want := range []string{
-		"no refresh_token was issued",
-		"offline_access",
-		"scope-apply?clientID=cli_refresh_test&scopes=offline_access",
+		"received no refresh_token",
+		`"Refresh user_access_token"`,
+		"publish a new app version",
+		"/app/cli_refresh_test/safe",
 		"lark-cli auth login",
 	} {
 		if !strings.Contains(problem.Hint, want) {
@@ -767,8 +771,8 @@ func TestExpiredTokenWithoutRefreshTokenExplainsOfflineAccessAndClearsWithoutReq
 		t.Fatalf("concealed hint = %q, must not mention auth login", concealedProblem.Hint)
 	}
 	for _, want := range []string{
-		"offline_access",
-		"scope-apply?clientID=cli_refresh_test&scopes=offline_access",
+		`"Refresh user_access_token"`,
+		"/app/cli_refresh_test/safe",
 		"supported authorization flow",
 	} {
 		if !strings.Contains(concealedProblem.Hint, want) {
@@ -846,7 +850,7 @@ func TestDPoPTokenWithoutRefreshTokenSynchronizesClockBeforeExpiryDecision(t *te
 
 	// 3. Stale negative clock offset (-2m) makes an already-expired token (-1m)
 	//    appear locally valid within the 5-minute pre-expiry window; clock sync
-	//    detects actual expiry, clears the token, and returns offline_access hint.
+	//    detects actual expiry, clears the token, and explains the refresh setting.
 	negativeSkewExpiredToken := *staleClockToken
 	negativeSkewExpiredToken.ExpiresAt = now.Add(-time.Minute).UnixMilli()
 	negativeSkewExpiredToken.ClockOffsetMs = -(2 * time.Minute).Milliseconds()
@@ -858,7 +862,7 @@ func TestDPoPTokenWithoutRefreshTokenSynchronizesClockBeforeExpiryDecision(t *te
 		t.Fatalf("GetValidAccessToken(negative skew expired) = (%+v, %v, heartbeats=%d), want authorization required after sync", got, err, heartbeatCalls.Load())
 	}
 	problem := requireRefreshProblem(t, err, errs.CategoryAuthentication, errs.SubtypeTokenMissing, false)
-	if !strings.Contains(problem.Hint, "offline_access") || mustGetStoredToken(t, negativeSkewExpiredToken.AppId, negativeSkewExpiredToken.UserOpenId) != nil {
+	if !strings.Contains(problem.Hint, `"Refresh user_access_token"`) || mustGetStoredToken(t, negativeSkewExpiredToken.AppId, negativeSkewExpiredToken.UserOpenId) != nil {
 		t.Fatalf("expired DPoP hint = %q or token still stored", problem.Hint)
 	}
 }

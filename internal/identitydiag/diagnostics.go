@@ -20,7 +20,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/dpop"
-	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 )
 
@@ -363,6 +362,12 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		id.Status = StatusReady
 		id.Available = true
 		id.Message = "User identity: ready"
+		if stored.RefreshToken == "" {
+			id.Message = fmt.Sprintf("User identity: ready until %s, then a new login is required (this login received no refresh token, so it cannot be renewed automatically)", id.ExpiresAt)
+			id = withCommandRecovery(id, recovery.TargetAuthLogin, fmt.Sprintf(
+				"no refresh token because %s; to stop re-authorizing every 2 hours, %s",
+				larkauth.NoRefreshTokenCause, larkauth.NoRefreshTokenFix(cfg.Brand, cfg.AppID)))
+		}
 	case "needs_refresh":
 		id.Status = StatusNeedsRefresh
 		id.Available = true
@@ -370,15 +375,10 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	default:
 		id.Status = StatusMissing
 		if stored.RefreshToken == "" {
-			id.Message = "User identity: missing (access token expired; no refresh token issued — enable offline_access)"
-			hint := "run: lark-cli auth login --help"
-			if consoleURL := errclass.ConsoleURL(string(cfg.Brand), cfg.AppID, []string{"offline_access"}); consoleURL != "" {
-				hint = fmt.Sprintf(
-					"enable the offline_access scope at %s if you want automatic renewal, then run: lark-cli auth login --help",
-					consoleURL,
-				)
-			}
-			return withCommandRecovery(id, recovery.TargetAuthLogin, hint)
+			id.Message = "User identity: missing (access token expired; this login received no refresh token, so it could not be renewed)"
+			return withCommandRecovery(id, recovery.TargetAuthLogin, fmt.Sprintf(
+				"no refresh token because %s; to stop re-authorizing every 2 hours, %s; run: lark-cli auth login --help",
+				larkauth.NoRefreshTokenCause, larkauth.NoRefreshTokenFix(cfg.Brand, cfg.AppID)))
 		}
 		id.Message = "User identity: missing (refresh token expired)"
 		return withCommandRecovery(id, recovery.TargetAuthLogin, "run: lark-cli auth login --help")
