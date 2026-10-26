@@ -54,26 +54,26 @@ func Test_BuildVerificationURL(t *testing.T) {
 		})
 	})
 
-	t.Run("指定已有应用时添加client_id", func(t *testing.T) {
+	t.Run("指定已有应用时添加clientID", func(t *testing.T) {
 		result := BuildVerificationURL("https://example.com/verify?user_code=abc", "2.0.0", "cli_existing")
 		got, err := url.Parse(result)
 		if err != nil {
 			t.Fatal(err)
 		}
-		convey.Convey("should include target client_id", t, func() {
-			convey.So(got.Query().Get("client_id"), convey.ShouldEqual, "cli_existing")
+		convey.Convey("should include target clientID", t, func() {
+			convey.So(got.Query().Get("clientID"), convey.ShouldEqual, "cli_existing")
 			convey.So(got.Query().Get("lpv"), convey.ShouldEqual, "2.0.0")
 		})
 	})
 
-	t.Run("服务端已返回client_id时不覆盖", func(t *testing.T) {
-		result := BuildVerificationURL("https://example.com/verify?client_id=cli_server&user_code=abc", "2.0.0", "cli_existing")
+	t.Run("服务端已返回clientID时不覆盖", func(t *testing.T) {
+		result := BuildVerificationURL("https://example.com/verify?clientID=cli_server&user_code=abc", "2.0.0", "cli_existing")
 		got, err := url.Parse(result)
 		if err != nil {
 			t.Fatal(err)
 		}
-		convey.Convey("should keep server client_id", t, func() {
-			convey.So(got.Query().Get("client_id"), convey.ShouldEqual, "cli_server")
+		convey.Convey("should keep server clientID", t, func() {
+			convey.So(got.Query().Get("clientID"), convey.ShouldEqual, "cli_server")
 		})
 	})
 }
@@ -529,9 +529,9 @@ func TestRequestAppRegistration_BeginDefaultsToClientSecret(t *testing.T) {
 	if body.Has("auth_attestation") {
 		t.Errorf("auth_attestation should be absent for client_secret, got %q", body.Get("auth_attestation"))
 	}
-	// A new-app begin must not carry an existing client_id.
-	if body.Has("client_id") {
-		t.Errorf("client_id should be absent when TargetAppID is empty, got %q", body.Get("client_id"))
+	// A new-app begin must not carry an existing clientID.
+	if body.Has("clientID") {
+		t.Errorf("clientID should be absent when TargetAppID is empty, got %q", body.Get("clientID"))
 	}
 }
 
@@ -548,8 +548,8 @@ func TestRequestAppRegistration_VerificationURICompleteFallback(t *testing.T) {
 		},
 		{
 			name: "verification_uri with existing query",
-			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify?client_id=cli_x","expires_in":300,"interval":5}`,
-			want: "https://example/verify?client_id=cli_x&user_code=uc",
+			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify?clientID=cli_x","expires_in":300,"interval":5}`,
+			want: "https://example/verify?clientID=cli_x&user_code=uc",
 		},
 	}
 	for _, tc := range cases {
@@ -619,7 +619,7 @@ func TestRequestAppRegistration_BeginPrivateKeyJWTLocalKeyPairExistingAppID(t *t
 	if body.Get("auth_attestation") != "header.claims.sig" {
 		t.Errorf("auth_attestation = %q", body.Get("auth_attestation"))
 	}
-	if body.Get("client_id") != "cli_existing" {
-		t.Errorf("client_id = %q, want cli_existing", body.Get("client_id"))
+	if body.Get("clientID") != "cli_existing" {
+		t.Errorf("clientID = %q, want cli_existing", body.Get("clientID"))
 	}
 }
