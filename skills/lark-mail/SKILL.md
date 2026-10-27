@@ -102,7 +102,7 @@ metadata:
 
 1. **确认身份** — 首次操作邮箱前先调用 `lark-cli mail user_mailboxes profile --params '{"user_mailbox_id":"me"}'` 获取当前用户的真实邮箱地址（`primary_email_address`），不要通过系统用户名猜测。后续判断"发件人是否为用户本人"时以此地址为准。
 2. **浏览** — `+triage` 查看收件箱摘要，获取 `message_id` / `thread_id`
-3. **阅读** — `+message` 只读单封邮件；已有多个 `message_id` 时用 `+messages` 批量读取，不要循环调用 `+message`；`+thread` 读整个会话
+3. **阅读** — `+message` 只读单封邮件；已有多个 `message_id` 时用 `+messages` 批量读取，不要循环调用 `+message`；`+thread` 读整个会话；只有 IM 分享邮件卡片的 `ownerId` / `cardId` 时用 `+read-shared-card`
 4. **整理** — 标签、已读/未读状态和移动文件夹优先用 `+message-modify`；软删除优先用 `+message-trash`；会话级批量整理可用 `+thread-modify`，软删除会话可用 `+thread-trash`
 5. **回复** — `+reply` / `+reply-all`（默认存草稿，加 `--confirm-send` 则立即发送）
 6. **转发** — `+forward`（默认存草稿，加 `--confirm-send` 则立即发送）
@@ -138,7 +138,7 @@ metadata:
 - 分享邮件到 IM：分享邮件或会话到群聊、个人会话。ref: [lark-mail-share-to-chat](references/lark-mail-share-to-chat.md)
 - 发送日程邀请邮件：在邮件中嵌入 `text/calendar` 日程邀请。ref: [lark-mail-calendar-invite](references/lark-mail-calendar-invite.md)
 - 编写复杂 HTML 正文：复杂 HTML、本地图片、安全不确定时读取规范或运行 `+lint-html`；普通正文无需预读。ref: [lark-mail-html](references/lark-mail-html.md)
-- 读取邮件：按场景选择 triage、单封、批量或会话读取。ref: [`+triage`](references/lark-mail-triage.md)、[`+message`](references/lark-mail-message.md)、[`+messages`](references/lark-mail-messages.md)、[`+thread`](references/lark-mail-thread.md)
+- 读取邮件：按场景选择 triage、单封、批量、会话或 IM 分享卡片读取。ref: [`+triage`](references/lark-mail-triage.md)、[`+message`](references/lark-mail-message.md)、[`+messages`](references/lark-mail-messages.md)、[`+thread`](references/lark-mail-thread.md)、[`+read-shared-card`](references/lark-mail-read-shared-card.md)
 - 写信、草稿、回复、转发：先判断新邮件、回复或转发，再决定创建草稿、直接发送或定时发送。命令选择见下方；公共邮箱/别名、发送状态等见相关 ref。
 
 ### 参数不确定时先查 `-h`
@@ -288,6 +288,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 |----------|------|
 | [`+message`](references/lark-mail-message.md) | Use only when reading full content for one email by one message ID. For multiple message IDs, use `mail +messages`; do not loop `mail +message`. |
 | [`+messages`](references/lark-mail-messages.md) | Use when reading full content for multiple emails by message ID. Accepts comma-separated message IDs; CLI handles more than 20 IDs in batches and merges output. |
+| [`+read-shared-card`](references/lark-mail-read-shared-card.md) | Read mail authorized by an IM shared-mail card using its ownerId and cardId. Supports users without a mailbox account and only requests attachment download URLs when explicitly enabled. |
 | [`+thread`](references/lark-mail-thread.md) | Use when querying a full mail conversation/thread by thread ID. Returns all messages in chronological order, including replies and drafts, with body content and attachments metadata, including inline images. |
 | [`+thread-modify`](references/lark-mail-thread-modify.md) | Modify existing mail threads by adding/removing label IDs or moving them to a folder. Batches thread IDs in groups of 20 and returns success_thread_ids / failed_thread_ids. |
 | [`+thread-trash`](references/lark-mail-thread-trash.md) | Soft-delete existing mail threads. Batches thread IDs in groups of 20 and returns success_thread_ids / failed_thread_ids. Requires --yes. |

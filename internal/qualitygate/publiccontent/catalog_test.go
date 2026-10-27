@@ -170,7 +170,13 @@ func TestCatalogSensitiveURLExamplesUseSyntheticTenant(t *testing.T) {
 			name:  "mail attachment",
 			file:  "mail.json",
 			want:  "https://sample.feishu.cn/mail/attachment/example",
-			count: 2,
+			count: 3,
+		},
+		{
+			name:  "mail thread",
+			file:  "mail.json",
+			want:  "https://sample.feishu.cn/mail/thread/example",
+			count: 1,
 		},
 		{
 			name:  "approval attachment",
@@ -270,6 +276,8 @@ mail.json|$.resources["user_mailbox.drafts"].methods.update.responseBody.referen
 mail.json|$.resources["user_mailbox.mail_contacts"].methods.create.responseBody.mail_contact.properties.avatar.example|https://exampleimg.com/xxxx.jpg
 mail.json|$.resources["user_mailbox.mail_contacts"].methods.list.responseBody.items.properties.avatar.example|https://exampleimg.com/xxxx.jpg
 mail.json|$.resources["user_mailbox.message.attachments"].methods.download_url.responseBody.download_urls.properties.download_url.example|https://sample.feishu.cn/mail/attachment/example
+mail.json|$.resources["user_mailbox.message.attachments"].methods.download_url_by_card.responseBody.download_urls.properties.download_url.example|https://sample.feishu.cn/mail/attachment/example
+mail.json|$.resources["user_mailbox.messages"].methods.get_message_by_card.responseBody.messages.properties.applink.example|https://sample.feishu.cn/mail/thread/example
 mail.json|$.resources["user_mailbox.template.attachments"].methods.download_url.responseBody.download_urls.properties.download_url.example|https://sample.feishu.cn/mail/attachment/example
 minutes.json|$.resources.minutes.methods.get.responseBody.minute.properties.cover.example|https://sample.feishu.cn/minutes/download/example
 minutes.json|$.resources.minutes.methods.get.responseBody.minute.properties.url.example|https://sample.feishu.cn/minutes/obcnExampleMinutes

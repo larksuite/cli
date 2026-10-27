@@ -3323,6 +3323,100 @@
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=download_url&project=mail&resource=user_mailbox.message.attachment&version=v1"
+        },
+        "download_url_by_card": {
+          "id": "user_mailbox.message.attachment.download_url_by_card",
+          "path": "messages/attachments/download_url_by_card",
+          "httpMethod": "POST",
+          "description": "根据 IM 分享邮件卡片获取附件下载链接",
+          "parameters": {
+            "owner_id": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "分享邮件卡片 owner ID",
+              "default": "",
+              "example": "1234567890"
+            },
+            "card_id": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "IM 分享邮件卡片 ID",
+              "default": "",
+              "example": "512ca581-6059-4449-8150-5522e6641d32"
+            },
+            "message_id": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "卡片授权范围内的邮件 ID",
+              "default": "",
+              "example": "TUlHc1NoWFhJMXgyUi9VZTNVL3h6UnlkRUdzPQ=="
+            }
+          },
+          "requestBody": {
+            "attachment_ids": {
+              "type": "array",
+              "description": "需要生成下载链接的附件 ID 列表",
+              "required": true
+            }
+          },
+          "responseBody": {
+            "download_urls": {
+              "type": "array",
+              "description": "下载链接列表",
+              "required": false,
+              "properties": {
+                "attachment_id": {
+                  "type": "string",
+                  "description": "附件 id",
+                  "required": false,
+                  "example": "YQqYbQHoQoDqXjxWKhJbo8Gicjf"
+                },
+                "download_url": {
+                  "type": "string",
+                  "description": "下载链接",
+                  "required": false,
+                  "example": "https://sample.feishu.cn/mail/attachment/example"
+                }
+              }
+            },
+            "failed_ids": {
+              "type": "array",
+              "description": "未成功生成下载链接的附件 ID 列表",
+              "required": false
+            },
+            "failed_reasons": {
+              "type": "array",
+              "description": "附件下载链接获取失败原因",
+              "required": false,
+              "properties": {
+                "attachment_id": {
+                  "type": "string",
+                  "description": "附件 ID",
+                  "required": false,
+                  "example": "ZQqYbQHoQoDqXjxWKhJbo8Gicjf"
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "失败原因",
+                  "required": false,
+                  "example": "attachment_not_found"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message.body:read"
+          ],
+          "accessTokens": [
+            "user",
+            "agent"
+          ],
+          "danger": false,
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=download_url_by_card&project=mail&resource=user_mailbox.message.attachment&version=v1"
         }
       }
     },
@@ -4778,6 +4872,549 @@
           "danger": true,
           "risk": "write",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=trash&project=mail&resource=user_mailbox.message&version=v1"
+        },
+        "get_message_by_card": {
+          "id": "user_mailbox.message.get_message_by_card",
+          "path": "messages/by_card",
+          "httpMethod": "POST",
+          "description": "根据 IM 分享邮件卡片获取邮件详情",
+          "parameters": {
+            "owner_id": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "分享邮件卡片 owner ID",
+              "default": "",
+              "example": "1234567890"
+            },
+            "card_id": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "IM 分享邮件卡片 ID",
+              "default": "",
+              "example": "512ca581-6059-4449-8150-5522e6641d32"
+            },
+            "format": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "邮件详情格式，支持 full、plain_text_full 和 metadata",
+              "default": "metadata",
+              "example": "full",
+              "options": [
+                {
+                  "value": "full",
+                  "description": "完整邮件内容"
+                },
+                {
+                  "value": "plain_text_full",
+                  "description": "仅纯文本正文的完整邮件内容"
+                },
+                {
+                  "value": "metadata",
+                  "description": "不含正文的邮件元数据"
+                }
+              ],
+              "enumName": "mail_message_format_type"
+            }
+          },
+          "requestBody": {
+            "message_ids": {
+              "type": "array",
+              "description": "需要读取的卡片关联邮件 ID 列表，必填且至少传入一个",
+              "required": true
+            }
+          },
+          "responseBody": {
+            "messages": {
+              "type": "array",
+              "description": "卡片授权范围内的邮件详情",
+              "required": false,
+              "properties": {
+                "raw": {
+                  "type": "string",
+                  "description": "MIME邮件数据，基于base64url编码",
+                  "required": false,
+                  "example": "Q29udGVudC1UeXBlOiB0ZXh0L3BsYWluOyBjaGFyc2V0PSJ1cy1hc2NpaSIKTUlNRS1WZXJzaW9uOiAxLjAKQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogN2JpdAp0bzogInRvIiA8dG9AeHh4Lnh4Pgpmcm9tOiAiZnJvbSIgPGZyb21AeHh4Lnh4PgpzdWJqZWN0OiB0aGlzIGlzIGEgc3ViamVjdAoKdGhpcyBpcyB0aGUgbWVzc2FnZSBib2R5Lg",
+                  "annotations": [
+                    "writeOnly"
+                  ]
+                },
+                "subject": {
+                  "type": "string",
+                  "description": "主题",
+                  "required": false,
+                  "example": "邮件标题",
+                  "annotations": [
+                    "lark:data:message.subject"
+                  ]
+                },
+                "to": {
+                  "type": "array",
+                  "description": "收件人",
+                  "required": false,
+                  "annotations": [
+                    "lark:data:message.address"
+                  ],
+                  "properties": {
+                    "mail_address": {
+                      "type": "string",
+                      "description": "邮件地址",
+                      "required": true,
+                      "example": "user@example.com"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "名称",
+                      "required": false,
+                      "example": "Mike"
+                    }
+                  }
+                },
+                "cc": {
+                  "type": "array",
+                  "description": "抄送",
+                  "required": false,
+                  "annotations": [
+                    "lark:data:message.address"
+                  ],
+                  "properties": {
+                    "mail_address": {
+                      "type": "string",
+                      "description": "邮件地址",
+                      "required": true,
+                      "example": "user@example.com"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "名称",
+                      "required": false,
+                      "example": "Mike"
+                    }
+                  }
+                },
+                "bcc": {
+                  "type": "array",
+                  "description": "密送",
+                  "required": false,
+                  "annotations": [
+                    "lark:data:message.address"
+                  ],
+                  "properties": {
+                    "mail_address": {
+                      "type": "string",
+                      "description": "邮件地址",
+                      "required": true,
+                      "example": "user@example.com"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "名称",
+                      "required": false,
+                      "example": "Mike"
+                    }
+                  }
+                },
+                "head_from": {
+                  "type": "object",
+                  "description": "发件人",
+                  "required": false,
+                  "ref": "mail_address",
+                  "annotations": [
+                    "lark:data:message.address"
+                  ],
+                  "properties": {
+                    "mail_address": {
+                      "type": "string",
+                      "description": "邮件地址",
+                      "required": true,
+                      "example": "user@example.com"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "名称",
+                      "required": false,
+                      "example": "Mike"
+                    }
+                  }
+                },
+                "body_html": {
+                  "type": "string",
+                  "description": "正文(base64url)",
+                  "required": false,
+                  "example": "PHA-SGVsbG8sIHRoaXMgaXMgYSBkcmFmdCBlbWFpbC48L3A-",
+                  "annotations": [
+                    "lark:data:message.body"
+                  ]
+                },
+                "internal_date": {
+                  "type": "string",
+                  "description": "创建/收/发信时间（毫秒）",
+                  "required": false,
+                  "example": "1682377086000"
+                },
+                "message_state": {
+                  "type": "integer",
+                  "description": "邮件状态，1为收信，2为发信，3为草稿",
+                  "required": false,
+                  "example": "1"
+                },
+                "smtp_message_id": {
+                  "type": "string",
+                  "description": "RFC协议id",
+                  "required": false,
+                  "example": "ay0azrJDvbs3FJAg@outlook.com"
+                },
+                "message_id": {
+                  "type": "string",
+                  "description": "邮件id",
+                  "required": false,
+                  "example": "tfuh9N4WnzU6jdDw="
+                },
+                "attachments": {
+                  "type": "array",
+                  "description": "邮件附件列表",
+                  "required": false,
+                  "annotations": [
+                    "lark:data:message.body"
+                  ],
+                  "properties": {
+                    "body": {
+                      "type": "string",
+                      "description": "附件的正文，使用 base64url 编码（支持的文件最大 37MB）",
+                      "required": true,
+                      "example": "aGVsbG8gd29ybGQK",
+                      "annotations": [
+                        "writeOnly"
+                      ]
+                    },
+                    "filename": {
+                      "type": "string",
+                      "description": "附件文件名",
+                      "required": true,
+                      "example": "helloworld.txt"
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "附件 id",
+                      "required": false,
+                      "example": "YQqYbQHoQoDqXjxWKhJbo8Gicjf",
+                      "annotations": [
+                        "readOnly"
+                      ]
+                    },
+                    "attachment_type": {
+                      "type": "integer",
+                      "description": "附件类型",
+                      "required": false,
+                      "example": "1",
+                      "options": [
+                        {
+                          "value": "1",
+                          "description": "普通附件"
+                        },
+                        {
+                          "value": "2",
+                          "description": "超大附件"
+                        }
+                      ],
+                      "enum": [
+                        "1",
+                        "2"
+                      ],
+                      "enumName": "AttachmentType",
+                      "annotations": [
+                        "readOnly"
+                      ],
+                      "max": "2",
+                      "min": "1"
+                    },
+                    "is_inline": {
+                      "type": "boolean",
+                      "description": "是否为内联图片，true 表示是内联图片",
+                      "required": false,
+                      "example": "false"
+                    },
+                    "cid": {
+                      "type": "string",
+                      "description": "内容 ID，HTML 中通过 cid: 协议引用该图片",
+                      "required": false,
+                      "example": "image1@example.com"
+                    }
+                  }
+                },
+                "body_plain_text": {
+                  "type": "string",
+                  "description": "正文纯文本(base64url)",
+                  "required": false,
+                  "example": "SGVsbG8sIHRoaXMgaXMgYSBkcmFmdCBlbWFpbC4",
+                  "annotations": [
+                    "lark:data:message.body"
+                  ]
+                },
+                "thread_id": {
+                  "type": "string",
+                  "description": "会话id",
+                  "required": false,
+                  "example": "tfuh9N4WnzU6jdDw="
+                },
+                "body_preview": {
+                  "type": "string",
+                  "description": "邮件正文纯文本内容的前100个字符，基于base64url编码，用于快速预览邮件核心内容，无需解码完整正文",
+                  "required": false,
+                  "example": "Hello, this is a draft email."
+                },
+                "label_ids": {
+                  "type": "array",
+                  "description": "标签ID",
+                  "required": false
+                },
+                "folder_id": {
+                  "type": "string",
+                  "description": "文件夹ID",
+                  "required": false,
+                  "example": "INBOX"
+                },
+                "in_reply_to": {
+                  "type": "string",
+                  "description": "In-Reply-To邮件头",
+                  "required": false,
+                  "example": "06d20.dbf451a3.808a.475a.acc9.1363dfd20f36@larksuite.com"
+                },
+                "reply_to": {
+                  "type": "string",
+                  "description": "Reply-To邮件头",
+                  "required": false,
+                  "example": "06d20.dbf451a3.808a.475a.acc9.1363dfd20f36@larksuite.com"
+                },
+                "priority_type": {
+                  "type": "string",
+                  "description": "邮件优先级",
+                  "required": false,
+                  "example": "0",
+                  "options": [
+                    {
+                      "value": "0",
+                      "description": "无优先级"
+                    },
+                    {
+                      "value": "1",
+                      "description": "高优先级"
+                    },
+                    {
+                      "value": "3",
+                      "description": "正常优先级"
+                    },
+                    {
+                      "value": "5",
+                      "description": "低优先级"
+                    }
+                  ],
+                  "enum": [
+                    "0",
+                    "1",
+                    "3",
+                    "5"
+                  ],
+                  "enumName": "priority_type"
+                },
+                "security_level": {
+                  "type": "object",
+                  "description": "安全信息",
+                  "required": false,
+                  "ref": "security_level",
+                  "properties": {
+                    "is_risk": {
+                      "type": "boolean",
+                      "description": "是否风险邮件",
+                      "required": false,
+                      "example": "false"
+                    },
+                    "risk_banner_level": {
+                      "type": "string",
+                      "description": "风险邮件等级",
+                      "required": false,
+                      "example": "WARNING",
+                      "options": [
+                        {
+                          "value": "WARNING",
+                          "description": "警告"
+                        },
+                        {
+                          "value": "DANGER",
+                          "description": "危险"
+                        },
+                        {
+                          "value": "INFO",
+                          "description": "提示"
+                        }
+                      ],
+                      "enum": [
+                        "WARNING",
+                        "DANGER",
+                        "INFO"
+                      ],
+                      "enumName": "risk_level"
+                    },
+                    "risk_banner_reason": {
+                      "type": "string",
+                      "description": "风险邮件原因",
+                      "required": false,
+                      "example": "IMPERSONATE_DOMAIN",
+                      "options": [
+                        {
+                          "value": "NO_REASON",
+                          "description": "未知"
+                        },
+                        {
+                          "value": "IMPERSONATE_DOMAIN",
+                          "description": "相似域名仿冒"
+                        },
+                        {
+                          "value": "IMPERSONATE_KP_NAME",
+                          "description": "KP姓名仿冒"
+                        },
+                        {
+                          "value": "UNAUTH_EXTERNAL",
+                          "description": "未认证外部域名"
+                        },
+                        {
+                          "value": "MALICIOUS_URL",
+                          "description": "恶意链接"
+                        },
+                        {
+                          "value": "MALICIOUS_ATTACHMENT",
+                          "description": "高危附件"
+                        },
+                        {
+                          "value": "PHISHING",
+                          "description": "钓鱼邮件"
+                        },
+                        {
+                          "value": "IMPERSONATE_PARTNER",
+                          "description": "仿冒合作伙伴"
+                        },
+                        {
+                          "value": "EXTERNAL_ENCRYPTION_ATTACHMENT",
+                          "description": "外部邮件携带加密附件"
+                        }
+                      ],
+                      "enum": [
+                        "NO_REASON",
+                        "IMPERSONATE_DOMAIN",
+                        "IMPERSONATE_KP_NAME",
+                        "UNAUTH_EXTERNAL",
+                        "MALICIOUS_URL",
+                        "MALICIOUS_ATTACHMENT",
+                        "PHISHING",
+                        "IMPERSONATE_PARTNER",
+                        "EXTERNAL_ENCRYPTION_ATTACHMENT"
+                      ],
+                      "enumName": "risk_reason"
+                    },
+                    "is_header_from_external": {
+                      "type": "boolean",
+                      "description": "发件人是否外部邮件",
+                      "required": false,
+                      "example": "false"
+                    },
+                    "via_domain": {
+                      "type": "string",
+                      "description": "代发或伪造邮件展示SPF或DKIM域名",
+                      "required": false,
+                      "example": "larksuite.com"
+                    },
+                    "spam_banner_type": {
+                      "type": "string",
+                      "description": "垃圾邮件原因",
+                      "required": false,
+                      "example": "USER_REPORT",
+                      "options": [
+                        {
+                          "value": "USER_REPORT",
+                          "description": "用户曾标记邮件是垃圾邮件"
+                        },
+                        {
+                          "value": "USER_BLOCK",
+                          "description": "用户曾将发件人的邮件标记为垃圾邮件"
+                        },
+                        {
+                          "value": "ANTI_SPAM",
+                          "description": "系统判为垃圾邮件"
+                        },
+                        {
+                          "value": "USER_RULE",
+                          "description": "命中收信规则进入垃圾邮件"
+                        },
+                        {
+                          "value": "BLOCK_DOMIN",
+                          "description": "用户已拦截来自该域名的邮件"
+                        },
+                        {
+                          "value": "BLOCK_ADDRESS",
+                          "description": "用户已拦截来自该邮件地址的邮件"
+                        }
+                      ],
+                      "enum": [
+                        "USER_REPORT",
+                        "USER_BLOCK",
+                        "ANTI_SPAM",
+                        "USER_RULE",
+                        "BLOCK_DOMIN",
+                        "BLOCK_ADDRESS"
+                      ],
+                      "enumName": "spam_banner_type"
+                    },
+                    "spam_user_rule_id": {
+                      "type": "string",
+                      "description": "命中的收信规则ID",
+                      "required": false,
+                      "example": "7618365627924925388"
+                    },
+                    "spam_banner_info": {
+                      "type": "string",
+                      "description": "命中用户黑名单的地址或域名信息",
+                      "required": false,
+                      "example": "larksuite.com"
+                    }
+                  }
+                },
+                "references": {
+                  "type": "string",
+                  "description": "References邮件头",
+                  "required": false,
+                  "example": "<5678.abcd@test.com>\\r\\n\\t<1234.abcd@message-id>"
+                },
+                "body_calendar": {
+                  "type": "string",
+                  "description": "日历邀请内容(base64url)。当邮件包含标准RFC 5545格式的日历邀请时返回，解码后为ICS文本。",
+                  "required": false,
+                  "example": "QkVHSU46VkNBTEVOREFSDQpWRVJTSU9OOjIuMA0KLi4uDQpFTkQ6VkNBTEVOREFS",
+                  "annotations": [
+                    "lark:data:message.body"
+                  ]
+                },
+                "applink": {
+                  "type": "string",
+                  "description": "可唤起 Lark 客户端并打开当前邮件的跳转链接",
+                  "required": false,
+                  "example": "https://sample.feishu.cn/mail/thread/example"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:readonly",
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user",
+            "agent"
+          ],
+          "danger": false,
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get_message_by_card&project=mail&resource=user_mailbox.message&version=v1"
         }
       }
     },

@@ -1102,6 +1102,9 @@
     "mail +message": {
       "agentSupport": "allowed"
     },
+    "mail +read-shared-card": {
+      "agentSupport": "allowed"
+    },
     "mail +message-modify": {
       "agentSupport": "allowed"
     },
