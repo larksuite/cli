@@ -145,7 +145,7 @@ func TestBuildRawEMLForDraftCreate_AutoResolveCountedInSizeLimit(t *testing.T) {
 		From:    "sender@example.com",
 		Subject: "size limit test",
 		Body:    `<p><img src="./photo.png" /></p>`,
-		Attach:  "./big.txt",
+		Attach:  []string{"./big.txt"},
 	}
 
 	_, _, _, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil, "")
