@@ -5,8 +5,8 @@
       "name": "approval",
       "file": "services/approval.json",
       "revision": 14,
-      "size": 95287,
-      "sha256": "ab57763088830faaf74d58235811ecee318c0033a75926726777224d49be19c3"
+      "size": 95644,
+      "sha256": "e698be46ddce1b53e5f32de3e2616300624d80ec1fe1ab127ae9c6a1774b8c4c"
     },
     {
       "name": "attendance",

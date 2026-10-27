@@ -93,7 +93,8 @@
             "approval:approval:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "write",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=search_launchable&project=approval&resource=approval&version=v4"
@@ -335,7 +336,8 @@
             "approval:approval:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=detail&project=approval&resource=approval&version=v4"
@@ -527,7 +529,8 @@
             "approval:instance:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=query&project=approval&resource=instance.comment&version=v4"
@@ -644,7 +647,8 @@
             "approval:instance:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -687,7 +691,8 @@
             "approval:instance:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1367,7 +1372,8 @@
             "approval:instance:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=detail&project=approval&resource=instance&version=v4"
@@ -1453,7 +1459,8 @@
             "approval:instance:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1476,7 +1483,8 @@
             "approval:instance:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1542,7 +1550,8 @@
             "approval:instance:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1809,7 +1818,8 @@
             "approval:instance:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=initiated&project=approval&resource=instance&version=v4"
@@ -1846,7 +1856,8 @@
             "approval:instance:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1887,7 +1898,8 @@
             "approval:task:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1922,7 +1934,8 @@
             "approval:task:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -1998,7 +2011,8 @@
             "approval:task:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -2412,7 +2426,8 @@
             "approval:task:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "risk": "read",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=approval&resource=task&version=v4"
@@ -2539,7 +2554,8 @@
             "approval:task:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
@@ -2579,7 +2595,8 @@
             "approval:task:write"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "high-risk-write",
