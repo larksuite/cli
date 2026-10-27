@@ -24,5 +24,7 @@ func Shortcuts() []common.Shortcut {
 		CalendarListAttendees,
 		CalendarMeetingChatCreate,
 		CalendarMeetingChatGet,
+		CalendarSubscribe,
+		CalendarUnsubscribe,
 	}
 }

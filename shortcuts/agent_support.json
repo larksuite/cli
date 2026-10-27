@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-09T00:00:00+08:00",
+  "updatedAt": "2026-10-26T00:00:00+08:00",
   "commands": {
     "application +slash-command-create": {
       "agentSupport": "denied"
@@ -808,10 +808,16 @@
     "calendar +search-event": {
       "agentSupport": "allowed"
     },
+    "calendar +subscribe": {
+      "agentSupport": "allowed"
+    },
     "calendar +suggestion": {
       "agentSupport": "allowed"
     },
     "calendar +transfer": {
+      "agentSupport": "allowed"
+    },
+    "calendar +unsubscribe": {
       "agentSupport": "allowed"
     },
     "calendar +update": {
