@@ -762,6 +762,18 @@ func TestExpiredTokenWithoutRefreshTokenExplainsRefreshSettingAndClearsWithoutRe
 		}
 	}
 
+	profiled := recovery.NewProjectorWithContext(nil, recovery.RenderContext{Profile: "team-beta"}).Render(err)
+	profiledProblem := requireRefreshProblem(t, profiled, errs.CategoryAuthentication, errs.SubtypeTokenMissing, false)
+	for _, want := range []string{
+		`"Refresh user_access_token"`,
+		"`lark-cli auth login --profile='team-beta' --recommend --no-wait --json`",
+		"`lark-cli auth login --profile='team-beta' --device-code <device_code>`",
+	} {
+		if !strings.Contains(profiledProblem.Hint, want) {
+			t.Fatalf("profile-rendered hint = %q, want substring %q", profiledProblem.Hint, want)
+		}
+	}
+
 	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
 		surface.CommandAuthLogin: surface.CommandConcealed,
 	})
