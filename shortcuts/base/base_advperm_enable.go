@@ -24,6 +24,7 @@ var BaseAdvpermEnable = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
+		{Name: "yes", Type: "bool", Hidden: true, Desc: "accepted for compatibility; has no effect"},
 	},
 	Tips: []string{
 		"Caller must be a Base admin; enable advanced permissions before creating or updating roles.",

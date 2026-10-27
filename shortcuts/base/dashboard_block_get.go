@@ -26,6 +26,7 @@ var BaseDashboardBlockGet = common.Shortcut{
 	Tips: []string{
 		"lark-cli base +dashboard-block-get --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id>",
 		"Use this command for block metadata such as name, type, layout, and data_config.",
+		"Single-source and multi-source blocks can return series_descriptors with stable keys and storage_paths. Use the returned descriptors for targeted styling; do not guess keys or convert sources when a target is missing.",
 		"The returned position is on the 48-col grid (converted by the CLI from the server's pixel coordinates), the same grid +dashboard-layout takes.",
 		"linkage contains this block's outgoing chart linkage when configured; it does not list incoming sources. Read lark-base-dashboard-linkage.md before replacing targets.",
 		"Countdown data_config returns the complete active fixed or field configuration with camelCase keys; create and update return the same full block shape.",

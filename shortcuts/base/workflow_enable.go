@@ -20,6 +20,7 @@ var BaseWorkflowEnable = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
+		{Name: "yes", Type: "bool", Hidden: true, Desc: "accepted for compatibility; has no effect"},
 	},
 	Tips: []string{
 		"workflow-id must start with wkf; do not pass a tbl table ID from the same URL.",

@@ -62,6 +62,85 @@ lark-cli base +dashboard-block-create \
 相对日期保持相对语义。日期进度不支持 `field` 来源；数值进度中的日期字段聚合也不会自动变成日期模式。
 纯自定义数值和日期模式创建时，Base 仍必须至少有一张表，无需填写顶层 `table_name`。
 
+## 形状、格式与颜色
+
+数据继续放在 `data_config.progress`，样式放在 `data_config.viewModel.rules`，不增加 `style`。通用合并与清空规则读取 [自定义样式](lark-base-dashboard-block-config.md#自定义样式)。数值、日期模式都支持 `shape=bar|semiRing|circle`；服务端同步对应形态，不要求调用方同时写 `chartKind`。
+
+一次创建半环数值进度图，并独立设置数值精度和进度百分比精度：
+
+```bash
+lark-cli base +dashboard-block-create \
+  --base-token '<BASE_TOKEN>' --dashboard-id '<DASHBOARD_ID>' \
+  --name '半环进度' --type progress --as user \
+  --data-config '{"progress":{"type":"value","current":{"type":"custom","value":37.125},"target":{"type":"custom","value":100}},"viewModel":{"rules":{"progress":{"shape":"semiRing","color":"#3366FF","opacity":0.4},"formatInfo":{"formatName":"digital","precision":2,"percentPrecision":1}}}}'
+```
+
+`precision` 控制当前／目标数值，`percentPrecision` 控制进度百分比，两者均为 0–9 的整数。上例数值为 37.13，进度为 37.1%。`formatName=percentage_rounded` 将数值本身按百分比显示：例如 current=0.37125、target=1、precision=2 时显示 37.13%／100.00%，不是把输入改成 37.125／100。
+
+以下都是 `+dashboard-block-update --data-config` 的纯样式补丁，命令还需提供 Base、Dashboard、Block ID 及 `--as user`：
+
+| 场景 | 补丁 |
+|---|---|
+| 修改形状 | `{"viewModel":{"rules":{"progress":{"shape":"circle"}}}}` |
+| 修改百分比精度 | `{"viewModel":{"rules":{"formatInfo":{"percentPrecision":3}}}}` |
+| 当前值／目标值文字颜色 | `{"viewModel":{"rules":{"progress":{"curFontColor":"#3366FF","curFontOpacity":0.6,"targetFontColor":"#34C759","targetFontOpacity":1}}}}` |
+| 百分比文字颜色 | `{"viewModel":{"rules":{"progress":{"percentFontColor":"#F54A45","percentFontOpacity":1}}}}` |
+| 日期范围文字颜色 | `{"viewModel":{"rules":{"progress":{"rangeFontColor":"#8E44AD","rangeFontOpacity":0.6}}}}` |
+
+按进度百分比配置色区间：
+
+```json
+{
+  "viewModel": {
+    "rules": {
+      "progress": {
+        "isAreaColor": true,
+        "areaType": "percent",
+        "colors": [
+          {"range":[0,30],"color":"#F54A45","opacity":1},
+          {"range":[30,70],"color":"#FFC60A","opacity":1},
+          {"range":[70,100],"color":"#34C759","opacity":1}
+        ]
+      }
+    }
+  }
+}
+```
+
+百分比区间使用 0–100，不归一到 0–1；`opacity` 使用 0–1。数值模式也可用 `areaType:number` 按当前绝对值匹配，例如 current=75、target=200 时使用范围 `[50,100]`，而不是按 37.5% 匹配。每段起点必须小于终点，区间须有序且不重叠；`colors` 在更新时整体替换。切回单色可传 `isAreaColor:false` 并设置 `color/opacity`。
+
+日期进度通过原有 `progress.type=date/current/target/dateFormat` 配置数据，也可同时设置形状、单色／百分比色区间和文字颜色；不支持数值格式、数值单位及 `areaType:number`。
+
+### 与 Web 的快照一致性
+
+服务端将当前值和目标值分别写入 `cur/target` 指标；外层 `dataCondition` 与目标条件一致。创建和目标值更新遵循这一规则，只更新当前值不改主条件；日期模式隐藏数值条件同样使用目标值。调用方只提交公开 `progress`，不要手写 `rangeDefinition` 或补发 `user_change`。此约束需要配套服务端，旧组件不会因部署自动重建。
+
+### 百分比格式与进度百分比不是同一项
+
+先确认用户要改的是哪一种显示，不为满足回执关键词而改变业务单位：
+
+| 用户要求 | 配置位置与含义 |
+|---|---|
+| 进度完成率保留一位小数 | `viewModel.rules.formatInfo.percentPrecision:1`；只控制 current / target 得到的进度百分比精度 |
+| 当前值／目标值本身显示为百分比 | `viewModel.rules.formatInfo.formatName:"percentage_rounded"`，配合 `precision` 控制数值小数位；输入仍为比例小数 |
+| 当前值／目标值是金额、数量 | 保留对应数值格式；不能仅为显示完成率而改为百分比格式 |
+
+例如 current=37.125、target=100，`formatName:"digital",precision:2,percentPrecision:1` 表示数值 37.13／100.00、进度 37.1%；current=0.37125、target=1 且用户要百分比数值时，`formatName:"percentage_rounded",precision:2,percentPrecision:1` 表示数值 37.13%／100.00%、进度 37.1%。不要同时把比例乘以 100 再套百分比格式。
+
+只调整完成率精度的最小补丁：
+
+```json
+{"viewModel":{"rules":{"formatInfo":{"percentPrecision":1}}}}
+```
+
+明确要求当前值／目标值显示为百分比时的补丁：
+
+```json
+{"viewModel":{"rules":{"formatInfo":{"formatName":"percentage_rounded","precision":1,"percentPrecision":1}}}}
+```
+
+独立 `+dashboard-block-get` 回读 `data_config.viewModel.rules.formatInfo`，分别核对格式、数值精度与进度百分比精度，并核对 current／target 的来源与单位。保留返回 JSON 作为配置证据；需要实际显示效果时另验页面，配置成功不等于渲染已验证。日期模式不写这些数值格式字段。
+
 ## 局部更新
 
 ```bash

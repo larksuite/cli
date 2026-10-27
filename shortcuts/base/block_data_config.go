@@ -135,6 +135,11 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 // normalizeDataConfigForCreate adds type-specific defaults only when the
 // create request declares the block type.
 func normalizeDataConfigForCreate(blockType string, cfg map[string]interface{}) map[string]interface{} {
+	if isMultiSourceDataConfig(cfg) {
+		// 多源组件的类型专属默认值属于 multi_source；不能复用单源归一化在
+		// 顶层补 limit_size 或切片器展示字段，否则会被多源协议判为混用。
+		return normalizeMultiSourceDataConfig(cfg)
+	}
 	if normalizeDashboardBlockType(blockType) == "nps" {
 		return cloneMap(cfg)
 	}
@@ -164,7 +169,22 @@ func normalizeDataConfigForCreate(blockType string, cfg map[string]interface{}) 
 // Other types use the dashboard chart rules. BaseApp list validation lives in
 // app_list_block_data_config.go and never enters this dashboard path.
 func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []string {
+	problems := validateNativeChartDataConfig(cfg)
+	data := chartDataWithoutNativeStyle(cfg)
+	if _, hasVM := cfg["viewModel"]; hasVM && matchesBlockType(blockType, []string{"text", "button", "view"}) {
+		problems = append(problems, "当前组件不支持 viewModel 图表样式")
+	}
+	if _, hasOverride := cfg["overrideViewModel"]; hasOverride && !matchesBlockType(blockType, []string{"combo"}) {
+		problems = append(problems, "overrideViewModel 仅适用于组合图")
+	}
+	return append(problems, validateBlockDataOnlyConfig(blockType, data)...)
+}
+
+func validateBlockDataOnlyConfig(blockType string, cfg map[string]interface{}) []string {
 	blockType = strings.ToLower(normalizeDashboardBlockType(blockType))
+	if _, multi := cfg["data_sources"]; multi {
+		return validateMultiSourceBlockDataConfig(blockType, cfg)
+	}
 	if blockType == "nps" {
 		return validateNPSDataConfig(cfg)
 	}
@@ -200,6 +220,75 @@ func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []str
 		}
 		return problems
 	}
+}
+
+// 多源结构保留原样，字段及权限语义由服务端逐来源校验。
+func validateMultiSourceBlockDataConfig(blockType string, cfg map[string]interface{}) []string {
+	allowed := map[string]bool{"column": true, "line": true, "bar": true, "scatter": true, "combo": true, "area": true, "pie": true, "ring": true, "funnel": true, "wordcloud": true, "statistics": true, "ranking": true, "radar": true, "slicer": true}
+	if !allowed[blockType] {
+		return []string{"当前组件不支持多数据源"}
+	}
+	sources, ok := cfg["data_sources"].([]interface{})
+	if !ok || len(sources) < 2 {
+		return []string{"data_sources 必须包含至少 2 个来源"}
+	}
+	var problems []string
+	tables := make(map[string]bool)
+	// name_style is shared presentation metadata, not a per-source data option.
+	// Preserve it verbatim; the server owns title-style leaf validation.
+	for _, field := range unexpectedObjectFields(cfg, "data_sources", "multi_source", "name_style") {
+		problems = append(problems, "多源不支持字段 "+field)
+	}
+	for index, raw := range sources {
+		source, ok := raw.(map[string]interface{})
+		if !ok {
+			problems = append(problems, fmt.Sprintf("data_sources[%d] 必须是对象", index))
+			continue
+		}
+		if rawToken, exists := source["base_token"]; exists {
+			if token, ok := rawToken.(string); !ok || strings.TrimSpace(token) == "" {
+				problems = append(problems, fmt.Sprintf("data_sources[%d].base_token 必须是非空字符串", index))
+			}
+		}
+		if table, _ := source["table_name"].(string); strings.TrimSpace(table) == "" {
+			problems = append(problems, fmt.Sprintf("data_sources[%d].table_name 必填", index))
+		} else {
+			// 缺省 Base 由服务端解析；此处只拒绝身份写法相同的重复表。
+			token, _ := source["base_token"].(string)
+			tableKey := token + "\x00" + table
+			if tables[tableKey] {
+				problems = append(problems, fmt.Sprintf("data_sources[%d] 数据表重复", index))
+			}
+			tables[tableKey] = true
+		}
+		if blockType == "slicer" {
+			for _, field := range []string{"series", "count_all"} {
+				if _, exists := source[field]; exists {
+					problems = append(problems, fmt.Sprintf("data_sources[%d] 切片器不支持 %s", index, field))
+				}
+			}
+		}
+		if blockType != "slicer" {
+			// 仅校验副本补齐默认计数，请求保持省略形式，由服务端统一落盘。
+			chart := make(map[string]interface{}, len(source)+1)
+			for key, value := range source {
+				chart[key] = value
+			}
+			_, hasSeries := chart["series"]
+			_, hasCountAll := chart["count_all"]
+			if !hasSeries && !hasCountAll {
+				chart["count_all"] = true
+			}
+			problems = append(problems, validateChartDataConfig(chart)...)
+		}
+		if series, ok := source["series"].([]interface{}); ok && len(series) != 1 {
+			problems = append(problems, "每源只允许一个指标")
+		}
+		if groups, ok := source["group_by"].([]interface{}); ok && len(groups) > 1 {
+			problems = append(problems, "每源最多一个维度")
+		}
+	}
+	return problems
 }
 
 func validateNonNPSDataConfig(cfg map[string]interface{}) []string {

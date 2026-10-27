@@ -29,6 +29,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		{Name: "position", Desc: `optional new placement for this block. Moving or resizing blocks is part of the dashboard layout: plan every block's coordinates and finish with +dashboard-layout carrying all of them (it writes the changed blocks and runs the server's tidy pass), so you normally put the new coordinates there instead of here. Component position+size in the 48-col grid, JSON {"x","y","w","h"}; all four keys required and numeric (position is submitted whole, so a partial object cannot express a complete placement). Advisory bounds x/y>=0, 1<=w<=48 and x+w<=48, h>=1 — coordinate VALUES are not validated locally and pass through as given. Omit to leave layout unchanged`},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local SEMANTIC validation: data_config checks + normalization, and the --position x/y/w/h completeness check. JSON syntax and linkage constraints are always checked. Sends data_config and position as-is"},
+		{Name: "yes", Type: "bool", Hidden: true, Desc: "accepted for compatibility; has no effect"},
 	},
 	Tips: []string{
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
@@ -43,7 +44,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		"For non-view blocks, use +dashboard-block-get first to inspect the current data_config before replacing nested values. For view blocks, GET returns tableId/viewId/viewType references; use the view configuration getters described below.",
 		"For chart linkage, read lark-base-dashboard-linkage.md first. Update the source block with the complete target list; adding one target also requires retaining the existing targets. Targets must use the same datasource; dry-run checks the request shape only.",
 		"Block type cannot be changed; countdown data_config.type can switch between fixed and field with a complete target-mode configuration.",
-		"Ordinary chart data_config updates merge top-level keys; nested values replace as a whole except number_format, whose subfields merge server-side.",
+		"Ordinary chart data_config updates merge top-level keys; arrays replace whole. number_format and supported viewModel/overrideViewModel fields merge by leaf, preserving omitted fields.",
 		"Slicer updates preserve omitted fields and never add create defaults. On the same table, omit filter to preserve it or send filter:null to clear it. Changing tables requires a new group_by and clears the old filter unless a new filter is supplied.",
 		"Countdown patches keep omitted fields and merge the sole additionalDatasources entry by field. groupBy and series replace whole arrays; same-mode/same-table filter omission keeps it, an object replaces it, and null clears it. Changing tableName requires a complete new datasource. Read the countdown section of lark-base-dashboard-block-config.md.",
 		`For progress, {"progress":{"target":{"value":200}}} updates an existing custom target. current/target subfields merge server-side and arrays replace whole. Omitted fields are preserved; field-source filter:null clears a filter. Source or mode changes require complete target configuration. See lark-base-dashboard-progress.md.`,
@@ -73,6 +74,12 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 				return err
 			}
 			effective = normalizePivotTableDataConfig(normalizeDataConfig(cfg), false)
+			if isMultiSourceDataConfig(cfg) {
+				effective = normalizeMultiSourceDataConfig(cfg)
+			}
+			if problems := validateNativeChartDataConfig(effective); len(problems) > 0 {
+				return formatDataConfigErrors(problems)
+			}
 			// Update 不传 type，因此只执行与组件类型无关的局部校验；全量校验
 			// 会误报局部 patch 未提交的 table_name/series 等字段。
 			problems := validateBlockFilter(effective, "filter", true)
@@ -83,7 +90,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 				return formatDataConfigErrors(problems)
 			}
 			if isPivotTableDataConfig(effective) {
-				if problems := validatePivotTableDataConfig(effective, false); len(problems) > 0 {
+				if problems := validatePivotTableDataConfig(chartDataWithoutNativeStyle(effective), false); len(problems) > 0 {
 					return formatDataConfigErrors(problems)
 				}
 			}

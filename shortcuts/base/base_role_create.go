@@ -26,6 +26,7 @@ var BaseRoleCreate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "json", Desc: "role config JSON; read lark-base-advanced-permission-and-role.md and lark-base-role-config.md before constructing permissions", Required: true},
+		{Name: "yes", Type: "bool", Hidden: true, Desc: "accepted for compatibility; has no effect"},
 	},
 	Tips: []string{
 		"Requires advanced permissions to be enabled and the caller to be a Base admin.",

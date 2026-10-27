@@ -218,6 +218,30 @@ func TestBaseDashboardBlockExecuteList(t *testing.T) {
 
 // TestBaseDashboardBlockExecuteGet tests the +dashboard-block-get command.
 func TestBaseDashboardBlockExecuteGet(t *testing.T) {
+	t.Run("multi-source series returned without query option", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
+			Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+				"block_id": "blk_a", "type": "combo",
+				"series_descriptors": []interface{}{map[string]interface{}{"key": "saved_key", "storage_paths": []string{"overrideViewModel.cartesian.combo.detail"}}},
+			}},
+		})
+		if err := runShortcut(t, BaseDashboardBlockGet, []string{"+dashboard-block-get", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_a"}, factory, stdout); err != nil {
+			t.Fatal(err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"series_descriptors"`) || !strings.Contains(got, `"saved_key"`) {
+			t.Fatalf("series descriptors were lost: %s", got)
+		}
+	})
+	t.Run("removed series flag is rejected", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseDashboardBlockGet, []string{"+dashboard-block-get", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_a", "--include-series"}, factory, stdout)
+		if err == nil {
+			t.Fatal("removed flag must not be accepted")
+		}
+	})
 	t.Run("basic", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
