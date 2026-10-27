@@ -100,8 +100,9 @@ func TestAppsUpdateDryRun(t *testing.T) {
 	})
 }
 
-// TestAppsUpdateIconDryRun pins the icon flows: --icon-url is PATCHed as-is,
-// --icon-file previews the multipart upload followed by the PATCH, and bad
+// TestAppsUpdateIconDryRun pins the icon flows: both icon flags preview the
+// app-type GET precheck; --icon-url is PATCHed as-is, --icon-file previews the
+// multipart upload followed by the PATCH, and bad
 // icon input is rejected locally before any request.
 func TestAppsUpdateIconDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
@@ -125,20 +126,25 @@ func TestAppsUpdateIconDryRun(t *testing.T) {
 	t.Run("IconURL", func(t *testing.T) {
 		result := run(t, "--icon-url", "https://example.com/i.png")
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, "PATCH", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
 		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "https://example.com/i.png", clie2e.DryRunGet(result.Stdout, "api.0.body.icon_url").String())
+		assert.Equal(t, "PATCH", clie2e.DryRunGet(result.Stdout, "api.1.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.1.url").String())
+		assert.Equal(t, "https://example.com/i.png", clie2e.DryRunGet(result.Stdout, "api.1.body.icon_url").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.2").Exists())
 	})
 
 	t.Run("IconFileUploadThenPatch", func(t *testing.T) {
 		result := run(t, "--icon-file", "ok.png")
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/icon", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
-		assert.True(t, clie2e.DryRunGet(result.Stdout, "api.0.body.file").Exists())
-		assert.Equal(t, "PATCH", clie2e.DryRunGet(result.Stdout, "api.1.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.1.url").String())
-		assert.Equal(t, "<icon_url from upload response>", clie2e.DryRunGet(result.Stdout, "api.1.body.icon_url").String())
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.1.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/icon", clie2e.DryRunGet(result.Stdout, "api.1.url").String())
+		assert.True(t, clie2e.DryRunGet(result.Stdout, "api.1.body.file").Exists())
+		assert.Equal(t, "PATCH", clie2e.DryRunGet(result.Stdout, "api.2.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.2.url").String())
+		assert.Equal(t, "<icon_url from upload response>", clie2e.DryRunGet(result.Stdout, "api.2.body.icon_url").String())
 	})
 
 	t.Run("RejectsBothIconFlags", func(t *testing.T) {

@@ -389,7 +389,7 @@ func TestAppsUpdate_UnsupportedAppTypeBlocksUpload(t *testing.T) {
 	if !ok || p.Code != appIconUnsupportedCode {
 		t.Fatalf("expected code %d problem, got %T %v", appIconUnsupportedCode, err, err)
 	}
-	if !strings.Contains(p.Hint, "妙搭编辑器") {
+	if !strings.Contains(p.Hint, "OpenClaw") || !strings.Contains(p.Hint, "Miaoda editor") {
 		t.Fatalf("hint = %q, want editor guidance", p.Hint)
 	}
 	if len(upload.CapturedBodies) != 0 {
@@ -408,7 +408,7 @@ func TestAppsUpdate_UnsupportedAppTypeOnPatchGetsHint(t *testing.T) {
 	err := runAppsShortcut(t, AppsUpdate,
 		[]string{"+update", "--app-id", "app_x", "--icon-url", "https://example.com/i.png", "--as", "user"}, factory, stdout)
 	p, ok := errs.ProblemOf(err)
-	if !ok || !strings.Contains(p.Hint, "妙搭编辑器") {
+	if !ok || !strings.Contains(p.Hint, "Miaoda editor") {
 		t.Fatalf("expected editor hint, got %T %v", err, err)
 	}
 }
@@ -440,10 +440,27 @@ func TestAppsUpdate_DryRunIconFileShowsUploadAndPatch(t *testing.T) {
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	got := stdout.String()
-	for _, want := range []string{iconUploadPath, iconAppPath, "PATCH", "icon_url from upload response"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("dry-run output missing %q: %s", want, got)
+	var env struct {
+		Data struct {
+			API []struct {
+				Method string `json:"method"`
+				URL    string `json:"url"`
+			} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
+	}
+	want := []string{"GET " + iconAppPath, "POST " + iconUploadPath, "PATCH " + iconAppPath}
+	if len(env.Data.API) != len(want) {
+		t.Fatalf("dry-run calls = %+v, want %v", env.Data.API, want)
+	}
+	for i, c := range env.Data.API {
+		if got := c.Method + " " + c.URL; got != want[i] {
+			t.Fatalf("dry-run call %d = %q, want %q", i, got, want[i])
 		}
+	}
+	if !strings.Contains(stdout.String(), "icon_url from upload response") {
+		t.Fatalf("dry-run PATCH body missing upload placeholder: %s", stdout.String())
 	}
 }

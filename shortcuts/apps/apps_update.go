@@ -31,7 +31,7 @@ const appIconMaxBytes = 2 * 1024 * 1024 // 2 MB
 // cannot be changed through the OpenAPI (e.g. OpenClaw apps).
 const appIconUnsupportedCode = 40002
 
-const appIconUnsupportedHint = "此类应用（如龙虾）请在妙搭编辑器修改图标 / this app type does not support changing the icon via CLI; change it in the Miaoda editor instead"
+const appIconUnsupportedHint = "this app type (e.g. OpenClaw apps) cannot change its icon via the CLI; change the icon in the Miaoda editor instead"
 
 const appsUpdateFieldsMsg = "provide at least one of --name, --description, --icon-url or --icon-file"
 
@@ -61,7 +61,7 @@ var AppsUpdate = common.Shortcut{
 		{Name: "name", Desc: "new app display name"},
 		{Name: "description", Desc: "new app description"},
 		{Name: "icon-url", Desc: "new app icon as an http(s) image URL; mutually exclusive with --icon-file"},
-		{Name: "icon-file", Desc: "new app icon from a local png/jpeg file (≤2 MB), relative to cwd; uploaded first, then written; mutually exclusive with --icon-url"},
+		{Name: "icon-file", Desc: "new app icon from a local png/jpeg file (≤2 MB); uploaded first, then written; mutually exclusive with --icon-url"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
@@ -99,20 +99,22 @@ var AppsUpdate = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
+		path := fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID))
 		dry := common.NewDryRunAPI()
 		body := buildAppsUpdateBody(rctx)
 		if iconFile := strings.TrimSpace(rctx.Str("icon-file")); iconFile != "" {
 			dry.Desc("GET app to precheck the app type supports icon changes → upload --icon-file (multipart) → PATCH app with the returned icon_url").
+				GET(path).
 				POST(appIconUploadPath).
 				Body(map[string]interface{}{"file": "<contents of --icon-file>"})
 			body["icon_url"] = "<icon_url from upload response>"
 		} else if _, ok := body["icon_url"]; ok {
-			dry.Desc("GET app to precheck the app type supports icon changes → PATCH app")
+			dry.Desc("GET app to precheck the app type supports icon changes → PATCH app").
+				GET(path)
 		} else {
 			dry.Desc("Update an app")
 		}
-		return dry.PATCH(fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID))).
-			Body(body)
+		return dry.PATCH(path).Body(body)
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
