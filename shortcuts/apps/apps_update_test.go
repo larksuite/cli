@@ -320,6 +320,11 @@ func TestAppsUpdate_IconURLAndFileMutuallyExclusive(t *testing.T) {
 	if !errors.As(err, &ve) || !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Fatalf("expected mutually exclusive validation error, got %T %v", err, err)
 	}
+	for _, flag := range []string{"--icon-url", "--icon-file"} {
+		if !strings.Contains(err.Error(), flag) {
+			t.Fatalf("err = %v, want it to name %s", err, flag)
+		}
+	}
 }
 
 func TestAppsUpdate_RejectsNoFieldsMentionsIconFlags(t *testing.T) {
@@ -332,13 +337,88 @@ func TestAppsUpdate_RejectsNoFieldsMentionsIconFlags(t *testing.T) {
 }
 
 func TestAppsUpdate_RejectsInvalidIconURL(t *testing.T) {
-	for _, raw := range []string{"ftp://example.com/i.png", "example.com/i.png", "https://", "./icon.png"} {
+	for _, raw := range []string{"ftp://example.com/i.png", "example.com/i.png", "https://", "./icon.png", "https://:443/x.png"} {
 		t.Run(raw, func(t *testing.T) {
 			factory, stdout, _ := newAppsExecuteFactory(t)
 			err := runAppsShortcut(t, AppsUpdate,
 				[]string{"+update", "--app-id", "app_x", "--icon-url", raw, "--as", "user"}, factory, stdout)
 			requireIconFileParam(t, err, "--icon-url", "http(s)")
 		})
+	}
+}
+
+func TestAppsUpdate_RejectsIconURLWithUserinfo(t *testing.T) {
+	for _, raw := range []string{"https://user:pass@example.com/i.png", "https://user@example.com/i.png"} {
+		t.Run(raw, func(t *testing.T) {
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsUpdate,
+				[]string{"+update", "--app-id", "app_x", "--icon-url", raw, "--as", "user"}, factory, stdout)
+			requireIconFileParam(t, err, "--icon-url", "without user information")
+			if strings.Contains(err.Error(), raw) {
+				t.Fatalf("err must not echo the credentials: %v", err)
+			}
+		})
+	}
+}
+
+// runIconUploadFailure runs +update --icon-file against a failing upload stub
+// and asserts the PATCH is never sent, so an empty icon_url is never written.
+func runIconUploadFailure(t *testing.T, upload *httpmock.Stub) error {
+	t.Helper()
+	chdirTemp(t)
+	_ = os.WriteFile("ok.png", pngHeader, 0o600)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	patch := appPatchStub("")
+	patch.Optional = true
+	reg.Register(appGetStub())
+	reg.Register(upload)
+	reg.Register(patch)
+
+	err := runAppsShortcut(t, AppsUpdate,
+		[]string{"+update", "--app-id", "app_x", "--icon-file", "ok.png", "--as", "user"}, factory, stdout)
+	if err == nil {
+		t.Fatalf("expected an error when the icon upload fails")
+	}
+	if len(upload.CapturedBodies) != 1 {
+		t.Fatalf("upload requests = %d, want 1", len(upload.CapturedBodies))
+	}
+	if len(patch.CapturedBodies) != 0 {
+		t.Fatalf("PATCH must not be sent when the icon upload fails, got body %q", patch.CapturedBody)
+	}
+	return err
+}
+
+func TestAppsUpdate_IconUploadTransportErrorSkipsPatch(t *testing.T) {
+	upload := iconUploadStub()
+	upload.Error = errors.New("connection reset")
+	err := runIconUploadFailure(t, upload)
+	var ne *errs.NetworkError
+	if !errors.As(err, &ne) || !strings.Contains(err.Error(), "icon upload request failed") {
+		t.Fatalf("expected icon upload network error, got %T %v", err, err)
+	}
+}
+
+func TestAppsUpdate_IconUploadAPIErrorSkipsPatch(t *testing.T) {
+	err := runIconUploadFailure(t, &httpmock.Stub{
+		Method: "POST",
+		URL:    iconUploadPath,
+		Body:   map[string]interface{}{"code": 99991400, "msg": "upload rejected"},
+	})
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != 99991400 {
+		t.Fatalf("expected code 99991400 problem, got %T %v", err, err)
+	}
+}
+
+func TestAppsUpdate_IconUploadMissingIconURLSkipsPatch(t *testing.T) {
+	err := runIconUploadFailure(t, &httpmock.Stub{
+		Method: "POST",
+		URL:    iconUploadPath,
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	})
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) || !strings.Contains(err.Error(), "missing icon_url") {
+		t.Fatalf("expected missing icon_url error, got %T %v", err, err)
 	}
 }
 

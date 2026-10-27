@@ -175,12 +175,17 @@ func buildAppsUpdateBody(rctx *common.RuntimeContext) map[string]interface{} {
 	return body
 }
 
-// validateAppIconURL accepts only absolute http(s) URLs with a host.
+// validateAppIconURL accepts only absolute http(s) URLs with a hostname and
+// no userinfo, so credentials are never written into the app metadata.
 func validateAppIconURL(raw string) error {
 	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return appsValidationParamError("--icon-url", "--icon-url must be an absolute http(s) URL, got %q", raw).
 			WithHint("pass a publicly reachable image URL, or use --icon-file to upload a local png/jpeg")
+	}
+	if u.User != nil {
+		return appsValidationParamError("--icon-url", "--icon-url must be an absolute http(s) URL without user information").
+			WithHint("remove the user:password@ part; the icon URL must be publicly reachable without credentials")
 	}
 	return nil
 }

@@ -33,7 +33,7 @@ lark-cli apps +update --app-id app_xxx --icon-url https://example.com/icon.png
 ## 输出契约
 
 - 成功读取 `data.app`；响应是完整应用对象，不只是被修改字段。
-- 缺 `--app-id`、四个字段一个都没提供、同时传 `--icon-url` 与 `--icon-file`、`--icon-url` 不是 http(s)、`--icon-file` 不可读 / 超过 2 MB / 不是 png 或 jpeg，都会在本地 validation 失败，不发请求。
+- 缺 `--app-id`、四个字段一个都没提供、同时传 `--icon-url` 与 `--icon-file`、`--icon-url` 不是带主机名的 http(s) 链接或含 `user:pass@`、`--icon-file` 不可读 / 超过 2 MB / 不是 png 或 jpeg，都会在本地 validation 失败，不发请求。
 - `--dry-run` 改图标时先展示 `GET /open-apis/spark/v1/apps/:app_id`（类型预检）；配 `--icon-file` 时再展示 `POST /open-apis/spark/v1/icon`（multipart 上传），最后是 `PATCH /open-apis/spark/v1/apps/:app_id`。
 
 ## Agent 规则
