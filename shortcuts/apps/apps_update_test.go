@@ -361,6 +361,29 @@ func TestAppsUpdate_RejectsIconURLWithUserinfo(t *testing.T) {
 	}
 }
 
+func TestAppsUpdate_InvalidIconURLNeverEchoesCredentials(t *testing.T) {
+	for _, tc := range []struct{ raw, contains string }{
+		{"ftp://user:secret@example.com/icon.png", "http(s)"},
+		{"https://user:secret@:443/x.png", "http(s)"},
+		{"https://user:secret@example.com/icon.png", "without user information"},
+		{"http://user:secret@example.com/icon.png", "without user information"},
+	} {
+		t.Run(tc.raw, func(t *testing.T) {
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsUpdate,
+				[]string{"+update", "--app-id", "app_x", "--icon-url", tc.raw, "--as", "user"}, factory, stdout)
+			requireIconFileParam(t, err, "--icon-url", tc.contains)
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("err = %T %v, want a typed problem", err, err)
+			}
+			if strings.Contains(err.Error(), "secret") || strings.Contains(p.Hint, "secret") {
+				t.Fatalf("error must not echo credentials: %v (hint %q)", err, p.Hint)
+			}
+		})
+	}
+}
+
 // runIconUploadFailure runs +update --icon-file against a failing upload stub
 // and asserts the PATCH is never sent, so an empty icon_url is never written.
 func runIconUploadFailure(t *testing.T, upload *httpmock.Stub) error {
