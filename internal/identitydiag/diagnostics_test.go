@@ -719,6 +719,9 @@ func TestDiagnose_UserIdentityValidWithoutRefreshTokenWarnsBeforeExpiry(t *testi
 			if tc.verify && (got.User.Verified == nil || !*got.User.Verified) {
 				t.Fatalf("user verified = %v, want true", got.User.Verified)
 			}
+			if got.User.RefreshExpiresAt != "" {
+				t.Fatalf("user refreshExpiresAt = %q, want empty for a login without a refresh token", got.User.RefreshExpiresAt)
+			}
 			if !strings.Contains(got.User.Message, "received no refresh token") || !strings.Contains(got.User.Message, got.User.ExpiresAt) {
 				t.Fatalf("user message = %q, want expiry time and missing refresh token", got.User.Message)
 			}

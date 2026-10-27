@@ -519,7 +519,11 @@ func fillTokenFields(id *Identity, token *larkauth.StoredUAToken) {
 	id.TokenStatus = larkauth.TokenStatus(token)
 	id.Scope = token.Scope
 	id.ExpiresAt = formatMillis(token.ExpiresAt)
-	id.RefreshExpiresAt = formatMillis(token.RefreshExpiresAt)
+	// A login without a refresh_token still stores a refresh expiry (the
+	// device flow copies the access-token expiry); do not report it as one.
+	if token.RefreshToken != "" {
+		id.RefreshExpiresAt = formatMillis(token.RefreshExpiresAt)
+	}
 	id.GrantedAt = formatMillis(token.GrantedAt)
 }
 
