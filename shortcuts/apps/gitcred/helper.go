@@ -211,7 +211,7 @@ func (m *Manager) Get(ctx context.Context, input CredentialInput, current Profil
 		return err
 	}
 	if !tracked.wrote && !tracked.unmanaged {
-		return WriteGitQuit(out)
+		return writeGitQuit(out)
 	}
 	return nil
 }
@@ -560,9 +560,9 @@ func (c *credentialWriter) Write(p []byte) (int, error) {
 	return c.w.Write(p)
 }
 
-// WriteGitQuit tells git to stop consulting helpers and not to prompt, so a
+// writeGitQuit tells git to stop consulting helpers and not to prompt, so a
 // missing credential fails the git command instead of blocking on stdin.
-func WriteGitQuit(w io.Writer) error {
+func writeGitQuit(w io.Writer) error {
 	_, err := fmt.Fprint(w, "quit=1\n\n")
 	return err
 }
