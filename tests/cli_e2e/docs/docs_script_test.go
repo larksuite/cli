@@ -642,12 +642,13 @@ func TestDocsScriptOnlineDryRunFetchesXML(t *testing.T) {
 	require.Equal(t, "parse", gjson.Get(result.Stdout, "data.command").String())
 }
 
-func TestDocsScriptRejectsRemovedPresentationDecisionRoutes(t *testing.T) {
+func TestDocsScriptAcceptsRetiredPresentationDecisionRoutes(t *testing.T) {
 	for _, decision := range []string{
 		`{"genre_contract":"none"}`,
 		`{"genre_contract":null}`,
 		`{"adapter":"wechat"}`,
 		`{"adapter":null}`,
+		`{"genre_contract":null,"adapter":null}`,
 		`{genre_contract:none}`,
 	} {
 		t.Run(decision, func(t *testing.T) {
@@ -661,21 +662,17 @@ func TestDocsScriptRejectsRemovedPresentationDecisionRoutes(t *testing.T) {
 				DefaultAs: "bot", WorkDir: t.TempDir(), Env: docsScriptE2EEnv(t),
 			})
 			require.NoError(t, err)
-			result.AssertExitCode(t, 2)
-			require.Empty(t, result.Stdout)
-			require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
-			require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String())
-			require.Equal(t, "--presentation-decision", gjson.Get(result.Stderr, "error.param").String())
+			result.AssertExitCode(t, 0)
+			result.AssertStdoutStatus(t, true)
 		})
 	}
 }
 
-func TestDocsScriptSavedLegacyDecisionCanBeOverridden(t *testing.T) {
+func TestDocsScriptSavedLegacyDecisionRemainsUsable(t *testing.T) {
 	workDir := t.TempDir()
-	legacy := `{"audience":"reader","reader_task":"understand","genre_contract":null,"adapter":null,"presentation_mode":"normal","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[]}}`
-	decision := `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[]}}`
+	legacy := `{"audience":"reader","reader_task":"understand","genre_contract":null,"adapter":null,"presentation_mode":"normal","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[{"type":"list","min_count":1}]}}`
 	require.NoError(t, os.WriteFile(filepath.Join(workDir, ".presentation-decision.json"), []byte(legacy), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(workDir, "draft.xml"), []byte(`<p>two words</p>`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "draft.xml"), []byte(`<ul><li>two words</li></ul>`), 0o600))
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 	request := clie2e.Request{
@@ -684,16 +681,16 @@ func TestDocsScriptSavedLegacyDecisionCanBeOverridden(t *testing.T) {
 	}
 	result, err := clie2e.RunCmd(ctx, request)
 	require.NoError(t, err)
-	result.AssertExitCode(t, 5)
-	require.Empty(t, result.Stdout)
-	require.Equal(t, "internal", gjson.Get(result.Stderr, "error.type").String())
-	require.Equal(t, "saved Presentation Decision is invalid", gjson.Get(result.Stderr, "error.message").String())
+	result.AssertExitCode(t, 0)
+	require.Equal(t, "passed", gjson.Get(result.Stdout, "data.assessment.status").String())
 
-	request.Args = append(request.Args, "--presentation-decision", decision)
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "draft.xml"), []byte(`<p>short</p>`), 0o600))
 	result, err = clie2e.RunCmd(ctx, request)
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	require.Equal(t, "passed", gjson.Get(result.Stdout, "data.assessment.status").String())
+	require.Equal(t, "failed", gjson.Get(result.Stdout, "data.assessment.status").String())
+	require.True(t, gjson.Get(result.Stdout, `data.diagnostics.#(code=="word_count_out_of_range")`).Exists())
+	require.True(t, gjson.Get(result.Stdout, `data.diagnostics.#(code=="required_block_missing")`).Exists())
 	saved, err := os.ReadFile(filepath.Join(workDir, ".presentation-decision.json"))
 	require.NoError(t, err)
 	require.Equal(t, legacy, string(saved))

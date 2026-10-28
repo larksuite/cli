@@ -136,6 +136,14 @@ type docsScriptPresentationDecision struct {
 	VisualPlan       docsScriptPresentationVisualPlan `json:"visual_plan"`
 }
 
+// Retired route metadata is accepted only at the input boundary so saved
+// decisions remain readable without adding it to the active draft profile.
+type docsScriptPresentationDecisionInput struct {
+	docsScriptPresentationDecision
+	RetiredGenreContract *string `json:"genre_contract"`
+	RetiredAdapter       *string `json:"adapter"`
+}
+
 type docsScriptPresentationWordCount struct {
 	Min *int `json:"min"`
 	Max *int `json:"max"`
@@ -523,15 +531,16 @@ func parseDocsScriptPresentationDecisionFlag(runtime *common.RuntimeContext) (do
 }
 
 func parseDocsScriptPresentationDecision(raw string) (docsScriptPresentationDecision, error) {
-	var decision docsScriptPresentationDecision
+	var input docsScriptPresentationDecisionInput
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&decision); err != nil {
+	if err := decoder.Decode(&input); err != nil {
 		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--presentation-decision must be a valid Presentation Decision JSON object: %s", err).
 			WithParam("--presentation-decision").
 			WithCause(err)
 	}
+	decision := input.docsScriptPresentationDecision
 	var trailing interface{}
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {

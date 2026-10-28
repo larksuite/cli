@@ -463,6 +463,11 @@ func TestDocsScriptInitDraftRecoversPowerShellDequotedDecisionFromSchema(t *test
 			dequoted:       `{"audience":a,"reader_task":b,"presentation_mode":normal,"visual_plan":{"reason":c,"blocks":[]}}`,
 			wantNormalized: `{"audience":"a","reader_task":"b","presentation_mode":"normal","visual_plan":{"reason":"c","blocks":[]}}`,
 		},
+		{
+			name:           "retired route fields",
+			dequoted:       `{audience:a,genre_contract:workplace.prd,adapter:wechat,word_count:{min:10,max:null}}`,
+			wantNormalized: `{"audience":"a","genre_contract":"workplace.prd","adapter":"wechat","word_count":{"min":10,"max":null}}`,
+		},
 	}
 
 	for _, test := range tests {
@@ -751,8 +756,10 @@ func TestDocsScriptRejectsInvalidPresentationDecision(t *testing.T) {
 		decision string
 	}{
 		{name: "invalid json", decision: `{`},
-		{name: "removed genre contract", decision: `{"genre_contract":"workplace.prd"}`},
-		{name: "removed adapter", decision: `{"adapter":"wechat"}`},
+		{name: "retired genre invalid type", decision: `{"genre_contract":{}}`},
+		{name: "retired adapter invalid type", decision: `{"adapter":[]}`},
+		{name: "unknown field with retired metadata", decision: `{"genre_contract":"none","adapter":null,"unexpected":true}`},
+		{name: "nested retired field", decision: `{"visual_plan":{"adapter":"wechat"}}`},
 		{name: "unknown field", decision: validPrefix + `"visual_plan":{"reason":"plain is enough","blocks":[],"image_enabled":true}}`},
 		{name: "legacy fields", decision: `{"target":"reader","presentation_mode":"normal","hard_rule":"","word_count":20,"visual_plan":{"reason":"plain is enough","exception":"","blocks":[]}}`},
 		{name: "integer word count", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":20,"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
@@ -803,6 +810,32 @@ func TestDocsScriptPresentationDecisionMangledInlineJSONSuggestsFileInput(t *tes
 	var syntaxErr *json.SyntaxError
 	if !errors.As(err, &syntaxErr) {
 		t.Fatalf("error = %T (%v), want preserved *json.SyntaxError cause", err, err)
+	}
+}
+
+func TestDocsScriptPresentationDecisionIgnoresRetiredRoutes(t *testing.T) {
+	for _, routes := range []string{
+		`"genre_contract":"workplace.prd","adapter":"wechat"`,
+		`"genre_contract":null,"adapter":null`,
+		`"genre_contract":"","adapter":""`,
+	} {
+		t.Run(routes, func(t *testing.T) {
+			decision, err := parseDocsScriptPresentationDecision(`{` + routes + `,"audience":"reader","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[{"type":"list","min_count":1}]}}`)
+			if err != nil {
+				t.Fatalf("parse retired metadata: %v", err)
+			}
+			if decision.Audience != "reader" {
+				t.Fatalf("audience = %q, want reader", decision.Audience)
+			}
+			profile := docsScriptPublicProfile{WordCount: 2, Blocks: []docxparse.BlockShare{{Type: "ul", Count: 1}}}
+			if got := docsScriptPresentationDiagnostics(profile, decision); len(got) != 0 {
+				t.Fatalf("valid draft diagnostics = %#v", got)
+			}
+			diagnostics := docsScriptPresentationDiagnostics(docsScriptPublicProfile{WordCount: 1}, decision)
+			if len(diagnostics) != 2 || diagnostics[0].Code != docsScriptCodeWordCountRange || diagnostics[1].Code != docsScriptCodeRequiredBlock {
+				t.Fatalf("draft constraints lost with retired metadata: %#v", diagnostics)
+			}
+		})
 	}
 }
 

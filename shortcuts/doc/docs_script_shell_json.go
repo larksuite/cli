@@ -12,7 +12,7 @@ import (
 	"unicode/utf8"
 )
 
-var docsScriptPresentationDecisionType = reflect.TypeOf(docsScriptPresentationDecision{})
+var docsScriptPresentationDecisionType = reflect.TypeOf(docsScriptPresentationDecisionInput{})
 
 // docsScriptShellJSONError is an intermediate recovery-parser error. The
 // command boundary keeps the original typed strict-JSON error when recovery
@@ -309,6 +309,12 @@ func docsScriptShellJSONStructFields(structType reflect.Type) map[string]reflect
 	for index := 0; index < structType.NumField(); index++ {
 		field := structType.Field(index)
 		fieldName := strings.Split(field.Tag.Get("json"), ",")[0]
+		if field.Anonymous && fieldName == "" && field.Type.Kind() == reflect.Struct {
+			for name, fieldType := range docsScriptShellJSONStructFields(field.Type) {
+				fields[name] = fieldType
+			}
+			continue
+		}
 		if fieldName != "" && fieldName != "-" {
 			fields[fieldName] = field.Type
 		}
