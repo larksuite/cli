@@ -19,10 +19,11 @@ import (
 // is in latest_turn.turn_id.
 
 // Turn cost varies sharply by init state: the first +chat on a not-initialized
-// app runs a one-time design + first-generation pass server-side (~20-50 min);
-// chat on an already-initialized app is incremental and finishes in minutes.
-// The init-state check and matching polling cadence live in the lark-apps
-// skill reference (references/lark-apps-cloud-dev.md) — the canonical source.
+// app runs a one-time design + first-generation pass server-side, which takes
+// much longer than an incremental chat on an already-initialized app.
+// Polling follows next_poll_after_ms; the init-state check and the fallback
+// cadence when that field is missing live in the lark-apps skill reference
+// (references/lark-apps-cloud-dev.md) — the canonical source.
 var AppsChat = common.Shortcut{
 	Service:     appsService,
 	Command:     "+chat",
