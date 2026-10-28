@@ -642,7 +642,7 @@ func TestDocsScriptOnlineDryRunFetchesXML(t *testing.T) {
 	require.Equal(t, "parse", gjson.Get(result.Stdout, "data.command").String())
 }
 
-func TestDocsScriptAcceptsRetiredPresentationDecisionRoutes(t *testing.T) {
+func TestDocsScriptAcceptsUnknownPresentationDecisionFields(t *testing.T) {
 	for _, decision := range []string{
 		`{"genre_contract":"none"}`,
 		`{"genre_contract":null}`,
@@ -652,6 +652,9 @@ func TestDocsScriptAcceptsRetiredPresentationDecisionRoutes(t *testing.T) {
 		`{"genre_contract":42,"adapter":false}`,
 		`{"genre_contract":{"nested":[true,1]},"adapter":[{},null]}`,
 		`{genre_contract:none}`,
+		`{"unexpected":{"nested":[{},true]},"word_cout":{"min":9999}}`,
+		`{"word_count":{"min":1,"max":10,"mni":99},"visual_plan":{"extra":true,"blocks":[{"type":"list","min_count":1,"typo":{}}]}}`,
+		`{future:{nested:[{flag:true},value]},word_count:{min:1,max:10,typo:99}}`,
 	} {
 		t.Run(decision, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -672,7 +675,7 @@ func TestDocsScriptAcceptsRetiredPresentationDecisionRoutes(t *testing.T) {
 
 func TestDocsScriptSavedLegacyDecisionRemainsUsable(t *testing.T) {
 	workDir := t.TempDir()
-	legacy := `{"audience":"reader","reader_task":"understand","genre_contract":{"nested":[true,1]},"adapter":[{},null],"presentation_mode":"normal","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[{"type":"list","min_count":1}]}}`
+	legacy := `{"audience":"reader","reader_task":"understand","genre_contract":{"nested":[true,1]},"adapter":[{},null],"future":{"arbitrary":true},"presentation_mode":"normal","word_count":{"min":2,"max":3,"mni":9999},"visual_plan":{"extra":{},"blocks":[{"type":"list","min_count":1,"typo":[]}]}}`
 	require.NoError(t, os.WriteFile(filepath.Join(workDir, ".presentation-decision.json"), []byte(legacy), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(workDir, "draft.xml"), []byte(`<ul><li>two words</li></ul>`), 0o600))
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

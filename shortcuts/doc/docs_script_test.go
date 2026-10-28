@@ -478,6 +478,16 @@ func TestDocsScriptInitDraftRecoversPowerShellDequotedDecisionFromSchema(t *test
 			dequoted:       `{genre_contract:true story,adapter:42days}`,
 			wantNormalized: `{"genre_contract":"true story","adapter":"42days"}`,
 		},
+		{
+			name:           "unknown nested fields",
+			dequoted:       `{future:{nested:[{flag:true},value]},word_count:{min:2,max:3,typo:9},visual_plan:{blocks:[{type:list,min_count:1,extra:{key:value}}]}}`,
+			wantNormalized: `{"future":{"nested":[{"flag":true},"value"]},"word_count":{"min":2,"max":3,"typo":9},"visual_plan":{"blocks":[{"type":"list","min_count":1,"extra":{"key":"value"}}]}}`,
+		},
+		{
+			name:           "duplicate unknown fields",
+			dequoted:       `{typo:first,typo:second,audience:reader}`,
+			wantNormalized: `{"typo":"first","typo":"second","audience":"reader"}`,
+		},
 	}
 
 	for _, test := range tests {
@@ -531,11 +541,11 @@ func TestDocsScriptPowerShellDequotedRecoveryUsesOriginalValidation(t *testing.T
 	}
 }
 
-func TestDocsScriptPresentationDecisionQuoteRecoveryUsesOriginalSchema(t *testing.T) {
+func TestDocsScriptPresentationDecisionQuoteRecoveryPreservesKnownFieldValidation(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
 	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-presentation-quote-schema"))
-	decision := `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]},"unexpected":true}`
+	decision := `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","visual_plan":{"reason":"visual explanation","blocks":[{"type":"img","min_count":0}]},"unexpected":true}`
 
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
@@ -544,8 +554,8 @@ func TestDocsScriptPresentationDecisionQuoteRecoveryUsesOriginalSchema(t *testin
 		"--as", "bot",
 	}, f, nil)
 	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
-	if !strings.Contains(err.Error(), `json: unknown field "unexpected"`) {
-		t.Fatalf("error = %v, want recovered JSON to use the original strict schema", err)
+	if !strings.Contains(err.Error(), "visual_plan.blocks[0].min_count must be positive") {
+		t.Fatalf("error = %v, want recovered JSON to validate known fields", err)
 	}
 	entries, readErr := os.ReadDir(workDir)
 	if readErr != nil {
@@ -766,16 +776,11 @@ func TestDocsScriptRejectsInvalidPresentationDecision(t *testing.T) {
 		decision string
 	}{
 		{name: "invalid json", decision: `{`},
-		{name: "unknown field with retired metadata", decision: `{"genre_contract":"none","adapter":null,"unexpected":true}`},
-		{name: "nested retired field", decision: `{"visual_plan":{"adapter":"wechat"}}`},
-		{name: "unknown field", decision: validPrefix + `"visual_plan":{"reason":"plain is enough","blocks":[],"image_enabled":true}}`},
-		{name: "legacy fields", decision: `{"target":"reader","presentation_mode":"normal","hard_rule":"","word_count":20,"visual_plan":{"reason":"plain is enough","exception":"","blocks":[]}}`},
 		{name: "integer word count", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":20,"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "missing word count bound", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "empty word count range", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":null,"max":null},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "non-positive word count", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":0,"max":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "reversed word count range", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":20,"max":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "removed hard_rules field", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","hard_rules":[],"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "unknown block type", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"future-widget","min_count":1,"purpose":"show the result"}]}}`},
 		{name: "ordinary text block is not presentation block", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"p","min_count":2,"purpose":"fill the quota"}]}}`},
 		{name: "non-positive block minimum", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"img","min_count":0,"purpose":"show the result"}]}}`},
@@ -821,8 +826,8 @@ func TestDocsScriptPresentationDecisionMangledInlineJSONSuggestsFileInput(t *tes
 	}
 }
 
-func TestDocsScriptPresentationDecisionIgnoresRetiredRoutes(t *testing.T) {
-	for _, routes := range []string{
+func TestDocsScriptPresentationDecisionIgnoresUnknownFields(t *testing.T) {
+	for _, extraFields := range []string{
 		`"genre_contract":"workplace.prd","adapter":"wechat"`,
 		`"genre_contract":null,"adapter":null`,
 		`"genre_contract":"","adapter":""`,
@@ -831,11 +836,13 @@ func TestDocsScriptPresentationDecisionIgnoresRetiredRoutes(t *testing.T) {
 		`"genre_contract":{},"adapter":[]`,
 		`"genre_contract":{"nested":[true,1,null]},"adapter":[{},false]`,
 		`"genre_contract":[1,{}],"adapter":{"value":false}`,
+		`"future_metadata":{"nested":[true,1,null]},"word_cout":{"min":9999}`,
+		`"unexpected":true,"typo":[{},null]`,
 	} {
-		t.Run(routes, func(t *testing.T) {
-			decision, err := parseDocsScriptPresentationDecision(`{` + routes + `,"audience":"reader","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[{"type":"list","min_count":1}]}}`)
+		t.Run(extraFields, func(t *testing.T) {
+			decision, err := parseDocsScriptPresentationDecision(`{` + extraFields + `,"audience":"reader","word_count":{"min":2,"max":3,"mni":9999},"visual_plan":{"unexpected":true,"blocks":[{"type":"list","min_count":1,"extra":{"ignored":true}}]}}`)
 			if err != nil {
-				t.Fatalf("parse retired metadata: %v", err)
+				t.Fatalf("parse unknown fields: %v", err)
 			}
 			if decision.Audience != "reader" {
 				t.Fatalf("audience = %q, want reader", decision.Audience)
@@ -846,7 +853,7 @@ func TestDocsScriptPresentationDecisionIgnoresRetiredRoutes(t *testing.T) {
 			}
 			diagnostics := docsScriptPresentationDiagnostics(docsScriptPublicProfile{WordCount: 1}, decision)
 			if len(diagnostics) != 2 || diagnostics[0].Code != docsScriptCodeWordCountRange || diagnostics[1].Code != docsScriptCodeRequiredBlock {
-				t.Fatalf("draft constraints lost with retired metadata: %#v", diagnostics)
+				t.Fatalf("known draft constraints lost with unknown fields: %#v", diagnostics)
 			}
 		})
 	}
@@ -1002,21 +1009,26 @@ func TestDocsScriptRichPresentationDecisionAllowsAnyBlockCount(t *testing.T) {
 	}
 }
 
-func TestDocsScriptPresentationDecisionRejectsRemovedHardRulesField(t *testing.T) {
-	_, err := parseDocsScriptPresentationDecision(`{
+func TestDocsScriptPresentationDecisionIgnoresUnknownConstraints(t *testing.T) {
+	decision, err := parseDocsScriptPresentationDecision(`{
 		"audience":"executives",
 		"reader_task":"approve or reject the proposal",
 		"presentation_mode":"formal",
 		"hard_rules":["do not use callout blocks","include a risks section"],
+		"word_cout":{"min":9999},
 		"visual_plan":{
 			"reason":"a restrained structure best supports formal approval",
 			"blocks":[]
 		}
 	}`)
-	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
-	problem, ok := errs.ProblemOf(err)
-	if !ok || !strings.Contains(problem.Message, `unknown field "hard_rules"`) {
-		t.Fatalf("error = %v, want removed hard_rules field to be rejected", err)
+	if err != nil {
+		t.Fatalf("parse unknown constraints: %v", err)
+	}
+	if decision.WordCount != nil {
+		t.Fatalf("misspelled word_cout enabled word-count constraints: %#v", decision.WordCount)
+	}
+	if got := docsScriptPresentationDiagnostics(docsScriptPublicProfile{}, decision); len(got) != 0 {
+		t.Fatalf("unknown constraints produced diagnostics: %#v", got)
 	}
 }
 
@@ -1440,7 +1452,7 @@ func TestDocsScriptDryRunRejectsInvalidSavedPresentationDecision(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "draft.xml"), []byte(`<p>draft</p>`), 0o600); err != nil {
 		t.Fatalf("write draft XML: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, docsScriptDecisionFile), []byte(`{"invalid":true}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, docsScriptDecisionFile), []byte(`{"word_count":null}`), 0o600); err != nil {
 		t.Fatalf("write invalid saved Presentation Decision: %v", err)
 	}
 

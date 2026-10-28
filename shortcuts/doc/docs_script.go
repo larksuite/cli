@@ -136,14 +136,6 @@ type docsScriptPresentationDecision struct {
 	VisualPlan       docsScriptPresentationVisualPlan `json:"visual_plan"`
 }
 
-// Retired metadata is opaque JSON that is discarded after decoding; its value
-// and type do not participate in validation or the active draft profile.
-type docsScriptPresentationDecisionInput struct {
-	docsScriptPresentationDecision
-	RetiredGenreContract json.RawMessage `json:"genre_contract"`
-	RetiredAdapter       json.RawMessage `json:"adapter"`
-}
-
 type docsScriptPresentationWordCount struct {
 	Min *int `json:"min"`
 	Max *int `json:"max"`
@@ -504,7 +496,7 @@ func parseDocsScriptPresentationDecisionFlag(runtime *common.RuntimeContext) (do
 		return decision, raw, err
 	}
 
-	// Keep the original strict parse as the primary path. Recovery is limited to
+	// Keep standard JSON decoding as the primary path. Recovery is limited to
 	// direct input because file and stdin sources preserve the original bytes.
 	if len(raw) >= 2 && raw[0] == '\'' && raw[len(raw)-1] == '\'' {
 		raw = strings.TrimSpace(raw[1 : len(raw)-1])
@@ -531,16 +523,14 @@ func parseDocsScriptPresentationDecisionFlag(runtime *common.RuntimeContext) (do
 }
 
 func parseDocsScriptPresentationDecision(raw string) (docsScriptPresentationDecision, error) {
-	var input docsScriptPresentationDecisionInput
+	var decision docsScriptPresentationDecision
 	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&input); err != nil {
+	if err := decoder.Decode(&decision); err != nil {
 		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--presentation-decision must be a valid Presentation Decision JSON object: %s", err).
 			WithParam("--presentation-decision").
 			WithCause(err)
 	}
-	decision := input.docsScriptPresentationDecision
 	var trailing interface{}
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {
