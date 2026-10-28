@@ -136,12 +136,12 @@ type docsScriptPresentationDecision struct {
 	VisualPlan       docsScriptPresentationVisualPlan `json:"visual_plan"`
 }
 
-// Retired route metadata is accepted only at the input boundary so saved
-// decisions remain readable without adding it to the active draft profile.
+// Retired metadata is opaque JSON that is discarded after decoding; its value
+// and type do not participate in validation or the active draft profile.
 type docsScriptPresentationDecisionInput struct {
 	docsScriptPresentationDecision
-	RetiredGenreContract *string `json:"genre_contract"`
-	RetiredAdapter       *string `json:"adapter"`
+	RetiredGenreContract json.RawMessage `json:"genre_contract"`
+	RetiredAdapter       json.RawMessage `json:"adapter"`
 }
 
 type docsScriptPresentationWordCount struct {

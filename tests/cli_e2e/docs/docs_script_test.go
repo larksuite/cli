@@ -649,6 +649,8 @@ func TestDocsScriptAcceptsRetiredPresentationDecisionRoutes(t *testing.T) {
 		`{"adapter":"wechat"}`,
 		`{"adapter":null}`,
 		`{"genre_contract":null,"adapter":null}`,
+		`{"genre_contract":42,"adapter":false}`,
+		`{"genre_contract":{"nested":[true,1]},"adapter":[{},null]}`,
 		`{genre_contract:none}`,
 	} {
 		t.Run(decision, func(t *testing.T) {
@@ -670,7 +672,7 @@ func TestDocsScriptAcceptsRetiredPresentationDecisionRoutes(t *testing.T) {
 
 func TestDocsScriptSavedLegacyDecisionRemainsUsable(t *testing.T) {
 	workDir := t.TempDir()
-	legacy := `{"audience":"reader","reader_task":"understand","genre_contract":null,"adapter":null,"presentation_mode":"normal","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[{"type":"list","min_count":1}]}}`
+	legacy := `{"audience":"reader","reader_task":"understand","genre_contract":{"nested":[true,1]},"adapter":[{},null],"presentation_mode":"normal","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[{"type":"list","min_count":1}]}}`
 	require.NoError(t, os.WriteFile(filepath.Join(workDir, ".presentation-decision.json"), []byte(legacy), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(workDir, "draft.xml"), []byte(`<ul><li>two words</li></ul>`), 0o600))
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

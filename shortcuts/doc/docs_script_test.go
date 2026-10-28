@@ -468,6 +468,16 @@ func TestDocsScriptInitDraftRecoversPowerShellDequotedDecisionFromSchema(t *test
 			dequoted:       `{audience:a,genre_contract:workplace.prd,adapter:wechat,word_count:{min:10,max:null}}`,
 			wantNormalized: `{"audience":"a","genre_contract":"workplace.prd","adapter":"wechat","word_count":{"min":10,"max":null}}`,
 		},
+		{
+			name:           "opaque retired values",
+			dequoted:       `{genre_contract:{"nested":[true,1]},adapter:[{},null],word_count:{min:10,max:null}}`,
+			wantNormalized: `{"genre_contract":{"nested":[true,1]},"adapter":[{},null],"word_count":{"min":10,"max":null}}`,
+		},
+		{
+			name:           "retired bare string with JSON prefix",
+			dequoted:       `{genre_contract:true story,adapter:42days}`,
+			wantNormalized: `{"genre_contract":"true story","adapter":"42days"}`,
+		},
 	}
 
 	for _, test := range tests {
@@ -756,8 +766,6 @@ func TestDocsScriptRejectsInvalidPresentationDecision(t *testing.T) {
 		decision string
 	}{
 		{name: "invalid json", decision: `{`},
-		{name: "retired genre invalid type", decision: `{"genre_contract":{}}`},
-		{name: "retired adapter invalid type", decision: `{"adapter":[]}`},
 		{name: "unknown field with retired metadata", decision: `{"genre_contract":"none","adapter":null,"unexpected":true}`},
 		{name: "nested retired field", decision: `{"visual_plan":{"adapter":"wechat"}}`},
 		{name: "unknown field", decision: validPrefix + `"visual_plan":{"reason":"plain is enough","blocks":[],"image_enabled":true}}`},
@@ -818,6 +826,11 @@ func TestDocsScriptPresentationDecisionIgnoresRetiredRoutes(t *testing.T) {
 		`"genre_contract":"workplace.prd","adapter":"wechat"`,
 		`"genre_contract":null,"adapter":null`,
 		`"genre_contract":"","adapter":""`,
+		`"genre_contract":42,"adapter":true`,
+		`"genre_contract":false,"adapter":3.5`,
+		`"genre_contract":{},"adapter":[]`,
+		`"genre_contract":{"nested":[true,1,null]},"adapter":[{},false]`,
+		`"genre_contract":[1,{}],"adapter":{"value":false}`,
 	} {
 		t.Run(routes, func(t *testing.T) {
 			decision, err := parseDocsScriptPresentationDecision(`{` + routes + `,"audience":"reader","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[{"type":"list","min_count":1}]}}`)

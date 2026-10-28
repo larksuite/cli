@@ -12,7 +12,10 @@ import (
 	"unicode/utf8"
 )
 
-var docsScriptPresentationDecisionType = reflect.TypeOf(docsScriptPresentationDecisionInput{})
+var (
+	docsScriptPresentationDecisionType = reflect.TypeOf(docsScriptPresentationDecisionInput{})
+	docsScriptRawJSONType              = reflect.TypeOf(json.RawMessage{})
+)
 
 // docsScriptShellJSONError is an intermediate recovery-parser error. The
 // command boundary keeps the original typed strict-JSON error when recovery
@@ -54,6 +57,9 @@ type docsScriptShellJSONParser struct {
 
 func (parser *docsScriptShellJSONParser) parseValue(valueType reflect.Type) (string, error) {
 	parser.skipSpace()
+	if valueType == docsScriptRawJSONType {
+		return parser.parseRawValue()
+	}
 	if valueType.Kind() == reflect.Pointer {
 		if parser.consumeLiteral("null") {
 			return "null", nil
@@ -79,6 +85,21 @@ func (parser *docsScriptShellJSONParser) parseValue(valueType reflect.Type) (str
 	default:
 		return "", newDocsScriptShellJSONError("unsupported presentation decision field type %s", valueType)
 	}
+}
+
+func (parser *docsScriptShellJSONParser) parseRawValue() (string, error) {
+	var value json.RawMessage
+	decoder := json.NewDecoder(strings.NewReader(parser.raw[parser.offset:]))
+	if err := decoder.Decode(&value); err == nil {
+		end := parser.offset + int(decoder.InputOffset())
+		remainder := strings.TrimSpace(parser.raw[end:])
+		// A bare string such as "true story" must remain one recovered string.
+		if remainder == "" || remainder[0] == ',' || remainder[0] == '}' || remainder[0] == ']' {
+			parser.offset = end
+			return string(value), nil
+		}
+	}
+	return parser.parseString()
 }
 
 func (parser *docsScriptShellJSONParser) parseStruct(structType reflect.Type) (string, error) {
