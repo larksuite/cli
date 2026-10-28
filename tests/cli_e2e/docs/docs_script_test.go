@@ -684,7 +684,7 @@ func TestDocsScriptSavedLegacyDecisionCanBeOverridden(t *testing.T) {
 	}
 	result, err := clie2e.RunCmd(ctx, request)
 	require.NoError(t, err)
-	result.AssertExitCode(t, 1)
+	result.AssertExitCode(t, 5)
 	require.Empty(t, result.Stdout)
 	require.Equal(t, "internal", gjson.Get(result.Stderr, "error.type").String())
 	require.Equal(t, "saved Presentation Decision is invalid", gjson.Get(result.Stderr, "error.message").String())
