@@ -96,7 +96,7 @@ lark-cli auth login --device-code <device_code>
 1. 等待用户回复"已完成授权"
 2. **由你（AI agent）亲自执行**：`lark-cli auth login --device-code <device_code>`
 3. 此命令会轮询授权状态并完成登录
-4. 如果返回授权成功，流程结束
+4. 如果返回授权成功，先看输出是否提示本次登录没有拿到 refresh_token（`--json` 输出中为 `refresh_token_issued: false` 和 `no_refresh_token` 对象）。有的话，把其中的失效时间、原因、处理办法和安全设置页链接转告用户：该身份到期（约 2 小时）后无法自动续期，需要应用管理员在开发者后台开启「刷新 user_access_token」并发布新版本后重新登录。agent 无法代为处理，不要在不说明原因的情况下每次到期都重新发起授权。之后流程结束
 
 **关键规则**：
 
