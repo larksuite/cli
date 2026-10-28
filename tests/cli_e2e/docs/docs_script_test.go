@@ -679,7 +679,7 @@ func TestDocsScriptSavedLegacyDecisionCanBeOverridden(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 	request := clie2e.Request{
-		Args: []string{"docs", "+script", "--command", "parse", "--content", "@draft.xml"},
+		Args:      []string{"docs", "+script", "--command", "parse", "--content", "@draft.xml"},
 		DefaultAs: "bot", WorkDir: workDir, Env: docsScriptE2EEnv(t),
 	}
 	result, err := clie2e.RunCmd(ctx, request)

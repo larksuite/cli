@@ -51,7 +51,7 @@ func TestDocsCreateWorkflowRetainsDraftWorkspace(t *testing.T) {
 		t.Fatalf("read create workflow: %v", err)
 	}
 	text := string(workflow)
-	if !strings.Contains(text, "保留 Step 4 返回的 `work_dir` 及其中的创作草稿") {
+	if !strings.Contains(text, "保留 Step 3 返回的 `work_dir` 及其中的创作草稿") {
 		t.Fatal("create workflow does not retain the draft workspace")
 	}
 
