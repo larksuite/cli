@@ -444,7 +444,12 @@
   "content": [
     { "value_type": "text", "value": "客户 " },
     { "value_type": "ref", "value": "$.trigger_1.fldCustomerName" },
-    { "value_type": "text", "value": " 创建了新订单" }
+    { "value_type": "text", "value": " 创建了新订单" },
+    {
+      "value_type": "ref",
+      "value": "$.dashboard.image",
+      "extra_info": { "dashboard_name": "blk_dashboard_xxxx" }
+    }
   ],
   "btn_list": [
     { "text": "查看详情", "btn_action": "openLink", "link": [{ "value_type": "text", "value": "https://example.com" }] }
@@ -457,7 +462,7 @@
 | `receiver` | 是 | ValueInfo[] |
 | `send_to_everyone` | 是 | 是否发送给所有人 |
 | `title` | 否 | TextRefItem[] 消息标题 |
-| `content` | 是 | TextRefItem[] 消息内容 |
+| `content` | 是 | TextRefItem[] 消息内容。仪表盘截图使用 `value_type: "ref"`、`value: "$.dashboard.image"`，并在 `extra_info.dashboard_name` 传 Dashboard block ID；目标服务必须支持该段 |
 | `btn_list` | 是 | 按钮列表，不需要时为空数组 |
 
 `ButtonConfig`：
@@ -664,6 +669,8 @@
 | `user` | `{ id, name }` | 用户 OpenID、名字 | `{ "id": "ou_xxxx", "name": "张三" }` |
 | `group` | `{ id, name }` | 群 Chat ID、名字 | `{ "id": "oc_xxx", "name": "测试群" }` |
 | `ref` | `string` | 引用前置节点输出的路径 | 参考 ref 引用变量详解 章节 |
+
+`LarkMessageAction.content` 另支持仪表盘截图专用引用：`{"value_type":"ref","value":"$.dashboard.image","extra_info":{"dashboard_name":"blkxxxx"}}`。这里的 `dashboard_name` 实际承载 Dashboard block ID；该值不是前置 step 输出，也不表示 AI 仪表盘总结。
 
 > ⚠️ **所有涉及用户的 value 中的 id 统一使用 OpenID（`ou_xxxx` 格式）**，由 CLI 层来完成转换
 > ⚠️ **所有涉及群的 value 中的 id 统一使用 ChatID（`oc_xxxx` 格式）**，由 CLI 层来完成转换
