@@ -76,6 +76,45 @@ Step 2: 基于辅助列值做条件格式（用 cellIs 或引用辅助列的 exp
 
 ⚠️ **创建条件格式前必须读数据行确认列对应**：仅读首行表头（`+csv-get range="A1:Z1"`）不够——如果表头语义含糊（比如"时间"、"日期"这种多列同义词），formula 里引用的列字母可能张冠李戴。必须再读 3-5 行**数据样本**（如 `range="A2:Z6"`）确认：①列名对应的实际值；②字段含义匹配用户描述；③数据类型是日期/数字/文本。特别是比较类条件格式（`=$A2>$B2` 这种），列字母选错整条规则就废了。
 
+## 辅助判断列与动态高亮示例
+
+需要展示规则判断并动态标记结果时，可采用「判断公式 → 辅助列 → 条件格式」。这也是导入不支持元素时的一个候选方案；是否替代按 `references/lark-sheets-workbook.md` 的通用原则选择，不要求采用本例。此实现用于提示，不会阻止录入。
+
+采用本例时，先从源文件或用户要求读取判断规则、作用范围和空值策略，不从已丢失配置的在线表猜规则。按 `references/lark-sheets-write-cells.md` 确认真实表头行、首条数据行及空白辅助列；辅助列只放在允许新增的范围内。公式保留实际业务条件与数据范围，涉及唯一性时覆盖实际输入全区间。
+
+示例仅演示「允许空白；录入值为非负数字且不超过同一行上限」：已确认 B 列是上限、C 列是录入值，字段表头在第 2 行、数据在第 3–12 行，F 是原末列、G 全空且允许新增。按真实结构和源规则改写，不能照抄字母与行号；要求必填时空值须返回「非法」，不能沿用示例的空字符串分支。
+
+```bash
+# 先继承表头与数据样式；不覆盖上方合并标题
+lark-cli sheets +range-copy --url "<表格URL>" --sheet-name "<真实表名>" \
+  --source-range "F2:F12" --target-range "G2" --paste-type formats
+lark-cli sheets +cells-set --url "<表格URL>" --sheet-name "<真实表名>" \
+  --range "G2" --cells '[[{"value":"输入校验"}]]'
+
+# 先验证种子公式，再用同一模板扩展；IFERROR 把输入错误归为非法
+lark-cli sheets +cells-set --url "<表格URL>" --sheet-name "<真实表名>" \
+  --range "G3" --cells '[[{"formula":"=IFERROR(IF(C3=\"\",\"\",IF(AND(ISNUMBER(C3),C3>=0,C3<=B3),\"合法\",\"非法\")),\"非法\")"}]]'
+lark-cli sheets +formula-verify --url "<表格URL>" --sheet-name "<真实表名>" \
+  --range "G3" --exit-on-error
+lark-cli sheets +cells-set --url "<表格URL>" --sheet-name "<真实表名>" \
+  --range "G3" --cells '[[{"formula":"=IFERROR(IF(C3=\"\",\"\",IF(AND(ISNUMBER(C3),C3>=0,C3<=B3),\"合法\",\"非法\")),\"非法\")"}]]' \
+  --copy-to-range "G3:G12"
+lark-cli sheets +formula-verify --url "<表格URL>" --sheet-name "<真实表名>" \
+  --range "G3:G12" --exit-on-error
+
+# 锁辅助列、让行号随数据行变化，范围不含表头
+lark-cli sheets +cond-format-create --url "<表格URL>" --sheet-name "<真实表名>" \
+  --rule-type expression --ranges '["A3:G12"]' \
+  --properties '{"attrs":[{"formula":["=$G3=\"非法\""]}],"style":{"back_color":"#FF0000"}}'
+lark-cli sheets +cond-format-list --url "<表格URL>" --sheet-name "<真实表名>"
+lark-cli sheets +cond-format-result-get --url "<表格URL>" --sheet-name "<真实表名>" \
+  --range "A3:G12"
+```
+
+公式诊断覆盖整个辅助列，`partial` 分段续查；诊断通过还要用哨兵核对业务结果：合法值、非法值、上下界、按规则允许的空值，以及涉及唯一性时的重复记录。核对辅助列与条件格式结果一致，排除既有规则 / 静态底色造成的假命中；在独立测试副本中修改输入，确认提示和颜色随之更新，不为测试改写用户原始记录。
+
+采用该方案时，在交付说明中写明实际判断规则和使用限制，例如「提示非法值，不会阻止录入」，并列出与原实现的差异。
+
 ## Shortcuts
 
 | Shortcut | Risk | 分组 |

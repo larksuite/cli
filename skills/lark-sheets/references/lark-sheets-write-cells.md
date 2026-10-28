@@ -11,6 +11,8 @@
 
 新增列 / 新增行时，先铺样式再写值，分两步——避免只传 `value` 期望默认样式与原表一致（飞书新单元格默认对齐通常是 `H:right, V:bottom`，与多数原表的 `H:center, V:middle` 不一致）。
 
+**新增辅助列表头必须对齐真实字段表头行**：先回读表头与合并范围，区分上方合并标题、多层表头和首条数据行；表头写在字段所在层，继承相邻表头的字体、对齐、底色与边框，公式从首条数据行开始，不把表头或合并标题纳入填充范围。
+
 **推荐做法（一步到位）**：用 `+range-copy --paste-type formats` 把相邻原列/原行的样式复制到目标区域，再写值。`--paste-type formats` 只复制样式不动值。目标区域尺寸由**源区域**推断，`--target-range` 只给目标左上角锚点单元格；要铺满整列，源区域就要覆盖整列（如 `C1:C100`）。命令要带完整定位（`--url`/`--spreadsheet-token` 与 `--sheet-id`/`--sheet-name` 各一）：
 
 ```bash
@@ -332,7 +334,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--vertical-alignment` | string | optional | 垂直对齐（可选值：`top` / `middle` / `bottom`） |
 | `--word-wrap` | string | optional | 换行策略（可选值：`overflow` / `auto-wrap` / `word-clip`） |
 | `--number-format` | string | optional | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
-| `--border-styles` | string + File + Stdin（复合 JSON） | optional | 边框配置 JSON：`{ top: {style,weight,color}, bottom: ..., left: ..., right: ... }`；4 方向结构相同。style = 线型（solid\|dashed\|dotted\|double\|none）；weight = 粗细（thin\|medium\|thick —— 字符串，不是像素数字）；color = 十六进制如 #000000。`{ all: {...} }` 一次设置四边。边框只有这一个 flag：不存在 --border-all / --border-top / --border-color |
+| `--border-styles` | string + File + Stdin（复合 JSON） | optional | 边框配置 JSON：`{ top: {style,weight,color}, bottom: ..., left: ..., right: ... }`；4 方向结构相同。style = 线型（solid\|dashed\|dotted\|double\|none）；weight = 粗细（thin\|medium\|thick —— 字符串，不是像素数字）；color = 十六进制如 #000000。`{ all: {...} }` 一次设置四边。用此 flag 选择边；--border-color / --border-weight 仅补充显式选择的边框属性 |
 
 ### `+cells-set-image`
 

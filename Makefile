@@ -45,6 +45,7 @@ fmt-check:
 	fi
 
 script-test:
+	python3 scripts/excel_conditional_format_verify_test.py
 	bash scripts/resolve-changed-from.test.sh
 	bash scripts/ci-workflow.test.sh
 	bash scripts/release-workflow.test.sh

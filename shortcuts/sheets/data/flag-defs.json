@@ -3946,7 +3946,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Data label content; use none for line charts unless explicitly requested by the user; for combo charts, keep line-series labels off by default and use series-data-labels instead of global data-labels; use value by default for other basic charts regardless of point or series count; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names",
+        "desc": "Full-series data label content; use none for line charts unless the user explicitly requests full-series labels; endpoint or key-point labels may be configured separately as needed; for combo charts, keep line-series labels off by default and use series-data-labels instead of global data-labels; use value by default for other basic charts regardless of point or series count; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names",
         "enum": [
           "none",
           "value",

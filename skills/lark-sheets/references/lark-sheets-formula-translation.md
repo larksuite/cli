@@ -187,13 +187,15 @@ AI 公式的质量高度依赖提示词。推荐：
 
 ## 原生数组函数清单
 
-以下函数按数组语义工作，可直接返回整片结果，不必拆成逐行填充；且它们在 Excel 侧同样存在，可安全使用：
+以下函数按数组语义工作，可直接返回整片结果，不必拆成逐行填充。它们在飞书内都能算，但其中的动态数组函数（`FILTER` / `XLOOKUP` / `UNIQUE` / `SORT` / `SEQUENCE` / `TEXTSPLIT` / `VSTACK` / `TAKE` 等）只有较新的 Excel（Microsoft 365，部分 2021 起）支持——导出的 `.xlsx` 不带公式计算结果，打开方重算不了就整列显示 `#NAME?`。产物要导出 / 下载到别处打开时，能用经典函数或辅助列表达的优先用经典写法：
 
 `CELL` `CHOOSECOLS` `CHOOSEROWS` `DROP` `EXPAND` `FILTER` `FREQUENCY` `GROWTH` `HSTACK` `LINEST` `LOGEST` `LOOKUP` `MINVERSE` `MMULT` `MUNIT` `RANDARRAY` `SEQUENCE` `SORT` `SORTBY` `SUMPRODUCT` `SWITCH` `TAKE` `TEXTSPLIT` `TOCOL` `TOROW` `TRANSPOSE` `TREND` `UNIQUE` `VSTACK` `WRAPCOLS` `WRAPROWS` `XLOOKUP`
 
 `BYCOL` `BYROW` `MAKEARRAY` `MAP` `REDUCE` `SCAN` 同样是原生数组函数，但受核心原则二约束——导出 `.xlsx` 会丢高阶语义，默认改走 `ARRAYFORMULA` / 逐行填充 / 辅助列。
 
-`ARRAYFORMULA` 不在上面这份清单里——它的作用是给**本来只按标量求值**的表达式套上数组语义，而不是自己返回数组。导出 `.xlsx` 时它会被翻译成 Excel 原生数组公式（`=ARRAYFORMULA(IF(A2:A6>2,B2:B6,""))` → `=IF(A2:A6>2,B2:B6,"")`，作用范围覆盖整片），语义完整保留，可安全使用。
+`ARRAYFORMULA` 不在上面这份清单里——它的作用是给**本来只按标量求值**的表达式套上数组语义，而不是自己返回数组。导出 `.xlsx` 时**最外层**的 `ARRAYFORMULA` 会被翻译成 Excel 原生数组公式（`=ARRAYFORMULA(IF(A2:A6>2,B2:B6,""))` → `=IF(A2:A6>2,B2:B6,"")`，作用范围覆盖整片），语义完整保留，可安全使用；嵌在其它函数参数里的（如 `TEXTJOIN("",1,ARRAYFORMULA(…))`）导出后原样保留成 Excel 不认识的函数名，需要数组语义时把它放在公式最外层。
+
+数组常量 `{…}` 里只放字面量：飞书接受夹带函数的写法（如 `{"a",CHAR(10)}`），Excel 判为非法公式，导出后算不出来。
 
 > **注意：`SWITCH` 在飞书里被当作原生数组函数处理，这与 Excel 行为不同——把区域喂给它会逐项展开。**
 

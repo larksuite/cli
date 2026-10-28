@@ -5,9 +5,14 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from typing import Any
+
+
+_READ_OUTPUT_SHORTCUTS = frozenset(("+cells-get", "+csv-get", "+table-get"))
 
 
 class LarkCliError(RuntimeError):
@@ -56,14 +61,43 @@ def run_sheets(
     if sheet_id and sheet_name:
         raise LarkCliError("Pass only one of --sheet-id or --sheet-name")
 
+    flags = dict(flags or {})
+    managed_output = shortcut in _READ_OUTPUT_SHORTCUTS and not any(
+        flags.get(key) is not None and str(flags[key]).strip()
+        for key in ("output_path", "output-path")
+    )
+    if managed_output:
+        flags.pop("output-path", None)
+        flags["output_path"] = "./read.json"
+
     cmd = ["lark-cli", "sheets", shortcut]
     _append_flag(cmd, "url", url)
     _append_flag(cmd, "spreadsheet_token", spreadsheet_token)
     _append_flag(cmd, "sheet_id", sheet_id)
     _append_flag(cmd, "sheet_name", sheet_name)
-    for key, value in (flags or {}).items():
+    for key, value in flags.items():
         _append_flag(cmd, key, value)
 
+    if not managed_output:
+        return _run_sheets(cmd, timeout)
+
+    # The skill directory may be read-only. Use a private writable cwd and a
+    # relative path, which also works with the CLI's Windows path policy.
+    try:
+        with tempfile.TemporaryDirectory(prefix="lark-sheet-read-") as directory:
+            envelope = _run_sheets(cmd, timeout, cwd=directory)
+            data = envelope.get("data")
+            if isinstance(data, dict):
+                # This file is an internal buffer, removed on return; do not
+                # expose a path that the caller can no longer open.
+                data.pop("output_path", None)
+            return envelope
+    except OSError as exc:
+        raise LarkCliError(f"Cannot use a temporary directory for lark-cli reads: {exc}", cmd=cmd) from exc
+
+
+def _run_sheets(cmd: list[str], timeout: int, *, cwd: str | None = None) -> dict[str, Any]:
+    options = {"cwd": cwd} if cwd is not None else {}
     try:
         completed = subprocess.run(
             cmd,
@@ -71,11 +105,14 @@ def run_sheets(
             text=True,
             timeout=timeout,
             check=False,
+            **options,
         )
     except FileNotFoundError as exc:
         raise LarkCliError("lark-cli not found", cmd=cmd) from exc
     except subprocess.TimeoutExpired as exc:
         raise LarkCliError(f"lark-cli timed out after {timeout}s", cmd=cmd) from exc
+    except OSError as exc:
+        raise LarkCliError(f"Could not start lark-cli: {exc}", cmd=cmd) from exc
 
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
@@ -91,10 +128,12 @@ def run_sheets(
         raise LarkCliError(json.dumps(envelope, ensure_ascii=False), cmd=cmd)
     if not isinstance(envelope, dict):
         raise LarkCliError("lark-cli returned a non-object JSON payload", cmd=cmd)
-    return _resolve_offload(envelope, cmd)
+    return _resolve_offload(envelope, cmd, cwd=cwd)
 
 
-def _resolve_offload(envelope: dict[str, Any], cmd: list[str]) -> dict[str, Any]:
+def _resolve_offload(
+    envelope: dict[str, Any], cmd: list[str], *, cwd: str | None = None,
+) -> dict[str, Any]:
     """Load the payload back when the CLI wrote it to a file instead of stdout.
 
     Reads over an internal size threshold come back as a receipt
@@ -109,6 +148,8 @@ def _resolve_offload(envelope: dict[str, Any], cmd: list[str]) -> dict[str, Any]
     path = data.get("output_path")
     if not isinstance(path, str) or not path:
         return envelope
+    if cwd is not None and not os.path.isabs(path):
+        path = os.path.join(cwd, path)
 
     try:
         with open(path, encoding="utf-8") as handle:
