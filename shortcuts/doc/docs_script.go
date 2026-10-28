@@ -131,8 +131,6 @@ type docsScriptPublicProfile struct {
 type docsScriptPresentationDecision struct {
 	Audience         string                           `json:"audience"`
 	ReaderTask       string                           `json:"reader_task"`
-	GenreContract    *string                          `json:"genre_contract"`
-	Adapter          *string                          `json:"adapter"`
 	PresentationMode string                           `json:"presentation_mode"`
 	WordCount        *docsScriptPresentationWordCount `json:"word_count"`
 	VisualPlan       docsScriptPresentationVisualPlan `json:"visual_plan"`

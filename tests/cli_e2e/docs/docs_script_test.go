@@ -73,7 +73,7 @@ func TestDocsScriptLocalParseWithAuthenticatedBot(t *testing.T) {
 func TestDocsScriptPresentationDecisionListCountsULAndOL(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	decision := `{"audience":"reader","reader_task":"review recommendations","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"group recommendations","blocks":[{"type":"list","min_count":2,"purpose":"separate equipment and food recommendations"}]}}`
+	decision := `{"audience":"reader","reader_task":"review recommendations","presentation_mode":"normal","visual_plan":{"reason":"group recommendations","blocks":[{"type":"list","min_count":2,"purpose":"separate equipment and food recommendations"}]}}`
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"docs", "+script",
@@ -97,7 +97,7 @@ func TestDocsScriptPresentationDecisionListCountsULAndOL(t *testing.T) {
 func TestDocsScriptRemoteImagePreflightDryRunDeclaresNetwork(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"an image provides visual evidence","blocks":[{"type":"img","min_count":1,"purpose":"show visual evidence"}]}}`
+	decision := `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"an image provides visual evidence","blocks":[{"type":"img","min_count":1,"purpose":"show visual evidence"}]}}`
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"docs", "+script",
@@ -120,7 +120,7 @@ func TestDocsScriptInitializedDraftAutomaticallyValidatesPresentationDecision(t 
 	workDir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	decision := `{"audience":"reader","reader_task":"understand the result and flow","genre_contract":"none","adapter":null,"presentation_mode":"rich","word_count":{"min":18,"max":22},"visual_plan":{"reason":"visual explanation","blocks":[{"type":"img","min_count":1,"purpose":"show the result"},{"type":"whiteboard","min_count":1,"purpose":"show the flow"},{"type":"html5-block","min_count":1,"purpose":"make the state explorable"}]}}`
+	decision := `{"audience":"reader","reader_task":"understand the result and flow","presentation_mode":"rich","word_count":{"min":18,"max":22},"visual_plan":{"reason":"visual explanation","blocks":[{"type":"img","min_count":1,"purpose":"show the result"},{"type":"whiteboard","min_count":1,"purpose":"show the flow"},{"type":"html5-block","min_count":1,"purpose":"make the state explorable"}]}}`
 	initialized, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"docs", "+script",
@@ -179,7 +179,7 @@ func TestDocsScriptInitializedDraftPreflightsBlockedRemoteImage(t *testing.T) {
 	workDir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"an image provides visual evidence","blocks":[{"type":"img","min_count":1,"purpose":"show visual evidence"}]}}`
+	decision := `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"an image provides visual evidence","blocks":[{"type":"img","min_count":1,"purpose":"show visual evidence"}]}}`
 
 	initialized, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
@@ -280,7 +280,7 @@ func TestDocsScriptFileNameFlagIsRemoved(t *testing.T) {
 			"docs", "+script",
 			"--command", "init-draft",
 			"--file-name", "draft.xml",
-			"--presentation-decision", `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
+			"--presentation-decision", `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
 		},
 		DefaultAs: "bot",
 		Env:       docsScriptE2EEnv(t),
@@ -408,7 +408,7 @@ func TestDocsScriptInitDraftCreatesUniqueWorkspacesWithoutXML(t *testing.T) {
 	workDir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
+	decision := `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
 
 	const count = 8
 	type outcome struct {
@@ -496,7 +496,7 @@ func TestDocsScriptInitDraftDryRunDoesNotWrite(t *testing.T) {
 		Args: []string{
 			"docs", "+script",
 			"--command", "init-draft",
-			"--presentation-decision", `{"audience":"reader","reader_task":"understand the topic","genre_contract":"none","adapter":null,"presentation_mode":"rich","visual_plan":{"reason":"compatibility check for ordinary lists","blocks":[{"type":"list","min_count":1,"purpose":"group related items"}]}}`,
+			"--presentation-decision", `{"audience":"reader","reader_task":"understand the topic","presentation_mode":"rich","visual_plan":{"reason":"compatibility check for ordinary lists","blocks":[{"type":"list","min_count":1,"purpose":"group related items"}]}}`,
 			"--dry-run",
 		},
 		DefaultAs: "bot",
@@ -523,7 +523,7 @@ func TestDocsScriptInitDraftAcceptsWindowsCommandShimQuotes(t *testing.T) {
 	workDir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	decision := `{"audience":"reader","reader_task":"understand the topic","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
+	decision := `{"audience":"reader","reader_task":"understand the topic","presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"docs", "+script",
@@ -546,8 +546,8 @@ func TestDocsScriptInitDraftAcceptsWindowsCommandShimQuotes(t *testing.T) {
 
 func TestDocsScriptRecoversPowerShellDequotedPresentationDecision(t *testing.T) {
 	for _, decision := range []string{
-		`{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:normal,visual_plan:{reason:c,blocks:[]}}`,
-		`{"audience":a,"reader_task":b,"genre_contract":null,"adapter":null,"presentation_mode":normal,"visual_plan":{"reason":c,"blocks":[]}}`,
+		`{audience:a,reader_task:b,presentation_mode:normal,visual_plan:{reason:c,blocks:[]}}`,
+		`{"audience":a,"reader_task":b,"presentation_mode":normal,"visual_plan":{"reason":c,"blocks":[]}}`,
 	} {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -601,7 +601,7 @@ func TestDocsScriptInitDraftRejectsNullWordCountWithOmitGuidance(t *testing.T) {
 		Args: []string{
 			"docs", "+script",
 			"--command", "init-draft",
-			"--presentation-decision", `{"audience":"reader","reader_task":"understand the topic","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":null,"visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
+			"--presentation-decision", `{"audience":"reader","reader_task":"understand the topic","presentation_mode":"normal","word_count":null,"visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
 			"--dry-run",
 		},
 		DefaultAs: "bot",
@@ -640,6 +640,63 @@ func TestDocsScriptOnlineDryRunFetchesXML(t *testing.T) {
 	require.True(t, gjson.Get(result.Stdout, "data.network").Bool())
 	require.False(t, gjson.Get(result.Stdout, "data.strict").Exists())
 	require.Equal(t, "parse", gjson.Get(result.Stdout, "data.command").String())
+}
+
+func TestDocsScriptRejectsRemovedPresentationDecisionRoutes(t *testing.T) {
+	for _, decision := range []string{
+		`{"genre_contract":"none"}`,
+		`{"genre_contract":null}`,
+		`{"adapter":"wechat"}`,
+		`{"adapter":null}`,
+		`{genre_contract:none}`,
+	} {
+		t.Run(decision, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"docs", "+script", "--command", "init-draft",
+					"--presentation-decision", decision, "--dry-run",
+				},
+				DefaultAs: "bot", WorkDir: t.TempDir(), Env: docsScriptE2EEnv(t),
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 2)
+			require.Empty(t, result.Stdout)
+			require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
+			require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String())
+			require.Equal(t, "--presentation-decision", gjson.Get(result.Stderr, "error.param").String())
+		})
+	}
+}
+
+func TestDocsScriptSavedLegacyDecisionCanBeOverridden(t *testing.T) {
+	workDir := t.TempDir()
+	legacy := `{"audience":"reader","reader_task":"understand","genre_contract":null,"adapter":null,"presentation_mode":"normal","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[]}}`
+	decision := `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":2,"max":3},"visual_plan":{"blocks":[]}}`
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, ".presentation-decision.json"), []byte(legacy), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "draft.xml"), []byte(`<p>two words</p>`), 0o600))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	request := clie2e.Request{
+		Args: []string{"docs", "+script", "--command", "parse", "--content", "@draft.xml"},
+		DefaultAs: "bot", WorkDir: workDir, Env: docsScriptE2EEnv(t),
+	}
+	result, err := clie2e.RunCmd(ctx, request)
+	require.NoError(t, err)
+	result.AssertExitCode(t, 1)
+	require.Empty(t, result.Stdout)
+	require.Equal(t, "internal", gjson.Get(result.Stderr, "error.type").String())
+	require.Equal(t, "saved Presentation Decision is invalid", gjson.Get(result.Stderr, "error.message").String())
+
+	request.Args = append(request.Args, "--presentation-decision", decision)
+	result, err = clie2e.RunCmd(ctx, request)
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	require.Equal(t, "passed", gjson.Get(result.Stdout, "data.assessment.status").String())
+	saved, err := os.ReadFile(filepath.Join(workDir, ".presentation-decision.json"))
+	require.NoError(t, err)
+	require.Equal(t, legacy, string(saved))
 }
 
 func docsScriptE2EEnv(t *testing.T) map[string]string {

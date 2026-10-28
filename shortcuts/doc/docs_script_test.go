@@ -164,8 +164,6 @@ func TestDocsScriptReturnsPresentationDecisionDiagnostics(t *testing.T) {
 	decision := `{
 		"audience": "reader",
 		"reader_task": "understand the result and flow",
-		"genre_contract": "none",
-		"adapter": null,
 		"presentation_mode": "rich",
 		"word_count": {"min": 18, "max": 22},
 		"visual_plan": {
@@ -228,7 +226,7 @@ func TestDocsScriptReturnsPresentationDecisionDiagnostics(t *testing.T) {
 
 func TestDocsScriptPresentationDecisionPreflightsBlockedRemoteImage(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-resource-preflight"))
-	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"an image provides visual evidence","blocks":[{"type":"img","min_count":1,"purpose":"show visual evidence"}]}}`
+	decision := `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"an image provides visual evidence","blocks":[{"type":"img","min_count":1,"purpose":"show visual evidence"}]}}`
 
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
@@ -266,7 +264,7 @@ func TestDocsScriptPresentationDecisionPreflightsBlockedRemoteImage(t *testing.T
 
 func TestDocsScriptPresentationDecisionProbesRemoteImageDownload(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-resource-download-probe"))
-	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"an image provides visual evidence","blocks":[{"type":"img","min_count":1,"purpose":"show visual evidence"}]}}`
+	decision := `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"an image provides visual evidence","blocks":[{"type":"img","min_count":1,"purpose":"show visual evidence"}]}}`
 
 	originalDo := doRemoteDocImageRequest
 	t.Cleanup(func() { doRemoteDocImageRequest = originalDo })
@@ -338,7 +336,7 @@ func TestDocsScriptInitDraftPersistsDecisionForAutomaticParse(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-init-draft"))
-	decision := `{"audience":"reader","reader_task":"understand the result and flow","genre_contract":"none","adapter":null,"presentation_mode":"rich","word_count":{"min":18,"max":22},"visual_plan":{"reason":"visual explanation","blocks":[{"type":"img","min_count":1,"purpose":"show the result"},{"type":"whiteboard","min_count":1,"purpose":"show the flow"},{"type":"html5-block","min_count":1,"purpose":"make the state explorable"}]}}`
+	decision := `{"audience":"reader","reader_task":"understand the result and flow","presentation_mode":"rich","word_count":{"min":18,"max":22},"visual_plan":{"reason":"visual explanation","blocks":[{"type":"img","min_count":1,"purpose":"show the result"},{"type":"whiteboard","min_count":1,"purpose":"show the flow"},{"type":"html5-block","min_count":1,"purpose":"make the state explorable"}]}}`
 
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
@@ -422,7 +420,7 @@ func TestDocsScriptInitDraftNormalizesWindowsCommandShimQuotes(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-init-draft-shell-quotes"))
-	decision := `{"audience":"普通读者","reader_task":"复现实验","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"复现实验","blocks":[]}}`
+	decision := `{"audience":"普通读者","reader_task":"复现实验","presentation_mode":"normal","visual_plan":{"reason":"复现实验","blocks":[]}}`
 
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
@@ -457,13 +455,13 @@ func TestDocsScriptInitDraftRecoversPowerShellDequotedDecisionFromSchema(t *test
 	}{
 		{
 			name:           "keys and values",
-			dequoted:       `{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:normal,word_count:{min:10,max:null},visual_plan:{reason:c,blocks:[{type:img,min_count:1,purpose:d}]}}`,
-			wantNormalized: `{"audience":"a","reader_task":"b","genre_contract":null,"adapter":null,"presentation_mode":"normal","word_count":{"min":10,"max":null},"visual_plan":{"reason":"c","blocks":[{"type":"img","min_count":1,"purpose":"d"}]}}`,
+			dequoted:       `{audience:a,reader_task:b,presentation_mode:normal,word_count:{min:10,max:null},visual_plan:{reason:c,blocks:[{type:img,min_count:1,purpose:d}]}}`,
+			wantNormalized: `{"audience":"a","reader_task":"b","presentation_mode":"normal","word_count":{"min":10,"max":null},"visual_plan":{"reason":"c","blocks":[{"type":"img","min_count":1,"purpose":"d"}]}}`,
 		},
 		{
 			name:           "values only",
-			dequoted:       `{"audience":a,"reader_task":b,"genre_contract":null,"adapter":null,"presentation_mode":normal,"visual_plan":{"reason":c,"blocks":[]}}`,
-			wantNormalized: `{"audience":"a","reader_task":"b","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"c","blocks":[]}}`,
+			dequoted:       `{"audience":a,"reader_task":b,"presentation_mode":normal,"visual_plan":{"reason":c,"blocks":[]}}`,
+			wantNormalized: `{"audience":"a","reader_task":"b","presentation_mode":"normal","visual_plan":{"reason":"c","blocks":[]}}`,
 		},
 	}
 
@@ -504,7 +502,7 @@ func TestDocsScriptPowerShellDequotedRecoveryUsesOriginalValidation(t *testing.T
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
 	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-dequoted-original-validation"))
-	dequoted := `{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:decorative,visual_plan:{reason:c,blocks:[{type:img,min_count:0}]}}`
+	dequoted := `{audience:a,reader_task:b,presentation_mode:decorative,visual_plan:{reason:c,blocks:[{type:img,min_count:0}]}}`
 
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
@@ -522,7 +520,7 @@ func TestDocsScriptPresentationDecisionQuoteRecoveryUsesOriginalSchema(t *testin
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
 	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-presentation-quote-schema"))
-	decision := `{"audience":"reader","reader_task":"understand","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]},"unexpected":true}`
+	decision := `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]},"unexpected":true}`
 
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
@@ -570,7 +568,7 @@ func TestDocsScriptPresentationDecisionFileRemainsStrictJSON(t *testing.T) {
 func TestDocsScriptPresentationDecisionFileAcceptsUTF8BOM(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
-	decision := `{"audience":"普通读者","reader_task":"复现实验","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"复现实验","blocks":[]}}`
+	decision := `{"audience":"普通读者","reader_task":"复现实验","presentation_mode":"normal","visual_plan":{"reason":"复现实验","blocks":[]}}`
 	if err := os.WriteFile("decision.json", []byte("\uFEFF"+decision), 0o600); err != nil {
 		t.Fatalf("write decision: %v", err)
 	}
@@ -640,13 +638,13 @@ func TestDocsScriptPresentationDecisionSupportsOneSidedWordCountBounds(t *testin
 		{
 			name:      "minimum",
 			wordCount: 9,
-			decision:  `{"audience":"reader","reader_task":"understand","genre_contract":"knowledge","adapter":null,"presentation_mode":"normal","word_count":{"min":10,"max":null},"visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
+			decision:  `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":10,"max":null},"visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
 			want:      "Increase word_count to at least 10.",
 		},
 		{
 			name:      "maximum",
 			wordCount: 21,
-			decision:  `{"audience":"reader","reader_task":"understand","genre_contract":"knowledge","adapter":"wechat","presentation_mode":"normal","word_count":{"min":null,"max":20},"visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
+			decision:  `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":null,"max":20},"visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
 			want:      "Reduce word_count to at most 20.",
 		},
 	}
@@ -668,8 +666,6 @@ func TestDocsScriptPresentationDecisionListCountsULAndOL(t *testing.T) {
 	decision, err := parseDocsScriptPresentationDecision(`{
 		"audience":"reader",
 		"reader_task":"review recommendations",
-		"genre_contract":"none",
-		"adapter":null,
 		"presentation_mode":"normal",
 		"visual_plan":{
 			"reason":"group recommendations",
@@ -710,8 +706,6 @@ func TestDocsScriptOmitsDiagnosticsWhenPresentationDecisionPasses(t *testing.T) 
 	decision := `{
 		"audience": "reader",
 		"reader_task": "understand the result and flow",
-		"genre_contract": "none",
-		"adapter": null,
 		"presentation_mode": "rich",
 		"word_count": {"min": 9, "max": 11},
 		"visual_plan": {
@@ -751,20 +745,22 @@ func TestDocsScriptOmitsDiagnosticsWhenPresentationDecisionPasses(t *testing.T) 
 }
 
 func TestDocsScriptRejectsInvalidPresentationDecision(t *testing.T) {
-	validPrefix := `{"audience":"reader","reader_task":"understand the document","genre_contract":"none","adapter":null,"presentation_mode":"normal",`
+	validPrefix := `{"audience":"reader","reader_task":"understand the document","presentation_mode":"normal",`
 	tests := []struct {
 		name     string
 		decision string
 	}{
 		{name: "invalid json", decision: `{`},
+		{name: "removed genre contract", decision: `{"genre_contract":"workplace.prd"}`},
+		{name: "removed adapter", decision: `{"adapter":"wechat"}`},
 		{name: "unknown field", decision: validPrefix + `"visual_plan":{"reason":"plain is enough","blocks":[],"image_enabled":true}}`},
-		{name: "legacy fields", decision: `{"target":"reader","genre_contract":"none","adapter":"none","presentation_mode":"normal","hard_rule":"","word_count":20,"visual_plan":{"reason":"plain is enough","exception":"","blocks":[]}}`},
-		{name: "integer word count", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":20,"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "missing word count bound", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":{"min":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "empty word count range", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":{"min":null,"max":null},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "non-positive word count", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":{"min":0,"max":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "reversed word count range", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":{"min":20,"max":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "removed hard_rules field", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","hard_rules":[],"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
+		{name: "legacy fields", decision: `{"target":"reader","presentation_mode":"normal","hard_rule":"","word_count":20,"visual_plan":{"reason":"plain is enough","exception":"","blocks":[]}}`},
+		{name: "integer word count", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":20,"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
+		{name: "missing word count bound", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
+		{name: "empty word count range", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":null,"max":null},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
+		{name: "non-positive word count", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":0,"max":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
+		{name: "reversed word count range", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":{"min":20,"max":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
+		{name: "removed hard_rules field", decision: `{"audience":"reader","reader_task":"understand","presentation_mode":"normal","hard_rules":[],"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "unknown block type", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"future-widget","min_count":1,"purpose":"show the result"}]}}`},
 		{name: "ordinary text block is not presentation block", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"p","min_count":2,"purpose":"fill the quota"}]}}`},
 		{name: "non-positive block minimum", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"img","min_count":0,"purpose":"show the result"}]}}`},
@@ -810,44 +806,11 @@ func TestDocsScriptPresentationDecisionMangledInlineJSONSuggestsFileInput(t *tes
 	}
 }
 
-func TestDocsScriptPresentationDecisionAllowsNoneOrNullRoutes(t *testing.T) {
-	tests := []struct {
-		name           string
-		genreContract  string
-		adapter        string
-		wantGenreNil   bool
-		wantAdapterNil bool
-	}{
-		{name: "both none", genreContract: `"none"`, adapter: `"none"`},
-		{name: "both null", genreContract: `null`, adapter: `null`, wantGenreNil: true, wantAdapterNil: true},
-		{name: "null genre", genreContract: `null`, adapter: `"none"`, wantGenreNil: true},
-		{name: "null adapter", genreContract: `"none"`, adapter: `null`, wantAdapterNil: true},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			decision, err := parseDocsScriptPresentationDecision(fmt.Sprintf(
-				`{"audience":"reader","reader_task":"understand","genre_contract":%s,"adapter":%s,"presentation_mode":"normal","visual_plan":{"reason":"plain is enough","blocks":[]}}`,
-				test.genreContract,
-				test.adapter,
-			))
-			if err != nil {
-				t.Fatalf("parseDocsScriptPresentationDecision() error = %v", err)
-			}
-			if got := decision.GenreContract == nil; got != test.wantGenreNil {
-				t.Fatalf("GenreContract nil = %v, want %v", got, test.wantGenreNil)
-			}
-			if got := decision.Adapter == nil; got != test.wantAdapterNil {
-				t.Fatalf("Adapter nil = %v, want %v", got, test.wantAdapterNil)
-			}
-		})
-	}
-}
-
 func TestDocsScriptPresentationDecisionOptionalDescriptions(t *testing.T) {
 	for _, raw := range []string{
 		`{"visual_plan":{"blocks":[{"type":"whiteboard","min_count":1}]}}`,
-		`{"audience":"","reader_task":" ","genre_contract":"","adapter":" ","presentation_mode":"","visual_plan":{"reason":"","blocks":[{"type":"whiteboard","min_count":1,"purpose":""}]}}`,
-		`{"audience":null,"reader_task":null,"genre_contract":null,"adapter":null,"presentation_mode":null,"visual_plan":{"reason":null,"blocks":[{"type":"whiteboard","min_count":1,"purpose":null}]}}`,
+		`{"audience":"","reader_task":" ","presentation_mode":"","visual_plan":{"reason":"","blocks":[{"type":"whiteboard","min_count":1,"purpose":""}]}}`,
+		`{"audience":null,"reader_task":null,"presentation_mode":null,"visual_plan":{"reason":null,"blocks":[{"type":"whiteboard","min_count":1,"purpose":null}]}}`,
 		`{"presentation_mode":"custom","word_count":{"min":2,"max":5},"visual_plan":{"blocks":[{"type":"whiteboard","min_count":1}]}}`,
 	} {
 		decision, err := parseDocsScriptPresentationDecision(raw)
@@ -956,7 +919,7 @@ func TestDocsScriptRejectsInvalidProvidedBlockFields(t *testing.T) {
 }
 
 func TestDocsScriptPresentationDecisionRejectsNullWordCountWithOmitGuidance(t *testing.T) {
-	_, err := parseDocsScriptPresentationDecision(`{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":null,"visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`)
+	_, err := parseDocsScriptPresentationDecision(`{"audience":"reader","reader_task":"understand","presentation_mode":"normal","word_count":null,"visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`)
 	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
 	problem, ok := errs.ProblemOf(err)
 	if !ok {
@@ -977,11 +940,11 @@ func TestDocsScriptRichPresentationDecisionAllowsAnyBlockCount(t *testing.T) {
 	}{
 		{
 			name:     "no planned blocks",
-			decision: `{"audience":"reader","reader_task":"understand the topic","genre_contract":"knowledge","adapter":null,"presentation_mode":"rich","visual_plan":{"reason":"the scan found no presentation block that would improve the reader task","blocks":[]}}`,
+			decision: `{"audience":"reader","reader_task":"understand the topic","presentation_mode":"rich","visual_plan":{"reason":"the scan found no presentation block that would improve the reader task","blocks":[]}}`,
 		},
 		{
 			name:     "one planned block",
-			decision: `{"audience":"reader","reader_task":"understand the relationship","genre_contract":"knowledge","adapter":null,"presentation_mode":"rich","visual_plan":{"reason":"one diagram is sufficient","blocks":[{"type":"whiteboard","min_count":1,"purpose":"show the relationship"}]}}`,
+			decision: `{"audience":"reader","reader_task":"understand the relationship","presentation_mode":"rich","visual_plan":{"reason":"one diagram is sufficient","blocks":[{"type":"whiteboard","min_count":1,"purpose":"show the relationship"}]}}`,
 		},
 	}
 	for _, test := range tests {
@@ -997,8 +960,6 @@ func TestDocsScriptPresentationDecisionRejectsRemovedHardRulesField(t *testing.T
 	_, err := parseDocsScriptPresentationDecision(`{
 		"audience":"executives",
 		"reader_task":"approve or reject the proposal",
-		"genre_contract":"formal-doc",
-		"adapter":null,
 		"presentation_mode":"formal",
 		"hard_rules":["do not use callout blocks","include a risks section"],
 		"visual_plan":{
@@ -1017,8 +978,6 @@ func TestDocsScriptPresentationBlockPlanUsesProfileCatalogGenerically(t *testing
 	decision, err := parseDocsScriptPresentationDecision(`{
 		"audience":"reviewers",
 		"reader_task":"compare both cohorts",
-		"genre_contract":"report",
-		"adapter":null,
 		"presentation_mode":"normal",
 		"visual_plan":{
 			"reason":"compare exact fields",
@@ -1140,7 +1099,7 @@ func TestDocsScriptInitDraftCreatesUniqueWorkspacesWithoutXML(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-unique-drafts"))
-	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
+	decision := `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
 
 	initialize := func() docsScriptDraftResult {
 		t.Helper()
@@ -1238,7 +1197,7 @@ func TestDocsScriptRemovesOnlyCurrentWorkspaceOnFinalFailure(t *testing.T) {
 		failSaveAt:      1,
 	}
 	f.FileIOProvider = docsScriptFileIOProvider{fileIO: failingFileIO}
-	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
+	decision := `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
 
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
@@ -1319,7 +1278,7 @@ func TestDocsScriptInitDraftRequiresWorkspaceFileIO(t *testing.T) {
 	f.FileIOProvider = docsScriptFileIOProvider{fileIO: docsScriptBasicFileIO{
 		FileIO: f.ResolveFileIO(context.Background()),
 	}}
-	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
+	decision := `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
 
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
@@ -1340,7 +1299,7 @@ func TestDocsScriptInitDraftRequiresWorkspaceFileIO(t *testing.T) {
 }
 
 func TestDocsScriptInitDraftRejectsContentAndDoc(t *testing.T) {
-	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
+	decision := `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
 	tests := []struct {
 		name  string
 		args  []string
@@ -1403,7 +1362,7 @@ func TestDocsScriptDryRunHasNoAPICall(t *testing.T) {
 
 func TestDocsScriptRemoteImagePreflightDryRunDeclaresNetwork(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-remote-preflight-dry-run"))
-	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"an image provides visual evidence","blocks":[{"type":"img","min_count":1,"purpose":"show visual evidence"}]}}`
+	decision := `{"audience":"reader","reader_task":"read the draft","presentation_mode":"normal","visual_plan":{"reason":"an image provides visual evidence","blocks":[{"type":"img","min_count":1,"purpose":"show visual evidence"}]}}`
 
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
@@ -1463,7 +1422,7 @@ func TestDocsScriptInitDraftDryRunDoesNotWrite(t *testing.T) {
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
 		"--command", docsScriptInitDraft,
-		"--presentation-decision", `{"audience":"reader","reader_task":"understand key states","genre_contract":"none","adapter":null,"presentation_mode":"rich","visual_plan":{"reason":"visual explanation","blocks":[{"type":"img","min_count":2,"purpose":"show key states"}]}}`,
+		"--presentation-decision", `{"audience":"reader","reader_task":"understand key states","presentation_mode":"rich","visual_plan":{"reason":"visual explanation","blocks":[{"type":"img","min_count":2,"purpose":"show key states"}]}}`,
 		"--dry-run",
 		"--as", "bot",
 	}, f, stdout)
