@@ -4829,3 +4829,50 @@ func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 		}
 	})
 }
+
+func TestBatchCreatePreservesUpstreamErrorOnWire(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	detail := map[string]interface{}{
+		"type": "not_found", "message": "not_found", "retryable": false,
+		"path": "create_records.0.MissingField", "value": "MissingField",
+		"table": map[string]interface{}{"id": "tbl_x", "name": "Orders"},
+		"hint":  "List fields in the current table.", "docs_url": nil,
+		"extra_context": map[string]interface{}{"future": []interface{}{"detail", false}},
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_create",
+		Body: map[string]interface{}{"code": 800030201, "msg": "not_found: not_found", "data": map[string]interface{}{"error": detail}},
+	})
+	err := runShortcut(t, BaseRecordBatchCreate, []string{"+record-batch-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"create_records":[{"MissingField":"value"}]}`}, factory, stdout)
+	if output.ExitCodeOf(err) != 1 {
+		t.Fatalf("exit=%d, err=%v", output.ExitCodeOf(err), err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+	var stderr bytes.Buffer
+	if !output.WriteTypedErrorEnvelope(&stderr, err, "user") {
+		t.Fatal("expected typed error envelope")
+	}
+	var wire struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Type          string                 `json:"type"`
+			Subtype       string                 `json:"subtype"`
+			Code          int                    `json:"code"`
+			Hint          string                 `json:"hint"`
+			UpstreamError map[string]interface{} `json:"upstream_error"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire.OK || wire.Error.Type != "api" || wire.Error.Subtype != "not_found" || wire.Error.Code != 800030201 || wire.Error.Hint != detail["hint"] {
+		t.Fatalf("unexpected wire: %s", stderr.String())
+	}
+	want, _ := json.Marshal(detail)
+	got, _ := json.Marshal(wire.Error.UpstreamError)
+	if !bytes.Equal(want, got) {
+		t.Fatalf("upstream error=%s, want=%s", got, want)
+	}
+}
