@@ -37,11 +37,15 @@ func TestGetLoginMsg_En(t *testing.T) {
 	}
 }
 
-func TestGetLoginMsg_DefaultsToZh(t *testing.T) {
-	for _, lang := range []i18n.Lang{"", "fr_fr", "ja_jp", "unknown"} {
-		msg := getLoginMsg(lang)
-		if msg != loginMsgZh {
-			t.Errorf("getLoginMsg(%q) should default to zh", lang)
+func TestGetLoginMsg_BundleSelection(t *testing.T) {
+	for _, lang := range []i18n.Lang{"", "unknown", i18n.LangZhCN} {
+		if msg := getLoginMsg(lang); msg != loginMsgZh {
+			t.Errorf("getLoginMsg(%q) should use the zh bundle", lang)
+		}
+	}
+	for _, lang := range []i18n.Lang{i18n.LangEnUS, "fr_fr", "ja_jp"} {
+		if msg := getLoginMsg(lang); msg != loginMsgEn {
+			t.Errorf("getLoginMsg(%q) should use the en bundle", lang)
 		}
 	}
 }
