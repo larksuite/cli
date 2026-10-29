@@ -16,12 +16,15 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -34,6 +37,23 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
+
+func captureDeviceAuthClient(gotReq **http.Request, gotBody *string, respJSON string) *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		*gotReq = req
+		if req.Body != nil {
+			b, _ := io.ReadAll(req.Body)
+			*gotBody = string(b)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(respJSON)),
+		}, nil
+	})}
+}
+
+const deviceAuthRespJSON = `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify","expires_in":300,"interval":5}`
 
 // TestResolveOAuthEndpoints_Feishu validates endpoints for the Feishu brand.
 func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
@@ -93,7 +113,7 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	_, err := RequestDeviceAuthorization(context.Background(), httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "", nil)
+	_, err := RequestDeviceAuthorization(context.Background(), httpmock.NewClient(reg), ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "", nil)
 	if err != nil {
 		t.Fatalf("RequestDeviceAuthorization() error: %v", err)
 	}
@@ -113,6 +133,78 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	}
 	if !strings.Contains(got, "cmdline=lark-cli auth login ...") {
 		t.Fatalf("expected cmdline in log, got %q", got)
+	}
+}
+
+func TestRequestDeviceAuthorization_PrivateKeyJWTLocalKeyPair_UsesAssertionNotBasic(t *testing.T) {
+	var req *http.Request
+	var body string
+	client := captureDeviceAuthClient(&req, &body, deviceAuthRespJSON)
+
+	ca := ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: newFakeAuthSigner(t), KeyLabel: "k"}
+	if _, err := RequestDeviceAuthorization(context.Background(), client, ca, core.BrandFeishu, "im:message:send", nil); err != nil {
+		t.Fatal(err)
+	}
+	if req.Header.Get("Authorization") != "" {
+		t.Errorf("private_key_jwt_local_keypair must NOT send Basic auth, got %q", req.Header.Get("Authorization"))
+	}
+	form, _ := url.ParseQuery(body)
+	if form.Get("client_assertion") == "" {
+		t.Error("missing client_assertion")
+	}
+	if form.Get("client_assertion_type") != jwt.ClientAssertionType {
+		t.Errorf("client_assertion_type = %q", form.Get("client_assertion_type"))
+	}
+	if form.Has("client_secret") {
+		t.Error("client_secret must not be present for private_key_jwt_local_keypair")
+	}
+}
+
+func TestRequestDeviceAuthorization_ClientSecret_UsesBasic(t *testing.T) {
+	var req *http.Request
+	var body string
+	client := captureDeviceAuthClient(&req, &body, deviceAuthRespJSON)
+
+	ca := ClientAuth{AppID: "cli_a", AppSecret: "test-secret"}
+	if _, err := RequestDeviceAuthorization(context.Background(), client, ca, core.BrandFeishu, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(req.Header.Get("Authorization"), "Basic ") {
+		t.Errorf("client_secret should use Basic auth, got %q", req.Header.Get("Authorization"))
+	}
+	form, _ := url.ParseQuery(body)
+	if form.Has("client_assertion") {
+		t.Error("client_secret must not send a client_assertion")
+	}
+}
+
+func TestPollDeviceToken_ReturnsAssertionErrorWithoutRequest(t *testing.T) {
+	var requests atomic.Int32
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requests.Add(1)
+			return nil, errors.New("unexpected request")
+		}),
+	}
+
+	result, err := PollDeviceToken(
+		context.Background(),
+		client,
+		ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair},
+		core.BrandFeishu,
+		"device-code",
+		1,
+		3,
+		nil,
+	)
+	if result != nil {
+		t.Fatalf("PollDeviceToken() result = %#v, want nil", result)
+	}
+	if err == nil || !strings.Contains(err.Error(), "requires a key signer") {
+		t.Fatalf("PollDeviceToken() error = %v, want key signer error", err)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("PollDeviceToken() sent %d requests, want 0", got)
 	}
 }
 
@@ -215,7 +307,7 @@ func TestPollDeviceToken_DefaultsZeroIntervalToFiveSeconds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	t.Cleanup(cancel)
 
-	result, err := PollDeviceToken(ctx, client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 0, 10, nil)
+	result, err := PollDeviceToken(ctx, client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 0, 10, nil)
 	if err != nil {
 		t.Fatalf("PollDeviceToken() error = %v", err)
 	}
@@ -251,7 +343,7 @@ func TestPollDeviceToken_PreservesStatusMessage(t *testing.T) {
 		}),
 	}
 
-	result, err := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	result, err := PollDeviceToken(context.Background(), client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 1, 3, nil)
 	if err != nil {
 		t.Fatalf("PollDeviceToken() error = %v", err)
 	}
@@ -281,7 +373,7 @@ func TestPollDeviceToken_MissingStatusMessageIsEmpty(t *testing.T) {
 		}),
 	}
 
-	result, err := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	result, err := PollDeviceToken(context.Background(), client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 1, 3, nil)
 	if err != nil {
 		t.Fatalf("PollDeviceToken() error = %v", err)
 	}
@@ -304,7 +396,7 @@ func TestPollDeviceToken_ReturnsPolicyErrorWithoutRetry(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	t.Cleanup(cancel)
 
-	result, err := PollDeviceToken(ctx, client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 10, nil)
+	result, err := PollDeviceToken(ctx, client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 1, 10, nil)
 	if result != nil {
 		t.Fatalf("PollDeviceToken() result = %#v, want nil", result)
 	}
@@ -328,7 +420,7 @@ func TestPollDeviceTokenPolicyWithoutSigner(t *testing.T) {
 				}
 				return refreshHTTPResponse(req, `{"access_token":"synthetic-token","token_type":"Bearer"}`), nil
 			})}
-			result, err := pollDeviceTokenWithKeyStore(context.Background(), client, "cli_test", "synthetic-secret",
+			result, err := pollDeviceTokenWithKeyStore(context.Background(), client, ClientAuth{AppID: "cli_test", AppSecret: "synthetic-secret"},
 				core.BrandFeishu, "device-code", 1, 5, nil, mode, nil)
 			if err != nil {
 				t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
@@ -513,7 +605,7 @@ func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
 				return refreshHTTPResponse(req, step.body), nil
 			})}
 			var warnings bytes.Buffer
-			result, err := pollDeviceTokenWithKeyStore(ctx, client, "cli_test", "synthetic-secret",
+			result, err := pollDeviceTokenWithKeyStore(ctx, client, ClientAuth{AppID: "cli_test", AppSecret: "synthetic-secret"},
 				core.BrandFeishu, "device-code", 1, 10, &warnings, tc.mode, store)
 			if err != nil {
 				t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
@@ -582,7 +674,7 @@ func TestDeviceFlowProofFailureBeforeRequestFallsBack(t *testing.T) {
 		return refreshHTTPResponse(req, body), nil
 	})}
 
-	result, err := pollDeviceTokenWithKeyStore(ctx, client, "app", "secret", core.BrandFeishu, "device", 1, 5, nil, core.DPoPModePreferred, store)
+	result, err := pollDeviceTokenWithKeyStore(ctx, client, ClientAuth{AppID: "app", AppSecret: "secret"}, core.BrandFeishu, "device", 1, 5, nil, core.DPoPModePreferred, store)
 	if err != nil {
 		t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
 	}
@@ -666,7 +758,7 @@ func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
 				return resp, nil
 			})}
 			var warnings bytes.Buffer
-			result, err := pollDeviceTokenWithKeyStore(ctx, client, "app", "secret", core.BrandFeishu, "device", 1, 22, &warnings, tc.mode, store)
+			result, err := pollDeviceTokenWithKeyStore(ctx, client, ClientAuth{AppID: "app", AppSecret: "secret"}, core.BrandFeishu, "device", 1, 22, &warnings, tc.mode, store)
 			if err != nil {
 				t.Fatalf("pollDeviceTokenWithKeyStore() error = %v", err)
 			}
@@ -680,5 +772,111 @@ func TestDeviceFlowRepeatedProofFallback(t *testing.T) {
 				t.Fatalf("unexpected token: %+v", result.Token)
 			}
 		})
+	}
+}
+
+func TestDeviceFlowPrivateKeyJWTLocalKeyPairWithDPoP(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		mode     core.DPoPMode
+		fallback bool
+	}{
+		{"disabled", core.DPoPModeDisabled, false},
+		{"required", core.DPoPModeRequired, false},
+		{"preferred proof rejection", core.DPoPModePreferred, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			appSigner := newFakeAuthSigner(t)
+			kid, err := keysigner.PublicKeyThumbprint(appSigner.key.Public())
+			if err != nil {
+				t.Fatal(err)
+			}
+			proofSigner := newAuthDPoPTestSigner()
+			store := dpop.NewKeyStoreWithSigner(deviceFlowMetadata{}, proofSigner)
+			ca := ClientAuth{AppID: "cli-pkjwt", AppSecret: "must-not-send", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: appSigner, KeyLabel: "app-key"}
+			seen, calls := map[string]bool{}, 0
+			client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path == dpop.HeartbeatPath {
+					return refreshHTTPResponse(req, `{"code":0,"data":{"now":"`+strconv.FormatInt(time.Now().Unix(), 10)+`"}}`), nil
+				}
+				calls++
+				if req.URL.String() != ResolveOAuthEndpoints(core.BrandFeishu).Token {
+					t.Fatalf("unexpected endpoint: %s", req.URL)
+				}
+				body, err := io.ReadAll(req.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				form, err := url.ParseQuery(string(body))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if form.Has("client_secret") || req.Header.Get("Authorization") != "" {
+					t.Fatal("private_key_jwt_local_keypair leaked secret authentication")
+				}
+				proof := req.Header.Get(dpop.ProofHeader)
+				checkPrivateKeyJWTLocalKeyPairRequest(t, form.Get("client_assertion"), proof, ca.AppID, kid, seen)
+				if tc.fallback && calls <= 3 {
+					if proof == "" {
+						t.Fatal("preferred issuance skipped proof before rejection")
+					}
+					return refreshHTTPResponse(req, `{"error":"`+dpop.InvalidProofOAuthError+`"}`), nil
+				}
+				wantProof := tc.mode != core.DPoPModeDisabled && !tc.fallback
+				if (proof != "") != wantProof {
+					t.Fatal("incorrect DPoP fallback policy")
+				}
+				if wantProof && calls == 1 {
+					return refreshHTTPResponse(req, `{"error":"authorization_pending"}`), nil
+				}
+				tokenType := "Bearer"
+				if wantProof {
+					tokenType = dpop.TokenType
+				}
+				return refreshHTTPResponse(req, `{"access_token":"access","refresh_token":"refresh","token_type":"`+tokenType+`","expires_in":7200,"refresh_token_expires_in":86400}`), nil
+			})}
+			result, err := pollDeviceTokenWithKeyStore(context.Background(), client, ca, core.BrandFeishu, "device-code", 1, 15, io.Discard, tc.mode, store)
+			if err != nil || result == nil || !result.OK {
+				t.Fatalf("device flow = (%+v, %v)", result, err)
+			}
+			if result.Token.DPoP != nil {
+				jkt, err := result.Token.DPoP.Key().Thumbprint()
+				if err != nil || jkt == kid {
+					t.Fatalf("application key reused as proof key: %v", err)
+				}
+			} else if tc.mode == core.DPoPModeRequired {
+				t.Fatal("required token binding lost")
+			}
+			wantCalls := 1
+			if tc.fallback {
+				wantCalls = 4
+			} else if tc.mode == core.DPoPModeRequired {
+				wantCalls = 2
+			}
+			if calls != wantCalls {
+				t.Fatalf("token calls=%d, want %d", calls, wantCalls)
+			}
+		})
+	}
+}
+
+func TestDeviceFlowPrivateKeyJWTLocalKeyPairSigningFailureDoesNotDowngrade(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	signer := newAuthDPoPTestSigner()
+	store := dpop.NewKeyStoreWithSigner(deviceFlowMetadata{}, signer)
+	calls := 0
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != dpop.HeartbeatPath {
+			calls++
+			t.Error("signing failure sent token request")
+		}
+		return refreshHTTPResponse(req, `{}`), nil
+	})}
+	result, err := pollDeviceTokenWithKeyStore(context.Background(), client, ClientAuth{AppID: "cli", AppSecret: "must-not-send", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair}, core.BrandFeishu, "device", 1, 3, io.Discard, core.DPoPModePreferred, store)
+	if result != nil || err == nil || calls != 0 {
+		t.Fatalf("signing failure = (%+v, %v)", result, err)
+	}
+	if len(signer.keys) != 0 {
+		t.Fatal("signing failure retained an uncommitted DPoP key")
 	}
 }

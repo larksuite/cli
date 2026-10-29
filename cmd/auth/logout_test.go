@@ -4,7 +4,12 @@
 package auth
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/url"
 	"os"
@@ -14,11 +19,103 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/zalando/go-keyring"
 )
+
+type logoutSecretLookup struct {
+	keychain.KeychainAccess
+	reads int
+}
+
+func (kc *logoutSecretLookup) Get(string, string) (string, error) {
+	kc.reads++
+	return "", errors.New("unexpected App Secret lookup")
+}
+
+func TestAuthLogoutRun_PrivateKeyJWT(t *testing.T) {
+	for _, hint := range []string{"refresh_token", "access_token", "missing_key"} {
+		t.Run(hint, func(t *testing.T) {
+			keyring.MockInit()
+			root := t.TempDir()
+			for _, name := range []string{"HOME", "USERPROFILE", "LOCALAPPDATA"} {
+				t.Setenv(name, root)
+			}
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(root, "config"))
+			t.Setenv("LARKSUITE_CLI_DATA_DIR", filepath.Join(root, "data"))
+			key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			der, err := x509.MarshalPKCS8PrivateKey(key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			keyPath := filepath.Join(root, "private.pem")
+			if hint != "missing_key" {
+				if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			app := core.AppConfig{Name: "keyless", AppId: "cli_keyless", Brand: core.BrandFeishu,
+				AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+				KeyRef:     &core.SecretRef{Source: core.SecretSourceKeyFile, ID: keyPath},
+				AppSecret:  core.SecretInput{Ref: &core.SecretRef{Source: "keychain", ID: "must-not-resolve"}},
+				Users:      []core.AppUser{{UserOpenId: "ou_keyless"}}}
+			other := core.AppConfig{Name: "other", AppId: "cli_other", Brand: core.BrandFeishu,
+				Users: []core.AppUser{{UserOpenId: "ou_other"}}}
+			if err := core.SaveMultiAppConfig(&core.MultiAppConfig{CurrentApp: "other", Apps: []core.AppConfig{other, app}}); err != nil {
+				t.Fatal(err)
+			}
+			stored := &larkauth.StoredUAToken{AppId: app.AppId, UserOpenId: "ou_keyless", AccessToken: "access-token-to-revoke"}
+			if hint != "access_token" {
+				stored.RefreshToken = "refresh-token-to-revoke"
+			}
+			if err := larkauth.SetStoredToken(stored); err != nil {
+				t.Fatal(err)
+			}
+			f, _, _, reg := cmdutil.TestFactory(t, nil)
+			f.Invocation.Profile, f.Invocation.ProfileSource = "keyless", core.ProfileFromFlag
+			kc := &logoutSecretLookup{}
+			f.Keychain = kc
+			if hint != "missing_key" {
+				reg.Register(&httpmock.Stub{Method: "POST", URL: larkauth.PathOAuthRevoke,
+					Body: map[string]interface{}{"code": 0}, BodyFilter: func(body []byte) bool {
+						form, err := url.ParseQuery(string(body))
+						return err == nil && form.Get("client_id") == app.AppId &&
+							form.Get("token") == strings.TrimSuffix(hint, "_token")+"-token-to-revoke" &&
+							form.Get("token_type_hint") == hint && form.Get("client_assertion") != "" &&
+							form.Get("client_assertion_type") == jwt.ClientAssertionType && !form.Has("client_secret")
+					}})
+			}
+			if err := authLogoutRun(&LogoutOptions{Factory: f, JSON: true}); err != nil {
+				t.Fatal(err)
+			}
+			if kc.reads != 0 {
+				t.Fatalf("keyless logout read App Secret %d times", kc.reads)
+			}
+			if token, err := larkauth.GetStoredToken(app.AppId, "ou_keyless"); err != nil || token != nil {
+				t.Fatalf("local token was not cleared: token present=%v error=%v", token != nil, err)
+			}
+			saved, err := core.LoadMultiAppConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(saved.FindApp("keyless").Users) != 0 || len(saved.FindApp("other").Users) != 1 || saved.FindApp("keyless").KeyRef.ID != keyPath {
+				t.Fatal("logout did not preserve the other profile and signing-key reference")
+			}
+			if hint != "missing_key" {
+				if _, err := os.Stat(keyPath); err != nil {
+					t.Fatalf("logout removed the private key file: %v", err)
+				}
+			}
+		})
+	}
+}
 
 func TestAuthLogoutRun_PreservesMalformedConfigError(t *testing.T) {
 	dir := t.TempDir()

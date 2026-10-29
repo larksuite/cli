@@ -4,6 +4,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -446,6 +447,10 @@ func commitBinding(
 
 	if replaced {
 		cleanupKeychainFromData(opts.Factory.Keychain, previousConfigBytes, appConfig)
+		var previous core.MultiAppConfig
+		if json.Unmarshal(previousConfigBytes, &previous) == nil {
+			cleanupReplacedSigningKeys(context.Background(), opts.Factory, &previous, multi)
+		}
 	}
 
 	fmt.Fprintln(opts.Factory.IOStreams.ErrOut,
