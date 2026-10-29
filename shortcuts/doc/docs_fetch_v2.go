@@ -102,41 +102,35 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	return nil
 }
 
-// fetchJSONData 只浅拷贝两层容器，正文、评论及未知字段仍使用原值。
+// fetchJSONData puts data.tips before document without changing field values.
 func fetchJSONData(data map[string]any) any {
-	document, ok := data["document"].(map[string]any)
-	if !ok {
-		return data
-	}
-	tips, exists := document["tips"]
+	tips, exists := data["tips"]
 	if !exists {
 		return data
 	}
-	fields := maps.Clone(document)
+	fields := maps.Clone(data)
 	delete(fields, "tips")
-	result := maps.Clone(data)
-	result["document"] = fetchDocumentJSON{tips: tips, fields: fields}
-	return result
+	return fetchDataJSON{tips: tips, fields: fields}
 }
 
-type fetchDocumentJSON struct {
+type fetchDataJSON struct {
 	tips   any
 	fields map[string]any
 }
 
-func (document fetchDocumentJSON) MarshalJSON() ([]byte, error) {
+func (data fetchDataJSON) MarshalJSON() ([]byte, error) {
 	var buffer bytes.Buffer
 	encoder := json.NewEncoder(&buffer)
 	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(document.tips); err != nil {
+	if err := encoder.Encode(data.tips); err != nil {
 		return nil, err
 	}
 	result := append([]byte(`{"tips":`), buffer.Bytes()[:buffer.Len()-1]...)
-	if len(document.fields) == 0 {
+	if len(data.fields) == 0 {
 		return append(result, '}'), nil
 	}
 	buffer.Reset()
-	if err := encoder.Encode(document.fields); err != nil {
+	if err := encoder.Encode(data.fields); err != nil {
 		return nil, err
 	}
 	result = append(result, ',')

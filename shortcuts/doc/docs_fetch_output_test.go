@@ -23,7 +23,8 @@ func TestDocsFetchTipsPresentation(t *testing.T) {
 		{name: "missing"},
 		{name: "empty", tips: "", present: true},
 		{name: "null", present: true},
-		{name: "jq", jq: ".data.document", tips: "keep", present: true},
+		{name: "jq", jq: ".data", tips: "keep", present: true},
+		{name: "document projection", jq: ".data.document", tips: "keep", present: true},
 		{name: "scalar", jq: ".data.document.content", tips: "keep", present: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -33,16 +34,16 @@ func TestDocsFetchTipsPresentation(t *testing.T) {
 			document := map[string]any{
 				"content": content, "url": "https://example.feishu.cn/docx/doxcnFetchOutput", "title": "Review",
 				"reference_map": map[string]any{"comments": map[string]any{
-					"c1":   map[string]any{"data": "<msg>评论</msg><msg>回复</msg>"},
-					"tips": map[string]any{"data": "Comments are truncated."},
+					"c1": map[string]any{"data": "<msg>评论</msg><msg>回复</msg>"},
 				}},
 				"future": map[string]any{"field": "preserve"},
 			}
+			data := map[string]any{"document": document, "future": "preserve"}
 			if test.present {
-				document["tips"] = test.tips
+				data["tips"] = test.tips
 			}
 			f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("fetch-tips"))
-			registerDocsAIStub(reg, "POST", "/open-apis/docs_ai/v1/documents/doxcnFetchOutput/fetch", map[string]any{"document": document})
+			registerDocsAIStub(reg, "POST", "/open-apis/docs_ai/v1/documents/doxcnFetchOutput/fetch", data)
 			args := []string{"+fetch", "--doc", "doxcnFetchOutput", "--as", "bot"}
 			if test.jq != "" {
 				args = append(args, "--jq", test.jq)
@@ -68,15 +69,21 @@ func TestDocsFetchTipsPresentation(t *testing.T) {
 				if len(citations) != 1 || !strings.Contains(citations[0].(string), "doxcnFetchOutput") {
 					t.Fatal("document citation lost")
 				}
-				result = result["data"].(map[string]any)["document"].(map[string]any)
+				result = result["data"].(map[string]any)
 			}
-			if !reflect.DeepEqual(result, document) {
-				t.Fatal("document fields or values changed")
+			if test.jq == ".data.document" {
+				if !reflect.DeepEqual(result, document) {
+					t.Fatal("document projection changed")
+				}
+				return
+			}
+			if !reflect.DeepEqual(result, data) {
+				t.Fatal("data fields or values changed")
 			}
 			if test.present {
-				tipsFirst := strings.Index(stdout.String(), `"tips"`) < strings.Index(stdout.String(), `"content"`)
+				tipsFirst := strings.Index(stdout.String(), `"tips"`) < strings.Index(stdout.String(), `"document"`)
 				if tipsFirst != (test.jq == "") {
-					t.Fatal("only complete JSON should put document.tips first")
+					t.Fatal("only complete JSON should put data.tips first")
 				}
 			}
 		})
