@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptrace"
 	"os"
@@ -223,8 +224,6 @@ const (
 	refreshSaveResponse refreshAction = iota
 	// refreshRetryAndPreserve retries, preserving the stored token if retry fails.
 	refreshRetryAndPreserve
-	// refreshRetryAndClear retries, clearing the stored token if retry fails.
-	refreshRetryAndClear
 	// refreshRetryAfterClockSync performs the one recovery request permitted
 	// after a trusted dpop.InvalidProofOAuthError clock-skew response. It does not consume
 	// the ordinary transient retry budget.
@@ -269,7 +268,6 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 			return nil, err
 		}
 	}
-	uncertain := false
 	clockRecoveryUsed := false
 	if proofKey != nil {
 		if err := synchronizeStoredTokenClock(ctx, httpClient, opts, stored, proofKey); err != nil {
@@ -314,11 +312,8 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 		}
 
 		switch result.action {
-		case refreshRetryAndPreserve, refreshRetryAndClear:
+		case refreshRetryAndPreserve:
 			ordinaryAttempts++
-			if result.action == refreshRetryAndClear {
-				uncertain = true
-			}
 			if ordinaryAttempts < refreshMaxAttempts {
 				fmt.Fprintf(errOut,
 					"[lark-cli] [WARN] uat-client: refresh attempt %d/%d failed for %s: %v; retrying\n",
@@ -331,10 +326,7 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 				"unrecognized token refresh action %d", result.action)
 		}
 
-		clearAfterUncertainResult := result.action == refreshRetryAndClear ||
-			(result.action == refreshRetryAndPreserve && uncertain)
-		clearToken := result.action == refreshStopAndClear || clearAfterUncertainResult
-		if !clearToken {
+		if result.action != refreshStopAndClear {
 			fmt.Fprintf(errOut,
 				"[lark-cli] [WARN] uat-client: refresh failed for %s, preserving token: %v\n",
 				opts.UserOpenId, result.err)
@@ -393,6 +385,10 @@ func synchronizeStoredTokenClock(ctx context.Context, httpClient *http.Client, o
 	return nil
 }
 
+// refreshOnce sends one refresh request and classifies its result into a
+// refreshAction. A failure after the request was written is an unknown outcome
+// and is never retried, because the Token Endpoint may already have rotated the
+// single-use refresh token.
 func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, opts UATCallOptions, stored *StoredUAToken, proofKey *dpop.Key, allowClockRecovery bool) refreshResult {
 	payload, err := json.Marshal(refreshRequest{
 		GrantType:    "refresh_token",
@@ -440,19 +436,19 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 	resp, err := httpClient.Do(req)
 	localReceiveTime := time.Now()
 	if err != nil {
+		problem, typed := errs.ProblemOf(err)
+		if wroteRequest.Load() && !(typed && problem.Category == errs.CategoryPolicy) {
+			return refreshOutcomeUnknown(errs.NewNetworkError(refreshTransportSubtype(ctx, err),
+				"token refresh outcome unknown: the request was sent but no response arrived: %v", err).
+				WithRetryable().
+				WithCause(err))
+		}
 		if ctx.Err() != nil {
-			action := refreshStopAndPreserve
-			if wroteRequest.Load() {
-				action = refreshStopAndClear
-			}
-			return refreshResult{action: action, err: ctx.Err()}
+			return refreshResult{action: refreshStopAndPreserve, err: ctx.Err()}
 		}
 		action := refreshRetryAndPreserve
-		problem, typed := errs.ProblemOf(err)
 		if typed && problem.Category == errs.CategoryPolicy {
 			action = refreshStopAndPreserve
-		} else if wroteRequest.Load() {
-			action = refreshRetryAndClear
 		}
 		if !typed {
 			err = errs.NewNetworkError(errs.SubtypeNetworkTransport,
@@ -470,24 +466,18 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return refreshResult{
-			action: refreshRetryAndClear,
-			err: errs.NewNetworkError(errs.SubtypeNetworkTransport,
-				"token refresh response read failed: %v", err).
-				WithRetryable().
-				WithCause(err),
-		}
+		return refreshOutcomeUnknown(errs.NewNetworkError(refreshTransportSubtype(ctx, err),
+			"token refresh outcome unknown: reading the response failed: %v", err).
+			WithRetryable().
+			WithCause(err))
 	}
 
 	var parsed refreshResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return refreshResult{
-			action: refreshRetryAndClear,
-			err: errs.NewInternalError(errs.SubtypeInvalidResponse,
-				"token refresh returned invalid JSON: %v", err).
-				WithRetryable().
-				WithCause(err),
-		}
+		return refreshOutcomeUnknown(errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"token refresh outcome unknown: the response is not valid JSON: %v", err).
+			WithRetryable().
+			WithCause(err))
 	}
 	code := parsed.Code
 	if code != 0 || parsed.Error != "" {
@@ -566,7 +556,7 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 		}
 		apiErr := errs.NewAPIError(errs.SubtypeUnknown, "%s", message).
 			WithCode(code)
-		if action == refreshRetryAndPreserve || action == refreshRetryAndClear {
+		if action == refreshRetryAndPreserve {
 			apiErr.WithRetryable()
 		}
 		return refreshResult{action: action, err: apiErr}
@@ -622,6 +612,37 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 	}
 
 	return refreshResult{action: refreshSaveResponse, response: parsed}
+}
+
+// refreshOutcomeUnknownHint tells the caller how to reach a definitive answer
+// after a refresh whose result is unknown.
+var refreshOutcomeUnknownHint = recovery.Join("",
+	recovery.Text("the Token Endpoint may already have consumed the refresh token, so lark-cli did not replay it and kept the stored token; re-run the command to get a definitive answer"),
+	recovery.Command(recovery.TargetAuthLogin,
+		"; if it then reports refresh_token_reused or refresh_token_revoked, run `lark-cli auth login` to re-authorize"),
+)
+
+// refreshOutcomeUnknown stops after the Token Endpoint may have processed the
+// request but no usable response arrived. Refresh tokens are single-use and
+// rotate on success: if the server processed the request, replaying the same
+// token can only fail, and the replacement token was in the lost response. If
+// it did not, the stored token is still valid. The client cannot tell these
+// apart, so it neither replays nor deletes; the next refresh gets a definitive
+// answer, and a refresh_token_reused/revoked answer clears the token there.
+func refreshOutcomeUnknown(err error) refreshResult {
+	return refreshResult{action: refreshStopAndPreserve, err: recovery.Attach(err, refreshOutcomeUnknownHint)}
+}
+
+// refreshTransportSubtype reports network/timeout when the refresh deadline,
+// the client timeout, or a network timeout ended the attempt, and
+// network/transport otherwise.
+func refreshTransportSubtype(ctx context.Context, err error) errs.Subtype {
+	var netErr net.Error
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) ||
+		(errors.As(err, &netErr) && netErr.Timeout()) {
+		return errs.SubtypeNetworkTimeout
+	}
+	return errs.SubtypeNetworkTransport
 }
 
 func refreshActionForCode(code int) refreshAction {
