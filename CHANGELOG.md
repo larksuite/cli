@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Documentation
+
+- **meeting**: clarify that pretty event timestamps are relative to meeting start; document fresh screenshot attempts for explicit screen requests in the scene and command reference.
+
 ## [v1.0.98] - 2026-10-13
 
 ### Features

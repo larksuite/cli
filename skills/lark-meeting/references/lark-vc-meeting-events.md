@@ -89,6 +89,8 @@ lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token 
 - `--format json`：结构化契约，顶层包含 `meeting`、`identity`、`events`、`has_more`、`page_token`。`identity` 表示当前读取身份；事件 actor 统一含 `participant_type`、`role`、`label`；每条事件保留 `payload` 便于追溯细节。
 - `--format ndjson`：输出事件行，并带 metadata 行，适合流式消费。
 
+**时间含义**：pretty 事件时间线中的 `[hh:mm:ss]` 是距会议开始的相对时间，如 `[00:01:32]` 表示会议开始后 1 分 32 秒，不是当天的钟表时间。向用户引用时明确说明“会议开始后”或“距会议开始”；此说明仅针对时间线显示，不改变 `--start` / `--end` 的绝对时间参数或 JSON/NDJSON 原始时间字段的语义。
+
 **选型原则**：默认先用 `--format pretty`；仅当 `pretty` 缺少完成任务所必需的结构化字段时，才改用 `--format json`。用户明确要求 JSON 或规则明确要求结构化字段时可直接用 `--format json`；需要流式消费时用 `--format ndjson`。
 
 > **JSON 成本**：JSON 保留完整 payload，输出通常远大于 `pretty`；长会全量拉取时会显著占用上下文空间。
