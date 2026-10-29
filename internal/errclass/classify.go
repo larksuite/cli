@@ -112,9 +112,10 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 	// prompt — rather than fabricated structured params. Lifted before the
 	// category switch so any classified arm inherits it; the CategoryAPI arm
 	// below prefers this server detail over the context-free APIHint default.
-	detailHint := liftErrorDetailValues(resp)
-	if detailHint != "" {
-		base.Hint = detailHint
+	// Authorization has canonical recovery; retain its upstream reasons only
+	// through the bounded, sanitized diagnostic path instead of joining them.
+	if meta.Category != errs.CategoryAuthorization {
+		base.Hint = liftErrorDetailValues(resp)
 	}
 
 	switch meta.Category {
@@ -302,7 +303,7 @@ func APIHint(subtype errs.Subtype) string {
 
 func buildPermissionError(p errs.Problem, resp map[string]any, cc ClassifyContext) error {
 	missing := extractMissingScopes(resp)
-	return buildPermissionErrorFromFacts(p, missing, cc)
+	return buildPermissionErrorFromFacts(p, missing, cc, permissionDiagnostic(resp))
 }
 
 // NewMissingScopeError constructs the same typed missing-scope error as the
@@ -317,10 +318,11 @@ func NewMissingScopeError(brand, appID, identity string, missing []string) error
 		},
 		missing,
 		ClassifyContext{Brand: brand, AppID: appID, Identity: identity},
+		nil,
 	)
 }
 
-func buildPermissionErrorFromFacts(p errs.Problem, missing []string, cc ClassifyContext) error {
+func buildPermissionErrorFromFacts(p errs.Problem, missing []string, cc ClassifyContext, upstream *errs.UpstreamDiagnostic) error {
 	missing = append([]string(nil), missing...)
 	identity := cc.Identity
 	if identity == "" {
@@ -338,6 +340,7 @@ func buildPermissionErrorFromFacts(p errs.Problem, missing []string, cc Classify
 		Problem:       p,
 		MissingScopes: missing,
 		Identity:      identity,
+		Upstream:      upstream,
 	}
 	// ConsoleURL is the developer-console deep-link an app developer follows to
 	// apply for a missing scope. The typed machine field is attached only to
