@@ -43,6 +43,7 @@ type RuntimeContext struct {
 	Cmd            *cobra.Command
 	Format         string
 	JqExpr         string                            // --jq expression; empty = no filter
+	JSONData       any                               // OutFormatRaw 的完整 JSON 展示值；原数据用于安全检查和引用
 	outputErrOnce  sync.Once                         // guards first-error capture in Out()/OutFormat()
 	outputErr      error                             // deferred error from jq filtering; written at most once
 	botOnly        bool                              // set by framework for bot-only shortcuts
@@ -886,6 +887,7 @@ func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, pretty
 // Use this when the data contains XML/HTML content that should be preserved as-is.
 func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
 	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
+		JSONData:  ctx.JSONData,
 		Format:    ctx.Format,
 		Raw:       true,
 		JQ:        ctx.JqExpr,

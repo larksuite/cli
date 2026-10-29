@@ -4,9 +4,12 @@
 package doc
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"strconv"
 	"strings"
 
@@ -85,6 +88,9 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if isIMMarkdownFetch(runtime) {
 		applyFetchIMMarkdown(data, runtime.Str("doc"))
 	}
+	if runtime.JqExpr == "" && (runtime.Format == "" || runtime.Format == "json") {
+		runtime.JSONData = fetchJSONData(data)
+	}
 
 	runtime.OutFormatRaw(data, nil, func(w io.Writer) {
 		if doc, ok := data["document"].(map[string]interface{}); ok {
@@ -94,6 +100,47 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 		}
 	})
 	return nil
+}
+
+// fetchJSONData 只浅拷贝两层容器，正文、评论及未知字段仍使用原值。
+func fetchJSONData(data map[string]any) any {
+	document, ok := data["document"].(map[string]any)
+	if !ok {
+		return data
+	}
+	tips, exists := document["tips"]
+	if !exists {
+		return data
+	}
+	fields := maps.Clone(document)
+	delete(fields, "tips")
+	result := maps.Clone(data)
+	result["document"] = fetchDocumentJSON{tips: tips, fields: fields}
+	return result
+}
+
+type fetchDocumentJSON struct {
+	tips   any
+	fields map[string]any
+}
+
+func (document fetchDocumentJSON) MarshalJSON() ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(document.tips); err != nil {
+		return nil, err
+	}
+	result := append([]byte(`{"tips":`), buffer.Bytes()[:buffer.Len()-1]...)
+	if len(document.fields) == 0 {
+		return append(result, '}'), nil
+	}
+	buffer.Reset()
+	if err := encoder.Encode(document.fields); err != nil {
+		return nil, err
+	}
+	result = append(result, ',')
+	return append(result, buffer.Bytes()[1:buffer.Len()-1]...), nil
 }
 
 func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {

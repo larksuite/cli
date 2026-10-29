@@ -52,6 +52,9 @@ type EmitOptions struct {
 	DryRun          bool
 	Pretty          PrettyRenderer
 	JQSafetyWarning bool
+	// JSONData is a presentation of the same data; nil uses the original.
+	// Applied after safety/citations, only to complete JSON (not jq or pretty).
+	JSONData any
 
 	// Citations lazily builds the envelope citations. emitEnvelope invokes it
 	// only after dispatch selects an envelope and safety scanning passes.
@@ -256,6 +259,9 @@ func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) erro
 	}
 
 	return e.emit(func(w io.Writer) error {
+		if opts.JSONData != nil {
+			env.Data = opts.JSONData
+		}
 		// Citations are XML <document> strings consumed as raw bytes without a
 		// JSON decode, so an envelope carrying them must not HTML-escape <, >
 		// and &. Envelopes without citations keep the default escaping policy.
