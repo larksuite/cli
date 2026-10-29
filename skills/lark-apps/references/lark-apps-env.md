@@ -22,6 +22,8 @@ lark-cli apps +env-list --app-id <app_id> --include-values --jq '.data.items[] |
 
 dev 环境设置不需要 `--yes`。设置 online 环境需要人类确认并显式传 `--yes`；如果用户在同一轮已经明确说“确认/直接执行”，视为已确认，直接带 `--yes`，不要再次追问。`--dry-run` 可用于预览请求且不需要 `--yes`。变量值支持直接传 `<value>`，也支持 `@file` 或 stdin 输入。
 
+成功响应会带 `data.note` 提示变更需要走 `+release-create` 才会在线上生效，转述给用户即可。
+
 回复中只说明 app/env/key 和执行结果；不要回显真实 value。需要举例时使用 `<value>`、`@file` 或 stdin。
 
 ```bash
@@ -33,12 +35,13 @@ lark-cli apps +env-set --app-id <app_id> --environment online --key FOO --value 
 
 ## 删除
 
-`+env-delete` 是 high-risk-write。尊重 exit 10 confirmation protocol：先让用户确认 app/env/key 和删除后果，再传 `--yes`。不要自动补 `--yes`。如果只是认证失败后让用户重登，重登完成不等于删除确认；继续删除前仍需确认。
+`+env-delete` 是 high-risk-write，且 **仅支持 dev 环境**。CLI 禁止删除 online 环境变量——传 `--environment online` 会被 Validate 拒绝（failed_precondition）；若用户要清理 online 的 key，让其先在 dev 中删除，再 `+release-create` 推上线，或到开发者后台删除。
+
+尊重 exit 10 confirmation protocol：先让用户确认 app/env/key 和删除后果，再传 `--yes`。不要自动补 `--yes`。如果只是认证失败后让用户重登，重登完成不等于删除确认；继续删除前仍需确认。成功响应同样会带 `data.note`，提醒删除需要发布后在线上生效。
 
 ```bash
 lark-cli apps +env-delete --app-id <app_id> --key FOO --dry-run
 lark-cli apps +env-delete --app-id <app_id> --key FOO --yes
-lark-cli apps +env-delete --app-id <app_id> --environment online --key FOO --yes
 ```
 
 ## 反模式
