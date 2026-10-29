@@ -164,3 +164,23 @@ Use this only when the user explicitly asks to request that one identified parti
 
 ### Skills
 - lark-meeting/references/lark-vc-agent-meeting-leave.md
+
+## +meeting-share
+
+### Prerequisites
+- 执行 `start` 时，当前所有在会成员（包括应用机器人）必须同租户。
+
+### Tips
+- 跨租户成员导致的 `start` 拒绝当前返回 `12005`（`no permission`）；该权限错误也可能来自其他权限校验。应以实际接口响应为准，不能仅凭错误码判断外部会议；核对成员与资源权限，保留 `log_id`，不要直接重试 `start`。
+- 评论面板按用户要求开关；未指定时结合任务和文档评论判断是否展开，无评论时不主动打开，具体用法见文档共享参考。
+
+### Skills
+- lark-meeting/references/lark-vc-meeting-share.md
+
+## +meeting-share-status
+
+### Tips
+- 用于核对当前共享；最近持久化的位置不能证明客户端已应用跳转。
+
+### Skills
+- lark-meeting/references/lark-vc-meeting-share.md

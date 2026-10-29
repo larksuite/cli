@@ -24,6 +24,8 @@ func Shortcuts() []common.Shortcut {
 		VCMeetingChat,
 		VCMeetingScreenshot,
 		VCMeetingCountdown,
+		VCMeetingShare,
+		VCMeetingShareStatus,
 		VCMeetingParticipantKickout,
 		VCMeetingParticipantMute,
 		VCMeetingParticipantUnmute,

@@ -28,7 +28,11 @@ metadata:
 - 不支持：说明限制并停止；不要为了让命令成功而替换身份。
 - 只有用户明确同意切换身份后，才以新身份重新开始一条工作流。
 
+向用户说明时使用“用户身份”或“应用身份”，不主动展示鉴权缩写、内部身份类型或服务端实现细节。权限失败按实际错误给出处理方式。
+
 `vc +meeting-end` 是一个支持双身份的 shortcut：`--as user` 调用用户端 PATCH 接口，`--as bot` 调用应用机器人端 POST 接口。`vc +meeting-participant-kickout` 仅支持用户身份。两者都是高风险写操作；dry-run 必须显式传入受支持的 `--as user` 或 `--as bot`，不得为了执行成功静默切换身份，也不得替用户补做确认。`vc +meeting-participant-mute` 和 `vc +meeting-participant-unmute` 支持用户与应用身份，沿用已选身份；请求开麦成功只表示请求已发送，不表示目标参会人已经开麦。
+
+共享文档时，评论面板优先按用户要求设置；未指定时，由 Agent 按当前任务需要决定是否展开。详见 [文档共享参考](references/lark-vc-meeting-share.md)。
 
 ## 领域模型与概念
 
@@ -135,6 +139,7 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 | `vc +meeting-message-send` | 发送会中文本消息或表情 | [lark-vc-meeting-message-send](references/lark-vc-meeting-message-send.md) |
 | `vc +meeting-screenshot` | 获取视频会议截图 | [lark-vc-meeting-screenshot](references/lark-vc-meeting-screenshot.md) |
 | `vc +meeting-countdown` | 设置、延长、提前结束或关闭会中倒计时 | [lark-vc-meeting-countdown](references/lark-vc-meeting-countdown.md) |
+| `vc +meeting-share` / `vc +meeting-share-status` | 控制会中文档共享并查询当前共享快照 | [lark-vc-meeting-share](references/lark-vc-meeting-share.md) |
 | `vc +meeting-end` | 以用户身份或当前 Host 应用机器人结束整场进行中的会议 | [用户身份](references/lark-vc-meeting-end.md) / [应用身份](references/lark-vc-agent-meeting-end.md) |
 | `vc +meeting-participant-kickout` | 以用户身份移出一至十个指定参会人 | [lark-vc-meeting-participant-kickout](references/lark-vc-meeting-participant-kickout.md) |
 | `vc +meeting-participant-mute` | 以用户或应用身份将指定参会人闭麦 | [lark-vc-meeting-participant-audio](references/lark-vc-meeting-participant-audio.md) |

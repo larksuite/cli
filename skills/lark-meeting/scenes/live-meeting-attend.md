@@ -136,6 +136,10 @@ lark-cli vc +meeting-countdown --as bot --meeting-id <meeting_id> --action prolo
 
 动作、提醒点和权限规则见 [`lark-vc-meeting-countdown`](../references/lark-vc-meeting-countdown.md)。
 
+## 控制会中文档共享
+
+入会成功后，开始、查询、停止或更新共享统一进入[控制文档共享](live-meeting-interact.md#控制文档共享)。复用入会返回的 `meeting_id` 和来源身份，不要重复发现或入会。
+
 ## 结束会议
 
 只有用户明确要求结束整场会议时才执行；不要把结束会议和机器人离会混用。

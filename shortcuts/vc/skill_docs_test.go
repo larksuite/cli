@@ -74,6 +74,8 @@ func TestVCBotShortcutsIdentityDocsMatchAuthTypes(t *testing.T) {
 		{"+meeting-chat", VCMeetingChat.AuthTypes, "lark-vc-meeting-chat.md"},
 		{"+recording", VCRecording.AuthTypes, "lark-vc-recording.md"},
 		{"+meeting-countdown", VCMeetingCountdown.AuthTypes, "lark-vc-meeting-countdown.md"},
+		{"+meeting-share", VCMeetingShare.AuthTypes, "lark-vc-meeting-share.md"},
+		{"+meeting-share-status", VCMeetingShareStatus.AuthTypes, "lark-vc-meeting-share.md"},
 	} {
 		if !hasAuthType(cmd.authTypes, "bot") {
 			t.Errorf("%s AuthTypes = %v, want bot included (this PR's contract)", cmd.name, cmd.authTypes)

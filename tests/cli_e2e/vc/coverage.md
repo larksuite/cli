@@ -33,6 +33,18 @@
 | --- | --- | --- | --- |
 | Live | `vc +meeting-participant-kickout` | `vc_meeting_participant_kickout_test.go::TestVCMeetingParticipantKickoutLiveE2E` | Fixture-gated host/cohost success, ordinary-user denial, and partial-result cases. |
 
+## Meeting Document Sharing
+
+| Status | Cmd | Coverage | Notes |
+| --- | --- | --- | --- |
+| Dry-run | `vc +meeting-share --action start --as bot` | `vc_meeting_share_dryrun_test.go::TestVCMeetingShareDryRun` | Asserts the POST endpoint and document URL payload without a real API call. |
+| Dry-run | `vc +meeting-share-status --as user` | `vc_meeting_share_dryrun_test.go::TestVCMeetingShareStatusDryRun` | Asserts the GET endpoint and meeting ID query. |
+| Dry-run | `vc +meeting-share --action comment_panel` | `shortcuts/vc/vc_meeting_share_test.go::TestMeetingShareCommentPanelBodyAndDryRun` | Asserts explicit true/false panel payloads for start and comment_panel; no viewer behavior is asserted. |
+| HTTP stub | `vc +meeting-share` | `shortcuts/vc/vc_meeting_share_test.go::TestMeetingShareExecute`, `TestMeetingShareExecuteStopAndUpdate` | Asserts start response share_id passthrough and stop/update_context request bodies against a stub. |
+| HTTP stub | `vc +meeting-share-status` | `shortcuts/vc/vc_meeting_share_test.go::TestMeetingShareStatusDryRunAndExecute` | Asserts status request and response handling against a stub. |
+| Blocked Live | `vc +meeting-share` |  | No sharing fixture defines a run-owned document and a complete start/control/stop cleanup lifecycle. |
+| Blocked Live | `vc +meeting-share-status` |  | Lifecycle readback requires a share created and owned by the same isolated fixture. |
+
 ## Remaining Live E2E Blockers
 
 The Agent Calendar `meeting-join`, `meeting-invite`, and bot-identity
@@ -53,6 +65,15 @@ The user-identity participant-audio Live E2E proves request acceptance, not the
 participant's final microphone state, because no independent state readback is
 available.
 
+Sharing Live E2E lacks a deterministic, fully cleanable fixture.
+`vc_meeting_management_fixture_test.go` defines disposable end/kickout cases,
+User role binding, meeting/participant readback, and cleanup armed before create.
+It does not define disposable sharing documents, their ownership/readback/cleanup
+chain, or a verified User/Bot pair controlling the same active meeting. Meeting
+cleanup alone does not prove that a run-created document was deleted or its
+share was stopped. This is a fixture gap; no live sharing API was attempted here,
+so API reachability and permissions remain unverified.
+
 ## Required Fixture
 
 1. A dedicated test app with the Agent Calendar feature enabled for its meeting
@@ -65,6 +86,18 @@ available.
    cleanup that restores participant state and ends the meeting.
 5. A disposable recording fixture with Minutes artifact readback and exact
    artifact deletion.
+6. An isolated sharing meeting and a run-created disposable Docx document, with
+   owned blocks/comments for context assertions and exact document deletion.
+   Never preconfigure production meeting, document, or share IDs.
+7. Verified User and Bot identities in that same active meeting, with the
+   required scopes and document access; a separate observer and independent
+   state readback are required before claiming viewer focus or panel behavior.
+8. Capture share_id dynamically from the successful start response. Before any
+   stop or context update, read back the run-created document and expected
+   presenter to establish ownership. Arm idempotent cleanup before creation;
+   even after partial creation or failure, recover and stop only this run's
+   owned share, delete its document, end/reclaim its meeting, and verify cleanup.
+   Keep credentials out of manifests committed to the repository and reports.
 
 ## Substitute Evidence
 
@@ -81,3 +114,9 @@ Recording controls are covered by
 `shortcuts/vc/vc_meeting_recording_control_test.go` against the HTTP stub and by
 the binary dry-run tests above. These checks do not create persistent tenant
 state and do not claim live-backend coverage.
+
+The sharing entries above describe existing binary dry-run and HTTP-stub
+assertions inspected for this documentation update; they were not executed here.
+They do not prove a real sharing lifecycle, User or Bot eligibility, live
+document-type support, viewer focus/panel behavior, or backend permission and
+error-code semantics.

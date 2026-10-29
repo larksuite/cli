@@ -1,10 +1,10 @@
 # 读取会中事件、会中互动与主持管理
 
-围绕一场正在进行的会议执行只读查询或用户明确授权的会中写操作。真实入会/离会使用应用机器人入会场景；已结束会议和会后产物使用会议查询场景。
+围绕一场正在进行的会议执行只读查询或用户明确授权的会中写操作。真实入会/离会使用参会场景；已结束会议和会后产物使用会议查询场景。
 
 各节是按目标选择的分支，不是依次执行的步骤。已有 `meeting_id` 时跳过会议发现；用户要会议绑定群时直接进入 [获取或创建会议群聊](#获取或创建会议群聊)，不要先拉取事件。“会里刚才发了什么”指会中聊天事件，“会议绑定群里发了什么”指 IM 消息；上下文无法区分时先确认消息位置。
 
-任务需要应用机器人新入会时，先按 [机器人参会场景](live-meeting-attend.md) 确认入会成功；从该场景转入本节时复用传入的 `meeting_id` 和 `--as bot`，不重复发现或入会。
+任务需要新入会时，先按 [参会场景](live-meeting-attend.md) 确认入会成功；从该场景转入本节时复用传入的 `meeting_id` 和来源身份，不重复发现或入会。
 
 ## 发现进行中的会议
 
@@ -119,6 +119,34 @@ lark-cli vc +meeting-countdown --as <same_identity> --meeting-id <meeting_id> --
 - `set` 和 `prolong` 需要 `--duration`；提前结束或关闭时不要携带时长、提醒点或结束音频参数。
 
 动作、提醒点和权限规则见 [`lark-vc-meeting-countdown`](../references/lark-vc-meeting-countdown.md)。
+
+## 控制文档共享
+
+只有用户明确要求查看、开始、停止或更新会中文档共享时执行。
+
+**查看当前投屏状态：**
+
+```bash
+lark-cli vc +meeting-share-status --as <same_identity> --meeting-id <meeting_id>
+```
+
+无共享时返回空状态；有共享时返回 `share_id`、文档 URL、标题、主讲人和最近持久化的正文位置。只查看状态时到此结束，不自动开始、停止或更新共享。
+
+**开始投屏：**先用同一身份查询当前共享状态，确认不会替换他人的共享后再发起：
+
+```bash
+lark-cli vc +meeting-share-status --as <same_identity> --meeting-id <meeting_id>
+lark-cli vc +meeting-share --as <same_identity> \
+  --meeting-id <meeting_id> --action start --doc-url 'https://example.feishu.cn/docx/<doc_token>'
+```
+
+- `start` 成功后保存返回的 `share_id`；`stop` 和 `update_context` 必须使用该 ID。
+- `start` 支持 Doc、Docx、Sheet 及解析为这些类型的 Wiki URL；`update_context` 仅支持 Docx / Wiki-Docx。
+- `start` 返回 `121001` 或结果未知时，先用同一身份查询状态，不要直接重试。
+- 不自动抢占他人共享，不自动重试写操作。
+- 正文位置、评论上下文和元素预览参数互斥。
+
+完整参数见 [`lark-vc-meeting-share`](../references/lark-vc-meeting-share.md)。
 
 ## 管理参会人麦克风
 

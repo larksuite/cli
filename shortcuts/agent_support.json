@@ -1735,6 +1735,12 @@
     "vc +meeting-recording-stop": {
       "agentSupport": "allowed"
     },
+    "vc +meeting-share": {
+      "agentSupport": "allowed"
+    },
+    "vc +meeting-share-status": {
+      "agentSupport": "allowed"
+    },
     "vc +meeting-screenshot": {
       "agentSupport": "allowed"
     },
