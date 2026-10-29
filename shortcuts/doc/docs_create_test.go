@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -471,6 +472,28 @@ func TestDocsCreateV2EmptyContentFileReportsPathAndRecovery(t *testing.T) {
 	}
 	if got, want := problem.Hint, `write non-empty XML or Markdown to this file; if the path was reserved by init-draft, use the exact data.draft_path returned by that command, then retry with --content "@./<data.draft_path>"`; got != want {
 		t.Fatalf("hint = %q, want %q", got, want)
+	}
+}
+
+func TestDocsCreate_AcceptsDocxDocumentParentScope(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
+	f.Credential = credential.NewCredentialProvider(nil, nil, &docMediaScopedTokenResolver{scopes: "docx:document"}, nil)
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_test_doc",
+			"revision_id": 1,
+			"url":         "https://example.feishu.cn/docx/doxcn_test_doc",
+		},
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--as", "user",
+		"--title", "Test",
+		"--doc-format", "xml",
+	})
+	if err != nil {
+		t.Fatalf("execute docs +create with docx:document scope: %v", err)
 	}
 }
 
