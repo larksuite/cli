@@ -23,10 +23,21 @@ type transportPolicyBuilder func(http.RoundTripper) http.RoundTripper
 type sdkBootstrapRedirectContextKey struct{}
 
 var (
-	// larkws pins this client during package initialization.
+	// sdkBootstrapHTTPClient is the process-wide client websocket endpoint
+	// bootstrap must use. It is captured from http.DefaultClient at init so a
+	// later replacement of that global cannot divert bootstrap traffic.
+	// oapi-sdk-go v3.12.2 no longer reads the global itself; every
+	// larkws.NewClient passes this pointer through larkws.WithHttpClient.
 	sdkBootstrapHTTPClient = http.DefaultClient
 	installDefaultClientMu sync.Mutex
 )
+
+// SDKBootstrapHTTPClient returns the HTTP client InstallSDKTransportBridge wraps.
+// Pass it to every larkws.NewClient with larkws.WithHttpClient. v3.12.2 otherwise
+// uses a private client and skips this process's proxy and platform policy.
+func SDKBootstrapHTTPClient() *http.Client {
+	return sdkBootstrapHTTPClient
+}
 
 // sdkBootstrapTransport applies the platform HTTP policy only to dependency
 // bootstrap requests selected by match. Unmatched DefaultClient traffic is
@@ -215,10 +226,10 @@ func isFollowedRedirect(status int) bool {
 	}
 }
 
-// InstallSDKTransportBridge wraps larkws's captured HTTP bootstrap client. All
-// requests through that client hit the bridge, but only matched bootstrap
-// traffic uses platform policy. The SDK owns the subsequent WebSocket dial,
-// which does not use this net/http transport.
+// InstallSDKTransportBridge wraps SDKBootstrapHTTPClient. All requests through
+// that client hit the bridge, but only matched bootstrap traffic uses platform
+// policy. The SDK owns the subsequent WebSocket dial, which does not use this
+// net/http transport. Callers must pass the same client to larkws.WithHttpClient.
 func InstallSDKTransportBridge(buildPlatformPolicy func(http.RoundTripper) http.RoundTripper) {
 	installDefaultClientMu.Lock()
 	defer installDefaultClientMu.Unlock()

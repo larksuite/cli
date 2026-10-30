@@ -27,6 +27,7 @@ import (
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -436,6 +437,7 @@ var MailWatch = common.Shortcut{
 			larkws.WithEventHandler(eventDispatcher),
 			larkws.WithDomain(domain),
 			larkws.WithLogger(sdkLogger),
+			larkws.WithHttpClient(transport.SDKBootstrapHTTPClient()),
 		)
 
 		watchCtx, cancelWatch := context.WithCancel(ctx)
