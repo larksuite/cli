@@ -21,7 +21,7 @@
 // Nothing here is called directly. The wiring is:
 //
 //  1. A shortcut declares `Citation: &common.CitationDefinition{...}` in its
-//     common.Shortcut literal (see the three call sites in this package).
+//     common.Shortcut literal (see the four call sites in this package).
 //  2. At registration, Shortcut.mountDeclarative validates the declaration and
 //     panics on a bad one — citations require Risk "read", a non-empty
 //     SourceTypes set, and a non-nil Build hook. A mistake here fails at

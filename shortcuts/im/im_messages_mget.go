@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
@@ -34,7 +35,11 @@ var ImMessagesMGet = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		ids := common.SplitCSV(runtime.Str("message-ids"))
-		d := common.NewDryRunAPI().GET(buildMGetURL(ids))
+		d := common.NewDryRunAPI()
+		if citation.Enabled() {
+			d.Desc("Citation only: reuse message chat metadata; user lookups may use chats/batch_query, with missing chat context falling back to GET /open-apis/im/v1/chats/{chat_id}. P2P titles may query authen/user_info, contact user APIs, or GET /open-apis/bot/v3/bots/basic_batch for missing names; bot peers may use GET /open-apis/im/v1/chats/{chat_id}/members. Enrichment is best-effort.")
+		}
+		d.GET(buildMGetURL(ids))
 		if !runtime.Bool("no-reactions") {
 			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
 				Desc("Reaction enrichment: queries returned messages in batches of up to 20 to attach the reactions block (operator, action_time, counts). Pass --no-reactions to skip.")
@@ -96,6 +101,9 @@ var ImMessagesMGet = common.Shortcut{
 		if downloadResources {
 			enrichMessageResourceDownloads(runtime, messages)
 		}
+		if citation.Enabled() {
+			enrichMGetCitationTitles(runtime, messages)
+		}
 
 		outData := map[string]interface{}{
 			"messages": messages,
@@ -128,4 +136,87 @@ var ImMessagesMGet = common.Shortcut{
 		})
 		return nil
 	},
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMessage},
+		Build:       messagesMGetCitations,
+	},
+}
+
+// Keep citation titles in scanned data without changing chat_name or table output.
+func enrichMGetCitationTitles(rt *common.RuntimeContext, messages []map[string]interface{}) {
+	chats := make(map[string]messageChatContext)
+	var ids []string
+	var flattened []map[string]interface{}
+	for _, msg := range messages {
+		flattened = append(flattened, msg)
+		flattened = append(flattened, citationItems(msg, "thread_replies")...)
+	}
+	for _, msg := range flattened {
+		meta := struct{ id, kind, name string }{
+			asString(msg["chat_id"]), asString(msg["chat_type"]), asString(msg["chat_default_name"]),
+		}
+		if meta.id == "" {
+			continue
+		}
+		chat, exists := chats[meta.id]
+		if !exists {
+			ids = append(ids, meta.id)
+		}
+		if chat.kind == "" {
+			chat.kind = meta.kind
+		}
+		if chat.name == "" {
+			chat.name = meta.name
+		}
+		chats[meta.id] = chat
+	}
+	// User batch lookup also identifies P2P peers. Bots use the existing get/member fallback.
+	if !rt.IsBot() {
+		var missing []string
+		for _, id := range ids {
+			if chat := chats[id]; chat.kind != "group" || chat.name == "" {
+				missing = append(missing, id)
+			}
+		}
+		for id, chat := range projectMessageChatContexts(batchQueryChatContexts(rt, missing)) {
+			previous := chats[id]
+			if chat.kind == "" {
+				chat.kind = previous.kind
+			}
+			if chat.name == "" {
+				chat.name = previous.name
+			}
+			chats[id] = chat
+		}
+	}
+	fillMissingMessageChatContexts(rt, chats, ids)
+	titles := messageChatTitles(rt, chats, flattened)
+	for _, msg := range messages {
+		chatID := asString(msg["chat_id"])
+		msg["citation_title"] = titles[chatID]
+		for _, reply := range citationItems(msg, "thread_replies") {
+			replyChatID := asString(reply["chat_id"])
+			if replyChatID == "" {
+				replyChatID = chatID
+			}
+			reply["citation_title"] = titles[replyChatID]
+		}
+	}
+}
+
+// Flatten all message types and expanded replies; builders only read scanned output.
+func messagesMGetCitations(rt *common.RuntimeContext, data any) []citation.Citation {
+	var entries []citation.Citation
+	brand := citationBrand(rt)
+	for _, msg := range citationItems(data, "messages") {
+		entry, _ := messageCitation(brand, msg, "")
+		entry.Title = asString(msg["citation_title"])
+		entries = append(entries, entry)
+		for _, reply := range citationItems(msg, "thread_replies") {
+			entry, _ := messageCitation(brand, reply, asString(msg["chat_id"]))
+			entry.Title = asString(reply["citation_title"])
+			entries = append(entries, entry)
+		}
+	}
+	return entries
 }

@@ -21,7 +21,7 @@ const citationBotPath = "/open-apis/bot/v3/bots/basic_batch"
 const citationBotScope = "application:bot.basic_info:read"
 
 func TestCitationBotFallbackCommands(t *testing.T) {
-	for _, command := range []string{"list", "search"} {
+	for _, command := range []string{"list", "search", "mget"} {
 		for _, tc := range []struct {
 			name, env, cachedName, scope, wantTitle string
 			fail, empty                             bool
@@ -142,6 +142,10 @@ func TestCitationBotFallbackCommands(t *testing.T) {
 					rt.Cmd.Flags().String("order", "desc", "")
 					rt.Cmd.Flags().Int("page-delay", 0, "")
 				}
+				if command == "mget" {
+					shortcut = ImMessagesMGet
+					rt.Cmd.Flags().String("message-ids", "om_test", "")
+				}
 				if err := shortcut.Execute(context.Background(), rt); err != nil {
 					t.Fatal(err)
 				}
@@ -194,6 +198,9 @@ func TestCitationBotFallbackCommands(t *testing.T) {
 					cs := messagesSearchCitations(rt, out.Data)
 					if command == "list" {
 						cs = chatMessagesListCitations(rt, out.Data)
+					}
+					if command == "mget" {
+						cs = messagesMGetCitations(rt, out.Data)
 					}
 					if len(cs) != wantMessages || cs[0].Title != tc.wantTitle {
 						t.Fatalf("citations = %#v, want title %q", cs, tc.wantTitle)
