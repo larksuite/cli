@@ -12,6 +12,7 @@ package vc
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -214,19 +215,22 @@ func TestVCUserIdentityLifecycleDocsMatchShortcutContracts(t *testing.T) {
 		t.Error("live-meeting-attend.md must not reject the user identity meeting-end path")
 	}
 	for _, want := range []string{
-		"121016",
-		"121020",
-		"121021",
-		`This agent is currently unable to join the meeting. Ask the meeting host to enable "AI Summary" and try again. If it is already enabled, verify that "Allow agents to join meetings" is enabled in the current meeting's "Security" settings.`,
-		"AI summary quota is insufficient",
-		"You are not permitted to start this scheduled meeting.",
+		"入会失败的解释规则",
+		"以本次 CLI 返回的错误消息为依据。",
+		"`AI Summary` =「AI 总结」",
+		"`Allow agents to join meetings` =「允许智能体加入会议」",
+		"只转述消息明确表达的失败原因和操作要求，不自行补充；消息中的帮助链接按原样保留。",
+		"`--action join\\|start`",
+		"默认 `join` 不会向请求体写入 `action` 字段",
+		"`--action start` 才写入 `action: 2`",
 	} {
 		if !strings.Contains(joinReference, want) {
-			t.Errorf("lark-vc-agent-meeting-join must document %q", want)
+			t.Errorf("入会reference必须保留规则 %q", want)
 		}
 	}
-	if strings.Contains(joinReference, "121019") {
-		t.Error("lark-vc-agent-meeting-join must not document retired 121019")
+	if regexp.MustCompile(`\b121\d{3}\b`).MatchString(joinReference) ||
+		regexp.MustCompile(`(?m)^\s*\|[^\n]*(?:错误码|error code)[^\n]*\|`).MatchString(joinReference) {
+		t.Error("入会reference不得保留旧业务错误码或建立新的逐码错误表")
 	}
 }
 

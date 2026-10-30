@@ -5,7 +5,7 @@
 
 本 skill 对应 shortcut：`lark-cli vc +meeting-join`（调用 `POST /open-apis/vc/v1/bots/join`）。
 
-应用机器人使用 `--as bot`；用户身份使用 `--as user`。两种身份在加入或通过 `--action start` 发起日程会议时，AI 总结未开启和“允许智能体加入会议”未开启都返回 `121016` 同一长引导；AI 总结配额不足返回 `121020`；当前身份不允许发起日程会议返回 `121021`。
+应用机器人使用 `--as bot`；用户身份使用 `--as user`。入会失败时，按当次 CLI 返回的错误消息解释，遵循下文的「入会失败的解释规则」。
 
 > **不要把 9 位会议号等同于入会意图。** 用户给出 9 位会议号并询问“会议讲了什么 / 查会中事件”时，先用 `vc +meeting-list-active` 查当前 active meetings 并按 `meeting_no` 匹配；只有用户明确要求“入会 / 让应用机器人旁听 / 代我参会”时才调用本命令。
 
@@ -61,9 +61,7 @@ lark-cli vc +meeting-join --as user --meeting-number 123456789 --enable-lobby
 ### 3. 会议必须已开始且允许入会
 
 - `--action join` 要求会议处于**进行中**状态；`--action start` 用于启动符合条件的日程会议。
-- 默认入会请求不进入等候室；若会议要求审批，或当前身份不具备直接入会权限，会直接失败，需要主持人调整会控或入会权限后重试。不要因为这类失败自动加上 `--enable-lobby` 重试（见[会中等候室](#5-会中等候室--enable-lobby可选)）。
-- `--action start` 返回 `HTTP 403: no permission`（错误码 `121003`）表示当前身份未通过日程发起的通用权限或灰度校验；不要将此错误当作“允许智能体加入会议”开关关闭，也不要通过新增 scope 解决。
-- 默认 `--action join` 返回 `121003` 时，再优先检查所选身份：`--as bot` 需确认应用为企业自建应用、已获授“机器人入离会”权限，且应用与租户一致；`--as user` 需确认当前用户身份具备基础入会能力。会议号、密码、会议状态和会议准入拒绝分别有对应的专属错误码。
+- 默认入会请求不进入等候室；会议状态和准入条件由服务端校验。失败时按当次返回的错误消息解释，不预设拒绝原因，也不自动添加 `--enable-lobby` 重试（见[会中等候室](#5-会中等候室--enable-lobby可选)）。
 
 ### 4. 机器人入会后对其他参会人可见
 
@@ -105,25 +103,15 @@ lark-cli vc +meeting-join --as user --meeting-number 123456789 --enable-lobby
 | `password` | 若会议设置了入会密码，由主持人提供 |
 | `call-id` | 由 `vc.bot.meeting_invited_v1` 邀请事件的 `call_id` 字段携带，Agent 收到事件时透传过来；无邀请事件场景（如 Agent 主动入会）不传 |
 
-## 常见错误与排查
+## 入会失败的解释规则
 
-| 错误现象 | 根本原因 | 解决方案 |
-|---------|---------|---------|
-| `--meeting-number must be exactly 9 digits` | 会议号不是 9 位纯数字 | 检查是否误传了会议链接或 meeting_id |
-| `--enable-lobby cannot be used with --action start` | 发起日程会议不支持会中等候室 | 发起会议时去掉 `--enable-lobby`；只在加入进行中的会议时使用 |
-| `--enable-lobby is not supported for bot identity` | 应用机器人身份不支持会中等候室 | 去掉 `--enable-lobby`；不要为了进入等候室切换 `--as user` / `--as bot` 身份 |
-| `121016`: `This agent is currently unable to join the meeting. Ask the meeting host to enable "AI Summary" and try again. If it is already enabled, verify that "Allow agents to join meetings" is enabled in the current meeting's "Security" settings.` | AI 总结未开启，或当前会议“允许智能体加入会议”开关未开启 | 按 message 顺序处理：先请会议主持人开启 AI 总结；如果已开启，再到当前会议“安全”中确认“允许智能体加入会议”已开启。不要切换 `--as user` / `--as bot` 身份绕过该限制 |
-| `121020`: `AI summary quota is insufficient` | 组织的 AI 总结配额不足 | 保留错误码和 `log_id`，联系组织管理员确认 AI 总结配额；配额恢复后再执行 `--action start`，不要自动重试 |
-| `121009 need password` / `121010 wrong password` | 未提供会议密码或密码错误 | 向主持人确认会议密码后传入 `--password`；不要高频重试 |
-| `121004 meeting status unexpected` / `121005 meeting not exist` / `121014 meeting not started` | 会议状态不支持入会、会议号无效，或会议尚未开始 | 核对会议号和当前飞书环境；等待会议开始后重试。日程会议发起使用 `--action start` |
-| `121021`: `You are not permitted to start this scheduled meeting.` | 当前身份不允许发起该日程会议 | 核对调用身份是否具备日程发起资格；保留 `log_id` 排查具体业务权限或灰度条件 |
-| `HTTP 403: no permission` / `121003` | `--action start` 时，当前身份未通过日程发起的通用权限或灰度校验；默认 `join` 时，应用身份、权限或租户一致性不满足，或当前用户身份未通过基础入会能力校验 | `start`：确认调用身份具备日程发起能力，并保留 `log_id` 排查灰度或业务权限；不要新增 OAuth scope，也不要将此错误当作智能体开关关闭。`join`：`--as bot` 确认应用为企业自建应用、已获授“机器人入离会”权限且应用与租户一致；`--as user` 确认当前用户身份具备基础入会能力 |
-| `121013 no permission to join` | 当前身份未被允许直接加入该会议 | 确认当前身份已受邀，且会议安全策略允许其加入；必要时请主持人调整入会权限。不要通过切换 `--as user` / `--as bot` 身份绕过限制 |
-| 应用身份权限不足 | 应用权限、租户安装或权限可访问的数据范围未配置完整 | 不要执行 `auth login`。以 CLI 返回的 metadata / error envelope 为准确认缺失权限；检查应用发布/安装，以及开放平台“权限可访问的数据范围”：选择“按条件筛选”，条件为“会议的归属者 包含 与应用的可用范围一致”；配置正确仍失败时，保留错误码和 `log_id`，按服务端权限异常排查 |
-| 用户身份操作失败 | 当前 `--as user` 身份不具备目标会议的操作权限，或目标会议不支持该操作 | 保留错误码和 `log_id`，检查当前用户身份，不要改用 `--as bot` 重试 |
+- 以本次 CLI 返回的错误消息为依据。
+- 固定术语翻译：`AI Summary` =「AI 总结」；`Allow agents to join meetings` =「允许智能体加入会议」。
+- 只转述消息明确表达的失败原因和操作要求，不自行补充；消息中的帮助链接按原样保留。
 
 ## 提示
 
+- 一般情况下，会议开启「AI 总结」后即可支持智能体入会。实际入会结果以接口返回为准。
 - 仅在 Agent 需要**真实加入**会议（例如参会机器人、会中助手）时使用；只拉取会议数据不需要入会。
 - 入会会让当前身份立即出现在参会列表；若用户要求退出 / 离开 / 结束参会，使用 `+meeting-leave --as <source_identity> --meeting-id <meeting.id>`。参数格式不确定时可选 `--dry-run` 预览，但不是必经步骤。
 - 执行成功后，立即记录返回的 `meeting.id`，用于后续 `+meeting-leave` / `+meeting-events`；返回 `join_status=2` 时记录 `lobby_meeting.meeting_id`，只能用于退出等候室，入会前不要用它调用会中命令。
