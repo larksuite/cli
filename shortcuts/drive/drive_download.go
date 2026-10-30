@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"path"
 	"strings"
@@ -14,9 +15,10 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/download"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/downloadtransport"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -119,6 +121,72 @@ func driveDownloadIsPermissionAuthScopeError(err error) bool {
 	}
 }
 
+// driveDownloadPartSize bounds each ranged response. open.feishu.cn resets a
+// download stream about five minutes after it starts, so one full response
+// cannot carry a large file. Each part request costs ~0.5-1 s before the
+// first byte; 128 MiB parts keep that overhead small while a part still
+// finishes well inside the window on links down to ~0.5 MB/s.
+var driveDownloadPartSize = int64(128 * 1024 * 1024)
+
+// openDriveFileDownload streams the file in validated ranged parts.
+//
+// The file token does not pin the bytes: +upload --file-token replaces the
+// content in place, and the download response carries no ETag. Parts may be
+// combined only when the caller holds the latest_modify_time read before the
+// first part and re-checks it after the last (driveRevisionCheckReader).
+// Without it, MutableSource makes the engine fall back to one full response.
+//
+// Ceiling: latest_modify_time has one-second resolution, so a replacement that
+// lands in the same second as the revision read is not detected. A server
+// validator (ETag or a readable version) would close that window.
+func openDriveFileDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken, revision string) (*download.Stream, error) {
+	transport := downloadtransport.NewOAPI(runtime.DoAPIStream).Get(
+		"/open-apis/drive/v1/files/:file_token/download",
+		downloadtransport.PathParam("file_token", fileToken),
+	)
+	source := download.MutableSource(transport)
+	if revision != "" {
+		source = download.ImmutableSource(transport)
+	}
+	return download.Open(ctx, source, download.Options{PartSize: driveDownloadPartSize})
+}
+
+// driveRevisionCheckReader runs verify before reporting EOF, so a file that
+// changed during a multipart download fails before the output is committed.
+type driveRevisionCheckReader struct {
+	reader io.Reader
+	verify func() error
+	err    error
+}
+
+func (r *driveRevisionCheckReader) Read(p []byte) (int, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+	n, err := r.reader.Read(p)
+	if errors.Is(err, io.EOF) {
+		if verifyErr := r.verify(); verifyErr != nil {
+			r.err = verifyErr
+			return n, verifyErr
+		}
+	}
+	return n, err
+}
+
+func verifyDriveDownloadRevision(runtime *common.RuntimeContext, fileToken, revision string) error {
+	meta, err := common.FetchDriveMeta(runtime, fileToken, "file", false)
+	if err != nil {
+		return wrapDriveNetworkErr(err, "cannot confirm the file was unchanged during a multipart download: %s", err)
+	}
+	if meta.LatestModifyTime != revision {
+		return errs.NewNetworkError(errs.SubtypeNetworkRepresentationChanged,
+			"file changed while downloading: latest_modify_time is %q, want %q", meta.LatestModifyTime, revision).
+			WithRetryable().
+			WithHint("run the command again to download the current version")
+	}
+	return nil
+}
+
 var DriveDownload = common.Shortcut{
 	Service:     "drive",
 	Command:     "+download",
@@ -169,26 +237,38 @@ var DriveDownload = common.Shortcut{
 		)
 		step++
 
-		downloadDesc := fmt.Sprintf("[%d] Download file bytes to the explicit output path", step)
+		metadataDesc := fmt.Sprintf("[%d] Read the file revision (latest_modify_time) so ranged parts can be combined; on failure the download uses one full response", step)
+		downloadDesc := fmt.Sprintf("[%d] Download file bytes to the explicit output path", step+1)
 		if outputPath == "" {
 			outputPath = "<Content-Disposition filename | metadata title | token>"
-			plan.
-				POST("/open-apis/drive/v1/metas/batch_query").
-				Desc(fmt.Sprintf("[%d] Resolve metadata title before downloading; fails before the download request if metadata scope is missing", step)).
-				Body(map[string]interface{}{
-					"request_docs": []map[string]interface{}{
-						{
-							"doc_token": fileToken,
-							"doc_type":  "file",
-						},
-					},
-				})
-			step++
-			downloadDesc = fmt.Sprintf("[%d] Download file bytes; Content-Disposition filename wins over metadata title when present", step)
+			metadataDesc = fmt.Sprintf("[%d] Resolve metadata title and file revision before downloading; fails before the download request if metadata scope is missing", step)
+			downloadDesc = fmt.Sprintf("[%d] Download file bytes; Content-Disposition filename wins over metadata title when present", step+1)
 		}
+		plan.
+			POST("/open-apis/drive/v1/metas/batch_query").
+			Desc(metadataDesc).
+			Body(map[string]interface{}{
+				"request_docs": []map[string]interface{}{
+					{
+						"doc_token": fileToken,
+						"doc_type":  "file",
+					},
+				},
+			})
+		downloadDesc += fmt.Sprintf(" in %d MiB Range requests", driveDownloadPartSize>>20)
 		return plan.
 			GET("/open-apis/drive/v1/files/:file_token/download").
 			Desc(downloadDesc).
+			POST("/open-apis/drive/v1/metas/batch_query").
+			Desc(fmt.Sprintf("[%d] Only when the file spans more than one part: re-read latest_modify_time and fail before committing the output if it changed", step+2)).
+			Body(map[string]interface{}{
+				"request_docs": []map[string]interface{}{
+					{
+						"doc_token": fileToken,
+						"doc_type":  "file",
+					},
+				},
+			}).
 			Set("file_token", fileToken).
 			Set("output", outputPath)
 	},
@@ -226,34 +306,42 @@ var DriveDownload = common.Shortcut{
 			return driveDownloadPermissionDeniedError()
 		}
 
-		var metadataTitle string
-		if outputPath == "" {
-			title, err := common.FetchDriveMetaTitle(runtime, fileToken, "file")
-			if err != nil {
-				if driveDownloadShouldFailOnMetadataTitleError(ctx, err) {
-					if ctxErr := ctx.Err(); ctxErr != nil {
-						return ctxErr
-					}
-					return err
+		// Metadata supplies the default file name and the revision that lets
+		// ranged parts be combined. With --output it is best-effort: without a
+		// revision the download keeps using one full response.
+		meta, metaErr := common.FetchDriveMeta(runtime, fileToken, "file", false)
+		if metaErr != nil {
+			if outputPath == "" && driveDownloadShouldFailOnMetadataTitleError(ctx, metaErr) {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return ctxErr
 				}
-				fmt.Fprintf(runtime.IO().ErrOut, "warning: metadata title lookup failed; continuing with Content-Disposition or token filename: %v\n", err)
-			} else {
-				metadataTitle = title
+				return metaErr
 			}
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			if outputPath == "" {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: metadata title lookup failed; continuing with Content-Disposition or token filename: %v\n", metaErr)
+			}
+			meta = common.DriveMeta{}
 		}
 
-		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
-			HttpMethod: http.MethodGet,
-			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
-		})
+		stream, err := openDriveFileDownload(ctx, runtime, fileToken, meta.LatestModifyTime)
 		if err != nil {
 			return withDriveDownloadRecoveryHint(wrapDriveNetworkErr(err, "download failed: %s", err), fileToken)
 		}
-		defer resp.Body.Close()
+		defer stream.Body.Close()
+		if meta.LatestModifyTime == "" && stream.ContentLength > driveDownloadPartSize {
+			reason := "metadata has no latest_modify_time"
+			if metaErr != nil {
+				reason = metaErr.Error()
+			}
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: file revision unavailable, so %d bytes download in one request, which the server may reset for large files: %s\n", stream.ContentLength, reason)
+		}
 
 		if outputPath == "" {
 			var resolveErr error
-			outputPath, resolveErr = driveDownloadDefaultOutputPath(resp.Header, metadataTitle, fileToken, func(path string) error {
+			outputPath, resolveErr = driveDownloadDefaultOutputPath(stream.Header, meta.Title, fileToken, func(path string) error {
 				_, err := runtime.ResolveSavePath(path)
 				return err
 			})
@@ -265,11 +353,23 @@ var DriveDownload = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "output file already exists: %s (use --overwrite to replace)", outputPath).WithParam("--output")
 		}
 
+		body := io.Reader(stream.Body)
+		if meta.LatestModifyTime != "" && stream.ContentLength > driveDownloadPartSize {
+			body = &driveRevisionCheckReader{
+				reader: stream.Body,
+				verify: func() error {
+					return verifyDriveDownloadRevision(runtime, fileToken, meta.LatestModifyTime)
+				},
+			}
+		}
 		result, err := runtime.FileIO().Save(outputPath, fileio.SaveOptions{
-			ContentType:   resp.Header.Get("Content-Type"),
-			ContentLength: resp.ContentLength,
-		}, resp.Body)
+			ContentType:   stream.Header.Get("Content-Type"),
+			ContentLength: stream.ContentLength,
+		}, body)
 		if err != nil {
+			if _, ok := errs.ProblemOf(err); ok {
+				return withDriveDownloadRecoveryHint(err, fileToken)
+			}
 			return driveSaveError(err)
 		}
 
