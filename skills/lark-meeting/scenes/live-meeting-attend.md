@@ -11,6 +11,7 @@
 | 用户明确要求机器人入会、旁听或代参会 | 使用 `+meeting-join --as bot` |
 | 用户明确要求机器人发起日程会议 | 使用 `+meeting-join --as bot --action start` |
 | 用户明确要求以用户身份入会 | 使用 `+meeting-join --as user` |
+| 用户明确要求智能体用户（`lark-cli whoami` 显示 `principal` 为 `agent_employee`）在等候室等待主持人准入 | 使用 `+meeting-join --as user --enable-lobby`（可选项，默认不传） |
 | 用户明确要求以用户身份发起日程会议 | 使用 `+meeting-join --as user --action start` |
 | 只想查当前用户所在会议 | 使用 [会中事件与会中互动](live-meeting-interact.md) 的用户身份路径，不让应用机器人入会 |
 
@@ -47,6 +48,9 @@ lark-cli vc +meeting-join --as user --meeting-number <9_digit_meeting_number> --
 
 # 用户身份加入正在进行的会议
 lark-cli vc +meeting-join --as user --meeting-number <9_digit_meeting_number>
+
+# 可选：用户明确要求智能体用户在会中等候室等待主持人准入时
+lark-cli vc +meeting-join --as user --meeting-number <9_digit_meeting_number> --enable-lobby
 ```
 
 - 入会前确认目标会议号和用户意图；这是对其他参会人可见的写操作。
@@ -54,6 +58,7 @@ lark-cli vc +meeting-join --as user --meeting-number <9_digit_meeting_number>
 - 保存返回的 `meeting.id` 和来源身份；后续操作必须沿用该身份，不要在 `--as user` 与 `--as bot` 之间静默切换。
 - 应用机器人可以同时加入多场会议；加入新会议前不需要退出其他会议。
 - 根据返回状态确认入会成功，不要把“请求已发起”当作已入会。
+- `--enable-lobby` 默认不传，只在用户明确要求等待准入时使用，不要在入会失败后自动加上重试。传入后 `join_status=2` 表示在等候室等待准入，尚未入会：保存 `lobby_meeting.meeting_id`，不调用会中命令，也不重复执行入会；主持人准入后服务端自动入会。
 
 会议密码、等候室、写操作风险和异常恢复见 [`lark-vc-agent-meeting-join`](../references/lark-vc-agent-meeting-join.md)。
 
@@ -173,6 +178,7 @@ lark-cli vc +meeting-leave --as user --meeting-id <meeting_id>
 ```
 
 - 使用入会返回或活跃会议查询得到的 `meeting_id`，确认当前身份在该会议中，并沿用入会身份。
+- 在会中等候室放弃等待时，同样使用本命令，传入 `lobby_meeting.meeting_id`。
 - 不要因为任务完成而自动离会。
 - 用户只要会后产物时，转入会议产物场景，不为此先执行离会。
 - 根据返回状态确认离会完成。

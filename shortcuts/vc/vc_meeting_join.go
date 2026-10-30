@@ -5,6 +5,7 @@ package vc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -15,10 +16,11 @@ import (
 )
 
 const (
-	meetingBotJoinPath      = "/open-apis/vc/v1/bots/join"
-	meetingJoinActionJoin   = "join"
-	meetingJoinActionStart  = "start"
-	meetingJoinStartAPIFlag = 2
+	meetingBotJoinPath       = "/open-apis/vc/v1/bots/join"
+	meetingJoinActionJoin    = "join"
+	meetingJoinActionStart   = "start"
+	meetingJoinStartAPIFlag  = 2
+	meetingJoinStatusInLobby = 2
 )
 
 var meetingNumberRe = regexp.MustCompile(`^\d{9}$`)
@@ -33,6 +35,7 @@ type meetingJoinRequest struct {
 	Password     string              `json:"password,omitempty"`
 	CallID       string              `json:"call_id,omitempty"`
 	Action       *int                `json:"action,omitempty"`
+	EnableLobby  *bool               `json:"enable_lobby,omitempty"`
 }
 
 // validMeetingNumber checks whether s is a valid 9-digit meeting number.
@@ -54,6 +57,7 @@ var VCMeetingJoin = common.Shortcut{
 		{Name: "password", Desc: "meeting password (if required)"},
 		{Name: "call-id", Desc: "correlation id forwarded from invite event"},
 		{Name: "action", Default: meetingJoinActionJoin, Desc: "meeting action (default: join; start initiates a Calendar meeting)", Enum: []string{meetingJoinActionJoin, meetingJoinActionStart}},
+		{Name: "enable-lobby", Type: "bool", Desc: "allow an Agent Employee to enter the in-meeting lobby (join only)"},
 	},
 	Normalize: func(_ context.Context, flags *common.FlagContext) error {
 		return flags.SetCanonical("action", strings.ToLower(strings.TrimSpace(flags.Str("action"))))
@@ -62,6 +66,12 @@ var VCMeetingJoin = common.Shortcut{
 		mn := strings.TrimSpace(runtime.Str("meeting-number"))
 		if !validMeetingNumber(mn) {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--meeting-number must be exactly 9 digits, got %q", mn).WithParam("--meeting-number")
+		}
+		if runtime.Bool("enable-lobby") && meetingJoinAction(runtime) == meetingJoinActionStart {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--enable-lobby cannot be used with --action start").WithParam("--enable-lobby")
+		}
+		if runtime.Bool("enable-lobby") && runtime.IsBot() {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--enable-lobby is not supported for bot identity").WithParam("--enable-lobby")
 		}
 		return nil
 	},
@@ -79,7 +89,29 @@ var VCMeetingJoin = common.Shortcut{
 		if data == nil {
 			data = map[string]interface{}{}
 		}
+		var result struct {
+			JoinStatus   int `json:"join_status"`
+			LobbyMeeting struct {
+				MeetingID string `json:"meeting_id"`
+			} `json:"lobby_meeting"`
+		}
+		if runtime.Format == "pretty" && runtime.JqExpr == "" {
+			raw, err := json.Marshal(data)
+			if err == nil {
+				err = json.Unmarshal(raw, &result)
+			}
+			if err != nil {
+				return errs.NewInternalError(errs.SubtypeInvalidResponse, "meeting join returned invalid lobby data").WithCause(err)
+			}
+		}
 		runtime.OutFormat(data, nil, func(w io.Writer) {
+			if result.JoinStatus == meetingJoinStatusInLobby {
+				fmt.Fprintln(w, "Waiting in the meeting lobby for host approval.")
+				if result.LobbyMeeting.MeetingID != "" {
+					fmt.Fprintf(w, "  Meeting ID:  %s\n", result.LobbyMeeting.MeetingID)
+				}
+				return
+			}
 			meeting, _ := data["meeting"].(map[string]interface{})
 			if meeting == nil {
 				if action == meetingJoinActionStart {
@@ -117,6 +149,9 @@ func buildMeetingJoinBody(runtime *common.RuntimeContext, action string) meeting
 	if action == meetingJoinActionStart {
 		startAction := meetingJoinStartAPIFlag
 		body.Action = &startAction
+	}
+	if enableLobby := runtime.Bool("enable-lobby"); enableLobby {
+		body.EnableLobby = &enableLobby
 	}
 	return body
 }

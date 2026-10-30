@@ -139,6 +139,146 @@ func TestBuildMeetingJoinBody_StartAction(t *testing.T) {
 	}
 }
 
+func TestBuildMeetingJoinBody_EnableLobby(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		flag string
+		want string
+	}{
+		{"omitted", "", `{"join_type":1,"join_identify":{"meeting_no":"123456789"}}`},
+		{"disabled", "false", `{"join_type":1,"join_identify":{"meeting_no":"123456789"}}`},
+		{"enabled", "true", `{"join_type":1,"join_identify":{"meeting_no":"123456789"},"enable_lobby":true}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "test"}
+			cmd.Flags().String("meeting-number", "123456789", "")
+			cmd.Flags().Bool("enable-lobby", false, "")
+			if tt.flag != "" {
+				if err := cmd.Flags().Set("enable-lobby", tt.flag); err != nil {
+					t.Fatal(err)
+				}
+			}
+			body := buildMeetingJoinBody(common.TestNewRuntimeContext(cmd, defaultConfig()), meetingJoinActionJoin)
+			raw, err := json.Marshal(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(raw) != tt.want {
+				t.Fatalf("body = %s, want %s", raw, tt.want)
+			}
+		})
+	}
+}
+
+func TestMeetingJoin_EnableLobbyRejectsStart(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, VCMeetingJoin, []string{
+		"+meeting-join", "--meeting-number", "123456789", "--action", " START ",
+		"--enable-lobby", "--dry-run", "--as", "user",
+	}, f, stdout)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--enable-lobby" {
+		t.Fatalf("expected enable-lobby validation error, got %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("invalid combination must not produce a request: %s", stdout.String())
+	}
+}
+
+func TestMeetingJoin_EnableLobbyRejectsBot(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, VCMeetingJoin, []string{
+		"+meeting-join", "--meeting-number", "123456789",
+		"--enable-lobby", "--dry-run", "--as", "bot",
+	}, f, stdout)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--enable-lobby" {
+		t.Fatalf("expected enable-lobby validation error, got %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("bot identity must not produce a lobby request: %s", stdout.String())
+	}
+}
+
+func TestMeetingJoin_LobbyResponse(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		data map[string]interface{}
+		want string
+	}{
+		{
+			name: "waiting",
+			data: map[string]interface{}{
+				"join_status":   float64(2),
+				"lobby_meeting": map[string]interface{}{"meeting_id": "7012345678901234567"},
+				"join_user":     map[string]interface{}{"id": "ou_agent", "user_type": float64(1)},
+			},
+			want: "Waiting in the meeting lobby for host approval.\n  Meeting ID:  7012345678901234567\n",
+		},
+		{
+			name: "joined",
+			data: map[string]interface{}{
+				"join_status": float64(1),
+				"meeting":     map[string]interface{}{"id": "7012345678901234567", "meeting_no": "123456789"},
+				"join_user":   map[string]interface{}{"id": "ou_agent", "user_type": float64(1)},
+			},
+			want: "Joined meeting successfully.\n  Meeting ID:  7012345678901234567\n  Meeting No:  123456789\n",
+		},
+	} {
+		for _, format := range []string{"pretty", "json"} {
+			t.Run(tt.name+"/"+format, func(t *testing.T) {
+				f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+				reg.Register(&httpmock.Stub{
+					Method: "POST", URL: meetingBotJoinPath,
+					Body: map[string]interface{}{"code": 0, "msg": "ok", "data": tt.data},
+				})
+				err := mountAndRun(t, VCMeetingJoin, []string{
+					"+meeting-join", "--meeting-number", "123456789", "--enable-lobby", "--format", format, "--as", "user",
+				}, f, stdout)
+				if err != nil {
+					t.Fatal(err)
+				}
+				reg.Verify(t)
+				if format == "pretty" {
+					if stdout.String() != tt.want {
+						t.Fatalf("output = %q, want %q", stdout.String(), tt.want)
+					}
+					return
+				}
+				var envelope struct {
+					OK   bool                   `json:"ok"`
+					Data map[string]interface{} `json:"data"`
+				}
+				if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if !envelope.OK || !reflect.DeepEqual(envelope.Data, tt.data) {
+					t.Fatalf("JSON output must preserve the server response: %s", stdout.String())
+				}
+			})
+		}
+	}
+}
+
+func TestMeetingJoin_InvalidLobbyResponse(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: meetingBotJoinPath,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"join_status": "waiting"}},
+	})
+	err := mountAndRun(t, VCMeetingJoin, []string{
+		"+meeting-join", "--meeting-number", "123456789", "--enable-lobby", "--format", "pretty", "--as", "user",
+	}, f, stdout)
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) || internalErr.Subtype != errs.SubtypeInvalidResponse || errors.Unwrap(err) == nil {
+		t.Fatalf("expected invalid-response error preserving decode cause, got %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("invalid response must not claim a successful join: %s", stdout.String())
+	}
+	reg.Verify(t)
+}
+
 func TestMeetingJoinAction(t *testing.T) {
 	tests := []struct {
 		name   string

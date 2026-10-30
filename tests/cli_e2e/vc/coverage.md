@@ -9,6 +9,17 @@
 | Dry-run | `vc +meeting-end` | `vc_agent_meeting_actions_dryrun_test.go::TestVCAgentMeetingActionsDryRun/end meeting` | Verifies the bot end endpoint and that `--dry-run` bypasses the real-execution confirmation gate. |
 | Live | `vc +meeting-end` | `vc_meeting_end_test.go::TestVCMeetingEndLiveE2E` | Fixture-gated host success plus cohost and ordinary-user denial cases. |
 
+## Agent In-Meeting Lobby
+
+| Status | Cmd | Coverage | Notes |
+| --- | --- | --- | --- |
+| Dry-run | `vc +meeting-join --enable-lobby` | `vc_agent_meeting_actions_dryrun_test.go::TestVCAgentMeetingActionsDryRun`, `vc_agent_meeting_actions_dryrun_test.go::TestVCMeetingJoinDryRunRejectsBotLobby` | Verifies `enable_lobby=true` for user identity, local rejection for bot identity, omission when disabled, and unchanged join endpoint; Agent Employee eligibility remains server-owned. |
+| Blocked Live | `vc +meeting-join --enable-lobby` | | Requires a disposable AE-enabled meeting with a lobby, an AAT identity and a host to admit/reject it, plus participant-state readback and cleanup. BOE validation must cover admission, rejection, timeout and leaving the lobby; it has not been run. |
+
+Request compatibility and pretty/JSON results are covered by the HTTP-stub and
+request-builder tests in `shortcuts/vc/vc_meeting_test.go`. No live meeting is
+created by these tests.
+
 ## Meeting Recording Controls
 
 | Status | Cmd | Coverage | Notes |

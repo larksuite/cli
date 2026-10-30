@@ -26,7 +26,7 @@ lark-cli vc +meeting-leave --as user --meeting-id 69xxxxxxxxxxxxx28
 
 ### 1. 入参是 meeting_id，不是会议号
 
-`--meeting-id` 必须是会议的长数字 ID，通常由 `+meeting-join` 返回体中的 `meeting.id` 提供，也可从同一身份可见的 active meeting 中获取。**传 9 位会议号会失败**。
+`--meeting-id` 必须是会议的长数字 ID，通常由 `+meeting-join` 返回体中的 `meeting.id` 提供；以 `--enable-lobby` 进入会中等候室时使用 `lobby_meeting.meeting_id`。也可从同一身份可见的 active meeting 中获取。**传 9 位会议号会失败**。
 
 ### 2. 沿用入会身份
 
@@ -36,7 +36,9 @@ lark-cli vc +meeting-leave --as user --meeting-id 69xxxxxxxxxxxxx28
 
 ### 3. 当前身份必须在会议中
 
-当前身份必须已经在该会议中，否则接口会报错。如果 `meeting_id` 来自 active meeting 查询，必须确认它属于当前来源身份。
+当前身份必须已经在该会议中，或正在该会议的会中等候室等待准入，否则接口会报错。如果 `meeting_id` 来自 active meeting 查询，必须确认它属于当前来源身份。
+
+在会中等候室中执行本命令即放弃本轮等待，不会再被自动准入入会。
 
 ### 4. 离会立即生效，对其他参会人可见
 
@@ -51,7 +53,7 @@ lark-cli vc +meeting-leave --as user --meeting-id 69xxxxxxxxxxxxx28
 
 | 输入参数 | 获取方式 |
 |---------|---------|
-| `meeting-id` | 同一来源身份执行 `+meeting-join` 返回的 `meeting.id`，或该身份可见的 active meeting 所返回的 `meeting_id` |
+| `meeting-id` | 同一来源身份执行 `+meeting-join` 返回的 `meeting.id`（等候时为 `lobby_meeting.meeting_id`），或该身份可见的 active meeting 所返回的 `meeting_id` |
 
 ## 常见错误与排查
 
@@ -59,7 +61,7 @@ lark-cli vc +meeting-leave --as user --meeting-id 69xxxxxxxxxxxxx28
 |---------|---------|---------|
 | `--meeting-id is required` | 未传入 `--meeting-id` | 传入从同一身份执行 `+meeting-join` 得到的 `meeting.id`，或该身份可见的 active meeting 所返回的 `meeting_id` |
 | `meeting not found` / `invalid meeting_id` | 误传了 9 位会议号 | 必须使用 `meeting.id`，不是会议号 |
-| `not in meeting` | 当前身份并不在该会议中 | 确认先 `+meeting-join` 成功 |
+| `not in meeting` | 当前身份并不在该会议中，也不在其等候室中 | 确认先 `+meeting-join` 成功（含进入等候室） |
 | 用户身份操作失败 | 当前 `--as user` 身份不具备目标会议的操作权限 | 保留错误码和 `log_id`，检查当前用户身份，不要改用 `--as bot` 重试 |
 
 ## 提示

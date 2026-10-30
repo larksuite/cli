@@ -146,9 +146,9 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 | `vc +meeting-participant-kickout` | 以用户身份移出一至十个指定参会人 | [lark-vc-meeting-participant-kickout](references/lark-vc-meeting-participant-kickout.md) |
 | `vc +meeting-participant-mute` | 以用户或应用身份将指定参会人闭麦 | [lark-vc-meeting-participant-audio](references/lark-vc-meeting-participant-audio.md) |
 | `vc +meeting-participant-unmute` | 以用户或应用身份请求指定参会人开麦 | [lark-vc-meeting-participant-audio](references/lark-vc-meeting-participant-audio.md) |
-| `vc +meeting-join` | 以用户或应用身份发起或加入会议 | [lark-vc-agent-meeting-join](references/lark-vc-agent-meeting-join.md) |
+| `vc +meeting-join` | 以用户或应用身份发起或加入会议；智能体用户（`lark-cli whoami` 显示 `principal` 为 `agent_employee`）可选进入会中等候室 | [lark-vc-agent-meeting-join](references/lark-vc-agent-meeting-join.md) |
 | `vc +meeting-invite` | 以用户或应用身份邀请参会人 | [lark-vc-agent-meeting-invite](references/lark-vc-agent-meeting-invite.md) |
-| `vc +meeting-leave` | 让当前用户或应用机器人离开会议 | [lark-vc-agent-meeting-leave](references/lark-vc-agent-meeting-leave.md) |
+| `vc +meeting-leave` | 让当前用户或应用机器人离开会议或会中等候室 | [lark-vc-agent-meeting-leave](references/lark-vc-agent-meeting-leave.md) |
 | `minutes +search` | 搜索妙记 | [lark-minutes-search](references/lark-minutes-search.md) |
 | `minutes minutes get` | 查询妙记基础信息 | `lark-cli minutes minutes get --help` |
 | `minutes +detail` | 读取妙记信息和指定产物 | [lark-minutes-detail](references/lark-minutes-detail.md) |
