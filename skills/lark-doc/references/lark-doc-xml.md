@@ -27,6 +27,44 @@
 - `<colgroup><col /></colgroup>` 紧跟 `<table>` 定义列宽；`width` 表示列宽，可选 `span` 表示连续作用的列数。
 - `<th>` / `<td>` 支持 `background-color`、`vertical-align`、`colspan`、`rowspan`；`vertical-align`：`top | middle | bottom`；`background-color` 支持基础色相、`light-{色相}`、`medium-gray`，表头优先使用 `light-gray` 或 `medium-gray`，彩色单元格仅用于表达状态或分类。被合并的单元格不再写入。
 
+## 投票 block
+
+投票使用结构化 XML 表达。默认创建未发布草稿：空标题、两个空选项、单选、实名、无截止时间、结果策略固定为投票后可见。
+
+```xml
+<poll></poll>
+```
+
+带内容创建：
+
+```xml
+<poll poll-type="single" is-anonymous="false">
+  <poll-title>午饭吃什么？</poll-title>
+  <poll-option>米饭</poll-option>
+  <poll-option>面条</poll-option>
+</poll>
+```
+
+创建后尝试发布：
+
+```xml
+<poll publish-on-create="true">
+  <poll-title>午饭吃什么？</poll-title>
+  <poll-option>米饭</poll-option>
+  <poll-option>面条</poll-option>
+</poll>
+```
+
+`publish-on-create` 会先创建草稿，再尝试发布。发布失败不会回滚正文：新投票会保留为草稿，命令结果会返回 warning。调用方应检查 warning；需要确认最终状态时，重新读取并检查 `is-published`。
+
+公开可写属性只有：`poll-type="single|multiple"`、`is-anonymous="true|false"`、`enable-due-time="true|false"`、`due-time="毫秒时间戳"`、`publish-on-create="true|false"`。不要写入 `when-result-visible`、`option-id`、票数、投票人或当前用户投票状态。
+
+读取已发布投票时，XML 可能带只读结果字段，例如 `is-published`、`result-visible`、`user-count`、`poll-option count/percent/selected/voters-ref`。这些字段只用于展示，重新导入或 `block_replace` 时会被忽略；匿名投票不会通过 `reference_map` 暴露真实投票人。`voters-ref` 是读取详情的 opaque handle，不是投票操作入口。
+
+若读取结果的 `tips` 包含 `poll_detail_unavailable`，表示正文中的静态投票结构可用，但动态发布状态、进展或 voters 获取失败，本次结果不应被当作完整投票详情。
+
+修改投票配置、替换已发布投票、把投票替换成普通内容，都使用 `block_replace`，语义是删除旧 block 并插入 replacement。新 `<poll>` 会创建新的投票 block，不继承旧 block id、option id、票数、投票人、发布时间或当前用户选择。
+
 ## 扩展标签
 
 - `<cite type="user" user-id="ou_xxx"/>`：@人，会渲染为用户头像；必须显式传入用户 `open_id`，不得用纯文本名字冒充 @人。
