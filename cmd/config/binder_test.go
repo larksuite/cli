@@ -187,6 +187,45 @@ func TestResolveLarkChannelConfigPath_Default(t *testing.T) {
 	}
 }
 
+func TestResolveDSHSettingsPath_Default(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("DSH_HOME", "")
+
+	got := resolveDSHSettingsPath()
+	want := filepath.Join(home, ".dsh", "settings.yaml")
+	if got != want {
+		t.Fatalf("resolveDSHSettingsPath() = %q, want %q", got, want)
+	}
+}
+
+// DSH_HOME is injected into every harness-managed shell, so deriving from it is
+// what makes the dsh source work with no operator setup.
+func TestResolveDSHSettingsPath_FromHarnessHome(t *testing.T) {
+	home := t.TempDir()
+	harnessHome := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("DSH_HOME", harnessHome)
+
+	got := resolveDSHSettingsPath()
+	want := filepath.Join(harnessHome, "settings.yaml")
+	if got != want {
+		t.Fatalf("resolveDSHSettingsPath() = %q, want %q", got, want)
+	}
+}
+
+func TestResolveDSHSettingsPath_ExpandsTilde(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("DSH_HOME", "~/relocated-dsh")
+
+	got := resolveDSHSettingsPath()
+	want := filepath.Join(home, "relocated-dsh", "settings.yaml")
+	if got != want {
+		t.Fatalf("resolveDSHSettingsPath() = %q, want %q", got, want)
+	}
+}
+
 func TestResolveLarkChannelConfigPath_EnvOverride(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
