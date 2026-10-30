@@ -67,21 +67,30 @@ func TestAppRegistrationEndpoint(t *testing.T) {
 
 func TestRequestAppRegistration_UsesFeishuBootstrapAndConfiguredVerificationBrand(t *testing.T) {
 	cases := []struct {
+		name             string
 		brand            core.LarkBrand
 		verificationHost string
+		appID            string
 	}{
-		{core.BrandFeishu, "open.feishu.cn"},
-		{core.BrandLark, "open.larksuite.com"},
+		{name: "feishu", brand: core.BrandFeishu, verificationHost: "open.feishu.cn"},
+		{name: "lark", brand: core.BrandLark, verificationHost: "open.larksuite.com"},
+		{name: "restore", brand: core.BrandFeishu, verificationHost: "open.feishu.cn", appID: "cli_restore"},
 	}
 	for _, c := range cases {
-		t.Run(string(c.brand), func(t *testing.T) {
+		t.Run(c.name, func(t *testing.T) {
 			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if got, want := r.URL.Host, "accounts.feishu.cn"; got != want {
 					t.Errorf("begin host = %q, want bootstrap host %q", got, want)
 				}
+				if err := r.ParseForm(); err != nil {
+					t.Fatal(err)
+				}
+				if got := r.Form.Get("app_id"); got != c.appID {
+					t.Errorf("begin app_id = %q, want %q", got, c.appID)
+				}
 				return jsonResponse(`{"device_code":"d","user_code":"TEST-CODE","expire_in":60,"interval":5}`), nil
 			})}
-			resp, err := RequestAppRegistration(context.Background(), client, c.brand, io.Discard)
+			resp, err := RequestAppRegistration(context.Background(), client, c.brand, c.appID, io.Discard)
 			if err != nil {
 				t.Fatalf("RequestAppRegistration(%q) error = %v", c.brand, err)
 			}
@@ -141,7 +150,7 @@ func TestRegisterAppWithDiscovery_LarkFlowUsesProtocolBootstrap(t *testing.T) {
 		t.Errorf("unexpected host polled: %s", r.URL.Host)
 		return jsonResponse(`{}`), nil
 	})}
-	resp, err := RequestAppRegistration(context.Background(), client, core.BrandLark, io.Discard)
+	resp, err := RequestAppRegistration(context.Background(), client, core.BrandLark, "", io.Discard)
 	if err != nil {
 		t.Fatalf("RequestAppRegistration error = %v", err)
 	}
@@ -312,7 +321,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err := RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","expire_in":60,"interval":3}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","expire_in":60,"interval":3}`), core.BrandFeishu, "", io.Discard)
 	if err != nil {
 		t.Fatalf("begin error = %v", err)
 	}
@@ -321,7 +330,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err = RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","expires_in":45}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","expires_in":45}`), core.BrandFeishu, "", io.Discard)
 	if err != nil {
 		t.Fatalf("legacy begin error = %v", err)
 	}
@@ -330,7 +339,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err = RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","interval":0}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","interval":0}`), core.BrandFeishu, "", io.Discard)
 	if err != nil {
 		t.Fatalf("defaults begin error = %v", err)
 	}
@@ -339,7 +348,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	if _, err := RequestAppRegistration(context.Background(),
-		serve(`{"interval":5}`), core.BrandFeishu, io.Discard); err == nil {
+		serve(`{"interval":5}`), core.BrandFeishu, "", io.Discard); err == nil {
 		t.Error("missing device_code: expected error, got nil")
 	}
 }
@@ -420,7 +429,7 @@ func TestRequestAppRegistration_BodyReadCancelKeepsCause(t *testing.T) {
 			Header:     make(http.Header),
 		}, nil
 	})}
-	_, err := RequestAppRegistration(context.Background(), client, core.BrandFeishu, io.Discard)
+	_, err := RequestAppRegistration(context.Background(), client, core.BrandFeishu, "", io.Discard)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want a context.Canceled cause", err)
 	}
