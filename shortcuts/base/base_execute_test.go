@@ -4867,7 +4867,7 @@ func TestBatchCreatePreservesUpstreamErrorOnWire(t *testing.T) {
 	if err := json.Unmarshal(stderr.Bytes(), &wire); err != nil {
 		t.Fatal(err)
 	}
-	if wire.OK || wire.Error.Type != "api" || wire.Error.Subtype != "not_found" || wire.Error.Code != 800030201 || wire.Error.Hint != detail["hint"] {
+	if wire.OK || wire.Error.Type != "api" || wire.Error.Subtype != "unknown" || wire.Error.Code != 800030201 || wire.Error.Hint != detail["hint"] {
 		t.Fatalf("unexpected wire: %s", stderr.String())
 	}
 	want, _ := json.Marshal(detail)
