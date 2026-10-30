@@ -24,6 +24,9 @@ const (
 	CliAgentName  = "LARKSUITE_CLI_AGENT_NAME"
 	CliAgentTrace = "LARKSUITE_CLI_AGENT_TRACE"
 
+	// PPE/BOE environment routing: injected as the x-tt-env request header
+	CliTTEnv = "LARKSUITE_CLI_TT_ENV"
+
 	CliProxyEnable  = "LARKSUITE_CLI_PROXY_ENABLE"
 	CliProxyAddress = "LARKSUITE_CLI_PROXY_ADDRESS"
 	CliCAPath       = "LARKSUITE_CLI_CA_PATH"
