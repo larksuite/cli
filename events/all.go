@@ -9,6 +9,7 @@ package events
 import (
 	"github.com/larksuite/cli/events/application"
 	"github.com/larksuite/cli/events/approval"
+	"github.com/larksuite/cli/events/drive"
 	"github.com/larksuite/cli/events/im"
 	"github.com/larksuite/cli/events/minutes"
 	"github.com/larksuite/cli/events/task"
@@ -24,6 +25,7 @@ func All() []catalog.KeyDefinition {
 	for _, keys := range [][]catalog.KeyDefinition{
 		application.Keys(),
 		approval.Keys(),
+		drive.Keys(),
 		im.Keys(),
 		minutes.Keys(),
 		task.Keys(),
