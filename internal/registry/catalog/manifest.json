@@ -46,9 +46,9 @@
     {
       "name": "mail",
       "file": "services/mail.json",
-      "revision": 12,
-      "size": 281379,
-      "sha256": "37ce2ce8698843422f753eb9ba99909c2be691122dd6a520c66d760c882234a0"
+      "revision": 13,
+      "size": 301115,
+      "sha256": "2b1116ce1492e04f0de4405bc86561d9eda0dbb8ee35919437ef3f066f21b15d"
     },
     {
       "name": "mindnotes",
