@@ -4,6 +4,7 @@
 package base
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -154,6 +155,20 @@ func baseAPIErrorFromResult(resultMap map[string]interface{}, cc errclass.Classi
 	if resultMap == nil {
 		return errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned a malformed response envelope")
 	}
+	// Preserve the complete diagnostic before message/hint promotion consumes fields.
+	data, _ := resultMap["data"].(map[string]interface{})
+	detail, _ := data["error"].(map[string]interface{})
+	if detail == nil {
+		detail, _ = resultMap["error"].(map[string]interface{})
+	}
+	var upstreamError json.RawMessage
+	if detail != nil {
+		encoded, marshalErr := json.Marshal(detail)
+		if marshalErr != nil {
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned an invalid error detail").WithCause(marshalErr)
+		}
+		upstreamError = encoded
+	}
 	if msg := extractDataErrorMessage(resultMap); msg != "" {
 		resultMap["msg"] = msg
 	}
@@ -165,8 +180,11 @@ func baseAPIErrorFromResult(resultMap map[string]interface{}, cc errclass.Classi
 	if err == nil {
 		return nil
 	}
-	if p, ok := errs.ProblemOf(err); ok && hint != "" {
-		p.Hint = hint
+	if p, ok := errs.ProblemOf(err); ok {
+		p.UpstreamError = upstreamError
+		if hint != "" {
+			p.Hint = hint
+		}
 	}
 	return err
 }
@@ -186,6 +204,7 @@ func enrichBaseAPIErrorFromBody(err error, body []byte, cc errclass.ClassifyCont
 	src, _ := errs.ProblemOf(enriched)
 	dst, _ := errs.ProblemOf(err)
 	if src != nil && dst != nil {
+		dst.UpstreamError = src.UpstreamError
 		dst.Message = src.Message
 		dst.Hint = src.Hint
 		// A body without log_id must not erase a header-derived LogID

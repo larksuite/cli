@@ -4,6 +4,9 @@
 package base
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -213,5 +216,48 @@ func assertProblemCode(t *testing.T, err error, code int, messageParts ...string
 		if !strings.Contains(p.Message, part) {
 			t.Fatalf("message=%q missing %q", p.Message, part)
 		}
+	}
+}
+
+func TestBaseUpstreamErrorPreservesShapeAndCause(t *testing.T) {
+	for _, placement := range []string{"nested", "top-level"} {
+		t.Run(placement, func(t *testing.T) {
+			detail := json.RawMessage(`{"type":"not_found","message":"missing","hint":"list fields","retryable":false,"value":9007199254740993,"table":null,"extra":{"future":true}}`)
+			body := map[string]interface{}{"code": 800030201, "msg": "missing"}
+			if placement == "nested" {
+				body["data"] = map[string]interface{}{"error": detail}
+			} else {
+				body["error"] = detail
+			}
+			raw, err := json.Marshal(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cause := assertErr{}
+			original := errs.NewAPIError(errs.SubtypeNotFound, "original").WithCode(800030201).WithCause(cause)
+			enriched := enrichBaseAPIErrorFromBody(original, raw, errclass.ClassifyContext{})
+			if enriched != original || !errors.Is(enriched, cause) {
+				t.Fatal("lost error identity/cause")
+			}
+			problem, _ := errs.ProblemOf(enriched)
+			// Compare decoded values using json.Number so large integers remain exact.
+			wantMap := map[string]interface{}{}
+			gotMap := map[string]interface{}{}
+			for _, item := range []struct {
+				raw    []byte
+				target *map[string]interface{}
+			}{{detail, &wantMap}, {problem.UpstreamError, &gotMap}} {
+				decoder := json.NewDecoder(bytes.NewReader(item.raw))
+				decoder.UseNumber()
+				if err := decoder.Decode(item.target); err != nil {
+					t.Fatal(err)
+				}
+			}
+			want, _ := json.Marshal(wantMap)
+			got, _ := json.Marshal(gotMap)
+			if !bytes.Equal(want, got) {
+				t.Fatalf("detail=%s, want=%s", got, want)
+			}
+		})
 	}
 }
