@@ -2686,7 +2686,10 @@
             "user"
           ],
           "risk": "read",
-          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.mail_contact&version=v1"
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.mail_contact&version=v1",
+          "requiredScopes": [
+            "mail:user_mailbox.mail_contact.mail_address:read"
+          ]
         },
         "patch": {
           "id": "user_mailbox.mail_contact.patch",
