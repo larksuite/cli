@@ -5,16 +5,23 @@ package apps
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"io/fs"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -416,8 +423,153 @@ func TestAppsUpdate_IconUploadTransportErrorSkipsPatch(t *testing.T) {
 	upload.Error = errors.New("connection reset")
 	err := runIconUploadFailure(t, upload)
 	var ne *errs.NetworkError
-	if !errors.As(err, &ne) || !strings.Contains(err.Error(), "icon upload request failed") {
-		t.Fatalf("expected icon upload network error, got %T %v", err, err)
+	if !errors.As(err, &ne) || ne.Subtype != errs.SubtypeNetworkTransport || !strings.Contains(err.Error(), "connection reset") {
+		t.Fatalf("expected transport network error, got %T %v", err, err)
+	}
+	if ne.Retryable {
+		t.Fatalf("DoAPI transport error must not be marked retryable by uploadAppIcon: %+v", ne)
+	}
+}
+
+func TestAppsUpdate_IconUploadAuthErrorPassedThrough(t *testing.T) {
+	upload := iconUploadStub()
+	upload.Error = errs.NewAuthenticationError(errs.SubtypeTokenExpired, "user access token expired").
+		WithHint("run `lark-cli auth login` to re-authorize")
+	err := runIconUploadFailure(t, upload)
+	var ae *errs.AuthenticationError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.AuthenticationError, got %T %v", err, err)
+	}
+	if ae.Category != errs.CategoryAuthentication || ae.Subtype != errs.SubtypeTokenExpired {
+		t.Fatalf("auth error = (%q, %q), want (%q, %q)", ae.Category, ae.Subtype, errs.CategoryAuthentication, errs.SubtypeTokenExpired)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitAuth {
+		t.Fatalf("ExitCode = %d, want %d (ExitAuth)", got, output.ExitAuth)
+	}
+	if ae.Retryable {
+		t.Fatalf("auth error must not be marked retryable: %+v", ae)
+	}
+	if !strings.Contains(ae.Hint, "lark-cli auth login") {
+		t.Fatalf("auth hint lost: %q", ae.Hint)
+	}
+}
+
+type appsScopedTokenResolver struct {
+	scopes string
+}
+
+func (r *appsScopedTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
+	return &credential.TokenResult{Token: "test-token", Scopes: r.scopes}, nil
+}
+
+func TestAppsUpdate_ConditionalReadScopeOnlyForIconChanges(t *testing.T) {
+	if !reflect.DeepEqual(AppsUpdate.Scopes, []string{"spark:app:write"}) {
+		t.Fatalf("Scopes = %v, want [spark:app:write]", AppsUpdate.Scopes)
+	}
+	if !reflect.DeepEqual(AppsUpdate.ConditionalScopes, []string{"spark:app:read"}) {
+		t.Fatalf("ConditionalScopes = %v, want [spark:app:read]", AppsUpdate.ConditionalScopes)
+	}
+	if got := AppsUpdate.DeclaredScopesForIdentity("user"); !reflect.DeepEqual(got, []string{"spark:app:write", "spark:app:read"}) {
+		t.Fatalf("DeclaredScopesForIdentity(user) = %v, want [spark:app:write spark:app:read]", got)
+	}
+
+	t.Run("write-only token succeeds for name update", func(t *testing.T) {
+		factory, stdout, reg := newAppsExecuteFactory(t)
+		factory.Credential = credential.NewCredentialProvider(nil, nil, &appsScopedTokenResolver{scopes: "spark:app:write"}, nil)
+		reg.Register(appPatchStub(""))
+		if err := runAppsShortcut(t, AppsUpdate,
+			[]string{"+update", "--app-id", "app_x", "--name", "renamed", "--as", "user"},
+			factory, stdout); err != nil {
+			t.Fatalf("name-only update must not require spark:app:read, got %v", err)
+		}
+		reg.Verify(t)
+	})
+
+	t.Run("write-only token fails missing spark:app:read on icon-url", func(t *testing.T) {
+		factory, stdout, _ := newAppsExecuteFactory(t)
+		factory.Credential = credential.NewCredentialProvider(nil, nil, &appsScopedTokenResolver{scopes: "spark:app:write"}, nil)
+		err := runAppsShortcut(t, AppsUpdate,
+			[]string{"+update", "--app-id", "app_x", "--icon-url", "https://example.com/i.png", "--as", "user"},
+			factory, stdout)
+		var pe *errs.PermissionError
+		if !errors.As(err, &pe) || pe.Subtype != errs.SubtypeMissingScope {
+			t.Fatalf("expected missing_scope PermissionError, got %T %v", err, err)
+		}
+		if !reflect.DeepEqual(pe.MissingScopes, []string{"spark:app:read"}) {
+			t.Fatalf("MissingScopes = %v, want [spark:app:read]", pe.MissingScopes)
+		}
+	})
+
+	t.Run("write-only token fails missing spark:app:read on icon-file", func(t *testing.T) {
+		chdirTemp(t)
+		_ = os.WriteFile("ok.png", pngHeader, 0o600)
+		factory, stdout, _ := newAppsExecuteFactory(t)
+		factory.Credential = credential.NewCredentialProvider(nil, nil, &appsScopedTokenResolver{scopes: "spark:app:write"}, nil)
+		err := runAppsShortcut(t, AppsUpdate,
+			[]string{"+update", "--app-id", "app_x", "--icon-file", "ok.png", "--as", "user"},
+			factory, stdout)
+		var pe *errs.PermissionError
+		if !errors.As(err, &pe) || pe.Subtype != errs.SubtypeMissingScope {
+			t.Fatalf("expected missing_scope PermissionError, got %T %v", err, err)
+		}
+		if !reflect.DeepEqual(pe.MissingScopes, []string{"spark:app:read"}) {
+			t.Fatalf("MissingScopes = %v, want [spark:app:read]", pe.MissingScopes)
+		}
+	})
+}
+
+type cappedIconFileIO struct {
+	statSize  int64
+	data      []byte
+	bytesRead int
+}
+
+func (c *cappedIconFileIO) Name() string                                { return "capped-icon-test" }
+func (c *cappedIconFileIO) ResolveFileIO(context.Context) fileio.FileIO { return c }
+func (c *cappedIconFileIO) Stat(string) (fileio.FileInfo, error) {
+	return cappedIconFileInfo{size: c.statSize}, nil
+}
+func (c *cappedIconFileIO) Open(string) (fileio.File, error) {
+	return &cappedIconFile{r: bytes.NewReader(c.data), parent: c}, nil
+}
+func (c *cappedIconFileIO) ResolvePath(p string) (string, error) { return p, nil }
+func (c *cappedIconFileIO) Save(string, fileio.SaveOptions, io.Reader) (fileio.SaveResult, error) {
+	return nil, errors.New("unexpected Save")
+}
+
+type cappedIconFileInfo struct{ size int64 }
+
+func (i cappedIconFileInfo) Size() int64       { return i.size }
+func (i cappedIconFileInfo) IsDir() bool       { return false }
+func (i cappedIconFileInfo) Mode() fs.FileMode { return 0o600 }
+
+type cappedIconFile struct {
+	r      *bytes.Reader
+	parent *cappedIconFileIO
+}
+
+func (f *cappedIconFile) Read(p []byte) (int, error) {
+	n, err := f.r.Read(p)
+	f.parent.bytesRead += n
+	return n, err
+}
+func (f *cappedIconFile) ReadAt(p []byte, off int64) (int, error) { return f.r.ReadAt(p, off) }
+func (f *cappedIconFile) Close() error                            { return nil }
+
+func TestAppsUpdate_IconFileReadCappedAtLimit(t *testing.T) {
+	// Simulate a file whose Stat size looks small (64 bytes) but whose actual
+	// stream is 5 MB, verifying readAppIconFile stops at appIconMaxBytes+1.
+	oversized := append(append([]byte{}, pngHeader...), make([]byte, 5*appIconMaxBytes)...)
+	fio := &cappedIconFileIO{statSize: 64, data: oversized}
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory.FileIOProvider = fio
+
+	err := runAppsShortcut(t, AppsUpdate,
+		[]string{"+update", "--app-id", "app_x", "--icon-file", "grew.png", "--as", "user"},
+		factory, stdout)
+	requireIconFileParam(t, err, "--icon-file", "2 MB")
+	if fio.bytesRead != appIconMaxBytes+1 {
+		t.Fatalf("bytesRead = %d, want capped at %d (appIconMaxBytes+1)", fio.bytesRead, appIconMaxBytes+1)
 	}
 }
 

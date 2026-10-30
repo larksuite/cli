@@ -15,7 +15,6 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -53,9 +52,10 @@ var AppsUpdate = common.Shortcut{
 		`Example: lark-cli apps +update --app-id <app_id> --icon-file ./icon.png`,
 		`Example: lark-cli apps +update --app-id <app_id> --icon-url https://example.com/icon.png`,
 	},
-	Scopes:    []string{"spark:app:write"},
-	AuthTypes: []string{"user"},
-	HasFormat: true,
+	Scopes:            []string{"spark:app:write"},
+	ConditionalScopes: []string{"spark:app:read"},
+	AuthTypes:         []string{"user"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "name", Desc: "new app display name"},
@@ -125,6 +125,9 @@ var AppsUpdate = common.Shortcut{
 		changesIcon = changesIcon || iconFile != ""
 
 		if changesIcon {
+			if err := rctx.EnsureScopes([]string{"spark:app:read"}); err != nil {
+				return err
+			}
 			// Precheck before uploading so an unsupported app type never leaves
 			// an orphan icon behind.
 			if _, err := rctx.CallAPITyped("GET", path, nil, nil); err != nil {
@@ -196,12 +199,21 @@ func validateAppIconURL(raw string) error {
 // is sniffed from the leading bytes, not the extension, so a renamed text file
 // or gif is rejected locally instead of by the upload endpoint.
 func readAppIconFile(rctx *common.RuntimeContext, file string) ([]byte, error) {
-	if st, err := rctx.FileIO().Stat(file); err == nil && st.Size() > appIconMaxBytes {
+	fio := rctx.FileIO()
+	if st, err := fio.Stat(file); err == nil && st.Size() > appIconMaxBytes {
 		return nil, appsValidationParamError("--icon-file", "--icon-file exceeds the 2 MB limit (file is %d bytes)", st.Size())
 	}
-	content, err := cmdutil.ReadInputFile(rctx.FileIO(), file)
+	f, err := fio.Open(file)
 	if err != nil {
-		return nil, appsValidationParamError("--icon-file", "--icon-file: %v", err).WithCause(err)
+		return nil, appsValidationParamError("--icon-file", "--icon-file: %v",
+			common.WrapOpenError(err, fmt.Sprintf("invalid file path %q", file), fmt.Sprintf("cannot read file %q", file))).
+			WithCause(err)
+	}
+	defer f.Close()
+	content, err := io.ReadAll(io.LimitReader(f, appIconMaxBytes+1))
+	if err != nil {
+		return nil, appsValidationParamError("--icon-file", "--icon-file: cannot read file %q: %v", file, err).
+			WithCause(err)
 	}
 	if len(content) > appIconMaxBytes {
 		return nil, appsValidationParamError("--icon-file", "--icon-file exceeds the 2 MB limit (file is %d bytes)", len(content))
@@ -227,7 +239,7 @@ func uploadAppIcon(rctx *common.RuntimeContext, file string) (string, error) {
 		Body:       fd,
 	}, larkcore.WithFileUpload())
 	if err != nil {
-		return "", errs.NewNetworkError(errs.SubtypeNetworkTransport, "icon upload request failed").WithCause(err).WithRetryable()
+		return "", err
 	}
 	data, err := rctx.ClassifyAPIResponse(resp)
 	if err != nil {
