@@ -12,8 +12,9 @@
 //   - Line endings are LF (\n), not CRLF — Lark API requires this.
 //   - Content-Type parameters are never folded onto a new line — Lark's MIME
 //     parser does not handle header folding correctly.
-//   - Non-ASCII body content is encoded as base64 (StdEncoding) — 7bit and 8bit
-//     are rejected by Lark for non-ASCII content.
+//   - Non-ASCII body content and bodies with lines over 998 bytes use base64
+//     (StdEncoding). Lark rejects non-ASCII 7bit/8bit; wrapping unencoded long
+//     lines would change their content.
 //   - BuildBase64URL() produces the base64url (URLEncoding) output that goes
 //     directly into the API's "raw" field.
 //
@@ -915,22 +916,23 @@ func encodeHeaderValue(s string) string {
 	return s
 }
 
-// hasNonASCII returns true if b contains any byte > 127.
-func hasNonASCII(b []byte) bool {
-	for _, c := range b {
-		if c > 127 {
-			return true
-		}
-	}
-	return false
-}
-
 // selectCTE chooses the Content-Transfer-Encoding for a body:
-//   - "7bit"   — pure ASCII content
-//   - "base64" — contains non-ASCII bytes (required by Lark API)
+//   - "7bit"   — pure ASCII content with lines of at most 998 bytes
+//   - "base64" — non-ASCII content or lines that would otherwise be hard-wrapped
 func selectCTE(body []byte) string {
-	if hasNonASCII(body) {
-		return "base64"
+	lineLength := 0
+	for _, c := range body {
+		if c > 127 {
+			return "base64"
+		}
+		if c == '\n' {
+			lineLength = 0
+		} else {
+			lineLength++
+			if lineLength > 998 {
+				return "base64"
+			}
+		}
 	}
 	return "7bit"
 }
