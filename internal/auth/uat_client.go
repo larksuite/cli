@@ -497,6 +497,18 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 	defer resp.Body.Close()
 	logHTTPResponse(resp)
 
+	// A rate-limited request was rejected without consuming the refresh token.
+	// Inspect the status before decoding: the endpoint may return plain text.
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return refreshResult{
+			action: refreshRetryAndPreserve,
+			err: errs.NewAPIError(errs.SubtypeRateLimit,
+				"token refresh rate limited (HTTP 429)").
+				WithCode(http.StatusTooManyRequests).
+				WithRetryable(),
+		}
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return refreshResult{
