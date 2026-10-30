@@ -154,6 +154,14 @@ lark-cli task <resource> <method> [flags] # 调用 API
 
   - `append_task_steps` — 写入任务记录。
 
+### comments
+
+  - `create` — 创建评论
+  - `delete` — 删除评论
+  - `get` — 获取评论详情
+  - `list` — 获取评论列表
+  - `patch` — 更新评论
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -192,3 +200,8 @@ lark-cli task <resource> <method> [flags] # 调用 API
 | `agent.update_agent_profile` | `task:task:write` |
 | `agent.register_agent` | `task:task:write` |
 | `agent_task_step_info.append_task_steps` | `task:task:write` |
+| `comments.create` | `task:comment:write` |
+| `comments.delete` | `task:comment:write` |
+| `comments.get` | `task:comment:read` |
+| `comments.list` | `task:comment:read` |
+| `comments.patch` | `task:comment:write` |

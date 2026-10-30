@@ -32,6 +32,7 @@ type whoamiResult struct {
 	IdentitySource string         `json:"identitySource"`
 	Available      bool           `json:"available"`
 	TokenStatus    string         `json:"tokenStatus"`
+	Message        string         `json:"message,omitempty"`
 	OnBehalfOf     *delegatedUser `json:"onBehalfOf,omitempty"`
 	// Credential and Principal appear only for a profile whose credential kind
 	// has been classified, so existing output shapes are untouched.
@@ -166,6 +167,7 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 	case core.AsBot:
 		res.Available = diag.Bot.Available
 		res.TokenStatus = diag.Bot.Status
+		res.Message = diag.Bot.Message
 		if !diag.Bot.Available {
 			res.Hint = diag.Bot.Hint
 		}
@@ -175,6 +177,7 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 		// branch: "ready" means usable for both. available stays the canonical
 		// usable signal; tokenStatus is the readable state behind it.
 		res.TokenStatus = diag.User.Status
+		res.Message = diag.User.Message
 		// Set onBehalfOf only when a user is actually resolved; an unresolved
 		// user identity (not signed in) has no one to act on behalf of yet.
 		// An Agent Employee is the caller itself rather than a person it acts
@@ -183,9 +186,9 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 		if !isAgent && (diag.User.UserName != "" || diag.User.OpenID != "") {
 			res.OnBehalfOf = &delegatedUser{UserName: diag.User.UserName, OpenID: diag.User.OpenID}
 		}
-		if !diag.User.Available {
-			res.Hint = diag.User.Hint
-		}
+		// An available user identity can still carry guidance, e.g. a login
+		// that received no refresh_token and must be renewed by hand.
+		res.Hint = diag.User.Hint
 	}
 	return res
 }

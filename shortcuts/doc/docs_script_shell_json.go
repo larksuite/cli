@@ -15,7 +15,7 @@ import (
 var docsScriptPresentationDecisionType = reflect.TypeOf(docsScriptPresentationDecision{})
 
 // docsScriptShellJSONError is an intermediate recovery-parser error. The
-// command boundary keeps the original typed strict-JSON error when recovery
+// command boundary keeps the original typed JSON error when recovery
 // cannot be completed without guessing.
 type docsScriptShellJSONError struct {
 	message string
@@ -29,8 +29,8 @@ func newDocsScriptShellJSONError(format string, args ...any) error {
 
 // recoverDocsScriptPresentationDecisionJSON rebuilds only the JSON syntax that
 // legacy native-command argument passing can remove. The Go type remains the
-// source of truth for object fields and scalar types; ambiguous bare strings
-// containing JSON delimiters are rejected instead of guessed.
+// source of truth for known fields and scalar types. Unknown fields use generic
+// JSON recovery; ambiguous bare strings are rejected instead of guessed.
 func recoverDocsScriptPresentationDecisionJSON(raw string) (string, error) {
 	if !utf8.ValidString(raw) {
 		return "", newDocsScriptShellJSONError("presentation decision is not valid UTF-8")
@@ -54,6 +54,9 @@ type docsScriptShellJSONParser struct {
 
 func (parser *docsScriptShellJSONParser) parseValue(valueType reflect.Type) (string, error) {
 	parser.skipSpace()
+	if valueType == nil {
+		return parser.parseRawValue()
+	}
 	if valueType.Kind() == reflect.Pointer {
 		if parser.consumeLiteral("null") {
 			return "null", nil
@@ -79,6 +82,27 @@ func (parser *docsScriptShellJSONParser) parseValue(valueType reflect.Type) (str
 	default:
 		return "", newDocsScriptShellJSONError("unsupported presentation decision field type %s", valueType)
 	}
+}
+
+func (parser *docsScriptShellJSONParser) parseRawValue() (string, error) {
+	var value json.RawMessage
+	decoder := json.NewDecoder(strings.NewReader(parser.raw[parser.offset:]))
+	if err := decoder.Decode(&value); err == nil {
+		end := parser.offset + int(decoder.InputOffset())
+		remainder := strings.TrimSpace(parser.raw[end:])
+		// A bare string such as "true story" must remain one recovered string.
+		if remainder == "" || remainder[0] == ',' || remainder[0] == '}' || remainder[0] == ']' {
+			parser.offset = end
+			return string(value), nil
+		}
+	}
+	switch parser.peekByte() {
+	case '{':
+		return parser.parseStruct(nil)
+	case '[':
+		return parser.parseSlice(nil)
+	}
+	return parser.parseString()
 }
 
 func (parser *docsScriptShellJSONParser) parseStruct(structType reflect.Type) (string, error) {
@@ -107,14 +131,13 @@ func (parser *docsScriptShellJSONParser) parseStruct(structType reflect.Type) (s
 		if err != nil {
 			return "", err
 		}
-		fieldType, ok := fields[fieldName]
-		if !ok {
-			return "", newDocsScriptShellJSONError("field %q is not defined by %s", fieldName, structType.Name())
+		fieldType, known := fields[fieldName]
+		if known {
+			if _, duplicated := seenFields[fieldName]; duplicated {
+				return "", newDocsScriptShellJSONError("field %q is duplicated", fieldName)
+			}
+			seenFields[fieldName] = struct{}{}
 		}
-		if _, duplicated := seenFields[fieldName]; duplicated {
-			return "", newDocsScriptShellJSONError("field %q is duplicated", fieldName)
-		}
-		seenFields[fieldName] = struct{}{}
 		if err := parser.expectByte(':'); err != nil {
 			return "", err
 		}
@@ -305,6 +328,9 @@ func (parser *docsScriptShellJSONParser) skipSpace() {
 }
 
 func docsScriptShellJSONStructFields(structType reflect.Type) map[string]reflect.Type {
+	if structType == nil {
+		return nil
+	}
 	fields := make(map[string]reflect.Type, structType.NumField())
 	for index := 0; index < structType.NumField(); index++ {
 		field := structType.Field(index)

@@ -132,8 +132,6 @@ type docsScriptPublicProfile struct {
 type docsScriptPresentationDecision struct {
 	Audience         string                           `json:"audience"`
 	ReaderTask       string                           `json:"reader_task"`
-	GenreContract    *string                          `json:"genre_contract"`
-	Adapter          *string                          `json:"adapter"`
 	PresentationMode string                           `json:"presentation_mode"`
 	WordCount        *docsScriptPresentationWordCount `json:"word_count"`
 	VisualPlan       docsScriptPresentationVisualPlan `json:"visual_plan"`
@@ -510,7 +508,7 @@ func parseDocsScriptPresentationDecisionFlag(runtime *common.RuntimeContext) (do
 		return decision, raw, err
 	}
 
-	// Keep the original strict parse as the primary path. Recovery is limited to
+	// Keep standard JSON decoding as the primary path. Recovery is limited to
 	// direct input because file and stdin sources preserve the original bytes.
 	if len(raw) >= 2 && raw[0] == '\'' && raw[len(raw)-1] == '\'' {
 		raw = strings.TrimSpace(raw[1 : len(raw)-1])
@@ -539,7 +537,6 @@ func parseDocsScriptPresentationDecisionFlag(runtime *common.RuntimeContext) (do
 func parseDocsScriptPresentationDecision(raw string) (docsScriptPresentationDecision, error) {
 	var decision docsScriptPresentationDecision
 	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&decision); err != nil {
 		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--presentation-decision must be a valid Presentation Decision JSON object: %s", err).

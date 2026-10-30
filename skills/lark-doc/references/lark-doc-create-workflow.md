@@ -20,33 +20,10 @@
 
 ### Step 1：理解读者任务、文档格式要求、硬约束和禁区。
 
-### Step 2：选择 genre content contract。
-
-下表文件均位于当前 Skill 的 `references/genres/` 目录。
-
-- 路由表仅用于选择候选，不代替 contract。高置信命中后必须读取对应 Profile / Adapter，并按其中的路由与消歧规则复核；未读取不得确定该值或进入 Step 3。确认后记录固定短名，最多各读取一个；未命中时可省略 `genre_contract` 和 `adapter`。
-- contract 决定内容任务、证据和体裁边界；adapter 只调整与所选 contract 兼容的平台结构、写作风格和组件约束。
-
-   | Content Profile | 独特专业任务 |
-   |-|-|
-   | [`route-workplace.md`](genres/route-workplace.md) | 组织决策、执行、留档 |
-   | [`route-report.md`](genres/route-report.md) | 数据、研究和证据形成洞察 |
-   | [`route-knowledge.md`](genres/route-knowledge.md) | 理解、自学、一次已知操作或检索 |
-   | [`route-media.md`](genres/route-media.md) | 独立采集、核实和公共理解 |
-   | [`route-opinion.md`](genres/route-opinion.md) | 形成并论证判断 |
-   | [`route-consumer.md`](genres/route-consumer.md) | 以真实体验或测试辅助消费选择 |
-   | [`route-marketing.md`](genres/route-marketing.md) | 组织授权的认知、转化或公关内容 |
-   | [`route-personal-brand.md`](genres/route-personal-brand.md) | 本人经历、能力和作品的可信呈现 |
-   | [`route-creative.md`](genres/route-creative.md) | 角色、冲突、情节与分支叙事 |
-
-   | Adapter | 渠道 |
-   |-|-|
-   | [`route-platform.md`](genres/route-platform.md) | Email、微信公众号、小红书 |
-
-### Step 3：收集资料并扫描表达机会。
+### Step 2：收集资料并扫描表达机会。
 
 1. 强制扫描事实、数据、案例、引用和图片等资源缺口；内容需要而现有材料不足时必须检索或生成，判断需要图片且用户未提供素材时必须搜索图片。
-2. 根据用户要求、contract / adapter 限制和内容需要选择表达方式；可用 `presentation_mode` 记录视觉策略，不因字段存在就机械使用组件。
+2. 根据用户要求和内容需要选择表达方式；可用 `presentation_mode` 记录视觉策略，不因字段存在就机械使用组件。
 
    | 信息关系 | 候选表达 |
    |-|-|
@@ -61,22 +38,20 @@
 3. 按全篇、章节、block 三个尺度构图：相关内容相邻，同类关系保持相同顺序与对齐；正文可以是主表达，不要求每节都有 presentation block。
 4. 在写正文前确定计划使用的 block。Presentation Decision 的 `visual_plan.blocks` 只记录确需最低数量约束的 `whiteboard`、`img`、`html5-block`。三类均无硬性数量要求时写 `"blocks": []`。
 
-`presentation_mode` 只表示模型采用的视觉策略；只有用户要求、contract / adapter 限制互相冲突时才询问用户：
+`presentation_mode` 只表示模型采用的视觉策略；只有用户要求互相冲突时才询问用户：
 
 - `formal`：视觉正式、克制；不使用高亮块、emoji 或装饰性组件，只保留正式体裁确有必要的结构。
 - `normal`：按内容需要使用组件；只有能降低理解、执行或出错成本时才扩展视觉表达。
 - `rich`：主动利用图片、画板、HTML 和其他飞书组件；每个组件须有明确目的，不设全局数量配额。
 
-### Step 4：提交 Presentation Decision，并初始化草稿。
+### Step 3：提交 Presentation Decision，并初始化草稿。
 
-生成完整 JSON；字段值必须来自 Step 1–3，不得照抄示例。`word_count` 仅在用户明确提出字数要求时加入，使用 `min` / `max`；单边无限制写 `null`，“约 N 字”按 ±10%，无要求时省略整个字段：
+生成完整 JSON；字段值必须来自 Step 1–2，不得照抄示例。`word_count` 仅在用户明确提出字数要求时加入，使用 `min` / `max`；单边无限制写 `null`，“约 N 字”按 ±10%，无要求时省略整个字段：
 
 ```json
 {
   "audience": "项目负责人",
   "reader_task": "判断偏差并决定下一轮动作",
-  "genre_contract": null,
-  "adapter": null,
   "presentation_mode": "rich",
   "visual_plan": {
     "reason": "需要用因果图解释偏差来源与后续行动依赖",
@@ -96,24 +71,24 @@ lark-cli docs +script --command init-draft --presentation-decision '<上方完�
 - 返回的 `data` 字段包含 cwd、workspace、draft_path，后续 CLI 在 `data.cwd` 下执行；将 `data.workspace` 记为 `work_dir`、`data.draft_path` 记为 `draft_path`（已含工作区前缀）。
 - CLI 会创建独占的 `work_dir` 并保存 `.presentation-decision.json` 作为固定基线，**但不会创建 `draft_path` 指向的 XML**。`draft_path` 是当前任务可直接写入的新文件路径；
 
-### Step 5：生成 release candidate。
+### Step 4：生成 release candidate。
 
-读取 [`lark-doc-xml.md`](lark-doc-xml.md)，并结合 Presentation Decision、适用 contract 和 Philosophy 生成完整 XML。使用扩展标签时按需读取 [`拓展标签`](lark-doc-xml-extended-blocks.md)。
+读取 [`lark-doc-xml.md`](lark-doc-xml.md)，并结合 Presentation Decision 和 Philosophy 生成完整 XML。使用扩展标签时按需读取 [`拓展标签`](lark-doc-xml-extended-blocks.md)。
 
 1. 公开网络图片使用 `<img href="URL"/>`；已有本地图片使用 `<img path="@./downloads/image.png"/>`；画板使用 `<whiteboard type="svg" path="@./<work_dir>/diagram.svg"/>` 并遵循[`画板工作流`](lark-doc-whiteboard.md)；HTML 使用 `<html5-block path="@./<work_dir>/widget.html"/>` 并遵循[`拓展标签`](lark-doc-xml-extended-blocks.md)。
 2. 直接在 `<data.cwd>/<draft_path>` 创建并写入完整 release candidate。新建资源建议放 `<data.cwd>/<work_dir>`，已有资源可原地复用；CWD 内优先用相对路径，其他位置用允许访问的绝对路径。XML 内相对资源先查 CWD，仅文件不存在时回退到 XML 所在目录。
 3. 首次写入后，发现 XML 语法问题时只修复最小范围，不无故重写正确内容。
 
-### Step 6：执行 Draft Profile Check。
+### Step 5：执行 Draft Profile Check。
 
 1. 执行 `lark-cli docs +script --command parse --content "@./<draft_path>" --format json`。顶层 `ok` 仅表示命令执行成功，是否通过看 `data.assessment.status`。失败时按 `data.diagnostics[]` 局部修复；只有草稿为空、截断或结构无效时才全文重建。`parse` 不替代 XML 规则或服务端校验。
-2. `passed` 只覆盖已启用的检查；先对照用户要求确认应声明的约束已完整填写，再按 [`lark-doc-xml.md`](lark-doc-xml.md) 复查标签、属性和值，并依据 Philosophy 检查事实与来源、用户硬约束、适用 contract / adapter 以及 `visual_plan`。最终 XML 能否写入以 `docs +create` 的服务端结果为准。
+2. `passed` 只覆盖已启用的检查；先对照用户要求确认应声明的约束已完整填写，再按 [`lark-doc-xml.md`](lark-doc-xml.md) 复查标签、属性和值，并依据 Philosophy 检查事实与来源、用户硬约束以及 `visual_plan`。最终 XML 能否写入以 `docs +create` 的服务端结果为准。
 
-### Step 7：创建文档并处理局部失败。
+### Step 6：创建文档并处理局部失败。
 
 1. 只有最新 release candidate 完成 Draft Profile Check 和 XML 规则复查后，才读取 [`lark-doc-create.md`](lark-doc-create.md)，使用同一个 `draft_path` 创建文档。
 2. 创建结果存在 warning、局部资源失败或回查发现局部问题时，不得再次新建文档；读取 [`lark-doc-update.md`](lark-doc-update.md)，对已创建文档做最小范围修复，并按 update 流程 fetch 验证。
 
-### Step 8：交付。
+### Step 7：交付。
 
-保留 Step 4 返回的 `work_dir` 及其中的创作草稿。最终只交付用户需要的结果，并说明必要来源、未关闭缺口、异常、失败或阻塞原因，以及文档 URL 或 token。
+保留 Step 3 返回的 `work_dir` 及其中的创作草稿。最终只交付用户需要的结果，并说明必要来源、未关闭缺口、异常、失败或阻塞原因，以及文档 URL 或 token。

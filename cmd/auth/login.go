@@ -470,6 +470,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		storedToken.ClockOffsetMs = clockState.OffsetMillis
 		storedToken.ClockSyncedAtMs = clockState.SyncedAtMillis
 	}
+	scopeSummary.Refresh = newLoginRefreshInfo(config.Brand, config.AppID, storedToken)
 	if err := larkauth.SetStoredToken(storedToken); err != nil {
 		return cleanupPendingKey(errs.NewInternalError(errs.SubtypeStorage,
 			"failed to save token: %v", err).WithCause(err))
@@ -592,6 +593,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		storedToken.ClockOffsetMs = clockState.OffsetMillis
 		storedToken.ClockSyncedAtMs = clockState.SyncedAtMillis
 	}
+	scopeSummary.Refresh = newLoginRefreshInfo(config.Brand, config.AppID, storedToken)
 	if err := larkauth.SetStoredToken(storedToken); err != nil {
 		return cleanupPendingKey(errs.NewInternalError(errs.SubtypeStorage,
 			"failed to save token: %v", err).WithCause(err))

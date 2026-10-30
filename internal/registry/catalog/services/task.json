@@ -10866,6 +10866,614 @@
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=remove_members&project=task&resource=task&version=v2"
         }
       }
+    },
+    "comments": {
+      "methods": {
+        "create": {
+          "id": "comments.create",
+          "path": "comments",
+          "httpMethod": "POST",
+          "description": "创建评论",
+          "parameters": {
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "表示user的ID的类型，支持open_id, user_id, union_id",
+              "default": "open_id",
+              "example": "open_id"
+            }
+          },
+          "requestBody": {
+            "content": {
+              "type": "string",
+              "description": "评论内容。不允许为空，最长3000个UTF-8字符。",
+              "required": true,
+              "example": "这是一条评论。"
+            },
+            "reply_to_comment_id": {
+              "type": "string",
+              "description": "回复给评论的id",
+              "required": false,
+              "example": "6937231762296684564"
+            },
+            "resource_type": {
+              "type": "string",
+              "description": "评论归属的资源类型",
+              "required": false,
+              "example": "task",
+              "default": "task"
+            },
+            "resource_id": {
+              "type": "string",
+              "description": "评论归属的资源ID",
+              "required": false,
+              "example": "ccb55625-95d2-2e80-655f-0e40bf67953f"
+            }
+          },
+          "responseBody": {
+            "comment": {
+              "type": "object",
+              "description": "创建的评论详情",
+              "required": false,
+              "ref": "comment",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "评论ID",
+                  "required": false,
+                  "example": "7197020628442939411"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "要更新的评论内容。如果更新该字段，不允许设为空，最大支持3000个UTF-8字符。",
+                  "required": false,
+                  "example": "这是一条评论"
+                },
+                "creator": {
+                  "type": "object",
+                  "description": "清单所有者",
+                  "required": false,
+                  "ref": "member",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "表示member的id",
+                      "required": false,
+                      "example": "oc_2cefb2f014f8d0c6c2d2eb7bafb0e54f"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "成员的类型",
+                      "required": false,
+                      "example": "chat"
+                    },
+                    "role": {
+                      "type": "string",
+                      "description": "成员角色",
+                      "required": false,
+                      "example": "editor"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "成员名称",
+                      "required": false,
+                      "example": "张明德（明德）"
+                    }
+                  }
+                },
+                "reply_to_comment_id": {
+                  "type": "string",
+                  "description": "被回复评论的id。如果不是回复评论，则为空。",
+                  "required": false,
+                  "example": "7166825117308174356"
+                },
+                "created_at": {
+                  "type": "string",
+                  "description": "评论创建时间戳（ms)",
+                  "required": false,
+                  "example": "1675742789470"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "description": "评论更新时间戳（ms）",
+                  "required": false,
+                  "example": "1675742789470"
+                },
+                "resource_type": {
+                  "type": "string",
+                  "description": "任务关联的资源类型",
+                  "required": false,
+                  "example": "task"
+                },
+                "resource_id": {
+                  "type": "string",
+                  "description": "任务关联的资源ID",
+                  "required": false,
+                  "example": "ccb55625-95d2-2e80-655f-0e40bf67953f"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "task:comment:writeonly",
+            "task:comment:write"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant",
+            "agent"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=task&resource=comment&version=v2"
+        },
+        "delete": {
+          "id": "comments.delete",
+          "path": "comments/{comment_id}",
+          "httpMethod": "DELETE",
+          "description": "删除评论",
+          "parameters": {
+            "comment_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "要删除的评论ID",
+              "example": "7198104824246747156"
+            }
+          },
+          "parameterOrder": [
+            "comment_id"
+          ],
+          "scopes": [
+            "task:comment:delete",
+            "task:comment:write"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=task&resource=comment&version=v2"
+        },
+        "get": {
+          "id": "comments.get",
+          "path": "comments/{comment_id}",
+          "httpMethod": "GET",
+          "description": "获取评论详情",
+          "parameters": {
+            "comment_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "要获取评论详情的评论ID",
+              "example": "7198104824246747156"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "表示user的ID的类型，支持open_id, user_id, union_id",
+              "default": "open_id",
+              "example": "open_id"
+            }
+          },
+          "parameterOrder": [
+            "comment_id"
+          ],
+          "responseBody": {
+            "comment": {
+              "type": "object",
+              "description": "评论详情",
+              "required": false,
+              "ref": "comment",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "评论ID",
+                  "required": false,
+                  "example": "7197020628442939411"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "要更新的评论内容。如果更新该字段，不允许设为空，最大支持3000个UTF-8字符。",
+                  "required": false,
+                  "example": "这是一条评论"
+                },
+                "creator": {
+                  "type": "object",
+                  "description": "清单所有者",
+                  "required": false,
+                  "ref": "member",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "表示member的id",
+                      "required": false,
+                      "example": "oc_2cefb2f014f8d0c6c2d2eb7bafb0e54f"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "成员的类型",
+                      "required": false,
+                      "example": "chat"
+                    },
+                    "role": {
+                      "type": "string",
+                      "description": "成员角色",
+                      "required": false,
+                      "example": "editor"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "成员名称",
+                      "required": false,
+                      "example": "张明德（明德）"
+                    }
+                  }
+                },
+                "reply_to_comment_id": {
+                  "type": "string",
+                  "description": "被回复评论的id。如果不是回复评论，则为空。",
+                  "required": false,
+                  "example": "7166825117308174356"
+                },
+                "created_at": {
+                  "type": "string",
+                  "description": "评论创建时间戳（ms)",
+                  "required": false,
+                  "example": "1675742789470"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "description": "评论更新时间戳（ms）",
+                  "required": false,
+                  "example": "1675742789470"
+                },
+                "resource_type": {
+                  "type": "string",
+                  "description": "任务关联的资源类型",
+                  "required": false,
+                  "example": "task"
+                },
+                "resource_id": {
+                  "type": "string",
+                  "description": "任务关联的资源ID",
+                  "required": false,
+                  "example": "ccb55625-95d2-2e80-655f-0e40bf67953f"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "task:comment:read",
+            "task:comment:write"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=task&resource=comment&version=v2"
+        },
+        "list": {
+          "id": "comments.list",
+          "path": "comments",
+          "httpMethod": "GET",
+          "description": "获取评论列表",
+          "parameters": {
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "分页大小，默认为50。",
+              "default": "50",
+              "example": "50",
+              "max": "100",
+              "min": "1"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果",
+              "default": "",
+              "example": "aWQ9NzEwMjMzMjMxMDE="
+            },
+            "resource_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "要获取评论列表的资源类型，目前只支持\"task\"，默认为\"task\"。",
+              "default": "task",
+              "example": "task"
+            },
+            "resource_id": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "要获取评论的资源ID。例如要获取任务的评论列表，此处应该填写任务全局唯一ID",
+              "default": "",
+              "example": "d300a75f-c56a-4be9-80d1-e47653028ceb"
+            },
+            "direction": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "返回数据的排序方式。\"asc\"表示从最老到最新顺序返回；\"desc\"表示从最新到最老顺序返回。默认为\"asc\"。",
+              "default": "asc",
+              "example": "asc",
+              "options": [
+                {
+                  "value": "asc",
+                  "description": "评论发表时间升序"
+                },
+                {
+                  "value": "desc",
+                  "description": "评论发表时间降序"
+                }
+              ]
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "表示user的ID的类型，支持open_id, user_id, union_id",
+              "default": "open_id",
+              "example": "open_id"
+            }
+          },
+          "responseBody": {
+            "items": {
+              "type": "array",
+              "description": "评论列表数据",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "评论ID",
+                  "required": false,
+                  "example": "7197020628442939411"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "要更新的评论内容。如果更新该字段，不允许设为空，最大支持3000个UTF-8字符。",
+                  "required": false,
+                  "example": "这是一条评论"
+                },
+                "creator": {
+                  "type": "object",
+                  "description": "清单所有者",
+                  "required": false,
+                  "ref": "member",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "表示member的id",
+                      "required": false,
+                      "example": "oc_2cefb2f014f8d0c6c2d2eb7bafb0e54f"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "成员的类型",
+                      "required": false,
+                      "example": "chat"
+                    },
+                    "role": {
+                      "type": "string",
+                      "description": "成员角色",
+                      "required": false,
+                      "example": "editor"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "成员名称",
+                      "required": false,
+                      "example": "张明德（明德）"
+                    }
+                  }
+                },
+                "reply_to_comment_id": {
+                  "type": "string",
+                  "description": "被回复评论的id。如果不是回复评论，则为空。",
+                  "required": false,
+                  "example": "7166825117308174356"
+                },
+                "created_at": {
+                  "type": "string",
+                  "description": "评论创建时间戳（ms)",
+                  "required": false,
+                  "example": "1675742789470"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "description": "评论更新时间戳（ms）",
+                  "required": false,
+                  "example": "1675742789470"
+                },
+                "resource_type": {
+                  "type": "string",
+                  "description": "任务关联的资源类型",
+                  "required": false,
+                  "example": "task"
+                },
+                "resource_id": {
+                  "type": "string",
+                  "description": "任务关联的资源ID",
+                  "required": false,
+                  "example": "ccb55625-95d2-2e80-655f-0e40bf67953f"
+                }
+              }
+            },
+            "page_token": {
+              "type": "string",
+              "description": "用于获取下一页的分页标记，当has_more为false时为空",
+              "required": false,
+              "example": "aWQ9NzEwMjMzMjMxMDE="
+            },
+            "has_more": {
+              "type": "boolean",
+              "description": "是否还有更多数据",
+              "required": false,
+              "example": "true"
+            }
+          },
+          "scopes": [
+            "task:comment:read",
+            "task:comment:write"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant",
+            "agent"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=task&resource=comment&version=v2"
+        },
+        "patch": {
+          "id": "comments.patch",
+          "path": "comments/{comment_id}",
+          "httpMethod": "PATCH",
+          "description": "更新评论",
+          "parameters": {
+            "comment_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "要更新的评论ID",
+              "example": "7198104824246747156"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "表示user的ID的类型，支持open_id, user_id, union_id",
+              "default": "open_id",
+              "example": "open_id"
+            }
+          },
+          "parameterOrder": [
+            "comment_id"
+          ],
+          "requestBody": {
+            "comment": {
+              "type": "object",
+              "description": "要更新的评论数据。",
+              "required": true,
+              "ref": "input_comment",
+              "properties": {
+                "content": {
+                  "type": "string",
+                  "description": "评论内容。不允许为空，最长3000个UTF-8字符。",
+                  "required": false,
+                  "example": "举杯邀明月，对影成三人"
+                }
+              }
+            },
+            "update_fields": {
+              "type": "array",
+              "description": "要更新的字段名列表。当前支持 content；只有列出的字段会被更新。",
+              "required": true
+            }
+          },
+          "responseBody": {
+            "comment": {
+              "type": "object",
+              "description": "更新后的评论",
+              "required": false,
+              "ref": "comment",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "评论ID",
+                  "required": false,
+                  "example": "7197020628442939411"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "要更新的评论内容。如果更新该字段，不允许设为空，最大支持3000个UTF-8字符。",
+                  "required": false,
+                  "example": "这是一条评论"
+                },
+                "creator": {
+                  "type": "object",
+                  "description": "清单所有者",
+                  "required": false,
+                  "ref": "member",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "表示member的id",
+                      "required": false,
+                      "example": "oc_2cefb2f014f8d0c6c2d2eb7bafb0e54f"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "成员的类型",
+                      "required": false,
+                      "example": "chat"
+                    },
+                    "role": {
+                      "type": "string",
+                      "description": "成员角色",
+                      "required": false,
+                      "example": "editor"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "成员名称",
+                      "required": false,
+                      "example": "张明德（明德）"
+                    }
+                  }
+                },
+                "reply_to_comment_id": {
+                  "type": "string",
+                  "description": "被回复评论的id。如果不是回复评论，则为空。",
+                  "required": false,
+                  "example": "7166825117308174356"
+                },
+                "created_at": {
+                  "type": "string",
+                  "description": "评论创建时间戳（ms)",
+                  "required": false,
+                  "example": "1675742789470"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "description": "评论更新时间戳（ms）",
+                  "required": false,
+                  "example": "1675742789470"
+                },
+                "resource_type": {
+                  "type": "string",
+                  "description": "任务关联的资源类型",
+                  "required": false,
+                  "example": "task"
+                },
+                "resource_id": {
+                  "type": "string",
+                  "description": "任务关联的资源ID",
+                  "required": false,
+                  "example": "ccb55625-95d2-2e80-655f-0e40bf67953f"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "task:comment:writeonly",
+            "task:comment:write"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=patch&project=task&resource=comment&version=v2"
+        }
+      }
     }
   }
 }

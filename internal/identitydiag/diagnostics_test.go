@@ -357,6 +357,60 @@ func TestDiagnose_UserIdentityExpired(t *testing.T) {
 	}
 }
 
+func TestDiagnose_UserIdentityExpiredWithoutRefreshToken(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+
+	cfg := &core.CliConfig{
+		AppID:      "test-app-no-rt",
+		AppSecret:  "secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_no_rt",
+		UserName:   "tester",
+	}
+	now := time.Now()
+	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
+		AppId:            cfg.AppID,
+		UserOpenId:       cfg.UserOpenId,
+		AccessToken:      "user-access-token",
+		RefreshToken:     "",
+		ExpiresAt:        now.Add(-time.Minute).UnixMilli(),
+		RefreshExpiresAt: 0,
+		GrantedAt:        now.Add(-2 * time.Hour).UnixMilli(),
+		Scope:            "contact:user.base:readonly",
+	}); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+	got := Diagnose(context.Background(), f, cfg, false)
+	if got.User.Status != StatusMissing || got.User.Available {
+		t.Fatalf("user = %#v, want missing and unavailable", got.User)
+	}
+	if !strings.Contains(got.User.Message, "received no refresh token") {
+		t.Fatalf("user message = %q, want missing refresh token explanation", got.User.Message)
+	}
+	for _, want := range []string{
+		`"Refresh user_access_token"`,
+		"publish a new app version",
+		"/app/test-app-no-rt/safe",
+		"lark-cli auth login --help",
+	} {
+		if !strings.Contains(got.User.Hint, want) {
+			t.Fatalf("user hint = %q, want substring %q", got.User.Hint, want)
+		}
+	}
+
+	concealed := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	projected := FilterRecovery(got, recovery.NewProjector(func() *surface.Plan { return concealed }))
+	if projected.User.Hint != "" {
+		t.Fatalf("projected user hint = %q, want empty under concealed auth login", projected.User.Hint)
+	}
+}
+
 func TestDiagnose_BotIdentityStrictUserOnly(t *testing.T) {
 	// SupportedIdentities = SupportsUser (1) only — bot path should be
 	// reported as not_configured even though an app secret is present.
@@ -605,5 +659,77 @@ func TestDiagnose_CorruptStoredTokenCarriesReauthorizationRecovery(t *testing.T)
 	}
 	if projected.Error == nil || projected.Error.ProblemDetail().Hint != projected.Hint {
 		t.Fatalf("projected error = %#v, want nested hint to follow the top-level projection %q", projected.Error, projected.Hint)
+	}
+}
+
+func TestDiagnose_UserIdentityValidWithoutRefreshTokenWarnsBeforeExpiry(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		verify bool
+	}{
+		{name: "local", verify: false},
+		{name: "verified", verify: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keyring.MockInit()
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+
+			cfg := &core.CliConfig{
+				AppID:      "test-app-no-rt",
+				AppSecret:  "secret",
+				Brand:      core.BrandFeishu,
+				UserOpenId: "ou_no_rt",
+				UserName:   "tester",
+			}
+			now := time.Now()
+			if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
+				AppId:            cfg.AppID,
+				UserOpenId:       cfg.UserOpenId,
+				AccessToken:      "user-access-token",
+				ExpiresAt:        now.Add(90 * time.Minute).UnixMilli(),
+				RefreshExpiresAt: now.Add(90 * time.Minute).UnixMilli(),
+				GrantedAt:        now.Add(-30 * time.Minute).UnixMilli(),
+				Scope:            "contact:user.base:readonly offline_access",
+			}); err != nil {
+				t.Fatalf("SetStoredToken() error = %v", err)
+			}
+
+			f, _, _, reg := cmdutil.TestFactory(t, cfg)
+			if tc.verify {
+				reg.Register(&httpmock.Stub{
+					Method: http.MethodGet,
+					URL:    "/open-apis/bot/v3/info",
+					Body: map[string]interface{}{
+						"code": 0,
+						"msg":  "ok",
+						"bot":  map[string]interface{}{"open_id": "ou_bot", "app_name": "diagnostic bot"},
+					},
+				})
+				reg.Register(&httpmock.Stub{
+					Method: http.MethodGet,
+					URL:    larkauth.PathUserInfoV1,
+					Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+				})
+			}
+			got := Diagnose(context.Background(), f, cfg, tc.verify)
+			if got.User.Status != StatusReady || !got.User.Available {
+				t.Fatalf("user = %#v, want ready and available until the access token expires", got.User)
+			}
+			if tc.verify && (got.User.Verified == nil || !*got.User.Verified) {
+				t.Fatalf("user verified = %v, want true", got.User.Verified)
+			}
+			if got.User.RefreshExpiresAt != "" {
+				t.Fatalf("user refreshExpiresAt = %q, want empty for a login without a refresh token", got.User.RefreshExpiresAt)
+			}
+			if !strings.Contains(got.User.Message, "received no refresh token") || !strings.Contains(got.User.Message, got.User.ExpiresAt) {
+				t.Fatalf("user message = %q, want expiry time and missing refresh token", got.User.Message)
+			}
+			for _, want := range []string{`"Refresh user_access_token"`, "publish a new app version", "/app/test-app-no-rt/safe"} {
+				if !strings.Contains(got.User.Hint, want) {
+					t.Fatalf("user hint = %q, want substring %q", got.User.Hint, want)
+				}
+			}
+		})
 	}
 }

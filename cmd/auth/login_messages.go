@@ -22,6 +22,12 @@ type loginMsg struct {
 	AuthDetails      string
 	ScopeSeparator   string
 	NoScopes         string
+
+	// Login completed without a refresh_token (login_result.go)
+	NoRefreshToken         string
+	NoRefreshTokenCause    string
+	NoRefreshTokenFix      string
+	NoRefreshTokenSettings string
 }
 
 var loginMsgZh = &loginMsg{
@@ -37,6 +43,11 @@ var loginMsgZh = &loginMsg{
 	AuthDetails:      "本次授权结果详情：",
 	ScopeSeparator:   "、",
 	NoScopes:         "（空）",
+
+	NoRefreshToken:         "本次登录没有拿到 refresh_token，用户身份将在 %s 失效且无法自动续期，届时需要重新授权。",
+	NoRefreshTokenCause:    "原因：应用未开启「刷新 user_access_token」，或开启后还没有发布版本（只申请 offline_access 不会下发 refresh_token）。",
+	NoRefreshTokenFix:      "处理：在开发者后台的「安全设置」中开启「刷新 user_access_token」，创建并发布新版本，然后重新执行 lark-cli auth login。",
+	NoRefreshTokenSettings: "安全设置页面：%s",
 }
 
 var loginMsgEn = &loginMsg{
@@ -52,6 +63,11 @@ var loginMsgEn = &loginMsg{
 	AuthDetails:      "- Authorization details:",
 	ScopeSeparator:   ", ",
 	NoScopes:         "(none)",
+
+	NoRefreshToken:         "This login received no refresh_token. The user identity expires at %s and cannot be renewed automatically; you will need to authorize again then.",
+	NoRefreshTokenCause:    "Cause: the app has not enabled \"Refresh user_access_token\", or has not published an app version since enabling it (requesting offline_access alone does not issue a refresh_token).",
+	NoRefreshTokenFix:      "Fix: enable \"Refresh user_access_token\" in the app's security settings in the developer console, create and publish a new app version, then run lark-cli auth login again.",
+	NoRefreshTokenSettings: "Security settings: %s",
 }
 
 func renderAgentTimeoutHintZh(context recovery.RenderContext) string {

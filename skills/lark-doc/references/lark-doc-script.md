@@ -24,12 +24,12 @@ lark-cli docs +script --command init-draft \
   --format json
 ```
 
-路径返回值与用法见 [创建工作流 Step 4](lark-doc-create-workflow.md)。
+路径返回值与用法见 [创建工作流 Step 3](lark-doc-create-workflow.md)。
 
 - 在生成正文前执行；不要自行创建工作目录或决策文件。CLI 固定生成 `draft_<8位十六进制字符>_folder/draft.xml`，以返回的实际路径为准。
-- 决策是单个 JSON 对象；无可量化约束时传 `{}`。`audience`、`reader_task`、`genre_contract`、`adapter`、`presentation_mode`、`visual_plan.reason` 和每个 block 的 `purpose` 是可选描述信息，可省略、为空字符串或 `null`；不参与通过/失败判定。
+- 决策是单个 JSON 对象；无可量化约束时传 `{}`。`audience`、`reader_task`、`presentation_mode`、`visual_plan.reason` 和每个 block 的 `purpose` 是可选描述信息，可省略、为空字符串或 `null`；不参与通过/失败判定。
 - `visual_plan`、`visual_plan.blocks`、每项的 `type` 和 `min_count` 都可省略或为 `null`，表示未设置。`blocks` 写 `[]` 也表示无数量约束；条目缺少 `type` 或 `min_count` 时，不启用该条数量校验。
-- 显式填写的字段仍须合法：`visual_plan` 为对象，`blocks` 为数组，`type` 为支持的块类型，`min_count` 为正整数。空字符串类型、未知块类型、零/负数或非整数数量会报错，即使另一字段缺失也一样。仅 `type` 与 `min_count` 都有效的条目参与数量检查；启用的条目不能重复声明同一类型。兼容的 `list` 约束按 `<ul>` 与 `<ol>` 的合计数量检查。
+- 未识别的字段（包括拼错的字段）会被忽略。已识别且显式填写的字段仍须合法：`visual_plan` 为对象，`blocks` 为数组，`type` 为支持的块类型，`min_count` 为正整数。空字符串类型、未知块类型、零/负数或非整数数量会报错，即使另一字段缺失也一样。仅 `type` 与 `min_count` 都有效的条目参与数量检查；启用的条目不能重复声明同一类型。兼容的 `list` 约束按 `<ul>` 与 `<ol>` 的合计数量检查。
 - `word_count` 仅在需要字数校验时填写 `{min,max}`；未指定的一侧写 `null`，至少一侧为正整数，且 `min <= max`。没有字数要求时省略整个字段。
 - 返回 `data.cwd`（本次文件操作的绝对工作目录）、`data.workspace`（相对工作区）、`data.draft_path`（相对 XML 路径）和操作提示 `data.tip`。工作区及其中的 `.presentation-decision.json` 已存在，XML 尚不存在；直接写入 `<cwd>/<draft_path>`，首次写入前不要读取该路径。后续 CLI 使用返回的 `cwd`；资源路径规则见 [lark-doc](../SKILL.md)。
 - 后续始终使用 `draft_path`，不得另建 XML、复用其他任务的路径或修改工作区中的 `.presentation-decision.json`；保留 `workspace` 及其中的创作草稿。

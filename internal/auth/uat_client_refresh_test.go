@@ -667,3 +667,214 @@ func TestExpiredRefreshTokenIsClearedWithoutRequest(t *testing.T) {
 		t.Fatalf("expired refresh made %d request(s) or left token stored", calls.Load())
 	}
 }
+
+func TestTokenWithoutRefreshTokenRemainsValidUntilAccessExpiry(t *testing.T) {
+	setupStoredTokenTest(t)
+	now := time.Now()
+	expiresAt := now.Add(2 * time.Minute).UnixMilli()
+	// 0 = never set; expiresAt = what the device flow stores when no
+	// refresh_token is issued; +24h = an inconsistent future value.
+	for _, refreshExpiresAt := range []int64{0, expiresAt, now.Add(24 * time.Hour).UnixMilli()} {
+		stored := &StoredUAToken{
+			AppId:            "cli_no_rt",
+			UserOpenId:       "ou_no_rt",
+			AccessToken:      "access-only",
+			RefreshToken:     "",
+			ExpiresAt:        expiresAt,
+			RefreshExpiresAt: refreshExpiresAt,
+			Scope:            "contact:user.base:readonly",
+			GrantedAt:        now.Add(-118 * time.Minute).UnixMilli(),
+		}
+		if got := TokenStatus(stored); got != "valid" {
+			t.Fatalf("TokenStatus(RefreshExpiresAt=%d) = %q, want valid", refreshExpiresAt, got)
+		}
+		if err := SetStoredToken(stored); err != nil {
+			t.Fatalf("SetStoredToken() error = %v", err)
+		}
+		var calls atomic.Int32
+		client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			calls.Add(1)
+			return nil, errors.New("unexpected refresh request")
+		})}
+
+		result, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
+		if err != nil || result == nil || result.AccessToken != "access-only" {
+			t.Fatalf("GetValidAccessToken() = (%+v, %v), want valid access-only token", result, err)
+		}
+		if calls.Load() != 0 {
+			t.Fatalf("refresh request count = %d, want 0", calls.Load())
+		}
+		if current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId); current == nil {
+			t.Fatal("stored token was unexpectedly deleted before ExpiresAt")
+		}
+	}
+}
+
+func TestExpiredTokenWithoutRefreshTokenExplainsRefreshSettingAndClearsWithoutRequest(t *testing.T) {
+	setupStoredTokenTest(t)
+	now := time.Now()
+	stored := &StoredUAToken{
+		AppId:            "cli_refresh_test",
+		UserOpenId:       "ou_refresh_test",
+		AccessToken:      "access-expired",
+		RefreshToken:     "",
+		ExpiresAt:        now.Add(-time.Minute).UnixMilli(),
+		RefreshExpiresAt: 0,
+		Scope:            "contact:user.base:readonly",
+		GrantedAt:        now.Add(-2 * time.Hour).UnixMilli(),
+	}
+	if got := TokenStatus(stored); got != "expired" {
+		t.Fatalf("TokenStatus() = %q, want expired", got)
+	}
+	if err := SetStoredToken(stored); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+	var calls atomic.Int32
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return nil, errors.New("unexpected refresh request")
+	})}
+	var errBuf bytes.Buffer
+	opts := newRefreshTestOptions(stored)
+	opts.ErrOut = &errBuf
+
+	token, err := GetValidAccessToken(context.Background(), client, opts)
+	if token != nil || !IsNeedUserAuthorizationError(err) {
+		t.Fatalf("expired result = (token=%+v, err=%v), want authorization required", token, err)
+	}
+	if calls.Load() != 0 || mustGetStoredToken(t, stored.AppId, stored.UserOpenId) != nil {
+		t.Fatalf("expired token made %d request(s) or left token stored", calls.Load())
+	}
+	if !strings.Contains(errBuf.String(), "access_token expired and no refresh_token available") {
+		t.Fatalf("stderr = %q, want access_token expired without refresh_token log", errBuf.String())
+	}
+
+	problem := requireRefreshProblem(t, err, errs.CategoryAuthentication, errs.SubtypeTokenMissing, false)
+	for _, want := range []string{
+		"received no refresh_token",
+		`"Refresh user_access_token"`,
+		"publish a new app version",
+		"/app/cli_refresh_test/safe",
+		"lark-cli auth login",
+	} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("problem.Hint = %q, want substring %q", problem.Hint, want)
+		}
+	}
+
+	profiled := recovery.NewProjectorWithContext(nil, recovery.RenderContext{Profile: "team-beta"}).Render(err)
+	profiledProblem := requireRefreshProblem(t, profiled, errs.CategoryAuthentication, errs.SubtypeTokenMissing, false)
+	for _, want := range []string{
+		`"Refresh user_access_token"`,
+		"`lark-cli auth login --profile='team-beta' --recommend --no-wait --json`",
+		"`lark-cli auth login --profile='team-beta' --device-code <device_code>`",
+	} {
+		if !strings.Contains(profiledProblem.Hint, want) {
+			t.Fatalf("profile-rendered hint = %q, want substring %q", profiledProblem.Hint, want)
+		}
+	}
+
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	concealed := recovery.Render(err, plan)
+	concealedProblem := requireRefreshProblem(t, concealed, errs.CategoryAuthentication, errs.SubtypeTokenMissing, false)
+	if strings.Contains(concealedProblem.Hint, "auth login") {
+		t.Fatalf("concealed hint = %q, must not mention auth login", concealedProblem.Hint)
+	}
+	for _, want := range []string{
+		`"Refresh user_access_token"`,
+		"/app/cli_refresh_test/safe",
+		"supported authorization flow",
+	} {
+		if !strings.Contains(concealedProblem.Hint, want) {
+			t.Fatalf("concealed hint = %q, want substring %q", concealedProblem.Hint, want)
+		}
+	}
+}
+
+func TestDPoPTokenWithoutRefreshTokenSynchronizesClockBeforeExpiryDecision(t *testing.T) {
+	setupStoredTokenTest(t)
+	store, key := newAuthDPoPStore(t)
+	if err := store.SaveContext(context.Background(), key); err != nil {
+		t.Fatal(err)
+	}
+	jkt, err := key.Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	var heartbeatCalls atomic.Int32
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != dpop.HeartbeatPath {
+			t.Fatalf("unexpected request path %q", req.URL.Path)
+		}
+		heartbeatCalls.Add(1)
+		return refreshHTTPResponse(req, `{"code":0,"data":{"now":"`+strconv.FormatInt(now.Unix(), 10)+`"}}`), nil
+	})}
+
+	// 1. Stale positive clock offset makes the DPoP token look expired locally,
+	//    but after clock sync it is still valid and returned without refresh.
+	staleClockToken := &StoredUAToken{
+		AppId:                "cli_dpop_no_rt",
+		UserOpenId:           "ou_dpop_no_rt",
+		AccessToken:          "access-dpop-valid",
+		RefreshToken:         "",
+		ExpiresAt:            now.Add(10 * time.Minute).UnixMilli(),
+		RefreshExpiresAt:     0,
+		TokenType:            StoredTokenTypeDPoP,
+		DPoPKeyID:            key.ID(),
+		DPoPJKT:              jkt,
+		DPoPKeySecurityLevel: string(key.SecurityLevel()),
+		ClockOffsetMs:        (30 * time.Minute).Milliseconds(),
+		ClockSyncedAtMs:      now.Add(-time.Hour).UnixMilli(),
+	}
+	if err := SetStoredToken(staleClockToken); err != nil {
+		t.Fatal(err)
+	}
+	var errBuf bytes.Buffer
+	opts := newRefreshTestOptions(staleClockToken)
+	opts.DPoPMode = core.DPoPModeRequired
+	opts.DPoPKeyStore = store
+	opts.ErrOut = &errBuf
+	got, err := GetValidAccessToken(context.Background(), client, opts)
+	if err != nil || got == nil || got.AccessToken != "access-dpop-valid" || heartbeatCalls.Load() != 1 {
+		t.Fatalf("GetValidAccessToken(stale positive clock) = (%+v, %v, heartbeats=%d), want valid token after 1 sync", got, err, heartbeatCalls.Load())
+	}
+
+	// 2. Near-expiry DPoP token without refresh_token synchronizes its clock
+	//    before returning; when still valid on server time, it returns the token
+	//    without logging a false "already refreshed" message.
+	nearExpiryValidToken := *staleClockToken
+	nearExpiryValidToken.ExpiresAt = now.Add(2 * time.Minute).UnixMilli()
+	nearExpiryValidToken.ClockOffsetMs = -(time.Minute).Milliseconds()
+	if err := SetStoredToken(&nearExpiryValidToken); err != nil {
+		t.Fatal(err)
+	}
+	errBuf.Reset()
+	got, err = GetValidAccessToken(context.Background(), client, opts)
+	if err != nil || got == nil || got.AccessToken != "access-dpop-valid" || heartbeatCalls.Load() != 2 {
+		t.Fatalf("GetValidAccessToken(near-expiry valid) = (%+v, %v, heartbeats=%d), want valid token after sync", got, err, heartbeatCalls.Load())
+	}
+	if strings.Contains(errBuf.String(), "already refreshed") {
+		t.Fatalf("stderr = %q, must not log false already-refreshed message", errBuf.String())
+	}
+
+	// 3. Stale negative clock offset (-2m) makes an already-expired token (-1m)
+	//    appear locally valid within the 5-minute pre-expiry window; clock sync
+	//    detects actual expiry, clears the token, and explains the refresh setting.
+	negativeSkewExpiredToken := *staleClockToken
+	negativeSkewExpiredToken.ExpiresAt = now.Add(-time.Minute).UnixMilli()
+	negativeSkewExpiredToken.ClockOffsetMs = -(2 * time.Minute).Milliseconds()
+	if err := SetStoredToken(&negativeSkewExpiredToken); err != nil {
+		t.Fatal(err)
+	}
+	got, err = GetValidAccessToken(context.Background(), client, opts)
+	if got != nil || !IsNeedUserAuthorizationError(err) || heartbeatCalls.Load() != 3 {
+		t.Fatalf("GetValidAccessToken(negative skew expired) = (%+v, %v, heartbeats=%d), want authorization required after sync", got, err, heartbeatCalls.Load())
+	}
+	problem := requireRefreshProblem(t, err, errs.CategoryAuthentication, errs.SubtypeTokenMissing, false)
+	if !strings.Contains(problem.Hint, `"Refresh user_access_token"`) || mustGetStoredToken(t, negativeSkewExpiredToken.AppId, negativeSkewExpiredToken.UserOpenId) != nil {
+		t.Fatalf("expired DPoP hint = %q or token still stored", problem.Hint)
+	}
+}

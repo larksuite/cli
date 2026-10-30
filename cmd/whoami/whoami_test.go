@@ -72,6 +72,25 @@ func TestBuildResult_UserValid(t *testing.T) {
 	}
 }
 
+func TestBuildResult_UserValidWithoutRefreshTokenCarriesWarning(t *testing.T) {
+	cfg := &core.CliConfig{ProfileName: "my-app", AppID: "cli_x", Brand: core.BrandFeishu, DefaultAs: core.AsAuto}
+	diag := identitydiag.Result{
+		User: identitydiag.Identity{
+			Available: true, Status: "ready", TokenStatus: "valid", OpenID: "ou_x", UserName: "Alice",
+			Message: "User identity: ready until 2026-10-27T12:00:00+08:00, then a new login is required",
+			Hint:    "no refresh token because the app has not enabled \"Refresh user_access_token\"",
+		},
+	}
+	r := buildResult(cfg, core.AsUser, "auto_detect", diag)
+
+	if !r.Available || r.TokenStatus != "ready" {
+		t.Fatalf("available=%v status=%q, want true/ready", r.Available, r.TokenStatus)
+	}
+	if r.Message != diag.User.Message || r.Hint != diag.User.Hint {
+		t.Fatalf("message/hint = %q / %q, want the expiry warning and refresh guidance propagated", r.Message, r.Hint)
+	}
+}
+
 func TestBuildResult_UserMissingToken(t *testing.T) {
 	cfg := &core.CliConfig{ProfileName: "p", AppID: "cli_x", Brand: core.BrandLark}
 	diag := identitydiag.Result{
@@ -98,9 +117,12 @@ func TestBuildResult_UserMissingToken(t *testing.T) {
 func TestBuildResult_BotReady(t *testing.T) {
 	cfg := &core.CliConfig{ProfileName: "p", AppID: "cli_x", Brand: core.BrandFeishu, DefaultAs: core.AsBot}
 	diag := identitydiag.Result{
-		Bot: identitydiag.Identity{Available: true, Status: "ready"},
+		Bot: identitydiag.Identity{Available: true, Status: "ready", Message: "Bot identity: ready"},
 	}
 	r := buildResult(cfg, core.AsBot, "default_as", diag)
+	if r.Message != "Bot identity: ready" {
+		t.Fatalf("message = %q, want the bot diagnosis message", r.Message)
+	}
 
 	if r.Identity != "bot" || r.IdentitySource != "default_as" {
 		t.Fatalf("identity/source = %q/%q", r.Identity, r.IdentitySource)

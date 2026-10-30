@@ -45,6 +45,24 @@ func NewNeedUserAuthorizationError(userOpenID string) error {
 	return newNeedUserAuthorizationError(userOpenID, nil, recovery.UserAuthorization())
 }
 
+// newExpiredWithoutRefreshTokenError builds the typed *errs.AuthenticationError
+// returned when a stored UAT's access_token expires and no refresh_token was
+// issued at login (see NoRefreshTokenCause).
+func newExpiredWithoutRefreshTokenError(opts UATCallOptions) error {
+	reason := fmt.Sprintf(
+		"access_token expired and cannot be renewed automatically because this login received no refresh_token: %s; to avoid logging in again every 2 hours, %s",
+		NoRefreshTokenCause, NoRefreshTokenFix(opts.Domain, opts.AppId),
+	)
+	// Compose with the standard user-authorization recovery so the rendered
+	// login commands keep the invocation's --profile and the agent-friendly
+	// --no-wait / --device-code flow.
+	return newNeedUserAuthorizationError(
+		opts.UserOpenId,
+		nil,
+		recovery.JoinHints("; ", recovery.Join("", recovery.Text(reason)), recovery.UserAuthorization()),
+	)
+}
+
 // newNeedUserAuthorizationError preserves the missing-UAT sentinel alongside
 // an optional lower-layer cause and attaches build-local recovery metadata.
 func newNeedUserAuthorizationError(userOpenID string, cause error, hint recovery.Hint) error {

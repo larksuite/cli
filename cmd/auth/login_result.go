@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -21,6 +23,41 @@ type loginScopeSummary struct {
 	Granted        []string
 	Missing        []string
 	StatusMessage  string
+	Refresh        *loginRefreshInfo
+}
+
+// loginRefreshInfo records whether the issued token can be renewed, so a
+// login that received no refresh_token is reported before its 2-hour access
+// token runs out instead of surfacing later as an unexplained re-login.
+type loginRefreshInfo struct {
+	Issued      bool
+	ExpiresAt   time.Time
+	Fix         string
+	SettingsURL string
+}
+
+func newLoginRefreshInfo(brand core.LarkBrand, appID string, token *larkauth.StoredUAToken) *loginRefreshInfo {
+	return &loginRefreshInfo{
+		Issued:      token.RefreshToken != "",
+		ExpiresAt:   time.UnixMilli(token.ExpiresAt),
+		Fix:         larkauth.NoRefreshTokenFix(brand, appID),
+		SettingsURL: larkauth.NoRefreshTokenSettingsURL(brand, appID),
+	}
+}
+
+// writeNoRefreshTokenWarning prints the human-readable warning for a login
+// that cannot be renewed automatically.
+func writeNoRefreshTokenWarning(streams *cmdutil.IOStreams, msg *loginMsg, refresh *loginRefreshInfo) {
+	if refresh == nil || refresh.Issued {
+		return
+	}
+	fmt.Fprintln(streams.ErrOut)
+	fmt.Fprintf(streams.ErrOut, "WARN: "+msg.NoRefreshToken+"\n", refresh.ExpiresAt.Local().Format("2006-01-02 15:04:05"))
+	fmt.Fprintln(streams.ErrOut, msg.NoRefreshTokenCause)
+	fmt.Fprintln(streams.ErrOut, msg.NoRefreshTokenFix)
+	if refresh.SettingsURL != "" {
+		fmt.Fprintf(streams.ErrOut, msg.NoRefreshTokenSettings+"\n", refresh.SettingsURL)
+	}
 }
 
 type loginScopeIssue struct {
@@ -205,6 +242,7 @@ func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, op
 	fmt.Fprintln(f.IOStreams.ErrOut)
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
 	writeLoginScopeBreakdown(f.IOStreams, msg, summary)
+	writeNoRefreshTokenWarning(f.IOStreams, msg, summary.Refresh)
 }
 
 // handleLoginScopeIssue prints or returns a structured missing-scope result
@@ -235,6 +273,9 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Message)
 	}
 	writeLoginScopeBreakdown(f.IOStreams, msg, issue.Summary)
+	if loginSucceeded && issue.Summary != nil {
+		writeNoRefreshTokenWarning(f.IOStreams, msg, issue.Summary.Refresh)
+	}
 	if !loginSucceeded && issue.Hint != "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Hint)
 	}
@@ -257,6 +298,18 @@ func authorizationCompletePayload(openId, userName string, summary *loginScopeSu
 		"already_granted": emptyIfNil(summary.AlreadyGranted),
 		"missing":         emptyIfNil(summary.Missing),
 		"granted":         emptyIfNil(summary.Granted),
+	}
+	if r := summary.Refresh; r != nil {
+		payload["refresh_token_issued"] = r.Issued
+		payload["expires_at"] = r.ExpiresAt.Format(time.RFC3339)
+		if !r.Issued {
+			payload["no_refresh_token"] = map[string]interface{}{
+				"message":      fmt.Sprintf("this login received no refresh_token: the user identity expires at %s and cannot be renewed automatically, so the user will have to authorize again", r.ExpiresAt.Format(time.RFC3339)),
+				"cause":        larkauth.NoRefreshTokenCause,
+				"fix":          r.Fix,
+				"settings_url": r.SettingsURL,
+			}
+		}
 	}
 	if issue != nil {
 		hint := summary.StatusMessage

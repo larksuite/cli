@@ -537,12 +537,24 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		id.Status = StatusReady
 		id.Available = true
 		id.Message = "User identity: ready"
+		if stored.RefreshToken == "" {
+			id.Message = fmt.Sprintf("User identity: ready until %s, then a new login is required (this login received no refresh token, so it cannot be renewed automatically)", id.ExpiresAt)
+			id = withCommandRecovery(id, recovery.TargetAuthLogin, fmt.Sprintf(
+				"no refresh token because %s; to stop re-authorizing every 2 hours, %s",
+				larkauth.NoRefreshTokenCause, larkauth.NoRefreshTokenFix(cfg.Brand, cfg.AppID)))
+		}
 	case "needs_refresh":
 		id.Status = StatusNeedsRefresh
 		id.Available = true
 		id.Message = "User identity: needs refresh (will auto-refresh on next user API call)"
 	default:
 		id.Status = StatusMissing
+		if stored.RefreshToken == "" {
+			id.Message = "User identity: missing (access token expired; this login received no refresh token, so it could not be renewed)"
+			return withCommandRecovery(id, recovery.TargetAuthLogin, fmt.Sprintf(
+				"no refresh token because %s; to stop re-authorizing every 2 hours, %s; run: lark-cli auth login --help",
+				larkauth.NoRefreshTokenCause, larkauth.NoRefreshTokenFix(cfg.Brand, cfg.AppID)))
+		}
 		id.Message = "User identity: missing (refresh token expired)"
 		return withCommandRecovery(id, recovery.TargetAuthLogin, "run: lark-cli auth login --help")
 	}
@@ -588,9 +600,9 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	}
 
 	id.Verified = boolPtr(true)
-	if id.Status == StatusReady {
-		id.Message = "User identity: ready"
-	} else {
+	// A ready identity keeps the message set above, which may carry the
+	// no-refresh-token expiry warning.
+	if id.Status != StatusReady {
 		id.Message = "User identity: needs refresh (server verification succeeded after refresh)"
 	}
 	return id
@@ -682,7 +694,11 @@ func fillTokenFields(id *Identity, token *larkauth.StoredUAToken) {
 	id.TokenStatus = larkauth.TokenStatus(token)
 	id.Scope = token.Scope
 	id.ExpiresAt = formatMillis(token.ExpiresAt)
-	id.RefreshExpiresAt = formatMillis(token.RefreshExpiresAt)
+	// A login without a refresh_token still stores a refresh expiry (the
+	// device flow copies the access-token expiry); do not report it as one.
+	if token.RefreshToken != "" {
+		id.RefreshExpiresAt = formatMillis(token.RefreshExpiresAt)
+	}
 	id.GrantedAt = formatMillis(token.GrantedAt)
 }
 
