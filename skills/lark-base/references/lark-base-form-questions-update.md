@@ -77,7 +77,7 @@ lark-cli base +form-questions-update \
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `id` | **是** | 问题 ID（field_id），不可修改 |
-| `title` | 否 | 目标问题标题；省略会回落为字段名，传空字符串会写入空标题（若服务端允许） |
+| `title` | 否 | 目标问题标题；省略会回落为字段名，传空字符串会写入空标题（若服务端允许）。标题是用户可见文本和 `+form-submit` 的字段键；未获用户明确要求改名或编号时，必须带回当前标题，不能为了排序、排版、美化或阅读性添加数字前缀、必填标记或说明后缀 |
 | `description` | 否 | 目标问题描述（纯文本或 Markdown 链接，如 `[文本](https://example.com)`）；省略或传空字符串都会清空描述 |
 | `required` | 否 | 目标是否必填；省略会回落为 `false` |
 | `option_display_mode` | 否 | 目标选项展示方式（仅 `select` 有效）：`0`=下拉，`1`=纵向（默认），`2`=横向；省略会回落默认展示方式 |
@@ -86,9 +86,10 @@ lark-cli base +form-questions-update \
 ## 全量覆盖语义
 
 - 先执行 `+form-questions-list`，读取被更新题目的当前 `id`、`title`、`description`、`required`、`option_display_mode`、`visible_rule`。
-- 构造 `--questions` 时，只改用户明确要求变化的字段；所有仍要保留的字段必须按当前值一并传回。
+- 构造 `--questions` 时，只改用户明确要求变化的字段；所有仍要保留的字段必须按当前值一并传回。未获用户明确要求时，`title` 必须逐字沿用读取结果；数字序号、必填标记、括号说明及其他前后缀都属于标题变更，不是展示优化。
 - 不要用“只传要改的字段”的方式更新题目。比如只传 `{"id":"q_002","title":"新标题"}` 会让 `description` 清空、`required` 回落为 `false`、`visible_rule` 清空。
 - 用户明确要求清空时才传空值：`description:""` 清空描述，`visible_rule:null` 清空显隐条件，`conditions:[]` 也表示无条件显示。
+- 更新后再次执行 `+form-questions-list`。对每个本轮未获授权改名或编号的题目，按同一 `id` 比较写前、写后的 `title`；任一标题变化都要恢复原值并回读，不得继续使用变化后的标题提交表单或宣称完成。
 
 ### `visible_rule` 显隐条件
 
