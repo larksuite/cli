@@ -39,7 +39,7 @@ lark-cli task +create --summary "Test Task" --dry-run
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `--summary <text>` | Yes | The title or summary of the task |
-| `--description <text>` | No | Detailed description of the task |
+| `--description <text>` | No | Detailed description of the task. **Warning:** rendered as Markdown in the client; risky spans (`**bold**`, `<x>`, line-leading `# `, `[label] (url)` with a space) are silently dropped, never degrade to plain text. Writes succeed and read back unchanged, so this is undetectable from the API side (issue #2359). Prefer plain text unless Markdown is intentional. |
 | `--assignee <id>` | No | Assignee ID. Use user `open_id` like `ou_xxx` for people, or app ID like `cli_xxx` for apps. |
 | `--follower <id>` | No | Follower ID. Use user `open_id` like `ou_xxx` for people, or app ID like `cli_xxx` for apps. |
 | `--due <time>` | No | Due date. Supports ISO 8601, `YYYY-MM-DD`, relative time (e.g., `+2d`), or ms timestamp. `YYYY-MM-DD` and relative time will automatically set it as an all-day task. |
