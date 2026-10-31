@@ -264,6 +264,55 @@ func TestBuild_LMSReplyToMessageID(t *testing.T) {
 	}
 }
 
+// TestBuild_LMSReplyType verifies build LMS reply type header.
+func TestBuild_LMSReplyType(t *testing.T) {
+	raw, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("Re: hello").
+		Date(fixedDate).
+		InReplyTo("original@smtp").
+		LMSReplyToMessageID("740000000000000067").
+		LMSReplyType("REPLY").
+		TextBody([]byte("my reply")).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	eml := string(raw)
+
+	got := headerValue(eml, "X-LMS-Reply-Type")
+	if got != "REPLY" {
+		t.Errorf("X-LMS-Reply-Type: got %q, want REPLY", got)
+	}
+	if !strings.Contains(eml, "X-LMS-Reply-Type: REPLY") {
+		t.Errorf("eml should contain header line \"X-LMS-Reply-Type: REPLY\", got:\n%s", eml)
+	}
+}
+
+// TestBuild_LMSReplyType_InvalidValueNotWritten verifies an invalid reply type is ignored.
+func TestBuild_LMSReplyType_InvalidValueNotWritten(t *testing.T) {
+	raw, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("Re: hello").
+		Date(fixedDate).
+		InReplyTo("original@smtp").
+		LMSReplyToMessageID("740000000000000067").
+		LMSReplyType("BOGUS").
+		TextBody([]byte("my reply")).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	eml := string(raw)
+
+	got := headerValue(eml, "X-LMS-Reply-Type")
+	if got != "" {
+		t.Errorf("X-LMS-Reply-Type should be absent for invalid value, got %q", got)
+	}
+}
+
 // TestBuild_LMSReplyToMessageID_NotWrittenWithoutInReplyTo verifies build LMS reply to message ID not written without in reply to.
 func TestBuild_LMSReplyToMessageID_NotWrittenWithoutInReplyTo(t *testing.T) {
 	raw, err := New().
