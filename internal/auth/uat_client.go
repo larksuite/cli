@@ -422,6 +422,8 @@ func synchronizeStoredTokenClock(ctx context.Context, httpClient *http.Client, o
 	return nil
 }
 
+// refreshOnce performs one token exchange and classifies its retry and storage action.
+// Only HTTP 429 bypasses body decoding; other statuses retain the existing classification.
 func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, opts UATCallOptions, stored *StoredUAToken, proofKey *dpop.Key, allowClockRecovery bool) refreshResult {
 	payload, err := json.Marshal(refreshRequest{
 		GrantType:    "refresh_token",

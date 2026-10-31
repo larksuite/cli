@@ -73,6 +73,8 @@ func refreshHTTPResponse(req *http.Request, body string) *http.Response {
 	}
 }
 
+// scriptedRefreshClient returns a transport that replays the configured responses and errors.
+// Each step can override the HTTP status or simulate a request written before a failure.
 func scriptedRefreshClient(t *testing.T, steps []refreshHTTPTestStep, calls *atomic.Int32) *http.Client {
 	t.Helper()
 	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -358,6 +360,8 @@ func TestRefreshDPoPTokenRecoversClockAndKeepsBinding(t *testing.T) {
 	}
 }
 
+// TestRefreshFailureDeterminesStoredTokenDisposition checks retries, typed errors, and stored tokens.
+// A later rate limit must not erase the uncertainty of an earlier written request.
 func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 	sentinel := errors.New("transport unavailable")
 	sharedNetworkErr := errs.NewNetworkError(errs.SubtypeNetworkTransport,
