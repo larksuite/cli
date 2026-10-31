@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -35,32 +34,10 @@ func buildTaskMember(id, role string) map[string]interface{} {
 
 // parseTaskTime converts a flexible time string into the Task API due/start object format.
 func parseTaskTime(timeStr string) (map[string]interface{}, error) {
-	var msTs string
 	timeStr = strings.TrimSpace(timeStr)
-
-	// snapDay aligns to start-of-day or end-of-day based on hint.
-	snapDay := func(t time.Time) time.Time {
-		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-	}
-
-	if isRelativeTime(timeStr) {
-		t, err := parseRelativeTime(timeStr)
-		if err != nil {
-			return nil, err
-		}
-		if strings.HasSuffix(timeStr, "d") || strings.HasSuffix(timeStr, "w") {
-			msTs = fmt.Sprintf("%d", snapDay(t).Unix()*1000)
-		} else {
-			msTs = fmt.Sprintf("%d", t.Unix()*1000)
-		}
-	} else {
-		parsedTs, err := common.ParseTime(timeStr)
-		if err != nil {
-			return nil, err
-		}
-		var sec int64
-		fmt.Sscanf(parsedTs, "%d", &sec)
-		msTs = fmt.Sprintf("%d", sec*1000)
+	msTs, err := parseTimeFlagMillis(timeStr, "start")
+	if err != nil {
+		return nil, err
 	}
 
 	// Determine if it's an all-day event based on the input format
@@ -208,7 +185,7 @@ var CreateTask = common.Shortcut{
 		{Name: "description", Desc: "task description"},
 		{Name: "assignee", Desc: "task assignee id added during create; use open_id (ou_xxx) when assignee is user, use app id (cli_xxx) when assignee is app"},
 		{Name: "follower", Desc: "task follower id added during create; use open_id (ou_xxx) when follower is user, use app id (cli_xxx) when follower is app"},
-		{Name: "due", Desc: "due date (ISO 8601 / date:YYYY-MM-DD / relative:+2d / ms timestamp)"},
+		{Name: "due", Desc: "due date (ISO 8601 / YYYY-MM-DD / relative:+2d / Unix seconds / milliseconds with 13+ digits)"},
 		{Name: "tasklist-id", Desc: "tasklist id or applink URL"},
 		{Name: "idempotency-key", Desc: "client token for idempotency"},
 		{Name: "data", Desc: "JSON payload for creating task"},
