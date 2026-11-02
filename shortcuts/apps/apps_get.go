@@ -63,6 +63,9 @@ var AppsGet = common.Shortcut{
 			if desc, ok := app["description"].(string); ok && desc != "" {
 				fmt.Fprintf(w, "description: %s\n", desc)
 			}
+			if icon, ok := app["icon_url"].(string); ok && icon != "" {
+				fmt.Fprintf(w, "icon_url: %s\n", icon)
+			}
 			fmt.Fprintf(w, "is_published: %v\n", app["is_published"])
 			fmt.Fprintf(w, "updated_at: %v\n", app["updated_at"])
 		})
