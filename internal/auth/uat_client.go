@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -212,8 +213,10 @@ func refreshWithLock(ctx context.Context, httpClient *http.Client, opts UATCallO
 }
 
 const (
-	refreshMaxAttempts = 2
-	uatRefreshTimeout  = 60 * time.Second
+	refreshMaxAttempts       = 2
+	uatRefreshTimeout        = 60 * time.Second
+	refreshRateLimitFallback = time.Second
+	refreshRateLimitMaxDelay = 30 * time.Second
 )
 
 type refreshRequest struct {
@@ -259,14 +262,20 @@ const (
 )
 
 type refreshResult struct {
-	action   refreshAction
-	response refreshResponse
-	err      error
+	action     refreshAction
+	retryDelay time.Duration
+	response   refreshResponse
+	err        error
 }
 
 // doRefreshToken performs the HTTP refresh and applies its storage result.
 // The caller must hold the account's token storage lock.
 func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
+	return doRefreshTokenWithRetryWait(ctx, httpClient, opts, stored, waitRefreshRetry)
+}
+
+// Inject the wait to test scheduling without sleeping.
+func doRefreshTokenWithRetryWait(ctx context.Context, httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken, wait func(context.Context, time.Duration) error) (*StoredUAToken, error) {
 	errOut := opts.ErrOut
 	if errOut == nil {
 		errOut = os.Stderr
@@ -352,7 +361,19 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 				fmt.Fprintf(errOut,
 					"[lark-cli] [WARN] uat-client: refresh attempt %d/%d failed for %s: %v; retrying\n",
 					ordinaryAttempts, refreshMaxAttempts, opts.UserOpenId, result.err)
-				continue
+				if result.retryDelay > 0 {
+					if err := wait(ctx, result.retryDelay); err != nil {
+						result.err = err
+						result.action = refreshStopAndPreserve
+						if uncertain {
+							result.action = refreshStopAndClear
+						}
+					} else {
+						continue
+					}
+				} else {
+					continue
+				}
 			}
 		case refreshStopAndPreserve, refreshStopAndClear:
 		default:
@@ -503,7 +524,8 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 	// Inspect the status before decoding: the endpoint may return plain text.
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return refreshResult{
-			action: refreshRetryAndPreserve,
+			retryDelay: refreshRateLimitDelay(resp.Header.Get("Retry-After"), localReceiveTime),
+			action:     refreshRetryAndPreserve,
 			err: errs.NewAPIError(errs.SubtypeRateLimit,
 				"token refresh rate limited (HTTP 429)").
 				WithCode(http.StatusTooManyRequests).
@@ -768,4 +790,41 @@ func ensureTokenStorageWritable(appID, userOpenID string) error {
 		return err
 	}
 	return nil
+}
+
+// refreshRateLimitDelay bounds the sole ordinary retry wait. Zero/past dates
+// use the fallback too, so a 429 never causes an immediate retry. Parse seconds
+// before converting to Duration to avoid overflowing on large header values.
+func refreshRateLimitDelay(value string, now time.Time) time.Duration {
+	value = strings.TrimSpace(value)
+	if seconds, err := strconv.ParseUint(value, 10, 64); err == nil {
+		if seconds >= uint64(refreshRateLimitMaxDelay/time.Second) {
+			return refreshRateLimitMaxDelay
+		}
+		if seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	} else if date, err := http.ParseTime(value); err == nil {
+		if delay := date.Sub(now); delay > 0 {
+			if delay > refreshRateLimitMaxDelay {
+				return refreshRateLimitMaxDelay
+			}
+			return delay
+		}
+	}
+	return refreshRateLimitFallback
+}
+
+func waitRefreshRetry(ctx context.Context, delay time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return ctx.Err()
+	}
 }
