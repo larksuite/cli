@@ -162,7 +162,8 @@
             "profile:user_profile:read"
           ],
           "accessTokens": [
-            "user"
+            "user",
+            "agent"
           ],
           "danger": true,
           "risk": "read",

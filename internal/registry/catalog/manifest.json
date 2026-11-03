@@ -25,9 +25,9 @@
     {
       "name": "contact",
       "file": "services/contact.json",
-      "revision": 5,
-      "size": 6326,
-      "sha256": "59ffac2032574d9d148dc5d010f3c3d30c524954f983c0d35e4930cacf4abb3f"
+      "revision": 6,
+      "size": 6347,
+      "sha256": "3981ec6756412a58516ca9ad37cea1f9b65077f48d835287b532fad4a151dbcf"
     },
     {
       "name": "drive",
