@@ -776,3 +776,284 @@ func TestFreebusy_BusyAndRawBusy_NoOffHoursHint(t *testing.T) {
 		})
 	}
 }
+
+// -----------------------------------------------------------------------------
+// visible time off
+// -----------------------------------------------------------------------------
+
+func TestFreebusyTimeUTC(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  string
+	}{
+		{"2026-11-03T08:00:00+08:00", "2026-11-03T00:00:00Z"},
+		{"2026-03-21T00:00:00+08:00", "2026-03-20T16:00:00Z"},
+		{"2026-03-21T23:30:00-07:00", "2026-03-22T06:30:00Z"},
+		{"2026-03-21T10:00:00.123456789+05:30", "2026-03-21T04:30:00Z"},
+		{"2026-03-21T10:00:00Z", "2026-03-21T10:00:00Z"},
+		{"invalid", "invalid"},
+		{"", ""},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			if got := freebusyTimeUTC(tc.input); got != tc.want {
+				t.Errorf("freebusyTimeUTC(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCollectTimeoffEvents_OnlyVisibleTimeoffAndDedup(t *testing.T) {
+	yes, no := true, false
+	leave := &freebusyRawItem{
+		StartTime: "2026-03-21T00:00:00+08:00", EndTime: "2026-03-23T00:00:00+08:00",
+		IsTimeoff: &yes, Summary: "休假中（2天） / 2-Days Time off", EventID: "uid_0",
+	}
+	got := collectTimeoffEvents([]*freebusyUserItems{
+		{UserID: "ou_a", FreebusyItems: []*freebusyRawItem{
+			leave,
+			leave, // exact repeat → listed once
+			{StartTime: "2026-03-20T16:00:00Z", EndTime: "2026-03-22T16:00:00Z", IsTimeoff: &yes, Summary: leave.Summary, EventID: leave.EventID},
+			{StartTime: "2026-03-23T10:00:00+08:00", EndTime: "2026-03-23T11:00:00+08:00", IsTimeoff: &no, Summary: "Meeting", EventID: "uid_1"},
+			{StartTime: "2026-03-24T00:00:00+08:00", EndTime: "2026-03-25T00:00:00+08:00", Summary: "休假中", EventID: "uid_2"},    // unknown
+			{StartTime: "2026-03-25T00:00:00+08:00", EndTime: "2026-03-26T00:00:00+08:00", IsTimeoff: &yes},                     // not visible
+			{StartTime: "2026-03-26T00:00:00+08:00", EndTime: "2026-03-27T00:00:00+08:00", IsTimeoff: &yes, Summary: "休假中（上午）"}, // no event_id
+		}},
+		{UserID: "ou_b", FreebusyItems: []*freebusyRawItem{leave}},
+	})
+	if len(got) != 2 {
+		t.Fatalf("expected 2 visible time-off events, got %d: %+v", len(got), got)
+	}
+	want := freebusyTimeoffEvent{
+		UserID: "ou_a", StartTime: "2026-03-20T16:00:00Z", EndTime: "2026-03-22T16:00:00Z",
+		Summary: leave.Summary, EventID: "uid_0",
+	}
+	if *got[0] != want {
+		t.Errorf("got[0] = %+v, want %+v", *got[0], want)
+	}
+	if got[1].UserID != "ou_b" {
+		t.Errorf("the same event on another user must be kept, got %+v", got[1])
+	}
+}
+
+func freebusyTimeoffStub() *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/freebusy/batch",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"freebusy_lists": []interface{}{
+					map[string]interface{}{
+						"user_id": "ou_a",
+						"freebusy_items": []interface{}{
+							map[string]interface{}{
+								"start_time":  "2026-03-21T00:00:00+08:00",
+								"end_time":    "2026-03-23T00:00:00+08:00",
+								"rsvp_status": "accept",
+								"is_timeoff":  true,
+								"summary":     "休假中（2天） / 2-Days Time off",
+								"event_id":    "uid_0",
+							},
+							map[string]interface{}{
+								// adjacent meeting merges into busy but must not
+								// stretch the leave block.
+								"start_time": "2026-03-23T00:00:00+08:00",
+								"end_time":   "2026-03-24T00:00:00+08:00",
+								"is_timeoff": false,
+								"summary":    "Meeting",
+								"event_id":   "uid_1",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// Every view returns the raw time-off block alongside its original result;
+// busy keeps the merged interval and meta.count is unchanged.
+func TestFreebusy_AllViewsIncludeTimeoffEvents(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	for _, tc := range []struct {
+		typ       string
+		wantCount int
+	}{
+		{"busy", 1},
+		{"raw_busy", 2},
+		{"free", 2},
+		{"common_free", 2},
+	} {
+		t.Run(tc.typ, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+			reg.Register(freebusyTimeoffStub())
+			err := mountAndRun(t, CalendarFreebusy, []string{
+				"+freebusy",
+				"--start", "2026-03-20T00:00:00+08:00",
+				"--end", "2026-03-25T00:00:00+08:00",
+				"--user-id", "ou_a",
+				"--type", tc.typ,
+				"--as", "bot",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			var payload struct {
+				Data struct {
+					Users []struct {
+						Busy    []*freebusyInterval `json:"busy"`
+						RawBusy []*freebusyRawItem  `json:"raw_busy"`
+					} `json:"users"`
+					TimeoffEvents []*freebusyTimeoffEvent `json:"timeoff_events"`
+				} `json:"data"`
+				Meta struct {
+					Count int `json:"count"`
+				} `json:"meta"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+				t.Fatalf("unmarshal stdout: %v (out=%s)", err, stdout.String())
+			}
+			want := freebusyTimeoffEvent{
+				UserID:    "ou_a",
+				StartTime: "2026-03-20T16:00:00Z",
+				EndTime:   "2026-03-22T16:00:00Z",
+				Summary:   "休假中（2天） / 2-Days Time off",
+				EventID:   "uid_0",
+			}
+			if len(payload.Data.TimeoffEvents) != 1 || *payload.Data.TimeoffEvents[0] != want {
+				t.Fatalf("timeoff_events = %+v, want [%+v]", payload.Data.TimeoffEvents, want)
+			}
+			if payload.Meta.Count != tc.wantCount {
+				t.Errorf("meta.count = %d, want %d", payload.Meta.Count, tc.wantCount)
+			}
+			switch tc.typ {
+			case "busy":
+				busy := payload.Data.Users[0].Busy
+				if len(busy) != 1 || busy[0].StartTime != "2026-03-21T00:00:00+08:00" ||
+					busy[0].EndTime != "2026-03-24T00:00:00+08:00" {
+					t.Errorf("busy must still merge leave and meeting, got %+v", busy)
+				}
+			case "raw_busy":
+				raw := payload.Data.Users[0].RawBusy
+				if len(raw) != 2 {
+					t.Fatalf("expected 2 raw busy items, got %d", len(raw))
+				}
+				if raw[0].IsTimeoff == nil || !*raw[0].IsTimeoff || raw[0].Summary != want.Summary || raw[0].EventID != want.EventID ||
+					raw[1].IsTimeoff != nil || raw[1].Summary != "" || raw[1].EventID != "" {
+					t.Errorf("raw_busy must keep time-off fields only for true time off, got %+v %+v", raw[0], raw[1])
+				}
+				if raw[0].StartTime != "2026-03-21T00:00:00+08:00" || raw[0].EndTime != "2026-03-23T00:00:00+08:00" {
+					t.Errorf("raw time off must preserve upstream times, got %+v", raw[0])
+				}
+				if raw[1].StartTime != "2026-03-23T00:00:00+08:00" || raw[1].EndTime != "2026-03-24T00:00:00+08:00" {
+					t.Errorf("non-time-off item must preserve upstream times, got %+v", raw[1])
+				}
+			}
+		})
+	}
+}
+
+func TestFreebusy_NoTimeoffOmitsFields(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	for _, typ := range []string{"busy", "raw_busy", "free", "common_free"} {
+		for _, format := range []string{"json", "pretty"} {
+			t.Run(typ+"/"+format, func(t *testing.T) {
+				f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+				reg.Register(&httpmock.Stub{
+					Method: "POST",
+					URL:    "/open-apis/calendar/v4/freebusy/batch",
+					Body: map[string]interface{}{
+						"code": 0, "msg": "ok",
+						"data": map[string]interface{}{
+							"freebusy_lists": []interface{}{
+								map[string]interface{}{
+									"user_id": "ou_a",
+									"freebusy_items": []interface{}{
+										map[string]interface{}{
+											"start_time":  "2026-03-21T10:00:00+08:00",
+											"end_time":    "2026-03-21T11:00:00+08:00",
+											"rsvp_status": "accept",
+											"summary":     "休假中",
+											"event_id":    "uid_1",
+										},
+										map[string]interface{}{
+											"start_time": "2026-03-21T11:00:00+08:00",
+											"end_time":   "2026-03-21T12:00:00+08:00",
+											"is_timeoff": false,
+											"summary":    "Meeting",
+											"event_id":   "uid_2",
+										},
+										map[string]interface{}{
+											"start_time": "2026-03-21T12:00:00+08:00",
+											"end_time":   "2026-03-21T13:00:00+08:00",
+											"is_timeoff": nil,
+										},
+									},
+								},
+							},
+						},
+					},
+				})
+				err := mountAndRun(t, CalendarFreebusy, []string{
+					"+freebusy",
+					"--start", "2026-03-21",
+					"--end", "2026-03-21",
+					"--user-id", "ou_a",
+					"--type", typ,
+					"--format", format,
+					"--as", "bot",
+				}, f, stdout)
+				if err != nil {
+					t.Fatalf("unexpected err: %v", err)
+				}
+				out := stdout.String()
+				for _, field := range []string{"timeoff_events", "is_timeoff", "summary", "event_id", "Time off:"} {
+					if strings.Contains(out, field) {
+						t.Errorf("no visible time off must omit %q, got: %s", field, out)
+					}
+				}
+				if typ == "raw_busy" && format == "json" {
+					var payload struct {
+						Data struct {
+							Users []*freebusyUserRawBusy `json:"users"`
+						} `json:"data"`
+					}
+					if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+						t.Fatalf("unmarshal stdout: %v", err)
+					}
+					if len(payload.Data.Users) != 1 || len(payload.Data.Users[0].RawBusy) != 3 {
+						t.Fatalf("busy blocks must be preserved, got: %s", out)
+					}
+					raw := payload.Data.Users[0].RawBusy
+					if raw[0].StartTime != "2026-03-21T10:00:00+08:00" ||
+						raw[0].EndTime != "2026-03-21T11:00:00+08:00" || raw[0].RSVPStatus != "accept" {
+						t.Errorf("busy times and RSVP must be preserved, got: %+v", raw[0])
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestFreebusy_PrettyPrintsTimeoff(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(freebusyTimeoffStub())
+	err := mountAndRun(t, CalendarFreebusy, []string{
+		"+freebusy",
+		"--start", "2026-03-20T00:00:00+08:00",
+		"--end", "2026-03-25T00:00:00+08:00",
+		"--user-id", "ou_a",
+		"--format", "pretty",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Time off:") || !strings.Contains(out, "休假中（2天） / 2-Days Time off") || !strings.Contains(out, "uid_0") {
+		t.Errorf("pretty output should list visible time off, got: %s", out)
+	}
+	if !strings.Contains(out, "2026-03-20T16:00:00Z") || !strings.Contains(out, "2026-03-22T16:00:00Z") {
+		t.Errorf("pretty time off must use UTC, got: %s", out)
+	}
+}

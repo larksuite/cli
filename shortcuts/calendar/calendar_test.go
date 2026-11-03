@@ -2161,6 +2161,248 @@ func TestSuggestion_Success(t *testing.T) {
 	if !strings.Contains(out, `"ai_action_guidance": "book it"`) {
 		t.Errorf("stdout should contain guidance, got: %s", out)
 	}
+	if strings.Contains(out, "timeoff_events") {
+		t.Errorf("no visible time off must omit timeoff_events, got: %s", out)
+	}
+}
+
+func TestSuggestion_NoVisibleTimeoffOmitsFields(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	for _, format := range []string{"json", "pretty"} {
+		t.Run(format, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/calendar/v4/freebusy/suggestion",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "ok",
+					"data": map[string]interface{}{
+						"suggestions":        []interface{}{},
+						"ai_action_guidance": "try another day",
+						"freebusy_lists": []interface{}{
+							map[string]interface{}{
+								"user_id": "ou_user1",
+								"freebusy_items": []interface{}{
+									map[string]interface{}{
+										"start_time": "2025-03-21T08:00:00+08:00",
+										"end_time":   "2025-03-22T08:00:00+08:00",
+										"is_timeoff": nil,
+									},
+									map[string]interface{}{
+										"start_time": "2025-03-21T10:00:00+08:00",
+										"end_time":   "2025-03-21T11:00:00+08:00",
+										"is_timeoff": false,
+										"summary":    "休假中",
+										"event_id":   "uid_1",
+									},
+									map[string]interface{}{
+										"start_time": "2025-03-21T12:00:00+08:00",
+										"end_time":   "2025-03-21T13:00:00+08:00",
+										"is_timeoff": true,
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+			err := mountAndRun(t, CalendarSuggestion, []string{
+				"+suggestion",
+				"--start", "2025-03-21",
+				"--end", "2025-03-21",
+				"--attendee-ids", "ou_user1",
+				"--format", format,
+				"--as", "bot",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			out := stdout.String()
+			for _, field := range []string{"timeoff_events", "freebusy_lists", "is_timeoff", "summary", "event_id", "Time off:"} {
+				if strings.Contains(out, field) {
+					t.Errorf("no visible time off must omit %q, got: %s", field, out)
+				}
+			}
+			if !strings.Contains(out, "try another day") {
+				t.Errorf("action guidance must be preserved, got: %s", out)
+			}
+		})
+	}
+}
+
+// Suggestion keeps its original result and adds visible time off when candidates exist.
+func TestSuggestion_TimeoffEvents(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/freebusy/suggestion",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"suggestions": []interface{}{
+					map[string]interface{}{
+						"event_start_time": "2025-03-21T10:00:00+08:00",
+						"event_end_time":   "2025-03-21T11:00:00+08:00",
+						"recommend_reason": "available with conflicts",
+					},
+				},
+				"ai_action_guidance": "try another day",
+				"freebusy_lists": []interface{}{
+					map[string]interface{}{
+						"user_id": "ou_user1",
+						"freebusy_items": []interface{}{
+							map[string]interface{}{
+								"start_time":  "2025-03-21T00:00:00+08:00",
+								"end_time":    "2025-03-21T23:59:00+08:00",
+								"rsvp_status": "accept",
+								"is_timeoff":  true,
+								"summary":     "休假中（上午） / 0.5-Days Time off",
+								"event_id":    "uid_0",
+							},
+							map[string]interface{}{
+								"start_time": "2025-03-21T10:00:00+08:00",
+								"end_time":   "2025-03-21T11:00:00+08:00",
+								"is_timeoff": false,
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarSuggestion, []string{
+		"+suggestion",
+		"--start", "2025-03-21",
+		"--end", "2025-03-21",
+		"--attendee-ids", "ou_user1",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var payload struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal stdout: %v (out=%s)", err, stdout.String())
+	}
+	if _, ok := payload.Data["freebusy_lists"]; ok {
+		t.Errorf("raw freebusy_lists must not be echoed, got: %s", stdout.String())
+	}
+	if string(payload.Data["ai_action_guidance"]) != `"try another day"` {
+		t.Errorf("ai_action_guidance must be kept, got: %s", stdout.String())
+	}
+	var suggestions []*EventTime
+	if err := json.Unmarshal(payload.Data["suggestions"], &suggestions); err != nil {
+		t.Fatal(err)
+	}
+	if len(suggestions) != 1 || suggestions[0].RecommendReason != "available with conflicts" {
+		t.Errorf("suggestions must be preserved, got: %+v", suggestions)
+	}
+	var events []*freebusyTimeoffEvent
+	if err := json.Unmarshal(payload.Data["timeoff_events"], &events); err != nil {
+		t.Fatalf("timeoff_events: %v (out=%s)", err, stdout.String())
+	}
+	want := freebusyTimeoffEvent{
+		UserID:    "ou_user1",
+		StartTime: "2025-03-20T16:00:00Z",
+		EndTime:   "2025-03-21T15:59:00Z",
+		Summary:   "休假中（上午） / 0.5-Days Time off",
+		EventID:   "uid_0",
+	}
+	if len(events) != 1 || *events[0] != want {
+		t.Errorf("timeoff_events = %+v, want [%+v]", events, want)
+	}
+}
+
+func TestSuggestion_EmptySuggestionsTimeoffByFormat(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	for _, format := range []string{"json", "ndjson", "csv", "table", "pretty"} {
+		t.Run(format, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    suggestionPath,
+				Body: map[string]interface{}{
+					"code": 0, "msg": "ok",
+					"data": map[string]interface{}{
+						"suggestions":        []interface{}{},
+						"ai_action_guidance": "try another day",
+						"freebusy_lists": []interface{}{
+							map[string]interface{}{
+								"user_id": "ou_user1",
+								"freebusy_items": []interface{}{
+									map[string]interface{}{
+										"start_time": "2025-03-21T00:00:00+08:00",
+										"end_time":   "2025-03-21T23:59:00+08:00",
+										"is_timeoff": true,
+										"summary":    "休假中（上午）",
+										"event_id":   "uid_0",
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+			if err := mountAndRun(t, CalendarSuggestion, []string{
+				"+suggestion", "--start", "2025-03-21", "--end", "2025-03-21",
+				"--attendee-ids", "ou_user1", "--format", format, "--as", "bot",
+			}, f, stdout); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			out := stdout.String()
+			if !strings.Contains(out, "try another day") {
+				t.Errorf("guidance must be preserved, got: %s", out)
+			}
+			if format == "pretty" {
+				for _, value := range []string{"No suggestions available.", "Time off:", "休假中（上午）", "uid_0"} {
+					if !strings.Contains(out, value) {
+						t.Errorf("pretty must retain %q, got: %s", value, out)
+					}
+				}
+				return
+			}
+			if format == "json" {
+				var payload struct {
+					Data suggestionOutput `json:"data"`
+				}
+				if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+					t.Fatal(err)
+				}
+				want := freebusyTimeoffEvent{
+					UserID: "ou_user1", StartTime: "2025-03-20T16:00:00Z",
+					EndTime: "2025-03-21T15:59:00Z", Summary: "休假中（上午）", EventID: "uid_0",
+				}
+				events := payload.Data.TimeoffEvents
+				if len(events) != 1 || *events[0] != want {
+					t.Errorf("JSON must retain time off without suggestions, got: %s", out)
+				}
+				return
+			}
+			for _, value := range []string{"timeoff_events", "uid_0", "休假中（上午）"} {
+				if strings.Contains(out, value) {
+					t.Errorf("empty suggestions must omit time off %q, got: %s", value, out)
+				}
+			}
+			switch format {
+			case "ndjson":
+				if out != "{\"ai_action_guidance\":\"try another day\"}\n" {
+					t.Errorf("guidance record changed, got: %q", out)
+				}
+			case "csv":
+				if out != "key,value\nai_action_guidance,try another day\n" {
+					t.Errorf("guidance CSV changed, got: %q", out)
+				}
+			case "table":
+				if out != "ai_action_guidance  try another day\n" {
+					t.Errorf("guidance table changed, got: %q", out)
+				}
+			}
+		})
+	}
 }
 
 func TestSuggestion_DryRun(t *testing.T) {

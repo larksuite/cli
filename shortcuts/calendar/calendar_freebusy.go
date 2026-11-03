@@ -38,11 +38,33 @@ type freebusyInterval struct {
 
 // freebusyRawItem is an un-merged upstream busy item carrying rsvp_status
 // (raw_busy view). Same time slice may repeat when the user has multiple
-// overlapping events.
+// overlapping events. Only a true is_timeoff is surfaced; its absence does not
+// establish an event's type, since private events may expose only busy times.
 type freebusyRawItem struct {
 	StartTime  string `json:"start_time"`
 	EndTime    string `json:"end_time"`
 	RSVPStatus string `json:"rsvp_status,omitempty"`
+	IsTimeoff  *bool  `json:"is_timeoff,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	EventID    string `json:"event_id,omitempty"`
+}
+
+// freebusyUserItems is one entry of the API's `freebusy_lists`, shared by
+// /freebusy/batch and /freebusy/suggestion.
+type freebusyUserItems struct {
+	UserID        string             `json:"user_id"`
+	FreebusyItems []*freebusyRawItem `json:"freebusy_items"`
+}
+
+// freebusyTimeoffEvent is a visible time-off block taken from raw items, never
+// from merged busy periods, so a neighbouring meeting cannot stretch a leave.
+// The times are calendar occupancy in UTC; the actual leave unit lives in Summary.
+type freebusyTimeoffEvent struct {
+	UserID    string `json:"user_id"`
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+	Summary   string `json:"summary"`
+	EventID   string `json:"event_id"`
 }
 
 // freebusyFreeSlot is a free window with its duration.
@@ -390,15 +412,86 @@ func parseFreebusyBatchResponse(data map[string]interface{}, userOrder []string)
 				continue
 			}
 			rsvp, _ := im["rsvp_status"].(string)
-			bucket = append(bucket, &freebusyRawItem{
+			raw := &freebusyRawItem{
 				StartTime:  startStr,
 				EndTime:    endStr,
 				RSVPStatus: rsvp,
-			})
+			}
+			if isTimeoff, _ := im["is_timeoff"].(bool); isTimeoff {
+				raw.IsTimeoff = &isTimeoff
+				raw.Summary, _ = im["summary"].(string)
+				raw.EventID, _ = im["event_id"].(string)
+			}
+			bucket = append(bucket, raw)
 		}
 		out[uid] = bucket
 	}
 	return out
+}
+
+// freebusyTimeUTC formats valid upstream timestamps in UTC at second precision.
+// Unparseable values are preserved instead of inventing a time.
+func freebusyTimeUTC(value string) string {
+	if value == "" {
+		return ""
+	}
+	t, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return value
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+// collectTimeoffEvents keeps blocks the API marks as time off and that carry
+// a visible summary and event_id, with times in UTC; an exact repeat is listed
+// once. It never guesses time off from titles.
+func collectTimeoffEvents(lists []*freebusyUserItems) []*freebusyTimeoffEvent {
+	type eventKey struct{ userID, eventID, startTime, endTime string }
+	seen := map[eventKey]struct{}{}
+	out := make([]*freebusyTimeoffEvent, 0)
+	for _, user := range lists {
+		if user == nil || user.UserID == "" {
+			continue
+		}
+		for _, it := range user.FreebusyItems {
+			if it == nil || it.IsTimeoff == nil || !*it.IsTimeoff ||
+				it.Summary == "" || it.EventID == "" || it.StartTime == "" || it.EndTime == "" {
+				continue
+			}
+			startTime, endTime := freebusyTimeUTC(it.StartTime), freebusyTimeUTC(it.EndTime)
+			key := eventKey{user.UserID, it.EventID, startTime, endTime}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, &freebusyTimeoffEvent{
+				UserID:    user.UserID,
+				StartTime: startTime,
+				EndTime:   endTime,
+				Summary:   it.Summary,
+				EventID:   it.EventID,
+			})
+		}
+	}
+	return out
+}
+
+func printTimeoffEvents(w io.Writer, events []*freebusyTimeoffEvent) {
+	if len(events) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "\nTime off:")
+	rows := make([]map[string]interface{}, 0, len(events))
+	for _, ev := range events {
+		rows = append(rows, map[string]interface{}{
+			"user_id":  ev.UserID,
+			"start":    ev.StartTime,
+			"end":      ev.EndTime,
+			"summary":  ev.Summary,
+			"event_id": ev.EventID,
+		})
+	}
+	output.PrintTable(w, rows)
 }
 
 // rawToBusyIntervals strips rsvp_status and returns the plain busy list ready
@@ -605,8 +698,15 @@ var CalendarFreebusy = common.Shortcut{
 		}
 		perUser := parseFreebusyBatchResponse(data, userIDs)
 		mergedByUser := make(map[string][]*freebusyInterval, len(userIDs))
+		userItems := make([]*freebusyUserItems, 0, len(userIDs))
 		for _, u := range userIDs {
 			mergedByUser[u] = mergeBusyIntervals(rawToBusyIntervals(perUser[u]))
+			userItems = append(userItems, &freebusyUserItems{UserID: u, FreebusyItems: perUser[u]})
+		}
+		timeoffEvents := collectTimeoffEvents(userItems)
+		out := map[string]interface{}{}
+		if len(timeoffEvents) > 0 {
+			out["timeoff_events"] = timeoffEvents
 		}
 
 		switch typ {
@@ -621,8 +721,9 @@ var CalendarFreebusy = common.Shortcut{
 				users = append(users, &freebusyUserBusy{UserID: u, Busy: items})
 				total += len(items)
 			}
-			out := map[string]interface{}{"users": users}
+			out["users"] = users
 			runtime.OutFormat(out, &output.Meta{Count: total}, func(w io.Writer) {
+				defer printTimeoffEvents(w, timeoffEvents)
 				if total == 0 {
 					fmt.Fprintln(w, "No busy periods in this time range.")
 					return
@@ -657,8 +758,9 @@ var CalendarFreebusy = common.Shortcut{
 				users = append(users, &freebusyUserRawBusy{UserID: u, RawBusy: items})
 				total += len(items)
 			}
-			out := map[string]interface{}{"users": users}
+			out["users"] = users
 			runtime.OutFormat(out, &output.Meta{Count: total}, func(w io.Writer) {
+				defer printTimeoffEvents(w, timeoffEvents)
 				if total == 0 {
 					fmt.Fprintln(w, "No events in this time range.")
 					return
@@ -697,8 +799,9 @@ var CalendarFreebusy = common.Shortcut{
 				allFreeForHint = append(allFreeForHint, free...)
 			}
 			writeFreebusyOffHoursHint(runtime, freebusyTypeFree, allFreeForHint)
-			out := map[string]interface{}{"users": users}
+			out["users"] = users
 			runtime.OutFormat(out, &output.Meta{Count: total}, func(w io.Writer) {
+				defer printTimeoffEvents(w, timeoffEvents)
 				if total == 0 {
 					fmt.Fprintln(w, "No free slots in this time range.")
 					return
@@ -733,8 +836,9 @@ var CalendarFreebusy = common.Shortcut{
 				free = []*freebusyFreeSlot{}
 			}
 			writeFreebusyOffHoursHint(runtime, freebusyTypeCommonFree, free)
-			out := map[string]interface{}{"common_free": free}
+			out["common_free"] = free
 			runtime.OutFormat(out, &output.Meta{Count: len(free)}, func(w io.Writer) {
+				defer printTimeoffEvents(w, timeoffEvents)
 				if len(free) == 0 {
 					fmt.Fprintln(w, "No common free slots in this time range.")
 					return

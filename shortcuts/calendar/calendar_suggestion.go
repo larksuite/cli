@@ -59,6 +59,18 @@ type SuggestionResponse struct {
 	AiActionGuidance string       `json:"ai_action_guidance,omitempty"`
 }
 
+// suggestionAPIData also reads the raw free/busy the recommendation used; only
+// the visible time off extracted from it is surfaced.
+type suggestionAPIData struct {
+	SuggestionResponse
+	FreebusyLists []*freebusyUserItems `json:"freebusy_lists,omitempty"`
+}
+
+type suggestionOutput struct {
+	SuggestionResponse
+	TimeoffEvents []*freebusyTimeoffEvent `json:"timeoff_events,omitempty"`
+}
+
 func buildSuggestionRequest(runtime *common.RuntimeContext) (*SuggestionRequest, error) {
 	req := &SuggestionRequest{}
 
@@ -308,7 +320,7 @@ var CalendarSuggestion = common.Shortcut{
 			return err
 		}
 
-		var resp = &OpenAPIResponse[*SuggestionResponse]{}
+		var resp = &OpenAPIResponse[*suggestionAPIData]{}
 		if err := json.Unmarshal(apiResp.RawBody, &resp); err != nil {
 			return errs.NewInternalError(errs.SubtypeInvalidResponse, "unmarshal response fail").WithCause(err)
 		}
@@ -316,11 +328,25 @@ var CalendarSuggestion = common.Shortcut{
 		data := resp.Data
 		var suggestions []*EventTime
 		var aiGuidance string
+		var freebusyLists []*freebusyUserItems
 		if data != nil {
 			suggestions = data.Suggestions
 			aiGuidance = data.AiActionGuidance
+			freebusyLists = data.FreebusyLists
 		}
-		runtime.OutFormat(data, &output.Meta{Count: len(suggestions)}, func(w io.Writer) {
+		timeoffEvents := collectTimeoffEvents(freebusyLists)
+		out := &suggestionOutput{
+			SuggestionResponse: SuggestionResponse{Suggestions: suggestions, AiActionGuidance: aiGuidance},
+			TimeoffEvents:      timeoffEvents,
+		}
+		if len(suggestions) == 0 {
+			switch format, _ := output.ParseFormat(runtime.Format); format {
+			case output.FormatNDJSON, output.FormatCSV, output.FormatTable:
+				out.TimeoffEvents = nil
+			}
+		}
+		runtime.OutFormat(out, &output.Meta{Count: len(suggestions)}, func(w io.Writer) {
+			defer printTimeoffEvents(w, timeoffEvents)
 			if len(suggestions) == 0 {
 				fmt.Fprintln(w, "No suggestions available.")
 			} else {
