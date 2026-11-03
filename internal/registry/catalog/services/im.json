@@ -5183,7 +5183,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
@@ -5278,7 +5279,8 @@
           ],
           "accessTokens": [
             "user",
-            "tenant"
+            "tenant",
+            "agent"
           ],
           "danger": true,
           "risk": "write",
