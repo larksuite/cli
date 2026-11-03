@@ -227,9 +227,10 @@ const appRateLimitHint = "the request was rate limited, not rejected for its arg
 //
 // SubtypeRateLimit is withheld too: a throttled call was never evaluated, so no
 // sentence about the request can explain it. The OpenAPI gateway's 99991400
-// reached every apps command this way — +db-execute was told to check table/column
-// names and switch to --environment dev, +trace-get to verify --app-id — and an
-// agent following that sent more calls into the same limit. The failing cases that
+// reached every apps command that passes a request hint this way — +db-execute
+// was told to check table/column names and switch to --environment dev,
+// +trace-get to verify --app-id — and an agent following that sent more calls into
+// the same limit. The failing cases that
 // proved it are TestAppsDBExecute_RateLimitHintIsBackoffNotRequestFix (through the
 // command) and TestAppsHints_RateLimitDoesNotInheritRequestHint (through every
 // hint helper). Unlike the precondition class the hint is not left empty:
