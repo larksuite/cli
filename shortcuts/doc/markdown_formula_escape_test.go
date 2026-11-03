@@ -9,59 +9,21 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 )
 
-func TestProtectMarkdownFormulaEscapes(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{name: "empty", in: "", want: ""},
-		{name: "plain markdown", in: `plain \| \_ \* \+86 \~user`, want: `plain \| \_ \* \+86 \~user`},
-		{name: "inline formula", in: `$D_{\text{KL}}(q \| p)$`, want: `$D_{\text{KL}}(q \\| p)$`},
-		{name: "block formula", in: "$$\nD_{\\text{KL}}(q \\| p)\n$$", want: "$$\nD_{\\text{KL}}(q \\\\| p)\n$$"},
-		{name: "multiple formulas", in: `$a \| b$ and $c \| d$` + "\n$$\ne \\| f\n$$", want: `$a \\| b$ and $c \\| d$` + "\n$$\ne \\\\| f\n$$"},
-		{name: "latex commands", in: `$\int \frac{a}{b} \text{x} \| p$`, want: `$\int \frac{a}{b} \text{x} \\| p$`},
-		{name: "backtick fence", in: "```latex\n$q \\| p$\n```\n$q \\| p$", want: "```latex\n$q \\| p$\n```\n$q \\\\| p$"},
-		{name: "tilde fence", in: "~~~~\n$q \\| p$\n~~~~\n$q \\| p$", want: "~~~~\n$q \\| p$\n~~~~\n$q \\\\| p$"},
-		{name: "list fence", in: "- ```latex\n  $q \\| p$\n  ```\n$q \\| p$", want: "- ```latex\n  $q \\| p$\n  ```\n$q \\\\| p$"},
-		{name: "inline code", in: "`$q \\| p$` and ``$a \\| b$`` then $c \\| d$", want: "`$q \\| p$` and ``$a \\| b$`` then $c \\\\| d$"},
-		{name: "escaped dollars", in: `\$q \| p\$`, want: `\$q \| p\$`},
-		{name: "unclosed inline", in: "$q \\| p\nplain \\| text", want: "$q \\| p\nplain \\| text"},
-		{name: "price before formula", in: "Cost $5\n\n$q \\| p$", want: "Cost $5\n\n$q \\\\| p$"},
-		{name: "unmatched backtick before formula", in: "`plain\n\n$q \\| p$", want: "`plain\n\n$q \\\\| p$"},
-		{name: "unclosed block", in: "$$\nq \\| p", want: "$$\nq \\| p"},
-		{name: "already protected", in: `$q \\| p$`, want: `$q \\| p$`},
-		{name: "mixed protection", in: `$a \| b \\| c$`, want: `$a \\| b \\| c$`},
-		{name: "unsupported dollar run", in: `$$$q \| p$$$`, want: `$$$q \| p$$$`},
-		{name: "crlf block and fence", in: "$$\r\nq \\| p\r\n$$\r\n```\r\n$x \\| y$\r\n```", want: "$$\r\nq \\\\| p\r\n$$\r\n```\r\n$x \\| y$\r\n```"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := protectMarkdownFormulaEscapes(tt.in)
-			if got != tt.want {
-				t.Fatalf("protectMarkdownFormulaEscapes() = %q, want %q", got, tt.want)
-			}
-			if twice := protectMarkdownFormulaEscapes(got); twice != got {
-				t.Fatalf("second pass = %q, want idempotent %q", twice, got)
-			}
-		})
-	}
-}
-
-func TestPrepareDocsV2WriteInputProtectsMarkdownFormulasOnly(t *testing.T) {
+// TestPrepareDocsV2WriteInputPreservesFormulaEscapes keeps LaTeX content and
+// the caller's reference map unchanged for both supported input formats.
+func TestPrepareDocsV2WriteInputPreservesFormulaEscapes(t *testing.T) {
 	runtime := newUpdateShortcutTestRuntime(t, "", nil)
 	referenceMap := map[string]interface{}{"widget": map[string]interface{}{"key": "value"}}
-	input := docsV2WriteInput{Content: `$q \| p$ plain \|`, ReferenceMap: referenceMap}
+	input := docsV2WriteInput{Content: `$q \| p$ $r \\| s$ plain \|`, ReferenceMap: referenceMap}
 
 	for _, tt := range []struct {
 		name   string
 		format string
 		want   string
 	}{
-		{name: "markdown", format: "markdown", want: `$q \\| p$ plain \|`},
-		{name: "trimmed markdown", format: " markdown ", want: `$q \\| p$ plain \|`},
-		{name: "xml", format: "xml", want: `$q \| p$ plain \|`},
+		{name: "markdown", format: "markdown", want: `$q \| p$ $r \\| s$ plain \|`},
+		{name: "trimmed markdown", format: " markdown ", want: `$q \| p$ $r \\| s$ plain \|`},
+		{name: "xml", format: "xml", want: `$q \| p$ $r \\| s$ plain \|`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := prepareDocsV2WriteInputForFormat(runtime, tt.format, input)
@@ -78,9 +40,11 @@ func TestPrepareDocsV2WriteInputProtectsMarkdownFormulasOnly(t *testing.T) {
 	}
 }
 
-func TestDocsV2MarkdownWriteBodiesProtectFormulaPipes(t *testing.T) {
+// TestDocsV2MarkdownWriteBodiesPreserveFormulaPipes checks the final create and
+// update request bodies rather than only the string transformation.
+func TestDocsV2MarkdownWriteBodiesPreserveFormulaPipes(t *testing.T) {
 	content := "# Formula\n\n$D_{\\text{KL}}(q \\| p)$\n\n$$\nq \\| p\n$$\n\nSAMPLE_RATE \\* \\+86 \\~user"
-	want := "# Formula\n\n$D_{\\text{KL}}(q \\\\| p)$\n\n$$\nq \\\\| p\n$$\n\nSAMPLE_RATE \\* \\+86 \\~user"
+	want := content
 
 	t.Run("create", func(t *testing.T) {
 		f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
