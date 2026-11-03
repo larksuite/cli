@@ -125,10 +125,18 @@ func withObservabilityHint(err error) error {
 	if err == nil {
 		return nil
 	}
-	if p, ok := errs.ProblemOf(err); ok && isAppNoContainerError(p) {
-		p.Message = appNoContainerMessage
-		p.Hint = appNoContainerHint
-		return err
+	if p, ok := errs.ProblemOf(err); ok {
+		// A gateway throttle was not evaluated by the observability service.
+		// Classify it before inspecting message text that can coincidentally
+		// resemble the service's no-container business error.
+		if p.Subtype == errs.SubtypeRateLimit {
+			return withAppsHint(err, appIDListHint)
+		}
+		if isAppNoContainerError(p) {
+			p.Message = appNoContainerMessage
+			p.Hint = appNoContainerHint
+			return err
+		}
 	}
 	return withAppsHint(err, appIDListHint)
 }
@@ -158,6 +166,15 @@ func withAppsHint(err error, hint string) error {
 	}
 	// p points at the embedded Problem, so the mutation is reflected in err.
 	if p, ok := errs.ProblemOf(err); ok {
+		// Classification beats message heuristics. A gateway throttle was not
+		// evaluated by the database service, so text that resembles a database
+		// state marker must not reclassify it or replace backoff guidance.
+		if p.Subtype == errs.SubtypeRateLimit {
+			if strings.TrimSpace(p.Hint) == "" {
+				p.Hint = appRateLimitHint
+			}
+			return err
+		}
 		if isAppNoDatabaseError(p) {
 			p.Message = appNoDatabaseMessage
 			p.Hint = appNoDatabaseHint
@@ -168,15 +185,8 @@ func withAppsHint(err error, hint string) error {
 		if applyDBSubcode(p) {
 			return err
 		}
-		if strings.TrimSpace(p.Hint) == "" {
-			switch {
-			case hintExplainsFailure(p):
-				p.Hint = hint
-			case p.Subtype == errs.SubtypeRateLimit:
-				// The caller's hint is withheld, but a throttle has one next step
-				// that holds for every command: send the same call less, later.
-				p.Hint = appRateLimitHint
-			}
+		if strings.TrimSpace(p.Hint) == "" && hintExplainsFailure(p) {
+			p.Hint = hint
 		}
 		return err
 	}

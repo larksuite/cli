@@ -122,6 +122,53 @@ func TestWithAppsHint_RateLimitKeepsUpstreamHint(t *testing.T) {
 	}
 }
 
+// Rate-limit classification is stronger evidence than message text. The same
+// helpers also recognize database state from message markers, but a gateway
+// throttle can carry arbitrary upstream wording and was not evaluated by the
+// database service. Those markers must not turn a throttle into request advice.
+func TestWithAppsHint_RateLimitWinsOverDatabaseMessageMarkers(t *testing.T) {
+	for _, message := range []string{
+		"k_dl_4000004: request trigger frequency limit",
+		"no db branch: request trigger frequency limit",
+	} {
+		t.Run(message, func(t *testing.T) {
+			in := errs.NewAPIError(errs.SubtypeRateLimit, "%s", message).
+				WithCode(99991400).WithRetryable()
+			out := withAppsHint(in, appIDListHint)
+			p, _ := errs.ProblemOf(out)
+			if p.Subtype != errs.SubtypeRateLimit || p.Code != 99991400 || !p.Retryable {
+				t.Fatalf("classification mutated: subtype=%q code=%d retryable=%t", p.Subtype, p.Code, p.Retryable)
+			}
+			if p.Message != message {
+				t.Fatalf("message = %q, want original %q", p.Message, message)
+			}
+			if p.Hint != appRateLimitHint {
+				t.Fatalf("hint = %q, want rate-limit backoff hint %q", p.Hint, appRateLimitHint)
+			}
+		})
+	}
+}
+
+// The observability wrapper has its own message heuristic before withAppsHint.
+// A throttle whose upstream text resembles the no-container business error must
+// still keep its classification and tell the caller to back off, not deploy.
+func TestWithObservabilityHint_RateLimitWinsOverContainerMessageMarker(t *testing.T) {
+	message := "container not exist: request trigger frequency limit"
+	in := errs.NewAPIError(errs.SubtypeRateLimit, "%s", message).
+		WithCode(99991400).WithRetryable()
+	out := withObservabilityHint(in)
+	p, _ := errs.ProblemOf(out)
+	if p.Subtype != errs.SubtypeRateLimit || p.Code != 99991400 || !p.Retryable {
+		t.Fatalf("classification mutated: subtype=%q code=%d retryable=%t", p.Subtype, p.Code, p.Retryable)
+	}
+	if p.Message != message {
+		t.Fatalf("message = %q, want original %q", p.Message, message)
+	}
+	if p.Hint != appRateLimitHint {
+		t.Fatalf("hint = %q, want rate-limit backoff hint %q", p.Hint, appRateLimitHint)
+	}
+}
+
 func rateLimitStatusName(status int) string {
 	if status == 200 {
 		return "HTTP 200 envelope"
