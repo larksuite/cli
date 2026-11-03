@@ -686,6 +686,59 @@ func TestUploadFileToIMSuccess(t *testing.T) {
 	}
 }
 
+// A video or voice file sent with --file is a plain file message, so its
+// media-only upload type must degrade to stream; otherwise the server rejects
+// the send with 230055. --audio keeps the opus upload type.
+func TestResolveMediaContentUploadFileType(t *testing.T) {
+	cases := []struct {
+		name     string
+		fileName string
+		fileVal  string
+		audioVal string
+		wantMsg  string
+		wantType string
+	}{
+		{"file mp4 degrades to stream", "clip.mp4", "clip.mp4", "", "file", "stream"},
+		{"file opus degrades to stream", "voice.opus", "voice.opus", "", "file", "stream"},
+		{"audio opus keeps opus", "voice.opus", "", "voice.opus", "audio", "opus"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotBody string
+			runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.Path, "/open-apis/im/v1/files") {
+					body, err := io.ReadAll(req.Body)
+					if err != nil {
+						return nil, err
+					}
+					gotBody = string(body)
+					return shortcutJSONResponse(200, map[string]interface{}{
+						"code": 0,
+						"data": map[string]interface{}{"file_key": "file_uploaded"},
+					}), nil
+				}
+				return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+			}))
+
+			cmdutil.TestChdir(t, t.TempDir())
+			if err := os.WriteFile(tc.fileName, []byte("not-a-real-media"), 0600); err != nil {
+				t.Fatalf("WriteFile() error = %v", err)
+			}
+
+			msgType, content, err := resolveMediaContent(context.Background(), runtime, "", "", tc.fileVal, "", "", tc.audioVal)
+			if err != nil {
+				t.Fatalf("resolveMediaContent() error = %v", err)
+			}
+			if msgType != tc.wantMsg || !strings.Contains(content, "file_uploaded") {
+				t.Fatalf("resolveMediaContent() = (%q, %q), want a %s message with file_uploaded", msgType, content, tc.wantMsg)
+			}
+			if !strings.Contains(gotBody, "name=\"file_type\"\r\n\r\n"+tc.wantType) {
+				t.Fatalf("upload body = %q, want file_type=%s", gotBody, tc.wantType)
+			}
+		})
+	}
+}
+
 func TestUploadImageToIMSizeLimit(t *testing.T) {
 	cmdutil.TestChdir(t, t.TempDir())
 	path := "too-large.png"

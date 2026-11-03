@@ -309,6 +309,18 @@ type mediaSpec struct {
 	maxSize      int64     // download size limit
 	withDuration bool      // whether to parse audio/video duration
 	resultKey    string    // JSON key for the upload result, e.g. "image_key"
+	plainFile    bool      // --file: a plain file message, so a media-only upload type degrades to stream
+}
+
+// uploadFileType adapts a detected upload type to the message being sent. A
+// plain --file message may not carry a media-only upload type: the server
+// rejects opus/mp4 with msg_type=file (230055 "The type of file upload does not
+// match the type of message being sent"), so they degrade to stream.
+func (s mediaSpec) uploadFileType(detected string) string {
+	if s.plainFile && (detected == "opus" || detected == "mp4") {
+		return "stream"
+	}
+	return detected
 }
 
 // resolveMediaContent resolves text/media flags to (msgType, contentJSON) for Execute.
@@ -327,7 +339,7 @@ func resolveMediaContent(ctx context.Context, runtime *common.RuntimeContext, te
 	// All other media types follow a uniform pattern: single input → single key.
 	specs := []mediaSpec{
 		{value: imageVal, flagName: "--image", mediaType: "image", msgType: "image", kind: mediaKindImage, maxSize: maxImageUploadSize, resultKey: "image_key"},
-		{value: fileVal, flagName: "--file", mediaType: "file", msgType: "file", kind: mediaKindFile, maxSize: maxFileUploadSize, resultKey: "file_key"},
+		{value: fileVal, flagName: "--file", mediaType: "file", msgType: "file", kind: mediaKindFile, maxSize: maxFileUploadSize, plainFile: true, resultKey: "file_key"},
 		{value: audioVal, flagName: "--audio", mediaType: "audio", msgType: "audio", kind: mediaKindFile, maxSize: maxFileUploadSize, withDuration: true, resultKey: "file_key"},
 	}
 
@@ -382,7 +394,7 @@ func resolveURLMedia(ctx context.Context, runtime *common.RuntimeContext, s medi
 	if s.withDuration {
 		dur = mb.Duration()
 	}
-	return uploadFileFromReader(ctx, runtime, mb.Reader(), mb.FileName(), mb.FileType(), dur)
+	return uploadFileFromReader(ctx, runtime, mb.Reader(), mb.FileName(), s.uploadFileType(mb.FileType()), dur)
 }
 
 // resolveLocalMedia uploads a local file.
@@ -393,7 +405,7 @@ func resolveLocalMedia(ctx context.Context, runtime *common.RuntimeContext, s me
 		return uploadImageToIM(ctx, runtime, s.value, "message", s.flagName)
 	}
 
-	ft := detectIMFileType(s.value)
+	ft := s.uploadFileType(detectIMFileType(s.value))
 	dur := ""
 	if s.withDuration {
 		dur = parseMediaDuration(runtime, s.value, ft)
