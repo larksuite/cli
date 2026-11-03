@@ -84,6 +84,8 @@ lark-cli base +form-questions-update \
 | `visible_rule` | 否 | 目标题目显隐条件；传完整 `{logic, conditions}` 对象覆盖，传 `null` 或省略都会清空（见下方说明） |
 | `input_range_limit` | 否 | 目标输入范围限制（字数 / 数值区间 / 可选日期区间）；传完整对象覆盖，传 `null` 清除限制（见下方说明） |
 
+公式、查找引用、签字题的必填与显隐条件限制见 [lark-base-form-questions-create.md](lark-base-form-questions-create.md) 的「超链接、公式、查找引用、签字题」一节。
+
 ## 全量覆盖语义
 
 - 先执行 `+form-questions-list`，读取被更新题目的当前 `id`、`title`、`description`、`required`、`option_display_mode`、`visible_rule`、`input_range_limit`。
@@ -119,6 +121,8 @@ lark-cli base +form-questions-update \
 > **仅当用户明确要求限制或解除填写范围（字数、数值区间、可选日期区间）时，才需要读下面的说明；否则忽略本节。**
 
 `input_range_limit` 是题目级配置，与 `required`、`visible_rule` 同级。三类结构（`text_length` / `number_range` / `date_range`）、字段名、`anchor` 取值、相对日期映射表和产品侧边界值都在 [lark-base-form-questions-create.md](lark-base-form-questions-create.md) 的「`input_range_limit` 输入范围限制」，构造 JSON 前读那一节，不要凭印象拼字段名。
+
+电话号码题可以更新标题、描述、必填和显隐条件，也可以从隐藏状态恢复；其 `type:text + style.type:phone` 由服务端回显，不需要在更新对象里重传。电话号码题不支持 `input_range_limit`：用户要求给电话题设字数 / 位数限制时，不写限制、如实说明不支持，不得用 `+field-update` 把该字段改成普通文本、也不得新建普通文本题加字数限制来替代。
 
 本命令特有的三条：
 

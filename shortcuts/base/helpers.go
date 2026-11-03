@@ -392,6 +392,10 @@ func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[s
 }
 
 func baseV3RawContext(ctx context.Context, runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
+	return baseV3RawContextWithErrorPolicy(ctx, runtime, method, path, params, data, baseAPIErrorPolicy{})
+}
+
+func baseV3RawContextWithErrorPolicy(ctx context.Context, runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}, policy baseAPIErrorPolicy) (map[string]interface{}, error) {
 	queryParams := make(larkcore.QueryParams)
 	for k, v := range params {
 		switch val := v.(type) {
@@ -423,7 +427,7 @@ func baseV3RawContext(ctx context.Context, runtime *common.RuntimeContext, metho
 		if statusErr := baseHTTPStatusErrorFromInvalidResponse(resp, err); statusErr != nil {
 			return nil, statusErr
 		}
-		return nil, enrichBaseAPIErrorFromBody(err, resp.RawBody, runtime.APIClassifyContext())
+		return nil, enrichBaseAPIErrorFromBodyWithPolicy(err, resp.RawBody, runtime.APIClassifyContext(), policy)
 	}
 	result, parseErr := decodeBaseV3Response(resp.RawBody)
 	if parseErr != nil {
@@ -508,6 +512,12 @@ func baseHTTPStatusErrorFromInvalidResponse(resp *larkcore.ApiResp, classified e
 func baseV3Call(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
 	result, err := baseV3Raw(runtime, method, path, params, data)
 	return handleBaseAPIResult(runtime, result, err, "API call failed")
+}
+
+// 两条失败路径使用同一策略：HTTP 状态错误在 raw 层富化，业务错误信封在 result 层富化。
+func baseV3CallWithErrorPolicy(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}, policy baseAPIErrorPolicy) (map[string]interface{}, error) {
+	result, err := baseV3RawContextWithErrorPolicy(runtime.Ctx(), runtime, method, path, params, data, policy)
+	return handleBaseAPIResultWithPolicy(runtime, result, err, "API call failed", policy)
 }
 
 func baseV3CallContext(ctx context.Context, runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {

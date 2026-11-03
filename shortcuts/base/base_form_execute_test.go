@@ -4,6 +4,7 @@
 package base
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -302,6 +303,35 @@ func TestBaseFormQuestionsExecuteCreate(t *testing.T) {
 			"--questions", `not-an-array`}
 		if err := runShortcut(t, BaseFormQuestionsCreate, args, factory, stdout); err == nil {
 			t.Fatalf("expected error for invalid questions JSON")
+		}
+	})
+
+	t.Run("phone request dry-run preserves canonical and alias payloads", func(t *testing.T) {
+		for _, tc := range []struct {
+			name      string
+			questions string
+			wants     []string
+		}{
+			{
+				name:      "canonical",
+				questions: `[{"type":"text","style":{"type":"phone"},"title":"联系电话"}]`,
+				wants:     []string{`"type":"text"`, `"style":{"type":"phone"}`, `"title":"联系电话"`},
+			},
+			{
+				name:      "alias",
+				questions: `[{"type":"phone","title":"备用电话"}]`,
+				wants:     []string{`"type":"phone"`, `"title":"备用电话"`},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				rt := newBaseTestRuntime(map[string]string{
+					"base-token": "app_x",
+					"table-id":   "tbl_x",
+					"form-id":    "vew_form1",
+					"questions":  tc.questions,
+				}, nil, nil)
+				assertDryRunContains(t, BaseFormQuestionsCreate.DryRun(context.Background(), rt), tc.wants...)
+			})
 		}
 	})
 

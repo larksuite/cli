@@ -168,11 +168,6 @@ func validateWorkflowAIAgentData(path string, step map[string]interface{}, trigg
 		if !ok || strings.TrimSpace(name) == "" {
 			return baseFlagErrorf("%s.data.model.name must be a model pack ID", path)
 		}
-		for _, key := range []string{"thinking_mode", "thinkingMode"} {
-			if _, exists := model[key]; exists {
-				return baseFlagErrorf("%s.data.model.%s is not supported by the current Workflow converter", path, key)
-			}
-		}
 		if value, exists := model["temperature"]; exists {
 			if _, ok := value.(float64); !ok {
 				return baseFlagErrorf("%s.data.model.temperature must be a number", path)

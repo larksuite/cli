@@ -102,6 +102,7 @@
 | `TimerTrigger` | 定时触发 |
 | `ReminderTrigger` | 日期提醒触发 |
 | `ButtonTrigger` | 按钮点击触发 |
+| `WebhookTrigger` | 外部 HTTP POST 请求触发 |
 | `LarkMessageTrigger` | 接收飞书消息触发 |
 
 > 所有 Trigger 节点**请勿设置** `children` ，通过 `next` 串联后继。
@@ -126,6 +127,7 @@
 | `Delay` | 延迟 |
 | `LarkMessageAction` | 发送飞书消息 |
 | `LarkEmailAction` | 发送飞书邮件，见 [节点参数](#larkemailaction) |
+| `AppScreenshotAction` | 应用页面截图，见 [参数与图片引用](#appscreenshotaction) |
 | `GenerateAiTextAction` | AI 生成文本 |
 | `APIHubAction` | 当前仅支持飞书任务／日程／群组的 9 个动作；组件、参数和输出仅使用 [二方节点清单](lark-base-workflow-apihub.md) 所列内容 |
 | `AIAnalysisAction` | AI 分析 |
@@ -299,6 +301,33 @@
 > `buttonField` 和 `buttonElement` 的输出能力不同，详见下方「ButtonTrigger（按钮触发器）」输出说明。
 
 
+### WebhookTrigger
+
+需要限制来源时，将示例 IP `203.0.113.10` 替换为调用方真实公网出口 IPv4；不限制来源时省略 `ip_allow_list`，不要直接使用示例 IP。
+
+```json
+{
+  "ip_allow_list": ["203.0.113.10"],
+  "enable_bearer_check": true,
+  "output_json": "{\"order_id\":\"string\",\"amount\":0}"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `ip_allow_list` | 否 | 公网 IPv4 白名单，最多 10 项；不限制来源 IP 时省略该字段，不传空数组 |
+| `enable_bearer_check` | 否 | 是否要求 `Authorization: Bearer <token>`，默认 `false` |
+| `output_json` | 否 | 请求体输出结构的 JSON 字符串；配置后可通过 `$.<step_id>.body.<field>` 引用字段 |
+| `reset_bearer_token` | 否 | 仅 `+workflow-update` 可用；设为 `true` 时必须同时设置 `enable_bearer_check=true`，成功后原子轮换 Bearer Token |
+
+`WebhookTrigger` 接收外部 HTTP POST 请求。具备 Base 管理权限时，创建、查询、更新响应会在触发器 `data` 中返回 `webhook_url`；开启 Bearer 校验时还返回 `bearer_token`，关闭时为 `null`。这两个字段只读，构造创建或更新请求时须移除；`+workflow-list` 不返回它们。
+
+- 普通 `+workflow-update` 保留当前 URL 和 Bearer Token；需要轮换时设置 `reset_bearer_token:true` 并保持 `enable_bearer_check:true`。更新失败时旧 Token 保持有效。
+- 关闭 Bearer 校验后再次开启会生成新 Token；后续调用须使用新 Token。
+- URL 和 Token 只交给用户指定的调用方安全使用；报告和日志中遮蔽这些值，不回填进 Workflow JSON。
+
+完整流程见 [Webhook 示例](lark-base-workflow.md#webhook-触发与凭证)，请求体字段引用见 [Webhook 输出](lark-base-workflow-schema.md#webhooktrigger-输出)。
+
 ### LarkMessageTrigger
 
 ```json
@@ -446,7 +475,19 @@
 |------|------|------|
 | `duration` | 是 | 延迟时长（分钟），范围 [1, 120] |
 
+### AppScreenshotAction
+
+必填 `app_name`（当前 Base 所在 Workspace 内可访问应用的准确名称）、`page_name`（该应用中可访问页面的准确名称）。名称来自用户或已有 `+workflow-get` 配置；目标不明确时先确认，查找失败核对名称、Workspace 和权限。
+
+```json
+{"app_name":"销售应用","page_name":"订单看板"}
+```
+
+图片输出见 [应用截图输出](lark-base-workflow-schema.md#appscreenshotaction-输出)；消息与邮件的使用限制见 [图片与智能总结引用](lark-base-workflow-message-email.md#图片与智能总结引用)。
+
 ### LarkMessageAction
+
+以下固定人员示例仅用于已唯一解析的具体收件人；职责人动态通知使用人员字段 `ref`，不能改用常量。
 
 ```json
 {
@@ -469,7 +510,8 @@
 | `receiver` | 是 | ValueInfo[] |
 | `send_to_everyone` | 是 | 是否发送给所有人 |
 | `title` | 否 | TextRefItem[] 消息标题 |
-| `content` | 是 | TextRefItem[] 消息内容 |
+| `content` | 普通正文时必填 | 有序 text/ref 数组 |
+| `attachments` | 否 | 附件引用数组，见 [附件](lark-base-workflow-message-email.md#附件) |
 | `btn_list` | 是 | 按钮列表，不需要时为空数组 |
 
 `ButtonConfig`：
@@ -479,8 +521,10 @@
 | `text` | string | 按钮文字 |
 | `btn_action` | string | `addRecord` / `setRecord` / `openLink` |
 | `link` | ValueInfo[] | 跳转链接（`openLink` 时使用） |
-| `table_name` | string | 操作表名（`addRecord` 时使用） |
+| `table_name` | string | `addRecord` 必填，先查询真实目标表名 |
 | `record_values` | RecordFieldValue[] | 记录赋值（`addRecord` / `setRecord` 时使用） |
+
+富文本、图片与智能总结引用、多记录展示、标题背景色及按钮扩展见 [消息与邮件](lark-base-workflow-message-email.md)。新建需要这些能力，或更新 GET 已含相关配置时，先读对应章节并保留原配置。
 
 ### LarkEmailAction
 
@@ -490,11 +534,27 @@
 |---|---|
 | `to` | 收件人数组；邮箱使用 `{"value_type":"text","value":"name@example.com"}`；也支持已解析的 user/group 或合法 ref |
 | `cc` / `bcc` | 抄送 / 密送，格式同 `to` |
-| `subject` / `content` | 主题 / 纯文本正文，text/ref 数组 |
-| `attachments` | 附件值数组；使用已确认的附件值或上游附件引用，不填本地文件路径 |
-| `show_source` | 布尔值，是否展示来源 |
+| `subject` | 主题，text/ref 数组 |
+| `content` | 普通正文，有序 text/ref 数组 |
+| `attachments` | 附件引用数组，每项均为 `ref`；见 [附件](lark-base-workflow-message-email.md#附件) |
+| `show_source` | **必填 boolean**，是否展示来源；必须显式传 `true` 或 `false`，不能省略或传字符串 |
 
-先解析实际收件人并完整配置主题、正文。收件范围、附件类型、邮箱授权和额度由服务端校验。作为 Agent 工具时，挂载和调用说明见 [普通 Action 工具](lark-base-workflow-ai-agent.md#普通-action-工具)。
+创建邮件节点时，用户未要求展示来源可显式使用 `show_source:false`；更新时保留完整 GET 中原有布尔值，除非用户要求修改。`--dry-run` 通过不代表服务端接受缺失的必填字段。最小邮件 `data` 示例（收件人须替换为实际解析结果）：
+
+```json
+{
+  "to": [{"value_type": "text", "value": "name@example.com"}],
+  "subject": [{"value_type": "text", "value": "业务通知"}],
+  "content": [{"value_type": "text", "value": "请查看本次通知。"}],
+  "show_source": false
+}
+```
+
+先解析实际收件人并完整配置主题和所选正文模式。富文本、图片与智能总结及附件见 [消息与邮件](lark-base-workflow-message-email.md)；更新 GET 已含相关配置时先读对应章节并保留。收件范围、附件类型、邮箱授权和额度由服务端校验。作为 Agent 工具时，挂载和调用说明见 [普通 Action 工具](lark-base-workflow-ai-agent.md#普通-action-工具)。
+
+#### 消息/邮件富文本正文
+
+富文本的段落、列表、片段与样式规则见 [富文本正文](lark-base-workflow-message-email.md#富文本正文)。
 
 ### GenerateAiTextAction
 
@@ -713,6 +773,15 @@ $.{stepId}.{pathId}.{childPathId}.{grandChildPathId}
 
 ---
 
+#### 仪表盘引用
+
+| 内容 | ref 的 `value` |
+|---|---|
+| 仪表盘截图 | `$.dashboard.image` |
+| 仪表盘智能总结 | `$.dashboard.aiAnalysis` |
+
+名称配置、正文支持范围与触发器限制见 [图片与智能总结引用](lark-base-workflow-message-email.md#图片与智能总结引用)。
+
 #### 触发器节点输出
 
 ##### 记录触发器（AddRecordTrigger / ChangeRecordTrigger / SetRecordTrigger / ReminderTrigger）
@@ -769,6 +838,10 @@ $.{stepId}.{pathId}.{childPathId}.{grandChildPathId}
 | `user` | 触发人 | `$.{stepId}.user` |
 | `buttonName` | 触发的按钮名称 | `$.{stepId}.buttonName` |
 
+##### WebhookTrigger 输出
+
+配置 `output_json` 后，使用 `$.<step_id>.body.<field>` 引用请求体字段。URL 与 Bearer Token 为管理凭证，不是业务输出引用；配置与轮换见 [Webhook 触发器](lark-base-workflow-schema.md#webhooktrigger)。
+
 ##### TimerTrigger（定时触发器）
 
 | pathId | 说明 | 引用示例 |
@@ -799,11 +872,15 @@ $.{stepId}.{pathId}.{childPathId}.{grandChildPathId}
 
 #### 操作节点输出
 
+##### AppScreenshotAction 输出
+
+`Image` 是图片类型输出，使用 `$.<step_id>.Image`。节点输入见 [应用截图](lark-base-workflow-schema.md#appscreenshotaction)；正文、附件支持范围与触发器限制见 [图片与智能总结引用](lark-base-workflow-message-email.md#图片与智能总结引用)。
+
 ##### FindRecordAction（查找记录）
 
 | pathId | 说明 | 引用示例|
 |--------|------|-------|
-| `fieldRecords` | 所有找到的记录的引用（可用于 Loop 遍历） | `$.{stepId}.fieldRecords`|
+| `fieldRecords` | 全部找到的记录，可供 Loop 遍历或消息正文汇总；见 [多记录展示](lark-base-workflow-message-email.md#一条消息展示多条记录) | `$.{stepId}.fieldRecords`|
 | `firstfieldsRecord` | 第一条匹配记录 | `$.{stepId}.firstfieldsRecord`|
 | `firstfieldsRecord.{fieldId}` | 首条记录的字段值，可下钻字段属性 | `$.{stepId}.firstfieldsRecord.{fieldId}`|
 | `firstfieldsRecord.recordId` | 记录 ID 数组 | `$.{stepId}.firstfieldsRecord.recordId`|
@@ -995,8 +1072,10 @@ $.{stepId}.{fieldId}.fileToken    → 文件 Token 列表（array<string>，仅�
 | SetRecordTrigger | 触发器 | ✅ | 动态（表字段 + 记录属性） |
 | ReminderTrigger | 触发器 | ✅ | 动态（表字段 + 记录属性） |
 | ButtonTrigger | 触发器 | ✅ | 动态（表字段 + 记录属性；buttonElement 仅基础触发属性） |
+| WebhookTrigger | 触发器 | ✅ | 动态（请求体字段位于 `$.<step_id>.body`） |
 | TimerTrigger | 触发器 | ✅ | 静态（仅 scheduleTime） |
 | LarkMessageTrigger | 触发器 | ✅ | 静态（消息属性列表） |
+| AppScreenshotAction | 动作 | ✅ | 图片输出 `Image` |
 | FindRecordAction | 动作 | ✅ | 动态（用户选择的字段） |
 | AddRecordAction | 动作 | ✅ | 动态（用户配置的字段） |
 | SetRecordAction | 动作 | ✅ | 动态（用户配置的字段） |

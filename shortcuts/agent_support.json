@@ -589,6 +589,9 @@
     "base +manage-select-options": {
       "agentSupport": "allowed"
     },
+    "base +plugin-search": {
+      "agentSupport": "allowed"
+    },
     "base +record-batch-create": {
       "agentSupport": "allowed"
     },

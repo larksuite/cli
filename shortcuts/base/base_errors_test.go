@@ -407,6 +407,9 @@ func TestDataErrorValueStaysParseableWhenOversized(t *testing.T) {
 	if !found {
 		t.Fatalf("recovery id was dropped entirely for an oversized value: %q", p.Hint)
 	}
+	if len(payload) > 512 {
+		t.Fatalf("recovery hint exceeded the public size limit: %d bytes", len(payload))
+	}
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
 		t.Fatalf("hint payload is not valid JSON (%v): %q", err, payload)

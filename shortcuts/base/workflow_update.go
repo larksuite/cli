@@ -18,7 +18,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 	Scopes:      []string{"base:workflow:update"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "no-validate", Type: "bool", Desc: "skip local Workflow semantic validation when the server supports a configuration not yet recognized by this CLI; JSON object parsing and required flags are still checked; server validation still applies"},
+		{Name: "no-validate", Type: "bool", Desc: "skip local Workflow configuration validation; JSON object parsing and required flags are still checked; server validation still applies"},
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
 		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow.md and lark-base-workflow-schema.md before replacing steps", Required: true},
@@ -30,6 +30,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 		"workflow-id must start with wkf; do not pass a tbl table ID.",
 		"Step ids must be unique, and every next/children link must reference an existing step id.",
 		"Updating does not enable or disable a workflow; call +workflow-enable or +workflow-disable separately.",
+		"WebhookTrigger updates preserve the current bearer token unless data.reset_bearer_token=true is set together with enable_bearer_check=true.",
 		"Use lark-base-workflow.md as the module entry and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -58,10 +59,11 @@ var BaseWorkflowUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := baseV3Call(runtime, "PUT",
+		data, err := baseV3CallWithErrorPolicy(runtime, "PUT",
 			baseV3Path("bases", runtime.Str("base-token"), "workflows", runtime.Str("workflow-id")),
 			nil,
 			body,
+			baseAPIErrorPolicy{preserveOpaqueServerError: true},
 		)
 		if err != nil {
 			return err

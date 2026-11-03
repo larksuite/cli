@@ -21,11 +21,15 @@ lark-cli base +form-detail --share-token <share_token> --format pretty
 | `base_token` | 表单所属 Base；提交附件时必须传给 `+form-submit --base-token` |
 | `questions[].id` | 题目标识，通常对应字段 ID |
 | `questions[].title` | 提交时使用的字段名/题目名，以真实返回为准 |
-| `questions[].type` | 决定值格式；提交结构见 [form-submit](lark-base-form-submit.md) |
+| `questions[].type` | 决定值格式；提交结构见 [form-submit](lark-base-form-submit.md)；`formula` / `lookup` 是只读计算题，不要提交值 |
 | `questions[].required` | 判断必填项 |
 | `questions[].filter` | 判断题目是否对当前提交可见；被隐藏的问题不要填写 |
 
 题目除固定字段外，会按类型携带动态配置，例如 `select.options` / `select.multiple`、`number.style`、`datetime.style.format`、`user.multiple`、`link.link_table`、`formula.expression`、`lookup.from/select/where/aggregate`。提交前按返回结构构造值，不要猜题目类型或选项。
+
+**识别只读计算题**：`type` 为 `formula`（带 `expression`）或 `lookup`（带 `from` / `select` / `where`）的题目由系统计算，填写人不作答；`+form-questions-list` 返回的题目同样按此识别。这类题目不要放进 `+form-submit` 的 `fields`，传了会被拒（报 `unsupported field type`）。
+
+**签字题无法从 `+form-detail` 识别**：签字题在这里显示为普通 `attachment`（不带 `style`），与附件题无法区分。需要判断某道附件题是不是签字题时，用 `+form-questions-list` 读取，签字题会回显 `{"type":"attachment","style":{"type":"signature"}}`；没有管理权限读不到题目列表时，按题目标题和用户说明判断，并向用户索取签名图片。签字题需要用户提供的 png 签名图片，按 [form-submit](lark-base-form-submit.md) 的「签字题」提交。
 
 ## filter 显示条件
 

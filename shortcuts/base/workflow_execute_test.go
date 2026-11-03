@@ -158,6 +158,72 @@ func TestBaseWorkflowExecuteCreatePreservesAIClassificationAgentData(t *testing.
 	}
 }
 
+func multiRowRecordsWorkflowBody() string {
+	return `{
+		"title": "Pending records digest",
+		"steps": [
+			{"id": "step_timer", "type": "TimerTrigger", "next": "step_find", "data": {"rule": "DAILY", "start_time": "2026-09-18 09:00"}},
+			{"id": "step_find", "type": "FindRecordAction", "next": "step_send", "data": {"table_name": "订单表", "field_names": ["客户名称", "金额", "状态"]}},
+			{
+				"id": "step_send",
+				"type": "LarkMessageAction",
+				"next": null,
+				"data": {
+					"receiver": [{"value_type": "user", "value": {"id": "ou_owner"}}],
+					"send_to_everyone": false,
+					"title": [{"value_type": "text", "value": "待处理记录"}],
+					"content": [
+						{"value_type": "text", "value": "以下记录需要处理：\n"},
+						{
+							"value_type": "ref",
+							"value": "$.step_find.fieldRecords",
+							"extra_info": {"field_name_list": ["客户名称", "金额", "状态"]}
+						}
+					],
+					"btn_list": []
+				}
+			}
+		]
+	}`
+}
+
+func TestBaseWorkflowDryRunCreatePreservesMultiRowRecordMessage(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{
+		"+workflow-create",
+		"--base-token", "app_x",
+		"--json", multiRowRecordsWorkflowBody(),
+		"--dry-run",
+		"--format", "pretty",
+	}
+	if err := runShortcut(t, BaseWorkflowCreate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"POST /open-apis/base/v3/bases/app_x/workflows",
+		`"value":"$.step_find.fieldRecords"`,
+		`"extra_info":{"field_name_list":["客户名称","金额","状态"]}`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("dry-run output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestBaseWorkflowValidateMultiRowRecordMessageDefaultsToAllFields(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	body := strings.Replace(multiRowRecordsWorkflowBody(), `,
+							"extra_info": {"field_name_list": ["客户名称", "金额", "状态"]}`, "", 1)
+	if err := runShortcut(t, BaseWorkflowCreate, []string{"+workflow-create", "--base-token", "app_x", "--json", body, "--dry-run"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `$.step_find.fieldRecords`) || strings.Contains(got, `"field_name_list"`) {
+		t.Fatalf("dry-run output must preserve fieldRecords without a field list: %s", got)
+	}
+}
+
 func TestBaseWorkflowExecuteCreateValidate(t *testing.T) {
 	t.Run("missing base-token", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
@@ -173,6 +239,27 @@ func TestBaseWorkflowExecuteCreateValidate(t *testing.T) {
 			t.Fatalf("expected error for invalid json")
 		}
 	})
+}
+
+func TestBaseWorkflowUpdatePreservesWebhookResetControl(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/workflows/wkf_1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"workflow_id": "wkf_1"},
+		},
+	}
+	reg.Register(stub)
+	body := `{"steps":[{"id":"trigger_webhook","type":"WebhookTrigger","data":{"enable_bearer_check":true,"reset_bearer_token":true,"future_server_field":{"keep":true}}}]}`
+	if err := runShortcut(t, BaseWorkflowUpdate, []string{"+workflow-update", "--base-token", "app_x", "--workflow-id", "wkf_1", "--json", body}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := string(stub.CapturedBody)
+	if !strings.Contains(got, `"reset_bearer_token":true`) || !strings.Contains(got, `"future_server_field":{"keep":true}`) {
+		t.Fatalf("webhook update payload was not forwarded verbatim enough: %s", got)
+	}
 }
 
 func TestBaseWorkflowExecuteValidateAIClassificationAgentData(t *testing.T) {
@@ -403,6 +490,19 @@ func TestBaseWorkflowExecuteUpdatePreservesAIClassificationWithoutMode(t *testin
 	}
 	if got := string(stub.CapturedBody); strings.Contains(got, `"mode"`) || strings.Contains(got, `"no_match_action"`) || !strings.Contains(got, `"classes":[`) {
 		t.Fatalf("AI classification payload should be forwarded without injected optional fields: %s", got)
+	}
+}
+
+func TestBaseWorkflowAIAnalysisPreservesPayload(t *testing.T) {
+	for _, identity := range []string{"maker", "triggerPersonal"} {
+		body := `{"steps":[{"id":"step_ai","type":"AIAnalysisAction","data":{"analysis_table_names":["订单表"],"identity_type":"` + identity + `"}}]}`
+		for _, update := range []bool{false, true} {
+			for _, dry := range []bool{false, true} {
+				t.Run(identity+"/"+fmtWorkflowAgentCase(update, dry), func(t *testing.T) {
+					assertWorkflowBodyForwarded(t, body, update, dry, false)
+				})
+			}
+		}
 	}
 }
 

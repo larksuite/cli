@@ -24,3 +24,16 @@ func TestBaseFormQuestionsCreateTipsRequireExistingQuestionCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestBaseFormQuestionsCreateQuestionsHelpStatesSignaturePNG(t *testing.T) {
+	for _, flag := range BaseFormQuestionsCreate.Flags {
+		if flag.Name != "questions" {
+			continue
+		}
+		if !strings.Contains(flag.Desc, `{"type":"signature"},"title":"Signature"} (submissions accept PNG images only)`) {
+			t.Fatalf("--questions help must state that signature submissions accept PNG only:\n%s", flag.Desc)
+		}
+		return
+	}
+	t.Fatal("--questions flag not found")
+}

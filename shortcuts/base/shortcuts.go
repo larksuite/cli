@@ -74,6 +74,7 @@ func Shortcuts() []common.Shortcut {
 		BaseTemplateCategories,
 		BaseTemplateList,
 		BaseTemplateSearch,
+		BasePluginSearch,
 		BaseRoleCreate,
 		BaseRoleDelete,
 		BaseRoleUpdate,

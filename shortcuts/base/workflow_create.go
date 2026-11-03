@@ -18,7 +18,7 @@ var BaseWorkflowCreate = common.Shortcut{
 	Scopes:      []string{"base:workflow:create"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "no-validate", Type: "bool", Desc: "skip local Workflow semantic validation when the server supports a configuration not yet recognized by this CLI; JSON object parsing and required flags are still checked; server validation still applies"},
+		{Name: "no-validate", Type: "bool", Desc: "skip local Workflow configuration validation; JSON object parsing and required flags are still checked; server validation still applies"},
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow.md and lark-base-workflow-schema.md before constructing steps", Required: true},
 	},
@@ -26,6 +26,7 @@ var BaseWorkflowCreate = common.Shortcut{
 		"lark-cli base +workflow-create --base-token <base_token> --json @workflow.json",
 		"client_token is required and should be unique per create request.",
 		"New workflows are created disabled; call +workflow-enable after creation when the user wants it active.",
+		"WebhookTrigger credentials are server-managed; create/get/update responses return the current webhook_url and bearer_token to authorized administrators.",
 		"Before constructing steps, use +table-list and +field-list to confirm real table and field names.",
 		"Step ids must be unique, and every next/children link must reference an existing step id.",
 		"Use lark-base-workflow.md as the module entry and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
@@ -54,10 +55,11 @@ var BaseWorkflowCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := baseV3Call(runtime, "POST",
+		data, err := baseV3CallWithErrorPolicy(runtime, "POST",
 			baseV3Path("bases", runtime.Str("base-token"), "workflows"),
 			nil,
 			body,
+			baseAPIErrorPolicy{preserveOpaqueServerError: true},
 		)
 		if err != nil {
 			return err

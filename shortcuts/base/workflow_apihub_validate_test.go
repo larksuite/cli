@@ -150,7 +150,7 @@ func TestWorkflowAPIHubCamelValueTypeCompatible(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateWorkflowBodyForCLI(parsed); err != nil {
+	if err := validateWorkflowBodyForCLI("+workflow-create", parsed); err != nil {
 		t.Fatal(err)
 	}
 }

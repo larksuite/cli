@@ -66,6 +66,8 @@
 | 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例-1-新增记录触发--发送消息) |
 | 按钮点击+调用外部接口+写入日志 | ButtonTrigger → HTTPClientAction → AddRecordAction | [下方](#示例-6-按钮触发--调用外部接口--写入同步日志) |
 | 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例-2-定时触发--查找记录--循环遍历--发送消息) |
+| 一条消息展示多条查找记录 | FindRecordAction → LarkMessageAction | [多记录消息与正文示例](lark-base-workflow-message-email.md#一条消息展示多条记录) |
+| 消息／邮件富文本、图片与智能总结引用、标题背景色、按钮扩展或附件 | LarkMessageAction / LarkEmailAction | [消息与邮件](lark-base-workflow-message-email.md)；按需读对应章节，更新 GET 已含相关配置时也须读取并保留 |
 | 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例-3-条件分支ifelsebranch) |
 | 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例-4-多路分支switchbranch) |
 | 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例-5-组合场景定时查找循环分支消息) |
@@ -74,9 +76,25 @@
 | AI 智能体、附件理解、工具调用或结构化输出 | ... → AIAgentAction | [配置与工具](lark-base-workflow-ai-agent.md) |
 | 按文本语义分类并分流 | ... → AIClassificationBranch → 分类后处理 | [下方](#示例-7-ai-分类用户反馈自动分流) |
 | 飞书任务、日程、群组自动化 | ... → APIHubAction | [组件与参数](lark-base-workflow-apihub.md#当前支持的组件) |
+| 外部 Webhook 触发 | WebhookTrigger → 后续 Action | [Webhook 触发](#webhook-触发与凭证) |
 
+- 动态人员接收人须引用普通或系统人员字段，不得改用常量；关联字段须取关联记录的人员字段，不使用公式或查找引用字段作接收人。
 - “发给我/通知我/本人”指当前用户：用 `lark-cli contact +get-user`（不传 `--user-id`）获取 `.data.user.open_id`。其他人员、群组需按用户指定对象解析，不能用当前用户或示例 ID 兜底。
 - 条件无法原样回读时，只在用户授权修改表结构的前提下考虑派生字段；否则保持 disabled 并说明未完成项。
+
+---
+
+## Webhook 触发与凭证
+
+请求体示例为 `{"event":"string"}`。先解析真实接收人并替换示例 ID；默认创建为 disabled，预检后按用户要求启用。
+
+需要限制来源时，将示例 IP `203.0.113.10` 替换为调用方真实公网出口 IPv4；不限制来源时省略 `ip_allow_list`，不要直接使用示例 IP。
+
+```json
+{"client_token":"unique-create-request-id","title":"外部事件触发","steps":[{"id":"trigger_webhook","type":"WebhookTrigger","title":"接收外部事件","next":"action_1","data":{"ip_allow_list":["203.0.113.10"],"enable_bearer_check":true,"output_json":"{\"event\":\"string\"}"}},{"id":"action_1","type":"LarkMessageAction","title":"发送通知","next":null,"data":{"receiver":[{"value_type":"user","value":{"id":"ou_owner"}}],"send_to_everyone":false,"title":[{"value_type":"text","value":"外部事件通知"}],"content":[{"value_type":"ref","value":"$.trigger_webhook.body.event"}],"btn_list":[]}}]}
+```
+
+凭证读取、更新与轮换规则见 [Webhook 触发器](lark-base-workflow-schema.md#webhooktrigger)。
 
 ---
 
@@ -228,6 +246,12 @@
 - `Loop.children.links` 必须包含 `kind: "loop_start"` 的链接指向循环体
 - 循环体内用 `$.{loopStepId}.item.{fieldId}` 引用当前遍历记录的字段
 - `$.{loopStepId}.index` 获取当前索引（从 0 开始）
+
+---
+
+### 一条消息展示多条查找记录（不使用 Loop）
+
+汇总成一条消息时不加 Loop；正文、字段选择及表格或列表展示见 [多记录消息与正文示例](lark-base-workflow-message-email.md#一条消息展示多条记录)。逐条通知时才使用 Loop。
 
 ---
 

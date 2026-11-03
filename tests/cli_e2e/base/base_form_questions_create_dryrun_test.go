@@ -69,6 +69,51 @@ func TestBaseFormQuestionsCreateExistingFieldDryRun(t *testing.T) {
 	require.Equal(t, "fldEmail", clie2e.DryRunGet(out, "api.0.body.questions.0.field_id").String(), out)
 }
 
+func TestBaseFormQuestionsCreatePhoneDryRun(t *testing.T) {
+	setBaseDryRunConfigEnv(t)
+
+	tests := []struct {
+		name      string
+		questions string
+		wantType  string
+		wantStyle string
+	}{
+		{name: "canonical", questions: `[{"type":"text","style":{"type":"phone"},"title":"联系电话","required":true}]`, wantType: "text", wantStyle: "phone"},
+		{name: "alias", questions: `[{"type":"phone","title":"联系电话","required":true}]`, wantType: "phone"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"base", "+form-questions-create",
+					"--base-token", "app_x",
+					"--table-id", "tbl_x",
+					"--form-id", "vew_x",
+					"--questions", tt.questions,
+					"--dry-run",
+				},
+				DefaultAs: "bot",
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 0)
+
+			out := result.Stdout
+			require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_x/questions", clie2e.DryRunGet(out, "api.0.url").String(), out)
+			require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), out)
+			// The CLI forwards phone questions verbatim; normalization belongs to the server.
+			require.Equal(t, tt.wantType, clie2e.DryRunGet(out, "api.0.body.questions.0.type").String(), out)
+			require.Equal(t, tt.wantStyle != "", clie2e.DryRunGet(out, "api.0.body.questions.0.style").Exists(), out)
+			require.Equal(t, tt.wantStyle, clie2e.DryRunGet(out, "api.0.body.questions.0.style.type").String(), out)
+			require.Equal(t, "联系电话", clie2e.DryRunGet(out, "api.0.body.questions.0.title").String(), out)
+			require.True(t, clie2e.DryRunGet(out, "api.0.body.questions.0.required").Bool(), out)
+		})
+	}
+}
+
 func TestBaseFormQuestionsCreateDryRunRejectsInvalidInput(t *testing.T) {
 	setBaseDryRunConfigEnv(t)
 
@@ -133,4 +178,72 @@ func TestBaseFormQuestionsCreateHelpShowsExistingQuestionGuard(t *testing.T) {
 	require.Contains(t, strings.ToLower(result.Stdout), "form may already contain questions")
 	require.Contains(t, result.Stdout, "+form-questions-list")
 	require.Contains(t, result.Stdout, "+form-questions-update")
+	require.Contains(t, result.Stdout, `"style":{"type":"phone"}`)
+	require.Contains(t, result.Stdout, `"type":"phone" is a compatibility alias`)
+	require.Contains(t, result.Stdout, "input_range_limit is not supported for phone")
+	require.Contains(t, result.Stdout, `"field_id":"fldPhone","title":"Phone"`)
+}
+
+func TestBaseFormQuestionsCreateSpecialTypesDryRun(t *testing.T) {
+	setBaseDryRunConfigEnv(t)
+
+	tests := []struct {
+		name      string
+		questions string
+	}{
+		{name: "url via text style", questions: `[{"type":"text","style":{"type":"url"},"title":"作品链接"}]`},
+		{name: "url alias", questions: `[{"type":"url","title":"作品链接"}]`},
+		{name: "formula", questions: `[{"type":"formula","title":"总价","expression":"[单价]*[数量]"}]`},
+		{name: "lookup", questions: `[{"type":"lookup","title":"部门负责人","from":"部门表","select":"负责人","where":{"logic":"and","conditions":[["部门名称","==",{"type":"field_ref","field":"所在部门"}]]},"aggregate":"raw_value"}]`},
+		{name: "signature", questions: `[{"type":"attachment","style":{"type":"signature"},"title":"本人签字","required":true}]`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"base", "+form-questions-create",
+					"--base-token", "app_x",
+					"--table-id", "tbl_x",
+					"--form-id", "vew_x",
+					"--questions", tt.questions,
+					"--dry-run",
+				},
+				DefaultAs: "bot",
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 0)
+
+			out := result.Stdout
+			require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_x/questions", clie2e.DryRunGet(out, "api.0.url").String(), out)
+			require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), out)
+			// The CLI forwards each question definition verbatim; type expansion and
+			// validation of url/formula/lookup/signature belong to the server.
+			require.JSONEq(t, tt.questions, clie2e.DryRunGet(out, "api.0.body.questions").Raw, out)
+		})
+	}
+}
+
+func TestBaseFormQuestionsCreateHelpShowsSpecialTypes(t *testing.T) {
+	setBaseDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"base", "+form-questions-create", "--help"},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	require.Contains(t, result.Stdout, `{"type":"text","style":{"type":"url"}`)
+	require.Contains(t, result.Stdout, `{"type":"attachment","style":{"type":"signature"}`)
+	require.Contains(t, result.Stdout, "(submissions accept PNG images only)")
+	require.Contains(t, result.Stdout, `"type":"formula"`)
+	require.Contains(t, result.Stdout, `"type":"lookup"`)
+	require.Contains(t, result.Stdout, "read-only computed questions")
 }

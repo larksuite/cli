@@ -14,7 +14,7 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
-const workflowAgentFixture = `{"title":"Agent test","client_token":"agent-test","steps":[{"id":"trigger","type":"AddRecordTrigger","next":"agent","data":{"table_name":"Source","watched_field_name":"Text"}},{"id":"agent","type":"AIAgentAction","next":"after","children":{"links":[{"kind":"slot","label":"llm","to":""},{"kind":"slot","label":"memory","to":""},{"kind":"slot","label":"tool","to":"tool"}]},"data":{"prompt":[{"value_type":"ref","value":"$.trigger.field_id"}],"system_message":[{"value_type":"text","value":"Keep keys"}],"model":{"name":"doubao_chat_model","temperature":0,"max_token":1024,"timeout":60000},"max_iterations":5,"output_format_type":"json","json_output":"{\"Case_Key\":\"text\"}","enable_streaming_reply":false,"future_setting":true}},{"id":"tool","type":"AIAgentMCPAction","meta":{"component_id":"search_mcp"},"data":{"tool_list":["web_search"],"identity_type":"maker","env":{"API_KEY_NAME":"synthetic-not-a-secret"}}},{"id":"after","type":"AddRecordAction","data":{"table_name":"Results","field_values":[]}}]}`
+const workflowAgentFixture = `{"title":"Agent test","client_token":"agent-test","steps":[{"id":"trigger","type":"AddRecordTrigger","next":"agent","data":{"table_name":"Source","watched_field_name":"Text"}},{"id":"agent","type":"AIAgentAction","next":"after","children":{"links":[{"kind":"slot","label":"llm","to":""},{"kind":"slot","label":"memory","to":""},{"kind":"slot","label":"tool","to":"tool"}]},"data":{"prompt":[{"value_type":"ref","value":"$.trigger.field_id"}],"system_message":[{"value_type":"text","value":"Keep keys"}],"model":{"name":"doubao_chat_model","temperature":0,"max_token":1024,"timeout":60000,"thinking_mode":"deep"},"max_iterations":5,"output_format_type":"json","json_output":"{\"Case_Key\":\"text\"}","enable_streaming_reply":false,"future_setting":true}},{"id":"tool","type":"AIAgentMCPAction","meta":{"component_id":"search_mcp"},"data":{"tool_list":["web_search"],"identity_type":"maker","env":{"API_KEY_NAME":"synthetic-not-a-secret"}}},{"id":"after","type":"AddRecordAction","data":{"table_name":"Results","field_values":[]}}]}`
 
 func TestWorkflowAIAgentCreateUpdatePreservesPayload(t *testing.T) {
 	for _, update := range []bool{false, true} {
@@ -61,6 +61,7 @@ func TestWorkflowAIAgentCreateUpdatePreservesPayload(t *testing.T) {
 		}
 	}
 }
+
 func fmtWorkflowAgentCase(update, dry bool) string {
 	name := "create"
 	if update {
@@ -74,7 +75,6 @@ func fmtWorkflowAgentCase(update, dry bool) string {
 
 func TestWorkflowAIAgentRejectsIgnoredAndMalformedSettings(t *testing.T) {
 	cases := []struct{ name, old, replacement string }{
-		{"ignored thinking mode", `"temperature":0`, `"temperature":0,"thinking_mode":"deep"`},
 		{"ineffective memory", `"max_iterations":5`, `"max_iterations":5,"memory":{"history_rounds":3}`},
 		{"internal model link", `"label":"llm","to":""`, `"label":"llm","to":"tool"`},
 		{"missing tool", `"label":"tool","to":"tool"`, `"label":"tool","to":"missing"`},
@@ -150,7 +150,7 @@ func TestWorkflowAIAgentAllowsServerOwnedDefaultsAndDynamicCatalog(t *testing.T)
 		if err := json.Unmarshal([]byte(body), &parsed); err != nil {
 			t.Fatal(err)
 		}
-		if err := validateWorkflowBodyForCLI(parsed); err != nil {
+		if err := validateWorkflowBodyForCLI("+workflow-create", parsed); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -220,6 +220,17 @@ func TestWorkflowAIAgentToolInfoPreservesWireSemantics(t *testing.T) {
 					}
 				})
 			}
+		}
+	}
+}
+
+func TestWorkflowAIAgentOmittedThinkingModePreserved(t *testing.T) {
+	body := strings.Replace(workflowAgentFixture, `,"thinking_mode":"deep"`, "", 1)
+	for _, update := range []bool{false, true} {
+		for _, dry := range []bool{false, true} {
+			t.Run(fmtWorkflowAgentCase(update, dry), func(t *testing.T) {
+				assertWorkflowBodyForwarded(t, body, update, dry, false)
+			})
 		}
 	}
 }

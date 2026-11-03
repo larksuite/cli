@@ -17,8 +17,18 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// baseAPIErrorPolicy 由具体 API 调用显式选择，避免用命令展示字符串判断错误输出范围。
+// 默认仅保留现有提示与恢复标识；配置写入可以保留服务端的完整错误详情。
+type baseAPIErrorPolicy struct {
+	preserveOpaqueServerError bool
+}
+
 func handleBaseAPIResult(runtime *common.RuntimeContext, result interface{}, err error, action string) (map[string]interface{}, error) {
-	data, err := handleBaseAPIResultAny(runtime, result, err, action)
+	return handleBaseAPIResultWithPolicy(runtime, result, err, action, baseAPIErrorPolicy{})
+}
+
+func handleBaseAPIResultWithPolicy(runtime *common.RuntimeContext, result interface{}, err error, action string, policy baseAPIErrorPolicy) (map[string]interface{}, error) {
+	data, err := handleBaseAPIResultAnyWithPolicy(runtime, result, err, action, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -36,6 +46,10 @@ func handleBaseAPIResult(runtime *common.RuntimeContext, result interface{}, err
 // Employee, and an Agent Employee has nobody to complete the human device login
 // an unclassified authorization failure would recommend.
 func handleBaseAPIResultAny(runtime *common.RuntimeContext, result interface{}, err error, action string) (interface{}, error) {
+	return handleBaseAPIResultAnyWithPolicy(runtime, result, err, action, baseAPIErrorPolicy{})
+}
+
+func handleBaseAPIResultAnyWithPolicy(runtime *common.RuntimeContext, result interface{}, err error, action string, policy baseAPIErrorPolicy) (interface{}, error) {
 	if err != nil {
 		return nil, baseAPIBoundaryError(err, action)
 	}
@@ -55,7 +69,7 @@ func handleBaseAPIResultAny(runtime *common.RuntimeContext, result interface{}, 
 		return resultMap["data"], nil
 	}
 
-	return nil, baseAPIErrorFromResult(resultMap, baseClassifyContext(runtime))
+	return nil, baseAPIErrorFromResultWithPolicy(resultMap, baseClassifyContext(runtime), policy)
 }
 
 // baseClassifyContext describes the failing call to the error classifier. A
@@ -169,8 +183,16 @@ func baseUploadAttachmentError(filePath string, err error) error {
 }
 
 func baseAPIErrorFromResult(resultMap map[string]interface{}, cc errclass.ClassifyContext) error {
+	return baseAPIErrorFromResultWithPolicy(resultMap, cc, baseAPIErrorPolicy{})
+}
+
+func baseAPIErrorFromResultWithPolicy(resultMap map[string]interface{}, cc errclass.ClassifyContext, policy baseAPIErrorPolicy) error {
 	if resultMap == nil {
 		return errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned a malformed response envelope")
+	}
+	workflowHint, encodeErr := workflowAPIErrorHint(resultMap, policy)
+	if encodeErr != nil {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "cannot encode Workflow API error detail: %v", encodeErr).WithCause(encodeErr)
 	}
 	if msg := extractDataErrorMessage(resultMap); msg != "" {
 		resultMap["msg"] = msg
@@ -206,12 +228,47 @@ func baseAPIErrorFromResult(resultMap map[string]interface{}, cc errclass.Classi
 			}
 			merged += "error.value=" + recovery
 		}
+		if workflowHint != "" {
+			if merged != "" {
+				merged += "; "
+			}
+			merged += workflowHint
+		}
 		p.Hint = merged
 	}
 	return err
 }
 
+// workflowAPIErrorHint keeps the server error opaque at the Workflow configuration
+// boundary. Other Base APIs retain their existing hints and recovery projections;
+// their error payloads may echo record or form values.
+func workflowAPIErrorHint(resultMap map[string]interface{}, policy baseAPIErrorPolicy) (string, error) {
+	if !policy.preserveOpaqueServerError {
+		return "", nil
+	}
+	// Capture before message/hint promotion consumes fields from the envelope.
+	// Both OpenAPI error placements are accepted without interpreting domain keys.
+	detail := resultMap["error"]
+	switch detail.(type) {
+	case nil:
+		data, _ := resultMap["data"].(map[string]interface{})
+		detail = data["error"]
+	}
+	encoded, err := json.Marshal(detail)
+	if err != nil {
+		return "", err
+	}
+	if string(encoded) == "null" {
+		return "", nil
+	}
+	return "error=" + string(encoded), nil
+}
+
 func enrichBaseAPIErrorFromBody(err error, body []byte, cc errclass.ClassifyContext) error {
+	return enrichBaseAPIErrorFromBodyWithPolicy(err, body, cc, baseAPIErrorPolicy{})
+}
+
+func enrichBaseAPIErrorFromBodyWithPolicy(err error, body []byte, cc errclass.ClassifyContext, policy baseAPIErrorPolicy) error {
 	if _, ok := errs.ProblemOf(err); !ok {
 		return err
 	}
@@ -219,7 +276,7 @@ func enrichBaseAPIErrorFromBody(err error, body []byte, cc errclass.ClassifyCont
 	if parseErr != nil {
 		return err
 	}
-	enriched := baseAPIErrorFromResult(result, cc)
+	enriched := baseAPIErrorFromResultWithPolicy(result, cc, policy)
 	if enriched == nil {
 		return err
 	}

@@ -1,7 +1,7 @@
 ---
 name: lark-base
-version: 1.2.28
-description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限、模板中心（多维表格模板分类/列表/搜索）；遇到 Base/多维表格/bitable、BaseApp/AppMode、/base/ 或 /app/ 链接时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
+version: 1.2.29
+description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限、模板中心（多维表格模板分类/列表/搜索），以及外部数据源导入/同步和多维表格三方扩展能力（插件能力）的查找；遇到 Base/多维表格/bitable、BaseApp/AppMode、/base/ 或 /app/ 链接时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -294,6 +294,7 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 表单题目和字段的关系：
 
+- `+form-create` 会把表里支持表单收集的字段全部自动添加进这个新表单；自动带题的处理见 [questions create](references/lark-base-form-questions-create.md) 的「`+form-create` 自动添加的题目」。
 - `+form-questions-create` 支持新建字段题目或复用已有字段；操作前读取 [questions create](references/lark-base-form-questions-create.md) 的两种创建形态。
 - 创建问题前先 `+form-questions-list`。若目标标题已经存在，除非用户明确要求同名独立问题，否则优先用 `+form-questions-update` 修改题目配置，不要先创建同名问题再删除旧问题。
 - `+form-questions-delete` 是高风险写操作。默认会删除承载问题的底层 Field 及该字段所有记录数据；只想把题目移出表单并保留字段/数据时必须传 `--keep-field`。重新加回题目的方法见 [questions create](references/lark-base-form-questions-create.md) 的「形态 B：已有字段题目」。
@@ -375,6 +376,12 @@ Docx Block 是组织在 Base 目录中的飞书文档资源，适合把说明、
 ## Folder Block
 
 Folder Block 只承担 Base 目录分组和层级组织。创建、读取子项和调整目录使用上方 Base Block 管理入口。
+
+## Plugin
+
+Plugin（插件）是对多维表格进行能力扩展的第三方或一方应用，用于完成多维表格原生功能未覆盖的轻量任务。Plugin 不属于某个具体 Base，也不是 Base Block；查找插件不需要先确定 `base_token`。
+
+当用户希望将外部数据源导入/同步到多维表格，或需要多维表格三方扩展能力（插件能力）时，读取 [Base 插件搜索](references/lark-base-plugin-search.md)，使用 `+plugin-search` 查找已有插件，并向用户推荐可满足其业务需求的候选。
 
 ## 通用执行契约
 

@@ -45,13 +45,7 @@ lark-cli base +form-submit \
 lark-cli base +form-submit \
   --share-token <share_token> \
   --base-token <base_token> \
-  --json '{
-    "fields": {"服务评分": 5, "评价内容": "好"},
-    "attachments": {
-      "附件字段名": ["./report.pdf", "./photo.png"],
-      "另一个附件字段": ["./doc.docx"]
-    }
-  }' \
+  --json '{"fields":{"服务评分":5,"评价内容":"好"},"attachments":{"附件字段名":["./report.pdf","./photo.png"],"另一个附件字段":["./doc.docx"]}}' \
   --yes
 
 # 使用应用身份（bot）
@@ -105,9 +99,15 @@ lark-cli base +form-submit \
 }
 ```
 
+电话号码题的值必须是字符串。当前提交链路接受数字、`+`、`-`、空格和圆括号，并要求至少包含一个数字，例如 `13800000000`、`+86 (138) 0000-0000`；`abc123`、`---` 或非字符串会被拒绝。失败时保留用户原值和 Phone 字段语义，不要改写号码，也不要改用普通文本字段重试。
+
 > **注意：附件类型字段不要写在 `fields` 里。** `fields` 中不包含附件，附件有独立的填写方式，见下方「attachments（附件上传）」章节。
 
-> 自动编号、公式、创建/修改人、创建/修改时间等系统字段会自动填入，无需手动传入。
+超链接题的值是完整的 URL 字符串（如上例 `"https://example.com"`），不是对象；非法 URL 会被拒绝。
+
+> 自动编号、创建/修改人、创建/修改时间等系统字段会自动填入，无需手动传入。
+
+> **不要在 `fields` 里给公式、查找引用题传值。** 这两类题目由系统计算，填写人不作答（`+form-detail` 里识别方法见 [lark-base-form-detail.md](lark-base-form-detail.md)）。网页端提交会静默忽略这类值，CLI 链路会拒绝整次提交，报 `unsupported field type: <类型码>, field name: <题名>`（参数校验类错误，不落库）；遇到时从 `fields` 中去掉这些题目再提交，不要换写法尝试赋值。
 
 #### attachments（附件上传）
 
@@ -128,6 +128,23 @@ CLI 收到路径后会自动完成以下流程：
 3. 获取 `file_token` 后合并到最终表单提交内容中
 
 > Record 写入时附件走独立的 `+record-upload-attachment` 命令；`+form-submit` 则在 `attachments` 中传本地路径，由 CLI 自动上传。
+
+#### 签字题
+
+签字题（`attachment` + `style.type=signature`）和附件题一样放在 `attachments` 里，值为本地 **png** 图片路径数组，CLI 同样先上传、再合并提交（需要 `--base-token`）：
+
+```json
+{
+  "attachments": {
+    "本人签字": ["./signature.png"]
+  }
+}
+```
+
+- `+form-detail` 里签字题显示为普通 `attachment`，无法与附件题区分；要确认某题是否为签字题，用 `+form-questions-list` 查看是否回显 `"style":{"type":"signature"}`。没有管理权限读不到题目列表时，按题目标题和用户说明判断，并向用户索取签名图片。
+- 只接受 PNG 文件。其他格式或超过张数上限会被服务端拒绝（不落库），但报错可能不直接说明原因，可能只是通用的提交失败；提交前先核对文件格式与张数，被拒时从文件格式和张数排查，不要换写法反复重试。
+- **只能使用用户提供的签名图片。** 用户没有提供时，向用户索取；不得自行生成、绘制、合成或伪造签名图片，也不得拿其他图片代替。
+- 签字题必填时不传会被拒绝；用户拿不出签名图片时如实报告无法提交，不要绕过。
 
 ### 什么时候要传 --timezone
 
@@ -187,6 +204,7 @@ lark-cli base +form-submit \
 ## 提示
 
 - **本命令为高风险写操作（high-risk-write），必须额外传递 `--yes` 确认**，否则返回 `confirmation_required` 并以非零码退出；`--dry-run` 预览除外
+- **提交结果不确定时先回读、再决定是否重试**：返回 `800004014`、超时或网络类错误时，服务端可能已经落库（带附件提交时服务端处理更久，调用方可能先超时报错而记录已写入）。不要直接重提：先按本次填写的测试标记或能唯一定位该次提交的字段值回读表单底表（`+record-search` / `+record-list`）；第一次没读到时间隔几秒再回读一次（带附件时服务端可能仍在落库），两次都确认没有落库才重试一次；已经落库就沿用该记录并在答复中说明，不要重复提交。当前身份读不到底表、或无法唯一定位本次提交的记录时，报告提交结果未知，不要自动重提。参数校验类错误（如 `800004006`、`800004025`）表示未落库，按报错修正后再提交
 - 本命令仅支持通过表单分享链接（share_token）提交，不支持通过 base_token + table_id + view_id 方式提交
 - **当 `--json` 包含 `attachments` 时，必须额外提供 `--base-token`**，因为附件上传到 Base Drive Media 需要指定目标 Base
 - 附件字段只需在 `--json.attachments` 中提供本地路径即可，CLI 自动完成校验、并行上传、Token 获取和合并写入

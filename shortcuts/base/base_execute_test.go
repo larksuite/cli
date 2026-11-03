@@ -806,7 +806,8 @@ func TestBaseCreateMalformedJSONFailsBeforeCreation(t *testing.T) {
 }
 
 func TestBaseCreateRejectsFieldsFileBeforeCreating(t *testing.T) {
-	for _, path := range []string{"@missing.json", "@../outside.json", "@/tmp/fields.json"} {
+	missingAbsolute := filepath.Join(t.TempDir(), "fields.json")
+	for _, path := range []string{"@missing.json", "@../outside.json", "@" + missingAbsolute} {
 		t.Run(path, func(t *testing.T) {
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 			withBaseWorkingDir(t, t.TempDir())
