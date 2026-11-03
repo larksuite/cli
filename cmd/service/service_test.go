@@ -997,9 +997,12 @@ func TestServiceMethod_SendStatusPreservesLastUpdatedTime(t *testing.T) {
 	tests := []struct {
 		name            string
 		lastUpdatedTime string
+		wantNumber      bool
+		wantValue       string
 	}{
-		{name: "normal timestamp", lastUpdatedTime: "1700000000"},
-		{name: "above float64 exact integer range", lastUpdatedTime: "9007199254740993"},
+		{name: "normal timestamp", lastUpdatedTime: "1700000000", wantNumber: true, wantValue: "1700000000"},
+		{name: "above float64 exact integer range", lastUpdatedTime: "9007199254740993", wantNumber: true, wantValue: "9007199254740993"},
+		{name: "quoted number remains a string", lastUpdatedTime: `"9007199254740993"`, wantValue: "9007199254740993"},
 	}
 
 	for _, tt := range tests {
@@ -1030,20 +1033,31 @@ func TestServiceMethod_SendStatusPreservesLastUpdatedTime(t *testing.T) {
 				t.Fatalf("send_status command failed: %v", err)
 			}
 			var envelope struct {
-				OK   bool `json:"ok"`
-				Data struct {
-					Status          int         `json:"status"`
-					MessageID       string      `json:"message_id"`
-					LastUpdatedTime json.Number `json:"last_updated_time"`
-				} `json:"data"`
+				OK   bool                   `json:"ok"`
+				Data map[string]interface{} `json:"data"`
 			}
 			dec := json.NewDecoder(strings.NewReader(stdout.String()))
 			dec.UseNumber()
 			if err := dec.Decode(&envelope); err != nil {
 				t.Fatalf("decode command output: %v", err)
 			}
-			if !envelope.OK || envelope.Data.Status != 2 || envelope.Data.MessageID != "msg_123" || envelope.Data.LastUpdatedTime.String() != tt.lastUpdatedTime {
-				t.Fatalf("unexpected send_status output: %+v", envelope)
+			if !envelope.OK || envelope.Data["status"] != json.Number("2") || envelope.Data["message_id"] != "msg_123" {
+				t.Fatalf("representative send_status fields changed: %+v", envelope)
+			}
+
+			lastUpdatedTime := envelope.Data["last_updated_time"]
+			number, isNumber := lastUpdatedTime.(json.Number)
+			if tt.wantNumber {
+				if !isNumber || number.String() != tt.wantValue {
+					t.Fatalf("last_updated_time = %v (%T), want exact json.Number(%s)", lastUpdatedTime, lastUpdatedTime, tt.wantValue)
+				}
+			} else {
+				if isNumber {
+					t.Fatalf("quoted last_updated_time unexpectedly decoded as json.Number(%s)", number)
+				}
+				if lastUpdatedTime != tt.wantValue {
+					t.Fatalf("quoted last_updated_time = %v (%T), want string(%s)", lastUpdatedTime, lastUpdatedTime, tt.wantValue)
+				}
 			}
 			reg.Verify(t)
 		})
