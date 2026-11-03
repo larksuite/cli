@@ -63,10 +63,13 @@ func TestAppsDBExecute_RateLimitHintIsBackoffNotRequestFix(t *testing.T) {
 	}
 }
 
-// Every apps command funnels its failure through withAppsHint (79 sites),
-// withObservabilityHint (2) or withDBSyncHint (6). Drive a real 99991400
-// classification through each helper with the request-shaped hints the hottest
-// commands pass, so the fix is proven at the chokepoint and not per command.
+// The apps commands that attach a request-shaped hint do it through withAppsHint
+// (79 sites), withObservabilityHint (2) or withDBSyncHint (6). Drive a real
+// 99991400 classification through each helper with the request-shaped hints the
+// hottest commands pass, so the fix is proven at the chokepoint and not per
+// command. Commands that return the client error as is (+list, for one) keep the
+// classifier's rate_limit with an empty hint, which misleads no one; commands
+// with their own error helpers are outside this test.
 func TestAppsHints_RateLimitDoesNotInheritRequestHint(t *testing.T) {
 	dbExecuteHint := "verify table/column names with `lark-cli apps +db-table-get --app-id app_x --table <table>`; for day-to-day debugging target the dev database with `--environment dev`"
 	for _, tc := range []struct {
