@@ -49,25 +49,32 @@ func (f Field) FlagName() string { return strings.ReplaceAll(f.Name, "_", "-") }
 // Children returns the field's nested properties sorted by name.
 func (f Field) Children() []Field { return fieldsOf(f.Properties, nil) }
 
+// ParameterConstraints describes cross-field requirements on path/query input.
+type ParameterConstraints struct {
+	// ExactlyOneOf names path/query parameters of which one non-empty value is required.
+	ExactlyOneOf []string `json:"exactlyOneOf,omitempty"`
+}
+
 // Method is one API operation. Name is the parent map key. Affordance is kept
 // raw so this package stays free of envelope concerns.
 type Method struct {
-	Name           string           `json:"-"`
-	ID             string           `json:"id"`
-	Path           string           `json:"path"`
-	HTTPMethod     string           `json:"httpMethod"`
-	Description    string           `json:"description"`
-	Risk           string           `json:"risk"`
-	DocURL         string           `json:"docUrl"`
-	Danger         bool             `json:"danger"`
-	Tips           []string         `json:"tips"`
-	Scopes         []string         `json:"scopes"`
-	RequiredScopes []string         `json:"requiredScopes"`
-	AccessTokens   []Token          `json:"accessTokens"`
-	Affordance     json.RawMessage  `json:"affordance"`
-	Parameters     map[string]Field `json:"parameters"`
-	RequestBody    map[string]Field `json:"requestBody"`
-	ResponseBody   map[string]Field `json:"responseBody"`
+	ParameterConstraints *ParameterConstraints `json:"parameterConstraints,omitempty"`
+	Name                 string                `json:"-"`
+	ID                   string                `json:"id"`
+	Path                 string                `json:"path"`
+	HTTPMethod           string                `json:"httpMethod"`
+	Description          string                `json:"description"`
+	Risk                 string                `json:"risk"`
+	DocURL               string                `json:"docUrl"`
+	Danger               bool                  `json:"danger"`
+	Tips                 []string              `json:"tips"`
+	Scopes               []string              `json:"scopes"`
+	RequiredScopes       []string              `json:"requiredScopes"`
+	AccessTokens         []Token               `json:"accessTokens"`
+	Affordance           json.RawMessage       `json:"affordance"`
+	Parameters           map[string]Field      `json:"parameters"`
+	RequestBody          map[string]Field      `json:"requestBody"`
+	ResponseBody         map[string]Field      `json:"responseBody"`
 }
 
 // Params are the path/query parameters, sorted by name.

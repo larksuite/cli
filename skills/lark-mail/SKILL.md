@@ -250,7 +250,9 @@ lark-cli mail <resource> <method> --params '{...}' [--data '{...}']
 
 ```bash
 # schema 中：user_mailbox_id (path, required), page_size (query, required)
-# user_mailbox.threads.list 要求 folder_id / label_id 必须且只能提供一个
+# user_mailbox.threads.list 的 folder_id / label_id 是跨字段二选一约束：
+# mutually exclusive 且 exactly one required；并非两个字段各自 required。
+# 只给 folder 或只给 label 均合法；都不填、都填或只给空字符串会在本地报 validation error。
 lark-cli mail user_mailbox.threads list \
   --params '{"user_mailbox_id":"me","page_size":20,"folder_id":"INBOX"}'
 

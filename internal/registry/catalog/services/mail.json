@@ -7153,7 +7153,13 @@
             "user"
           ],
           "risk": "read",
-          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.thread&version=v1"
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.thread&version=v1",
+          "parameterConstraints": {
+            "exactlyOneOf": [
+              "folder_id",
+              "label_id"
+            ]
+          }
         },
         "modify": {
           "id": "user_mailbox.thread.modify",

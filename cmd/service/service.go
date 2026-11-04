@@ -336,6 +336,7 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 
 	// Registered last so the collision guard sees the standard flags above.
 	opts.binder = newParamFlagBinder(cmd, spec.params, reserved)
+	opts.binder.addParameterConstraintHelp(cmd, m.ParameterConstraints)
 	// Build-time Long; the agent guidance is added lazily by PrepareMethodHelp
 	// (setMethodHelpData records the coordinates it needs).
 	paramsOnly := opts.binder.paramsOnlyHelp()
@@ -593,6 +594,9 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		return client.RawApiRequest{}, nil, err
 	}
 	opts.binder.overlay(opts.Cmd, params)
+	if err := validateParameterConstraints(method.ParameterConstraints, params); err != nil {
+		return client.RawApiRequest{}, nil, err
+	}
 
 	url := opts.ServicePath + "/" + method.Path
 

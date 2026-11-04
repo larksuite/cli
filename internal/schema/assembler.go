@@ -137,9 +137,10 @@ func requiredOf(fields []meta.Field) []string {
 // `yes` confirmation gate for high-risk-write methods.
 func buildInputSchema(m meta.Method) *InputSchema {
 	is := &InputSchema{
-		Type:       "object",
-		Required:   []string{}, // never nil — stable envelope shape
-		Properties: &OrderedProps{},
+		ParameterConstraints: m.ParameterConstraints,
+		Type:                 "object",
+		Required:             []string{}, // never nil — stable envelope shape
+		Properties:           &OrderedProps{},
 	}
 
 	addInputObject(is, "params", "", m.Params(), true, "")

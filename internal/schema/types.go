@@ -31,9 +31,10 @@ type Envelope struct {
 // stays stable for AI consumers — an empty []string means "no required
 // fields" rather than "schema is missing the field".
 type InputSchema struct {
-	Type       string        `json:"type"`
-	Required   []string      `json:"required"`
-	Properties *OrderedProps `json:"properties"`
+	ParameterConstraints *meta.ParameterConstraints `json:"parameterConstraints,omitempty"`
+	Type                 string                     `json:"type"`
+	Required             []string                   `json:"required"`
+	Properties           *OrderedProps              `json:"properties"`
 }
 
 // OutputSchema wraps responseBody into a JSON Schema object.
