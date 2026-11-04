@@ -5,6 +5,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -72,6 +73,21 @@ func TestMailThreadsExactlyOne(t *testing.T) {
 				problem, ok := errs.ProblemOf(err)
 				if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
 					t.Fatalf("expected typed validation error, got %v", err)
+				}
+				var validation *errs.ValidationError
+				if !errors.As(err, &validation) {
+					t.Fatalf("expected ValidationError, got %T", err)
+				}
+				reason := "provide one non-empty value"
+				if tt.wantError == "mutually exclusive" {
+					reason = "mutually exclusive; provide only one non-empty value"
+				}
+				wantParams := []errs.InvalidParam{
+					{Name: "--folder-id", Reason: reason},
+					{Name: "--label-id", Reason: reason},
+				}
+				if validation.Param != "" || !reflect.DeepEqual(validation.Params, wantParams) {
+					t.Fatalf("validation parameters = %q, %#v; want no single param and %#v", validation.Param, validation.Params, wantParams)
 				}
 				if !strings.Contains(err.Error(), tt.wantError) {
 					t.Fatalf("error = %v", err)

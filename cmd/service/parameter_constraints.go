@@ -32,8 +32,16 @@ func validateParameterConstraints(constraints *meta.ParameterConstraints, params
 	if provided > 1 {
 		message = "%s are mutually exclusive; provide exactly one non-empty value"
 	}
+	reason := "provide one non-empty value"
+	if provided > 1 {
+		reason = "mutually exclusive; provide only one non-empty value"
+	}
+	invalid := make([]errs.InvalidParam, 0, len(constraints.ExactlyOneOf))
+	for _, name := range constraints.ExactlyOneOf {
+		invalid = append(invalid, errs.InvalidParam{Name: "--" + (meta.Field{Name: name}).FlagName(), Reason: reason})
+	}
 	return errs.NewValidationError(errs.SubtypeInvalidArgument, message, names).
-		WithParam("--params").WithHint("Provide exactly one of " + names + " using its flag or --params; omit the other parameters.")
+		WithParams(invalid...).WithHint("Provide exactly one of " + names + " using its flag or --params; omit the other parameters.")
 }
 
 // Append after description truncation so the executable constraint is always
