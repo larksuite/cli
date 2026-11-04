@@ -14,6 +14,8 @@ import (
 	"testing"
 )
 
+// TestSelectCTE_LineLength checks ASCII line boundaries, newline resets,
+// and the base64 fallback for non-ASCII content.
 func TestSelectCTE_LineLength(t *testing.T) {
 	for _, tc := range []struct {
 		name string
