@@ -6,15 +6,64 @@ package convertlib
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"math"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // cardObj is a convenience alias for generic JSON objects.
 type cardObj = map[string]interface{}
+
+// extractCardLinkURL trims surrounding spaces from an absolute, hierarchical
+// card URL. Validate without rebuilding it so percent encoding stays unchanged.
+func extractCardLinkURL(raw string) string {
+	var card struct {
+		JSONCard string `json:"json_card"`
+	}
+	if json.Unmarshal([]byte(raw), &card) != nil {
+		return ""
+	}
+	var inner struct {
+		Config struct {
+			CardLink struct {
+				URL string `json:"url"`
+			} `json:"cardLink"`
+		} `json:"config"`
+	}
+	if json.Unmarshal([]byte(card.JSONCard), &inner) != nil {
+		return ""
+	}
+	link := inner.Config.CardLink.URL
+	// Check before trimming so leading/trailing line breaks are rejected too.
+	if strings.IndexFunc(link, func(r rune) bool {
+		return unicode.IsControl(r) || r == '\u2028' || r == '\u2029'
+	}) >= 0 {
+		return ""
+	}
+	link = strings.TrimSpace(link)
+	if link == "" || strings.IndexFunc(link, unicode.IsSpace) >= 0 {
+		return ""
+	}
+	u, err := url.Parse(link)
+	if err != nil || !u.IsAbs() || u.Hostname() == "" || u.Opaque != "" {
+		return ""
+	}
+	// Exclude script/data URLs while retaining web and custom app schemes.
+	switch strings.ToLower(u.Scheme) {
+	case "javascript", "vbscript", "data":
+		return ""
+	}
+	// Parse validates path/fragment escapes, but leaves RawQuery unchecked.
+	if _, err := url.QueryUnescape(u.RawQuery); err != nil {
+		return ""
+	}
+	return link
+}
 
 // cardMode controls output verbosity.
 type cardMode int
@@ -51,20 +100,17 @@ var cardChartTypeNames = map[string]string{
 type interactiveConverter struct{}
 
 func (interactiveConverter) Convert(ctx *ConvertContext) string {
-	return convertCard(ctx.RawContent, ctx.Mentions)
-}
-
-// convertCard converts a raw interactive/card message content JSON to human-readable string.
-// mentions is the raw mentions array from the API response; pass nil when not available.
-func convertCard(raw string, mentions []interface{}) string {
 	var parsed cardObj
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(ctx.RawContent), &parsed); err != nil {
 		return "[interactive card]"
 	}
 
 	// raw_card_content format: outer JSON has "json_card" string field
 	if jsonCard, ok := parsed["json_card"].(string); ok {
 		c := &cardConverter{mode: cardModeConcise}
+		if ctx.includeCardLinks {
+			c.cardLinkURL = extractCardLinkURL(ctx.RawContent)
+		}
 		switch att := parsed["json_attachment"].(type) {
 		case string:
 			if att != "" {
@@ -76,8 +122,8 @@ func convertCard(raw string, mentions []interface{}) string {
 		case cardObj:
 			c.attachment = att
 		}
-		if len(mentions) > 0 {
-			c.mentionsByKey = buildMentionsByKey(mentions)
+		if len(ctx.Mentions) > 0 {
+			c.mentionsByKey = buildMentionsByKey(ctx.Mentions)
 		}
 		schema := 0
 		if s, ok := parsed["card_schema"].(float64); ok {
@@ -92,6 +138,11 @@ func convertCard(raw string, mentions []interface{}) string {
 
 	// Legacy format
 	return convertLegacyCard(parsed)
+}
+
+// convertCard converts a card without whole-card links for text-only callers.
+func convertCard(raw string, mentions []interface{}) string {
+	return (interactiveConverter{}).Convert(&ConvertContext{RawContent: raw, Mentions: mentions})
 }
 
 // buildMentionsByKey indexes the mentions array by key for O(1) lookup in convertAt.
@@ -185,6 +236,7 @@ func legacyExtractTexts(elements []interface{}, out *[]string) {
 
 type cardConverter struct {
 	mode          cardMode
+	cardLinkURL   string
 	attachment    cardObj
 	mentionsByKey map[string]map[string]interface{}
 }
@@ -227,6 +279,10 @@ func (c *cardConverter) convert(jsonCard string, hintSchema int) string {
 	if bodyContent != "" {
 		sb.WriteString(bodyContent)
 		sb.WriteString("\n")
+	}
+	if c.cardLinkURL != "" {
+		// The URL attribute uses HTML entities; decoding it restores the URL.
+		sb.WriteString(`<cardLinkUrl url="` + html.EscapeString(c.cardLinkURL) + `"></cardLinkUrl>` + "\n")
 	}
 	sb.WriteString("</card>")
 	return sb.String()

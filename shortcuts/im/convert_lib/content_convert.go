@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -51,6 +52,10 @@ type ConvertContext struct {
 	// via PrefetchFolderChildren before the FormatMessageItem loop. nil means
 	// "no prefetch — fall back to the per-message inline GET".
 	FolderChildren map[string]string
+
+	// includeCardLinks renders whole-card URL tags inside cards for JSON output,
+	// including forwarded children. False preserves text-only rendering.
+	includeCardLinks bool
 }
 
 // converters maps message types to their ContentConverter implementations.
@@ -185,11 +190,19 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	deleted, _ := m["deleted"].(bool)
 	updated, _ := m["updated"].(bool)
 
+	jsonOutput := true
+	if runtime != nil {
+		// Message-reading shortcuts provide a pretty renderer. Reuse the output
+		// layer's case handling and JSON fallback, but exclude concise Markdown:
+		// it scans the message objects while leaving runtime.Format at "json".
+		concise := runtime.Cmd != nil && runtime.Bool("concise")
+		jsonOutput = !concise && output.UsesEnvelope(runtime.Format, runtime.JqExpr, true)
+	}
 	content := ""
 	rawContent := ""
 	if body, ok := m["body"].(map[string]interface{}); ok {
 		rawContent, _ = body["content"].(string)
-		content = ConvertBodyContent(msgType, &ConvertContext{
+		convertCtx := &ConvertContext{
 			RawContent:           rawContent,
 			MentionMap:           BuildMentionKeyMap(mentions),
 			Mentions:             mentions,
@@ -198,7 +211,9 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 			SenderNames:          nameCache,
 			MergeForwardSubItems: mergePrefetch,
 			FolderChildren:       folderPrefetch,
-		})
+			includeCardLinks:     jsonOutput,
+		}
+		content = ConvertBodyContent(msgType, convertCtx)
 	}
 
 	msg := map[string]interface{}{

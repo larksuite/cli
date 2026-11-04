@@ -77,7 +77,7 @@ func renderMergeForwardTree(ctx *ConvertContext, subItems []map[string]interface
 	nameMap := ResolveSenderNames(ctx.Runtime, subItems, ctx.SenderNames)
 	AttachSenderNames(subItems, nameMap)
 	childrenMap := BuildMergeForwardChildrenMap(subItems, ctx.MessageID)
-	return FormatMergeForwardSubTree(ctx.MessageID, childrenMap)
+	return formatMergeForwardSubTree(ctx.MessageID, childrenMap, ctx.includeCardLinks)
 }
 
 // PrefetchMergeForwardSubItems scans rawItems for merge_forward messages,
@@ -288,6 +288,12 @@ func BuildMergeForwardChildrenMap(items []map[string]interface{}, rootMessageID 
 // For merge_forward children it recurses via the tree (no extra API calls).
 // For other types it delegates to the provided convert callback.
 func FormatMergeForwardSubTree(parentID string, childrenMap map[string][]map[string]interface{}) string {
+	return formatMergeForwardSubTree(parentID, childrenMap, false)
+}
+
+// Render whole-card links inside child cards, including nested forwards,
+// using the existing fetched tree without additional requests.
+func formatMergeForwardSubTree(parentID string, childrenMap map[string][]map[string]interface{}, includeCardLinks bool) string {
 	children := childrenMap[parentID]
 	if len(children) == 0 {
 		return "<forwarded_messages/>"
@@ -315,7 +321,7 @@ func FormatMergeForwardSubTree(parentID string, childrenMap map[string][]map[str
 		var content string
 		msgID, _ := item["message_id"].(string)
 		if msgType == "merge_forward" && msgID != "" {
-			content = FormatMergeForwardSubTree(msgID, childrenMap)
+			content = formatMergeForwardSubTree(msgID, childrenMap, includeCardLinks)
 		} else {
 			rawContent := ""
 			if body, ok := item["body"].(map[string]interface{}); ok {
@@ -323,9 +329,10 @@ func FormatMergeForwardSubTree(parentID string, childrenMap map[string][]map[str
 			}
 			mentions, _ := item["mentions"].([]interface{})
 			content = ConvertBodyContent(msgType, &ConvertContext{
-				RawContent: rawContent,
-				MentionMap: BuildMentionKeyMap(mentions),
-				Mentions:   mentions,
+				RawContent:       rawContent,
+				MentionMap:       BuildMentionKeyMap(mentions),
+				Mentions:         mentions,
+				includeCardLinks: includeCardLinks,
 			})
 		}
 
