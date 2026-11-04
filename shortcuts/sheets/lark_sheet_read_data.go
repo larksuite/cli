@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -159,6 +160,10 @@ var CsvGet = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+csv-get"),
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceSheet},
+		Build:       workbookCitations,
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err

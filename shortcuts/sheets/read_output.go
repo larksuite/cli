@@ -408,6 +408,18 @@ func emitReadResult(runtime *common.RuntimeContext, out interface{}) error {
 		"bytes_written": len(b),
 		"complete":      true,
 	}
+	// Citation builders see the emitted receipt after content-safety scanning.
+	// Keep the source metadata here so offloaded reads retain their citations.
+	meta := readWorkbookCitationMetadata(out)
+	if meta.Title != "" {
+		receipt["title"] = meta.Title
+	}
+	if meta.URL != "" {
+		receipt["url"] = meta.URL
+	}
+	if meta.ModifiedTime != nil {
+		receipt["modified_time"] = meta.ModifiedTime
+	}
 	// The payload went to a file, so the receipt is all the caller sees of
 	// the read itself: how much came back, and how many round trips it took.
 	// Without these, "did I get the whole sheet" needs the file reopened.

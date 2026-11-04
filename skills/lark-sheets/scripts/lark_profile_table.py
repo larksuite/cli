@@ -157,13 +157,11 @@ def detect_special_rows(grid: CsvGrid, header_row: int | None) -> list[dict[str,
     return specials
 
 
-def _last_data_row(grid: CsvGrid, header_row: int | None, specials: list[dict[str, Any]]) -> int | None:
-    special_rows = {item["row"] for item in specials if item["reason"] != "empty_row"}
+def _last_data_row(grid: CsvGrid, header_row: int | None) -> int | None:
+    """Conservative occupied boundary; keyword matches are not deletion rules."""
     for idx in range(len(grid.row_numbers) - 1, -1, -1):
         row_num = grid.row_numbers[idx]
         if header_row is not None and row_num <= header_row:
-            continue
-        if row_num in special_rows:
             continue
         if any(value.strip() for value in grid.values[idx]):
             return row_num
@@ -263,6 +261,93 @@ def _field_map(columns: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]
             }
         )
     return result
+
+
+def _parse_columns(value: str | None) -> list[str]:
+    if value is None:
+        return []
+    columns = [col.strip().upper() for col in value.split(",")]
+    if (not columns or len(set(columns)) != len(columns)
+            or any(not re.fullmatch(r"[A-Z]{1,3}", col)
+                   or col_to_index(col) > 16384 for col in columns)):
+        raise ValueError("key/value columns must be distinct Excel column letters, e.g. A,C")
+    return columns
+
+
+def profile_keys(
+    grid: CsvGrid,
+    key_columns: list[str],
+    value_columns: list[str],
+    *,
+    header_row: int | None,
+    sample_limit: int = 5,
+) -> dict[str, Any]:
+    """Describe exact keys in the observed range, without choosing a matching row.
+
+    A repeated key with identical returned fields is different from a key that
+    maps to several distinct returned records. Preserve tuples, whitespace and
+    original row numbers; never collapse conflicts into a scalar dictionary.
+    """
+    positions = {col: idx for idx, col in enumerate(grid.col_letters)}
+    missing = [col for col in key_columns + value_columns if col not in positions]
+    if missing:
+        raise ValueError("key/value columns are outside the returned grid: " + ",".join(missing))
+
+    def values(row, cols):
+        return tuple(row[positions[col]] if positions[col] < len(row) else "" for col in cols)
+
+    groups: dict[tuple[str, ...], dict[str, Any]] = {}
+    observed = blank_keys = 0
+    for row_num, row in zip(grid.row_numbers, grid.values):
+        if header_row is not None and row_num <= header_row:
+            continue
+        observed += 1
+        key = values(row, key_columns)
+        if any(value == "" for value in key):
+            blank_keys += 1
+            continue
+        entry = groups.setdefault(key, {"count": 0, "rows": [], "values": {}})
+        entry["count"] += 1
+        if len(entry["rows"]) < sample_limit:
+            entry["rows"].append(row_num)
+        if value_columns:
+            candidate = values(row, value_columns)
+            rows = entry["values"].setdefault(candidate, [])
+            if len(rows) < sample_limit:
+                rows.append(row_num)
+
+    repeated = [(key, group) for key, group in groups.items() if group["count"] > 1]
+    conflicts = [(key, group) for key, group in repeated if len(group["values"]) > 1]
+
+    def sample(items):
+        return [{"key": list(key), "row_count": group["count"], "sample_rows": group["rows"],
+                 "distinct_value_tuples": len(group["values"]) if value_columns else None,
+                 "candidate_samples_truncated": len(group["values"]) > sample_limit,
+                 "candidates": [{"values": list(values), "sample_rows": rows}
+                                for values, rows in list(group["values"].items())[:sample_limit]]}
+                for key, group in items[:sample_limit]]
+
+    return {
+        "key_columns": key_columns,
+        "value_columns": value_columns,
+        "comparison": "exact CSV text; no trimming, case folding or numeric coercion",
+        "observed_rows": observed,
+        "rows_without_full_key": blank_keys,
+        "distinct_keys": len(groups),
+        "repeated_keys": len(repeated),
+        "extra_rows_for_repeated_keys": sum(group["count"] - 1 for _, group in repeated),
+        "conflicting_keys": len(conflicts) if value_columns else None,
+        "repeated_key_samples": sample(repeated),
+        "conflicting_key_samples": sample(conflicts),
+        "next_action": (
+            "同键对应多组不同结果；按用户指定规则选择，未指定时保留整组候选及字段对应。"
+            "不要用首条/末条查找或字典覆盖后再验证同一选择。"
+            if conflicts else
+            "重复键须结合返回字段判断；可用 --value-cols 指定整组返回字段。"
+            if repeated and not value_columns else
+            "结果只覆盖所读范围；核对数据范围与关联规则后再选查找或聚合方法。"
+        ),
+    }
 
 
 def _risk_warnings(
@@ -395,14 +480,26 @@ def profile_grid(
     hidden_columns: list[str] | None = None,
     all_hidden_columns: list[str] | None = None,
     header_scan_rows: int = 20,
+    header_row: int | None = None,
+    key_columns: list[str] | None = None,
+    value_columns: list[str] | None = None,
 ) -> dict[str, Any]:
     max_row = max(grid.row_numbers, default=1)
     max_col = max((col_to_index(col) for col in grid.col_letters), default=1)
     bounds = parse_range(source_range, max_row=max_row, max_col=max_col)
-    header_row = detect_header_row(grid, header_scan_rows)
+    explicit_header = header_row
+    if value_columns and not key_columns:
+        raise ValueError("--value-cols requires --key-cols")
+    if key_columns and explicit_header is None:
+        raise ValueError("key profiling requires --header-row; use 0 for a data-only range")
+    if explicit_header is not None and (explicit_header < 0 or (
+            explicit_header != 0 and explicit_header not in grid.row_numbers)):
+        raise ValueError("--header-row must be 0 or a row present in the returned range")
+    header_row = (detect_header_row(grid, header_scan_rows) if explicit_header is None
+                  else explicit_header or None)
     data_start = (header_row + 1) if header_row else bounds.start_row
     specials = detect_special_rows(grid, header_row)
-    data_end = _last_data_row(grid, header_row, specials)
+    data_end = _last_data_row(grid, header_row)
     data_range = None
     if data_end is not None and data_end >= data_start:
         data_range = format_range(data_start, bounds.start_col, data_end, bounds.end_col)
@@ -429,7 +526,7 @@ def profile_grid(
     possible_multi_row_header = _possible_multi_row_header(grid, header_row)
     header_row_not_first = _header_row_not_first(grid, header_row)
 
-    return {
+    result = {
         "summary": {
             "range": source_range,
             "header_row": header_row,
@@ -439,6 +536,8 @@ def profile_grid(
             "data_col_segments": data_col_segments,
             "column_count": len(columns),
             "special_rows_count": len(specials),
+            "data_range_note": "候选范围保留表头后至最后非空行；special_rows仅为待核对线索，"
+                               "没有自动排除汇总/签名行，data_rows不是已确认的业务记录数。",
         },
         "range": source_range,
         "header_row": header_row,
@@ -474,6 +573,17 @@ def profile_grid(
         ),
         "special_rows": specials,
     }
+    if key_columns:
+        result["key_profile"] = profile_keys(
+            grid, key_columns, value_columns or [], header_row=header_row,
+        )
+        result["key_profile"]["scope"] = {
+            "range": source_range, "header_row": header_row, "skip_hidden": skip_hidden,
+            "row_numbers_inferred": grid.row_numbers_inferred,
+            "note": "统计所读范围内表头之后的所有行，不自动排除疑似汇总行；"
+                    "未读区域和隐藏过滤后的缺行不在结论范围内。",
+        }
+    return result
 
 
 def _hidden_rows_and_columns(grid: CsvGrid, layout: dict[str, Any]) -> tuple[list[int], list[str]]:
@@ -530,6 +640,15 @@ def profile_table(args) -> tuple[dict[str, Any], list[str]]:
     warnings = []
     if args.header_scan_rows < 1:
         raise ValueError("--header-scan-rows must be at least 1")
+    key_columns = _parse_columns(getattr(args, "key_cols", None))
+    value_columns = _parse_columns(getattr(args, "value_cols", None))
+    header_row = getattr(args, "header_row", None)
+    if header_row is not None and header_row < 0:
+        raise ValueError("--header-row must be nonnegative")
+    if value_columns and not key_columns:
+        raise ValueError("--value-cols requires --key-cols")
+    if key_columns and header_row is None:
+        raise ValueError("key profiling requires --header-row; use 0 for a data-only range")
     csv_data = envelope_data(
         run_sheets(
             "+csv-get",
@@ -548,7 +667,8 @@ def profile_table(args) -> tuple[dict[str, Any], list[str]]:
         )
     )
     source_range = str(csv_data.get("actual_range") or args.range)
-    if csv_data.get("has_more"):
+    if (csv_data.get("has_more") or csv_data.get("complete") is False
+            or csv_data.get("truncated")):
         raise LarkCliError(
             f"+csv-get truncated the requested range at {source_range}; narrow --range before profiling"
         )
@@ -593,6 +713,9 @@ def profile_table(args) -> tuple[dict[str, Any], list[str]]:
         hidden_columns=hidden_columns,
         all_hidden_columns=all_hidden_columns,
         header_scan_rows=args.header_scan_rows,
+        header_row=header_row,
+        key_columns=key_columns,
+        value_columns=value_columns,
     ), warnings
 
 
@@ -602,6 +725,10 @@ def main() -> None:
     parser.add_argument("--range", required=True)
     parser.add_argument("--max-chars", type=int, default=25000)
     parser.add_argument("--header-scan-rows", type=int, default=20)
+    parser.add_argument("--header-row", type=int,
+                        help="Absolute sheet row of the header; 0 means no header in the range")
+    parser.add_argument("--key-cols", help="Exact key columns, comma-separated (e.g. A,C)")
+    parser.add_argument("--value-cols", help="Returned fields to check for conflicting keys (e.g. D,E)")
     parser.add_argument("--skip-hidden", action="store_true")
     parser.add_argument("--timeout", type=int, default=60)
     args = parser.parse_args()

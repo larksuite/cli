@@ -28,7 +28,7 @@ from lark_sheet_read_cli import (
 )
 
 ACTION = "detect_subtables"
-ROW_PREFIX_RE = re.compile(r"^\[row=(\d+)\]\s?(.*)$")
+ROW_PREFIX_RE = re.compile(r"^\[row=(\d+)\][ \t]?")
 MAX_EXTERNAL_MERGE_ANCHOR_CHECKS = 10
 
 
@@ -67,7 +67,9 @@ def parse_annotated_csv(
     row_numbers: list[int] = []
     values: list[list[str]] = []
     max_cols = 0
-    lines = (text or "").splitlines()
+    # Keep physical CR/LF terminators and leave Unicode separators inside cells.
+    # splitlines() plus LF rejoining would silently normalize field contents.
+    lines = list(io.StringIO(text or "", newline=""))
     row_numbers_inferred = False
     has_authoritative_rows = isinstance(row_indices, list) and len(row_indices) > 0
 
@@ -84,14 +86,14 @@ def parse_annotated_csv(
                 continue
             if match:
                 if current_lines is not None and current_row_number is not None:
-                    records.append("\n".join(current_lines))
+                    records.append("".join(current_lines))
                     row_numbers.append(current_row_number)
                 current_row_number = int(match.group(1))
-                current_lines = [match.group(2)]
+                current_lines = [line[match.end():]]
             elif current_lines is not None:
                 current_lines.append(line)
         if current_lines is not None and current_row_number is not None:
-            records.append("\n".join(current_lines))
+            records.append("".join(current_lines))
             row_numbers.append(current_row_number)
 
         # Cross-check against the row numbers the server itself reported.
@@ -113,11 +115,11 @@ def parse_annotated_csv(
             )
 
         for record in records:
-            parsed = next(csv.reader([record]))
+            parsed = next(csv.reader(io.StringIO(record, newline="")), [])
             values.append(parsed)
             max_cols = max(max_cols, len(parsed))
     else:
-        reader = csv.reader(io.StringIO(text or ""))
+        reader = csv.reader(io.StringIO(text or "", newline=""))
         fallback_start = 1
         if source_range:
             fallback_start = parse_range(

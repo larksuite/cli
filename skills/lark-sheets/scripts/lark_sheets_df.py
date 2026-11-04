@@ -14,7 +14,13 @@ Callers run lark-cli themselves; this file is a library, not a CLI.
 """
 import json
 
-import pandas as pd
+try:
+    import pandas as pd
+except ModuleNotFoundError as exc:
+    raise ModuleNotFoundError(
+        "lark_sheets_df 需要 pandas；请在同一 Python 环境执行 "
+        "python3 -m pip install pandas，安装成功后重跑。", name=exc.name
+    ) from exc
 
 
 def df_to_sheet(df, name, formats=None):

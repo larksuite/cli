@@ -57,7 +57,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Only verify AI formulas (=AI(prompt, [range])), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously: after writing, let --range cover the entire written range (this flag is read-only and cheap, so do not sample), and do not poll results with +cells-get; the delivery criterion is ai_formula_failed_count == 0; ai_formula_total is neither narrowed by --range nor a count of the AI formulas just written, so it cannot be compared against an expected count. Once the criterion holds, delivery may proceed with pending formulas while telling the user that computation continues in the background."
+        "desc": "Only verify AI formulas (=AI(prompt, [range])), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously: when querying, let --range cover the entire written range (this flag is read-only and cheap, so do not sample), and do not poll results with +cells-get. ai_formula_total is neither narrowed by --range nor a count of the AI formulas just written, so it cannot be compared against an expected count. No failures does not mean computation is complete. This flag only reports status. Follow lark-sheets-ai-formula-monitoring for subagent monitoring when subsequent work needs AI values, including in-place writeback; otherwise deliver immediately after the initial status check succeeds with complete fields, confirmed target coverage and no target failures, allowing pending; do not continue observing, polling or validating results."
       }
     ]
   },

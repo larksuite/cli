@@ -1,6 +1,6 @@
 ---
 name: lark-sheets
-version: 3.6.9
+version: 3.8.0
 description: "飞书电子表格：创建和操作电子表格。支持工作表与行列结构（增删/合并/尺寸/隐藏/冻结/分组）、单元格读写（值/公式/样式/批注/单元格图片）、区域复制移动排序填充、查找替换、批量更新，图表、透视表、条件格式、筛选器与筛选视图、下拉列表、迷你图、浮动图片等对象的创建与维护，以及公式校验、历史版本回滚、本地 Excel/CSV 与飞书表格的导入导出。当用户需要创建或编辑表格、统计汇总与可视化、表格美化、公式计算（含 Excel 公式迁移）、金融/财务建模（DCF、三张表、预算、Sensitivity 等）时使用。多维表格（Base/bitable）请改用 lark-base；若用户是想按名称或关键词搜索云空间（云盘/云存储）里的表格文件，请改用 lark-drive 的 drive +search 先定位资源。当用户给出 doubao.com 的 /sheets/ URL/token 时，也应直接使用本 skill，不要因为域名不是飞书而回退到 WebFetch；路由依据是 URL 路径模式和 token，而不是域名。"
 metadata:
   requires:
@@ -21,7 +21,7 @@ metadata:
 | --- | --- | --- |
 | 读数据 | `+csv-get`（纯值/CSV）、`+cells-get`（公式/样式/批注）<br>**默认读全量**，不必分页；结果过大时自动落盘，按回执的 `output_path` 读文件 | 读 `references/lark-sheets-read-data.md` |
 | 写入数据 | `+csv-put`（无类型歧义纯文本）、`+table-put`（typed；量值/真日期；标签/编号/前导零/文本数字用 object，禁裸 csv-put）、`+cells-set`（公式/富写入）、`+cells-set-style`（样式）、`+cells-set-image`（单元格图片） | 读 `references/lark-sheets-write-cells.md` |
-| 格式继承（新列/新行） | 物理插行 / 插列用 `+dim-insert --inherit-style before\|after`；往已有空白区域扩写用 `+range-copy --paste-type formats` 先铺样式再写值 | 读 `references/lark-sheets-range-operations.md`；插行插列再读 `references/lark-sheets-sheet-structure.md` |
+| 格式继承（新列/新行） | 物理插行 / 插列用 `+dim-insert --inherit-style before\|after`；新区域用 `+range-copy --paste-type formats` 先铺样式再写值；已有格仅补内容时保留原样式，用户要求复制格式时才套模板 | 读 `references/lark-sheets-range-operations.md`；插行插列再读 `references/lark-sheets-sheet-structure.md` |
 | 工作簿操作 | `+workbook-create`、`+workbook-info`、`+workbook-import`、`+sheet-copy`、`+revision-get`、`+workbook-export`；导入后检查 `data.extra`，有合适方案时优先考虑替代，不强制替换；可交完整 Excel 或双交并说明差异 | 读 `references/lark-sheets-workbook.md` |
 | 行列操作 | 排序用 `+range-sort` 原子移动整行；合并 / 取消合并用 `+cells-merge` / `+cells-unmerge`；清空内容才用 `+cells-clear`；尺寸用 `+cols-resize` / `+rows-resize` | 读 `references/lark-sheets-range-operations.md`；涉结构布局再读 `references/lark-sheets-sheet-structure.md` |
 | 美化收尾 | `+styles-put` | 读 `references/lark-sheets-styles-put.md` |
@@ -42,17 +42,17 @@ metadata:
 
 ## 飞书表格编辑准则
 
-1. **最小改动**：用户没点名要删 / 改名 / 隐藏时，已有 Sheet 一张不动；补齐只写空格，未要求调整的值 / 结构 / 格式不动。
-2. **目标子表与回读断言**：先确认真实末行与目标区域；未点名子表时只从 `resource_type=sheet && is_hidden=false` 的可见网格候选里选，唯一才自动使用，多张不得按 index 猜。涉及"所有 / 每个 sheet"（跨表汇总、批量清洗、合并多张子表）时先 `+workbook-info` 列全再逐个处理，别只做前几张。写后用 `+csv-get` / `+cells-get` / `+<对象>-list` 验首、中、末及用户点名项——返回 `ok` 只表示请求成功。回写要按行号定位时取 `row_indices`（或加 `--include-row-prefix` 读 `[row=N]`），`cells-get` 的样式字段与值分开处理，公式必须回读 `formula`。**样式同样要回读**：写过边框 / 底色 / 字体色 / 数字格式 / 行高列宽 / 冻结的，收尾用 `+cells-get --include style` 或 `+sheet-info` 抽查目标区域首、中、末格确认属性真的在——写入返回 `ok` 不代表样式落上了；缺的整份重发（样式是幂等盖章，重发无副作用）。**图表最终交付门禁：最后一次修图后按 `references/lark-sheets-chart.md` 运行统一质检，读完全部 `read_required[].path` 图片并分别确认数据语义、静态质量与视觉结果；横轴标签倾斜时调整图表尺寸使其水平、完整且不重叠；折线图及组合图中的折线系列默认关闭整系列的逐点标签，仅用户明确要求时开启；末点、峰值、关键点等单点标签可按展示需要单独设置。覆盖不全、图片不可验或仍存在重叠 / 截断 / 遮挡时不得声称完成。**
-3. **公式闭环**：可推导值写落格公式，不用静态值代替——用 Python 算好数值再写进单元格，交付的是改输入不重算的死表；Python 只用于推导和验证，落进单元格的必须是引用其他格的公式。写前确认字段语义、阈值边界（以上/至少=`>=`，超过/大于=`>`）、单位/时区和完整源范围，选首中末、空值、边界及一条可手算记录作哨兵；写后逐段 `+formula-verify --exit-on-error`，各段 `status='success'` 且哨兵值正确才算完成（AI 公式例外：异步计算，改用 `+formula-verify --ai-only` 对整个写入区间做一次异步状态检查，不用 `+cells-get` 轮询结果，`failed` 清零后即使仍有 pending 也可交付并说明）；试错 3 次仍失败可降级静态值，交付说明写明「静态值 + 失败原因 + 不随源数据更新」。
-4. **完整继承样式**：新增行列时禁止只读值只写值——原表字体、对齐、底色（含奇偶行交替）、四边框都延续到新区域。**物理插入行 / 列**用 `+dim-insert --inherit-style before|after`（原生继承，比补刷可靠）；**往已有空白区域扩写**（如在数据右侧加新列）用 `+range-copy --paste-type formats` 先铺样式再写值；两者都表达不了的非规则样式，才用 `+cells-get --include style` 读源区样式随值写回。无论走哪条路径，插入后都另查行高列宽（行高不随样式继承，插行填长文本前补 `+rows-resize`）、合并与跨列标题并补齐。详见 `references/lark-sheets-write-cells.md`。
-5. **原子操作**：排序用 `+range-sort`，`--range` 覆盖完整记录宽度，排序列只写进 `--sort-keys`；删除记录用 `+dim-delete`，清空内容 / 格式才用 `+cells-clear`；禁止读值后用 `+csv-put` 覆盖来模拟排序 / 删除。仅跨类型且有顺序依赖时才用 high-risk `+batch-update`。
+1. **最小改动**：按坐标和属性界定授权；补值不重刷原格式，美化不清理原文本或改写公式。用户没点名要删 / 改名 / 隐藏时，已有 Sheet 一张不动；补齐只写空格，已有空格的底色 / 边框 / 验证也保留。填写模板保留行标签与字段列序，不为说明来源擅自扩列或合并待填区。
+2. **目标子表与回读断言**：先确认真实末行与目标区域；未点名子表时只从 `resource_type=sheet && is_hidden=false` 的可见网格候选里选，唯一才自动使用，多张不得按 index 猜。涉及"所有 / 每个 sheet"（跨表汇总、批量清洗、合并多张子表）时先 `+workbook-info` 列全再逐个处理，别只做前几张。普通值 / 普通公式写后用 `+csv-get` / `+cells-get` 验首、中、末及用户点名项，普通公式同时核对 `formula`；AI 区域按 `references/lark-sheets-ai-formula-monitoring.md`，不套本条值与公式回读。对象用 `+<对象>-list` 核对——返回 `ok` 只表示请求成功。回写要按行号定位时取 `row_indices`（或加 `--include-row-prefix` 读 `[row=N]`），`cells-get` 的样式字段与值分开处理。**样式同样要回读**：写过边框 / 底色 / 字体色 / 数字格式 / 行高列宽 / 冻结的，收尾用 `+cells-get --include style` 或 `+sheet-info` 抽查目标区域首、中、末格确认属性真的在——写入返回 `ok` 不代表样式落上了；缺项只补目标格的对应属性，不扩大到整列或其他原区域。**图表最终交付门禁：最后一次修图后按 `references/lark-sheets-chart.md` 运行统一质检，读完全部 `read_required[].path` 图片并分别确认数据语义、静态质量与视觉结果；横轴标签倾斜时调整图表尺寸使其水平、完整且不重叠；折线图及组合图中的折线系列默认关闭整系列的逐点标签，仅用户明确要求时开启；末点、峰值、关键点等单点标签可按展示需要单独设置。覆盖不全、图片不可验或仍存在重叠 / 截断 / 遮挡时不得声称完成。**
+3. **公式闭环**：可推导值写落格公式，数值计算引用源格，不将Python计算值硬编码回填。写前确认字段、阈值边界（以上/至少=`>=`，超过/大于=`>`）、单位/时区与完整源范围，以一条可手算记录及边界、例外独立推导预期；写后对照实际结果，不用生成函数给自己作证。普通公式逐段 `+formula-verify --exit-on-error`，各段success且业务哨兵正确才算完成；未完成不据此静态化，用户明确接受固定数值结果时才降级并说明。AI 公式按 `references/lark-sheets-ai-formula-monitoring.md` 分流：无需 AI 真值时首检通过必须立即交付，允许 pending；需 AI 真值时监控完成再验收，原位编辑回写验收后的 AI 值；pending、超时和占位不计入失败，不据此静态回退。
+4. **完整继承样式**：新增行列时禁止只读值只写值——原表字体、对齐、底色（含奇偶行交替）、四边框都延续到新区域。**物理插入行 / 列**用 `+dim-insert --inherit-style before|after`（原生继承，比补刷可靠）；**新区域或用户要求复制格式时**用 `+range-copy --paste-type formats`；已有格仅补内容时保留原样式。非规则样式继承用 `+cells-get --include style` 读源区样式随值写回。无论走哪条路径，插入后都另查行高列宽（行高不随样式继承，插行填长文本前补 `+rows-resize`）、合并与跨列标题并补齐。详见 `references/lark-sheets-write-cells.md`。
+5. **原子操作**：排序用 `+range-sort`，`--range` 覆盖完整记录宽度，先按表头确定业务主键及优先级，再写入 `--sort-keys`，排后按相同业务层级核对分组连续性和行对应；删除记录用 `+dim-delete`，清空内容 / 格式才用 `+cells-clear`；禁止读值后用 `+csv-put` 覆盖来模拟排序 / 删除。仅跨类型且有顺序依赖时才用 high-risk `+batch-update`。
 6. **标色分流**：数据变化后应自动重算的高亮 / 标红用条件格式——凡按值 / 规则决定哪些格上色的都算，哪怕只标一次；静态样式只用于用户逐个点名的单元格或人工判断的结果，装饰性美化按视觉规范。两条路径取色字段用同一判据：用户中文语境下的"标红 / 染色 / 标记"指**单元格背景色**，"文字红 / 字体红 / 把字变红"才用字体色，默认无说明时选背景色。条件格式建完先 `+cond-format-list` 验规则与范围，再 `+cond-format-result-get` 抽查哨兵格命中样式。
-7. **产物可核对**：用户点名的 sheet 名与数量、表头、标题、图例、文件名、口径逐字保留；回复中每项“已完成”都能定位到产物，缺口逐项声明。
+7. **产物可核对**：用户点名的 sheet 名与数量、表头、标题、图例、文件名、口径逐字保留；匹配先明确相等 / 包含及允许的归一化，不用相似项补缺，不用明细行数代替唯一对象数；聚合先核业务粒度和键集合，总额相等不能代替分组正确。回复中每项“已完成”都能定位到产物，缺口逐项声明。
 8. **替换与新增**：批量替换 / 删除后搜索确认无残留；新增列要有表头，单位 / 口径另置，不占原表头或数据格。
-9. **不编造**：表外数据须有可核验来源，不用常识或名称推断伪造公司、标准值、行情或法规参数；**没有来源就留空**——凭记忆填的数值大概率与真实值对不上，比留空更糟。留空的格在交付说明里逐项列出格址与缺的来源，不要只写一句"部分数据缺失"。用户要求补全的非数值描述信息可以按已有线索推断，但须在格内或备注标明是推断及依据。
+9. **不编造**：表外数据须有可核验来源，不用常识或名称推断伪造公司、标准值、行情或法规参数；**没有来源就留空**——凭记忆填的数值大概率与真实值对不上，比留空更糟。留空的格在交付说明里逐项列出格址与缺的来源，不要只写一句"部分数据缺失"。非数值评价可据给定事实概括，不得扩写成未经提供的职责、经历或成果。确需推断的描述须标明是推断及依据，不把推断写成既有事实。
 
-> 🤖 **文本类 NLP 任务首选 AI 公式，别默认退回手工 / Python**：只要对文本列做**翻译 / 情感 / 分类打标签 / 信息提取 / 总结 / 润色**等 NLP，飞书在线表格上优先用原生 `=AI(prompt, range)` 逐列铺开（写法与普通公式一致，见 `references/lark-sheets-formula-translation.md`），一次落表随行自动计算，比逐条读 → 手工判断 → 回写 / Python 调模型再写静态值都更省事。**判定标准是「逐行独立」**：每个目标单元格只依赖同一行输入即为逐行独立，**数据量（哪怕 1 万 +）、分批、判断复杂度都不改变该判定**——大数据量下 AI 公式仍是首选，分批只改公式铺设的批次大小（行数很多时按批串行，量级参考每批几百到一千行），不得改为「用 Python 或规则脚本生成语义结果后静态写回」；Python 只能做清洗 / 行号映射 / 构造公式批次，不得读源文本生成目标语义值。只有单个结果依赖多行输入的跨行任务才走非公式路线。AI 公式异步计算，写完先对种子格 / 首格做**一次** `+cells-get --include formula` 核对文本，随后**第一校验入口必须是** `+formula-verify --ai-only --range <整个写入区间>`，禁止用 `+cells-get` 轮询计算结果；判据为 `ai_formula_failed_count == 0`（`--range` 只透传给后端、不保证收窄汇总口径，按返回的单元格定位核对本次区间，别拿总数对预期条数），满足后即使仍有 pending 也可交付，并告知用户"AI 公式仍在后台运行"。
+> **逐行语义任务使用 AI 公式**：对文本列做翻译、情感分析、分类、提取、总结或润色时，每个目标格只依赖同行输入，就用原生 `=AI(prompt, range)`；数据量、分批和判断复杂度不改变该路由。Python 只做清洗、行号映射和公式批次构造，不生成目标语义值或答案词典；大批量按 `references/lark-sheets-formula-translation.md` 串行铺设。单个结果依赖多行的跨行任务走非公式路线。计算状态用 `+formula-verify --ai-only --range <整个写入区间>` 检查，不用 `+cells-get` / `+csv-get` 轮询；目标覆盖、交付或监控按 `references/lark-sheets-ai-formula-monitoring.md` 执行。
 
 > 流程：了解结构 →（未点名时先按 visible_grid selection 定位）→ 读数据 → 原生工具写入 → 按用户点名项回读验证 → 在线交付。整理 / 美化 / 加汇总行这类会改变表长或版式的任务，收尾把表头行冻住（原表已有冻结设置的不动）。xlsx 验收只在处理本地 xlsx、或用户点名要本地 xlsx / 下载 / 打印时跑。
 ## References
@@ -65,12 +65,13 @@ reference 分两组：先读**通用方法与规范**（横切所有任务的样
 | --- | --- |
 | [飞书表格样式与配色规范](references/lark-sheets-visual-standards.md) | 飞书表格样式与配色规范：表头/数据区/汇总行的颜色、字号、对齐、边框、数字格式等取值标准，以及从零新建表格的版式美化、新增汇总行、追加行列继承原表风格、已有区域美化等典型场景的决策流程与样式要点。工具调用参数细节请参考对应的 lark-sheets-write-cells / lark-sheets-range-operations / lark-sheets-batch-update。条件格式（高亮、标红、数据条、色阶）请使用 lark-sheets-conditional-format。 |
 | [飞书表格公式生成规则](references/lark-sheets-formula-translation.md) | Excel 公式到飞书表格公式的迁移与生成规则。核心目标不是保留 Excel 原语法，而是按飞书表格可执行规则重写公式，并在结果上尽量对齐 Excel。当用户要求把 Excel 公式改写成飞书表格公式，或需要生成飞书公式（尤其涉及 ARRAYFORMULA、数组语义与逐行填充、原生数组函数、INDEX/OFFSET、MAP/LAMBDA、日期差、多层范围结果与二次展开）时使用。本文负责把公式写对；落表后必须用 `references/lark-sheets-formula-verify.md` 对本次公式范围逐段诊断。 |
+| [AI 公式结果监控](references/lark-sheets-ai-formula-monitoring.md) | 标准模式使用 AI 公式前读取。需 AI 真值（含原位回写）时，主 Agent 写入和验收、子 Agent 监控；无需真值时首检通过后立即交付，允许 pending，不再观察或验收结果。委派工具由运行平台提供，未提供时主 Agent 监控。 |
 
 ### 按对象的工具参考（含 shortcut）
 
 | Reference | 描述 |
 | --- | --- |
-| [Lark Sheet Formula Verify](references/lark-sheets-formula-verify.md) | 公式写入 / 批量填充 / `--copy-to-range` 扩展 / 导入含公式工作簿后的完成检查。普通公式按本次新增或修改范围逐段扫描，合并编译失败与 7 类运行错误；`partial` 继续拆分，全部 `status='success'` 后完成。AI 公式用 `--ai-only` 对整个写入区间做一次异步状态检查，pending 可说明后交付。 |
+| [Lark Sheet Formula Verify](references/lark-sheets-formula-verify.md) | 公式写入 / 批量填充 / `--copy-to-range` 扩展 / 导入含公式工作簿后的完成检查。普通公式按本次新增或修改范围逐段扫描，合并编译失败与 7 类运行错误；`partial` 继续拆分，全部 `status='success'` 后完成。AI 公式需 AI 真值时用 `--ai-only` 查询整个写入区间，按 `references/lark-sheets-ai-formula-monitoring.md` 委派监控；无需真值时首检通过后立即交付，允许 pending，不再观察或验收结果。 |
 | [Lark Sheet Workbook](references/lark-sheets-workbook.md) | 管理飞书表格的工作簿结构（子表列表及元数据）。当用户提到"看看这个表格有什么"、"表格结构"、"有哪些 sheet"、"新建一个 sheet"、"删除这个工作表"、"重命名"、"复制一份"、"移动到前面"时使用。 |
 | [Lark Sheet Sheet Structure](references/lark-sheets-sheet-structure.md) | 管理飞书表格的子表结构与布局：查看行高列宽、隐藏、合并、冻结与分组，并执行插入/删除/移动行列等物理结构操作。数据分组统计走 lark-sheets-pivot-table。普通表尾追加优先用 lark-sheets-write-cells 的 `+table-put --mode append` 自动定位末行；只有用户明确要求物理插入行列、继承模板结构或扩容布局时才先用本 reference。 |
 | [Lark Sheet Read Data](references/lark-sheets-read-data.md) | 读取飞书表格中的单元格数据。当用户需要"看看数据"、"分析数据"、"统计/汇总"时使用；也适用于需要查看公式、样式、批注等详细信息的场景。 |

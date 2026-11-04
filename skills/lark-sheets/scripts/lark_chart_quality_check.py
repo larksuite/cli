@@ -601,6 +601,50 @@ def fetch_thumbnail_assets(
     }
 
 
+class ThumbnailCircuit:
+    """Stop thumbnail requests after permanent errors or three transient failures."""
+
+    def __init__(self):
+        self.failures = 0
+        self.stop_reason = ""
+
+    def record(self, result: dict[str, Any]) -> None:
+        """Count request failures only; missing or invalid images are not failures."""
+        message = result.get("error")
+        if not message:
+            self.failures = 0
+            return
+        if not _thumbnail_error_is_transient(str(message)):
+            self.stop_reason = "Thumbnail requests stopped after a non-retryable error: " + str(message)
+            return
+        self.failures += 1
+        if self.failures >= 3:
+            self.stop_reason = "Thumbnail requests stopped after 3 consecutive transient failures: " + str(message)
+
+
+def _thumbnail_error_is_transient(message: str) -> bool:
+    """Retry unknown failures too; only explicit permanent errors stop immediately."""
+    try:
+        payload = json.loads(message)
+    except ValueError:
+        payload = None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    error = error if isinstance(error, dict) else {}
+    if payload is not None:
+        message = str(error.get("message") or payload.get("message") or "") if isinstance(payload, dict) else ""
+    kind = str(error.get("type") or "").lower()
+    subtype = str(error.get("subtype") or "").lower()
+    if (subtype in {"permission_denied", "not_found", "invalid_argument", "unauthenticated", "forbidden"}
+            or kind in {"permission", "authentication", "validation"}
+            or str(error.get("code")) == "9499"
+            or re.search(r"invalid\s+(?:request\s+)?param|invalid\s+argument|invalid\s+token|"
+                         r"not\s+found|no\s+permission|permission\s+denied|unauthorized|forbidden|"
+                         r"不存在|无权限|没有权限|参数[^\n]{0,6}(?:错误|非法|无效|不合法|不正确)",
+                         message, re.I)):
+        return False
+    return True
+
+
 def fetch_thumbnail_assets_with_fallback(
     locator: dict[str, str],
     sheet: dict[str, Any],
@@ -609,7 +653,17 @@ def fetch_thumbnail_assets_with_fallback(
     output_dir: Path,
     timeout: int,
     retries: int,
+    circuit: ThumbnailCircuit | None = None,
 ) -> dict[str, Any]:
+    circuit = circuit if circuit is not None else ThumbnailCircuit()
+    if circuit.stop_reason:
+        return {
+            "status": "error", "expected_chart_ids": expected_chart_ids,
+            "received_chart_ids": [], "valid_chart_ids": [], "files": [],
+            "missing_chart_ids": expected_chart_ids, "unavailable_chart_ids": expected_chart_ids,
+            "coverage": {"valid": 0, "expected": len(expected_chart_ids), "rate": 0.0},
+            "error_log_ids": [], "fallback_attempts": [], "stop_reason": circuit.stop_reason,
+        }
     result = fetch_thumbnail_assets(
         locator,
         sheet,
@@ -617,6 +671,7 @@ def fetch_thumbnail_assets_with_fallback(
         output_dir=output_dir,
         timeout=timeout,
     )
+    circuit.record(result)
     remaining = [
         chart_id
         for chart_id in expected_chart_ids
@@ -624,9 +679,11 @@ def fetch_thumbnail_assets_with_fallback(
     ]
     attempts: list[dict[str, Any]] = []
     for attempt in range(1, retries + 1):
-        if not remaining:
+        if not remaining or circuit.stop_reason:
             break
         for chart_id in remaining:
+            if circuit.stop_reason:
+                break
             retry = fetch_thumbnail_assets(
                 locator,
                 sheet,
@@ -635,6 +692,7 @@ def fetch_thumbnail_assets_with_fallback(
                 timeout=timeout,
                 chart_id=chart_id,
             )
+            circuit.record(retry)
             attempts.append(
                 {
                     "attempt": attempt,
@@ -676,6 +734,8 @@ def fetch_thumbnail_assets_with_fallback(
     }
     result["error_log_ids"] = sorted(set(result.get("error_log_ids", [])))
     result["fallback_attempts"] = attempts
+    if circuit.stop_reason:
+        result["stop_reason"] = circuit.stop_reason
     if not remaining and set(result.get("valid_chart_ids", [])) == set(expected_chart_ids):
         result["status"] = "ok"
         result.pop("error", None)
@@ -2240,6 +2300,7 @@ def compact_report(report: dict[str, Any]) -> dict[str, Any]:
                 "coverage",
                 "error_log_ids",
                 "fallback_attempts",
+                "stop_reason",
             )
             if key in sheet
         }
@@ -2333,6 +2394,7 @@ def main() -> None:
             else Path(tempfile.mkdtemp(prefix="lark_chart_thumbnails_"))
         )
         thumbnail_results = []
+        thumbnail_circuit = ThumbnailCircuit()
         for sheet, result in zip(sheets, results):
             chart_ids = result.get("chart_ids", [])
             if not chart_ids:
@@ -2359,6 +2421,7 @@ def main() -> None:
                 output_dir=thumbnail_root,
                 timeout=args.timeout,
                 retries=getattr(args, "thumbnail_retries", 1),
+                circuit=thumbnail_circuit,
             )
             thumbnail_results.append(
                 {

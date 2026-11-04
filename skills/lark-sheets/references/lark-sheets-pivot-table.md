@@ -1,8 +1,8 @@
 # Lark Sheet Pivot Table
 
-## 真对象硬约束
+## 要求透视表时交付真实对象
 
-当用户要求"透视表 / 分组汇总 / 交叉分析 / 按 X 统计 Y"时，**必须**通过 `+pivot-{create|update|delete}` 创建真实的透视表对象。**禁止**用 `SUMIFS` / `COUNTIFS` 等普通公式 + `+cells-set` 在原表中拼一张"看起来像透视表的汇总表"来代替。判断标准：交付后 `+pivot-list` 必须能返回该对象。
+用户要求真实透视表时，在线表用 `+pivot-create` 创建、`+pivot-list` 核对对象；不能用普通公式区域或命名为“透视”的sheet代替。本地准备源数据并导入后，仍须完成所需透视对象。仅要求分组统计时按输出布局和更新需求选择透视或公式汇总，不一律强制新增对象。
 
 ## 使用场景
 
@@ -20,20 +20,20 @@
 创建透视表前先识别用户需求中的分组维度和聚合指标，**不要搞反**：
 
 - **rows（行字段）** = 分组维度，即"按什么分组"。例：部门、地区、医生、产品类别
-- **values（值字段）** = 聚合指标，即"统计什么数值"。例：销售额（聚合方式 `sum`）、订单数（聚合方式 `count`）
+- **values（值字段）** = 聚合指标，即"统计什么数值"。例：销售额用 `sum`，订单去重数用订单编号的 `distinct`；非空明细记录数才用 `count`。
 - **columns（列字段）** = 交叉维度（可选），即"再按什么横向展开"。例：月份、性别
 
 | 用户说 | rows | values | columns |
 |--------|------|--------|---------|
-| "按部门统计人数" | 部门 | 姓名（`summarize_by: "count"`） | — |
+| "按部门统计去重人数" | 部门 | 稳定员工编号（`summarize_by: "distinct"`） | — |
 | "按医生统计费用和结余" | 主管医生 | 费用（`"sum"`）、结余（`"sum"`） | — |
-| "各部门男女人数" | 部门 | 姓名（`"count"`） | 性别 |
+| "各部门男女人数" | 部门 | 稳定员工编号（`"distinct"`；确认一人仅一行时可用 `"count"`） | 性别 |
 
 **常见配置错误（必须注意）**：
 - **值字段类型与聚合器匹配**：`sum/average/median/product/stdDev/stdDevp/var/varp` 只用于数值列；数字个数用 `countNums`，非空记录数用 `count`。mixed 列先保留原值并新增清洗结果/失败标记，记录总数、成功、失败、空值和统计分母，再对清洗后的数值列聚合。
 - **数据源范围必须精确**：透视表的数据源范围必须包含表头行，且精确覆盖全部数据行列。范围过大（包含空行/空列）或过小（遗漏数据列）都会导致透视表结果错误
 - **行列字段选择要匹配用户意图**：用户说"按商品统计金额"→ 行字段=商品，值字段=金额（`summarize_by: "sum"`）。不要把行列字段搞反
-- **聚合类型要匹配**：用户说"统计数量"→ `summarize_by: "count"`；"统计总额"→ `"sum"`；"统计平均"→ `"average"`。完整合法值：`sum` / `count` / `average` / `max` / `min` / `product` / `countNums` / `stdDev` / `stdDevp` / `var` / `varp` / `distinct` / `median`。按用户意图选聚合方式，不要拿 `count` 顶替 `sum`
+- **聚合类型按统计粒度确定**：非空记录数用 `count`，唯一订单 / 人员数用稳定身份键的 `distinct`，数量字段的件数合计用 `sum`，均值用 `average`。去重键须能标识目标对象；计算占比时，分子须为分母总体的子集，并使用一致的时间与对象口径。完整合法值：`sum` / `count` / `average` / `max` / `min` / `product` / `countNums` / `stdDev` / `stdDevp` / `var` / `varp` / `distinct` / `median`。
 - **`--properties` 还原生支持**：计算字段 `calculated_fields[].summarize_by ∈ {sum, custom}`、重复行标签 `repeat_row_labels: true`——别因速查表没列就判"不支持"绕路
 - **参数长度限制**：如果透视表配置 JSON 过长（数据源范围跨越大量行列），可能导致工具调用失败。此时应先确认数据范围的精确边界，避免传入过大的 range
 - **落点不能覆盖任何已有数据（不只是 `--source` 范围）**：透视表创建后会向右下**展开**，展开区域哪怕只盖到一个已有单元格（即便已避开源数据），也会报「目标位置不能与数据源重叠」并产生 `#REF!`。创建前无法精确预知展开尺寸，故**强烈优先默认策略**（不传 `--target-sheet-id/-name` 与 `--target-position`/`--range`，后端自动新建空白子表），零覆盖风险；非要落到已有子表，必须挑一片足够大的纯空白区
@@ -128,6 +128,16 @@ lark-cli sheets +pivot-list --url "..." --sheet-id "$SID"
 > **用途 2（创建后校验覆盖）**：建完后轮询 `info.loaded/error_state`；`Loading` / `ServiceCalcLoading` 继续等待，`Cover` / `Shrink` 等终态错误才表示冲突。成功后用 `content_range/page_range` 核对真实占用区域与原数据边界。
 
 ### `+pivot-create`
+
+按部门统计唯一员工数的示例；将字段名、数据范围和聚合方式替换为实际需求：
+
+```json
+{"rows":[{"field":"部门"}],"values":[{"field":"员工编号","summarize_by":"distinct","display_name":"去重人数"}]}
+```
+
+```bash
+lark-cli sheets +pivot-create --url "<表格URL>" --source "'明细'!A1:C101" --properties @pivot.json
+```
 
 > 数据源 `--source` 必须从表头行开始；空行 / 汇总行会被当作数据参与聚合，需提前用 `+csv-get` 确认起止边界。`--source` 和 `--range` 是独立 flag（不要再放 `--properties`）；`rows` / `columns` / `values` 等数组字段走 `--properties`。
 >
