@@ -14,8 +14,26 @@ const (
 	agentTraceMaxLen = 1024
 )
 
+var agentNameEnvHints = [...]struct{ env, name string }{
+	{"CLAUDECODE", "claudecode"},
+	{"WORKBUDDY_APP_NAME", "workbuddy"},
+	{"QODERWORK_EXECUTION_ENV", "qwenwork"},
+	{"HERMES_HOME", "hermes"},
+	{"OPENCLAW_SHELL", "openclaw"},
+	{"CODEX_SHELL", "codex"},
+}
+
+// AgentName resolves explicit or environment-provided agent metadata.
 func AgentName() string {
-	return sanitizeSingleLine(os.Getenv(CliAgentName), agentNameMaxLen)
+	if raw := os.Getenv(CliAgentName); raw != "" {
+		return sanitizeSingleLine(raw, agentNameMaxLen)
+	}
+	for _, hint := range agentNameEnvHints {
+		if os.Getenv(hint.env) != "" {
+			return hint.name
+		}
+	}
+	return ""
 }
 
 func AgentTrace() string {
