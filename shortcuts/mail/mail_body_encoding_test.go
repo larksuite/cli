@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
+// TestMailDraftCreate_LongASCIIBodyPreservedInRequest verifies that the mounted
+// draft command preserves long HTML text and attributes in the API request.
 func TestMailDraftCreate_LongASCIIBodyPreservedInRequest(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	chdirTemp(t)
@@ -41,6 +43,8 @@ func TestMailDraftCreate_LongASCIIBodyPreservedInRequest(t *testing.T) {
 	}
 }
 
+// decodedSinglePartBodyForTest reads a single-part MIME body and decodes base64
+// when present, so assertions inspect content independently of wire encoding.
 func decodedSinglePartBodyForTest(t *testing.T, eml string) string {
 	t.Helper()
 	message, err := netmail.ReadMessage(strings.NewReader(eml))
