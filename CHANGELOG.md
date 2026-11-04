@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.99] - 2026-11-04
+
+### Features
+
+- **task**: register comment API metadata (#2864)
+- **apps**: add +features and +feature-enable for app business features (#2816)
+- **apps**: support changing app icon via +update --icon-url/--icon-file (#2857)
+- **apps**: add --owner-id filter to apps +list (#2884)
+- **apps**: add +delete shortcut (#2883)
+
+### Bug Fixes
+
+- **auth**: explain logins that receive no refresh_token (#2853)
+- **apps**: tell git to quit when the credential helper cannot answer (#2854)
+- **apps**: answer rate-limited calls with backoff instead of request hints (#2882)
+- fill missing agent names for legacy callers (#2889)
+
+### Documentation
+
+- **apps**: align cloud-dev polling guidance with session-get response (#2851)
+
+### Refactoring
+
+- **docs**: remove genre routing and ignore unknown fields (#2859)
+
+### Misc
+
+- **slides**: sync XML schema (2026-10-13) (#2806)
+
 ## [v1.0.98] - 2026-10-13
 
 ### Features
@@ -2212,6 +2241,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.99]: https://github.com/larksuite/cli/releases/tag/v1.0.99
 [v1.0.98]: https://github.com/larksuite/cli/releases/tag/v1.0.98
 [v1.0.97]: https://github.com/larksuite/cli/releases/tag/v1.0.97
 [v1.0.96]: https://github.com/larksuite/cli/releases/tag/v1.0.96
