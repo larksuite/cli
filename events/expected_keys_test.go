@@ -16,6 +16,7 @@ var expectedKeys = []string{
 	"approval.task.status_changed_v4",
 	"board.whiteboard.updated_v1",
 	"card.action.trigger",
+	"drive.notice.comment_add_v1",
 	"im.chat.disbanded_v1",
 	"im.chat.member.bot.added_v1",
 	"im.chat.member.bot.deleted_v1",

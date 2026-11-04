@@ -88,7 +88,7 @@ func TestListDomain_UnknownDomainIsRejectedWithTheValidSet(t *testing.T) {
 	if !strings.Contains(err.Error(), "unknown domain: definitely-bogus") {
 		t.Errorf("error must name the rejected value, got %v", err)
 	}
-	for _, domain := range []string{"application", "approval", "board", "card", "im", "minutes", "task", "vc"} {
+	for _, domain := range []string{"application", "approval", "board", "card", "drive", "im", "minutes", "task", "vc"} {
 		if !strings.Contains(problem.Hint, domain) {
 			t.Errorf("hint must list valid domain %q, got %q", domain, problem.Hint)
 		}
