@@ -15,7 +15,10 @@ import (
 // AppsList lists apps visible to the calling user (cursor pagination).
 //
 // Supports name fuzzy match (--keyword), ownership-dimension filter
-// (--ownership: all / mine / shared), and app-type filter (--app-type). See
+// (--ownership: all / mine / shared), app-type filter (--app-type), and an
+// owner filter (--owner-id: an ou_ open_id). --owner-id narrows results to apps
+// whose owner is that user within the same visibility scope; it is filtered
+// server-side and is orthogonal to --ownership. See
 // lark-apps SKILL.md for when an agent should use this to resolve an app_id
 // from a user-supplied name (only when the user named an app and a downstream
 // op needs its app_id — never unconditional enumeration).
@@ -27,14 +30,26 @@ var AppsList = common.Shortcut{
 	Tips: []string{
 		"Example: lark-cli apps +list",
 		"Example: lark-cli apps +list --keyword <keyword>",
+		"Example: lark-cli apps +list --owner-id <open_id>",
 		"Tip: filter fields with --jq, e.g. -q '.data.items[].app_id'",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
+	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
+		// Runs before both dry-run and execute. An explicit --owner-id must be
+		// a valid ou_ open_id; blank input must not fall back to no owner filter.
+		if rctx.Cmd.Flags().Changed("owner-id") {
+			if _, err := common.ValidateUserIDTyped("--owner-id", rctx.Str("owner-id")); err != nil {
+				return err
+			}
+		}
+		return nil
+	},
 	Flags: []common.Flag{
 		{Name: "keyword", Desc: "fuzzy match on app name"},
 		{Name: "ownership", Desc: "ownership filter: all (created by me + shared with me) | mine | shared", Enum: []string{"all", "mine", "shared"}},
+		{Name: "owner-id", Desc: "filter by app owner open_id (ou_ prefix); server-side filter, orthogonal to --ownership"},
 		{Name: "app-type", Desc: "app type filter (html, frontend or full_stack)", Enum: []string{"html", "frontend", "full_stack"}},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
@@ -114,6 +129,11 @@ func buildAppsListParams(rctx *common.RuntimeContext) map[string]interface{} {
 	}
 	if ownership := strings.TrimSpace(rctx.Str("ownership")); ownership != "" {
 		params["ownership"] = ownership
+	}
+	// --owner-id format is enforced by the Validate hook; pass the open_id straight
+	// through so the server applies the owner filter within visibility scope.
+	if owner := strings.TrimSpace(rctx.Str("owner-id")); owner != "" {
+		params["owner_id"] = owner
 	}
 	if at := strings.TrimSpace(rctx.Str("app-type")); at != "" {
 		params["app_type"] = at
