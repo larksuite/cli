@@ -36,6 +36,7 @@ metadata:
 - **预览素材 — [`+media-preview`](references/lark-doc-media-preview.md)**：预览文档或评论中的图片、附件或素材。
 - **下载素材 — [`+media-download`](references/lark-doc-media-download.md)**：下载文档中的图片、附件、素材或画板缩略图。
 - **Docx 封面 — [`+resource-download` / `+resource-update` / `+resource-delete`](references/lark-doc-resource-cover.md)**：下载、更新或删除 Docx 封面。
+- **原生标题图标 / emoji**：当前 CLI 不支持读取、设置或移除；封面、正文 emoji 和标题文本中的 emoji 均不能替代原生图标。限制与手动操作见[标题图标说明](references/lark-doc-resource-cover.md#原生标题图标与封面的区别)。
 - **画板 — [`画板工作流`](references/lark-doc-whiteboard.md)**：创建或更新画板时先读取工作流；更新已有画板必须复用现有 token，禁止新建空白画板；使用 [`whiteboard +update`](../lark-whiteboard/references/lark-whiteboard-update.md) 写入。
 - **思维笔记 — `mindnotes`**：已有思维笔记走 [`思维笔记链路`](references/lark-doc-mindnote.md)；新建思维笔记走 [`lark-doc-whiteboard`](references/lark-doc-whiteboard.md)。
 

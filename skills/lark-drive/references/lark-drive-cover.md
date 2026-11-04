@@ -61,6 +61,8 @@ lark-cli drive +cover \
 - `big` -- 偏移动端的大图封面
 - `square` -- 正方形裁剪封面
 
+这里的 `icon` 是下载用的文件列表小图标规格，不是原生标题 emoji 的读取或编辑接口。设置、更换或移除文档标题旁的图标目前需要在客户端或网页中操作，见[原生标题图标说明](../../lark-doc/references/lark-doc-resource-cover.md#原生标题图标与封面的区别)。
+
 ### 关键约束
 
 - 不传 `--list-only` 时，必须显式传 `--spec` 和 `--output`
