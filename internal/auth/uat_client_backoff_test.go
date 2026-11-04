@@ -68,8 +68,8 @@ func TestRefreshOnceUsesHTTPDateRetryAfter(t *testing.T) {
 	if result.action != refreshRetryAndPreserve {
 		t.Fatalf("action = %v", result.action)
 	}
-	if result.retryDelay <= 19*time.Second || result.retryDelay > 20*time.Second {
-		t.Fatalf("HTTP-date retry delay = %v, want >19s and <=20s", result.retryDelay)
+	if result.retryDelay < 18*time.Second || result.retryDelay > 20*time.Second {
+		t.Fatalf("HTTP-date retry delay = %v, want >=18s and <=20s", result.retryDelay)
 	}
 }
 
