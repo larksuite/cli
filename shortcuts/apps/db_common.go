@@ -359,6 +359,12 @@ func withDBSyncHint(err error, fallback string) error {
 	if strings.TrimSpace(p.Hint) != "" {
 		return err
 	}
+	// A throttled call was never evaluated, so neither the code table nor the
+	// request-shaped fallback can explain it (see hintExplainsFailure).
+	if p.Subtype == errs.SubtypeRateLimit {
+		p.Hint = appRateLimitHint
+		return err
+	}
 	// Subcode-specific hint takes precedence over the generic code table: the
 	// online-DDL ban shares code 500002776 with unrelated failures, so match the
 	// stable subcode in the msg before falling back to per-code guidance.

@@ -125,10 +125,18 @@ func withObservabilityHint(err error) error {
 	if err == nil {
 		return nil
 	}
-	if p, ok := errs.ProblemOf(err); ok && isAppNoContainerError(p) {
-		p.Message = appNoContainerMessage
-		p.Hint = appNoContainerHint
-		return err
+	if p, ok := errs.ProblemOf(err); ok {
+		// A gateway throttle was not evaluated by the observability service.
+		// Classify it before inspecting message text that can coincidentally
+		// resemble the service's no-container business error.
+		if p.Subtype == errs.SubtypeRateLimit {
+			return withAppsHint(err, appIDListHint)
+		}
+		if isAppNoContainerError(p) {
+			p.Message = appNoContainerMessage
+			p.Hint = appNoContainerHint
+			return err
+		}
 	}
 	return withAppsHint(err, appIDListHint)
 }
@@ -158,6 +166,15 @@ func withAppsHint(err error, hint string) error {
 	}
 	// p points at the embedded Problem, so the mutation is reflected in err.
 	if p, ok := errs.ProblemOf(err); ok {
+		// Classification beats message heuristics. A gateway throttle was not
+		// evaluated by the database service, so text that resembles a database
+		// state marker must not reclassify it or replace backoff guidance.
+		if p.Subtype == errs.SubtypeRateLimit {
+			if strings.TrimSpace(p.Hint) == "" {
+				p.Hint = appRateLimitHint
+			}
+			return err
+		}
 		if isAppNoDatabaseError(p) {
 			p.Message = appNoDatabaseMessage
 			p.Hint = appNoDatabaseHint
@@ -175,6 +192,13 @@ func withAppsHint(err error, hint string) error {
 	}
 	return err
 }
+
+// appRateLimitHint answers a throttled apps call (api/rate_limit — the OpenAPI
+// gateway's 99991400). The server did not judge the request, so the arguments are
+// not what to change; retrying at once only adds to the traffic that tripped the
+// limit. The backoff wording matches the stream client's rate-limit hint
+// (internal/client), so one condition reads the same on every path.
+const appRateLimitHint = "the request was rate limited, not rejected for its arguments, so do not change them; stop immediate retries, then rerun the same command later with exponential backoff and jitter, and send fewer calls in parallel"
 
 // hintExplainsFailure reports whether the caller's hint can plausibly explain this
 // failure. Every hint passed to withAppsHint describes something to fix about the
@@ -201,15 +225,32 @@ func withAppsHint(err error, hint string) error {
 // 400002479 (db-sync task state) is served by withDBSyncHint, which does not
 // delegate here.
 //
-// Deliberately one subtype. Gating on Category instead (deny authentication /
+// SubtypeRateLimit is withheld too: a throttled call was never evaluated, so no
+// sentence about the request can explain it. The OpenAPI gateway's 99991400
+// reached every apps command that passes a request hint this way — +db-execute
+// was told to check table/column names and switch to --environment dev,
+// +trace-get to verify --app-id — and an agent following that sent more calls into
+// the same limit. The failing cases that
+// proved it are TestAppsDBExecute_RateLimitHintIsBackoffNotRequestFix (through the
+// command) and TestAppsHints_RateLimitDoesNotInheritRequestHint (through every
+// hint helper). Unlike the precondition class the hint is not left empty:
+// withAppsHint fills it with appRateLimitHint, and like every other hint only when
+// it is empty, so a rate limit that arrives with its own wording keeps it
+// (TestWithAppsHint_RateLimitKeepsUpstreamHint).
+//
+// Deliberately these two subtypes. Gating on Category instead (deny authentication /
 // authorization / network / ...) contradicts contracts this package asserts on
 // purpose: an authentication failure on +role-list (99991663) is expected to keep
 // the app-access hint, and a 503 on credential issuance the developer-access hint.
 // Those hints are broad enough to survive a caller-standing failure; only the
-// precondition class is guaranteed to be misdescribed. Widen only with a failing
-// case proving the hint is wrong for the new class.
+// precondition and rate-limit classes are guaranteed to be misdescribed. Widen only
+// with a failing case proving the hint is wrong for the new class.
 func hintExplainsFailure(p *errs.Problem) bool {
-	return p.Subtype != errs.SubtypeFailedPrecondition
+	switch p.Subtype {
+	case errs.SubtypeFailedPrecondition, errs.SubtypeRateLimit:
+		return false
+	}
+	return true
 }
 
 // appNoDatabaseMessageMarkers are lowercase substrings of the raw server message
