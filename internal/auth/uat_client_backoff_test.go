@@ -51,6 +51,28 @@ func TestRefreshRateLimitDelay(t *testing.T) {
 	}
 }
 
+func TestRefreshOnceUsesHTTPDateRetryAfter(t *testing.T) {
+	var retryAt time.Time
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		retryAt = time.Now().Add(20 * time.Second).Truncate(time.Second)
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header:     http.Header{"Retry-After": []string{retryAt.Format(http.TimeFormat)}},
+			Body:       io.NopCloser(strings.NewReader("not JSON")),
+			Request:    req,
+		}, nil
+	})}
+
+	result := refreshOnce(context.Background(), client, "https://example.test/token",
+		newRefreshTestOptions(newRefreshTestToken()), newRefreshTestToken(), nil, false)
+	if result.action != refreshRetryAndPreserve {
+		t.Fatalf("action = %v", result.action)
+	}
+	if result.retryDelay <= 19*time.Second || result.retryDelay > 20*time.Second {
+		t.Fatalf("HTTP-date retry delay = %v, want >19s and <=20s", result.retryDelay)
+	}
+}
+
 func TestWaitRefreshRetry(t *testing.T) {
 	if err := waitRefreshRetry(context.Background(), 0); err != nil {
 		t.Fatal(err)
