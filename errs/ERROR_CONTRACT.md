@@ -61,6 +61,7 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.message` | informational | not safe to branch on |
 | `error.hint` | informational | actionable recovery guidance |
 | `error.log_id` | informational | upstream request id (server-side trace) |
+| `error.upstream_error` | informational | complete Base structured error object (`data.error`, falling back to top-level `error`); retains upstream field names, nulls, false values and extensions; omitted when absent; does not override CLI taxonomy |
 | `error.retryable` | wire-stable | `true` when present; omitted when `false` |
 | `error.retry_after_seconds` | per-Subtype-stable | upstream-provided minimum delay before retry; emitted when available for retryable `api/rate_limit` and HTTP-backed `network` errors |
 | `error.param` | per-Subtype-stable | single offending parameter (`ValidationError`); see **Validation parameters** |

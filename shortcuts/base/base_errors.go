@@ -190,6 +190,20 @@ func baseAPIErrorFromResultWithPolicy(resultMap map[string]interface{}, cc errcl
 	if resultMap == nil {
 		return errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned a malformed response envelope")
 	}
+	// Capture the full upstream diagnostic before message and hint promotion.
+	data, _ := resultMap["data"].(map[string]interface{})
+	detail, _ := data["error"].(map[string]interface{})
+	if detail == nil {
+		detail, _ = resultMap["error"].(map[string]interface{})
+	}
+	var upstreamError json.RawMessage
+	if detail != nil {
+		encoded, marshalErr := json.Marshal(detail)
+		if marshalErr != nil {
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned an invalid error detail").WithCause(marshalErr)
+		}
+		upstreamError = encoded
+	}
 	workflowHint, encodeErr := workflowAPIErrorHint(resultMap, policy)
 	if encodeErr != nil {
 		return errs.NewInternalError(errs.SubtypeInvalidResponse, "cannot encode Workflow API error detail: %v", encodeErr).WithCause(encodeErr)
@@ -206,6 +220,7 @@ func baseAPIErrorFromResultWithPolicy(resultMap map[string]interface{}, cc errcl
 		return nil
 	}
 	if p, ok := errs.ProblemOf(err); ok {
+		p.UpstreamError = upstreamError
 		// 最终 hint 由两步决定：服务端 hint 覆盖分类器给出的 hint，再追加恢复标识。
 		// 在局部量上拼完再写回一次，两步的先后关系集中在这里一眼可见。
 		merged := p.Hint
@@ -215,9 +230,8 @@ func baseAPIErrorFromResultWithPolicy(resultMap map[string]interface{}, cc errcl
 		if hint != "" {
 			merged = hint
 		}
-		// CLI 的错误信封只有固定字段，data 整块在错误分支被丢弃；但部分端点（如
-		// +form-query-page-create）把恢复所需的 ID 放在 data.error.value 里。不透出来，
-		// 调用方只能看到「没有 ID」而误判为可以重新创建，把上一次建出的资源变成孤儿。
+		// 保留既有 hint 中的恢复 ID，兼容尚未读取 upstream_error 的调用方。
+		// 例如 +form-query-page-create 失败后需要用这些 ID 找回已创建资源。
 		//
 		// 恢复标识只追加、绝不参与「是否覆盖」的判定：权限类错误的 PermissionHint
 		// 是权威恢复指引（要授哪个 scope、开发者控制台链接），classify.go 明确声明
@@ -283,6 +297,7 @@ func enrichBaseAPIErrorFromBodyWithPolicy(err error, body []byte, cc errclass.Cl
 	src, _ := errs.ProblemOf(enriched)
 	dst, _ := errs.ProblemOf(err)
 	if src != nil && dst != nil {
+		dst.UpstreamError = src.UpstreamError
 		dst.Message = src.Message
 		dst.Hint = src.Hint
 		// A body without log_id must not erase a header-derived LogID
