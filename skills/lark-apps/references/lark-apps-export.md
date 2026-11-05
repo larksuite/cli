@@ -56,7 +56,7 @@ lark-cli apps +export --app-id app_xxx --dry-run
 | 情况 | 怎么办 |
 |---|---|
 | 应用尚未发布（`code 40901 app not published`） | 该应用是产物托管形态（如静态 HTML 应用），导出的是「最新已发布产物」，而它还没有成功发布过版本，此刻没有可导的东西。**先发布应用再重试**——不是 app_id 写错，重试也没用 |
-| 权限不足（HTTP 403，或 HTTP 200 + `code 40300`；两者都表现为 `permission_denied`） | 导出要求你是该应用的可编辑（`edit`）或可管理（`full_access`）协作者；应用的 `copy_download_by` 为 `full-access` 时只有 `full_access` 能导出。**持有分享 token、能打开页面、只读（`view`）协作者都不够**。重试和换参数都没用：向用户说明要请应用所有者把他加为可编辑协作者（所有者可用 `+member-add` / `+member-update --perm edit`），不要让用户去申请“下载权限” |
+| 权限不足（HTTP 403，或 HTTP 200 + `code 40300`；两者都表现为 `permission_denied`） | 导出要求你是该应用的可编辑（`edit`）或可管理（`full_access`）协作者；应用的 `copy_download_by` 为 `full-access` 时只有 `full_access` 能导出。**持有分享 token、能打开页面、只读（`view`）协作者都不够**。重试和换参数都没用：向用户说明要请应用所有者把他加为对应角色的协作者——若应用的 `copy_download_by` 为 `full-access`，需授予 `full_access`（所有者可用 `+member-add` / `+member-update --perm full_access`）；否则授予 `edit`（`+member-add` / `+member-update --perm edit`）。不要让用户去申请“下载权限” |
 | 应用不存在（404） | 用 `+list --keyword <name>` 核对 app_id |
 | 归档过大（413） | 超出导出体积上限，改用 `+git-credential-init` + 原生 git clone |
 | 参数报错 | `--app-id` 与 `--meta-token` 只能给一个，且必须给一个；两者都要裸标识符（不是整条链接） |
