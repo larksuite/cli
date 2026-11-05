@@ -260,9 +260,18 @@ func TestAppsExport_PermissionDeniedNamesCollaboratorRole(t *testing.T) {
 			}
 		})
 	}
+	var shareTokenTip string
 	for _, tip := range AppsExport.Tips {
 		if strings.Contains(tip, "download permission") {
 			t.Errorf("tip %q still names download permission as the requirement", tip)
+		}
+		if strings.Contains(tip, "share token") {
+			shareTokenTip = tip
+		}
+	}
+	for _, want := range []string{"edit or full_access", "copy_download_by"} {
+		if !strings.Contains(shareTokenTip, want) {
+			t.Errorf("share-token tip = %q, want it to mention %q", shareTokenTip, want)
 		}
 	}
 }

@@ -11,6 +11,7 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // TestAppsFileRemotePathDryRun covers the remote --path check on every storage
@@ -27,22 +28,26 @@ func TestAppsFileRemotePathDryRun(t *testing.T) {
 	commands := []struct {
 		name string
 		args func(path string) []string
+		// plan locates the forwarded path in the dry-run output; list marks a
+		// field that holds an array of paths.
+		plan string
+		list bool
 	}{
 		{"+file-get", func(p string) []string {
 			return []string{"apps", "+file-get", "--app-id", "app_x", "--path", p, "--dry-run"}
-		}},
+		}, "data.api.0.params.path", false},
 		{"+file-sign", func(p string) []string {
 			return []string{"apps", "+file-sign", "--app-id", "app_x", "--path", p, "--dry-run"}
-		}},
+		}, "data.api.0.body.path", false},
 		{"+file-download", func(p string) []string {
 			return []string{"apps", "+file-download", "--app-id", "app_x", "--path", p, "--output", "out.png", "--dry-run"}
-		}},
+		}, "data.api.0.body.path", false},
 		{"+file-delete", func(p string) []string {
 			return []string{"apps", "+file-delete", "--app-id", "app_x", "--path", p, "--dry-run"}
-		}},
+		}, "data.api.0.body.paths", true},
 		{"+file-list", func(p string) []string {
 			return []string{"apps", "+file-list", "--app-id", "app_x", "--path", p, "--dry-run"}
-		}},
+		}, "data.api.0.params.path", false},
 	}
 	for _, c := range commands {
 		t.Run(c.name+"/rewritten", func(t *testing.T) {
@@ -64,7 +69,15 @@ func TestAppsFileRemotePathDryRun(t *testing.T) {
 			result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: c.args(remote), DefaultAs: "user"})
 			require.NoError(t, err)
 			result.AssertExitCode(t, 0)
-			assert.Contains(t, result.Stdout, remote, "the remote path must reach the request plan verbatim")
+			field := gjson.Get(result.Stdout, c.plan)
+			got := field.String()
+			if c.list {
+				require.True(t, field.IsArray(), "%s is not an array; stdout:\n%s", c.plan, result.Stdout)
+				items := field.Array()
+				require.Len(t, items, 1, "stdout:\n%s", result.Stdout)
+				got = items[0].String()
+			}
+			require.Equal(t, remote, got, "the remote path must reach the request plan verbatim; stdout:\n%s", result.Stdout)
 		})
 	}
 }

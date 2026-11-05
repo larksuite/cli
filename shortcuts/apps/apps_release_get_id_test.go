@@ -4,6 +4,7 @@
 package apps
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -105,5 +106,37 @@ func TestAppsReleaseGet_AcceptsNumericReleaseID(t *testing.T) {
 				t.Fatalf("dry-run = %+v, want GET %s", env.API, want)
 			}
 		})
+	}
+}
+
+// TestAppsReleaseGet_ExecuteTrimsReleaseID covers the execution path, which reads
+// --release-id on its own: a padded id must request the trimmed release, not a
+// path with encoded blanks that the stub below would not match.
+func TestAppsReleaseGet_ExecuteTrimsReleaseID(t *testing.T) {
+	rctx, stdout, reg := newStatusRuntimeContext(t, "app_x", " 7712345678901234567 ")
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_x/releases/7712345678901234567",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "",
+			"data": map[string]interface{}{
+				"release": map[string]interface{}{"release_id": "7712345678901234567", "status": "finished"},
+			},
+		},
+	})
+
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	var env struct {
+		OK   bool                   `json:"ok"`
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal output: %v\n%s", err, stdout.String())
+	}
+	if !env.OK || env.Data["release_id"] != "7712345678901234567" {
+		t.Fatalf("output = %s, want ok with release_id 7712345678901234567", stdout.String())
 	}
 }
