@@ -30,6 +30,8 @@ func TestReadFieldTypesRoundTripNDJSON(t *testing.T) {
 		{"datetime", "2026-08-04T12:30:00+08:00"},
 		{"created_at", "2026-08-04T12:30:00+08:00"},
 		{"updated_at", "2026-08-04T12:30:00+08:00"},
+		{"created_at", "2026-08-04 12:30:00"},
+		{"updated_at", "2026-08-04 12:30:00"},
 		{"created_by", []any{map[string]any{"id": "ou_creator"}}},
 		{"updated_by", []any{map[string]any{"id": "ou_updater"}}},
 		{"button", nil}, {"not_support", nil},
