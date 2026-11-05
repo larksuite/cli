@@ -160,7 +160,8 @@ func TestAppsDBSyncDryRunRequestContracts(t *testing.T) {
 		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_update", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
 		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.body.task_id").String())
 		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.env").Exists())
-		assert.Equal(t, "dev", clie2e.DryRunGet(result.Stdout, "api.0.body.env").String())
+		// The update request has no env field: --environment is accepted for compatibility but never sent.
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.env").Exists())
 		assert.Equal(t, "streaming", clie2e.DryRunGet(result.Stdout, "api.0.body.config.mode").String())
 		assert.Equal(t, "base_record_id", clie2e.DryRunGet(result.Stdout, "api.0.body.config.field_maps.0.target_field").String())
 	})

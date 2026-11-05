@@ -183,7 +183,7 @@ func TestDBSyncConfig(t *testing.T) {
 }
 
 func TestDBSyncEnvironmentHelpDefaultsToOnline(t *testing.T) {
-	for _, shortcut := range []common.Shortcut{AppsDBSyncCreate, AppsDBSyncList, AppsDBSyncUpdate} {
+	for _, shortcut := range []common.Shortcut{AppsDBSyncCreate, AppsDBSyncList} {
 		t.Run(shortcut.Command, func(t *testing.T) {
 			for _, flag := range shortcut.Flags {
 				if flag.Name != "environment" {
@@ -200,6 +200,15 @@ func TestDBSyncEnvironmentHelpDefaultsToOnline(t *testing.T) {
 			t.Fatalf("%s missing --environment flag", shortcut.Command)
 		})
 	}
+	for _, flag := range AppsDBSyncUpdate.Flags {
+		if flag.Name == "environment" {
+			if !strings.Contains(flag.Desc, "ignores this value") || !strings.Contains(flag.Desc, "compatibility") {
+				t.Fatalf("+db-sync-update --environment description = %q, want compatibility/ignored contract", flag.Desc)
+			}
+			return
+		}
+	}
+	t.Fatal("+db-sync-update missing --environment compatibility flag")
 }
 
 func TestDBSyncHint(t *testing.T) {

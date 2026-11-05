@@ -37,6 +37,7 @@ type contextualHintCase struct {
 	want, forbid                         []string
 }
 
+// appsShortcutByCommand resolves the real registered shortcut used by command-level hint tests.
 func appsShortcutByCommand(t *testing.T, command string) common.Shortcut {
 	t.Helper()
 	for _, sc := range Shortcuts() {
@@ -48,6 +49,7 @@ func appsShortcutByCommand(t *testing.T, command string) common.Shortcut {
 	return common.Shortcut{}
 }
 
+// runContextualHintCase executes one mocked command failure and pins its typed error contract.
 func runContextualHintCase(t *testing.T, tc contextualHintCase) *errs.Problem {
 	t.Helper()
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -95,6 +97,7 @@ func runContextualHintCase(t *testing.T, tc contextualHintCase) *errs.Problem {
 	return p
 }
 
+// TestAppsContextualHints_RealCommands verifies every supported wire signature through registered commands.
 func TestAppsContextualHints_RealCommands(t *testing.T) {
 	appPath := "/open-apis/spark/v1/apps/app_x"
 	cases := []contextualHintCase{
@@ -126,6 +129,7 @@ func TestAppsContextualHints_RealCommands(t *testing.T) {
 	}
 }
 
+// TestAppsContextualHints_BoundariesAndInvariants pins neutral server-code boundaries and legacy fallbacks.
 func TestAppsContextualHints_BoundariesAndInvariants(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -162,6 +166,7 @@ func TestAppsContextualHints_BoundariesAndInvariants(t *testing.T) {
 	}
 }
 
+// TestAppsContextualHints_CommonSignaturesAndPrecedence proves exact matching and shared-hint priority.
 func TestAppsContextualHints_CommonSignaturesAndPrecedence(t *testing.T) {
 	t.Run("existing hint wins", func(t *testing.T) {
 		in := errs.NewAPIError(errs.SubtypeUnknown, "app tenant not found").WithCode(2320008).WithHint("upstream hint")
@@ -253,6 +258,7 @@ func TestAppsContextualHints_CommonSignaturesAndPrecedence(t *testing.T) {
 	}
 }
 
+// TestAppsContextualHints_PreserveTypedFieldsAndCause ensures contextual guidance remains Hint-only.
 func TestAppsContextualHints_PreserveTypedFieldsAndCause(t *testing.T) {
 	cause := errors.New("wire cause")
 	in := errs.NewAPIError(errs.SubtypeUnknown, "app tenant not found").WithCode(2320008).WithCause(cause)
@@ -270,6 +276,7 @@ func TestAppsContextualHints_PreserveTypedFieldsAndCause(t *testing.T) {
 	}
 }
 
+// TestAppsContextualHints_NonUnknownServerClassKeepsCandidate protects known server classifications from remapping.
 func TestAppsContextualHints_NonUnknownServerClassKeepsCandidate(t *testing.T) {
 	in := errs.NewAPIError(errs.SubtypeServerError, "internal server error").WithCode(500000049)
 	p, _ := errs.ProblemOf(withAppsHint(in, "candidate hint"))
@@ -278,6 +285,7 @@ func TestAppsContextualHints_NonUnknownServerClassKeepsCandidate(t *testing.T) {
 	}
 }
 
+// TestAppsContextualHints_RepeatedApplicationIsIdempotent ensures a second wrapper pass cannot replace guidance.
 func TestAppsContextualHints_RepeatedApplicationIsIdempotent(t *testing.T) {
 	in := errs.NewAPIError(errs.SubtypeUnknown, "app tenant not found").WithCode(2320008)
 	once := withAppsHint(in, "first candidate")
@@ -290,6 +298,7 @@ func TestAppsContextualHints_RepeatedApplicationIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestAppsContextualHints_AccessScopeUnknownMessagesStopSafely prevents state guesses from unmatched messages.
 func TestAppsContextualHints_AccessScopeUnknownMessagesStopSafely(t *testing.T) {
 	for _, tc := range []contextualHintCase{
 		{name: "unknown 3340002", command: "+access-scope-get", method: "GET", path: "/open-apis/spark/v1/apps/app_x/access-scope", status: 409, code: 3340002, message: "Application has not been published yet. Publishing is disabled for this application type.", args: []string{"+access-scope-get", "--app-id", "app_x", "--as", "user"}, want: []string{"cannot determine", "stop"}, forbid: []string{"not been published", "creative", "release-create"}},
@@ -300,6 +309,7 @@ func TestAppsContextualHints_AccessScopeUnknownMessagesStopSafely(t *testing.T) 
 	}
 }
 
+// TestAppsContextualHints_EnvMessageBoundaries distinguishes supported size signatures from unrelated validation text.
 func TestAppsContextualHints_EnvMessageBoundaries(t *testing.T) {
 	for _, tc := range []struct{ message, want, forbid string }{
 		{expertModeOnlyMessageZH, "expert mode", "apps +list"},
@@ -329,6 +339,7 @@ func TestAppsContextualHints_EnvMessageBoundaries(t *testing.T) {
 	}
 }
 
+// TestAppsContextualHints_DeleteUnsupportedTypeRegression preserves delete-specific 40002 and prefixed-code handling.
 func TestAppsContextualHints_DeleteUnsupportedTypeRegression(t *testing.T) {
 	for _, code := range []int{40002, 3340002} {
 		in := errs.NewAPIError(errs.SubtypeUnknown, "unsupported app type").WithCode(code)
