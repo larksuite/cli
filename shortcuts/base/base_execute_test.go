@@ -4878,3 +4878,47 @@ func TestBatchCreateAddsBaseDiagnosticsToStderrHint(t *testing.T) {
 		t.Fatalf("unexpected upstream_error field: %s", &stderr)
 	}
 }
+
+func TestBatchCreatePermissionHintUsesDeclaredScope(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_create",
+		RawBody: []byte(`{"code":99991679,"msg":"missing scope","data":{"error":{"type":"permission_denied","retryable":false,"path":"create_records"}}}`),
+	})
+	err := runShortcutWithAuthTypes(t, BaseRecordBatchCreate, nil, []string{
+		"+record-batch-create", "--as", "user", "--base-token", "app_x", "--table-id", "tbl_x",
+		"--json", `{"create_records":[{"Name":"value"}]}`,
+	}, factory, stdout)
+	var permission *errs.PermissionError
+	if !errors.As(err, &permission) || permission.Code != 99991679 || len(permission.MissingScopes) != 0 {
+		t.Fatalf("expected server permission error without scope details, got %+v (%v)", permission, err)
+	}
+	for _, tc := range []struct {
+		name   string
+		states map[surface.CommandID]surface.CommandState
+		want   string
+	}{
+		{"login visible", nil, `auth login --scope "base:record:create"`},
+		{"login hidden", map[surface.CommandID]surface.CommandState{surface.CommandAuthLogin: surface.CommandConcealed},
+			"current command requires scope(s): base:record:create"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := surface.NewPlan(tc.states)
+			presented := factory.PresentError(err, cmdutil.ErrorPresentationOptions{
+				Projector: recovery.NewProjector(func() *surface.Plan { return plan }),
+				Identity:  core.AsUser,
+				DeclaredScopes: func() []string {
+					return BaseRecordBatchCreate.DeclaredScopesForIdentity("user")
+				},
+			})
+			p, ok := errs.ProblemOf(presented)
+			if !ok {
+				t.Fatalf("expected typed presented error, got %v", presented)
+			}
+			if !strings.Contains(p.Hint, tc.want) || strings.Contains(p.Hint, "--recommend") || strings.Contains(p.Hint, "debug_info") {
+				t.Fatalf("hint=%q, want scoped recovery %q", p.Hint, tc.want)
+			}
+		})
+	}
+}

@@ -199,7 +199,10 @@ func baseAPIErrorFromResult(resultMap map[string]interface{}, cc errclass.Classi
 		if hint, _ := detail["hint"].(string); strings.TrimSpace(hint) != "" {
 			p.Hint = strings.TrimSpace(hint)
 		}
-		p.Hint = appendBaseDebugInfo(p.Hint, detail)
+		// The presenter matches canonical permission hints before adding command scopes.
+		if p.Category != errs.CategoryAuthorization {
+			p.Hint = appendBaseDebugInfo(p.Hint, detail)
+		}
 	}
 	return err
 }
