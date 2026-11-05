@@ -6,7 +6,7 @@
 
 只要一份源码快照的场景：读代码、审计、归档、做静态分析、把源码喂给别的工具。用户丢来一个妙搭应用链接要你「看看 / 分析 / 总结」时也用它：导出后解压读源码，页面文案和数据通常就在 HTML / 组件里。
 
-**跨应用是它相对 `+init` 的核心价值**：创意应用的分享链接（`/page/<token>`）指向别人的应用，你对那个仓库没有权限，`git clone` 走不通；`+export` 只要求你对该应用有下载权限。
+**跨应用是它相对 `+init` 的核心价值**：创意应用的分享链接（`/page/<token>`）指向别人的应用，你对那个仓库没有权限，`git clone` 走不通；`+export` 不走 Git，但要求你是该应用的协作者，且权限为可编辑（`edit`）或可管理（`full_access`）；应用的 `copy_download_by` 为 `full-access` 时只有可管理（`full_access`）能导出——只持有分享链接或只读（`view`）权限不够。
 
 ## 不要用它的时候
 
@@ -17,7 +17,7 @@
 | 产出 | 一个 zip | 完整 git 工作区 |
 | Git 凭证 | 不配 | 配好，可 push |
 | 本地环境变量 | 不拉 | 拉 `.env.local` |
-| 前提 | 对应用有下载权限 | 对**仓库**有权限 |
+| 前提 | 是应用的 `edit` / `full_access` 协作者（`copy_download_by` 为 `full-access` 时只有 `full_access`） | 对**仓库**有权限 |
 
 用 `+export` 拿到的目录没有 git 历史、没有远端、没有凭证，改完发不回去。
 
@@ -56,7 +56,7 @@ lark-cli apps +export --app-id app_xxx --dry-run
 | 情况 | 怎么办 |
 |---|---|
 | 应用尚未发布（`code 40901 app not published`） | 该应用是产物托管形态（如静态 HTML 应用），导出的是「最新已发布产物」，而它还没有成功发布过版本，此刻没有可导的东西。**先发布应用再重试**——不是 app_id 写错，重试也没用 |
-| 权限不足（HTTP 403，或 HTTP 200 + `code 40300`；两者都表现为 `permission_denied`） | 你需要该应用的下载权限。**持有分享 token、能打开页面都不等于有下载权限**。重试和换参数都没用，向用户说明需找应用所有者授权 |
+| 权限不足（HTTP 403，或 HTTP 200 + `code 40300`；两者都表现为 `permission_denied`） | 导出要求你是该应用的可编辑（`edit`）或可管理（`full_access`）协作者；应用的 `copy_download_by` 为 `full-access` 时只有 `full_access` 能导出。**持有分享 token、能打开页面、只读（`view`）协作者都不够**。重试和换参数都没用：向用户说明要请应用所有者把他加为对应角色的协作者——若应用的 `copy_download_by` 为 `full-access`，需授予 `full_access`（所有者可用 `+member-add` / `+member-update --perm full_access`）；否则授予 `edit`（`+member-add` / `+member-update --perm edit`）。不要让用户去申请“下载权限” |
 | 应用不存在（404） | 用 `+list --keyword <name>` 核对 app_id |
 | 归档过大（413） | 超出导出体积上限，改用 `+git-credential-init` + 原生 git clone |
 | 参数报错 | `--app-id` 与 `--meta-token` 只能给一个，且必须给一个；两者都要裸标识符（不是整条链接） |
