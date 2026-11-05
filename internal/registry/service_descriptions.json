@@ -39,6 +39,10 @@
     "en": { "title": "Event", "description": "Event subscription management" },
     "zh": { "title": "事件订阅", "description": "WebSocket 实时推送" }
   },
+  "html": {
+    "en": { "title": "HTML", "description": "Publish HTML documents and download source ZIP archives" },
+    "zh": { "title": "HTML", "description": "发布 HTML 文档和下载源码 ZIP" }
+  },
   "im": {
     "en": { "title": "Messenger", "description": "Message and group chat management" },
     "zh": { "title": "消息与群组", "description": "消息发送、群聊管理" }

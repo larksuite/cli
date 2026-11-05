@@ -31,6 +31,8 @@ const (
 	DomainDrive DomainName = "drive"
 	// DomainEvent is the Event domain.
 	DomainEvent DomainName = "event"
+	// DomainHTML is the HTML document domain.
+	DomainHTML DomainName = "html"
 	// DomainIm is the Messenger domain.
 	DomainIm DomainName = "im"
 	// DomainMail is the Mail domain.

@@ -1,0 +1,9 @@
+# HTML shortcut verification
+
+- Unit contract tests: ordered multipart file/path pairing, binary content, canonical entry Key, web-compatible HashTag, dependency collection, input validation, business/HTTP errors, ZIP byte preservation, default/explicit file paths, no directory inference, JSON error rejection and dry-run without requests.
+- Ownership: HTML uses its own `shortcuts/html/payload` scanners, guards, manifest and HashTag implementation. Its read-budget and other payload unit tests run independently; the MR must leave `shortcuts/apps/deploy` identical to the comparison base.
+- Dry-run E2E: both commands through the compiled CLI, isolated configuration, no credentials or remote writes.
+- Recovery guidance: compiled-CLI failures preserve validation categories and exit code 2 for sensitive dependencies, entry collisions, dependency count and depth limits, while recommending only HTML-supported recovery actions. Escaping-reference advice remains unchanged; unit checks preserve causes and skipped-dependency reasons.
+- Live workflow: opt in with `LARK_CLI_TEST_HTML_ENTRY` naming an approved reusable HTML file. The test updates that fixture, checks stable token on retry, fetches its ZIP to a temporary local path. It deliberately does not create a throwaway remote document because this API pair provides no delete operation.
+- Prerequisites for live verification: published gateway routes and scopes in the selected profile/brand; deployed service; source-download feature enabled; test user with publish and object download rights. Never commit credentials or fixture tokens.
+- Before release, run the live workflow against each supported brand and confirm repeated `files` multipart order and JSON-array `paths` mapping through the gateway. Verify the existing client HashTag skip behavior, denied download, interrupted download, and Agent routing to lark-html. Local mocks cannot establish gateway/plugin or brand rollout behavior.

@@ -1015,6 +1015,12 @@
     "event +subscribe": {
       "agentSupport": "denied"
     },
+    "html +fetch": {
+      "agentSupport": "allowed"
+    },
+    "html +publish": {
+      "agentSupport": "allowed"
+    },
     "im +chat-create": {
       "agentSupport": "allowed"
     },

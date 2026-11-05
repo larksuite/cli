@@ -15,6 +15,7 @@ import (
 // embeddedContentFS bundles the agent-readable content that must ship in lockstep
 // with the binary: each skill's docs (SKILL.md + references/, plus whiteboard's
 // routes/ and scenes/) and the per-domain affordance guidance (affordance/*.md).
+// The existing skill/reference globs also ship the shortcuts-only lark-html domain.
 // Machine-resource skill dirs (assets/, scripts/) are excluded. It's a whitelist —
 // a new content type is omitted until added to the embed list. The embed must live
 // in this root package because go:embed cannot reach up out of a package's dir.

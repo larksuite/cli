@@ -70,6 +70,7 @@ func TestShortcutServiceNames(t *testing.T) {
 		"docs",
 		"drive",
 		"event",
+		"html",
 		"im",
 		"mail",
 		"markdown",

@@ -9,6 +9,7 @@
     "lark-doc": ["云文档", "文档", "/docx/"],
     "lark-drive": ["云盘", "云空间", "文件夹", "文件管理", "/drive/", "/file/"],
     "lark-event": ["事件订阅", "实时事件", "监听"],
+    "lark-html": ["HTML 页面发布", "HTML 源码下载", "HTML token", "html +publish", "html +fetch"],
     "lark-im": ["即时通讯", "消息", "群聊"],
     "lark-mail": ["邮箱", "邮件"],
     "lark-markdown": ["Markdown 文档", ".md", "MD 文件"],
