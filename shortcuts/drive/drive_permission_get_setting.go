@@ -48,7 +48,8 @@ var drivePermissionGetSettingTypes = func() []string {
 	for _, resourceKind := range drivePermissionGetSettingResourceKinds {
 		types = append(types, resourceKind.Type)
 	}
-	return types
+	// A Miaoda meta_token cannot reconstruct its app-ID URL.
+	return append(types, "miaoda_apps")
 }()
 
 func findDrivePermissionGetSettingResourceKind(docType string) (drivePermissionGetSettingResourceKind, bool) {
@@ -89,6 +90,9 @@ func parseDrivePermissionGetSettingResourceKindPath(path string, resourceKind dr
 
 func readDrivePermissionGetSettingSpec(runtime *common.RuntimeContext) (drivePermissionGetSettingSpec, error) {
 	rawToken := strings.TrimSpace(runtime.Str("token"))
+	if err := rejectDriveMiaodaURL(rawToken); err != nil {
+		return drivePermissionGetSettingSpec{}, err
+	}
 	explicitType := strings.ToLower(strings.TrimSpace(runtime.Str("type")))
 
 	if rawToken == "" {
@@ -160,8 +164,12 @@ func parseDrivePermissionGetSettingResourceURL(rawURL string) (common.ResourceRe
 }
 
 func drivePermissionGetSettingTypeAllowed(docType string) bool {
-	_, ok := findDrivePermissionGetSettingResourceKind(docType)
-	return ok
+	for _, allowed := range drivePermissionGetSettingTypes {
+		if docType == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 func (s drivePermissionGetSettingSpec) url(runtime *common.RuntimeContext) string {
@@ -228,7 +236,7 @@ var DrivePermissionGetSetting = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "token", Desc: "target URL or bare token (doc/sheet/file/wiki/bitable/docx/mindnote/minutes/slides/folder/apps)", Required: true},
+		{Name: "token", Desc: "target URL or bare token (doc/sheet/file/wiki/bitable/docx/mindnote/minutes/slides/folder/apps/miaoda_apps)", Required: true},
 		{Name: "type", Desc: "target type; auto-inferred from URL, required for bare tokens", Enum: drivePermissionGetSettingTypes},
 	},
 	Tips: []string{

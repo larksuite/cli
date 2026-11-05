@@ -55,7 +55,8 @@ var secureLabelTypes = func() []string {
 		seen[resourceKind.Type] = struct{}{}
 		types = append(types, resourceKind.Type)
 	}
-	return types
+	// Miaoda targets require meta_token/type from apps +get, not URL inference.
+	return append(types, "apps", "miaoda_apps")
 }()
 
 func secureLabelTypeAllowed(docType string) bool {
@@ -190,6 +191,9 @@ func buildSecureLabelListParams(runtime *common.RuntimeContext) map[string]inter
 // resolveSecureLabelTarget owns secure-label URL inference and type errors so
 // changes to another endpoint cannot widen this command's accepted resources.
 func resolveSecureLabelTarget(raw, explicitType string) (token, docType string, err error) {
+	if err := rejectDriveMiaodaURL(raw); err != nil {
+		return "", "", err
+	}
 	raw = strings.TrimSpace(raw)
 	explicitType = strings.ToLower(strings.TrimSpace(explicitType))
 	if raw == "" {

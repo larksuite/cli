@@ -303,7 +303,7 @@ func TestResolveSecureLabelTarget_RejectsInvalidInputs(t *testing.T) {
 	}
 }
 
-func TestDriveSecureLabelUpdate_RejectsAppsTargets(t *testing.T) {
+func TestDriveSecureLabelUpdate_RejectsUnsupportedTargets(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -319,12 +319,12 @@ func TestDriveSecureLabelUpdate_RejectsAppsTargets(t *testing.T) {
 			wantMessage: "could not infer token from URL",
 		},
 		{
-			name: "explicit apps type",
+			name: "explicit minutes type",
 			args: []string{
 				"--token", "appBareTok",
-				"--type", "apps",
+				"--type", "minutes",
 			},
-			wantMessage: `invalid value "apps" for --type`,
+			wantMessage: `invalid value "minutes" for --type`,
 		},
 	}
 

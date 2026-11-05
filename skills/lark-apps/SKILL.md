@@ -68,6 +68,10 @@ lark-cli auth login --domain apps
 - **设置环境变量**：如果用户只给应用名，仍先 `+list --keyword` 解析 app_id；设置 online 环境且用户已经明确说“确认/直接执行”时，调用 `+env-set --environment online ... --yes`，不要再次要求确认。回复和日志摘要里只提 key / env / app，不回显真实 value；需要传复杂值时优先用 `@file` 或 stdin。
 - **删除环境变量**：`+env-delete` 是破坏性操作。除非用户在同一轮已经明确确认删除这个 app/env/key，否则先向用户确认应用、环境、key 和删除后果；确认后再加 `--yes`。不要因为认证失败/重登完成就自动继续删除，必须保留确认门槛。
 
+## Drive 资源权限与密级
+
+用户要申请应用资源访问权限、读取 Drive 权限设置、操作 Drive 协作者或调整密级时，先按 [`apps +get`](references/lark-apps-get.md) 获取 `meta_token` / `meta_doc_type`，再调用 [`lark-drive`](../lark-drive/SKILL.md) 对应 shortcut。直接传 `/app/app_xxx` 会得到带此恢复流程的错误；字段缺失时停止，不用 app_id 或 app_type 替代。应用开发协作者仍按下节使用 `apps +member-*`。
+
 ## 应用协作者与协作权限设置
 
 这组命令管理妙搭应用的开发协作者和协作策略，不等同于 `+access-scope-*` 的运行时访问范围，也不等同于 `+role-*` 的应用内业务角色。所有命令使用 `app_...` 应用 ID 和 `--as user`。不要读取或判断 `app_type` 来预判支持范围，直接调用对应的协作者命令。

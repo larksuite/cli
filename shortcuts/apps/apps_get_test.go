@@ -192,3 +192,42 @@ func TestAppsGet_InvalidBadgeStatusTypeReturnsTypedError(t *testing.T) {
 		t.Fatalf("invalid response must not emit a success result, got %q", stdout.String())
 	}
 }
+
+func TestAppsGet_MetaDocTypeJSONPassthrough(t *testing.T) {
+	for _, value := range []string{"apps", "miaoda_apps", ""} {
+		for _, format := range []string{"json", "pretty"} {
+			t.Run(value+"/"+format, func(t *testing.T) {
+				factory, stdout, reg := newAppsExecuteFactory(t)
+				app := map[string]interface{}{"app_id": "app_test", "meta_token": "metaTok"}
+				if value != "" {
+					app["meta_doc_type"] = value
+				}
+				reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/spark/v1/apps/app_test", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"app": app}}})
+				if err := runAppsShortcut(t, AppsGet, []string{"+get", "--app-id", "app_test", "--format", format, "--as", "user"}, factory, stdout); err != nil {
+					t.Fatal(err)
+				}
+				if format == "pretty" {
+					if strings.Contains(stdout.String(), "meta_doc_type:") {
+						t.Fatalf("pretty output must not add meta_doc_type: %s", stdout.String())
+					}
+				} else {
+					var envelope struct {
+						Data struct {
+							App map[string]interface{} `json:"app"`
+						} `json:"data"`
+					}
+					if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+						t.Fatal(err)
+					}
+					got, exists := envelope.Data.App["meta_doc_type"]
+					if (value == "" && exists) || (value != "" && got != value) {
+						t.Fatalf("meta_doc_type = %v (exists %v), want %q", got, exists, value)
+					}
+					if envelope.Data.App["meta_token"] != "metaTok" {
+						t.Fatal("meta_token lost")
+					}
+				}
+			})
+		}
+	}
+}

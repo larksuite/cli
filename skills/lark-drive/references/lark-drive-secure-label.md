@@ -47,7 +47,7 @@ lark-cli drive +secure-label-update \
 | 参数 | 说明 |
 |------|------|
 | `--token` | 目标文档 URL 或 bare token；URL 可自动推断 `--type` |
-| `--type` | bare token 必填；URL 输入时可省略。可选：`doc`、`docx`、`sheet`、`file`、`bitable`、`mindnote`、`slides` |
+| `--type` | bare token 必填；URL 输入时可省略。可选：`doc`、`docx`、`sheet`、`file`、`wiki`、`bitable`、`mindnote`、`slides`、`apps`、`miaoda_apps` |
 | `--label-id` | 要设置的密级标签 ID |
 
 底层接口：`PATCH /open-apis/drive/v2/files/:file_token/secure_label`，query 参数 `type`，请求体 `{ "id": "<label-id>" }`。
@@ -61,3 +61,7 @@ CLI 不会在 shortcut 中为密级错误码追加专用 hint；agent 必须根�
 | `1063013` | 密级降级需要审批 | 提示用户打开目标文档，在文档界面完成密级降级审批后重试；如果用户传入的是文档 URL，必须把该 URL 一并给用户作为操作入口 |
 
 遇到 `1063013` 时，不要继续重试 API，也不要提示补 scope；这是文档侧审批流程要求，需要用户到文档里操作。
+
+## 妙搭资源
+
+妙搭 `/app/app_xxx` URL 需先按 [`apps +get` 的解析流程](../../lark-apps/references/lark-apps-get.md) 获取 `meta_token` / `meta_doc_type`，再以裸 token 和显式 `--type apps|miaoda_apps` 调用本命令（密级场景用于 `+secure-label-update`）。类型必须使用查询实际返回值。直接传应用 URL 会返回带恢复指引的参数错误，shortcut 不会自动查询应用详情。

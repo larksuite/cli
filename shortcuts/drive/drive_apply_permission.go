@@ -19,8 +19,8 @@ type permApplyResourceKind struct {
 	Path string
 }
 
-// permApplyResourceKinds is the authoritative target contract for the
-// apply-permission endpoint: accepted types and their URL root paths.
+// permApplyResourceKinds defines URL-inferred targets. Miaoda metadata types
+// without a token-based URL are added separately to permApplyTypes.
 var permApplyResourceKinds = []permApplyResourceKind{
 	{Type: "doc", Path: "/doc/"},
 	{Type: "sheet", Path: "/sheets/"},
@@ -44,7 +44,7 @@ var permApplyTypes = func() []string {
 		seen[resourceKind.Type] = struct{}{}
 		types = append(types, resourceKind.Type)
 	}
-	return types
+	return append(types, "miaoda_apps")
 }()
 
 func permApplyTypeAllowed(docType string) bool {
@@ -60,6 +60,9 @@ func permApplyTypeAllowed(docType string) bool {
 // value that may be either a bare token or a full document URL, plus an
 // optional explicit --type. A URL's path and explicit --type must agree.
 func resolvePermApplyTarget(raw, explicitType string) (token, docType string, err error) {
+	if err := rejectDriveMiaodaURL(raw); err != nil {
+		return "", "", err
+	}
 	raw = strings.TrimSpace(raw)
 	explicitType = strings.ToLower(strings.TrimSpace(explicitType))
 	if raw == "" {

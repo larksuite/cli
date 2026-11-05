@@ -22,7 +22,7 @@ lark-cli drive +permission-get-setting \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--token` | 是 | bare token 或完整 URL。URL 路径支持 `/folder/`、`/docx/`、`/doc/`、`/sheets/`、`/base/`、`/bitable/`、`/wiki/`、`/file/`、`/mindnotes/`、`/slides/`、`/minutes/`、`/page/`。 |
-| `--type` | bare token 必填 | 目标类型：`doc` / `sheet` / `file` / `wiki` / `bitable` / `docx` / `mindnote` / `minutes` / `slides` / `folder` / `apps`。URL 可自动推断；如果同时传 URL 和冲突的 `--type`，CLI 会拒绝。 |
+| `--type` | bare token 必填 | 目标类型：`doc` / `sheet` / `file` / `wiki` / `bitable` / `docx` / `mindnote` / `minutes` / `slides` / `folder` / `apps` / `miaoda_apps`。URL 可自动推断；如果同时传 URL 和冲突的 `--type`，CLI 会拒绝。 |
 | `--dry-run` | 否 | 只打印请求，不调用 API。 |
 
 ## 输出
@@ -46,3 +46,7 @@ JSON 输出中的 `data.permission_public` 是目标当前的权限设置；服�
 - **身份支持**：`--as user` 和 `--as bot` 均可用。
 - **所需 scope**：`docs:permission.setting:read`。
 - **单目标读取**：命令只读取 `--token` 指向资源自身的权限设置；`--type folder` 不会递归读取子资源。
+
+## 妙搭资源
+
+妙搭 `/app/app_xxx` URL 需先按 [`apps +get` 的解析流程](../../lark-apps/references/lark-apps-get.md) 获取 `meta_token` / `meta_doc_type`，再以裸 token 和显式 `--type apps|miaoda_apps` 调用本命令。类型必须使用查询实际返回值。直接传应用 URL 会返回带恢复指引的参数错误，shortcut 不会自动查询应用详情。

@@ -24,7 +24,7 @@ type driveMemberListSpec struct {
 
 var driveMemberListTypes = []string{
 	"doc", "sheet", "file", "wiki", "bitable", "docx",
-	"mindnote", "minutes", "slides", "folder", "apps",
+	"mindnote", "minutes", "slides", "folder", "apps", "miaoda_apps",
 }
 
 var driveMemberListFields = []string{"name", "type", "avatar", "external_label"}
@@ -70,6 +70,9 @@ func readDriveMemberListSpec(runtime *common.RuntimeContext) (driveMemberListSpe
 }
 
 func resolveDriveMemberListTarget(raw, explicitType string) (token, resourceType string, err error) {
+	if err := rejectDriveMiaodaURL(raw); err != nil {
+		return "", "", err
+	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--token is required").WithParam("--token")
@@ -242,7 +245,7 @@ var DriveMemberList = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "token", Desc: "target URL or bare token (doc/sheet/file/wiki/bitable/docx/mindnote/minutes/slides/folder/apps)", Required: true},
+		{Name: "token", Desc: "target URL or bare token (doc/sheet/file/wiki/bitable/docx/mindnote/minutes/slides/folder/apps/miaoda_apps)", Required: true},
 		{Name: "type", Desc: "target type; auto-inferred from URL, required for bare tokens"},
 		{Name: "fields", Desc: "optional collaborator fields to return: name,type,avatar,external_label or *"},
 		{Name: "perm-type", Desc: "wiki permission scope filter; one of container|single_page"},

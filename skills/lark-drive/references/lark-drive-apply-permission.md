@@ -35,7 +35,7 @@ lark-cli drive +apply-permission \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--token` | 是 | 目标文档 token 或完整 URL（`/docx/`、`/sheets/`、`/base/`、`/bitable/`、`/file/`、`/wiki/`、`/doc/`、`/mindnote/`、`/slides/`、`/page/` 路径里的 token 会被自动提取） |
-| `--type` | 否 | 目标类型，可选值 `doc` / `sheet` / `file` / `wiki` / `bitable` / `docx` / `mindnote` / `slides` / `apps`。传 URL 时由 shortcut 自动推断；如显式传入，必须与 URL 路径类型一致。bare token 必须显式传 |
+| `--type` | 否 | 目标类型，可选值 `doc` / `sheet` / `file` / `wiki` / `bitable` / `docx` / `mindnote` / `slides` / `apps` / `miaoda_apps`。传 URL 时由 shortcut 自动推断；如显式传入，必须与 URL 路径类型一致。bare token 必须显式传 |
 | `--perm` | 是 | 申请的权限，仅支持 `view` 或 `edit`（**不支持 `full_access`**，CLI 侧会直接拒绝） |
 | `--remark` | 否 | 备注，会显示在权限申请卡片上 |
 | `--dry-run` | 否 | 仅打印请求内容，不实际发送 |
@@ -75,3 +75,7 @@ API 成功时返回空 `data`（仅 `code: 0, msg: "success"`），对应 CLI �
 ## 参考
 
 - OpenAPI 端点：`POST /open-apis/drive/v1/permissions/:token/members/apply`
+
+## 妙搭资源
+
+妙搭 `/app/app_xxx` URL 需先按 [`apps +get` 的解析流程](../../lark-apps/references/lark-apps-get.md) 获取 `meta_token` / `meta_doc_type`，再以裸 token 和显式 `--type apps|miaoda_apps` 调用本命令。类型必须使用查询实际返回值。直接传应用 URL 会返回带恢复指引的参数错误，shortcut 不会自动查询应用详情。

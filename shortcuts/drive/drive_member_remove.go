@@ -311,6 +311,9 @@ func driveMemberRemoveOutput(spec driveMemberRemoveSpec) map[string]interface{} 
 // does not reuse the more permissive +member-add resolver, so an ambiguous or
 // encoded URL can never delete a collaborator from an unintended resource.
 func resolveDriveMemberRemoveTarget(raw, explicitType string) (token, resourceType string, err error) {
+	if err := rejectDriveMiaodaURL(raw); err != nil {
+		return "", "", err
+	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--token is required").WithParam("--token")

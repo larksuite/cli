@@ -21,7 +21,7 @@ lark-cli drive +member-add \
 | 参数 | 必填 | 说明                                                                                                                                                                                  |
 |------|----|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `--token` | 是 | 裸 token 或完整 URL。路径支持 `/drive/folder/`、`/docx/`、`/doc/`、`/sheets/`、`/base/`、`/bitable/`、`/wiki/`、`/file/`、`/mindnotes/`、`/slides/`、`/minutes/`、`/page/`；URL 输入可从路径推断 `--type`，裸 token 不做前缀推断 |
-| `--type` | 必填 | 目标资源类型：`docx` / `doc` / `sheet` / `bitable` / `file` / `folder` / `wiki` / `mindnote` / `slides` / `minutes` / `apps`。传 URL 时可省略；裸 token 必须显式传；若同时传 URL 和 `--type`，显式 `--type` 覆盖 URL 推断 |
+| `--type` | 必填 | 目标资源类型：`docx` / `doc` / `sheet` / `bitable` / `file` / `folder` / `wiki` / `mindnote` / `slides` / `minutes` / `apps` / `miaoda_apps`。传 URL 时可省略；裸 token 必须显式传；若同时传 URL 和 `--type`，显式 `--type` 覆盖 URL 推断 |
 | `--member-id` | 是 | 协作者 ID；逗号分隔可批量添加，最多 10 个                                                                                                                                                            |
 | `--member-type` | 是 | member-id 的类型；支持 `email` / `openid` / `unionid` / `openchat` / `opendepartmentid` / `groupid` / `appid` / `wikispaceid`。在实际使用里，给当前应用授权仍优先推荐 bot `open_id` + `openid`。                               |
 | `--member-kind` | 条件必填 | 仅当 `--member-type=wikispaceid` 时填写，映射到请求 body 的 `type` 字段。取值：`wiki_space_member` / `wiki_space_viewer` / `wiki_space_editor`。其他 member-type 禁止传此参数。 |
@@ -64,3 +64,7 @@ lark-cli drive +member-add \
 - **批量约束**：批量请求共享同一 `--member-type`、`--perm` 和 `--perm-type`；混合用户/群组/部门的场景需拆分为多次调用。
 - **Wiki 空间 ID**：`--member-type=wikispaceid` 时必须同时传 `--member-kind`，否则 API 会缺少必填的 body `type` 字段。`wiki_space_member` 对应知识库成员角色；若知识库已将成员拆分为可阅读/可编辑成员组，改用 `wiki_space_viewer` 或 `wiki_space_editor`。
 - **ID 解析**：优先用 `open_id` + `--member-type openid`；仅在无法解析 `open_id` 时使用 `email`。群组优先用 `openchat`，部门用 `opendepartmentid`。
+
+## 妙搭资源
+
+妙搭 `/app/app_xxx` URL 需先按 [`apps +get` 的解析流程](../../lark-apps/references/lark-apps-get.md) 获取 `meta_token` / `meta_doc_type`，再以裸 token 和显式 `--type apps|miaoda_apps` 调用本命令。类型必须使用查询实际返回值。直接传应用 URL 会返回带恢复指引的参数错误，shortcut 不会自动查询应用详情。

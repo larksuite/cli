@@ -54,7 +54,7 @@ var driveMemberAddURLPathToType = []struct {
 	{"/page/", "apps"},
 }
 
-var driveMemberAddResourceTypes = []string{"docx", "doc", "sheet", "bitable", "file", "folder", "wiki", "mindnote", "slides", "minutes", "apps"}
+var driveMemberAddResourceTypes = []string{"docx", "doc", "sheet", "bitable", "file", "folder", "wiki", "mindnote", "slides", "minutes", "apps", "miaoda_apps"}
 
 const driveMemberAddBatchLimit = 10
 
@@ -250,6 +250,9 @@ func readDriveMemberAddSpec(runtime *common.RuntimeContext) (driveMemberAddSpec,
 // --token value that may be either a bare token or a full resource URL, plus an
 // optional explicit --type. Explicit --type wins over URL inference.
 func resolveDriveMemberAddTarget(raw, explicitType string) (token, resourceType string, err error) {
+	if err := rejectDriveMiaodaURL(raw); err != nil {
+		return "", "", err
+	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--token is required").WithParam("--token")
@@ -321,7 +324,7 @@ func parseDriveMemberAddResourceURLPath(path string) (token, resourceType string
 
 func isSupportedDriveMemberAddResourceType(resourceType string) bool {
 	switch resourceType {
-	case "docx", "doc", "sheet", "bitable", "file", "folder", "wiki", "mindnote", "slides", "minutes", "apps":
+	case "docx", "doc", "sheet", "bitable", "file", "folder", "wiki", "mindnote", "slides", "minutes", "apps", "miaoda_apps":
 		return true
 	default:
 		return false

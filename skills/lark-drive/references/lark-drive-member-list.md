@@ -24,7 +24,7 @@ lark-cli drive +member-list \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--token` | 是 | 裸 token 或完整 URL。URL 路径支持 `/folder/`、`/docx/`、`/doc/`、`/sheets/`、`/base/`、`/bitable/`、`/wiki/`、`/file/`、`/mindnotes/`、`/slides/`、`/minutes/`、`/page/`。 |
-| `--type` | 裸 token 必填 | 目标类型：`doc` / `sheet` / `file` / `wiki` / `bitable` / `docx` / `mindnote` / `minutes` / `slides` / `folder` / `apps`。URL 可自动推断；如果同时传 URL 和冲突的 `--type`，CLI 会拒绝。 |
+| `--type` | 裸 token 必填 | 目标类型：`doc` / `sheet` / `file` / `wiki` / `bitable` / `docx` / `mindnote` / `minutes` / `slides` / `folder` / `apps` / `miaoda_apps`。URL 可自动推断；如果同时传 URL 和冲突的 `--type`，CLI 会拒绝。 |
 | `--fields` | 否 | 默认不传。可取 `name` / `type` / `avatar` / `external_label`，支持逗号分隔；也可传 `*` 请求当前支持的所有附加字段。该参数只声明期望返回的字段，不授予字段级权限。 |
 | `--perm-type` | 否 | 仅 `--type wiki` 有效；取值 `container` / `single_page`。 |
 | `--dry-run` | 否 | 只打印请求，不调用 API。 |
@@ -63,3 +63,7 @@ JSON 输出原样透传 API 的 `data` ：
 - **字段级权限**：`--fields` 只控制请求哪些附加字段，不保证服务端一定返回。请求用户的 `name` / `avatar` 时，应用还需开通 `contact:user.base:readonly`（“获取用户基本信息”；已具备官方兼容的历史通讯录权限也可满足要求）。
 - **缺字段语义**：字段级权限或数据可见性不足时，接口仍可能成功，但会省略相应敏感字段。响应中缺少已请求字段表示“服务端未返回”，不能解释为字段值为空，也不能据此认定成员信息完整。
 - **folder 支持**：CLI 支持 `--type folder` 并会按需求发送 `type=folder`；部分环境的后端如果尚未放开 folder 枚举，可能返回 `99992402 field validation failed`。
+
+## 妙搭资源
+
+妙搭 `/app/app_xxx` URL 需先按 [`apps +get` 的解析流程](../../lark-apps/references/lark-apps-get.md) 获取 `meta_token` / `meta_doc_type`，再以裸 token 和显式 `--type apps|miaoda_apps` 调用本命令。类型必须使用查询实际返回值。直接传应用 URL 会返回带恢复指引的参数错误，shortcut 不会自动查询应用详情。

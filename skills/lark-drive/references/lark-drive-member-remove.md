@@ -18,7 +18,7 @@ lark-cli drive +member-remove \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--token` | 是 | 裸 token 或完整 URL。路径支持 `/drive/folder/`、`/docx/`、`/doc/`、`/sheets/`、`/base/`、`/bitable/`、`/wiki/`、`/file/`、`/mindnotes/`、`/slides/`、`/minutes/`、`/page/`；URL 可从路径推断类型，裸 token 必须同时传 `--type`。 |
-| `--type` | 条件必填 | 资源类型：`docx` / `doc` / `sheet` / `bitable` / `file` / `folder` / `wiki` / `mindnote` / `slides` / `minutes` / `apps`。完整 URL 可省略。 |
+| `--type` | 条件必填 | 资源类型：`docx` / `doc` / `sheet` / `bitable` / `file` / `folder` / `wiki` / `mindnote` / `slides` / `minutes` / `apps` / `miaoda_apps`。完整 URL 可省略。 |
 | `--member-id` | 是 | 要移除的单个协作者 ID。逗号分隔的多成员输入会被拒绝；批量场景应逐个调用。 |
 | `--member-type` | 是 | ID 类型：`email` / `openid` / `openchat` / `opendepartmentid` / `userid` / `unionid` / `groupid` / `appid` / `wikispaceid`。 |
 | `--member-kind` | 条件必填 | 仅 `--member-type=wikispaceid` 使用：未启用知识库成员分组时传 `wiki_space_member`，启用后根据权限传 `wiki_space_viewer` 或 `wiki_space_editor`。 |
@@ -58,3 +58,7 @@ Wiki 普通协作者还会返回 `perm_type`；`wikispaceid` 返回所传的 `me
 - **Wiki 范围**：普通 wiki 协作者默认删除 `container` 权限；只删除当前页面权限时显式传 `single_page`。
 - **Wiki 空间成员**：`--member-type=wikispaceid` 仅支持 `--type=wiki`；必须用 `--member-kind` 指明成员角色，并且不能同时传 `--perm-type`。
 - **错误处理**：OpenAPI 返回的 typed error 原样透传，可根据错误信封中的 subtype、code、hint 和权限信息处理。
+
+## 妙搭资源
+
+妙搭 `/app/app_xxx` URL 需先按 [`apps +get` 的解析流程](../../lark-apps/references/lark-apps-get.md) 获取 `meta_token` / `meta_doc_type`，再以裸 token 和显式 `--type apps|miaoda_apps` 调用本命令。类型必须使用查询实际返回值。直接传应用 URL 会返回带恢复指引的参数错误，shortcut 不会自动查询应用详情。
