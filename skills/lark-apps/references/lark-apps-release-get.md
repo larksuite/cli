@@ -11,12 +11,13 @@
 ## 命令骨架
 
 - 必填：`--app-id`、`--release-id`。
-- `release_id` 来自 `+release-create` 或 `+release-list`。
+- `release_id` 来自 `+release-create` 或 `+release-list`，是一串数字（如 `7712345678901234567`）。`+release-create` 的 JSON 输出里是 `data.release_id`；要直接取值用 `-q '.data.release_id'`，lark-cli 的 `-q` 输出字符串不带引号，可以原样传给 `--release-id`。
+- `--release-id` 只收 64 位整数范围内的纯数字。占位符、发布状态、带引号的 ID、整段命令输出会在本地报参数错误（exit 2），不会发请求；按提示改传真实的 `release_id`，不知道就先 `+release-list`。
 
 ## 示例
 
 ```bash
-lark-cli apps +release-get --app-id app_xxx --release-id release_yyy
+lark-cli apps +release-get --app-id app_xxx --release-id 7712345678901234567
 ```
 
 ## 输出契约

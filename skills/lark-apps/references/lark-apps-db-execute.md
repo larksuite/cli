@@ -105,7 +105,9 @@ CREATE POLICY "修改本人数据" ON <table>
   );
 ```
 
-建表流程：先 `+db-table-list` / `+db-table-get` 确认表不存在或看现有结构 → 生成 DDL → 向用户展示影响并取得授权 → `+db-execute ... --yes` 执行。
+建表流程：先 `+db-table-list` 看已有哪些表——目标表在不在列表里，就是它是否已存在的答案；只对列表里已有的表用 `+db-table-get` 看结构 → 生成 DDL → 向用户展示影响并取得授权 → `+db-execute ... --yes` 执行。
+
+不要用 `+db-table-get` 探测表是否存在：表不存在时它返回 not found 错误（`400002469`），是一次失败的调用，不是“表不存在”的正常答复。也可以不预先检查、直接执行建表 DDL，按返回结果处理；但 `CREATE TABLE IF NOT EXISTS` 遇到同名旧表只会跳过、不会改列，执行后用 `+db-table-get` 回读确认结构。
 
 ## 审计列
 
