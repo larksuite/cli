@@ -42,7 +42,7 @@ var AppsExport = common.Shortcut{
 	Tips: []string{
 		"Exports the last commit on the app's default branch, not the sandbox working tree: uncommitted sandbox changes are not included.",
 		"Example: lark-cli apps +export --app-id <app_id> --output ./src.zip",
-		"Example (share token): lark-cli apps +export --meta-token <token>   # for an app shared with you; you still need to be its edit or full_access collaborator",
+		"Example (share token): lark-cli apps +export --meta-token <token>   # for an app shared with you; you still need to be its edit or full_access collaborator (full_access when its copy_download_by is full-access)",
 		"Example (omit --output): lark-cli apps +export --app-id <app_id>   # saves to ./<app_id>.zip",
 	},
 	Scopes:    []string{exportScope},
