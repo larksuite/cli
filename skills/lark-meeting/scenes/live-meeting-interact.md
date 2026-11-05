@@ -168,6 +168,20 @@ lark-cli vc +meeting-participant-unmute --as <same_identity> \
 - 闭麦成功可以报告操作完成。请求开麦成功必须报告“请求已发送”，不表示目标参会人已经开麦；若要确认最终状态，需要后续状态证据。
 - 详细参数、请求路径和输出语义见 [会中闭麦与请求开麦](../references/lark-vc-meeting-participant-audio.md)。
 
+## 转移会议主持人
+
+只有用户明确要求转移主持人，且目标会议、接任者和身份已经确认时，使用 `lark-cli vc +meeting-transfer-host`。先预览请求：
+
+```bash
+lark-cli vc +meeting-transfer-host --as user --meeting-id <meeting_id> \
+  --participant '<open_id>=<user_type>' --dry-run
+```
+
+- 仅支持 `--as user`（普通用户和智能体用户都走该身份），需要 `vc:meeting`；不要为了执行成功切换身份，未确认前不要补 `--yes`。
+- `user_type` 必须来自 `vc meeting get` 的参会人快照，不根据昵称猜测。
+- 只有成功响应中的 `host_user` 与接任者一致才算转移成功；失败响应也可能包含当前 `host_user`，不代表转移成功。
+- 详细参数和结果判断见 [转移会议主持人](../references/lark-vc-meeting-transfer-host.md)。
+
 ## 结束整场会议或移出参会人
 
 只有用户明确要求主持管理动作，且目标会议与目标参会人已经确认时执行：

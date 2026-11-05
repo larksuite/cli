@@ -146,6 +146,36 @@ func TestAnalysisShortcutsAllowQueryAccess(t *testing.T) {
 	}
 }
 
+// Exercise real registration so the support table cannot deny AAT host transfers.
+func TestMeetingTransferHostAllowsAgentAccess(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+		CredentialKind: core.CredentialAAT, PrincipalOpenID: "ou_test", UserOpenId: "ou_test",
+	})
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcutsWithContext(context.Background(), program, f)
+	program.SetArgs([]string{
+		"vc", "+meeting-transfer-host", "--as", "user",
+		"--meeting-id", "7651377260537433044",
+		"--participant", "ou_target=1", "--dry-run",
+	})
+	if err := program.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var preview struct {
+		OK       bool   `json:"ok"`
+		DryRun   bool   `json:"dry_run"`
+		Identity string `json:"identity"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &preview); err != nil {
+		t.Fatalf("decode preview: %v\n%s", err, stdout.String())
+	}
+	if !preview.OK || !preview.DryRun || preview.Identity != "user" {
+		t.Fatalf("want successful user preview, got %s", stdout.String())
+	}
+}
+
 // TestShortcutsDefaultToUnknownAgentSupport guards that no shortcut hand-writes
 // an AgentSupport literal, which would bypass the hand-maintained table.
 func TestShortcutsDefaultToUnknownAgentSupport(t *testing.T) {

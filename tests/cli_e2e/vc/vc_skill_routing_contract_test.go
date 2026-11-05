@@ -72,6 +72,12 @@ func TestMeetingSkillOwnsVCReferences(t *testing.T) {
 			command:    "lark-cli vc +meeting-participant-kickout",
 			userOnly:   true,
 		},
+		{
+			sharedName: "lark-vc-meeting-transfer-host.md",
+			oldName:    "",
+			command:    "lark-cli vc +meeting-transfer-host",
+			userOnly:   true,
+		},
 	}
 
 	for _, reference := range references {
@@ -111,6 +117,7 @@ func TestVCSharedMeetingReferencesHaveValidMarkdownLinks(t *testing.T) {
 		"lark-vc-meeting-share.md",
 		"lark-vc-meeting-end.md",
 		"lark-vc-meeting-participant-kickout.md",
+		"lark-vc-meeting-transfer-host.md",
 	}
 
 	for _, reference := range references {

@@ -27,6 +27,7 @@ func TestVCAffordanceRoutesAgentActionReferences(t *testing.T) {
 		{service: "vc", command: "+meeting-end", ref: "lark-meeting/references/lark-vc-agent-meeting-end.md"},
 		{service: "vc", command: "+meeting-share", ref: "lark-meeting/references/lark-vc-meeting-share.md"},
 		{service: "vc", command: "+meeting-share-status", ref: "lark-meeting/references/lark-vc-meeting-share.md"},
+		{service: "vc", command: "+meeting-transfer-host", ref: "lark-meeting/references/lark-vc-meeting-transfer-host.md"},
 		{service: "recording", command: "+list", ref: "lark-meeting/references/lark-recording-list.md"},
 	}
 	for _, testCase := range tests {

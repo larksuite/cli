@@ -44,6 +44,15 @@ created by these tests.
 | --- | --- | --- | --- |
 | Live | `vc +meeting-participant-kickout` | `vc_meeting_participant_kickout_test.go::TestVCMeetingParticipantKickoutLiveE2E` | Fixture-gated host/cohost success, ordinary-user denial, and partial-result cases. |
 
+## Host Transfer
+
+| Status | Cmd | Coverage | Notes |
+| --- | --- | --- | --- |
+| Dry-run | `vc +meeting-transfer-host --as user` | `vc_meeting_transfer_host_dryrun_test.go::TestVCMeetingTransferHostDryRun` | Verifies the PATCH `set_host` endpoint, `user_id_type` query, and `host_user` body without sending `old_host_user`. |
+| HTTP stub | `vc +meeting-transfer-host` | `shortcuts/vc/vc_meeting_transfer_host_test.go::TestMeetingTransferHostExecutePreservesRequestAndServerEnvelope` | Asserts the request body and complete server envelope passthrough against a stub. |
+| HTTP stub | `vc +meeting-transfer-host --as user` | `shortcuts/vc/vc_meeting_transfer_host_test.go::TestMeetingTransferHostExecutionIdentityAndErrors` | Verifies AAT execution, bot refusal before HTTP, server error codes and body/nested/header `log_id` passthrough, and no success output for failed responses containing `host_user`. |
+| Blocked Live | `vc +meeting-transfer-host` |  | A successful transfer moves the host role away from the fixture user; the current fixture defines no disposable successor or host-role readback before meeting cleanup. |
+
 ## Meeting Document Sharing
 
 | Status | Cmd | Coverage | Notes |

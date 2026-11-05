@@ -122,6 +122,31 @@ lark-cli vc +meeting-participant-kickout --as user --meeting-id <meeting_id> --p
 ### Skills
 - lark-meeting/references/lark-vc-meeting-participant-kickout.md
 
+## +meeting-transfer-host
+用户明确要求把当前会议的主持人交给某个已确认的参会人时使用。
+
+### Avoid when
+- 结束整场会议 → [[+meeting-end]]。
+- 移出指定参会人 → [[+meeting-participant-kickout]]。
+
+### Prerequisites
+- 使用当前主持会议的用户身份（`--as user`）；遇到权限错误不要切换身份重试。
+- 从目标会议的参会人快照（[[meeting get]]）取得 `meeting_id` 和接任者的 ID、`user_type`；不要根据 ID 或昵称推断 `user_type`。
+
+### Tips
+- 输入不确定时先用 `--dry-run` 预览；用户确认会议和接任者后再加 `--yes`。
+- 只有成功响应中的新主持人就是目标参会人，才算转移成功。
+
+### Examples
+
+**预览转移主持人请求**
+```bash
+lark-cli vc +meeting-transfer-host --as user --meeting-id <meeting_id> --participant '<open_id>=<user_type>' --dry-run
+```
+
+### Skills
+- lark-meeting/references/lark-vc-meeting-transfer-host.md
+
 ## +meeting-participant-mute
 Use this only when the user explicitly asks to mute one identified participant in an ongoing meeting. This is a write operation; preview an uncertain meeting, target, or identity with `--dry-run` before executing.
 

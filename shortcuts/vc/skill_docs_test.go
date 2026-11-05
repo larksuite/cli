@@ -117,6 +117,12 @@ func TestVCMeetingManagementDocsMatchAuthTypesAndContracts(t *testing.T) {
 			reference: "lark-vc-meeting-participant-kickout.md",
 			sceneNeed: "vc +meeting-participant-kickout",
 		},
+		{
+			name:      "+meeting-transfer-host",
+			authTypes: VCMeetingTransferHost.AuthTypes,
+			reference: "lark-vc-meeting-transfer-host.md",
+			sceneNeed: "vc +meeting-transfer-host",
+		},
 	} {
 		t.Run(cmd.name, func(t *testing.T) {
 			wantBot := cmd.botReference != ""
@@ -155,6 +161,7 @@ func TestVCMeetingManagementDocsMatchAuthTypesAndContracts(t *testing.T) {
 	for _, needle := range []string{
 		"vc +meeting-end",
 		"vc +meeting-participant-kickout",
+		"vc +meeting-transfer-host",
 		"vc meeting get",
 		"--dry-run",
 		"--yes",
