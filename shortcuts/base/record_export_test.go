@@ -171,7 +171,7 @@ func TestRecordListNDJSONOutputInfersFormatAndNormalizesValues(t *testing.T) {
 	if tags, ok := rows[0]["Tags"].([]any); !ok || len(tags) != 0 {
 		t.Fatalf("empty Tags = %#v", rows[0]["Tags"])
 	}
-	if got := rows[0]["When"]; got != "2026-08-04T12:30:00+08:00" {
+	if got := rows[0]["When"]; got != "2026-08-04 12:30:00" {
 		t.Fatalf("When = %#v", got)
 	}
 	if rows[1]["Name"] != nil {
