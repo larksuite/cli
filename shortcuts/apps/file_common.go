@@ -23,6 +23,8 @@ var (
 	reTsRelative      = regexp.MustCompile(`^([0-9]+)([smhdw])$`)
 	reTsDate          = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 	reTsLocalDateTime = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$`)
+	// reWindowsDrivePath matches an absolute Windows path such as C:/x or C:\x.
+	reWindowsDrivePath = regexp.MustCompile(`^[A-Za-z]:[/\\]`)
 )
 
 // normalizeTimestamp 实现设计原则三的 <timestamp> 多格式输入，统一归一化为 RFC3339 UTC：
@@ -152,7 +154,42 @@ func requireFilePath(raw string) (string, error) {
 	if p == "" {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--path is required").WithParam("--path")
 	}
+	if err := rejectLocalWindowsPath(p); err != nil {
+		return "", err
+	}
 	return p, nil
+}
+
+// msysRewrittenPathHint explains the usual source of a drive path in --path and
+// how to keep the shell from producing it. A doubled leading slash only survives
+// the rewrite for a single-segment path (MSYS treats //a/b as a network path), so
+// that form is offered for paths like the ones +file-upload returns.
+const msysRewrittenPathHint = "remote paths are app storage paths such as /1858537546760216.png. " +
+	"Git Bash (MSYS) on Windows rewrites an argument that starts with / into a local Windows path before lark-cli receives it; " +
+	"re-run the command with MSYS_NO_PATHCONV=1 in front of it, or, for a single-segment path, double the leading slash (//1858537546760216.png)"
+
+// rejectLocalWindowsPath rejects a --path value that is an absolute Windows path.
+//
+// Remote storage paths are object keys ("/1858537546760216.png",
+// "chunks/<id>/part_0") and never start with a drive letter. A drive path almost
+// always comes from Git Bash / MSYS: before a native program runs, MSYS rewrites
+// every argument that starts with "/" into a path under its install root, so
+// "/1858537546760216.png" arrives as "C:/Program Files/Git/1858537546760216.png".
+// Sent as is, storage answers "file not found or no access", which reads as a
+// missing file rather than a shell rewrite.
+//
+// The original path is not reconstructed. The install root differs per machine
+// (the Git for Windows directory, a portable copy bundled with another app) and
+// MSYS maps some prefixes elsewhere (/tmp, /c/...), so nothing here can undo the
+// rewrite with certainty; the error says how to stop it instead.
+func rejectLocalWindowsPath(p string) error {
+	if !reWindowsDrivePath.MatchString(p) {
+		return nil
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"--path %q is a local Windows path, not a remote file path", p).
+		WithParam("--path").
+		WithHint("%s", msysRewrittenPathHint)
 }
 
 // fileUser 是 uploaded_by 的 {id,name}。OpenAPI 以 created_by 的 JSON 字符串透传，CLI parse。

@@ -7,8 +7,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -27,7 +29,7 @@ var AppsReleaseGet = common.Shortcut{
 	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID", Required: true},
-		{Name: "release-id", Desc: "release ID (the release_id returned by +release-create)", Required: true},
+		{Name: "release-id", Desc: "numeric release ID (the release_id returned by +release-create or +release-list)", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
@@ -37,10 +39,8 @@ var AppsReleaseGet = common.Shortcut{
 		if err := validateRealAppID(appID); err != nil {
 			return err
 		}
-		if strings.TrimSpace(rctx.Str("release-id")) == "" {
-			return appsValidationParamError("--release-id", "--release-id is required")
-		}
-		return nil
+		_, err := requireReleaseID(rctx.Str("release-id"), appID)
+		return err
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
@@ -64,6 +64,50 @@ var AppsReleaseGet = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+// requireReleaseID trims --release-id and rejects a value that cannot be a
+// release id.
+//
+// The gateway types the release id as a 64-bit integer and answers anything else
+// with code 9499 ("Invalid parameter type in param: ReleaseID"). That names the
+// parameter but not where a valid value comes from, and the values callers sent
+// show the gap: placeholders ("x", "latest", "release_yyy"), a release status, the
+// whole +release-create output, the id still wrapped in quotes, several ids at
+// once, digit strings longer than 64 bits. None of them can succeed, so they are
+// refused before the request, with the commands that produce a real id.
+//
+// Only the shape is checked here; whether the release exists is the server's call.
+func requireReleaseID(raw, appID string) (string, error) {
+	id := strings.TrimSpace(raw)
+	if id == "" {
+		return "", appsValidationParamError("--release-id", "--release-id is required")
+	}
+	if !isReleaseIDShape(id) {
+		return "", appsValidationParamError("--release-id",
+			"--release-id must be a numeric release_id, got %q", util.TruncateStrWithEllipsis(id, 48)).
+			WithHint("%s", releaseIDHint(appID))
+	}
+	return id, nil
+}
+
+// isReleaseIDShape reports whether id is a decimal 64-bit integer written with
+// digits only. strconv alone would also accept a sign.
+func isReleaseIDShape(id string) bool {
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	_, err := strconv.ParseInt(id, 10, 64)
+	return err == nil
+}
+
+// releaseIDHint says where a release id comes from. lark-cli's -q prints a string
+// without quotes, so the extracted value can be passed on as is.
+func releaseIDHint(appID string) string {
+	return "pass only the digits of a release_id (for example 7712345678901234567), not a status, a placeholder, quotes or a whole command output; " +
+		"read it from +release-create or +html-publish with -q '.data.release_id', or list this app's releases with `lark-cli apps +release-list --app-id " + appID + "`"
 }
 
 func writeReleaseDetailPretty(w io.Writer, projection releaseDetailProjection) {
