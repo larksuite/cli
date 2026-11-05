@@ -13,6 +13,21 @@ import (
 
 const dbSyncUpdateFallbackHint = "fix the config field_maps or target table, then resubmit with +db-sync-update --yes"
 
+// dbSyncTargetTableMissingCode is the db-sync "target table does not exist" code.
+const dbSyncTargetTableMissingCode = 400002483
+
+// dbSyncUpdateTargetTableMissingHint replaces the shared 400002483 guidance for
+// update. That guidance is written for create — switch target.table.action to
+// create, rerun preview — but update never creates the table and has no preview.
+// An update runs in the environment the task was created in, and the server
+// message names that environment, so the table has to exist there. The online
+// environment of a multi-environment app forbids direct DDL (k_dl_4000001), so
+// there the table is created in dev and published instead.
+const dbSyncUpdateTargetTableMissingHint = "The target table does not exist in the environment this sync task belongs to (the one named in the error message; an update always runs in the environment the task was created in). " +
+	"Create or restore the table in that environment, for example with +db-execute --environment <that environment>, or point the config's target table at a table that already exists there, then resubmit with +db-sync-update. " +
+	"If that is the online environment of a multi-environment app, tables cannot be created there directly: create the table in dev, then publish it to online with +db-env-diff and +db-env-migrate after the user confirms. " +
+	"Do not change target.table.action and do not rerun preview."
+
 // AppsDBSyncUpdate updates an existing Base data sync task configuration.
 var AppsDBSyncUpdate = common.Shortcut{
 	Service:     appsService,
@@ -66,7 +81,7 @@ var AppsDBSyncUpdate = common.Shortcut{
 		}
 		data, err := rctx.CallAPITyped("PUT", appDbSyncUpdatePath(appID), nil, dbSyncUpdateBody(rctx, taskID, config))
 		if err != nil {
-			return withDBSyncHint(err, dbSyncUpdateFallbackHint)
+			return withDBSyncUpdateHint(err)
 		}
 		outputDBSyncTaskSummary(rctx, data, "Updated")
 		return nil
@@ -77,4 +92,15 @@ func dbSyncUpdateBody(rctx *common.RuntimeContext, taskID string, config map[str
 	// sync_update reads env from the request body (peer of task_id/config), not the query
 	// string. Omitted env intentionally lets the db-sync backend use its online default.
 	return dbEnvBody(rctx, map[string]interface{}{"task_id": taskID, "config": config})
+}
+
+// withDBSyncUpdateHint is withDBSyncHint with the update-specific answer to a
+// missing target table; every other failure keeps the shared db-sync guidance.
+func withDBSyncUpdateHint(err error) error {
+	if p, ok := errs.ProblemOf(err); ok && p.Code == dbSyncTargetTableMissingCode &&
+		p.Subtype != errs.SubtypeRateLimit && strings.TrimSpace(p.Hint) == "" {
+		p.Hint = dbSyncUpdateTargetTableMissingHint
+		return err
+	}
+	return withDBSyncHint(err, dbSyncUpdateFallbackHint)
 }
