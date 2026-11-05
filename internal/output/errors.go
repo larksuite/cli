@@ -39,6 +39,30 @@ func PartialFailure(code int) *PartialFailureError {
 	return &PartialFailureError{Code: code}
 }
 
+type upstreamError struct {
+	error
+	detail json.RawMessage
+}
+
+func (e *upstreamError) Unwrap() error { return e.error }
+
+// WithUpstreamError attaches an optional upstream detail for stderr rendering.
+func WithUpstreamError(err error, detail json.RawMessage) error {
+	if err == nil || len(detail) == 0 {
+		return err
+	}
+	return &upstreamError{error: err, detail: detail}
+}
+
+// UpstreamErrorOf returns the detail attached to an error chain, if present.
+func UpstreamErrorOf(err error) json.RawMessage {
+	var carrier *upstreamError
+	if errors.As(err, &carrier) {
+		return carrier.detail
+	}
+	return nil
+}
+
 // WriteTypedErrorEnvelope writes the JSON error envelope for a typed error.
 // Each typed error owns its wire shape via its own struct tags: Problem fields
 // are promoted to the top level through embedding, and extension fields
@@ -75,6 +99,18 @@ func WriteTypedErrorEnvelope(w io.Writer, err error, identity string) bool {
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
+	if detail := UpstreamErrorOf(err); len(detail) != 0 {
+		if err := enc.Encode(env.Error); err != nil {
+			return false
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(buf.Bytes(), &fields); err != nil || fields == nil {
+			return false
+		}
+		buf.Reset()
+		fields["upstream_error"] = detail
+		env.Error = fields
+	}
 	if encErr := enc.Encode(env); encErr != nil {
 		// Encoding failed — emit nothing here; the dispatcher's fall-through
 		// branches still surface the error, so stderr is never blank.
@@ -108,13 +144,11 @@ func withEffectiveRequestURL(err error) error {
 	return rendered
 }
 
-// typedEnvelope wraps a typed error for wire emission. Error is `error` so the
-// underlying typed error's own json tags determine the inner shape via
-// encoding/json reflection; Notice mirrors the success Envelope's notice (see
-// GetNotice in envelope.go).
+// typedEnvelope uses the concrete typed error's JSON shape, with optional
+// upstream detail added alongside its fields. Notice mirrors the success envelope.
 type typedEnvelope struct {
 	OK       bool                   `json:"ok"`
 	Identity string                 `json:"identity,omitempty"`
-	Error    error                  `json:"error"`
+	Error    any                    `json:"error"`
 	Notice   map[string]interface{} `json:"_notice,omitempty"`
 }

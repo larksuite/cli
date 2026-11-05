@@ -305,6 +305,7 @@ func handleRootError(
 	// reusable error value.
 	if !errs.IsRaw(err) {
 		renderedErr = presentRootError(f, err, projector)
+		renderedErr = output.WithUpstreamError(renderedErr, output.UpstreamErrorOf(err))
 	}
 
 	// Staged dispatch: capture the typed exit code BEFORE attempting the

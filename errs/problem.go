@@ -3,8 +3,6 @@
 
 package errs
 
-import "encoding/json"
-
 // Problem is the RFC 7807-aligned shared shape embedded by every typed error.
 //
 // Message is REQUIRED. Producers must populate it; an empty Message will make
@@ -31,8 +29,6 @@ type Problem struct {
 	LogID          string   `json:"log_id,omitempty"`
 	Troubleshooter string   `json:"troubleshooter,omitempty"`
 	Retryable      bool     `json:"retryable,omitempty"`
-	// UpstreamError preserves the upstream structured error without changing CLI taxonomy.
-	UpstreamError json.RawMessage `json:"upstream_error,omitempty"`
 }
 
 // Error satisfies the standard `error` interface. A nil receiver is treated

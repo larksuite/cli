@@ -12,6 +12,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/output"
 )
 
 func TestErrorDetailHelpers(t *testing.T) {
@@ -236,17 +237,17 @@ func TestBaseUpstreamErrorPreservesShapeAndCause(t *testing.T) {
 			cause := assertErr{}
 			original := errs.NewAPIError(errs.SubtypeNotFound, "original").WithCode(800030201).WithCause(cause)
 			enriched := enrichBaseAPIErrorFromBody(original, raw, errclass.ClassifyContext{})
-			if enriched != original || !errors.Is(enriched, cause) {
-				t.Fatal("lost error identity/cause")
+			var typed *errs.APIError
+			if !errors.As(enriched, &typed) || typed != original || !errors.Is(enriched, cause) {
+				t.Fatal("lost typed error identity/cause")
 			}
-			problem, _ := errs.ProblemOf(enriched)
 			// Compare decoded values using json.Number so large integers remain exact.
 			wantMap := map[string]interface{}{}
 			gotMap := map[string]interface{}{}
 			for _, item := range []struct {
 				raw    []byte
 				target *map[string]interface{}
-			}{{detail, &wantMap}, {problem.UpstreamError, &gotMap}} {
+			}{{detail, &wantMap}, {output.UpstreamErrorOf(enriched), &gotMap}} {
 				decoder := json.NewDecoder(bytes.NewReader(item.raw))
 				decoder.UseNumber()
 				if err := decoder.Decode(item.target); err != nil {
@@ -257,6 +258,31 @@ func TestBaseUpstreamErrorPreservesShapeAndCause(t *testing.T) {
 			got, _ := json.Marshal(gotMap)
 			if !bytes.Equal(want, got) {
 				t.Fatalf("detail=%s, want=%s", got, want)
+			}
+		})
+	}
+}
+
+func TestBaseUpstreamErrorPrefersPresentDataError(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{"nested object", `{"code":800030201,"data":{"error":{"path":"nested"}},"error":{"path":"top"}}`, `{"path":"nested"}`},
+		{"explicit null", `{"code":800030201,"data":{"error":null},"error":{"path":"top"}}`, `null`},
+		{"explicit false", `{"code":800030201,"data":{"error":false},"error":{"path":"top"}}`, `false`},
+		{"fallback", `{"code":800030201,"data":{},"error":{"path":"top"}}`, `{"path":"top"}`},
+		{"absent", `{"code":800030201,"data":{}}`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original := errs.NewAPIError(errs.SubtypeNotFound, "original").WithCode(800030201)
+			err := enrichBaseAPIErrorFromBody(original, []byte(tc.body), errclass.ClassifyContext{})
+			if _, ok := errs.ProblemOf(err); !ok {
+				t.Fatalf("expected typed error, got %v", err)
+			}
+			if got := string(output.UpstreamErrorOf(err)); got != tc.want {
+				t.Fatalf("upstream error=%q, want %q", got, tc.want)
 			}
 		})
 	}
