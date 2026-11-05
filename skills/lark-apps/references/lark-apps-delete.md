@@ -31,7 +31,7 @@ lark-cli apps +delete --app-id app_xxx --confirm-name "审批系统" --yes
 - `data.in_trash=true`：告诉用户可以在 web 端「我的应用 → 回收站」于保留期内恢复。`data.in_trash=false`：明确告知已永久删除。
 - 响应里没有 `data.in_trash` 时：只告知用户已删除，不承诺可以恢复，也不要因此重试。
 - 删除状态异步生效，删除后短时间内 `+get` 仍可能查到该应用；不要据此判断删除失败，也不要重复删除。
-- 删除生效后再 `+get`（或对同一应用再 `+delete`）会失败，错误码为 `40300` 或 `40400`：表示应用已删除，不是权限问题，不要据此让用户去申请权限。
+- 删除生效后再 `+get`（或对同一应用再 `+delete`）会失败：通常是 HTTP 404、业务码 `2320008`、消息 `app tenant not found`；删除后很短的一段时间内也可能是 `40300` 或 `40400`。这些都表示应用已删除，不是权限问题：用 `+list` 核对 app_id 后停止轮询或重复删除，不要改命令参数，也不要据此让用户去申请权限。
 
 ## 错误
 
@@ -39,4 +39,5 @@ lark-cli apps +delete --app-id app_xxx --confirm-name "审批系统" --yes
 |---|---|---|
 | `authorization/permission_denied` | 只有应用 owner 或创建者能删 | 转告用户，不要重试 |
 | `failed_precondition`（hint 指向 web 端） | 该应用类型（如 OpenClaw）不能通过 lark-cli 删除 | 引导用户在 web 端删除 |
+| `api/unknown`，code `2320008`，消息 `app tenant not found` | 应用已删除或当前租户无法解析 | 用 `+list` 核对 app_id，然后停止轮询或操作 |
 | `not_found` | 应用不存在、已删除或无权访问 | 用 `+list` 核对 app_id |

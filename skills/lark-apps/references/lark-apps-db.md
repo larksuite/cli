@@ -181,7 +181,7 @@ lark-cli apps +db-sync-create --app-id app_xxx --environment dev --config @payme
 
 `+db-sync-get` 返回的 `source` **不含 `base_url`**（只有 token / tableId，服务端没有 domain 拼不出完整 URL），这是正常的。原表 update 直接省略 `base_url` 即可；只有要换成另一张 Base 表时，才在 config 里显式补一个新的 `base_url`。不要为了"补全" `base_url` 而编造 domain 或拼接 URL——拿不到就省略，让服务端复用原任务的源 URL。
 
-`+db-sync-update` 也遵循 db-sync 家族「省略 `--environment` 落 online」的规则，所以改 dev 上的任务必须显式带该任务所在环境的 `--environment`（多环境应用的 streaming 任务通常在 `dev`），否则会错落 online、找不到任务或改错分支。
+`+db-sync-update` 跟随任务创建时所在的环境：查目标表、提交修改都在该任务的环境里进行，所以目标表必须存在于那个环境（多环境应用的 streaming 任务通常在 `dev`）。带 `--environment` 时填该任务所在的环境，不要指望用它把任务挪到别的环境。
 
 ```bash
 lark-cli apps +db-sync-get --app-id app_xxx --task-id streaming_123 -q '.data | {mode, source, target, field_maps}' > sync.json
@@ -217,6 +217,8 @@ lark-cli apps +db-sync-get --app-id app_xxx --task-id batch_123
 **online 禁 DDL（`k_dl_4000001`）恢复**：`+db-sync-create` 建表报 `k_dl_4000001：forbid ddl/dcl operation in online env` 时，这必然是多环境应用（共享库在 online 建表不会报此码）。online 分支**本就不允许**直接建表，这是多环境应用的产品设计、不是可绕过的限制。改用 `--environment dev` 重跑 `+db-sync-create`，把表建到 dev 分支；不要试图「在 online 想办法重试建表」，没有这个选项。
 
 **缺 Base 表记录 ID 映射列（`400002477`）恢复**：streaming 自动同步要求目标表有一个映射给「Base 表记录 ID」的 **text + 单值 + unique** 列。用 `action=use_existing` 写已有表时，若该表没有这样的列，会报 `400002477`（Field mapping must include 'Base 表记录 ID'）。先用 `+db-execute` 给表加一个，如 `ALTER TABLE <表> ADD COLUMN base_record_id varchar UNIQUE`，再把它映射给「Base 表记录 ID」、重跑 `+db-sync-create --preview`。注意这是**加列**、不是建表，不需要审计列 / RLS 那套建表规范。
+
+**update 报目标表不存在（`400002483`）恢复**：报错会写明查的是哪个环境（如 `Target table 'orders' does not exist in the dev environment.`），那就是该任务所在的环境。到这个环境建表或恢复表（例如 `+db-execute --environment <该环境>`），或者把 config 里的目标表改成这个环境中已经存在的表，再重新 `+db-sync-update`。多环境应用的 online 不允许直接建表：任务在 online 时，先在 dev 建表，再经用户确认用 `+db-env-diff` / `+db-env-migrate` 发布到 online。不要改 `target.table.action`，也不要 rerun preview：update 不会建表，也没有 preview。`+db-sync-create` 遇到同一个码时才按 hint 改成 `action=create` 或先建表后重跑 preview。
 
 ### 变更追溯与审计
 
