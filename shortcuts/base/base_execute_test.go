@@ -4830,49 +4830,51 @@ func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 	})
 }
 
-func TestBatchCreatePreservesUpstreamErrorOnWire(t *testing.T) {
+func TestBatchCreateAddsBaseDiagnosticsToStderrHint(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	detail := map[string]interface{}{
-		"type": "not_found", "message": "not_found", "retryable": false,
-		"path": "create_records.0.MissingField", "value": "MissingField",
-		"table": map[string]interface{}{"id": "tbl_x", "name": "Orders"},
-		"hint":  "List fields in the current table.", "docs_url": nil,
-		"extra_context": map[string]interface{}{"future": []interface{}{"detail", false}},
-	}
 	reg.Register(&httpmock.Stub{
 		Method: "POST", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_create",
-		Body: map[string]interface{}{"code": 800030201, "msg": "not_found: not_found", "data": map[string]interface{}{"error": detail}},
+		Body: map[string]interface{}{
+			"code": 800030201,
+			"msg":  "not_found",
+			"data": map[string]interface{}{"error": map[string]interface{}{
+				"message": "The field does not exist.",
+				"hint":    "List fields in the current table.",
+				"path":    "create_records.0.MissingField",
+				"value":   json.Number("9007199254740993"),
+				"table":   map[string]interface{}{"id": "tbl_x", "name": "Orders"},
+			}},
+		},
 	})
-	err := runShortcut(t, BaseRecordBatchCreate, []string{"+record-batch-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"create_records":[{"MissingField":"value"}]}`}, factory, stdout)
-	if output.ExitCodeOf(err) != 1 {
-		t.Fatalf("exit=%d, err=%v", output.ExitCodeOf(err), err)
-	}
-	if stdout.Len() != 0 {
-		t.Fatalf("unexpected stdout: %s", stdout.String())
+
+	err := runShortcut(t, BaseRecordBatchCreate, []string{
+		"+record-batch-create", "--base-token", "app_x", "--table-id", "tbl_x",
+		"--json", `{"create_records":[{"MissingField":"value"}]}`,
+	}, factory, stdout)
+	if output.ExitCodeOf(err) != 1 || stdout.Len() != 0 {
+		t.Fatalf("unexpected result: err=%v stdout=%s", err, stdout)
 	}
 	var stderr bytes.Buffer
 	if !output.WriteTypedErrorEnvelope(&stderr, err, "user") {
 		t.Fatal("expected typed error envelope")
 	}
 	var wire struct {
-		OK    bool `json:"ok"`
-		Error struct {
-			Type          string                 `json:"type"`
-			Subtype       string                 `json:"subtype"`
-			Code          int                    `json:"code"`
-			Hint          string                 `json:"hint"`
-			UpstreamError map[string]interface{} `json:"upstream_error"`
-		} `json:"error"`
+		OK    bool                       `json:"ok"`
+		Error map[string]json.RawMessage `json:"error"`
 	}
 	if err := json.Unmarshal(stderr.Bytes(), &wire); err != nil {
 		t.Fatal(err)
 	}
-	if wire.OK || wire.Error.Type != "api" || wire.Error.Subtype != "unknown" || wire.Error.Code != 800030201 || wire.Error.Hint != detail["hint"] {
-		t.Fatalf("unexpected wire: %s", stderr.String())
+	var hint string
+	if err := json.Unmarshal(wire.Error["hint"], &hint); err != nil {
+		t.Fatal(err)
 	}
-	want, _ := json.Marshal(detail)
-	got, _ := json.Marshal(wire.Error.UpstreamError)
-	if !bytes.Equal(want, got) {
-		t.Fatalf("upstream error=%s, want=%s", got, want)
+	wantHint := "List fields in the current table.\n" +
+		`debug_info: path="create_records.0.MissingField";value=9007199254740993;table={"id":"tbl_x","name":"Orders"}`
+	if wire.OK || string(wire.Error["code"]) != "800030201" || hint != wantHint {
+		t.Fatalf("unexpected stderr: %s", &stderr)
+	}
+	if _, exists := wire.Error["upstream_error"]; exists {
+		t.Fatalf("unexpected upstream_error field: %s", &stderr)
 	}
 }

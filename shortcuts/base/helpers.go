@@ -419,11 +419,8 @@ func baseV3RawContext(ctx context.Context, runtime *common.RuntimeContext, metho
 	if err != nil {
 		return nil, baseAPIBoundaryError(err, "API call failed")
 	}
-	if _, err := runtime.ClassifyAPIResponse(resp); err != nil {
-		if statusErr := baseHTTPStatusErrorFromInvalidResponse(resp, err); statusErr != nil {
-			return nil, statusErr
-		}
-		return nil, enrichBaseAPIErrorFromBody(err, resp.RawBody, runtime.APIClassifyContext())
+	if err := classifyBaseAPIResponse(runtime, resp); err != nil {
+		return nil, err
 	}
 	result, parseErr := decodeBaseV3Response(resp.RawBody)
 	if parseErr != nil {

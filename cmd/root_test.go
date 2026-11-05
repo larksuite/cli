@@ -480,40 +480,6 @@ func TestHandleRootError_PartialWritePreservesExitCode(t *testing.T) {
 	}
 }
 
-func TestHandleRootError_PreservesUpstreamDetailAfterPresentation(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
-	typed := &errs.SecurityPolicyError{
-		Problem: errs.Problem{
-			Category: errs.CategoryPolicy,
-			Subtype:  errs.SubtypeChallengeRequired,
-			Code:     21000,
-			Message:  "blocked by access policy",
-		},
-		ChallengeURL: "https://example.com/challenge",
-	}
-	err := output.WithUpstreamError(typed, json.RawMessage(`false`))
-	if exit := handleRootError(f, err, nil); exit != int(output.ExitContentSafety) {
-		t.Fatalf("exit = %d, want %d", exit, output.ExitContentSafety)
-	}
-	if stdout.Len() != 0 {
-		t.Fatalf("unexpected stdout: %s", stdout)
-	}
-	var env struct {
-		Error struct {
-			Code          int             `json:"code"`
-			ChallengeURL  string          `json:"challenge_url"`
-			UpstreamError json.RawMessage `json:"upstream_error"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-		t.Fatalf("decode stderr: %v\n%s", err, stderr)
-	}
-	if env.Error.Code != typed.Code || env.Error.ChallengeURL != typed.ChallengeURL || string(env.Error.UpstreamError) != "false" {
-		t.Fatalf("unexpected stderr: %s", stderr)
-	}
-}
-
 // TestHandleRootError_BareErrorExitCodeNoStderr pins the silent-exit
 // contract: a *output.BareError is honored for its exit code while stderr stays
 // empty (stdout already carries the result, so the dispatcher must not layer a

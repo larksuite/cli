@@ -7,13 +7,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
+
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func handleBaseAPIResult(result interface{}, err error, action string) (map[string]interface{}, error) {
@@ -151,39 +155,76 @@ func baseUploadAttachmentError(filePath string, err error) error {
 	return errs.NewInternalError(errs.SubtypeSDKError, "failed to upload attachment %s: %s", filePath, err).WithCause(err)
 }
 
+// classifyBaseAPIResponse applies the CLI's HTTP classification and then adds
+// Base diagnostics from the response body to the resulting typed error.
+func classifyBaseAPIResponse(runtime *common.RuntimeContext, resp *larkcore.ApiResp) error {
+	if _, err := runtime.ClassifyAPIResponse(resp); err != nil {
+		if statusErr := baseHTTPStatusErrorFromInvalidResponse(resp, err); statusErr != nil {
+			return statusErr
+		}
+		return enrichBaseAPIErrorFromBody(err, resp.RawBody, runtime.APIClassifyContext())
+	}
+	return nil
+}
+
+// baseAPIErrorFromResult promotes the selected Base error detail into the
+// standard CLI message and hint while classifying by the response's code.
 func baseAPIErrorFromResult(resultMap map[string]interface{}, cc errclass.ClassifyContext) error {
 	if resultMap == nil {
 		return errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned a malformed response envelope")
 	}
-	// Preserve the complete diagnostic before message/hint promotion consumes fields.
 	data, _ := resultMap["data"].(map[string]interface{})
-	detail, exists := data["error"]
-	if !exists {
-		detail, exists = resultMap["error"]
+	rawDetail, nested := data["error"]
+	if !nested {
+		rawDetail = resultMap["error"]
 	}
-	var upstreamError json.RawMessage
-	if exists {
-		encoded, marshalErr := json.Marshal(detail)
-		if marshalErr != nil {
-			return errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned an invalid error detail").WithCause(marshalErr)
+	detail, _ := rawDetail.(map[string]interface{})
+	classified := maps.Clone(resultMap)
+	if nested {
+		if message, _ := detail["message"].(string); strings.TrimSpace(message) != "" {
+			classified["msg"] = strings.TrimSpace(message)
 		}
-		upstreamError = encoded
+		// The common classifier otherwise prefers error.message over msg.
+		if topLevel, ok := resultMap["error"].(map[string]interface{}); ok {
+			topLevel = maps.Clone(topLevel)
+			delete(topLevel, "message")
+			classified["error"] = topLevel
+		}
 	}
-	if msg := extractDataErrorMessage(resultMap); msg != "" {
-		resultMap["msg"] = msg
-	}
-	hint := extractErrorHint(resultMap)
 	if logID := extractBaseErrorLogID(resultMap); logID != "" {
-		resultMap["log_id"] = logID
+		classified["log_id"] = logID
 	}
-	err := errclass.BuildAPIError(resultMap, cc)
-	if err == nil {
-		return nil
+	err := errclass.BuildAPIError(classified, cc)
+	if p, ok := errs.ProblemOf(err); ok {
+		if hint, _ := detail["hint"].(string); strings.TrimSpace(hint) != "" {
+			p.Hint = strings.TrimSpace(hint)
+		}
+		p.Hint = appendBaseDebugInfo(p.Hint, detail)
 	}
-	if p, ok := errs.ProblemOf(err); ok && hint != "" {
-		p.Hint = hint
+	return err
+}
+
+// appendBaseDebugInfo appends the Base context as JSON values so strings and
+// composite input values remain distinguishable inside the hint.
+func appendBaseDebugInfo(hint string, detail map[string]interface{}) string {
+	var fields []string
+	for _, key := range []string{"path", "value", "table"} {
+		value, exists := detail[key]
+		if !exists {
+			continue
+		}
+		if encoded, err := json.Marshal(value); err == nil {
+			fields = append(fields, key+"="+string(encoded))
+		}
 	}
-	return output.WithUpstreamError(err, upstreamError)
+	if len(fields) == 0 {
+		return hint
+	}
+	debug := "debug_info: " + strings.Join(fields, ";")
+	if hint == "" {
+		return debug
+	}
+	return hint + "\n" + debug
 }
 
 func enrichBaseAPIErrorFromBody(err error, body []byte, cc errclass.ClassifyContext) error {
@@ -208,7 +249,6 @@ func enrichBaseAPIErrorFromBody(err error, body []byte, cc errclass.ClassifyCont
 		if src.LogID != "" {
 			dst.LogID = src.LogID
 		}
-		return output.WithUpstreamError(err, output.UpstreamErrorOf(enriched))
 	}
 	return err
 }
@@ -235,39 +275,6 @@ func extractBaseErrorLogID(resultMap map[string]interface{}) string {
 		}
 	}
 	return ""
-}
-
-func extractErrorHint(resultMap map[string]interface{}) string {
-	if detail, ok := resultMap["error"].(map[string]interface{}); ok {
-		if hint := consumeStringField(detail, "hint"); hint != "" {
-			return hint
-		}
-	}
-	data, _ := resultMap["data"].(map[string]interface{})
-	if detail, ok := data["error"].(map[string]interface{}); ok {
-		if hint := consumeStringField(detail, "hint"); hint != "" {
-			return hint
-		}
-	}
-	return ""
-}
-
-func extractDataErrorMessage(resultMap map[string]interface{}) string {
-	data, _ := resultMap["data"].(map[string]interface{})
-	if detail, ok := data["error"].(map[string]interface{}); ok {
-		if message := consumeStringField(detail, "message"); message != "" {
-			return message
-		}
-	}
-	return ""
-}
-
-func consumeStringField(src map[string]interface{}, key string) string {
-	value, _ := src[key].(string)
-	if _, exists := src[key]; exists {
-		delete(src, key)
-	}
-	return strings.TrimSpace(value)
 }
 
 func baseContentSafetyBlockError(scanResult output.ScanResult) error {

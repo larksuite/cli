@@ -4,29 +4,12 @@
 package base
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/output"
 )
-
-func TestErrorDetailHelpers(t *testing.T) {
-	detail := map[string]interface{}{"message": "boom", "hint": "retry later"}
-	if got := extractErrorHint(map[string]interface{}{"data": map[string]interface{}{"error": detail}}); got != "retry later" {
-		t.Fatalf("hint=%q", got)
-	}
-	if got := extractDataErrorMessage(map[string]interface{}{"data": map[string]interface{}{"error": detail}}); got != "boom" {
-		t.Fatalf("message=%q", got)
-	}
-	if got := extractDataErrorMessage(map[string]interface{}{"data": map[string]interface{}{}}); got != "" {
-		t.Fatalf("message=%q", got)
-	}
-}
 
 func TestHandleBaseAPIResultErrorPaths(t *testing.T) {
 	if _, err := handleBaseAPIResultAny(nil, assertErr{}, "list fields"); err == nil || !strings.Contains(err.Error(), "list fields") {
@@ -89,11 +72,33 @@ func TestHandleBaseAPIResultPromotesBaseErrorFields(t *testing.T) {
 	if p.Message != "The cell value does not match the expected input shape." {
 		t.Fatalf("message=%q", p.Message)
 	}
-	if p.Hint != "Provide a number value." {
+	if want := "Provide a number value.\n" + `debug_info: path="Amount";value="abc";table={"id":"tbl_1","name":"Orders"}`; p.Hint != want {
 		t.Fatalf("hint=%q", p.Hint)
 	}
 	if p.LogID != "20260508160000000000000000000000" {
 		t.Fatalf("logID=%q", p.LogID)
+	}
+}
+
+func TestBaseAPIErrorDetailPriority(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		body    string
+		message string
+		hint    string
+	}{
+		{"nested", `{"code":800030201,"data":{"error":{"message":"nested","value":null}},"error":{"message":"top","path":"ignored"}}`, "nested", `debug_info: value=null`},
+		{"fallback", `{"code":800030201,"data":{},"error":{"message":"top","path":"field"}}`, "top", `debug_info: path="field"`},
+		{"explicit null", `{"code":800030201,"msg":"summary","data":{"error":null},"error":{"message":"top","path":"ignored"}}`, "summary", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original := errs.NewAPIError(errs.SubtypeUnknown, "outer failure").WithCode(800030201)
+			err := enrichBaseAPIErrorFromBody(original, []byte(tc.body), errclass.ClassifyContext{})
+			p, ok := errs.ProblemOf(err)
+			if !ok || err != original || p.Message != tc.message || p.Hint != tc.hint {
+				t.Fatalf("problem=%+v, want message=%q and hint=%q", p, tc.message, tc.hint)
+			}
+		})
 	}
 }
 
@@ -217,73 +222,5 @@ func assertProblemCode(t *testing.T, err error, code int, messageParts ...string
 		if !strings.Contains(p.Message, part) {
 			t.Fatalf("message=%q missing %q", p.Message, part)
 		}
-	}
-}
-
-func TestBaseUpstreamErrorPreservesShapeAndCause(t *testing.T) {
-	for _, placement := range []string{"nested", "top-level"} {
-		t.Run(placement, func(t *testing.T) {
-			detail := json.RawMessage(`{"type":"not_found","message":"missing","hint":"list fields","retryable":false,"value":9007199254740993,"table":null,"extra":{"future":true}}`)
-			body := map[string]interface{}{"code": 800030201, "msg": "missing"}
-			if placement == "nested" {
-				body["data"] = map[string]interface{}{"error": detail}
-			} else {
-				body["error"] = detail
-			}
-			raw, err := json.Marshal(body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			cause := assertErr{}
-			original := errs.NewAPIError(errs.SubtypeNotFound, "original").WithCode(800030201).WithCause(cause)
-			enriched := enrichBaseAPIErrorFromBody(original, raw, errclass.ClassifyContext{})
-			var typed *errs.APIError
-			if !errors.As(enriched, &typed) || typed != original || !errors.Is(enriched, cause) {
-				t.Fatal("lost typed error identity/cause")
-			}
-			// Compare decoded values using json.Number so large integers remain exact.
-			wantMap := map[string]interface{}{}
-			gotMap := map[string]interface{}{}
-			for _, item := range []struct {
-				raw    []byte
-				target *map[string]interface{}
-			}{{detail, &wantMap}, {output.UpstreamErrorOf(enriched), &gotMap}} {
-				decoder := json.NewDecoder(bytes.NewReader(item.raw))
-				decoder.UseNumber()
-				if err := decoder.Decode(item.target); err != nil {
-					t.Fatal(err)
-				}
-			}
-			want, _ := json.Marshal(wantMap)
-			got, _ := json.Marshal(gotMap)
-			if !bytes.Equal(want, got) {
-				t.Fatalf("detail=%s, want=%s", got, want)
-			}
-		})
-	}
-}
-
-func TestBaseUpstreamErrorPrefersPresentDataError(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		body string
-		want string
-	}{
-		{"nested object", `{"code":800030201,"data":{"error":{"path":"nested"}},"error":{"path":"top"}}`, `{"path":"nested"}`},
-		{"explicit null", `{"code":800030201,"data":{"error":null},"error":{"path":"top"}}`, `null`},
-		{"explicit false", `{"code":800030201,"data":{"error":false},"error":{"path":"top"}}`, `false`},
-		{"fallback", `{"code":800030201,"data":{},"error":{"path":"top"}}`, `{"path":"top"}`},
-		{"absent", `{"code":800030201,"data":{}}`, ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			original := errs.NewAPIError(errs.SubtypeNotFound, "original").WithCode(800030201)
-			err := enrichBaseAPIErrorFromBody(original, []byte(tc.body), errclass.ClassifyContext{})
-			if _, ok := errs.ProblemOf(err); !ok {
-				t.Fatalf("expected typed error, got %v", err)
-			}
-			if got := string(output.UpstreamErrorOf(err)); got != tc.want {
-				t.Fatalf("upstream error=%q, want %q", got, tc.want)
-			}
-		})
 	}
 }
