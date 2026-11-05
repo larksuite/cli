@@ -64,6 +64,49 @@ func TestAppsUpdateDryRun(t *testing.T) {
 		assert.Equal(t, "updated", clie2e.DryRunGet(result.Stdout, "api.0.body.description").String())
 	})
 
+	for _, status := range []string{"open", "close"} {
+		t.Run("BrandBadge"+status, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"apps", "+update",
+					"--app-id", "app_x",
+					"--brand-badge", status,
+					"--dry-run",
+				},
+				DefaultAs: "user",
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 0)
+
+			assert.Equal(t, status, clie2e.DryRunGet(result.Stdout, "api.0.body.badge_status").String())
+			assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.name").Exists())
+			assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.description").Exists())
+		})
+	}
+
+	t.Run("RejectsInvalidBrandBadge", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"apps", "+update",
+				"--app-id", "app_x",
+				"--brand-badge", "hidden",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 2)
+		msg := validateErrorMessage(result)
+		assert.Contains(t, msg, "--brand-badge")
+		assert.Contains(t, msg, "open, close")
+	})
+
 	t.Run("RejectsMissingAppID", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)

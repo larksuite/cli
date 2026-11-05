@@ -5,6 +5,7 @@ package apps
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -12,6 +13,14 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+type appsGetResponse struct {
+	App *appsGetApp `json:"app"`
+}
+
+type appsGetApp struct {
+	BadgeStatus *string `json:"badge_status"`
+}
 
 // AppsGet fetches a single app's detail by app ID.
 var AppsGet = common.Shortcut{
@@ -41,13 +50,17 @@ var AppsGet = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			GET(fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID))).
-			Desc("Get app detail (returns app_id, meta_token, app_type, name, description, icon_url, created_at, updated_at, is_published)")
+			Desc("Get app detail (returns app_id, meta_token, app_type, name, description, icon_url, badge_status when available, created_at, updated_at, is_published)")
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		data, err := rctx.CallAPITyped("GET", fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID)), nil, nil)
 		if err != nil {
 			return withAppsHint(err, appIDListHint)
+		}
+		projection, err := projectAppsGetResponse(data)
+		if err != nil {
+			return err
 		}
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			app, _ := data["app"].(map[string]interface{})
@@ -66,9 +79,24 @@ var AppsGet = common.Shortcut{
 			if icon, ok := app["icon_url"].(string); ok && icon != "" {
 				fmt.Fprintf(w, "icon_url: %s\n", icon)
 			}
+			if projection.App != nil && projection.App.BadgeStatus != nil && *projection.App.BadgeStatus != "" {
+				fmt.Fprintf(w, "badge_status: %s\n", *projection.App.BadgeStatus)
+			}
 			fmt.Fprintf(w, "is_published: %v\n", app["is_published"])
 			fmt.Fprintf(w, "updated_at: %v\n", app["updated_at"])
 		})
 		return nil
 	},
+}
+
+func projectAppsGetResponse(data map[string]interface{}) (appsGetResponse, error) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return appsGetResponse{}, appsSubprocessEnvelopeError("app detail response could not be decoded").WithCause(err)
+	}
+	var projection appsGetResponse
+	if err := json.Unmarshal(raw, &projection); err != nil {
+		return appsGetResponse{}, appsSubprocessEnvelopeError("app detail response has an invalid shape").WithCause(err)
+	}
+	return projection, nil
 }

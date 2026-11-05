@@ -25,38 +25,47 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-func testRuntimeWithNameDesc(t *testing.T, name, desc string) *common.RuntimeContext {
+func testRuntimeWithUpdateFields(t *testing.T, name, desc, brandBadge string) *common.RuntimeContext {
 	t.Helper()
 	cmd := &cobra.Command{Use: "update"}
 	cmd.Flags().String("name", name, "")
 	cmd.Flags().String("description", desc, "")
+	cmd.Flags().String("brand-badge", brandBadge, "")
 	return common.TestNewRuntimeContext(cmd, nil)
 }
 
 func TestBuildAppsUpdateBody_FieldCombos(t *testing.T) {
 	t.Run("both empty -> empty body", func(t *testing.T) {
-		if body := buildAppsUpdateBody(testRuntimeWithNameDesc(t, "  ", "")); len(body) != 0 {
+		if body := buildAppsUpdateBody(testRuntimeWithUpdateFields(t, "  ", "", "")); len(body) != 0 {
 			t.Errorf("empty inputs should yield empty body, got %v", body)
 		}
 	})
 	t.Run("name only", func(t *testing.T) {
-		body := buildAppsUpdateBody(testRuntimeWithNameDesc(t, "App", ""))
+		body := buildAppsUpdateBody(testRuntimeWithUpdateFields(t, "App", "", ""))
 		if body["name"] != "App" || len(body) != 1 {
 			t.Errorf("name-only body=%v", body)
 		}
 	})
 	t.Run("description only", func(t *testing.T) {
-		body := buildAppsUpdateBody(testRuntimeWithNameDesc(t, "", "desc"))
+		body := buildAppsUpdateBody(testRuntimeWithUpdateFields(t, "", "desc", ""))
 		if body["description"] != "desc" || len(body) != 1 {
 			t.Errorf("desc-only body=%v", body)
 		}
 	})
 	t.Run("both set and trimmed", func(t *testing.T) {
-		body := buildAppsUpdateBody(testRuntimeWithNameDesc(t, "  App  ", "  d  "))
+		body := buildAppsUpdateBody(testRuntimeWithUpdateFields(t, "  App  ", "  d  ", ""))
 		if body["name"] != "App" || body["description"] != "d" {
 			t.Errorf("both body=%v", body)
 		}
 	})
+	for _, status := range []string{"open", "close"} {
+		t.Run("brand badge "+status, func(t *testing.T) {
+			body := buildAppsUpdateBody(testRuntimeWithUpdateFields(t, "", "", status))
+			if body["badge_status"] != status || len(body) != 1 {
+				t.Errorf("brand-badge body=%v", body)
+			}
+		})
+	}
 }
 
 func TestAppsUpdate_PartialFields(t *testing.T) {
@@ -92,6 +101,97 @@ func TestAppsUpdate_PartialFields(t *testing.T) {
 	}
 	if _, present := sent["description"]; present {
 		t.Fatalf("description should not be in body when not provided: %v", sent)
+	}
+}
+
+func TestAppsUpdate_BrandBadgeOpenAndClose(t *testing.T) {
+	for _, status := range []string{"open", "close"} {
+		t.Run(status, func(t *testing.T) {
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			stub := &httpmock.Stub{
+				Method: "PATCH",
+				URL:    "/open-apis/spark/v1/apps/app_x",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"app": map[string]interface{}{"app_id": "app_x", "badge_status": status},
+					},
+				},
+			}
+			reg.Register(stub)
+
+			if err := runAppsShortcut(t, AppsUpdate,
+				[]string{"+update", "--app-id", "app_x", "--brand-badge", status, "--as", "user"},
+				factory, stdout); err != nil {
+				t.Fatalf("execute err=%v", err)
+			}
+
+			var sent map[string]interface{}
+			if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if sent["badge_status"] != status || len(sent) != 1 {
+				t.Fatalf("request body = %v", sent)
+			}
+		})
+	}
+}
+
+func TestAppsUpdate_RejectsInvalidBrandBadge(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsUpdate,
+		[]string{"+update", "--app-id", "app_x", "--brand-badge", "hidden", "--as", "user"},
+		factory, stdout)
+	validationErr := assertValidationParamError(t, err, "--brand-badge")
+	if !strings.Contains(validationErr.Message, "open, close") {
+		t.Fatalf("message must list allowed values, got %q", validationErr.Message)
+	}
+}
+
+func TestAppsUpdate_RejectsExplicitEmptyBrandBadgeBeforeRequest(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{name: "brand badge only", args: []string{"+update", "--app-id", "app_x", "--brand-badge", "", "--as", "user"}},
+		{name: "name cannot bypass", args: []string{"+update", "--app-id", "app_x", "--name", "renamed", "--brand-badge", "", "--as", "user"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			patch := appPatchStub("")
+			patch.Optional = true
+			reg.Register(patch)
+
+			err := runAppsShortcut(t, AppsUpdate, tc.args, factory, stdout)
+			assertValidationParamError(t, err, "--brand-badge")
+			if len(patch.CapturedBodies) != 0 {
+				t.Fatalf("PATCH must not be sent for an explicit empty --brand-badge, got body %q", patch.CapturedBody)
+			}
+		})
+	}
+}
+
+func TestAppsUpdate_PreservesBusinessError(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	const serverMessage = "free plan does not allow closing the brand badge"
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/spark/v1/apps/app_x",
+		Body:   map[string]interface{}{"code": 400123, "msg": serverMessage},
+	})
+
+	err := runAppsShortcut(t, AppsUpdate,
+		[]string{"+update", "--app-id", "app_x", "--brand-badge", "close", "--as", "user"},
+		factory, stdout)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed API error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryAPI || p.Code != 400123 || p.Retryable {
+		t.Fatalf("problem classification = %+v", p)
+	}
+	if p.Message != serverMessage {
+		t.Fatalf("message = %q, want exact server message %q", p.Message, serverMessage)
 	}
 }
 

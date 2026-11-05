@@ -4,12 +4,13 @@
 
 ## 何时用
 
-只更新应用展示元信息。用户要改代码、发布内容、可见范围或数据库时，不走 `+update`。
+只更新应用展示元信息，包括名称、描述和运行页品牌标识显隐。用户要改代码、发布内容、可见范围或数据库时，不走 `+update`。
 
 ## 命令骨架
 
 - 必填：`--app-id`。
-- 至少提供一个：`--name`、`--description`、`--icon-url` 或 `--icon-file`。
+- 至少提供一个：`--name`、`--description`、`--icon-url`、`--icon-file` 或 `--brand-badge`。
+- `--brand-badge` 只接受 `open` / `close`，分别表示显示 / 隐藏品牌标识；服务端可能因套餐限制拒绝隐藏，此时直接向用户展示服务端原因，不要重试。
 - 只发送用户提供的字段，不会清空未提供字段。
 - 改图标：`--icon-file` 与 `--icon-url` 互斥，二选一。
 
@@ -25,6 +26,8 @@
 ```bash
 lark-cli apps +update --app-id app_xxx --name "审批系统"
 lark-cli apps +update --app-id app_xxx --description "用于部门审批流转"
+lark-cli apps +update --app-id app_xxx --brand-badge open
+lark-cli apps +update --app-id app_xxx --brand-badge close
 lark-cli apps +update --app-id app_xxx --name "审批系统" --description "用于部门审批流转" --dry-run
 lark-cli apps +update --app-id app_xxx --icon-file ./icon.png
 lark-cli apps +update --app-id app_xxx --icon-url https://example.com/icon.png
@@ -33,9 +36,11 @@ lark-cli apps +update --app-id app_xxx --icon-url https://example.com/icon.png
 ## 输出契约
 
 - 成功读取 `data.app`；响应是完整应用对象，不只是被修改字段。
-- 缺 `--app-id`、四个字段一个都没提供、同时传 `--icon-url` 与 `--icon-file`、`--icon-url` 不是带主机名的 http(s) 链接或含 `user:pass@`、`--icon-file` 不可读 / 超过 2 MB / 不是 png 或 jpeg，都会在本地 validation 失败，不发请求。
+- 缺 `--app-id`、五个字段一个都没提供、显式传空 `--brand-badge`、`--brand-badge` 不是 `open` / `close`、同时传 `--icon-url` 与 `--icon-file`、`--icon-url` 不是带主机名的 http(s) 链接或含 `user:pass@`、`--icon-file` 不可读 / 超过 2 MB / 不是 png 或 jpeg，都会在本地 validation 失败，不发请求。
 - `--dry-run` 改图标时先展示 `GET /open-apis/spark/v1/apps/:app_id`（类型预检）；配 `--icon-file` 时再展示 `POST /open-apis/spark/v1/icon`（multipart 上传），最后是 `PATCH /open-apis/spark/v1/apps/:app_id`。
+- `--brand-badge` 在请求体中序列化为服务端字段 `badge_status`。
+- `+get` 的 JSON 输出会原样保留服务端返回的 `badge_status`；pretty 输出仅在该字段存在且非空时显示。
 
 ## Agent 规则
 
-更新前复述要变更的字段；用户没有提到的字段不要补默认值。执行后只转述新的名称/描述/图标和 app_id，不需要展开原始响应。
+更新前复述要变更的字段；用户没有提到的字段不要补默认值。执行后只转述新的名称、描述、图标、品牌标识状态和 app_id，不需要展开原始响应。若服务端因套餐等业务规则拒绝关闭，原样转述原因并停止，不把它当作网络错误重试。

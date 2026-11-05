@@ -32,7 +32,7 @@ const appIconUnsupportedCode = 40002
 
 const appIconUnsupportedHint = "this app type (e.g. OpenClaw apps) cannot change its icon via the CLI; change the icon in the Miaoda editor instead"
 
-const appsUpdateFieldsMsg = "provide at least one of --name, --description, --icon-url or --icon-file"
+const appsUpdateFieldsMsg = "provide at least one of --name, --description, --icon-url, --icon-file or --brand-badge"
 
 // appIconContentTypes is the whitelist of sniffed image types --icon-file accepts.
 var appIconContentTypes = map[string]bool{
@@ -40,7 +40,7 @@ var appIconContentTypes = map[string]bool{
 	"image/jpeg": true,
 }
 
-// AppsUpdate partially updates an app's name / description / icon.
+// AppsUpdate partially updates an app's display metadata.
 var AppsUpdate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+update",
@@ -51,6 +51,7 @@ var AppsUpdate = common.Shortcut{
 		`Example: lark-cli apps +update --app-id <app_id> --description "..."`,
 		`Example: lark-cli apps +update --app-id <app_id> --icon-file ./icon.png`,
 		`Example: lark-cli apps +update --app-id <app_id> --icon-url https://example.com/icon.png`,
+		`Example: lark-cli apps +update --app-id <app_id> --brand-badge close`,
 	},
 	Scopes:            []string{"spark:app:write"},
 	ConditionalScopes: []string{"spark:app:read"},
@@ -62,10 +63,14 @@ var AppsUpdate = common.Shortcut{
 		{Name: "description", Desc: "new app description"},
 		{Name: "icon-url", Desc: "new app icon as an http(s) image URL; mutually exclusive with --icon-file"},
 		{Name: "icon-file", Desc: "new app icon from a local png/jpeg file (≤2 MB); uploaded first, then written; mutually exclusive with --icon-url"},
+		{Name: "brand-badge", Desc: "brand badge visibility", Enum: []string{"open", "close"}},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
 			return appsValidationParamError("--app-id", "--app-id is required")
+		}
+		if rctx.Changed("brand-badge") && strings.TrimSpace(rctx.Str("brand-badge")) == "" {
+			return appsValidationParamError("--brand-badge", "--brand-badge must be one of open or close")
 		}
 		iconURL := strings.TrimSpace(rctx.Str("icon-url"))
 		iconFile := strings.TrimSpace(rctx.Str("icon-file"))
@@ -83,6 +88,7 @@ var AppsUpdate = common.Shortcut{
 					appsInvalidParam("--description", appsUpdateFieldsMsg),
 					appsInvalidParam("--icon-url", appsUpdateFieldsMsg),
 					appsInvalidParam("--icon-file", appsUpdateFieldsMsg),
+					appsInvalidParam("--brand-badge", appsUpdateFieldsMsg),
 				)
 		}
 		if iconURL != "" {
@@ -174,6 +180,9 @@ func buildAppsUpdateBody(rctx *common.RuntimeContext) map[string]interface{} {
 	}
 	if v := strings.TrimSpace(rctx.Str("icon-url")); v != "" {
 		body["icon_url"] = v
+	}
+	if v := strings.TrimSpace(rctx.Str("brand-badge")); v != "" {
+		body["badge_status"] = v
 	}
 	return body
 }

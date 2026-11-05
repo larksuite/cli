@@ -4,9 +4,12 @@
 package apps
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
@@ -76,35 +79,57 @@ func TestAppsGet_DryRun(t *testing.T) {
 }
 
 func TestAppsGet_PrettyOutput(t *testing.T) {
-	factory, stdout, reg := newAppsExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/spark/v1/apps/app_test",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"app": map[string]interface{}{
-					"app_id":       "app_test",
-					"app_type":     "html",
-					"name":         "PrettyApp",
-					"description":  "A pretty test app",
-					"is_published": true,
-					"updated_at":   "2026-06-01T12:00:00Z",
+	closeStatus := "close"
+	emptyStatus := ""
+	for _, tc := range []struct {
+		name        string
+		badgeStatus *string
+		wantBadge   string
+	}{
+		{name: "with value", badgeStatus: &closeStatus, wantBadge: "badge_status: close\n"},
+		{name: "missing field"},
+		{name: "empty value", badgeStatus: &emptyStatus},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			app := map[string]interface{}{
+				"app_id":       "app_test",
+				"app_type":     "html",
+				"name":         "PrettyApp",
+				"description":  "A pretty test app",
+				"is_published": true,
+				"updated_at":   "2026-06-01T12:00:00Z",
+			}
+			if tc.badgeStatus != nil {
+				app["badge_status"] = *tc.badgeStatus
+			}
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/spark/v1/apps/app_test",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"app": app},
 				},
-			},
-		},
-	})
+			})
 
-	if err := runAppsShortcut(t, AppsGet,
-		[]string{"+get", "--app-id", "app_test", "--format", "pretty", "--as", "user"},
-		factory, stdout); err != nil {
-		t.Fatalf("execute err=%v", err)
-	}
-	got := stdout.String()
-	for _, want := range []string{"app_id:", "app_type:", "name:", "is_published:"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("pretty output missing %q: %s", want, got)
-		}
+			if err := runAppsShortcut(t, AppsGet,
+				[]string{"+get", "--app-id", "app_test", "--format", "pretty", "--as", "user"},
+				factory, stdout); err != nil {
+				t.Fatalf("execute err=%v", err)
+			}
+			got := stdout.String()
+			for _, want := range []string{"app_id:", "app_type:", "name:", "is_published:"} {
+				if !strings.Contains(got, want) {
+					t.Fatalf("pretty output missing %q: %s", want, got)
+				}
+			}
+			if tc.wantBadge != "" && !strings.Contains(got, tc.wantBadge) {
+				t.Fatalf("pretty output missing %q: %s", tc.wantBadge, got)
+			}
+			if tc.wantBadge == "" && strings.Contains(got, "badge_status:") {
+				t.Fatalf("pretty output must omit an absent or empty badge_status: %s", got)
+			}
+		})
 	}
 }
 
@@ -133,5 +158,37 @@ func TestAppsGet_PrettyOutputIncludesIconURL(t *testing.T) {
 	}
 	if got := stdout.String(); !strings.Contains(got, "icon_url: https://example.com/icon.png\n") {
 		t.Fatalf("pretty output missing icon_url: %s", got)
+	}
+}
+
+func TestAppsGet_InvalidBadgeStatusTypeReturnsTypedError(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_test",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"app_id":       "app_test",
+					"badge_status": 1,
+				},
+			},
+		},
+	})
+
+	err := runAppsShortcut(t, AppsGet,
+		[]string{"+get", "--app-id", "app_test", "--as", "user"},
+		factory, stdout)
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) || internalErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("error = %T %v, want internal/invalid_response", err, err)
+	}
+	var decodeErr *json.UnmarshalTypeError
+	if !errors.As(err, &decodeErr) || decodeErr.Field != "app.badge_status" {
+		t.Fatalf("cause = %T %v, want json.UnmarshalTypeError for app.badge_status", decodeErr, decodeErr)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("invalid response must not emit a success result, got %q", stdout.String())
 	}
 }
