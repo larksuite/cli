@@ -44,7 +44,7 @@ var AppsDBSyncUpdate = common.Shortcut{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "task-id", Desc: "sync task id returned by +db-sync-create or +db-sync-list", Required: true},
 		{Name: "config", Desc: "sync config JSON object, inline or via @file/-", Required: true, Input: []string{common.File, common.Stdin}},
-	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to use online, or pass dev/online explicitly")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "compatibility flag; db-sync update ignores this value and updates the task in its existing environment")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -88,10 +88,10 @@ var AppsDBSyncUpdate = common.Shortcut{
 	},
 }
 
-func dbSyncUpdateBody(rctx *common.RuntimeContext, taskID string, config map[string]interface{}) map[string]interface{} {
-	// sync_update reads env from the request body (peer of task_id/config), not the query
-	// string. Omitted env intentionally lets the db-sync backend use its online default.
-	return dbEnvBody(rctx, map[string]interface{}{"task_id": taskID, "config": config})
+func dbSyncUpdateBody(_ *common.RuntimeContext, taskID string, config map[string]interface{}) map[string]interface{} {
+	// The update request contract has no env field. Keep --environment as a
+	// compatibility flag, but never send it or imply that it selects a branch.
+	return map[string]interface{}{"task_id": taskID, "config": config}
 }
 
 // withDBSyncUpdateHint is withDBSyncHint with the update-specific answer to a

@@ -88,7 +88,7 @@ func releaseCreateFailureHint(err error, appID string) string {
 	if ok && p.Category == errs.CategoryAPI && p.Subtype == errs.SubtypeUnknown {
 		switch p.Code {
 		case 400002553:
-			return "a release is already in progress; do not create another. Find it with `lark-cli apps +release-list --app-id " + appID + "`, then follow it to a terminal state with `lark-cli apps +release-get --app-id " + appID + " --release-id <release_id>`"
+			return "a release is already in progress; do not create another concurrently. Find it with `lark-cli apps +release-list --app-id " + appID + "`, follow it to a terminal state with `lark-cli apps +release-get --app-id " + appID + " --release-id <release_id>`, then compare its commit_id with the commit intended for this release. If the commits differ and the user's authorization for this release is still valid, start this release after the running one finishes. If either the intended commit or authorization cannot be confirmed, report that this release is not complete; never treat the other release finishing as success"
 		case 400002552:
 			return "the working branch is behind origin/main; merge origin/main into the working branch, resolve conflicts, then push normally. Do not force-push"
 		}
