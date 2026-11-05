@@ -153,3 +153,72 @@ func TestOpenAPIKeyCreate_Pretty_WarningOnStderr(t *testing.T) {
 		t.Errorf("pretty mode must not emit the JSON envelope:\n%s", stdout)
 	}
 }
+
+// NDJSON is an envelope-less single-line record: the notice rides at the top
+// level next to api_key (there is no data wrapper), and stderr stays clean.
+func TestOpenAPIKeyCreate_NDJSON_TopLevelNoticeNotStderr(t *testing.T) {
+	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+		createFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "partner-test"})
+	rctx.Format = "ndjson"
+	registerCreateIssuedKey(reg)
+	stderrBuf := issuedKeyErrBuffer(t, rctx)
+
+	if err := AppsOpenAPIKeyCreate.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+
+	line := strings.TrimRight(stdoutBuf.String(), "\n")
+	if strings.Contains(line, "\n") {
+		t.Fatalf("ndjson must emit a single line, got:\n%s", stdoutBuf.String())
+	}
+	var rec map[string]interface{}
+	if err := json.Unmarshal([]byte(line), &rec); err != nil {
+		t.Fatalf("ndjson line must be JSON: %v\n%s", err, line)
+	}
+	if _, ok := rec["data"]; ok {
+		t.Errorf("ndjson record must not carry the envelope data wrapper: %v", rec)
+	}
+	if notice, _ := rec["notice"].(string); !strings.Contains(notice, shownOnceNotice) {
+		t.Errorf("top-level notice must carry the one-time guidance, got %q", rec["notice"])
+	}
+	if rec["api_key"] != "xxxxxxxxxxxx" {
+		t.Errorf("top-level api_key must carry the raw secret once, got %v", rec["api_key"])
+	}
+	if strings.Contains(stderrBuf.String(), shownOnceNotice) {
+		t.Errorf("ndjson mode must not print the notice to stderr:\n%s", stderrBuf.String())
+	}
+}
+
+// An unrecognized --format is what the emitter itself falls back to JSON for,
+// so the notice must follow that same resolution instead of leaking to
+// stderr. The emitter's own unknown-format warning is out of scope.
+func TestOpenAPIKeyCreate_UnknownFormat_FallsBackToEnvelopeNotice(t *testing.T) {
+	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
+		createFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "partner-test"})
+	rctx.Format = "bogus"
+	registerCreateIssuedKey(reg)
+	stderrBuf := issuedKeyErrBuffer(t, rctx)
+
+	if err := AppsOpenAPIKeyCreate.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+
+	var env struct {
+		OK   bool                   `json:"ok"`
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdoutBuf.Bytes(), &env); err != nil {
+		t.Fatalf("unknown format must fall back to a JSON envelope: %v\n%s", err, stdoutBuf.String())
+	}
+	if !env.OK {
+		t.Errorf("envelope ok = false, want true")
+	}
+	if notice, _ := env.Data["notice"].(string); !strings.Contains(notice, shownOnceNotice) {
+		t.Errorf("data.notice must carry the one-time guidance, got %q", env.Data["notice"])
+	}
+	if strings.Contains(stderrBuf.String(), shownOnceNotice) {
+		t.Errorf("unknown-format fallback must not print the notice to stderr:\n%s", stderrBuf.String())
+	}
+}
