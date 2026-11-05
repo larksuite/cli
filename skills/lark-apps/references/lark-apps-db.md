@@ -209,7 +209,7 @@ lark-cli apps +db-sync-get --app-id app_xxx --task-id batch_123
 
 **失败恢复**：看到 `warnings` 不要直接说同步成功。按 warning 或 error 的 `hint` 继续排查，恢复路径按任务 mode 分支：
 
-- **streaming 任务**：常见路径是 `+log-list --keyword <target_table>` / `+log-get` 查日志，然后用 `+db-execute` 修目标表结构，或用 `+db-sync-update`（带该任务所在环境的 `--environment`）修字段映射，最后对同一 `task_id` 再 `+db-sync-get` 复查。
+- **streaming 任务**：常见路径是 `+log-list --keyword <target_table>` / `+log-get` 查日志，然后用 `+db-execute` 修目标表结构，或用 `+db-sync-update` 修字段映射，最后对同一 `task_id` 再 `+db-sync-get` 复查。
 - **batch 任务**：batch 是一次性任务、**不能 update**（见上文生命周期）。修完目标表结构（`+db-execute`）后不要 update 原 batch，而是重新 `+db-sync-create --preview` 建新任务；只想看这个 batch 的结果就直接 `+db-sync-get`。
 
 若此时 CLI 还缺授权、查不到 warning 详情，也不要只给泛化的字段核对建议：先说明被授权卡住，再把对应 mode 的固定命令链作为授权完成后的下一步明确交代给用户。
