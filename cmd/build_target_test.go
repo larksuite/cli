@@ -445,6 +445,84 @@ func TestBuildForArgsTargetSchemaExecutes(t *testing.T) {
 	}
 }
 
+func TestBuildForArgsSchemaSearchExecutes(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	for _, args := range [][]string{
+		{"schema", "drive", "--search", "comments", "--limit", "1"},
+		{"schema", "--search", "comments", "--limit=1", "drive"},
+		{"schema", "--search=drive.file.comments.list", "--limit=1"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			loader := newRecordingLoader(t)
+			opens := 0
+			var stdout bytes.Buffer
+			root, err := buildRootForArgs(context.Background(), cmdutil.InvocationContext{}, args,
+				WithIO(strings.NewReader(""), &stdout, io.Discard),
+				WithoutPlugins(), WithoutStrictMode(), withRecordingCatalog(loader, &opens))
+			if err != nil {
+				t.Fatal(err)
+			}
+			root.SetArgs(args)
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			var envelope struct {
+				OK   bool `json:"ok"`
+				Data struct {
+					Total   int `json:"total"`
+					Results []struct {
+						SchemaPath string `json:"schema_path"`
+					} `json:"results"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if !envelope.OK || envelope.Data.Total < 1 || len(envelope.Data.Results) != 1 || !strings.HasPrefix(envelope.Data.Results[0].SchemaPath, "drive.") {
+				t.Fatalf("search did not return drive methods: %s", stdout.String())
+			}
+			if args[len(args)-1] == "drive" || args[1] == "drive" {
+				if got := loader.loadedSet(); !reflect.DeepEqual(got, []string{"drive"}) {
+					t.Fatalf("scoped search parsed shards %v, want drive only", got)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildSchemaSearchHonorsPluginConcealment(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	registerRestriction(t, []string{"im/messages/delete"}, nil)
+	for _, concealed := range []bool{false, true} {
+		var stdout bytes.Buffer
+		options := []BuildOption{WithIO(strings.NewReader(""), &stdout, io.Discard), WithoutStrictMode()}
+		if concealed {
+			options = append(options, ConcealRestrictedCommands())
+		}
+		_, root, _ := buildInternal(context.Background(), buildInvocationForTest(t), options...)
+		root.SetArgs([]string{"schema", "--search", "im.messages.delete"})
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		var envelope struct {
+			OK   bool `json:"ok"`
+			Data struct {
+				Total int `json:"total"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		want := 1
+		if concealed {
+			want = 0
+		}
+		if !envelope.OK || envelope.Data.Total != want {
+			t.Fatalf("concealed=%v: search counts = %s", concealed, stdout.String())
+		}
+	}
+}
+
 func TestBuildForArgsFullAssemblyStillMountsAllShortcuts(t *testing.T) {
 	loader := newRecordingLoader(t)
 	opens := 0
