@@ -6,6 +6,8 @@ package apps
 import (
 	"context"
 	"io"
+	"math/big"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -59,7 +61,7 @@ var AppsEnvVarList = common.Shortcut{
 		includeValues := rctx.Bool("include-values")
 		data, err := rctx.CallAPITyped("POST", envVarCollectionPath(appID), nil, buildEnvVarListBody(rctx))
 		if err != nil {
-			return withAppsHint(err, appIDListHint)
+			return withAppsHint(err, envVarMutationHint(err))
 		}
 		out := normalizeEnvVarListOutput(data, includeValues)
 		rctx.OutFormat(out, nil, func(w io.Writer) {
@@ -248,11 +250,53 @@ func buildEnvVarDeleteBody(env string, keys []string) map[string]interface{} {
 	}
 }
 
+// envVarInvalidRequestPrefixes are the localized wrappers the env var service puts
+// in front of its validation detail — "Invalid Request: <detail>" or
+// "请求参数不合法：<detail>" — lower-cased; both locales are seen on the wire.
+var envVarInvalidRequestPrefixes = []string{"invalid request:", "请求参数不合法：", "请求参数不合法:"}
+
+// envVarValueTooLargePattern is the value-size rejection. The service counts the
+// value in bytes and names its limit in the message (4096 today); the limit is
+// read from the message rather than assumed, so a changed limit is still reported
+// as a size problem instead of falling back to the app_id hint.
+var envVarValueTooLargePattern = regexp.MustCompile(`^value size (\d+) is greater than max size (\d+)$`)
+
+// envVarMutationHint picks the hint for a failed env var command (list, set and
+// delete share it). Two 400000072 rejections are about the app or the value, not
+// the app_id: the app is not in expert mode, or the value is over the size limit.
+// 400000072 is the service's generic invalid-request code, so both are matched on
+// their whole detail message; every other message under it keeps the app_id hint.
 func envVarMutationHint(err error) string {
 	if isEnvVarNotModifiableError(err) {
 		return "this environment variable is platform-managed and cannot be modified; remove protected keys from --key and retry only with user-defined variables"
 	}
+	if p, ok := errs.ProblemOf(err); ok && p.Category == errs.CategoryAPI && p.Subtype == errs.SubtypeUnknown && p.Code == 400000072 {
+		detail := envVarValidationDetail(p.Message)
+		if detail == "env var operation is only supported for expert mode apps" {
+			return "environment variables are supported only for expert mode apps; changing arguments cannot make this app eligible, so do not retry"
+		}
+		if m := envVarValueTooLargePattern.FindStringSubmatch(detail); m != nil {
+			var size, limit big.Int
+			_, sizeOK := size.SetString(m[1], 10)
+			_, limitOK := limit.SetString(m[2], 10)
+			if sizeOK && limitOK && limit.Sign() > 0 && size.Cmp(&limit) > 0 {
+				return "the environment variable value exceeds the " + limit.String() + " bytes limit; shorten the value before retrying"
+			}
+		}
+	}
 	return appIDListHint
+}
+
+// envVarValidationDetail returns the normalized message with the localized
+// invalid-request wrapper removed, if present.
+func envVarValidationDetail(message string) string {
+	normalized := normalizedExactMessage(message)
+	for _, prefix := range envVarInvalidRequestPrefixes {
+		if detail, ok := strings.CutPrefix(normalized, prefix); ok {
+			return strings.TrimSpace(detail)
+		}
+	}
+	return normalized
 }
 
 func isEnvVarNotModifiableError(err error) bool {

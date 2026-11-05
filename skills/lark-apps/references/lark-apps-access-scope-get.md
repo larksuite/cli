@@ -26,3 +26,6 @@ lark-cli apps +access-scope-get --app-id app_xxx
 ## Agent 规则
 
 向用户解释时映射为：`All` = public，`Tenant` = tenant，`Range` = specific；`Range` 按用户、部门、群分组摘要后再呈现。用户要修改时转到 [`+access-scope-set`](lark-apps-access-scope-set.md)。
+
+- 创意模式应用不支持通过 CLI 查询可见范围；服务端明确返回该限制时，转到妙搭 web 端处理，不要重试或更换 app_id。
+- 未发布应用需要先发布才能查询可见范围。发布会让整个应用上线；先向用户说明影响并取得明确同意，之后才按 `lark-cli apps +release-create --help` 选择正确流程。失败的读取本身不授权发布。
