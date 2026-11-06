@@ -37,9 +37,9 @@ lark-cli minutes +summary --minute-token obcnxxxxxxxxxxxxxxxxxxxx --summary @sum
 
 ## 核心约束
 
-### 1. 先读后写
+### 1. 按需读取原文
 
-替换前建议先用 `lark-cli minutes +detail --minute-tokens <token> --summary` 读取当前总结，确认 `minute_token` 与待替换内容无误。
+目标妙记和完整替换内容已明确时直接写入。用户要求追加或局部修改、且上下文没有总结原文时，先用 `lark-cli minutes +detail --minute-tokens <token> --summary --as user` 读取当前总结，再合并成完整总结提交，保留未修改内容。
 
 ### 2. Markdown 展示说明
 

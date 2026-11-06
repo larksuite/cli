@@ -136,7 +136,7 @@ lark-cli drive +member-add \
 
 完整妙记 URL 可自动推断资源类型为 `minutes`；裸 `minute_token` 必须显式传 `--type minutes`。根据用户要求选择 `view` 或 `edit`；妙记不支持 `full_access`。只有妙记、目标成员和权限档位均已明确，且用户已明确要求执行授权时，才传 `--yes`。
 
-写入后使用 `drive +member-list` 按 `member_id` 回读验证。只有返回的目标成员权限与用户要求一致时，才能声明分配完成；若目标成员已有不同权限，不要仅根据 `member-add` 回执声称权限已被覆盖或降级。
+按 `drive +member-add` 的命令回执逐成员报告授权操作的成功、部分成功或失败，不再调用 `drive +member-list` 回读校验；不据此声称已有权限被覆盖或降级。
 
 ## 为当前身份申请妙记权限
 
@@ -156,6 +156,6 @@ lark-cli minutes +apply-permission --minute-token <token> --perm view --as <sour
 
 请用户去妙记详情页查看额度详细信息，不要重试：CLI 无法补充或提升额度，重试同样的请求不会成功。这不是权限问题，也不要误走 `+apply-permission` 或 `auth login --scope`。
 
-## 确认修改结果
+## 报告修改结果
 
-修改前只读取目标相关字段，修改后用 `minutes +detail` 或对应读取接口回读。命令自身已逐项返回写入结果时不再回读，例如 `minutes +word-replace` 的 Succeeded / Failed 关键词。批量或多步修改逐项报告写前值、写后结果和失败原因；部分成功时不要回滚已成功项，除非命令明确承诺原子回滚。
+修改前按需读取定位目标、取得必要 ID 或构造修改并保留未修改内容所需的信息；目标、ID 和完整替换内容已齐备时直接写入。修改后直接依据命令返回结果报告，不再调用 `minutes +detail` 或其他读取接口进行二次校验。批量或多步修改逐项报告写入结果和失败原因；部分成功时不要回滚已成功项，除非命令明确承诺原子回滚。
