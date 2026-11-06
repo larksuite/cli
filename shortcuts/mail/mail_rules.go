@@ -370,7 +370,7 @@ var MailRuleReorder = common.Shortcut{
 	AuthTypes:   mailRuleAuthTypes,
 	HasFormat:   true,
 	Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
-		common.Flag{Name: "rule-ids", Type: "string_slice", Desc: "Full target rule ID order. Must contain every current rule exactly once."},
+		common.Flag{Name: "rule-ids", Type: "string_slice", Desc: "Target rule ID order. Omitted current rules are appended in their existing order."},
 		common.Flag{Name: "move-rule-id", Desc: "Rule ID to move in the current order."},
 		common.Flag{Name: "before-rule-id", Desc: "Place --move-rule-id before this rule."},
 		common.Flag{Name: "after-rule-id", Desc: "Place --move-rule-id after this rule."},
@@ -1631,10 +1631,7 @@ func validateRuleReorderFlags(rt *common.RuntimeContext) error {
 func buildRuleTargetOrder(rt *common.RuntimeContext, current []mailRuleEnvelope) ([]string, error) {
 	currentIDs := envelopeRuleIDs(current)
 	if ids := normalizeRuleIDs(rt.StrSlice("rule-ids")); len(ids) > 0 {
-		if err := validateFullRuleOrder(ids, currentIDs); err != nil {
-			return nil, err
-		}
-		return ids, nil
+		return completeRuleTargetOrder(ids, currentIDs)
 	}
 	moveID := strings.TrimSpace(rt.Str("move-rule-id"))
 	order := removeString(currentIDs, moveID)
@@ -1654,22 +1651,33 @@ func buildRuleTargetOrder(rt *common.RuntimeContext, current []mailRuleEnvelope)
 }
 
 func validateFullRuleOrder(target, current []string) error {
-	if len(target) != len(current) {
-		return mailValidationParamError("--rule-ids", "--rule-ids must contain every current rule id exactly once (got %d, want %d)", len(target), len(current))
-	}
-	want := make(map[string]int, len(current))
+	_, err := completeRuleTargetOrder(target, current)
+	return err
+}
+
+func completeRuleTargetOrder(target, current []string) ([]string, error) {
+	currentSet := make(map[string]struct{}, len(current))
 	for _, id := range current {
-		want[id]++
+		currentSet[id] = struct{}{}
 	}
+	seen := make(map[string]struct{}, len(target))
+	out := make([]string, 0, len(current))
 	for _, id := range target {
-		want[id]--
+		if _, ok := currentSet[id]; !ok {
+			return nil, mailValidationParamError("--rule-ids", "--rule-ids contains unknown rule id %s; run +rule-list first to inspect current rule ids", id)
+		}
+		if _, ok := seen[id]; ok {
+			return nil, mailValidationParamError("--rule-ids", "--rule-ids contains duplicate rule id %s", id)
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
 	}
-	for id, count := range want {
-		if count != 0 {
-			return mailValidationParamError("--rule-ids", "--rule-ids mismatch for %s; run +rule-list first and submit the complete order", id)
+	for _, id := range current {
+		if _, ok := seen[id]; !ok {
+			out = append(out, id)
 		}
 	}
-	return nil
+	return out, nil
 }
 
 func normalizeRuleIDs(ids []string) []string {
