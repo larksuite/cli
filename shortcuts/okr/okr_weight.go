@@ -235,6 +235,7 @@ var OKRWeight = common.Shortcut{
 		{Name: "cycle-id", Desc: "OKR cycle ID (int64)", Required: true},
 		{Name: "objective-id", Desc: "objective ID (required when --level=key-result)"},
 		{Name: "weights", Desc: "JSON array of weight assignments: [{\"id\":\"...\",\"weight\":0.5}]", Input: []string{common.File, common.Stdin}, Required: true},
+		{Name: "apply-to-draft", Type: "bool", Default: "true", Desc: "apply key result weights to the objective draft"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		level := runtime.Str("level")
@@ -271,6 +272,7 @@ var OKRWeight = common.Shortcut{
 		level := runtime.Str("level")
 		cycleID := runtime.Str("cycle-id")
 		objectiveID := runtime.Str("objective-id")
+		applyToDraft := runtime.Bool("apply-to-draft")
 		ops, _ := parseWeightOps(runtime.Str("weights"))
 
 		apis := common.NewDryRunAPI()
@@ -278,7 +280,7 @@ var OKRWeight = common.Shortcut{
 		if level == "objective" {
 			// First fetch objectives
 			listParams := map[string]interface{}{
-				"page_size": 100,
+				"page_size": 100, "prefer_draft": true,
 			}
 			listPath := fmt.Sprintf("/open-apis/okr/v2/cycles/%s/objectives", cycleID)
 			apis = apis.
@@ -310,7 +312,7 @@ var OKRWeight = common.Shortcut{
 		} else {
 			// key-result level
 			listParams := map[string]interface{}{
-				"page_size": 100,
+				"page_size": 100, "prefer_draft": true,
 			}
 			listPath := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/key_results", objectiveID)
 			apis = apis.
@@ -331,6 +333,7 @@ var OKRWeight = common.Shortcut{
 			}
 			weightBody := map[string]interface{}{
 				"key_result_weights": keyResultWeights,
+				"apply_to_draft":     applyToDraft,
 			}
 			weightPath := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/key_results_weight", objectiveID)
 			apis = apis.
@@ -346,6 +349,7 @@ var OKRWeight = common.Shortcut{
 		level := runtime.Str("level")
 		cycleID := runtime.Str("cycle-id")
 		objectiveID := runtime.Str("objective-id")
+		applyToDraft := runtime.Bool("apply-to-draft")
 		ops, err := parseWeightOps(runtime.Str("weights"))
 		if err != nil {
 			return err
@@ -355,7 +359,7 @@ var OKRWeight = common.Shortcut{
 		var total int
 
 		if level == "objective" {
-			objectives, err := fetchObjectives(ctx, runtime, cycleID)
+			objectives, err := fetchObjectivesWithDraftPreference(ctx, runtime, cycleID, true)
 			if err != nil {
 				return err
 			}
@@ -412,7 +416,7 @@ var OKRWeight = common.Shortcut{
 			}
 		} else {
 			// key-result level
-			keyResults, err := fetchKeyResults(ctx, runtime, objectiveID)
+			keyResults, err := fetchKeyResultsWithDraftPreference(ctx, runtime, objectiveID, true)
 			if err != nil {
 				return err
 			}
@@ -461,6 +465,7 @@ var OKRWeight = common.Shortcut{
 			})
 			body := map[string]interface{}{
 				"key_result_weights": keyResultWeights,
+				"apply_to_draft":     applyToDraft,
 			}
 			path := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/key_results_weight", objectiveID)
 			_, err = runtime.CallAPITyped("PUT", path, params, body)

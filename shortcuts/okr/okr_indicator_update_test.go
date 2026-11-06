@@ -193,6 +193,37 @@ func TestIndicatorUpdateValidate_Valid(t *testing.T) {
 	}
 }
 
+func TestIndicatorUpdateDryRunPassesDraftPreference(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, indicatorUpdateTestConfig(t))
+	err := runIndicatorUpdateShortcut(t, f, stdout, []string{
+		"+indicator-update", "--level", "objective", "--id", "123", "--value", "75.5", "--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, `"prefer_draft": true`) || !strings.Contains(output, `"apply_to_draft": true`) {
+		t.Fatalf("indicator update should read and update the draft view by default, got: %s", output)
+	}
+}
+
+func TestIndicatorUpdateDryRunCanUpdatePublishedState(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, indicatorUpdateTestConfig(t))
+	err := runIndicatorUpdateShortcut(t, f, stdout, []string{
+		"+indicator-update", "--level", "key-result", "--id", "456", "--value", "100",
+		"--apply-to-draft=false", "--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, `"prefer_draft": false`) || !strings.Contains(output, `"apply_to_draft": false`) {
+		t.Fatalf("indicator update should pass the published-state choice to both calls, got: %s", output)
+	}
+}
+
 // --- Execute tests ---
 
 func TestIndicatorUpdateExecute_Objectives_Success(t *testing.T) {
@@ -226,7 +257,8 @@ func TestIndicatorUpdateExecute_Objectives_Success(t *testing.T) {
 				return false
 			}
 			val, ok := data["current_value"].(float64)
-			return ok && val == 75.5
+			applyToDraft, draftOK := data["apply_to_draft"].(bool)
+			return ok && val == 75.5 && draftOK && applyToDraft
 		},
 	})
 	err := runIndicatorUpdateShortcut(t, f, stdout, []string{

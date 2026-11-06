@@ -198,6 +198,7 @@ lark-cli okr indicators patch \
 
 | 字段                          | 类型   | 适用实体 | 说明                                                                 |
 |-----------------------------|------|------|--------------------------------------------------------------------|
+| `apply_to_draft` | bool | 全部 | `true` 更新草稿指标，所属 Objective 尚无草稿时先创建其草稿；`false` 更新发布态。通过 `--data` 显式传入。 |
 | `current_value`             | number | 全部   | 当前值，范围 -99999999999 到 99999999999                                  |
 | `current_value_calculate_type` | int  | 全部   | 当前值计算方式：0=手动，1=基于 KR 进度（目标），2=基于拆解 KR 进度（KR）              |
 | `indicator_status`          | int    | 全部   | 状态：-1=未定义，0=正常，1=有风险，2=已延期。仅 `status_calculate_type=0` 时可修改      |

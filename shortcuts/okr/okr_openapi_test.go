@@ -964,5 +964,43 @@ func TestToSimpleMethods(t *testing.T) {
 	}
 }
 
+func TestDraftStateIsPreservedInResponseProjections(t *testing.T) {
+	t.Parallel()
+	isDraft := true
+	obj := (&Objective{IsDraft: &isDraft}).ToResp()
+	objSimple := (&Objective{IsDraft: &isDraft}).ToSimple()
+	kr := (&KeyResult{IsDraft: &isDraft}).ToResp()
+	krSimple := (&KeyResult{IsDraft: &isDraft}).ToSimple()
+	if obj == nil || obj.IsDraft == nil || !*obj.IsDraft {
+		t.Fatalf("objective richtext response lost is_draft: %#v", obj)
+	}
+	if objSimple == nil || objSimple.IsDraft == nil || !*objSimple.IsDraft {
+		t.Fatalf("objective simple response lost is_draft: %#v", objSimple)
+	}
+	if kr == nil || kr.IsDraft == nil || !*kr.IsDraft {
+		t.Fatalf("key result richtext response lost is_draft: %#v", kr)
+	}
+	if krSimple == nil || krSimple.IsDraft == nil || !*krSimple.IsDraft {
+		t.Fatalf("key result simple response lost is_draft: %#v", krSimple)
+	}
+
+	for name, value := range map[string]interface{}{
+		"alignment": RespAlignment{IsDraft: &isDraft},
+		"indicator": RespIndicator{IsDraft: &isDraft},
+	} {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			t.Fatalf("marshal %s: %v", name, err)
+		}
+		var projected map[string]interface{}
+		if err := json.Unmarshal(raw, &projected); err != nil {
+			t.Fatalf("unmarshal %s: %v", name, err)
+		}
+		if got, ok := projected["is_draft"].(bool); !ok || !got {
+			t.Fatalf("%s response lost is_draft: %s", name, raw)
+		}
+	}
+}
+
 // listTypePtr returns a pointer to the given ListType value.
 func listTypePtr(v ListType) *ListType { return &v }

@@ -407,6 +407,9 @@ func TestWeightDryRun_Objectives(t *testing.T) {
 	if !strings.Contains(output, "objective_weights") {
 		t.Fatalf("dry-run output should contain objective_weights in body, got: %s", output)
 	}
+	if !strings.Contains(output, `"prefer_draft": true`) {
+		t.Fatalf("weight normalization should read the draft-preferred list, got: %s", output)
+	}
 }
 
 func TestWeightDryRun_KeyResults(t *testing.T) {
@@ -431,6 +434,23 @@ func TestWeightDryRun_KeyResults(t *testing.T) {
 	}
 	if !strings.Contains(output, "key_result_weights") {
 		t.Fatalf("dry-run output should contain key_result_weights in body, got: %s", output)
+	}
+	if !strings.Contains(output, `"prefer_draft": true`) || !strings.Contains(output, `"apply_to_draft": true`) {
+		t.Fatalf("KR weight should default to the draft view, got: %s", output)
+	}
+}
+
+func TestWeightDryRun_KeyResultsCanUpdatePublishedState(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
+	err := runWeightShortcut(t, f, stdout, []string{
+		"+weight", "--level", "key-result", "--cycle-id", "123", "--objective-id", "456",
+		"--weights", `[{"id":"kr1","weight":1}]`, "--apply-to-draft=false", "--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"apply_to_draft": false`) {
+		t.Fatalf("KR weight should pass apply_to_draft=false, got: %s", stdout.String())
 	}
 }
 

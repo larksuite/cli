@@ -12,7 +12,7 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
-**身份**：OKR 操作默认使用 `--as user`（查看当前用户/上下级的 OKR 时）。也支持 `--as bot` 查看他人 OKR（需相应权限）。
+**身份**：OKR 操作默认使用 `--as user`（查看当前用户/上下级的 OKR 时）。也支持 `--as bot` 查看他人 OKR（需相应权限，仅在用户明确要求时才使用）。
 
 ## 快速决策
 
@@ -22,12 +22,27 @@ metadata:
 | 为自己写一组 OKR             | 优先用 `+batch-create` 创建 Objective/KR 骨架                                                                           | [`batch-create`](references/lark-okr-batch-create.md), [`contentblock`](references/lark-okr-contentblock.md)                                                                                                         |
 | 只新增一条 O 或单条 KR       | 用 `+create`                                                                                                            | [`create`](references/lark-okr-create.md)                                                                                                                                                                            |
 | 编辑内容/备注/截止时间       | 用 `+patch`                                                                                                             | [`patch`](references/lark-okr-patch.md)                                                                                                                                                                              |
-| 修改 OKR 分数                | 只有用户明确说“分数”“评分”“打分”“score”时才用 `+patch --score`；分数不是进度/完成度                                     | [`patch`](references/lark-okr-patch.md)                                                                                                                                                                              |
+| 修改 OKR 分数                | 只有用户明确说“分数”“评分”“打分”“score”时才用 `+patch --score --apply-to-draft=false`；草稿不支持 score                  | [`patch`](references/lark-okr-patch.md)                                                                                                                                                                              |
 | 调整顺序或权重               | 用 `+reorder` / `+weight`                                                                                               | [`reorder`](references/lark-okr-reorder.md), [`weight`](references/lark-okr-weight.md)                                                                                                                               |
 | 更新数字进度/完成度          | 百分比或不带单位数字用 `+indicator-update`；需要改单位/目标值时查指标后用 `indicators patch`                            | [`indicator-update`](references/lark-okr-indicator-update.md), [`indicators`](references/lark-okr-indicators.md)                                                                                                     |
 | 写文字进展                   | 用 `+progress-create`；如果文本和数字都有，百分比或默认单位可使用 `--progress-percent` 统一改，非百分比单位更新量化指标 | [`progress-create`](references/lark-okr-progress-create.md), [`progress-list`](references/lark-okr-progress-list.md), [`progress-update`](references/lark-okr-progress-update.md)                                    |
 | 对齐目标                     | 直接按对齐关系工作流处理                                                                                                | [`alignments`](references/lark-okr-alignments.md)                                                                                                                                                                    |
 | 查询/创建/修改/解决 OKR 评论 | 获取周期下全部评论聚合用 `+comment-detail`，查询单个 O/KR/进展或仅查询周期全局评论用 `+comment-list`；                | [`comment`](references/lark-okr-comment-list.md), [`comment-create`](references/lark-okr-comment-create.md), [`comment-solve-reopen`](references/lark-okr-comment-solve-reopen.md)                                   |
+| 发布或撤销 Objective 草稿    | 发布用 `+publish-draft`；确认要放弃整份 Objective 草稿后用 `+drop-draft --yes`                                           | [`drafts`](references/lark-okr-drafts.md)                                                                                                                                                                            |
+
+## 草稿操作决策（写操作前必须执行）
+
+先用 `+cycle-detail --prefer-draft=true` 读取目标内容，并检查 Objective/KR 的 `is_draft`：
+
+支持草稿的写操作中，`--apply-to-draft=true` 会在所属 Objective 尚无草稿时自动创建其草稿，无需先手动进入草稿态。
+
+- 默认场景，或用户明确要求人工确认：使用 `--apply-to-draft=true` 编辑草稿，展示结果并等待确认；确认后用 `+publish-draft` 发布。
+- 用户明确要求无需人工确认，但相关 Objective 已有草稿（返回内容中 `is_draft=true`）：仍使用 `--apply-to-draft=true`，完成后立即 `+publish-draft`。不得绕过已有草稿直接改发布态。
+- 只有用户明确要求无需人工确认，且相关 Objective 没有草稿时，才使用 `--apply-to-draft=false` 直接修改发布态。
+- `+drop-draft` 会撤销整个 Objective 聚合的草稿，不支持仅撤销单个 KR；执行前必须确认，并显式传 `--yes`。
+- 评论、文字进展、进展记录和进展图片始终操作发布态，不适用上述草稿参数。
+
+完整流程见 [`OKR 草稿工作流`](references/lark-okr-drafts.md)。命令示例必须显式传 `--prefer-draft=true|false` 或 `--apply-to-draft=true|false`，不要依赖 CLI 默认值。
 
 分类只在用户明确要求分类，或创建 Objective 返回 `invalid parameters` 且怀疑租户强制开启分类时处理：用 `lark-cli okr categories list --params '{"owner_type":"user","page_size":100}' --as user` 查可用分类，选择语义合适且`enabled=true` 的分类 ID；分类可后续调整，不必停下等待用户确认。
 
@@ -42,12 +57,13 @@ lark-cli contact +search-user --query "张三" --has-chatted --as user
 ```bash
 # 查用户周期，再用周期 ID 查详情
 lark-cli okr +cycle-list --user-id "ou_xxx" --as user
-lark-cli okr +cycle-detail --cycle-id 7000000000000000001 --as user
+lark-cli okr +cycle-detail --cycle-id 7000000000000000001 --prefer-draft=true --as user
 
 # 批量创建 Objective/KR
 lark-cli okr +batch-create \
   --cycle-id 7000000000000000001 \
   --input '[{"text":"提升产品用户体验","notes":"关注核心流程和用户反馈","krs":[{"text":"核心流程满意度达到 4.8 分"}]}]' \
+  --apply-to-draft=true \
   --as user
 
 # 更新数字进度/完成度
@@ -55,10 +71,11 @@ lark-cli okr +indicator-update \
   --level key-result \
   --id 7000000000000000003 \
   --value 75 \
+  --apply-to-draft=true \
   --as user
 ```
 
-分数和进度不要混用：用户说“进度”“完成度”“当前做到 75%”时，通常是在改量化指标或写进展记录，不是在改 `score`。只有明确要求修改 OKR 分数/评分/打分时，才使用 [`+patch --score`](references/lark-okr-patch.md)；`score` 取值是 0-1，最多一位小数。
+分数和进度不要混用：用户说“进度”“完成度”“当前做到 75%”时，通常是在改量化指标或写进展记录，不是在改 `score`。只有明确要求修改 OKR 分数/评分/打分时，才使用 [`+patch --score --apply-to-draft=false`](references/lark-okr-patch.md)；`score` 取值是 0-1，最多一位小数，草稿态不支持修改或展示 score。
 
 进度判断规则：用户说“进度”“完成度”时，先判断是否是量化数字。数字进度通常对应量化指标；不可量化文本对应进展记录。需要修改指标单位时看 [`lark-okr-indicators.md`](references/lark-okr-indicators.md)
 
@@ -82,6 +99,8 @@ Shortcut 是对常用操作的高级封装（`lark-cli okr +<verb> [flags]`）�
 | [`+weight`](references/lark-okr-weight.md)                       | 调整 Objective 或 KR 的权重                                                                                   |
 | [`+indicator-update`](references/lark-okr-indicator-update.md)   | 更新 Objective 或 KR 的当前进度指标。更复杂的量化指标操作见 [量化指标管理](references/lark-okr-indicators.md) |
 | [`+patch`](references/lark-okr-patch.md)                         | 部分更新 Objective 或 KR（content、notes、score、deadline）                                                   |
+| [`+publish-draft`](references/lark-okr-drafts.md)                | 发布整个 Objective 草稿聚合                                                                                   |
+| [`+drop-draft`](references/lark-okr-drafts.md)                   | 撤销整个 Objective 草稿聚合（高风险，需 `--yes`）                                                             |
 | [`+comment-detail`](references/lark-okr-comment-detail.md)       | 获取周期下 Cycle/Objective/KeyResult/Progress 的全部评论                                                      |
 | [`+comment-list`](references/lark-okr-comment-list.md)           | 分页获取单个 OKR 实体下的评论                                                                                 |
 | [`+comment-get`](references/lark-okr-comment-get.md)             | 获取单条评论详情                                                                                              |

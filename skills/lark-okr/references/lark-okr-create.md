@@ -13,6 +13,7 @@ lark-cli okr +create \
   --cycle-id 7000000000000000001 \
   --content '{"text":"提升北极星指标","mention":["ou_xxxxxxxx"]}' \
   --notes '{"text":"重点关注活跃用户和转化漏斗"}' \
+  --apply-to-draft=true \
   --as user
 
 # 在已有 Objective 下创建一个 KR
@@ -20,6 +21,7 @@ lark-cli okr +create \
   --level key-result \
   --objective-id 7000000000000000002 \
   --content '{"text":"季度留存率提升到 45%"}' \
+  --apply-to-draft=true \
   --as user
 
 # 使用 richtext 风格创建 Objective（完整 ContentBlock JSON）
@@ -28,6 +30,7 @@ lark-cli okr +create \
   --cycle-id 7000000000000000001 \
   --style richtext \
   --content '{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"建立跨部门协作机制"}}]}}]}' \
+  --apply-to-draft=true \
   --as user
 
 # 预览 API 调用而不实际执行
@@ -35,6 +38,7 @@ lark-cli okr +create \
   --level key-result \
   --objective-id 7000000000000000002 \
   --content '{"text":"完成 3 次核心流程优化"}' \
+  --apply-to-draft=false \
   --dry-run \
   --as user
 ```
@@ -51,6 +55,7 @@ lark-cli okr +create \
 | `--notes`        | 否  | —         | Objective 备注，仅 `--level=objective` 支持。根据 `--style` 指定格式，支持 `@文件路径` 或 `-` 从 stdin 读取。                               |
 | `--category-id`  | 否  | —         | Objective 分类 ID，仅 `--level=objective` 支持。通常不需要传入，见下方“分类提示”。                                                        |
 | `--user-id-type` | 否  | `open_id` | 用户 ID 类型：`open_id` \| `union_id` \| `user_id`。影响 mention 中用户 ID 的解释方式。                                             |
+| `--apply-to-draft` | 否 | `true` | `true` 创建或写入 Objective 草稿；所属 Objective 尚无草稿时会自动创建其草稿。`false` 直接写发布态。命令中应按 [草稿工作流](lark-okr-drafts.md) 显式传值。 |
 | `--dry-run`      | 否  | —         | 预览 API 调用而不实际执行。                                                                                                   |
 | `--format`       | 否  | `json`    | 输出格式。                                                                                                              |
 
@@ -113,7 +118,7 @@ lark-cli okr +create \
 3. 选择输入风格：
    - **推荐**：`simple`，适合普通文本和 mention。
    - 需要复杂富文本时：`richtext`。
-4. 执行 `lark-cli okr +create ...`。
+4. 按 [OKR 草稿工作流](lark-okr-drafts.md) 选择并显式传 `--apply-to-draft=true|false`，再执行 `lark-cli okr +create ...`。
 5. 报告结果：
    - 创建 Objective 时返回新的 `objective_id`
    - 创建 KR 时返回新的 `key_result_id`，并附带父 `objective_id`
