@@ -11,6 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -66,7 +67,7 @@ var AppsReleaseCreate = common.Shortcut{
 		path := fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(appID))
 		data, err := rctx.CallAPITyped("POST", path, nil, buildPublishBody(branch, applyReason))
 		if err != nil {
-			return withAppsHint(err, "if the push was rejected (non-fast-forward), sync first with `git pull --rebase origin sprint/default` then retry; inspect the failure via `lark-cli apps +release-get --app-id "+appID+" --release-id <release_id>`")
+			return withAppsHint(err, releaseCreateFailureHint(err, appID))
 		}
 		out := projectReleaseCreateData(data)
 		rctx.OutFormat(out, nil, func(w io.Writer) {
@@ -74,6 +75,25 @@ var AppsReleaseCreate = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+// releaseCreateFailureHint picks the hint for a failed +release-create. Two codes
+// name the state that blocks the release: 400002553 (a release is already running)
+// and 400002552 (the working branch is behind main). Anything else gets a hint that
+// assumes no Git cause: the old blanket "pull --rebase then retry" advice sent
+// callers into Git work for failures that had nothing to do with the push, and a
+// release create is a write whose outcome must be checked before retrying.
+func releaseCreateFailureHint(err error, appID string) string {
+	p, ok := errs.ProblemOf(err)
+	if ok && p.Category == errs.CategoryAPI && p.Subtype == errs.SubtypeUnknown {
+		switch p.Code {
+		case 400002553:
+			return "a release is already in progress; do not create another concurrently. Find it with `lark-cli apps +release-list --app-id " + appID + "`, follow it to a terminal state with `lark-cli apps +release-get --app-id " + appID + " --release-id <release_id>`, then compare its commit_id with the commit intended for this release. If the commits differ and the user's authorization for this release is still valid, start this release after the running one finishes. If either the intended commit or authorization cannot be confirmed, report that this release is not complete; never treat the other release finishing as success"
+		case 400002552:
+			return "the working branch is behind origin/main; merge origin/main into the working branch, resolve conflicts, then push normally. Do not force-push"
+		}
+	}
+	return "inspect the release failure and its request identifier; do not assume a Git non-fast-forward error or retry a write whose outcome is unknown"
 }
 
 // buildPublishBody builds the create-release request body. app_id is in the

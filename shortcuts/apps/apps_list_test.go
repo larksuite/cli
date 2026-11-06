@@ -261,6 +261,23 @@ func TestAppsList_InvalidOwner(t *testing.T) {
 	assertValidationParamError(t, err, "--owner-id")
 }
 
+func TestAppsList_BlankOwnerFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		arg  string
+	}{
+		{name: "empty", arg: ""},
+		{name: "spaces", arg: "   "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsList,
+				[]string{"+list", "--owner-id", tc.arg, "--as", "user"}, factory, stdout)
+			assertValidationParamError(t, err, "--owner-id")
+		})
+	}
+}
+
 func TestAppsList_DryRunShowsOwnerParam(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsList,

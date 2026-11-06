@@ -33,12 +33,12 @@ func TestMain(m *testing.M) {
 const baselineSnapshotPath = "testdata/output_baseline.json"
 
 // wantProcessedKeys freezes how many registered EventKeys define Process
-// (im 2, vc 7, minutes 1, application 1, approval 2). The count assertion
+// (im 2, vc 7, minutes 1, application 1, approval 2, drive 1). The count assertion
 // keeps this test honest: if a Processed key is added or removed, the covered
 // output surface changed and the baseline would silently widen or narrow
 // without it. Update the count, the fixtures, and the snapshot together,
 // deliberately.
-const wantProcessedKeys = 13
+const wantProcessedKeys = 14
 
 const (
 	baselineEventID    = "evt-baseline-001"
@@ -133,6 +133,34 @@ var baselineFixtures = map[string]baselineFixture{
 	},
 	// update_time differs from create_time so the handler emits both; the
 	// mention placeholder in content exercises mention rendering.
+	"drive.notice.comment_add_v1": {
+		extraHeader: map[string]string{
+			"app_id":     "cli-baseline-app",
+			"tenant_key": "tenant-baseline",
+		},
+		eventBody: `{
+			"comment_id": "comment-id-baseline",
+			"reply_id": "reply-id-baseline",
+			"is_mentioned": true,
+			"visibility": "public",
+			"notice_meta": {
+				"file_token": "file-token-baseline",
+				"file_type": "docx",
+				"notice_type": "add_reply",
+				"from_user_type": "user",
+				"from_user_id": {
+					"open_id": "ou-baseline-author",
+					"union_id": "on-baseline-author",
+					"user_id": "user-baseline-author"
+				},
+				"to_user_id": {
+					"open_id": "ou-baseline-receiver",
+					"union_id": "on-baseline-receiver",
+					"user_id": "user-baseline-receiver"
+				}
+			}
+		}`,
+	},
 	"im.message.receive_v1": {
 		eventBody: `{
 			"sender": {

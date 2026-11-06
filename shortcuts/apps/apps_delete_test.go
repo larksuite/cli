@@ -241,6 +241,19 @@ func TestAppsDelete_OmitsInTrashWhenServerDoesNot(t *testing.T) {
 	}
 }
 
+func TestAppsDelete_RejectsMalformedDeleteResponse(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppsDeleteGet(reg, "app_x", "app_x", "App")
+	stubAppsDeleteDelete(reg, "app_x", map[string]interface{}{"in_trash": "false"})
+	err := runAppsShortcut(t, AppsDelete,
+		[]string{"+delete", "--app-id", "app_x", "--confirm-name", "App", "--yes", "--as", "user"},
+		factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryInternal)
+	if p.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidResponse)
+	}
+}
+
 func TestAppsDelete_MetaTokenDeletesResolvedAppID(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubAppsDeleteGet(reg, "meta_tok", "app_real", "App")
@@ -384,23 +397,24 @@ func TestAppsDelete_UnsupportedAppType(t *testing.T) {
 	}
 }
 
-func TestAppsDelete_PermissionDeniedOnDelete(t *testing.T) {
+func TestAppsDelete_AlreadyDeletedOnDelete(t *testing.T) {
 	for _, code := range []int{40300, 3340300} {
 		factory, stdout, reg := newAppsExecuteFactory(t)
 		stubAppsDeleteGet(reg, "app_x", "app_x", "App")
-		stubAppsDeleteBizError(reg, "DELETE", "app_x", code, "permission denied")
+		stubAppsDeleteBizError(reg, "DELETE", "app_x", code, "app already deleted")
 		err := runAppsShortcut(t, AppsDelete,
 			[]string{"+delete", "--app-id", "app_x", "--confirm-name", "App", "--yes", "--as", "user"},
 			factory, stdout)
 		var permErr *errs.PermissionError
-		if !errors.As(err, &permErr) {
-			t.Fatalf("code %d: err = %T %v, want *errs.PermissionError", code, err, err)
+		if errors.As(err, &permErr) {
+			t.Fatalf("code %d: DELETE 40300 must not point users to request permission: %v", code, err)
 		}
-		if permErr.Category != errs.CategoryAuthorization || permErr.Subtype != errs.SubtypePermissionDenied {
-			t.Fatalf("code %d: type/subtype = %q/%q", code, permErr.Category, permErr.Subtype)
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("code %d: expected typed problem, got %T %v", code, err, err)
 		}
-		if permErr.Code != code || permErr.Hint != appDeletePermissionHint {
-			t.Fatalf("code %d: code/hint = %d/%q", code, permErr.Code, permErr.Hint)
+		if p.Subtype != errs.SubtypeNotFound || p.Code != code || p.Hint != appAlreadyDeletedHint {
+			t.Fatalf("code %d: subtype/code/hint = %q/%d/%q", code, p.Subtype, p.Code, p.Hint)
 		}
 	}
 }
@@ -414,7 +428,7 @@ func TestAppsDelete_NotFoundOnDelete(t *testing.T) {
 			[]string{"+delete", "--app-id", "app_x", "--confirm-name", "App", "--yes", "--as", "user"},
 			factory, stdout)
 		p, ok := errs.ProblemOf(err)
-		if !ok || p.Subtype != errs.SubtypeNotFound || p.Hint != appIDListHint || p.Code != code {
+		if !ok || p.Subtype != errs.SubtypeNotFound || p.Hint != appAlreadyDeletedHint || p.Code != code {
 			t.Fatalf("code %d: err = %v", code, err)
 		}
 	}

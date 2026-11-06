@@ -5,6 +5,7 @@ package apps
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -18,16 +19,18 @@ import (
 // what the OpenAPI manages, so retrying from lark-cli cannot succeed.
 const unsupportedAppTypeHint = "this app type cannot be managed from lark-cli; delete it from the web console instead"
 
-// appDeletePermissionHint answers 40300 on DELETE: being a collaborator is not
-// enough to delete an app.
-const appDeletePermissionHint = "only the app owner or creator can delete this app"
+// appAlreadyDeletedHint answers delete-time not_found results. The server can
+// report a recently deleted app as either 40300 or 40400, so do not send users
+// to request permission from that state.
+const appAlreadyDeletedHint = "the app is already deleted or no longer accessible; use `lark-cli apps +list` to verify the app_id"
 
-// AppsDelete deletes an app after checking that --confirm-name matches the
-// app's current name. The server moves deletable apps to the trash.
+// AppsDelete deletes an app after a pre-delete name check. Recovery is possible
+// only when the server reports in_trash=true; a rename between GET and DELETE is
+// not detected because the delete API has no name/version precondition.
 var AppsDelete = common.Shortcut{
 	Service:     appsService,
 	Command:     "+delete",
-	Description: "Delete an app (moves it to trash when supported; requires --confirm-name to match the app's current name)",
+	Description: "Delete an app after a pre-delete name check; recovery is available only when the server reports in_trash=true",
 	Risk:        "high-risk-write",
 	Tips: []string{
 		`Example: lark-cli apps +delete --app-id <app_id> --confirm-name "<app name>" --yes`,
@@ -51,10 +54,15 @@ var AppsDelete = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
-		path := appItemPath(strings.TrimSpace(rctx.Str("app-id")))
+		input := strings.TrimSpace(rctx.Str("app-id"))
+		lookupPath := appItemPath(input)
+		deletePath := lookupPath
+		if !strings.HasPrefix(input, "app_") {
+			deletePath = apiBasePath + "/apps/<resolved_app_id>"
+		}
 		return common.NewDryRunAPI().
-			GET(path).Desc("Fetch the app and verify its current name equals --confirm-name").
-			DELETE(path).Desc("Delete the app (moves it to trash when supported); the real request uses the app_id returned by step 1")
+			GET(lookupPath).Desc("Fetch the app and verify its current name equals --confirm-name").
+			DELETE(deletePath).Desc("Delete the app using the app_id returned by step 1; there is no second name check")
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		input := strings.TrimSpace(rctx.Str("app-id"))
@@ -62,11 +70,16 @@ var AppsDelete = common.Shortcut{
 		if err != nil {
 			return annotateAppLookupErr(err)
 		}
-		appID, name, err := appForDelete(data, input)
+		var lookup appsDeleteLookupResponse
+		if err := decodeAppsDeleteData(data, &lookup, "app lookup"); err != nil {
+			return err
+		}
+		appID, name, err := appForDelete(lookup, input)
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(rctx.Str("confirm-name")) != name {
+		confirmedName := strings.TrimSpace(rctx.Str("confirm-name"))
+		if confirmedName != name {
 			// The real name stays out of the error: echoing it would let an agent
 			// retry with it and skip asking the user which app to delete.
 			return appsFailedPreconditionParamError("--confirm-name",
@@ -77,12 +90,18 @@ var AppsDelete = common.Shortcut{
 		if err != nil {
 			return annotateAppsDeleteErr(err)
 		}
+		var deleted appsDeleteResponse
+		if err := decodeAppsDeleteData(resp, &deleted, "delete"); err != nil {
+			return err
+		}
 		out := map[string]interface{}{"app_id": appID, "name": name, "deleted": true}
 		// in_trash is passed through only when the server sent it; a missing field
 		// is not reported as a failure, since the app is already deleted and a
 		// caller that sees an error would retry the delete.
-		inTrash, hasInTrash := resp["in_trash"].(bool)
+		hasInTrash := deleted.InTrash != nil
+		inTrash := false
 		if hasInTrash {
+			inTrash = *deleted.InTrash
 			out["in_trash"] = inTrash
 		}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
@@ -99,17 +118,41 @@ var AppsDelete = common.Shortcut{
 	},
 }
 
+type appsDeleteLookupResponse struct {
+	App appsDeleteApp `json:"app"`
+}
+
+type appsDeleteApp struct {
+	AppID string `json:"app_id"`
+	Name  string `json:"name"`
+}
+
+type appsDeleteResponse struct {
+	InTrash *bool `json:"in_trash"`
+}
+
 func appItemPath(appID string) string {
 	return fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+func decodeAppsDeleteData(data map[string]interface{}, target interface{}, context string) error {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return appsSubprocessEnvelopeError("unexpected %s response: %v", context, err)
+	}
+	if err := json.Unmarshal(raw, target); err != nil {
+		return appsSubprocessEnvelopeError("unexpected %s response: %v", context, err)
+	}
+	return nil
 }
 
 // appForDelete extracts the app_id and name +delete acts on from the +get
 // response. It refuses an app_id that is not a real app ID, or one that names a
 // different app than the app_id the caller passed, so DELETE never targets an
 // app the user did not point at.
-func appForDelete(data map[string]interface{}, input string) (appID, name string, err error) {
-	appID = strings.TrimSpace(common.GetString(data, "app", "app_id"))
-	name = strings.TrimSpace(common.GetString(data, "app", "name"))
+func appForDelete(data appsDeleteLookupResponse, input string) (appID, name string, err error) {
+	appID = strings.TrimSpace(data.App.AppID)
+	name = strings.TrimSpace(data.App.Name)
 	if appID == "" || name == "" || !strings.HasPrefix(appID, "app_") ||
 		(strings.HasPrefix(input, "app_") && appID != input) {
 		return "", "", appsSubprocessEnvelopeError("unexpected app response: missing or inconsistent app_id/name")
@@ -136,18 +179,16 @@ func annotateAppLookupErr(err error) error {
 	return withAppsHint(err, appIDListHint)
 }
 
-// annotateAppsDeleteErr re-types 40300 from DELETE as a permission error. It is
-// handled only here: on the +get lookup the same code means the caller cannot see
-// the app at all, which the owner-or-creator hint would misdescribe.
+// annotateAppsDeleteErr treats delete-time 40300/40400 as an already-deleted or
+// no-longer-accessible app state. GET keeps the generic lookup classification.
 func annotateAppsDeleteErr(err error) error {
-	if p, ok := errs.ProblemOf(err); ok && (p.Code == 40300 || p.Code == 3340300) {
-		denied := errs.NewPermissionError(errs.SubtypePermissionDenied, "delete app failed: %s", p.Message).
-			WithHint(appDeletePermissionHint).
-			WithCode(p.Code).
-			WithLogID(p.LogID).
-			WithCause(err)
-		denied.Troubleshooter = p.Troubleshooter
-		return denied
+	if p, ok := errs.ProblemOf(err); ok {
+		switch p.Code {
+		case 40300, 3340300, 40400, 3340400:
+			p.Subtype = errs.SubtypeNotFound
+			p.Hint = appAlreadyDeletedHint
+			return err
+		}
 	}
 	return annotateAppLookupErr(err)
 }

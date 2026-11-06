@@ -42,6 +42,29 @@ func TestAppsDeleteDryRun(t *testing.T) {
 		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.2").Exists(), "dry-run must plan exactly two requests")
 	})
 
+	t.Run("MetaTokenMarksDeleteTargetAsResolved", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"apps", "+delete",
+				"--app-id", "meta_token_x",
+				"--confirm-name", "demo",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/meta_token_x", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "DELETE", clie2e.DryRunGet(result.Stdout, "api.1.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/<resolved_app_id>", clie2e.DryRunGet(result.Stdout, "api.1.url").String())
+		assert.Contains(t, clie2e.DryRunGet(result.Stdout, "api.1.desc").String(), "app_id returned by step 1")
+	})
+
 	t.Run("RejectsMissingAppID", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)

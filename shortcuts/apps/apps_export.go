@@ -42,7 +42,7 @@ var AppsExport = common.Shortcut{
 	Tips: []string{
 		"Exports the last commit on the app's default branch, not the sandbox working tree: uncommitted sandbox changes are not included.",
 		"Example: lark-cli apps +export --app-id <app_id> --output ./src.zip",
-		"Example (share token): lark-cli apps +export --meta-token <token>   # for an app shared with you; you still need download permission",
+		"Example (share token): lark-cli apps +export --meta-token <token>   # for an app shared with you; you still need to be its edit or full_access collaborator (full_access when its copy_download_by is full-access)",
 		"Example (omit --output): lark-cli apps +export --app-id <app_id>   # saves to ./<app_id>.zip",
 	},
 	Scopes:    []string{exportScope},
@@ -344,15 +344,24 @@ const exportAppNotPublishedCode = 40901
 const exportNotPublishedHint = "export serves the app's latest published build and this app has none yet; publish it first (the publish path depends on the app type), then re-run export"
 
 // exportPermissionDeniedCode is the business code the gateway returns (as an
-// HTTP 200 + JSON envelope, not a 403) when the caller cannot download the app —
-// typically a share-link viewer who is not a collaborator. It is not in the shared
-// spark table (that table is global across domains, and 40300 is too generic a
-// number to claim there), so it is classified here, command-scoped.
+// HTTP 200 + JSON envelope, not a 403) when the caller may not export the app —
+// typically a share-link viewer who is not an edit or full_access collaborator. It
+// is not in the shared spark table (that table is global across domains, and
+// 40300 is too generic a number to claim there), so it is classified here,
+// command-scoped.
 const exportPermissionDeniedCode = 40300
 
 // exportPermissionDeniedHint is shared by the live 200+JSON path and the HTTP-403
 // branch so the two cannot drift.
-const exportPermissionDeniedHint = "you need download permission on this app; holding a share token is not enough"
+//
+// It names the collaborator role because that is the gate callers hit: the
+// server first requires an edit or full_access collaborator (the recorded reason
+// for these denials is that the user "has none of required roles"), then checks
+// that the app's copy/download setting lets that role download, and both checks
+// answer 40300. A hint that only said "download permission" sent users to request
+// a permission that was not the missing one; the copy_download_by clause keeps the
+// rarer second case accurate without leading with it.
+const exportPermissionDeniedHint = "export requires being an edit or full_access collaborator of this app (full_access only, when its copy_download_by setting is full-access); view access or holding a share token is not enough. Ask the app owner to grant that role, then retry; retrying before that will not help"
 
 // annotateExportEnvelopeErr adds export-scoped recovery guidance to the typed
 // error the classifier produced from a 200+JSON error envelope.

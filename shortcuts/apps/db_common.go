@@ -46,9 +46,10 @@ func dbEnvParams(rctx *common.RuntimeContext, params map[string]interface{}) map
 	return params
 }
 
-// dbEnvBody 把 env 并入请求体顶层：sync_create/sync_update 从 body 读 env（与 config/preview 平级），
-// 不是从 query。语义与 dbEnvParams 一致——仅在显式指定环境（非空）时带 env 键，未指定时省略、
-// 由服务端按应用多环境状态自动选分支。原样返回同一个 map 便于链式。
+// dbEnvBody 把 env 并入请求体顶层。sync_create 从 body 读 env（与 config/preview 平级），
+// 不是从 query。sync_update 的请求合同没有 env 字段，不使用本 helper。仅在显式指定环境
+// （非空）时带 env 键；未指定时省略，db-sync 服务端默认落 online（不按应用多环境状态
+// 自动选分支）。原样返回同一个 map 便于链式。
 func dbEnvBody(rctx *common.RuntimeContext, body map[string]interface{}) map[string]interface{} {
 	if env := dbEnv(rctx); env != "" {
 		body["env"] = env
@@ -357,6 +358,12 @@ func withDBSyncHint(err error, fallback string) error {
 		return err
 	}
 	if strings.TrimSpace(p.Hint) != "" {
+		return err
+	}
+	// A throttled call was never evaluated, so neither the code table nor the
+	// request-shaped fallback can explain it (see hintExplainsFailure).
+	if p.Subtype == errs.SubtypeRateLimit {
+		p.Hint = appRateLimitHint
 		return err
 	}
 	// Subcode-specific hint takes precedence over the generic code table: the

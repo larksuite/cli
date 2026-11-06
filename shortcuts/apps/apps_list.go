@@ -37,10 +37,10 @@ var AppsList = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		// Runs before both dry-run and execute. --owner-id only accepts an ou_
-		// open_id; reject malformed values instead of sending an unfiltered query.
-		if owner := strings.TrimSpace(rctx.Str("owner-id")); owner != "" {
-			if _, err := common.ValidateUserIDTyped("--owner-id", owner); err != nil {
+		// Runs before both dry-run and execute. An explicit --owner-id must be
+		// a valid ou_ open_id; blank input must not fall back to no owner filter.
+		if rctx.Cmd.Flags().Changed("owner-id") {
+			if _, err := common.ValidateUserIDTyped("--owner-id", rctx.Str("owner-id")); err != nil {
 				return err
 			}
 		}

@@ -32,7 +32,7 @@ lark-cli auth login --domain apps
 | 找已有 app_id、按名字过滤应用 | `+list --keyword <name>` | [`lark-apps-list.md`](references/lark-apps-list.md) |
 | 查单个应用详情（类型、名称、发布状态等） | `+get --app-id <app_id>` | [`lark-apps-get.md`](references/lark-apps-get.md) |
 | 改应用名、描述、图标或品牌标识显隐（图标优先 `--icon-file` 传本地 png/jpeg；OpenClaw 类应用等类型不支持改图标） | `+update` | [`lark-apps-update.md`](references/lark-apps-update.md) |
-| 删除应用（进 web 端「我的应用 → 回收站」，保留期内可在该处恢复；CLI 无恢复命令） | `+delete --app-id <app_id> --confirm-name <name> --yes`（先 `+get` 向用户展示名称与 app_id、说明会进「我的应用 → 回收站」、保留期内可恢复，再等用户明确确认该应用；确认规则见下方「禁止预授权判定底线」②） | [`lark-apps-delete.md`](references/lark-apps-delete.md) |
+| 删除应用（是否可从 web 端「我的应用 → 回收站」恢复取决于结果里的 `in_trash=true`；CLI 无恢复命令） | `+delete --app-id <app_id> --confirm-name <name> --yes`（先 `+get` 向用户展示名称与 app_id、说明删除后可能进入回收站，也可能永久删除；恢复只在返回 `in_trash=true` 时成立；再等用户明确确认该应用；确认规则见下方「禁止预授权判定底线」②） | [`lark-apps-delete.md`](references/lark-apps-delete.md) |
 | HTML 应用 / 创意模式 — 写 HTML 页面/网站、静态页、PPT/deck、落地页、仪表盘、UI mockup、原型、线框图、视觉探索 | 加载 [`creative-design/creative-design.md`](creative-design/creative-design.md)（含完整开发与发布流程） | [`creative-design/creative-design.md`](creative-design/creative-design.md) |
 | 旧版存量 HTML 应用（无 Git 管理）继续上传已有静态产物 | `+html-publish`（仅兼容旧链路；新建 html / 创意模式 / creative-design 产物不得使用） | [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) |
 | 开发已有应用 / 初始化本地仓库（开发方式已定为本地后；先解析 app_id，勿 `+create` 新建） | `+init`（或手动 `+git-credential-init` + 原生 git）。**执行前必读** [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)，含端到端流程和领域规则 | [`lark-apps-init.md`](references/lark-apps-init.md), [`lark-apps-git-credential.md`](references/lark-apps-git-credential.md) |
