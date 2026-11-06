@@ -144,6 +144,50 @@ func TestDetectWorkspaceFromEnv(t *testing.T) {
 			env:    map[string]string{"HERMES_HOME": "/Users/me/.hermes", "LARK_CHANNEL": "1"},
 			expect: WorkspaceHermes,
 		},
+		{
+			// The harness injects this into every shell it manages, which is
+			// what makes it the primary signal rather than the session vars.
+			name:   "DSH_SHELL=1 alone → dsh",
+			env:    map[string]string{"DSH_SHELL": "1"},
+			expect: WorkspaceDSH,
+		},
+		{
+			name:   "DSH_HOME alone → dsh",
+			env:    map[string]string{"DSH_HOME": "/Users/me/.dsh"},
+			expect: WorkspaceDSH,
+		},
+		{
+			// Supplementary: the harness omits it for shell calls that carry
+			// no agent, so it must not be the only thing detection rests on.
+			name:   "DSH_SESSION_ID alone → dsh",
+			env:    map[string]string{"DSH_SESSION_ID": "lark-oc_9f2b"},
+			expect: WorkspaceDSH,
+		},
+		{
+			name:   "empty DSH values → local",
+			env:    map[string]string{"DSH_SHELL": "", "DSH_HOME": "", "DSH_SESSION_ID": ""},
+			expect: WorkspaceLocal,
+		},
+		{
+			name:   "DSH_SHELL set to something other than 1 → local",
+			env:    map[string]string{"DSH_SHELL": "/bin/zsh"},
+			expect: WorkspaceLocal,
+		},
+		{
+			name:   "LARK_CHANNEL=1 + DSH_SHELL → lark-channel wins (priority over dsh)",
+			env:    map[string]string{"LARK_CHANNEL": "1", "DSH_SHELL": "1"},
+			expect: WorkspaceLarkChannel,
+		},
+		{
+			name:   "HERMES_HOME + DSH_SHELL → hermes wins (priority over dsh)",
+			env:    map[string]string{"HERMES_HOME": "/Users/me/.hermes", "DSH_SHELL": "1"},
+			expect: WorkspaceHermes,
+		},
+		{
+			name:   "OPENCLAW_CLI=1 + DSH_SHELL → openclaw wins (priority over dsh)",
+			env:    map[string]string{"OPENCLAW_CLI": "1", "DSH_SHELL": "1"},
+			expect: WorkspaceOpenClaw,
+		},
 	}
 
 	for _, tt := range tests {
@@ -167,6 +211,7 @@ func TestWorkspaceDisplay(t *testing.T) {
 		{WorkspaceOpenClaw, "openclaw"},
 		{WorkspaceHermes, "hermes"},
 		{WorkspaceLarkChannel, "lark-channel"},
+		{WorkspaceDSH, "dsh"},
 	}
 	for _, tt := range tests {
 		if got := tt.ws.Display(); got != tt.expect {
@@ -237,6 +282,17 @@ func TestGetRuntimeDir(t *testing.T) {
 	want = filepath.Join(tmp, "lark-channel")
 	if got := GetRuntimeDir(); got != want {
 		t.Errorf("lark-channel: GetRuntimeDir() = %q, want %q", got, want)
+	}
+
+	// DSH → base/dsh, so a harness-hosted bind never touches the local config
+	SetCurrentWorkspace(WorkspaceDSH)
+	want = filepath.Join(tmp, "dsh")
+	if got := GetRuntimeDir(); got != want {
+		t.Errorf("dsh: GetRuntimeDir() = %q, want %q", got, want)
+	}
+	want = filepath.Join(tmp, "dsh", "config.json")
+	if got := GetConfigPath(); got != want {
+		t.Errorf("dsh: GetConfigPath() = %q, want %q", got, want)
 	}
 }
 
