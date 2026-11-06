@@ -12,6 +12,7 @@ import (
 const (
 	agentNameMaxLen  = 128
 	agentTraceMaxLen = 1024
+	ttEnvMaxLen      = 256
 )
 
 var agentNameEnvHints = [...]struct{ env, name string }{
@@ -38,6 +39,12 @@ func AgentName() string {
 
 func AgentTrace() string {
 	return sanitizeSingleLine(os.Getenv(CliAgentTrace), agentTraceMaxLen)
+}
+
+// TTEnv returns the sanitized value for the x-tt-env routing header
+// (e.g. "ppe_whiteboard_mindnote"). Empty when unset or invalid.
+func TTEnv() string {
+	return sanitizeSingleLine(os.Getenv(CliTTEnv), ttEnvMaxLen)
 }
 
 func sanitizeSingleLine(raw string, maxLen int) string {
