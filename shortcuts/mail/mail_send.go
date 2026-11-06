@@ -58,7 +58,8 @@ var MailSend = common.Shortcut{
 			api = api.GET(templateMailboxPath(mailboxID, tid)).
 				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
 		}
-		api = api.GET(mailboxPath(mailboxID, "profile")).
+		api = api.GET(mailboxPath(mailboxID, "settings", "send_as")).
+			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
 				"raw": "<base64url-EML>",
@@ -148,7 +149,8 @@ var MailSend = common.Shortcut{
 		confirmSend := runtime.Bool("confirm-send")
 		sendTime := runtime.Str("send-time")
 
-		senderEmail := resolveComposeSenderEmail(runtime)
+		sender := resolveComposeIdentity(runtime, resolveComposeMailboxID(runtime), composeScenarioNew, nil, nil)
+		senderEmail := sender.Email
 		signatureID := runtime.Str("signature-id")
 		priority, err := parsePriority(runtime.Str("priority"))
 		if err != nil {
@@ -225,7 +227,7 @@ var MailSend = common.Shortcut{
 			Subject(subject).
 			ToAddrs(parseNetAddrs(to))
 		if senderEmail != "" {
-			bld = bld.From("", senderEmail)
+			bld = bld.From(sender.Name, senderEmail)
 		}
 		if err := requireSenderForRequestReceipt(runtime, senderEmail); err != nil {
 			return err
