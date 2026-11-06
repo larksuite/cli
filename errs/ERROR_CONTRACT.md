@@ -134,6 +134,45 @@ Canonical mapping: `internal/output/exitcode.go` `ExitCodeForCategory`.
 > field stays formal because it is the protocol-level taxonomy; the Go
 > type favors call-site readability.
 
+### Upstream permission diagnostics
+
+API-classified `PermissionError` values may add an optional `error.upstream`
+object with `message`, `details` (an array of strings), and `truncated` (only
+when true). This is informational prose, not a new reason code. Existing
+`type`, `subtype`, `code`, `message`, `hint`, identity, scope fields, trace fields,
+and exit code remain authoritative and unchanged. Local preflight errors do
+not invent upstream diagnostics; absent text omits the object.
+
+The classifier reads only `error.message` (preferred) or top-level `msg`, and
+the first four `error.details[].value` entries. It never serializes arbitrary
+response maps, headers or payloads. Each input string over 8 KiB is omitted
+in full rather than exposing a partially inspected credential. After redaction
+and whitespace/control normalization, message output is limited to 1024 UTF-8
+bytes and each detail to 256 UTF-8 bytes, including a truncation ellipsis.
+`truncated: true` also signals omitted oversized inputs or additional details;
+an object containing only that marker is valid. Redaction alone does not set it.
+
+Sanitization conservatively redacts credential/header assignments (including
+their remaining line and folded continuation lines), Bearer/Basic-prefixed values
+(including schemes joined to preceding prose or their values by terminal/control
+cleanup; matching deliberately does not require a leading word boundary), JWT-shaped
+values including empty signatures, standard/URL-safe Base64-like opaque strings
+including padding, known token/identity values, full URLs, email-like tokens and
+phone patterns, quoted fragments and long opaque strings. Quoted payload echoes are discarded
+even when their keys are unknown; an unfinished quoted value is redacted through
+the end of input. Word-internal apostrophes remain prose and do not close a
+single-quoted echo, including after combining Unicode marks. URL and email-like
+matching includes apostrophes and other token punctuation. Whitespace separators
+are normalized before terminal
+sanitization can remove them. All matches are found in the original normalized
+text, and overlapping or adjacent sensitive spans
+are redacted together. Assignment matching cannot split multiline quoted
+content and expose its continuation. Redaction runs before output truncation.
+This is a bounded diagnostic summary, not a lossless response capture or a
+general-purpose PII detector: arbitrary names or secrets in unlabelled prose
+cannot be identified reliably. Do not use it to forward raw business payloads
+or treat server-supplied prose as trusted instructions.
+
 ## Flow
 
 ```
