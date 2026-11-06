@@ -49,11 +49,13 @@ Wiki URL / 裸 Wiki node token 会先解析到底层文档，解析后会在输�
 ## 关键约束
 
 - Wiki 节点解析后的 `obj_type` 必须是 `file`；不确定 token 类型时，先用 `lark-cli drive +inspect --url <TOKEN> --type wiki` 检查。
+- `+download` 会在真实下载前检查当前身份是否有文件导出权限。该检查只接受上传到 Drive 的文件 token；在线文档请改用 `drive +export`。
 
 ## 排障
 
 - 如果返回 `permission_denied`，或最终下载返回 `HTTP 403`，按错误 `hint` 使用 `lark-cli drive +preview --file-token <FILE_TOKEN> --type source_file --output <path>` 获取预览产物。
 - 如果返回限流错误，停止立即重试，稍后按指数退避重试。
+- 如果权限前置检查返回 `1063001 Invalid parameter`，不要重复提交同一 token；优先传原始 `--url` 让 CLI 判断资源类型，并确认目标确实是上传文件而不是在线文档。
 - 如果目标（或 Wiki 解析出的底层文档）是 `docx` / `sheet` / `bitable` / `slides` 等在线文档，`+download` 无法直接下载，会返回 typed validation error；改用 [lark-drive-export](lark-drive-export.md) 渲染成 pdf / xlsx / pptx / markdown 等格式。
 
 ## 参考
