@@ -14,8 +14,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	extcred "github.com/larksuite/cli/extension/credential"
 	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/build"
@@ -27,6 +25,7 @@ import (
 	"github.com/larksuite/cli/internal/surface"
 	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 	"github.com/larksuite/cli/internal/update"
+	"github.com/spf13/cobra"
 )
 
 type doctorManifestProvider struct{ manifestURL string }
@@ -241,6 +240,45 @@ func TestDoctorRun_SplitsBotAndMissingUserIdentity(t *testing.T) {
 	assertCheck(t, got.Checks, "bot_identity", "pass")
 	assertCheck(t, got.Checks, "user_identity", "warn")
 	assertCheck(t, got.Checks, "identity_ready", "pass")
+}
+
+// TestDoctorRun_TeeSignerWired proves the tee_signer check is part of doctorRun.
+// A client_secret app skips the signer check on every platform.
+func TestDoctorRun_TeeSignerWired(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{{
+			Name: "default", AppId: "test-app",
+			AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+	if err := doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil); err != nil {
+		t.Fatalf("doctorRun() error = %v", err)
+	}
+	var got struct {
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	var c *checkResult
+	for i := range got.Checks {
+		if got.Checks[i].Name == "tee_signer" {
+			c = &got.Checks[i]
+		}
+	}
+	if c == nil {
+		t.Fatalf("tee_signer check not present in doctor output: %#v", got.Checks)
+	}
+	if c.Status != "skip" {
+		t.Errorf("tee_signer = %s for a client_secret app; want skip (msg=%q)", c.Status, c.Message)
+	}
 }
 
 func assertCheck(t *testing.T, checks []checkResult, name, status string) {

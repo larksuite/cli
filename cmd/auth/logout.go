@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -20,6 +21,7 @@ import (
 // LogoutOptions holds all inputs for auth logout.
 type LogoutOptions struct {
 	Factory *cmdutil.Factory
+	Ctx     context.Context
 	JSON    bool
 }
 
@@ -31,6 +33,7 @@ func NewCmdAuthLogout(f *cmdutil.Factory, runF func(*LogoutOptions) error) *cobr
 		Use:   "logout",
 		Short: "Log out (clear token)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Ctx = cmd.Context()
 			if runF != nil {
 				return runF(opts)
 			}
@@ -45,6 +48,10 @@ func NewCmdAuthLogout(f *cmdutil.Factory, runF func(*LogoutOptions) error) *cobr
 
 func authLogoutRun(opts *LogoutOptions) error {
 	f := opts.Factory
+	ctx := opts.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -88,10 +95,14 @@ func authLogoutRun(opts *LogoutOptions) error {
 	}
 
 	httpClient, httpErr := f.HttpClient()
-	appSecret, secretErr := core.ResolveSecretInput(app.AppSecret, f.Keychain)
+	cfg, authErr := core.ResolveConfigFromMulti(multi, f.Keychain, f.Invocation.Profile, f.Invocation.ProfileSource)
+	var clientAuth larkauth.ClientAuth
+	if authErr == nil {
+		clientAuth, authErr = resolveClientAuth(ctx, f, cfg)
+	}
 
 	for _, user := range app.Users {
-		if httpErr == nil && secretErr == nil {
+		if httpErr == nil && authErr == nil {
 			token, _ := larkauth.GetStoredToken(app.AppId, user.UserOpenId)
 			if token != nil {
 				revokeToken := token.RefreshToken
@@ -101,7 +112,7 @@ func authLogoutRun(opts *LogoutOptions) error {
 					tokenTypeHint = "access_token"
 				}
 				if revokeToken != "" {
-					_ = larkauth.RevokeToken(httpClient, app.AppId, appSecret, app.Brand, revokeToken, tokenTypeHint)
+					_ = larkauth.RevokeToken(ctx, httpClient, clientAuth, app.Brand, revokeToken, tokenTypeHint)
 				}
 			}
 		}

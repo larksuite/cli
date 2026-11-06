@@ -1,0 +1,196 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package keylesshelper
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"sync"
+	"testing"
+
+	"github.com/larksuite/cli/internal/keysigner"
+	"github.com/larksuite/cli/internal/vfs"
+)
+
+type testMetadataStore struct {
+	mu                        sync.Mutex
+	values                    map[string]string
+	getErr, setErr, removeErr error
+}
+
+func (s *testMetadataStore) Get(_, account string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.values[account], s.getErr
+}
+func (s *testMetadataStore) Set(_, account, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.setErr != nil {
+		return s.setErr
+	}
+	s.values[account] = value
+	return nil
+}
+func (s *testMetadataStore) Remove(_, account string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.removeErr != nil {
+		return s.removeErr
+	}
+	delete(s.values, account)
+	return nil
+}
+
+type cancelingUnlockStore struct {
+	*testMetadataStore
+	cancel context.CancelFunc
+}
+
+func (s cancelingUnlockStore) Get(service, account string) (string, error) {
+	s.cancel()
+	return s.testMetadataStore.Get(service, account)
+}
+
+func TestSoftwareUnlockRetainsKeylessPolicy(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		directory := isolateSoftwareStorage(t)
+		kc := &testMetadataStore{values: map[string]string{}}
+		if existing {
+			if err := os.MkdirAll(directory, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, "notes.json"), nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_, err := newSoftwareSigner(kc).unlock(context.Background(), directory, existing)
+		if !errors.Is(err, keysigner.ErrUnlockRequired) || len(kc.values) != 0 {
+			t.Fatalf("existing=%v unlock=%v values=%v", existing, err, kc.values)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cause := errors.New("Get failed while canceling")
+	kc := &testMetadataStore{values: map[string]string{}, getErr: cause}
+	_, err := newSoftwareSigner(cancelingUnlockStore{kc, cancel}).unlock(ctx, isolateSoftwareStorage(t), true)
+	if !errors.Is(err, cause) || errors.Is(err, context.Canceled) || len(kc.values) != 0 {
+		t.Fatalf("keyless retains Get failure without DPoP cancellation recheck: %v", err)
+	}
+}
+
+func isolateSoftwareStorage(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	for name, dir := range map[string]string{
+		"HOME": root, "USERPROFILE": root, "LOCALAPPDATA": filepath.Join(root, "local"),
+		"LARKSUITE_CLI_DATA_DIR":   filepath.Join(root, "data"),
+		"LARKSUITE_CLI_CONFIG_DIR": filepath.Join(root, "config"),
+	} {
+		t.Setenv(name, dir)
+	}
+	directory := filepath.Join(root, "data", "lark-cli")
+	if runtime.GOOS == "darwin" {
+		directory = filepath.Join(root, "Library", "Application Support", "lark-cli")
+	}
+	return filepath.Join(directory, "keysigner", "keyless", "software-file")
+}
+
+func TestRegistrationSignersSoftwareFallback(t *testing.T) {
+	directory := isolateSoftwareStorage(t)
+	kc := &testMetadataStore{values: map[string]string{}}
+	signers := RegistrationSigners(kc)
+	names := keysigner.PlatformSignerNames()
+	if runtime.GOOS == "darwin" {
+		names = []string{keysigner.MacOSKeychainSignerName}
+	}
+	names = append(names, keysigner.SoftwareSignerName)
+	var got []string
+	for _, signer := range signers {
+		got = append(got, signer.Name())
+	}
+	if !slices.Equal(got, names) {
+		t.Fatalf("candidates = %v, want %v", got, names)
+	}
+	if _, err := vfs.Stat(directory); !errors.Is(err, os.ErrNotExist) || len(kc.values) != 0 {
+		t.Fatal("constructing signers accessed storage")
+	}
+	signer := signers[len(signers)-1]
+	ctx := context.Background()
+	ref := keysigner.KeyRef{Label: "software-test"}
+	pub, err := signer.EnsureKey(ctx, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signer.SecurityLevel() != keysigner.SecurityLevelL3 || kc.values["keyless:software:unlock:v1"] == "" {
+		t.Fatal("software key did not persist its separate protection secret")
+	}
+	lockDirectory := directory
+	if runtime.GOOS == "windows" {
+		lockDirectory = filepath.Join(os.Getenv("LOCALAPPDATA"), "lark-cli", "keysigner", "keyless", "software-file")
+	}
+	if _, err := vfs.Stat(filepath.Join(lockDirectory, "unlock.lock")); err != nil {
+		t.Fatalf("keyless unlock lock: %v", err)
+	}
+	files, err := filepath.Glob(filepath.Join(directory, "*.json"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("key files = %v, error = %v", files, err)
+	}
+	if runtime.GOOS != "windows" {
+		for path, mode := range map[string]uint32{directory: 0o700, files[0]: 0o600} {
+			info, err := vfs.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if uint32(info.Mode().Perm()) != mode {
+				t.Fatalf("mode = %o, want %o", info.Mode().Perm(), mode)
+			}
+		}
+	}
+	reopened, err := ResolveSigner(keysigner.SoftwareSignerName, kc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotPub, err := reopened.PublicKey(ctx, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := keysigner.PublicKeyThumbprint(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := keysigner.PublicKeyThumbprint(gotPub)
+	if err != nil || before != after {
+		t.Fatalf("reopen changed public key: %v", err)
+	}
+	if _, _, err := reopened.Sign(ctx, ref, []byte("test")); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.DeleteKey(ctx, ref); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := reopened.Sign(ctx, ref, nil); !errors.Is(err, keysigner.ErrKeyNotFound) {
+		t.Fatalf("missing key must not be recreated: %v", err)
+	}
+	if len(kc.values) != 1 || kc.values[softwareUnlockAccount] == "" {
+		t.Fatal("key deletion changed the shared protection secret")
+	}
+}
+
+func TestLegacyMacOSSignerRemainsKeychain(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS private-key JWT policy")
+	}
+	signer, err := ResolveSigner("", &testMetadataStore{values: map[string]string{}})
+	if err != nil || signer.Name() != keysigner.MacOSKeychainSignerName {
+		t.Fatalf("legacy signer = %v, error = %v", signer, err)
+	}
+	if got := keysigner.PlatformSignerNames(); len(got) < 2 || got[0] != keysigner.MacOSSecureEnclaveSignerName {
+		t.Fatal("private-key JWT policy changed the shared DPoP platform preference")
+	}
+}

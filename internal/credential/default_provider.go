@@ -17,48 +17,55 @@ import (
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
 
 	extcred "github.com/larksuite/cli/extension/credential"
 )
 
 // classifyTATResponseCode wraps a deterministic (non-transient) failure from the
-// unified Token Endpoint into the canonical typed errs.* error. The v3 endpoint
-// reports failures using the OAuth 2.0 model — an `error` string plus an
-// optional numeric `code` — instead of the legacy `{code, msg}` shape.
+// Token Endpoint into the canonical typed errs.* error for both client-secret
+// and private-key JWT authentication. OAuth failures may carry an `error` string
+// and an optional numeric `code`, while gateway failures may still use `{code, msg}`.
 //
-// invalid_client / unauthorized_client mean the configured app_id/app_secret
-// cannot mint a token; from the user's perspective that is the same actionable
-// CategoryConfig/InvalidClient failure the legacy 10003/10014 codes produced.
-// Every other deterministic error falls through to BuildAPIError, which still
-// yields a typed error so probe callers (errs.IsTyped) surface it rather than
-// swallowing it. Transient/server-side failures (5xx / server_error) are
-// filtered out by FetchTAT before this is called, so they stay untyped.
+// Specific numeric classifications take precedence over OAuth error names.
+// Unrecognized rejections stay typed so probe callers cannot swallow them.
+// Transient failures are handled by the token response handler before this call.
 func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) error {
 	msg := errDesc
 	if msg == "" {
 		msg = oauthErr
 	}
-	switch oauthErr {
-	case "invalid_client", "unauthorized_client":
-		typed := errs.NewConfigError(errs.SubtypeInvalidClient, "%s", msg).
-			WithCode(code).
-			WithHint("%s", errclass.ConfigHint(errs.SubtypeInvalidClient))
-		return errclass.AnnotateConfigRecovery(typed, errs.SubtypeInvalidClient)
-	}
-	if err := errclass.BuildAPIError(map[string]any{
+	codeErr := errclass.BuildAPIError(map[string]any{
 		"code": code,
 		"msg":  msg,
 	}, errclass.ClassifyContext{
 		Brand: brand,
 		AppID: appID,
-	}); err != nil {
-		return err
+	})
+	if problem, ok := errs.ProblemOf(codeErr); ok && (problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeUnknown) {
+		return codeErr
 	}
-	// BuildAPIError returns nil for code 0 (Feishu's success convention), but this
-	// function is only reached once FetchTAT has ruled out success — a non-credential
-	// OAuth error (e.g. invalid_scope) can arrive with code 0 and is still a
-	// deterministic rejection. Back it with a typed APIError so callers never receive
-	// the ("", nil) "empty token, no error" pair.
+	switch oauthErr {
+	case "invalid_client":
+		typed := errs.NewConfigError(errs.SubtypeInvalidClient, "%s", msg).
+			WithCode(code).
+			WithHint("%s", errclass.ConfigHint(errs.SubtypeInvalidClient))
+		return errclass.AnnotateConfigRecovery(typed, errs.SubtypeInvalidClient)
+	case "unauthorized_client":
+		return errs.NewPermissionError(errs.SubtypeUnauthorizedClient, "%s", msg).WithCode(code)
+	case "invalid_grant":
+		return errs.NewAuthenticationError(errs.SubtypeInvalidGrant, "%s", msg).WithCode(code)
+	case "invalid_request":
+		return errs.NewAPIError(errs.SubtypeInvalidParameters, "%s", msg).WithCode(code)
+	case "unsupported_grant_type":
+		return errs.NewAPIError(errs.SubtypeUnsupportedGrantType, "%s", msg).WithCode(code)
+	case "invalid_scope":
+		return errs.NewAPIError(errs.SubtypeInvalidScope, "%s", msg).WithCode(code)
+	}
+	if codeErr != nil {
+		return codeErr
+	}
+	// OAuth failures without a numeric code must not become a nil success.
 	return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg).WithCode(code)
 }
 
@@ -132,9 +139,10 @@ func strictModeToIdentitySupport(multi *core.MultiAppConfig, profileOverride str
 // DefaultTokenProvider resolves UAT/TAT using keychain + direct HTTP calls.
 // No SDK/LarkClient dependency — eliminates circular dependency with Factory.
 type DefaultTokenProvider struct {
-	defaultAcct *DefaultAccountProvider
-	httpClient  func() (*http.Client, error)
-	errOut      io.Writer
+	defaultAcct   *DefaultAccountProvider
+	httpClient    func() (*http.Client, error)
+	errOut        io.Writer
+	resolveSigner func(*core.CliConfig) (keysigner.Signer, error)
 
 	tatMu        sync.Mutex
 	tatResult    *TokenResult
@@ -155,12 +163,18 @@ const (
 	tatRefreshTimeout  = 30 * time.Second
 )
 
-func NewDefaultTokenProvider(defaultAcct *DefaultAccountProvider, httpClient func() (*http.Client, error), errOut io.Writer) *DefaultTokenProvider {
+func NewDefaultTokenProvider(defaultAcct *DefaultAccountProvider, httpClient func() (*http.Client, error), errOut io.Writer, resolveSigner func(*core.CliConfig) (keysigner.Signer, error)) *DefaultTokenProvider {
+	if resolveSigner == nil {
+		resolveSigner = func(cfg *core.CliConfig) (keysigner.Signer, error) {
+			return auth.ResolveConfigSigner(cfg, defaultAcct.keychain())
+		}
+	}
 	return &DefaultTokenProvider{
-		defaultAcct: defaultAcct,
-		httpClient:  httpClient,
-		errOut:      errOut,
-		timeNow:     time.Now,
+		defaultAcct:   defaultAcct,
+		httpClient:    httpClient,
+		errOut:        errOut,
+		timeNow:       time.Now,
+		resolveSigner: resolveSigner,
 	}
 }
 
@@ -186,7 +200,11 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut))
+	signer, err := p.resolveSigner(acct.ToCliConfig())
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut, signer))
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +298,11 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	if err != nil {
 		return nil, 0, err
 	}
-	token, err := FetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret, acct.DPoPMode)
+	signer, err := p.resolveSigner(acct.ToCliConfig())
+	if err != nil {
+		return nil, 0, err
+	}
+	token, err := FetchTAT(ctx, httpClient, acct.Brand, auth.ClientAuthFromConfig(acct.ToCliConfig(), signer), acct.DPoPMode)
 	if err != nil {
 		return nil, 0, err
 	}
