@@ -89,20 +89,20 @@ func TestInitMsg_FormatStrings(t *testing.T) {
 }
 
 func TestGetInitMsg_BilingualCollapse(t *testing.T) {
-	// The TUI is bilingual (zh + en). Only English-bucket languages return the
-	// English struct — by canonical locale ("en_us") or legacy short ("en").
-	// Everything else (zh, the other codes, invalid, "") returns Chinese.
+	// The TUI is bilingual (zh + en). zh_cn renders Chinese; so do values that
+	// express no usable preference (unset, unrecognized). Every other supported
+	// locale renders English.
 	tests := []struct {
 		lang       i18n.Lang
 		shouldBeEn bool
 	}{
 		{i18n.LangZhCN, false},
 		{i18n.LangEnUS, true},
-		{"en", true}, // legacy short value
-		{i18n.LangJaJP, false},
-		{"fr_fr", false},
-		{"invalid", false},
-		{"", false},
+		{"en", true},          // legacy short value
+		{i18n.LangJaJP, true}, // no ja bundle → English is the closer read
+		{"fr_fr", true},       // same for every other supported locale
+		{"invalid", false},    // unrecognized → no preference expressed
+		{"", false},           // unset → no preference expressed
 	}
 
 	for _, tt := range tests {
@@ -119,5 +119,75 @@ func TestGetInitMsg_BilingualCollapse(t *testing.T) {
 				t.Errorf("getInitMsg(%q) returned wrong struct", tt.lang)
 			}
 		})
+	}
+}
+
+func TestPickerCanExpress(t *testing.T) {
+	// The picker's own two options, plus the short codes that resolve to them:
+	// picking writes the canonical form, so nothing is lost.
+	for _, l := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS, "zh", "en"} {
+		if !pickerCanExpress(l) {
+			t.Errorf("pickerCanExpress(%q) = false, want true", l)
+		}
+	}
+	// Recognized locales the picker has no option for: a bare Enter would
+	// silently rewrite them, so those runs must skip it.
+	for _, l := range []i18n.Lang{
+		i18n.LangJaJP, i18n.LangKoKR, i18n.LangFrFR, i18n.LangDeDE, i18n.LangEsES,
+		i18n.LangItIT, i18n.LangRuRU, i18n.LangPtBR, i18n.LangThTH, i18n.LangViVN,
+		i18n.LangIdID, i18n.LangMsMY,
+		"ja", "fr", // short codes resolve to the same unrepresentable locales
+	} {
+		if pickerCanExpress(l) {
+			t.Errorf("pickerCanExpress(%q) = true, want false", l)
+		}
+	}
+	// Values expressing no usable preference must keep asking. --lang cannot
+	// produce them (ParseLangFlag canonicalizes first), but the config load path
+	// stores Lang verbatim, so a hand-edited file — or a downgrade after a newer
+	// CLI wrote a locale this build does not know — can. Skipping the picker
+	// here would strand the user: UsesEnglishUI reads these as "no preference"
+	// and renders Chinese, with no interactive way to change it.
+	for _, l := range []i18n.Lang{"", "ZH", "en_US", "zh-CN", "klingon"} {
+		if !pickerCanExpress(l) {
+			t.Errorf("pickerCanExpress(%q) = false, want true", l)
+		}
+	}
+}
+
+func TestPickerCanExpress_SkippedValuesAlwaysRenderEnglish(t *testing.T) {
+	// The picker gate and the bundle choice must read a stored value the same
+	// way. Skipping the picker says "this expresses a preference, leave it
+	// alone" — which is only defensible if the value also drives what renders.
+	// UsesEnglishUI renders Chinese for everything it cannot recognize, so a
+	// value that is both skipped and unrecognized locks the user into Chinese
+	// with no interactive way out.
+	//
+	// Stated as one implication: skipped ⟹ renders English. zh_cn is the only
+	// Chinese-rendering value, and the picker can express it, so it is never
+	// skipped.
+	values := []i18n.Lang{
+		"", "zh", "en", "ja", "fr", "ZH", "en_US", "zh-CN", "klingon", " zh_cn", "EN",
+	}
+	values = append(values, catalogSpellings()...)
+	for _, l := range values {
+		if pickerCanExpress(l) {
+			continue
+		}
+		if !l.UsesEnglishUI() {
+			t.Errorf("pickerCanExpress(%q) = false but UsesEnglishUI(%q) = false: "+
+				"the picker is skipped while the UI treats the value as no preference, "+
+				"so the user is stuck in Chinese with no way to change it", l, l)
+		}
+	}
+}
+
+// catalogSpellings lists every canonical locale, as a caller outside the i18n
+// package sees them.
+func catalogSpellings() []i18n.Lang {
+	return []i18n.Lang{
+		i18n.LangZhCN, i18n.LangEnUS, i18n.LangJaJP, i18n.LangKoKR, i18n.LangFrFR,
+		i18n.LangDeDE, i18n.LangEsES, i18n.LangItIT, i18n.LangRuRU, i18n.LangPtBR,
+		i18n.LangThTH, i18n.LangViVN, i18n.LangIdID, i18n.LangMsMY,
 	}
 }
