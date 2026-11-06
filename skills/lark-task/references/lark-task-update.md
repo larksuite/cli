@@ -26,7 +26,7 @@ lark-cli task +update --task-id "<task_guid>" --data '{"description": "New descr
 |-----------|----------|-------------|
 | `--task-id <guid-or-applink>` | Yes | Task OpenAPI GUID or a task applink containing `guid=`. Comma-separated GUIDs/applinks are supported for multiple tasks. Display task IDs such as `t104121` / `suite_entity_num` are rejected. |
 | `--summary <text>` | No | New summary/title for the task. |
-| `--description <text>` | No | New description for the task. |
+| `--description <text>` | No | New description for the task. Rendered as Markdown in the client; risky spans are silently dropped, never degrade to plain text. Writes succeed and read back unchanged, so this is undetectable from the API side (issue #2359). Prefer plain text unless Markdown is intentional. |
 | `--due <time>` | No | New due date (supports relative time). |
 | `--data <json>` | No | JSON payload for fields to update. |
 
