@@ -1,8 +1,8 @@
 # 知识整理工作流：Execution
 
-Loaded by states: `EXECUTE`, `VERIFY`.
+Loaded by state: `EXECUTE`.
 
-This file owns confirmed write execution, PathTokenMap, progress reporting, verification, next suggestions, and execution-stage failure handling. It MUST NOT generate or revise plans.
+This file owns confirmed write execution, PathTokenMap, progress reporting, execution summary, next suggestions, and execution-stage failure handling. It MUST NOT generate or revise plans.
 
 ## Required Context
 
@@ -120,28 +120,9 @@ Rules:
 5. If same-name target ambiguity exists, inspect existing children when possible; otherwise mark `needs_review=true`.
 6. Before writing to `my_library` root, resolve the real `space_id` according to `lark-wiki`.
 
-## State: VERIFY
+### Execution Result
 
-Entry: execution finished.
-
-MUST:
-
-1. Rescan target scope.
-2. Compare each executed `PlanItem` with actual path/token.
-3. Verify items covered by `covered_by_parent_move=true`.
-4. Output success/failure/manual-confirmation counts.
-5. Report mismatches with expected vs actual path/token.
-6. Verify non-reused source containers planned for cleanup are no longer left in their original top-level position.
-7. Verify reused target containers remain in place.
-8. If serious mismatches exist, ask whether the user wants to try restoring to `整理前的位置`.
-9. Do not load the rollback phase or execute recovery until the user explicitly chooses to try restore.
-
-Verification table:
-
-| plan_id | 动作 | 标题 | 预期目标 | 实际目标 | 预期 token | 实际 token | 状态 | 失败原因 |
-|---------|------|------|----------|----------|------------|------------|------|----------|
-
-### Verification Result
+Build the final summary only from write-command outcomes and `execution_journal`; successful execution does not issue follow-up read calls.
 
 ```text
 执行完成。
@@ -152,22 +133,11 @@ Verification table:
 | 移动成功 |  |
 | 待人工确认 |  |
 | 失败 |  |
-
-| plan_id | 动作 | 预期目标 | 实际目标 | 状态 | 失败原因 |
-|---------|------|----------|----------|------|----------|
-```
-
-Serious mismatch recovery question template:
-
-```text
-验证发现 <mismatch_count> 项结果与计划不一致。
-
-是否需要尝试恢复到整理前的位置？
 ```
 
 ### Next Suggestions
 
-Only output `建议下一步` when at least one trigger exists. Do not add generic suggestions when execution and verification are clean.
+Only output `建议下一步` when at least one trigger exists. Do not add generic suggestions when execution is clean.
 
 Triggers:
 
@@ -176,8 +146,6 @@ Triggers:
 - Failed items exist.
 - One target folder / Wiki node contains more than 100 direct child resources after organization.
 - Root-level loose resources remain.
-- Non-reused source containers remain in their original top-level position after cleanup was planned.
-- Verification found mismatches.
 
 Template:
 
@@ -196,5 +164,4 @@ Template:
 | Target path has same-name ambiguity | Read existing children if possible; otherwise mark `needs_review=true` | Do not create duplicate target blindly |
 | Async move returns `ready=false` or `next_command` | Follow the returned async continuation command | Do not assume completion |
 | Parent-child move conflict | Follow source-depth ordering; move divergent children before parent | Do not move parent first when child target differs |
-| Verification mismatch | Report expected vs actual path/token and failure reason | Do not silently mark success |
 | Write blocker after successful moves | Report current progress and ask whether to try restoring to `整理前的位置` | Do not load rollback phase or execute recovery without explicit user choice |

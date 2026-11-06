@@ -70,7 +70,7 @@ Example:
 
 | Field | Meaning |
 |-------|---------|
-| `plan_id` | Stable unique ID for plan / verification, such as `P001` |
+| `plan_id` | Stable unique ID for plan / execution reporting, such as `P001` |
 | `source_path` | Current path |
 | `title` | Resource title |
 | `type` | Resource type |

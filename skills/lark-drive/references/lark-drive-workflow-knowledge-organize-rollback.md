@@ -25,8 +25,7 @@ Do not mention rollback, recovery readiness, snapshot, or journal on the normal 
 Load this file only after:
 
 1. Execution failed after one or more successful moves and the user chose to try restoring.
-2. Verification found serious mismatches and the user chose to try restoring.
-3. The user explicitly asks to rollback / recover the previous organization run.
+2. The user explicitly asks to rollback / recover the previous organization run.
 
 ## Internal State Contracts
 
@@ -94,7 +93,7 @@ Rules:
 
 ## State: ROLLBACK_CONFIRM
 
-Entry: user chose to try restoring after execution failure / verification mismatch, or explicitly asked to rollback.
+Entry: user chose to try restoring after execution failure, or explicitly asked to rollback.
 
 MUST:
 

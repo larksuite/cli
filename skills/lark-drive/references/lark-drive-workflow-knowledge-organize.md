@@ -79,9 +79,9 @@ When this workflow is triggered, the agent MUST:
 |------|------|--------------|
 | `lark-drive-workflow-knowledge-organize.md` | Workflow trigger, global contract, state machine, progressive load map, command family allowlist | Stage-specific rules, output templates, execution details |
 | `lark-drive-workflow-knowledge-organize-discovery.md` | `PARSE_SCOPE`, `INVENTORY`, target parsing, stop conditions, inventory limits, `ResourceItem` | Classification, plan generation, write execution |
-| `lark-drive-workflow-knowledge-organize-analysis.md` | `CONTENT_READ`, `ISSUE_ANALYSIS`, `RULE_GENERATION`, low-confidence reads, issue rules, problem pagination, classification, target tree | Plan execution, write confirmation, verification |
-| `lark-drive-workflow-knowledge-organize-planning.md` | `PLAN_GENERATION`, `EXEC_CONFIRM`, `PlanItem`, `DisplayItem`, plan pagination, plan revision, execution scope confirmation | Scope parsing, resource inventory, write execution, verification |
-| `lark-drive-workflow-knowledge-organize-execution.md` | `EXECUTE`, `VERIFY`, `PathTokenMap`, write execution, progress reporting, verification, next suggestions, internal recovery hooks | Scope parsing, resource inventory, classification, plan generation, plan revision, rollback execution details |
+| `lark-drive-workflow-knowledge-organize-analysis.md` | `CONTENT_READ`, `ISSUE_ANALYSIS`, `RULE_GENERATION`, low-confidence reads, issue rules, problem pagination, classification, target tree | Plan execution, write confirmation |
+| `lark-drive-workflow-knowledge-organize-planning.md` | `PLAN_GENERATION`, `EXEC_CONFIRM`, `PlanItem`, `DisplayItem`, plan pagination, plan revision, execution scope confirmation | Scope parsing, resource inventory, write execution |
+| `lark-drive-workflow-knowledge-organize-execution.md` | `EXECUTE`, `PathTokenMap`, write execution, progress reporting, execution summary, next suggestions, internal recovery hooks | Scope parsing, resource inventory, classification, plan generation, plan revision, rollback execution details |
 | `lark-drive-workflow-knowledge-organize-rollback.md` | `ROLLBACK_CONFIRM`, `ROLLBACK`, `ROLLBACK_VERIFY`, `ROLLBACK_CLEANUP_CONFIRM`, `ROLLBACK_CLEANUP`, `ROLLBACK_CLEANUP_VERIFY`, recovery plan generation, recovery execution, cleanup verification | Scope parsing, resource inventory, classification, organization plan generation, normal write execution |
 
 ## Runtime State
@@ -110,7 +110,6 @@ This workflow extends the shared Artifact Contract. Agent MUST maintain these in
 | `display_page_state` | Current page, page size, filters, and total count for user-facing pagination |
 | `path_token_map` | Mapping from target path to real `folder_token` / `node_token` |
 | `execution_scope` | Full plan, current page, filtered subset, or no execution |
-| `verification_results` | Per-plan-item verification result after execution |
 | `rollback_snapshot` | Internal pre-write snapshot used only for recovery after failure or user-requested restore |
 | `execution_journal` | Internal write-operation journal used only for recovery after failure or user-requested restore |
 | `rollback_plan` | Internal recovery plan generated only after user asks to restore |
@@ -129,9 +128,8 @@ This workflow extends the shared Artifact Contract. Agent MUST maintain these in
 | `RULE_GENERATION` | `assess` / `plan` | User confirms organization approach | Load analysis phase; generate classification rules and `target_tree` | No separate stop; target tree is shown with plan generation | `false` | `PLAN_GENERATION` |
 | `PLAN_GENERATION` | `assess` / `plan` | Target tree ready | Load planning phase; generate complete internal `plan_items`; show target tree plus plan overview or page | Target tree and plan overview / paginated plan page | `true` | `EXEC_CONFIRM` |
 | `EXEC_CONFIRM` | `confirm` | User wants execution | Load planning phase; ask user to choose execution scope | Execution options and write-operation summary | `true` | `EXECUTE` or `DONE` |
-| `EXECUTE` | `execute` | User explicitly confirmed execution scope | Load execution phase; execute only whitelisted write operations for confirmed scope while maintaining internal recovery state | Progress reports for large or long-running execution; if blocked after successful moves, ask whether to try restoring to `整理前的位置` | `false` unless blocked / recovery offered | `VERIFY`, `ROLLBACK_CONFIRM`, or `DONE` |
-| `VERIFY` | `verify` | Execution finished | Load execution phase; rescan target scope and compare actual path/token against plan | Verification table and final summary; if serious mismatches exist, ask whether to try restoring to `整理前的位置` | `false` unless recovery offered | `DONE` or `ROLLBACK_CONFIRM` |
-| `ROLLBACK_CONFIRM` | `recovery confirm` | User asks to restore after execution failure / verification mismatch / explicit rollback request | Load rollback phase; generate internal `rollback_plan`; ask whether to execute recovery | Recoverable scope and restore confirmation | `true` | `ROLLBACK` or `DONE` |
+| `EXECUTE` | `execute` | User explicitly confirmed execution scope | Load execution phase; execute only whitelisted write operations for confirmed scope while maintaining internal recovery state | Progress reports for large or long-running execution and a final summary from command outcomes; if blocked after successful moves, ask whether to try restoring to `整理前的位置` | `false` unless blocked / recovery offered | `ROLLBACK_CONFIRM` or `DONE` |
+| `ROLLBACK_CONFIRM` | `recovery confirm` | User asks to restore after execution failure or explicitly requests rollback | Load rollback phase; generate internal `rollback_plan`; ask whether to execute recovery | Recoverable scope and restore confirmation | `true` | `ROLLBACK` or `DONE` |
 | `ROLLBACK` | `recovery execute` | User explicitly confirms restore execution | Load rollback phase; execute confirmed reverse moves only | Recovery progress / result | `false` | `ROLLBACK_VERIFY` |
 | `ROLLBACK_VERIFY` | `recovery verify` | Recovery execution finished | Load rollback phase; verify restored locations and decide whether cleanup candidates exist | Recovery verification result | `false` | `ROLLBACK_CLEANUP_CONFIRM` or `DONE` |
 | `ROLLBACK_CLEANUP_CONFIRM` | `cleanup confirm` | Cleanup candidates exist after recovery, or user asks to clean workflow-created empty folders / nodes | Load rollback phase; generate cleanup plan and ask for delete confirmation | Cleanup candidates and delete confirmation | `true` | `ROLLBACK_CLEANUP` or `DONE` |
@@ -153,7 +151,6 @@ Agent MUST read the phase file for the active state before executing that state.
 | `PLAN_GENERATION` | [`lark-drive-workflow-knowledge-organize-planning.md`](lark-drive-workflow-knowledge-organize-planning.md) |
 | `EXEC_CONFIRM` | [`lark-drive-workflow-knowledge-organize-planning.md`](lark-drive-workflow-knowledge-organize-planning.md) |
 | `EXECUTE` | [`lark-drive-workflow-knowledge-organize-execution.md`](lark-drive-workflow-knowledge-organize-execution.md) |
-| `VERIFY` | [`lark-drive-workflow-knowledge-organize-execution.md`](lark-drive-workflow-knowledge-organize-execution.md) |
 | `ROLLBACK_CONFIRM` | [`lark-drive-workflow-knowledge-organize-rollback.md`](lark-drive-workflow-knowledge-organize-rollback.md) |
 | `ROLLBACK` | [`lark-drive-workflow-knowledge-organize-rollback.md`](lark-drive-workflow-knowledge-organize-rollback.md) |
 | `ROLLBACK_VERIFY` | [`lark-drive-workflow-knowledge-organize-rollback.md`](lark-drive-workflow-knowledge-organize-rollback.md) |
@@ -175,7 +172,6 @@ Use only command families allowed for the current state. Detailed syntax belongs
 | `PLAN_GENERATION` | No write commands | Generate internal plan and user-facing pages |
 | `EXEC_CONFIRM` | No write commands | Ask user to confirm execution scope |
 | `EXECUTE` | `drive +create-folder`, `drive +move`, `wiki +node-create`, `wiki +move` existing-node mode only, `drive +task_result`, `drive +apply-permission` only when explicitly confirmed | Execute whitelisted writes |
-| `VERIFY` | `wiki +node-list`, `drive files list` (schema path: `drive.files.list`), `drive +task_result` if async result remains pending | Verify actual result |
 | `ROLLBACK_CONFIRM` | No write commands | Generate internal recovery plan and ask for restore confirmation |
 | `ROLLBACK` | `drive +move`, `wiki +move` existing-node mode only, `drive +task_result` | Execute confirmed reverse moves |
 | `ROLLBACK_VERIFY` | `wiki +node-list`, `drive files list` (schema path: `drive.files.list`), `drive +task_result` if async result remains pending | Verify recovery result |
@@ -207,7 +203,7 @@ Never request permission automatically, never batch permission requests, and nev
 4. If the user asks to inspect more pages, stay in `PLAN_GENERATION` and update `display_page_state`.
 5. If the user declines execution in `EXEC_CONFIRM`, output the saved plan summary and move to `DONE`.
 6. If execution fails for an item, record the failure and continue only when the failed item is independent; otherwise stop, report the blocker, and ask whether the user wants to try restoring to `整理前的位置` when any move already succeeded.
-7. Do not load the rollback phase merely because a snapshot or journal exists. Load it only after execution failure, serious verification mismatch, or explicit user rollback request, and only after the user chooses to try restore.
+7. Do not load the rollback phase merely because a snapshot or journal exists. Load it only after execution failure or an explicit user rollback request, and only after the user chooses to try restore.
 
 ## References
 
