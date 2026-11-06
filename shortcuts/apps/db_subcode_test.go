@@ -296,6 +296,28 @@ func TestWithAppsHint_UnmappedSubcodeDegrades(t *testing.T) {
 	}
 }
 
+// TestWithAppsHint_ServerSQLSubcodesRemainUnmapped locks in that server-side
+// SQL subcodes are not given client-side recovery hints.
+func TestWithAppsHint_ServerSQLSubcodesRemainUnmapped(t *testing.T) {
+	for _, subcode := range []string{"k_dl_000001", "k_dl_000002"} {
+		t.Run(subcode, func(t *testing.T) {
+			in := errs.NewAPIError(errs.SubtypeUnknown, subcode+"：server SQL or type failure").WithCode(400002476)
+			out := withAppsHint(in, dbAuditSetHint)
+
+			p, _ := errs.ProblemOf(out)
+			if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeUnknown {
+				t.Fatalf("category/subtype = %s/%s, want api/unknown", p.Category, p.Subtype)
+			}
+			if p.Hint != dbAuditSetHint {
+				t.Fatalf("hint = %q, want command fallback without fabricated parameter guidance", p.Hint)
+			}
+			if !strings.Contains(p.Message, subcode) {
+				t.Fatalf("message = %q, unknown server subcode must remain visible", p.Message)
+			}
+		})
+	}
+}
+
 // TestWithAppsHint_NoSubcodeUnaffected guards the blast radius: apps commands that
 // never see a k_dl_ message keep the existing fallback behaviour exactly.
 func TestWithAppsHint_NoSubcodeUnaffected(t *testing.T) {
