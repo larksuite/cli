@@ -211,6 +211,8 @@ func TestDBSyncEnvironmentHelpDefaultsToOnline(t *testing.T) {
 	t.Fatal("+db-sync-update missing --environment compatibility flag")
 }
 
+// TestDBSyncHint covers how withDBSyncHint chooses between subcode,
+// rate-limit, per-code and fallback guidance while preserving the error.
 func TestDBSyncHint(t *testing.T) {
 	t.Run("nil and untyped errors pass through", func(t *testing.T) {
 		if got := withDBSyncHint(nil, "fallback"); got != nil {

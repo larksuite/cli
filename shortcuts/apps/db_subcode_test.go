@@ -296,6 +296,8 @@ func TestWithAppsHint_UnmappedSubcodeDegrades(t *testing.T) {
 	}
 }
 
+// TestWithAppsHint_ServerSQLSubcodesRemainUnmapped locks in that server-side
+// SQL subcodes are not given client-side recovery hints.
 func TestWithAppsHint_ServerSQLSubcodesRemainUnmapped(t *testing.T) {
 	for _, subcode := range []string{"k_dl_000001", "k_dl_000002"} {
 		t.Run(subcode, func(t *testing.T) {

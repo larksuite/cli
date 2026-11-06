@@ -14,6 +14,9 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// TestAppsDBPreconditionSubcodes_CommandRecovery checks that every database
+// precondition subcode returned under 400002476 is classified as a failed
+// precondition, with its recovery hint, on each command that can hit it.
 func TestAppsDBPreconditionSubcodes_CommandRecovery(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -172,6 +175,9 @@ func TestAppsDBPreconditionSubcodes_CommandRecovery(t *testing.T) {
 	}
 }
 
+// TestAppsDBSyncCreate_OnlineDDLSubcodeOuterCodes checks that +db-sync-create
+// keeps its create-specific online DDL hint under both the current 400002476
+// and the legacy 500002776 outer codes.
 func TestAppsDBSyncCreate_OnlineDDLSubcodeOuterCodes(t *testing.T) {
 	for _, code := range []int{400002476, 500002776} {
 		t.Run(strconv.Itoa(code), func(t *testing.T) {
