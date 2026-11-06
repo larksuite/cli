@@ -163,11 +163,28 @@ func TestVCMeetingManagementDocsMatchAuthTypesAndContracts(t *testing.T) {
 		"vc +meeting-participant-kickout",
 		"vc +meeting-transfer-host",
 		"vc meeting get",
-		"--dry-run",
 		"--yes",
 	} {
 		if !strings.Contains(scene, needle) {
 			t.Errorf("live-meeting-interact.md must mention %q for meeting management routing", needle)
+		}
+	}
+
+	sceneCommands := strings.ReplaceAll(scene, "\\\n", " ")
+	for _, example := range []struct {
+		prefix       string
+		confirmation bool
+	}{
+		{"lark-cli vc +meeting-end --as user", true},
+		{"lark-cli vc +meeting-end --as bot", true},
+		{"lark-cli vc +meeting-participant-kickout --as user", true},
+		{"lark-cli vc +meeting-transfer-host --as user", true},
+		{"lark-cli vc +meeting-participant-mute --as <same_identity>", false},
+		{"lark-cli vc +meeting-participant-unmute --as <same_identity>", false},
+	} {
+		command := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(example.prefix) + `[ \t][^\n]*$`).FindString(sceneCommands)
+		if command == "" || strings.Contains(command, "--dry-run") || (example.confirmation && !strings.Contains(command, "--yes")) {
+			t.Errorf("invalid default meeting control example for %q: %s", example.prefix, command)
 		}
 	}
 }

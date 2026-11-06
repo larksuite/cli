@@ -5,7 +5,7 @@
 ## 命令
 
 ```bash
-# 先预览，不调用会议 API
+# 预览，不调用会议 API
 lark-cli vc +meeting-participant-mute --as <source_identity> \
   --meeting-id <meeting_id> --target-user-id <user_id> --dry-run
 lark-cli vc +meeting-participant-unmute --as <source_identity> \
@@ -37,7 +37,7 @@ lark-cli vc +meeting-participant-unmute --as <source_identity> \
 | `vc +meeting-participant-mute` | `POST /open-apis/vc/v1/bots/mute` | 指定参会人闭麦完成 |
 | `vc +meeting-participant-unmute` | `POST /open-apis/vc/v1/bots/unmute` | 开麦请求已发送 |
 
-两个请求的 query 都只包含 `user_id_type`，body 只包含 `meeting_id` 与 `target_user_id`。先用 `--dry-run` 核对身份、路径、query 和 body；预览结果与用户意图不一致时停止，不执行真实请求。
+两个请求的 query 都只包含 `user_id_type`，body 只包含 `meeting_id` 与 `target_user_id`。
 
 ## 输出与状态边界
 

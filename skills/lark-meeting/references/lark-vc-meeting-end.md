@@ -7,7 +7,7 @@
 ## 命令
 
 ```bash
-# 先预览目标请求，不结束会议
+# 预览目标请求，不结束会议
 lark-cli vc +meeting-end --as user --meeting-id <meeting_id> --dry-run
 
 # 用户明确确认后结束整场会议
@@ -31,7 +31,7 @@ lark-cli vc +meeting-end --as user --meeting-id <meeting_id> --yes
 - 结束整场会议：使用本命令。
 - 只让应用机器人离开：使用 [vc +meeting-leave](lark-vc-agent-meeting-leave.md)。
 - 只移出一个或多个参会人：使用 [vc +meeting-participant-kickout](lark-vc-meeting-participant-kickout.md)。
-- `meeting_id` 不确定时，先从当前用户可见的 active meeting 或会议详情中确定唯一目标，再执行 dry-run；不要猜测默认会议。
+- `meeting_id` 不确定时，先从当前用户可见的 active meeting 或会议详情中确定唯一目标；不要猜测默认会议。
 
 ## 输出与错误
 

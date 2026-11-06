@@ -75,7 +75,7 @@
 - lark-meeting/references/lark-vc-meeting-countdown.md
 
 ## +meeting-end
-Use this only when the user explicitly asks to end the entire ongoing meeting. This is a high-risk write for either supported identity: preview the target with `--dry-run` and an explicit `--as user` or `--as bot`, and pass `--yes` only after explicit confirmation.
+Use this only when the user explicitly asks to end the entire ongoing meeting. This is a high-risk write for either supported identity: pass `--yes` only after explicit confirmation.
 
 ### Avoid when
 - Only the application bot should leave the meeting → use [[+meeting-leave]].
@@ -87,14 +87,14 @@ Use this only when the user explicitly asks to end the entire ongoing meeting. T
 
 ### Examples
 
-**Preview the user endpoint without making the API call**
+**End the confirmed meeting as the user**
 ```bash
-lark-cli vc +meeting-end --as user --meeting-id <meeting_id> --dry-run
+lark-cli vc +meeting-end --as user --meeting-id <meeting_id> --yes
 ```
 
-**Preview the application bot endpoint without making the API call**
+**End the confirmed meeting as the current Host application bot**
 ```bash
-lark-cli vc +meeting-end --as bot --meeting-id <meeting_id> --dry-run
+lark-cli vc +meeting-end --as bot --meeting-id <meeting_id> --yes
 ```
 
 ### Skills

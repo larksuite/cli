@@ -89,7 +89,7 @@ Calendar 日程 ──meeting_note────────────► Doc（
 - `vc +meeting-end` 无论使用用户身份还是应用身份，都会结束所有参会人的整场会议，不等于 `vc +meeting-leave` 让应用机器人自行离会；只移出指定参会人时使用仅支持用户身份的 `vc +meeting-participant-kickout`。
 - 移出参会人的 `kickout_users[].id` 默认按 open_id 解释，可用 `--user-id-type union_id|user_id` 切换；`user_type` 必须来自目标会议的参会人快照，不得根据昵称或设备信息猜测。
 - 闭麦与请求开麦按用户 ID 操作；CLI 不接受或展开 `device_id`。请求开麦的成功响应只确认请求已发送，目标参会人是否实际开麦是后续状态。
-- 结束会议和移出参会人都必须先确认用户的明确目标；预览使用 `--dry-run` 并显式传入对应身份，真实执行只有在确认后才传 `--yes`。
+- 结束会议和移出参会人都必须先确认用户的明确目标；真实执行只有在确认后才传 `--yes`。
 
 ## 快速行动
 

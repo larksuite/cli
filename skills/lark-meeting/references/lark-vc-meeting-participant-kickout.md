@@ -7,7 +7,7 @@
 ## 命令
 
 ```bash
-# 先预览一个目标，不移出参会人
+# 预览一个目标，不移出参会人
 lark-cli vc +meeting-participant-kickout \
   --as user \
   --meeting-id <meeting_id> \

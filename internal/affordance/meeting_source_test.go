@@ -88,6 +88,29 @@ func TestVCRecordingControlAffordanceMatchesSkillReference(t *testing.T) {
 	}
 }
 
+func TestVCMeetingEndAffordanceDoesNotRequirePreview(t *testing.T) {
+	previousSource := mdSource
+	t.Cleanup(func() { SetSource(previousSource) })
+	SetSource(os.DirFS("../../affordance"))
+
+	raw, ok := For(apicatalog.Catalog{}, "vc", "+meeting-end")
+	if !ok {
+		t.Fatal("For(vc, +meeting-end) returned no affordance")
+	}
+	var guidance meta.Affordance
+	if err := json.Unmarshal(raw, &guidance); err != nil {
+		t.Fatalf("decode meeting-end affordance: %v", err)
+	}
+	if strings.Contains(strings.Join(guidance.UseWhen, "\n"), "--dry-run") {
+		t.Error("meeting-end use guidance must not require a preview")
+	}
+	for _, example := range guidance.Examples {
+		if strings.Contains(example.Command, "--dry-run") || !strings.Contains(example.Command, "--yes") {
+			t.Errorf("meeting-end example must execute with confirmation: %s", example.Command)
+		}
+	}
+}
+
 func TestVCParticipantAudioAffordanceMatchesSkillReference(t *testing.T) {
 	previousSource := mdSource
 	t.Cleanup(func() { SetSource(previousSource) })
