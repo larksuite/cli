@@ -45,6 +45,7 @@ var MailReplyAll = common.Shortcut{
 		signatureFlag,
 		noSignatureFlag,
 		priorityFlag,
+		sendSeparatelyFlag,
 		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
 		showLintDetailsFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -109,7 +110,10 @@ var MailReplyAll = common.Shortcut{
 		if err := validateComposeInlineAndAttachments(runtime.FileIO(), attach, inline, runtime.Bool("plain-text"), ""); err != nil {
 			return err
 		}
-		return validatePriorityFlag(runtime)
+		if err := validatePriorityFlag(runtime); err != nil {
+			return err
+		}
+		return validateSendSeparatelyFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		messageId := runtime.Str("message-id")
@@ -131,6 +135,10 @@ var MailReplyAll = common.Shortcut{
 		sendTime := runtime.Str("send-time")
 
 		priority, err := parsePriority(runtime.Str("priority"))
+		if err != nil {
+			return err
+		}
+		sendSeparately, err := parseSendSeparately(runtime.Str("send-separately"))
 		if err != nil {
 			return err
 		}
@@ -344,6 +352,7 @@ var MailReplyAll = common.Shortcut{
 			return err
 		}
 		bld = applyPriority(bld, priority)
+		bld = applySendSeparately(bld, sendSeparately)
 		if calData := buildCalendarBody(runtime, senderEmail, toList, ccList); calData != nil {
 			bld = bld.CalendarBody(calData)
 		}

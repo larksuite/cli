@@ -58,6 +58,7 @@ lark-cli mail +draft-create --to 'alice@example.com' --subject '测试' --body '
 | `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `mail +signature` 查看可用签名。与 `--no-signature` 互斥 |
 | `--no-signature` | 否 | 跳过默认签名自动追加。与 `--signature-id` 互斥，同时使用时返回参数校验错误（退出码 2） |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
+| `--send-separately <bool>` | 否 | 分别发送：`true` 为每个收件人单独发送一封；`false` 显式取消。两个显式值都会随草稿保存（`false` 不会丢失）。省略时新建草稿按普通发送。非法值在写草稿前被拒绝（退出码 2）。语义详见 [`+send` 的「分别发送」说明](lark-mail-send.md) |
 | `--request-receipt` | 否 | 请求已读回执（RFC 3798 Message Disposition Notification）。在草稿 EML 里写 `Disposition-Notification-To: <sender>` 头，发送时生效。收件人的邮件客户端可能弹出提示、自动发送或忽略——送达不保证 |
 | `--event-summary <text>` | 否 | 日程标题。设置此参数即在邮件中嵌入日程邀请。需同时设置 `--event-start` 和 `--event-end` |
 | `--event-start <time>` | 条件必填 | 日程开始时间（ISO 8601） |
