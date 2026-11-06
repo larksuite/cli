@@ -21,7 +21,8 @@ var AppsCacheClear = common.Shortcut{
 	Description: "Clear all cache entries for the app in the given environment",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		"Example: lark-cli apps +cache-clear --app-id <app_id> --environment dev --yes",
+		"Example: lark-cli apps +cache-clear --app-id <app_id> --yes",
+		"Pass --environment dev only for an app with multi-env initialized.",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
