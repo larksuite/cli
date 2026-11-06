@@ -84,6 +84,8 @@ Field 定义列 schema。`field_id` 是稳定列标识，`name` 是可修改的�
 
 **读取 Field：** `+field-list` / `+field-get` / `+field-search-options`。**写入 Field：** 已有 Table 中创建多个字段时，优先向一次 `+field-create --json` 传字段对象数组；单字段更新和删除用 `+field-update` / `+field-delete`。创建和更新分别读取 [field-create](references/lark-base-field-create.md) / [field-update](references/lark-base-field-update.md)，由命令文档继续路由 Field JSON、Formula 和 Lookup 协议。`字段插件` 用于扩展基础字段能力：按同一行其他字段内容触发 LLM 生成，并写回已有目标字段；当前已确认目标字段支持文本、单选、数字，配置或触发前先读 [field-extension](references/lark-base-field-extension.md)。
 
+**字段编组（Field Group）：** 用 `+field-group-create` 把字段打包成 UI 编组，与 `+view-set-group`（视图内记录分组）不是一回事。每个字段只能属于一个编组，冲突报 `1254122`；平台只开放创建，没有 list/update/delete 接口，重试前先在 Table 里确认字段未被占用。
+
 ### Record
 
 Record 是 Table 中的一行数据，包含该记录在各个 Field 下的 CellValue。系统 `record_id` 是表内稳定、非空且唯一的主键，Table 的主字段只是展示字段。
