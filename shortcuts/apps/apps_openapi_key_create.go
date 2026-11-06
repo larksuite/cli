@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -82,8 +83,15 @@ func buildOpenAPIKeyCreateBody(rctx *common.RuntimeContext) (map[string]interfac
 	return body, nil
 }
 
+// apiKeyShownOnceNotice is the guidance attached to a freshly issued secret.
+const apiKeyShownOnceNotice = "this api_key is shown only once and is NOT stored by lark-cli — copy it now and store it in your own secret manager."
+
 // outputIssuedKey emits {api_key_id, api_key(raw, once), info(redacted)} for
-// create/reset, plus a one-time stderr warning. The raw secret is NEVER persisted.
+// create/reset. The one-time guidance must never break machine parsing of
+// stdout: machine formats (the JSON default, ndjson, and unknown values the
+// emitter silently falls back to JSON for) carry it inside the returned data
+// as notice, while human formats (pretty/table/csv) keep the warning on
+// stderr. The raw secret is NEVER persisted.
 func outputIssuedKey(rctx *common.RuntimeContext, data map[string]interface{}) error {
 	info := common.GetMap(data, "info")
 	raw := common.GetString(info, "api_key")
@@ -95,11 +103,30 @@ func outputIssuedKey(rctx *common.RuntimeContext, data map[string]interface{}) e
 		"api_key":    raw,
 		"info":       redactKeyInfo(info),
 	}
-	fmt.Fprintln(rctx.IO().ErrOut, "warning: this api_key is shown only once and is NOT stored by lark-cli — copy it now and store it in your own secret manager.")
+	if issuedKeyUsesHumanWarning(rctx.Format) {
+		fmt.Fprintln(rctx.IO().ErrOut, "warning: "+apiKeyShownOnceNotice)
+	} else {
+		out["notice"] = apiKeyShownOnceNotice
+	}
 	rctx.OutFormat(out, nil, func(w io.Writer) {
 		fmt.Fprintf(w, "API key ID: %v\nAPI key: %v  (shown once)\n", out["api_key_id"], raw)
 	})
 	return nil
+}
+
+// issuedKeyUsesHumanWarning reports whether the selected --format renders the
+// issued key as human-readable output, in which case the one-time guidance
+// stays on stderr. This mirrors the emitter's own format resolution in
+// internal/output: pretty is intercepted before ParseFormat and never reaches
+// it, while only table/csv are human formats among the parsed values. Every
+// other value (the JSON default, ndjson, and unrecognized values that fall
+// back to JSON) keeps the notice inside the emitted data.
+func issuedKeyUsesHumanWarning(format string) bool {
+	if format == "pretty" {
+		return true
+	}
+	f, _ := output.ParseFormat(format)
+	return f == output.FormatTable || f == output.FormatCSV
 }
 
 func firstNonEmpty(a, b string) string {
