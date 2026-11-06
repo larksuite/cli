@@ -218,6 +218,9 @@ func TestAppsDBSyncCreate_OnlineDDLSubcodeOuterCodes(t *testing.T) {
 	}
 }
 
+// TestAppsDBSingleEnvPrecondition_WriteRecoveryRequiresProductionConfirmation
+// checks that write commands on a single-env app are never told to retry
+// against online as a plain retry, only to dry-run and confirm first.
 func TestAppsDBSingleEnvPrecondition_WriteRecoveryRequiresProductionConfirmation(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -288,6 +291,8 @@ func TestAppsDBSingleEnvPrecondition_WriteRecoveryRequiresProductionConfirmation
 	}
 }
 
+// TestAppsCacheWriteTips_RequireExplicitEnvironment checks that the cache
+// write examples name the environment explicitly.
 func TestAppsCacheWriteTips_RequireExplicitEnvironment(t *testing.T) {
 	for _, shortcut := range []common.Shortcut{AppsCacheClear, AppsCacheDelete} {
 		for _, tip := range shortcut.Tips {
@@ -298,6 +303,8 @@ func TestAppsCacheWriteTips_RequireExplicitEnvironment(t *testing.T) {
 	}
 }
 
+// TestAppsDBAuditList_AuditDisabledRecoveryPreservesOnlineEnvironment checks
+// that the audit recovery commands keep the environment of the failed query.
 func TestAppsDBAuditList_AuditDisabledRecoveryPreservesOnlineEnvironment(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
