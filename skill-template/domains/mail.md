@@ -417,6 +417,10 @@ lark-cli mail +message --message-id <id>
 
 **size 约束**：单模板 `template_content` ≤ 3 MB；`body + inline + SMALL` 累计 ≤ 25 MB（超过则该批次剩余非 inline 附件切换为 LARGE；inline 不能切换）。
 
+### 用户级信任 / 屏蔽发件人名单
+
+用户要求查看、搜索、加入或删除个人邮箱的信任发件人 / 屏蔽发件人时，使用原生 `user_mailbox.allow_senders` / `user_mailbox.blocked_senders` API。完整的用户身份、`sender_type`、分页、`failed_items` 判断及加入→查询→删除闭环见 [用户级信任 / 屏蔽发件人名单](references/lark-mail-sender-lists.md)。这些用户级名单与管理员维护的租户级 `allowed_senders` / `blocked_senders` 相互独立，不要混用。
+
 ## 原生 API 调用规则
 
 没有 Shortcut 覆盖的操作才使用原生 API。标签、已读状态、移动文件夹优先使用 `+message-modify`；软删除优先使用 `+message-trash`。会话或 thread ID 级标签/文件夹整理可使用 `+thread-modify`；软删除会话可使用 `+thread-trash`。调用步骤以本节为准（API Resources 章节的 resource/method 列表可辅助查阅）。
