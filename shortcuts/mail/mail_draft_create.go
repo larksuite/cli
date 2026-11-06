@@ -42,6 +42,7 @@ var MailDraftCreate = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
+		separateSendFlag,
 		{Name: "to", Type: "string_array", Desc: "Optional. To recipient email address. Repeat --to once per recipient; quote each value. Display-name format is supported. When omitted, the draft is created without recipients (they can be added later via +draft-edit)."},
 		{Name: "subject", Desc: "Final draft subject. Pass the full subject you want to appear in the draft. Required unless --template-id supplies a non-empty subject."},
 		{Name: "body", Desc: "Full email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file. Required unless --template-id supplies a non-empty body."},
@@ -71,13 +72,13 @@ var MailDraftCreate = common.Shortcut{
 		}
 		api = api.GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
-			Body(map[string]interface{}{
+			Body(withSeparateSendBody(runtime, map[string]interface{}{
 				"raw": "<base64url-EML>",
 				"_preview": map[string]interface{}{
 					"to":      normalizeRecipientFlagValues(runtime.StrArray("to")),
 					"subject": runtime.Str("subject"),
 				},
-			})
+			}))
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -208,7 +209,7 @@ var MailDraftCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
+		draftResult, err := draftpkg.CreateWithRawSetting(runtime, mailboxID, rawEML, separateSendSetting(runtime))
 		if err != nil {
 			return mailDecorateProblemMessage(err, "create draft failed")
 		}
