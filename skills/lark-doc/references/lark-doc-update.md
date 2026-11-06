@@ -75,6 +75,7 @@ lark-cli docs +update --doc "xx" --command block_delete --start-block-id blkFirs
 
 ## 通用安全规则
 
+- 投票也使用 `block_replace` 整块替换；新 `<poll>` 不继承旧 block id、票数、投票人或发布状态。替换成普通内容时直接提供目标 XML。
 - 每次写操作后都按 block ID 已变化处理。新插入或复制的内容一定使用新 ID；替换、删除和覆盖会使旧 ID 失效；移动会改变章节与 range 语义。
 - 同一 block 有多处修改时，应合并为一次 `block_replace`，避免连续使用旧 ID。
 
