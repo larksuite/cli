@@ -19,9 +19,8 @@ import (
 //
 // The data field may be a JSON object (actual behavior) or a JSON string (per doc).
 func handleRoleAPIResponse(runtime *common.RuntimeContext, apiResp *larkcore.ApiResp, action string) error {
-	if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
-		enriched := enrichBaseAPIErrorFromBody(err, apiResp.RawBody, runtime.APIClassifyContext())
-		return prefixRoleActionError(enriched, action)
+	if err := classifyBaseAPIResponse(runtime, apiResp); err != nil {
+		return prefixRoleActionError(err, action)
 	}
 	return handleRoleResponse(runtime, apiResp.RawBody, action)
 }
