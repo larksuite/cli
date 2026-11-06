@@ -1,8 +1,8 @@
-# 主题资料收集工作流：资源解析与内容验证
+# 主题资料收集工作流：资源解析
 
-由状态 `RESOURCE_RESOLVE`、`CONTENT_VERIFY` 加载。
+由状态 `RESOURCE_RESOLVE` 加载。
 
-本文档负责资源解析、结构化父级、移动资格、内容验证和 `ResourceItem`。不得判断相关性、生成移动计划、创建目标、移动资源或执行恢复操作。
+本文档负责资源解析、结构化父级、移动资格和 `ResourceItem`。不得判断相关性、生成移动计划、创建目标、移动资源或执行恢复操作。
 
 本文档只服务 `topic_move_collector`。进入本文档时，`workflow_id` 必须是 `topic_move_collector`；不得把当前任务改路由到其他 workflow。
 
@@ -15,14 +15,12 @@
 3. 使用 `drive metas batch_query` 补齐 Drive 资源 owner、标题和 URL。
 4. 必要时使用 `drive permission.members auth` 读取权限信号；该接口不提供 `full_access` / 移动权限的直接判定，不能把 `manage_public` 等同为可移动。
 5. 按 [`../../lark-wiki/references/lark-wiki-node-get.md`](../../lark-wiki/references/lark-wiki-node-get.md) 处理 Wiki 节点解析。
-6. 按 [`../../lark-doc/references/lark-doc-fetch.md`](../../lark-doc/references/lark-doc-fetch.md) 读取文档内容。
-7. 需要验证 Sheet 内容时，按 [`../../lark-sheets/SKILL.md`](../../lark-sheets/SKILL.md) 执行。
 
-## 进入解析与验证阶段前校验
+## 进入解析阶段前校验
 
 进入本文档后，如果 `resource_items` 还不存在，当前状态必须是 `RESOURCE_RESOLVE`。
 
-禁止从 `candidate_items` 直接进入 `CONTENT_VERIFY` 或 `RELEVANCE_CLASSIFY`，也禁止从 `RESOURCE_RESOLVE` 直接进入 `RELEVANCE_CLASSIFY`。即使候选项已有标题、URL、摘要或 token，也必须依次执行 `RESOURCE_RESOLVE` 和 `CONTENT_VERIFY`；两个状态不得合并。
+禁止从 `candidate_items` 直接进入 `RELEVANCE_CLASSIFY`；必须先完成 `RESOURCE_RESOLVE`，取得执行所需的资源身份和移动资格。
 
 ## 状态：`RESOURCE_RESOLVE`
 
@@ -46,7 +44,7 @@
 |----------------|---------------|
 | Drive URL / token | token 或类型不确定时，使用 `drive +inspect`。 |
 | Wiki URL / token | 使用 `drive +inspect` 或 `wiki +node-get`；保留节点身份和对象身份。 |
-| 文件夹候选 | 标记为容器；不要当作普通文档做内容验证。 |
+| 文件夹候选 | 标记为容器。 |
 | 快捷方式候选 | 能解析源资源时解析源资源；同时保留快捷方式身份。 |
 | 无读取权限 | 保留可见元数据，并设置 `permission_state=denied`。 |
 | 无移动权限或移动权限未知 | 保留可见元数据和召回证据，并设置对应 `move_permission_state`。 |
@@ -73,22 +71,20 @@
 ```text
 资源解析完成：
 - 候选总数：N 项
-- 可进入内容验证：N 项
+- 已确认可移动：N 项
 - 无移动权限：N 项
 - 移动权限未知：N 项
 - 解析失败或无读取权限：N 项
 
-下一步会对可移动资源做内容验证；不会创建或移动资源。
+下一步会进行相关性分组；不会创建或移动资源。
 ```
 
 ### 资源解析出口门禁
 
 `RESOURCE_RESOLVE` 完成后必须：
 
-1. 将 `content_verify_completed` 重置为 `false`。
-2. 将下一状态设置为 `CONTENT_VERIFY`，不得设置为 `RELEVANCE_CLASSIFY` 或 `PLAN_MOVE`。
-3. 不得在本状态生成 `relevance`、`relevance_groups` 或移动计划。
-4. 即使可读取正文的资源数量为 0，也必须进入 `CONTENT_VERIFY`，为每项记录跳过验证原因并输出验证摘要。
+1. 将下一状态设置为 `RELEVANCE_CLASSIFY`，加载 [`lark-drive-workflow-topic-move-collector-review-plan.md`](lark-drive-workflow-topic-move-collector-review-plan.md)。
+2. 不得在本状态生成 `relevance`、`relevance_groups` 或移动计划。
 
 ### 移动资格判定
 
@@ -120,62 +116,8 @@
 
 1. `drive permission.members auth` 不提供 `full_access` 或 `move` action；不能用 `view`、`edit`、`share` 或 `manage_public` 结果推断源位置或目标位置可写。
 2. `target_write_state=unknown|denied` 的资源不得进入高 / 中相关可执行分组或移动计划。
-3. `move_permission_state=unknown` 的资源默认不进入内容验证、相关性高 / 中分组或移动计划。
+3. `move_permission_state=unknown` 的资源默认不进入相关性高 / 中分组或移动计划。
 4. 当 `owner_scope=mine` 但解析出的 owner 不是当前用户时，将该资源视为异常候选，设置 `source_move_state=unknown` 和 `move_permission_state=unknown`，不得加入移动计划。
-
-## 状态：`CONTENT_VERIFY`
-
-进入条件：资源列表已准备。
-
-必须：
-
-1. 本状态不可跳过，也不得与 `RESOURCE_RESOLVE` 或 `RELEVANCE_CLASSIFY` 合并；没有可读取正文的资源时仍须执行。
-2. 只在资源解析后读取支持的内容。
-3. 按数量、大小和类型能力限制读取范围。
-4. 结合搜索证据和内容证据；除非标题精确且足够强，否则不要仅凭标题判为高相关。
-5. 将不可读取资源标记为 `unverifiable` 或 `permission_denied`。
-6. 不得自动申请权限。
-7. 为每个资源写入验证状态：已读取内容证据、仅可使用搜索证据、无权限、无移动权限、移动权限未知、无法验证或不支持内容验证。
-8. 对 `move_permission_state=denied|unknown` 的资源，不再读取正文内容，写入跳过验证原因并保留召回证据；写入跳过原因属于执行本状态，不等于跳过本状态。
-9. 所有资源都有验证状态或跳过原因后，将 `content_verify_completed` 设置为 `true` 并输出验证摘要。
-10. `content_verify_completed=true` 前不得进入 `RELEVANCE_CLASSIFY`。
-
-### 验证方式
-
-| 资源类型 | 验证方式 |
-|---------------|---------------------|
-| `docx` / `doc` | 允许时使用 `docs +fetch --api-version v2`。 |
-| `sheet` | 使用 `sheets +cells-search` 查关键词证据，或用 `sheets +cells-get` 读取有界范围。 |
-| `bitable` | 只有必要且已加载 Base 能力时验证。 |
-| `slides` | 除非具备幻灯片读取能力，否则使用元数据 / 预览 / 标题证据。 |
-| `file` | 仅在支持时使用标题、元数据、预览或导出文本。 |
-| `wiki` 节点 | 按 `obj_type` 验证底层对象；节点本身不是内容 token。 |
-| `folder` | 除非用户明确要移动容器，否则通常不作为主题证据移动。 |
-
-### 内容验证完成 UI
-
-完成 `CONTENT_VERIFY` 后必须输出：
-
-```text
-内容验证完成：
-- 已读取内容证据：N 项
-- 仅复用搜索证据：N 项
-- 因无权限或移动资格跳过：N 项
-- 无法验证或不支持验证：N 项
-
-下一步会基于以上证据进行相关性分组；不会创建或移动资源。
-```
-
-如果没有任何资源可以读取正文，仍须输出该摘要，并明确说明所有资源采用的搜索证据或跳过原因。
-
-### 内容验证出口门禁
-
-`CONTENT_VERIFY` 完成后必须：
-
-1. 确认 `content_verify_completed=true`，且每个 `ResourceItem` 都已有验证状态或跳过原因。
-2. 将下一状态设置为 `RELEVANCE_CLASSIFY`。
-3. 加载 [`lark-drive-workflow-topic-move-collector-review-plan.md`](lark-drive-workflow-topic-move-collector-review-plan.md)。
-4. 不得直接进入 `PLAN_MOVE`。
 
 ## ResourceItem
 
@@ -203,7 +145,6 @@
   "move_permission_basis": ["权限矩阵证据或阻塞原因"],
   "target_write_state": "confirmed|unknown|denied",
   "item_resolve_status": "resolved|partial|failed",
-  "content_verify_state": "verified|search_evidence_only|skipped_by_move_permission|permission_denied|unverifiable|unsupported",
   "content_evidence": ["证据"],
   "relevance": "high|medium|low|permission_denied|no_move_permission|move_permission_unknown|unverifiable|unsupported_move_target"
 }
@@ -226,6 +167,5 @@
 | `move_permission_basis` | 移动资格判断依据，用于解释为什么纳入或排除。 |
 | `target_write_state` | 目标位置是否确认可写。 |
 | `item_resolve_status` | 资源项解析状态；不要和 `TargetLocation.target_resolve_status` 混用。 |
-| `content_verify_state` | 内容验证状态或跳过验证原因。 |
-| `content_evidence` | 支撑相关性判断的命中证据。 |
+| `content_evidence` | 支撑相关性判断的已有证据，可复用标题和搜索片段。 |
 | `relevance` | 相关性和可执行性分组。 |

@@ -1,8 +1,8 @@
 # 知识整理工作流：Rollback
 
-Loaded by states: `ROLLBACK_CONFIRM`, `ROLLBACK`, `ROLLBACK_VERIFY`, `ROLLBACK_CLEANUP_CONFIRM`, `ROLLBACK_CLEANUP`, `ROLLBACK_CLEANUP_VERIFY`.
+Loaded by states: `ROLLBACK_CONFIRM`, `ROLLBACK`, `ROLLBACK_CLEANUP_CONFIRM`, `ROLLBACK_CLEANUP`.
 
-This file owns recovery plan generation, recovery confirmation, recovery execution, recovery verification, cleanup confirmation, cleanup execution, and cleanup verification. It also defines the internal `rollback_snapshot` and `execution_journal` contracts.
+This file owns recovery plan generation, recovery confirmation, recovery execution, cleanup confirmation, and cleanup execution. It also defines the internal `rollback_snapshot` and `execution_journal` contracts.
 
 It MUST NOT generate organization plans, revise classification rules, execute unconfirmed deletes, rename resources, modify permissions, or use `wiki +move` docs-to-wiki mode.
 
@@ -174,33 +174,7 @@ Progress output should stay concise:
 恢复进度：已尝试 <done>/<total> 项，失败 <failed_count> 项。
 ```
 
-## State: ROLLBACK_VERIFY
-
-Entry: recovery execution finished.
-
-MUST:
-
-1. Rescan the relevant Drive folder / Wiki nodes.
-2. Compare each rollback item with its original origin.
-3. Mark status per item.
-4. If cleanup candidates clearly remain from this workflow run, transition to `ROLLBACK_CLEANUP_CONFIRM`.
-5. Do not ask for deletion confirmation in this state.
-
-Verification table:
-
-| plan_id | 标题 | 原位置 | 当前实际位置 | 状态 | 失败原因 |
-|---------|------|--------|--------------|------|----------|
-
-Status values:
-
-| Status | Meaning |
-|--------|---------|
-| `rollback_success` | Resource is back under the original parent / root |
-| `rollback_failed` | Resource is still outside the original origin |
-| `missing` | Resource cannot be found |
-| `needs_manual_review` | Actual state is ambiguous or affected by external changes |
-
-Do not delete anything from this state.
+Summarize recovery command results without rescanning locations. If workflow-created cleanup candidates exist, continue to `ROLLBACK_CLEANUP_CONFIRM`; otherwise finish.
 
 ## State: ROLLBACK_CLEANUP_CONFIRM
 
@@ -215,6 +189,8 @@ Candidate rules:
 3. Candidate MUST currently be empty, or contain only workflow-created cleanup candidates that are themselves safe to delete.
 4. Candidate MUST NOT contain original resources, unknown resources, rollback-failed resources, or user-created resources.
 5. If child origin is uncertain, mark the candidate `cleanup_blocked`.
+
+Read only the cleanup candidates' current children to apply these deletion-safety rules; do not rescan the whole organization scope.
 
 Generate `rollback_cleanup_plan` with:
 
@@ -281,17 +257,9 @@ MUST NOT:
 - Delete non-empty folders / nodes that contain anything outside cleanup candidates.
 - Delete a knowledge space.
 
-## State: ROLLBACK_CLEANUP_VERIFY
+### Cleanup Results
 
-Entry: cleanup deletion finished.
-
-MUST:
-
-1. Verify each confirmed cleanup target is gone.
-2. Report failed or pending deletes.
-3. Stop after reporting cleanup results.
-
-Verification table:
+Report delete command results, including failed or pending deletes, and finish without reading each target again.
 
 | 类型 | 路径 | token | 状态 | 失败原因 |
 |------|------|-------|------|----------|
@@ -303,5 +271,4 @@ Status values:
 | `deleted` | Cleanup target was deleted |
 | `delete_pending` | Async deletion is still pending |
 | `delete_failed` | Delete command failed |
-| `still_exists` | Target still exists after deletion attempt |
 | `skipped` | Target was not safe to delete or user did not confirm it |

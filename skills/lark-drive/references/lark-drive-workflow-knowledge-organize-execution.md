@@ -122,7 +122,7 @@ Rules:
 
 ### Execution Result
 
-Build the final summary only from write-command outcomes and `execution_journal`; successful execution does not issue follow-up read calls.
+Build the final summary from write-command outcomes and `execution_journal`; read back only when the user explicitly requests verification.
 
 ```text
 执行完成。
@@ -144,8 +144,7 @@ Triggers:
 - `partial=true`: inventory or content read was incomplete.
 - Manual confirmation or low-confidence items remain.
 - Failed items exist.
-- One target folder / Wiki node contains more than 100 direct child resources after organization.
-- Root-level loose resources remain.
+- Existing inventory and execution results show a target with more than 100 direct children, remaining root-level loose resources, or source containers not handled as planned.
 
 Template:
 

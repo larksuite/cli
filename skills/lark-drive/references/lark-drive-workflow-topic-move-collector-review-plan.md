@@ -2,7 +2,7 @@
 
 由状态 `RELEVANCE_CLASSIFY`、`PLAN_MOVE` 加载。
 
-本文档负责相关性分级、审核 UI、移动计划生成和 `MovePlanItem`。不得重新执行资源解析或内容验证，也不得创建目标、移动资源或执行恢复操作。
+本文档负责相关性分级、审核 UI、移动计划生成和 `MovePlanItem`。不得重新执行资源解析，也不得创建目标、移动资源或执行恢复操作。
 
 本文档只服务 `topic_move_collector`。进入本文档时，`workflow_id` 必须是 `topic_move_collector`；不得把当前任务改路由到其他 workflow。
 
@@ -10,25 +10,26 @@
 
 进入本文档前必须已有：
 
-1. `resource_items`，且每个 `ResourceItem` 已包含稳定 `resource_id`、资源类型、移动所需 token、结构化当前父级、权限状态、内容验证状态和证据。
-2. `content_verify_completed=true`。
-3. 每个资源都有内容证据、搜索证据复用说明或明确跳过原因。
+1. `resource_items`，且每个 `ResourceItem` 已包含稳定 `resource_id`、资源类型、移动所需 token、结构化当前父级和权限状态。
+2. 已取得的标题、路径、搜索片段或内容证据。
 
 `ResourceItem` schema 和字段生成规则由 [`lark-drive-workflow-topic-move-collector-resolve-verify.md`](lark-drive-workflow-topic-move-collector-resolve-verify.md) 负责。只要上述输入契约完整，本状态不得为重复读取 schema 而重新加载或执行前一阶段文档。
 
-如果输入字段缺失、资源需要重新解析或用户要求重新读取证据，废弃受影响的相关性和计划结果，返回 `RESOURCE_RESOLVE` 或 `CONTENT_VERIFY`，并加载资源解析与内容验证文档；不得在本状态补猜。
+如果资源身份或移动资格字段缺失，废弃受影响的相关性和计划结果，返回 `RESOURCE_RESOLVE`；不得在本状态补猜。
 
 ## 状态：`RELEVANCE_CLASSIFY`
 
-进入条件：`CONTENT_VERIFY` 已完成，`content_verify_completed=true`，且每个 `ResourceItem` 都已有验证状态或跳过验证原因。
+进入条件：`RESOURCE_RESOLVE` 已完成。
+
+优先复用已有证据；仅当用户要求的正文条件无法据此判断时，按对应内容 Skill 读取必要内容。证据不足的资源归入中 / 低相关或 `unverifiable` 分组，不强制补读所有候选。
+
+`folder` 候选默认不纳入移动计划，不因标题命中归为默认移动项；仅当用户明确要求移动该容器并确认携带子资源的范围时才可纳入。
 
 禁止条件：
 
 1. 只有 `candidate_items`，没有 `resource_items`。
 2. 资源未经过 `RESOURCE_RESOLVE`。
 3. 资源没有 `RESOURCE_RESOLVE` 写入的移动资格状态。
-4. 资源没有 `CONTENT_VERIFY` 写入的验证状态或跳过验证原因。
-5. 上一完成状态是 `RESOURCE_RESOLVE`，或 `content_verify_completed` 不为 `true`。
 
 必须将每个资源归入且只归入一个分组：
 
@@ -40,7 +41,7 @@
 | `permission_denied` | 当前身份无权读取或解析，不能验证内容。 | 否 |
 | `no_move_permission` | 已确认当前身份不具备移动资格。 | 否 |
 | `move_permission_unknown` | 无法确认当前身份是否具备移动资格。 | 否 |
-| `unverifiable` | 类型或工具限制导致无法验证内容。 | 否 |
+| `unverifiable` | 类型或工具限制导致无法判断用户要求的正文条件。 | 否 |
 | `unsupported_move_target` | 目标方向或资源类型不支持移动。 | 否 |
 
 `high`、`medium` 和 `low` 只能包含 `move_permission_state=movable` 且 `target_write_state=confirmed` 的资源。

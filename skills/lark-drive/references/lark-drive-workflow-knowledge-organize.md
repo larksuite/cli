@@ -79,10 +79,10 @@ When this workflow is triggered, the agent MUST:
 |------|------|--------------|
 | `lark-drive-workflow-knowledge-organize.md` | Workflow trigger, global contract, state machine, progressive load map, command family allowlist | Stage-specific rules, output templates, execution details |
 | `lark-drive-workflow-knowledge-organize-discovery.md` | `PARSE_SCOPE`, `INVENTORY`, target parsing, stop conditions, inventory limits, `ResourceItem` | Classification, plan generation, write execution |
-| `lark-drive-workflow-knowledge-organize-analysis.md` | `CONTENT_READ`, `ISSUE_ANALYSIS`, `RULE_GENERATION`, low-confidence reads, issue rules, problem pagination, classification, target tree | Plan execution, write confirmation |
+| `lark-drive-workflow-knowledge-organize-analysis.md` | `ISSUE_ANALYSIS`, `RULE_GENERATION`, issue rules, problem pagination, classification, target tree | Plan execution, write confirmation |
 | `lark-drive-workflow-knowledge-organize-planning.md` | `PLAN_GENERATION`, `EXEC_CONFIRM`, `PlanItem`, `DisplayItem`, plan pagination, plan revision, execution scope confirmation | Scope parsing, resource inventory, write execution |
 | `lark-drive-workflow-knowledge-organize-execution.md` | `EXECUTE`, `PathTokenMap`, write execution, progress reporting, execution summary, next suggestions, internal recovery hooks | Scope parsing, resource inventory, classification, plan generation, plan revision, rollback execution details |
-| `lark-drive-workflow-knowledge-organize-rollback.md` | `ROLLBACK_CONFIRM`, `ROLLBACK`, `ROLLBACK_VERIFY`, `ROLLBACK_CLEANUP_CONFIRM`, `ROLLBACK_CLEANUP`, `ROLLBACK_CLEANUP_VERIFY`, recovery plan generation, recovery execution, cleanup verification | Scope parsing, resource inventory, classification, organization plan generation, normal write execution |
+| `lark-drive-workflow-knowledge-organize-rollback.md` | `ROLLBACK_CONFIRM`, `ROLLBACK`, `ROLLBACK_CLEANUP_CONFIRM`, `ROLLBACK_CLEANUP`, recovery plan generation, recovery execution, cleanup | Scope parsing, resource inventory, classification, organization plan generation, normal write execution |
 
 ## Runtime State
 
@@ -95,9 +95,9 @@ This workflow extends the shared Artifact Contract. Agent MUST maintain these in
 | `environment_profile` | Current environment and CLI profile, such as prod / BOE / PRE and config profile |
 | `identity` | `user` by default unless user explicitly asks for app / bot perspective |
 | `resource_items` | Complete normalized resource list from discovery |
-| `partial` | Whether inventory or content read cannot fully continue because of auth, permission, API / pagination failure after retries, API coverage limitations, tool budget, or scope blockers; batching checkpoints alone are not partial |
+| `partial` | Whether inventory or required content read cannot fully continue because of auth, permission, API / pagination failure after retries, API coverage limitations, tool budget, or scope blockers; batching checkpoints alone are not partial |
 | `inventory_continuation_state` | Structured checkpoint for continuing inventory batches within the confirmed scope. Must preserve `scope`, `queue`, `current_cursor`, `visited_page_keys`, `dedupe_keys`, and `blockers`; Drive queue entries carry `folder_token`, `path`, `depth`, and `page_token`; Wiki queue entries carry `space_id` / `node_token`, `path`, `depth`, and pagination cursor; search entries carry query / filters and pagination cursor. Missing or corrupt state is a blocker, not a completed inventory. |
-| `low_confidence_items` | Items requiring mandatory partial content read |
+| `low_confidence_items` | Items whose classification needs review |
 | `issue_summary` | Problem types, counts, evidence paths, and suggested handling |
 | `classification_rules` | Rules used to map resources to target paths |
 | `target_tree` | Proposed target folder / Wiki node tree |
@@ -113,28 +113,24 @@ This workflow extends the shared Artifact Contract. Agent MUST maintain these in
 | `rollback_snapshot` | Internal pre-write snapshot used only for recovery after failure or user-requested restore |
 | `execution_journal` | Internal write-operation journal used only for recovery after failure or user-requested restore |
 | `rollback_plan` | Internal recovery plan generated only after user asks to restore |
-| `rollback_verification_results` | Per-item recovery verification result |
 | `rollback_cleanup_plan` | Optional cleanup plan for workflow-created empty folders / nodes after recovery |
-| `rollback_cleanup_results` | Cleanup verification result |
+| `rollback_cleanup_results` | Cleanup command results |
 
 ## Execution State Machine
 
 | State | Protocol Step | Entry Condition | Agent MUST Do | User-Facing Output | wait_for_user | Next State |
 |-------|---------------|-----------------|---------------|--------------------|---------------|------------|
 | `PARSE_SCOPE` | `route` / `scope` | Workflow triggered | Load discovery phase; parse target, environment, identity, and target type | Scope confirmation or clarification question | `true` | `INVENTORY` |
-| `INVENTORY` | `read` | Scope confirmed | Load discovery phase; recursively list resources and build `resource_items` | Inventory progress / summary; continue automatically unless blocked | `false` unless blocked | `CONTENT_READ` |
-| `CONTENT_READ` | `read` | Inventory complete | Load analysis phase; identify low-confidence items and perform mandatory partial read when needed | Low-confidence read summary | `false` unless auth / permission blocks | `ISSUE_ANALYSIS` |
-| `ISSUE_ANALYSIS` | `assess` / `plan` | Resource list and partial reads ready | Load analysis phase; detect structure problems, evidence, and organization approach | Inventory result, problems, organization approach, and decision options | `true` | `RULE_GENERATION` |
+| `INVENTORY` | `read` | Scope confirmed | Load discovery phase; recursively list resources and build `resource_items` | Inventory progress / summary; continue automatically unless blocked | `false` unless blocked | `ISSUE_ANALYSIS` |
+| `ISSUE_ANALYSIS` | `assess` / `plan` | Resource list ready | Load analysis phase; detect structure problems, evidence, and organization approach | Inventory result, problems, organization approach, and decision options | `true` | `RULE_GENERATION` |
 | `RULE_GENERATION` | `assess` / `plan` | User confirms organization approach | Load analysis phase; generate classification rules and `target_tree` | No separate stop; target tree is shown with plan generation | `false` | `PLAN_GENERATION` |
 | `PLAN_GENERATION` | `assess` / `plan` | Target tree ready | Load planning phase; generate complete internal `plan_items`; show target tree plus plan overview or page | Target tree and plan overview / paginated plan page | `true` | `EXEC_CONFIRM` |
 | `EXEC_CONFIRM` | `confirm` | User wants execution | Load planning phase; ask user to choose execution scope | Execution options and write-operation summary | `true` | `EXECUTE` or `DONE` |
 | `EXECUTE` | `execute` | User explicitly confirmed execution scope | Load execution phase; execute only whitelisted write operations for confirmed scope while maintaining internal recovery state | Progress reports for large or long-running execution and a final summary from command outcomes; if blocked after successful moves, ask whether to try restoring to `整理前的位置` | `false` unless blocked / recovery offered | `ROLLBACK_CONFIRM` or `DONE` |
 | `ROLLBACK_CONFIRM` | `recovery confirm` | User asks to restore after execution failure or explicitly requests rollback | Load rollback phase; generate internal `rollback_plan`; ask whether to execute recovery | Recoverable scope and restore confirmation | `true` | `ROLLBACK` or `DONE` |
-| `ROLLBACK` | `recovery execute` | User explicitly confirms restore execution | Load rollback phase; execute confirmed reverse moves only | Recovery progress / result | `false` | `ROLLBACK_VERIFY` |
-| `ROLLBACK_VERIFY` | `recovery verify` | Recovery execution finished | Load rollback phase; verify restored locations and decide whether cleanup candidates exist | Recovery verification result | `false` | `ROLLBACK_CLEANUP_CONFIRM` or `DONE` |
+| `ROLLBACK` | `recovery execute` | User explicitly confirms restore execution | Load rollback phase; execute confirmed reverse moves only | Recovery progress / result | `false` | `ROLLBACK_CLEANUP_CONFIRM` or `DONE` |
 | `ROLLBACK_CLEANUP_CONFIRM` | `cleanup confirm` | Cleanup candidates exist after recovery, or user asks to clean workflow-created empty folders / nodes | Load rollback phase; generate cleanup plan and ask for delete confirmation | Cleanup candidates and delete confirmation | `true` | `ROLLBACK_CLEANUP` or `DONE` |
-| `ROLLBACK_CLEANUP` | `cleanup execute` | User explicitly confirms cleanup deletion | Load rollback phase; delete only confirmed workflow-created safe-empty folders / nodes | Cleanup progress / result | `false` | `ROLLBACK_CLEANUP_VERIFY` |
-| `ROLLBACK_CLEANUP_VERIFY` | `cleanup verify` | Cleanup deletion finished | Load rollback phase; verify deleted cleanup targets | Cleanup verification result | `false` | `DONE` |
+| `ROLLBACK_CLEANUP` | `cleanup execute` | User explicitly confirms cleanup deletion | Load rollback phase; delete only confirmed workflow-created safe-empty folders / nodes | Cleanup progress / result | `false` | `DONE` |
 | `DONE` | `done` | No more action | Stop | Final answer | `false` | End |
 
 ## Progressive Load Map
@@ -145,7 +141,6 @@ Agent MUST read the phase file for the active state before executing that state.
 |-------|---------------------|
 | `PARSE_SCOPE` | [`lark-drive-workflow-knowledge-organize-discovery.md`](lark-drive-workflow-knowledge-organize-discovery.md) |
 | `INVENTORY` | [`lark-drive-workflow-knowledge-organize-discovery.md`](lark-drive-workflow-knowledge-organize-discovery.md) |
-| `CONTENT_READ` | [`lark-drive-workflow-knowledge-organize-analysis.md`](lark-drive-workflow-knowledge-organize-analysis.md) |
 | `ISSUE_ANALYSIS` | [`lark-drive-workflow-knowledge-organize-analysis.md`](lark-drive-workflow-knowledge-organize-analysis.md) |
 | `RULE_GENERATION` | [`lark-drive-workflow-knowledge-organize-analysis.md`](lark-drive-workflow-knowledge-organize-analysis.md) |
 | `PLAN_GENERATION` | [`lark-drive-workflow-knowledge-organize-planning.md`](lark-drive-workflow-knowledge-organize-planning.md) |
@@ -153,10 +148,8 @@ Agent MUST read the phase file for the active state before executing that state.
 | `EXECUTE` | [`lark-drive-workflow-knowledge-organize-execution.md`](lark-drive-workflow-knowledge-organize-execution.md) |
 | `ROLLBACK_CONFIRM` | [`lark-drive-workflow-knowledge-organize-rollback.md`](lark-drive-workflow-knowledge-organize-rollback.md) |
 | `ROLLBACK` | [`lark-drive-workflow-knowledge-organize-rollback.md`](lark-drive-workflow-knowledge-organize-rollback.md) |
-| `ROLLBACK_VERIFY` | [`lark-drive-workflow-knowledge-organize-rollback.md`](lark-drive-workflow-knowledge-organize-rollback.md) |
 | `ROLLBACK_CLEANUP_CONFIRM` | [`lark-drive-workflow-knowledge-organize-rollback.md`](lark-drive-workflow-knowledge-organize-rollback.md) |
 | `ROLLBACK_CLEANUP` | [`lark-drive-workflow-knowledge-organize-rollback.md`](lark-drive-workflow-knowledge-organize-rollback.md) |
-| `ROLLBACK_CLEANUP_VERIFY` | [`lark-drive-workflow-knowledge-organize-rollback.md`](lark-drive-workflow-knowledge-organize-rollback.md) |
 
 ## Command Map
 
@@ -166,18 +159,15 @@ Use only command families allowed for the current state. Detailed syntax belongs
 |-------|--------------------------|---------|
 | `PARSE_SCOPE` | `drive +inspect`, `wiki +node-get`, `wiki +space-list`, `wiki spaces get`, `drive +search` | Resolve target scope |
 | `INVENTORY` | `wiki +node-list`, `drive files list` (schema path: `drive.files.list`), `drive metas batch_query` | Recursively list and enrich resources |
-| `CONTENT_READ` | `docs +fetch`, plus `lark-sheets` / `lark-base` when conditionally required | Partial content read for low-confidence items |
-| `ISSUE_ANALYSIS` | No write commands | Analyze `resource_items` only |
+| `ISSUE_ANALYSIS` | `docs +fetch`, plus `lark-sheets` / `lark-base` only when user-required content conditions need reading | Analyze `resource_items` and available evidence; no writes |
 | `RULE_GENERATION` | No write commands | Generate classification rules and target tree |
 | `PLAN_GENERATION` | No write commands | Generate internal plan and user-facing pages |
 | `EXEC_CONFIRM` | No write commands | Ask user to confirm execution scope |
-| `EXECUTE` | `drive +create-folder`, `drive +move`, `wiki +node-create`, `wiki +move` existing-node mode only, `drive +task_result`, `drive +apply-permission` only when explicitly confirmed | Execute whitelisted writes |
+| `EXECUTE` | `drive +create-folder`, `drive +move`, `wiki +node-create`, `wiki +move` existing-node mode only, `drive +task_result`, `drive +apply-permission` only when explicitly confirmed; `wiki +node-list` / `drive files list` only for user-requested verification | Execute whitelisted writes |
 | `ROLLBACK_CONFIRM` | No write commands | Generate internal recovery plan and ask for restore confirmation |
 | `ROLLBACK` | `drive +move`, `wiki +move` existing-node mode only, `drive +task_result` | Execute confirmed reverse moves |
-| `ROLLBACK_VERIFY` | `wiki +node-list`, `drive files list` (schema path: `drive.files.list`), `drive +task_result` if async result remains pending | Verify recovery result |
-| `ROLLBACK_CLEANUP_CONFIRM` | No write commands | Generate cleanup plan and ask for delete confirmation |
+| `ROLLBACK_CLEANUP_CONFIRM` | `wiki +node-list`, `drive files list` (schema path: `drive.files.list`) | Read cleanup candidates' current children and ask for delete confirmation; no writes |
 | `ROLLBACK_CLEANUP` | `drive +delete`, `wiki +node-delete`, `drive +task_result` | Delete only confirmed workflow-created safe-empty folders / nodes |
-| `ROLLBACK_CLEANUP_VERIFY` | `wiki +node-list`, `drive files list` (schema path: `drive.files.list`), `drive +task_result` if async result remains pending | Verify cleanup deletion result |
 
 ## Wiki Move Mode Constraint
 

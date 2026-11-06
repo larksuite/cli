@@ -1,8 +1,8 @@
 # 知识整理工作流：Analysis
 
-Loaded by states: `CONTENT_READ`, `ISSUE_ANALYSIS`, `RULE_GENERATION`.
+Loaded by states: `ISSUE_ANALYSIS`, `RULE_GENERATION`.
 
-This file owns low-confidence partial reads, issue analysis, classification rules, and target tree generation. It MUST NOT create execution plans, ask for execution confirmation, or perform write operations.
+This file owns issue analysis, classification rules, and target tree generation. It MUST NOT create execution plans, ask for execution confirmation, or perform write operations.
 
 ## Required Context
 
@@ -10,104 +10,19 @@ Before executing rules in this file:
 
 1. `resource_items` MUST already exist from [`lark-drive-workflow-knowledge-organize-discovery.md`](lark-drive-workflow-knowledge-organize-discovery.md).
 2. For document partial reads, follow [`../../lark-doc/SKILL.md`](../../lark-doc/SKILL.md) and [`../../lark-doc/references/lark-doc-fetch.md`](../../lark-doc/references/lark-doc-fetch.md).
-3. For sheet / bitable down-drill, follow [`../../lark-sheets/SKILL.md`](../../lark-sheets/SKILL.md) or [`../../lark-base/SKILL.md`](../../lark-base/SKILL.md) only when title and path are insufficient.
-
-## State: CONTENT_READ
-
-Entry: `resource_items` exists.
-
-MUST:
-
-1. Build `low_confidence_items`.
-2. Apply `Low-Confidence Partial Read`.
-3. Read only supported docs through `lark-doc-fetch`.
-4. Switch to `lark-sheets` / `lark-base` only when sheet / bitable title and path are insufficient.
-5. Record read evidence for classification.
-6. Continue reading low-confidence resources in internal batches until all supported low-confidence resources in the current inventory are processed or a blocker occurs.
-7. Apply `Analysis Progress Reporting`.
-8. Output progress / summary without asking the user to continue between batches.
-
-Exit: low-confidence items are classified or marked `needs_review=true`.
-
-### Low-Confidence Partial Read
-
-Low-confidence resources include:
-
-- 标题为空
-- 标题为 `test` / `测试` / 纯数字 / 无意义短词
-- 标题、路径、类型之间没有足够分类线索
-- 同一标题或相似标题出现在多个候选分类中
-- 用户要求按项目 / 客户 / 业务线归类，但标题和路径没有明确项目 / 客户 / 业务线名称
-
-| Condition | Agent MUST Do | Agent MUST NOT Do |
-|-----------|---------------|-------------------|
-| Title / path / type clearly determine classification | Classify directly | Do not perform content read |
-| Resource is low-confidence and docs-fetch-supported | Read outline via `lark-doc-fetch` | Do not skip partial read |
-| Candidate project / customer / business / document-type terms exist | After outline, run keyword partial read with candidate terms | Do not use broad generic keywords |
-| Partial read returns usable block id and classification is still unclear | Read the relevant section via `lark-doc-fetch` | Do not read the full document |
-| Partial read still cannot classify | Set `needs_review=true`; classify to manual confirmation target | Do not invent classification |
-| Read fails or permission is insufficient | Set `needs_review=true`; record failure reason | Do not retry indefinitely |
-
-### Partial Read Limits
-
-| Limit | Default |
-|-------|---------|
-| `batch_size` | 20 resources per internal batch |
-| `progress_report_interval` | 50 low-confidence resources |
-| `max_attempts_per_resource` | 3 partial reads: outline, keyword, section |
-
-Batching rules:
-
-1. Sort low-confidence resources by impact before reading: root-level loose items, duplicated titles, project/customer ambiguity, then empty or meaningless titles.
-2. Read supported low-confidence resources across internal batches without asking the user to continue after each batch.
-3. Process reads in internal batches of `batch_size`; do not ask the user between internal batches unless auth, permission, or API errors block progress.
-4. After each internal batch, update `low_confidence_items` with read evidence or `needs_review=true`.
-5. After every `progress_report_interval` processed resources, output a progress summary and continue automatically.
-6. If unread low-confidence resources remain because of auth, permission, API, unsupported type, or tool budget blockers, set `partial=true`, report unread count, and default remaining unread items to `needs_review=true` with target path set to manual confirmation target.
-7. Never bypass these limits by reading full documents.
-
-### Low-Confidence Read Start Notice
-
-When `low_confidence_total > 100`, output this notice before reading:
-
-```text
-低置信度资源较多，共 <low_confidence_total> 项。我会分批做轻量读取并定期汇报进度；不会读取全文，也不会执行移动或创建。
-```
-
-### Low-Confidence Read Summary
-
-Use this as progress / final summary output. Do not ask the user to continue unless a blocker occurs.
-
-```text
-低置信度内容读取进度
-
-- 低置信度资源总数：<low_confidence_total>
-- 已读取：<read_done>/<low_confidence_total>
-- 已补充证据并完成分类：<classified_count>
-- 暂入待人工确认：<needs_review_count>
-- 失败：<failed_count>
-
-继续分析整理问题。
-```
-
-Output this summary:
-
-- After every 50 processed low-confidence resources.
-- Once after low-confidence reading finishes.
-- About every 60 seconds during long-running reads, even if fewer than 50 additional resources were processed.
+3. For sheet / bitable down-drill, follow [`../../lark-sheets/SKILL.md`](../../lark-sheets/SKILL.md) or [`../../lark-base/SKILL.md`](../../lark-base/SKILL.md) only when user-required content conditions need reading.
 
 ### Analysis Progress Reporting
 
-Applies to `CONTENT_READ`, `ISSUE_ANALYSIS`, and `RULE_GENERATION`.
+Applies to `ISSUE_ANALYSIS` and `RULE_GENERATION`.
 
 Rules:
 
-1. For `CONTENT_READ`, use `Low-Confidence Read Summary` as the progress report format.
-2. For `ISSUE_ANALYSIS`, if analysis runs longer than about 60 seconds, output progress about every 60 seconds with current stage, processed resource count when known, detected problem type count when known, and the next analysis step.
-3. For `RULE_GENERATION`, if classification rule or target-tree generation runs longer than about 60 seconds, output progress about every 60 seconds with current stage, classified item count when known, unresolved item count when known, and target category / path count when known.
-4. Progress reports MUST be factual and stage-specific. Do not output generic "still running" messages without counts or the current stage.
-5. Do not ask the user to continue between internal batches unless auth, permission, API, target scope, or environment blockers occur.
-6. Do not expose internal chain-of-thought, raw tokens, or intermediate rule drafts.
+1. For `ISSUE_ANALYSIS`, if analysis runs longer than about 60 seconds, output progress about every 60 seconds with current stage, processed resource count when known, detected problem type count when known, and the next analysis step.
+2. For `RULE_GENERATION`, if classification rule or target-tree generation runs longer than about 60 seconds, output progress about every 60 seconds with current stage, classified item count when known, unresolved item count when known, and target category / path count when known.
+3. Progress reports MUST be factual and stage-specific. Do not output generic "still running" messages without counts or the current stage.
+4. Do not ask the user to continue between internal batches unless auth, permission, API, target scope, or environment blockers occur.
+5. Do not expose internal chain-of-thought, raw tokens, or intermediate rule drafts.
 
 Examples:
 
@@ -121,12 +36,14 @@ Examples:
 
 ## State: ISSUE_ANALYSIS
 
-Entry: `resource_items` and partial-read evidence are ready.
+Entry: `resource_items` is ready.
+
+Use existing title, path, type, and search evidence. Read content only when needed to determine user-required content conditions. Mark insufficient classification evidence as `needs_review=true`; do not read every low-confidence resource or mark `partial=true` solely because optional content was not read.
 
 MUST:
 
-1. Detect problems from organization perspective only. Do not generate research conclusions.
-2. Generate an organization approach based on inventory, low-confidence read evidence, and detected problems.
+1. Identify `low_confidence_items` and detect problems from organization perspective only. Do not generate research conclusions.
+2. Generate an organization approach based on inventory, available evidence, and detected problems.
 3. Include how non-reused source containers will be handled after their contents are moved.
 4. Apply `Analysis Progress Reporting`.
 5. Output `Inventory And Organization Approach Decision`.
@@ -168,7 +85,6 @@ MUST output evidence count or example paths. Do not output only abstract judgmen
 | 根目录直接资源数 |  |
 | 空目录数量 |  |
 | 低置信度资源数 |  |
-| 已完成低置信度读取 |  |
 | 待人工确认 |  |
 | partial |  |
 
@@ -216,7 +132,7 @@ MUST:
 |-----------|---------------|
 | Existing structure is clear | Reuse existing directory names and hierarchy |
 | Title / path / type is enough | Classify without content read |
-| Item remains uncertain after mandatory partial read | Put into manual confirmation target and set `needs_review=true` |
+| Item classification is uncertain | Put into manual confirmation target and set `needs_review=true` |
 | Item is temporary / test / draft | Prefer temporary / test target |
 | Root has many loose resources | Prefer organizing root-level obvious items first |
 | User asks project / customer grouping | Use project / customer names from title, path, and partial read evidence |
@@ -228,7 +144,7 @@ The agent MUST NOT start from a fixed default category list. A fixed taxonomy ca
 
 Derive categories from the current `resource_items` and partial-read evidence:
 
-1. First group resources by clear signals from title, current path, type, and mandatory partial-read evidence.
+1. First group resources by clear signals from title, current path, type, and available evidence.
 2. Prefer category names that appear in the user's own content, such as project names, customer names, business lines, document types, years, or existing folder / Wiki node names.
 3. Create a category only when there is enough evidence for at least one resource.
 4. Do not create generic buckets such as archive, temporary, test, meeting, dashboard, or operations unless the current resources contain matching evidence.

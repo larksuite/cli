@@ -107,7 +107,7 @@ MUST:
 7. Apply `Inventory Progress Reporting`.
 8. Output `Inventory Summary`.
 9. Do not leave `INVENTORY` while `inventory_continuation_state` has queued folders, nodes, pages, or slices that can still be fetched.
-10. Continue to `CONTENT_READ` without asking the user only after the confirmed scope is exhausted or blocked.
+10. Continue to `ISSUE_ANALYSIS` without asking the user only after the confirmed scope is exhausted or blocked.
 
 ### Inventory Batch Checkpoints
 
@@ -128,7 +128,7 @@ If tool budget would be exceeded for a very large confirmed scope, stop only at 
 1. Pagination, depth, item, and per-folder page limits are internal batching checkpoints.
 2. When a checkpoint is reached, record `inventory_continuation_state` with `scope`, `queue`, `current_cursor`, `visited_page_keys`, `dedupe_keys`, and `blockers`; Drive queue entries MUST contain `folder_token`, `path`, `depth`, and `page_token`; Wiki queue entries MUST contain `space_id` / `node_token`, `path`, `depth`, and pagination cursor; search entries MUST contain query / filters and pagination cursor.
 3. A depth checkpoint MUST enqueue deeper folders / nodes; it MUST NOT discard them or treat the current depth as final coverage.
-4. An item-count checkpoint MUST persist the current cursor and queue; it MUST NOT transition to `CONTENT_READ`, `ISSUE_ANALYSIS`, or `PLAN_GENERATION` while fetchable work remains.
+4. An item-count checkpoint MUST persist the current cursor and queue; it MUST NOT transition to `ISSUE_ANALYSIS` or `PLAN_GENERATION` while fetchable work remains.
 5. If `inventory_continuation_state` is missing, corrupt, or lacks required fields for the current scope, set `partial=true`, record the checkpoint blocker, and do not claim full coverage.
 6. Do not set `partial=true` solely because a valid batching checkpoint was reached.
 7. Set `partial=true` only when continuation is blocked by auth, permission, API / pagination failure after retries, API coverage limitations, tool budget, target scope, or environment blockers.
@@ -238,7 +238,7 @@ ResourceItem rules:
 | 疑似临时 / 测试 / 未整理资源数 |  |
 | 低置信度待确认资源数 |  |
 
-下一步将自动读取低置信度资源并分析整理问题；不会执行移动或创建。
+下一步将分析整理问题；不会执行移动或创建。
 ```
 
 ## Discovery Failure Handling

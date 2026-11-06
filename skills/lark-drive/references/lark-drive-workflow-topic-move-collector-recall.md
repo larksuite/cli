@@ -130,7 +130,6 @@
 3. 加载 [`lark-drive-workflow-topic-move-collector-resolve-verify.md`](lark-drive-workflow-topic-move-collector-resolve-verify.md)。
 4. 把完整 `candidate_items` 交给 `RESOURCE_RESOLVE`。
 5. 不得直接进入 `RELEVANCE_CLASSIFY`、`PLAN_MOVE` 或展示相关性结果。
-6. 不得用搜索标题、摘要或 query 命中直接生成高 / 中 / 低相关分组。
 
 ### 增强策略
 

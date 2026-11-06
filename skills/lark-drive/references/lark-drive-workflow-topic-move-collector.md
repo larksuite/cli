@@ -52,7 +52,7 @@ Risk / Structure: `R2-R3` / `S3`
 - 未确认前移动资源
 - 删除资源、重命名资源或修改公开权限
 - 自动批量申请权限
-- 把无权限或无法验证的资源加入移动计划
+- 把无权限的资源加入移动计划
 - 把移动权限未知或不具备移动资格的资源加入移动计划
 
 如果用户明确要求把结果写入 Sheet / Doc，切到对应专项能力；本 workflow 的默认产物是移动后的资源归档结果。
@@ -71,10 +71,9 @@ Risk / Structure: `R2-R3` / `S3`
 8. 必须展示每个相关性分组中的资源名称；低置信分组可以折叠，但必须可查看。
 9. 默认只移动 `high` 相关资源；`medium` 资源必须由用户显式选择。
 10. 即使用户可见列表分页展示，也必须维护完整内部状态。
-11. `RESOURCE_RESOLVE` 和 `CONTENT_VERIFY` 是两个独立的强制阶段，不得合并；不得用搜索结果、标题或摘要直接替代 `CONTENT_VERIFY`，也不得从 `RESOURCE_RESOLVE` 直接进入 `RELEVANCE_CLASSIFY`。
-12. 触发后锁定 `workflow_id=topic_move_collector`；执行期间不得自动切换到其他 workflow。
-13. 如果认为需要切换 workflow，必须停止并向用户说明原因，等待用户确认。
-14. `RESOURCE_RESOLVE` 是移动资格门禁；只有确认 `move_permission_state=movable` 且 `target_write_state=confirmed` 的资源才能进入默认移动链路。
+11. 触发后锁定 `workflow_id=topic_move_collector`；执行期间不得自动切换到其他 workflow。
+12. 如果认为需要切换 workflow，必须停止并向用户说明原因，等待用户确认。
+13. `RESOURCE_RESOLVE` 是移动资格门禁；只有确认 `move_permission_state=movable` 且 `target_write_state=confirmed` 的资源才能进入默认移动链路。
 
 ## 用户展示 UI 规则
 
@@ -93,10 +92,10 @@ Risk / Structure: `R2-R3` / `S3`
 |------|------|--------------|
 | `lark-drive-workflow-topic-move-collector.md` | 触发规则、全局约束、状态机、渐进加载关系、命令族白名单 | 具体阶段规则、UI 模板、执行细节 |
 | `lark-drive-workflow-topic-move-collector-setup.md` | `PARSE_INPUT`、`RESOLVE_TARGET`、`CONFIRM_CONTEXT`、`TargetLocation` | 搜索执行、相关性分类、写操作 |
-| `lark-drive-workflow-topic-move-collector-recall.md` | `SEARCH_RECALL`、`RECALL_ENHANCE`、搜索 query 策略、去重、`CandidateItem` | 资源 token 解析、内容验证、写操作 |
-| `lark-drive-workflow-topic-move-collector-resolve-verify.md` | `RESOURCE_RESOLVE`、`CONTENT_VERIFY`、权限矩阵、`ResourceItem` | 相关性分类、移动计划、写操作 |
-| `lark-drive-workflow-topic-move-collector-review-plan.md` | `RELEVANCE_CLASSIFY`、`PLAN_MOVE`、`MovePlanItem`、展示分组 | 资源解析、内容验证、写操作执行、恢复 |
-| `lark-drive-workflow-topic-move-collector-execute.md` | `CONFIRM_EXECUTION`、`EXECUTE`、`VERIFY`、`RESTORE`、`RollbackSnapshotItem`、执行日志 | 搜索、分类和计划 schema |
+| `lark-drive-workflow-topic-move-collector-recall.md` | `SEARCH_RECALL`、`RECALL_ENHANCE`、搜索 query 策略、去重、`CandidateItem` | 资源 token 解析、写操作 |
+| `lark-drive-workflow-topic-move-collector-resolve-verify.md` | `RESOURCE_RESOLVE`、权限矩阵、`ResourceItem` | 相关性分类、移动计划、写操作 |
+| `lark-drive-workflow-topic-move-collector-review-plan.md` | `RELEVANCE_CLASSIFY`、`PLAN_MOVE`、`MovePlanItem`、展示分组 | 资源解析、写操作执行、恢复 |
+| `lark-drive-workflow-topic-move-collector-execute.md` | `CONFIRM_EXECUTION`、`EXECUTE`、`RESTORE`、`RollbackSnapshotItem`、执行日志 | 搜索、分类和计划 schema |
 
 ## 运行时状态
 
@@ -114,10 +113,9 @@ Risk / Structure: `R2-R3` / `S3`
 | `recall_query_states` | 每个基础 / 增强 query 的分页状态、累计页数、`next_page_token`、`has_more`、完成或阻塞状态。 |
 | `candidate_items` | 搜索召回结果，包含 query 证据和去重信息。 |
 | `resource_items` | 解析后的标准资源列表。 |
-| `content_verify_completed` | 内容验证阶段完成标记；`resource_items` 新建或变化时重置为 `false`，只有全部资源都有验证状态或跳过原因后才设为 `true`。 |
 | `relevance_groups` | 高相关、中相关、低相关、无权限、无移动权限、移动权限未知、无法验证、不可移动分组。 |
 | `move_plan_items` | 经用户选择后生成的完整移动计划，包含稳定资源关联、不可变命令参数、权限快照和恢复输入。 |
-| `execution_journal` | 写操作日志，用于验证和恢复。 |
+| `execution_journal` | 写操作日志，用于结果汇总和恢复。 |
 | `rollback_snapshot` | 写操作前位置快照，仅用于失败恢复或用户要求恢复。 |
 | `display_page_state` | 用户可见列表的分页、筛选和展开状态。 |
 
@@ -130,14 +128,12 @@ Risk / Structure: `R2-R3` / `S3`
 | `CONFIRM_CONTEXT` | `scope` | `target_resolve_status=resolved` | 展示主题、目标、身份、限制和跨容器设置 | 搜索前确认 UI | `true` | `SEARCH_RECALL` |
 | `SEARCH_RECALL` | `read` | 用户确认上下文 | 用原始关键词、默认 owner 范围和显式限制执行基础召回；按每批最多 5 页自动续批 | 搜索进度 / 基础统计 | 阻塞时为 `true` | 所有基础 query 完成后进入 `RECALL_ENHANCE` |
 | `RECALL_ENHANCE` | `read` | 所有基础 query 已完成 | 执行覆盖增强 query，按每批最多 5 页自动续批并合并结果 | 增强召回摘要 | 阻塞时为 `true` | 所有增强 query 完成后进入 `RESOURCE_RESOLVE` |
-| `RESOURCE_RESOLVE` | `read` | 候选列表已准备 | 解析 token、类型、父级位置、owner 和移动资格 | 解析进度 / 阻塞摘要 | 阻塞时为 `true` | `CONTENT_VERIFY` |
-| `CONTENT_VERIFY` | `read` | 资源列表已准备 | 对支持的资源做有界内容读取，并为其余资源写入跳过原因 | 验证进度 / 验证摘要 | 阻塞时为 `true` | `RELEVANCE_CLASSIFY` |
+| `RESOURCE_RESOLVE` | `read` | 候选列表已准备 | 解析 token、类型、父级位置、owner 和移动资格 | 解析进度 / 阻塞摘要 | 阻塞时为 `true` | `RELEVANCE_CLASSIFY` |
 | `RELEVANCE_CLASSIFY` | `assess` | 证据已准备 | 按相关性和可执行性分组 | 分组结果列表 | `false` | `PLAN_MOVE` |
 | `PLAN_MOVE` | `assess` / `plan` | 分组完成 | 基于默认规则和用户可选项生成移动计划 | 草案计划和选择项 | `true` | `CONFIRM_EXECUTION` |
 | `CONFIRM_EXECUTION` | `confirm` | 用户要求执行 | 展示创建、移动、跳过项和风险 | 写操作确认 UI | `true` | `EXECUTE` 或 `PLAN_MOVE` 或 `DONE` |
-| `EXECUTE` | `execute` | 用户明确确认写操作 | 需要时先创建目标，再移动确认资源 | 执行进度 | 阻塞时为 `true` | `VERIFY` 或 `RESTORE` |
-| `VERIFY` | `verify` | 执行完成 | 验证目标位置下的移动结果 | 验证结果 | 提供恢复选项时为 `true` | `DONE` 或 `RESTORE` |
-| `RESTORE` | `recovery confirm` / `recovery execute` | 用户要求恢复 | 仅基于快照和日志恢复 | 恢复确认 / 结果 | 写操作前为 `true` | `VERIFY` 或 `DONE` |
+| `EXECUTE` | `execute` | 用户明确确认写操作 | 需要时先创建目标，再移动确认资源并汇总执行结果 | 执行进度 / 结果 | 阻塞时为 `true` | `DONE` 或 `RESTORE` |
+| `RESTORE` | `recovery confirm` / `recovery execute` | 用户要求恢复 | 仅基于快照和日志恢复 | 恢复确认 / 结果 | 写操作前为 `true` | `DONE` |
 | `DONE` | `done` | 无后续操作 | 停止 | 最终回复 | `false` | 结束 |
 
 ### 状态跳转硬约束
@@ -146,11 +142,8 @@ Risk / Structure: `R2-R3` / `S3`
 2. `SEARCH_RECALL` 只有在全部基础 query 的 `has_more=false` 时才能进入 `RECALL_ENHANCE`；单批达到 5 页但仍有更多结果时必须自动续批，不得提前跳转。
 3. `RECALL_ENHANCE` 只有在全部增强 query 的 `has_more=false` 时才能进入 `RESOURCE_RESOLVE`；不得直接进入 `RELEVANCE_CLASSIFY` 或 `PLAN_MOVE`。
 4. `RESOURCE_RESOLVE` 必须为每个 `CandidateItem` 生成对应的 `ResourceItem`，或生成明确的解析失败 / 权限受限状态。
-5. `RESOURCE_RESOLVE` 必须为每个 `ResourceItem` 写入 `move_permission_state` 和 `move_permission_basis`；完成后将 `content_verify_completed=false`，下一状态只能是 `CONTENT_VERIFY`。
-6. 禁止从 `RESOURCE_RESOLVE` 直接进入 `RELEVANCE_CLASSIFY`。即使没有任何资源可以读取正文，也必须进入 `CONTENT_VERIFY`，为每项写入验证状态或跳过原因并输出验证摘要。
-7. `CONTENT_VERIFY` 必须为每个 `ResourceItem` 写入内容证据、搜索证据复用说明，或不可验证原因；移动权限未知或无移动权限的资源可以只写入跳过验证原因。
-8. 只有当 `resource_items` 已准备、每项都有验证状态或跳过原因，且 `content_verify_completed=true` 时，才能进入 `RELEVANCE_CLASSIFY`。
-9. 用户调整相关性分组后，必须回到 `RELEVANCE_CLASSIFY` 输出调整后的分组结果，再进入 `PLAN_MOVE` 重新生成计划。
+5. `RESOURCE_RESOLVE` 必须为每个 `ResourceItem` 写入 `move_permission_state` 和 `move_permission_basis`，完成后进入 `RELEVANCE_CLASSIFY`。
+6. 用户调整相关性分组后，必须回到 `RELEVANCE_CLASSIFY` 输出调整后的分组结果，再进入 `PLAN_MOVE` 重新生成计划。
 
 ### Workflow 切换门禁
 
@@ -168,9 +161,9 @@ Risk / Structure: `R2-R3` / `S3`
 |-------|---------------|
 | `PARSE_INPUT` / `RESOLVE_TARGET` / `CONFIRM_CONTEXT` | [`lark-drive-workflow-topic-move-collector-setup.md`](lark-drive-workflow-topic-move-collector-setup.md) |
 | `SEARCH_RECALL` / `RECALL_ENHANCE` | [`lark-drive-workflow-topic-move-collector-recall.md`](lark-drive-workflow-topic-move-collector-recall.md) |
-| `RESOURCE_RESOLVE` / `CONTENT_VERIFY` | [`lark-drive-workflow-topic-move-collector-resolve-verify.md`](lark-drive-workflow-topic-move-collector-resolve-verify.md) |
+| `RESOURCE_RESOLVE` | [`lark-drive-workflow-topic-move-collector-resolve-verify.md`](lark-drive-workflow-topic-move-collector-resolve-verify.md) |
 | `RELEVANCE_CLASSIFY` / `PLAN_MOVE` | [`lark-drive-workflow-topic-move-collector-review-plan.md`](lark-drive-workflow-topic-move-collector-review-plan.md) |
-| `CONFIRM_EXECUTION` / `EXECUTE` / `VERIFY` / `RESTORE` | [`lark-drive-workflow-topic-move-collector-execute.md`](lark-drive-workflow-topic-move-collector-execute.md) |
+| `CONFIRM_EXECUTION` / `EXECUTE` / `RESTORE` | [`lark-drive-workflow-topic-move-collector-execute.md`](lark-drive-workflow-topic-move-collector-execute.md) |
 
 ## 命令映射
 
@@ -179,16 +172,15 @@ Risk / Structure: `R2-R3` / `S3`
 | `RESOLVE_TARGET` | `drive +inspect`、`wiki +node-get`、`wiki +space-list`、仅用于查找文件夹候选的 `drive +search` | 解析目标位置 |
 | `SEARCH_RECALL` / `RECALL_ENHANCE` | `drive +search` | 搜索召回和覆盖增强 |
 | `RESOURCE_RESOLVE` | `drive +inspect`、`wiki +node-get`、`drive metas batch_query`、必要时 `drive permission.members auth` | 解析标准 token、owner、权限信号和移动资格 |
-| `CONTENT_VERIFY` | `docs +fetch`、`sheets +cells-get`、`sheets +cells-search`、必要时 `drive +preview` | 验证内容证据 |
-| `EXECUTE` | `drive +create-folder`、`wiki +node-create`、`drive +move`、`wiki +move`、`wiki +move-to-drive`、`drive +task_result` | 执行已确认写操作 |
-| `VERIFY` | `drive files list`、`wiki +node-list`、`wiki +node-get`、`drive +inspect`、`drive +task_result` | 验证执行结果 |
-| `RESTORE` | `drive +move`、`wiki +move`、`drive +delete`、`wiki +node-delete`、`drive +task_result` | 恢复已确认资源并清理本次新建目标 |
+| `RELEVANCE_CLASSIFY` | `docs +fetch`、`sheets +cells-get`、`sheets +cells-search`、必要时 `drive +preview` | 仅在用户正文条件需要时读取内容 |
+| `EXECUTE` | `drive +create-folder`、`wiki +node-create`、`drive +move`、`wiki +move`、`wiki +move-to-drive`、`drive +task_result`；仅用户要求核验时 `drive files list`、`wiki +node-list` | 执行已确认写操作 |
+| `RESTORE` | `drive +move`、`wiki +move`、`drive +delete`、`wiki +node-delete`、`drive +task_result`；清理前确认容器内容安全或用户要求核验时 `drive files list`、`wiki +node-list` | 恢复已确认资源并清理本次新建目标 |
 
 ## 引用文档
 
 - [输入与目标确认](lark-drive-workflow-topic-move-collector-setup.md)
 - [召回](lark-drive-workflow-topic-move-collector-recall.md)
-- [资源解析与内容验证](lark-drive-workflow-topic-move-collector-resolve-verify.md)
+- [资源解析](lark-drive-workflow-topic-move-collector-resolve-verify.md)
 - [审核与计划](lark-drive-workflow-topic-move-collector-review-plan.md)
 - [执行](lark-drive-workflow-topic-move-collector-execute.md)
 - [lark-drive-search](lark-drive-search.md)

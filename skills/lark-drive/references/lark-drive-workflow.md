@@ -25,7 +25,7 @@
 每个已纳入本总框架的 workflow 必须遵循同一条执行骨架：
 
 ```text
-route -> scope -> read -> assess/plan -> confirm -> execute -> verify -> done
+route -> scope -> read -> assess/plan -> confirm -> execute -> done
 ```
 
 运行规则：
@@ -35,8 +35,8 @@ route -> scope -> read -> assess/plan -> confirm -> execute -> verify -> done
 3. 事实必须来自可执行 CLI 命令或被引用 skill；不要只凭目录结构推断治理结论。
 4. 无法执行的检查必须记录到 `unsupported_checks`，不能静默省略。
 5. 写入前必须产出计划。每一次写入都需要用户对准确范围和 command family 显式确认。
-6. CLI/API 支持验证时，写入后必须用 fresh read 验证。
-7. 结束时进入 `done`，返回已完成事项、验证结果和剩余限制。不要把尚未完成的外部审批描述成已完成。
+6. 写入后根据同步结果或异步任务终态汇总；额外回读仅按用户要求或对应 workflow 的明确规则执行。
+7. 结束时进入 `done`，返回已完成事项、执行结果和剩余限制。不要把尚未完成的外部审批描述成已完成。
 
 ## Artifact Contract
 
@@ -49,11 +49,11 @@ route -> scope -> read -> assess/plan -> confirm -> execute -> verify -> done
 | `target_scope` | 已确认的目标范围和用户原始输入 |
 | `identity` | 当前身份和执行视角，通常为 `user` |
 | `facts` | 从 CLI 读取或引用 skill 获取的证据 |
-| `plan_items` | 候选动作；每项包含 command family、target、risk、verification method |
+| `plan_items` | 候选动作；每项包含 command family、target、risk；需要额外回读时记录 verification method |
 | `unsupported_checks` | 因 CLI/API 覆盖、目标类型、认证或范围限制而无法执行的检查 |
 | `partial` | 结果是否不完整，以及不完整原因 |
 | `execution_results` | 已确认写入的执行结果 |
-| `verification_results` | fresh read 验证结果，或明确的异步审批限制 |
+| `verification_results` | 仅在执行额外回读时记录验证结果 |
 
 用户可见输出默认使用简洁 chat summary。只有在用户要求、结果过大不适合聊天展示，或当前 workflow 明确要求共享产物时，才创建本地文件或飞书文档。
 
@@ -65,7 +65,7 @@ route -> scope -> read -> assess/plan -> confirm -> execute -> verify -> done
 - 如何映射到共享执行骨架的 state machine；
 - 当前 state 需要按需加载哪些 reference；
 - 哪些 command family 可用，以及读写风险边界；
-- 写入前如何确认，写入后如何验证；
+- 写入前如何确认，写入后如何汇总结果；
 - 最终回复必须包含哪些字段，或使用哪些 output templates。
 
 每个纳入本总框架的 workflow 默认从一个独立 reference 文件开始。只有当写入、回滚或验证流程复杂到影响可读性时，才继续拆 phase 文件。
@@ -80,7 +80,7 @@ Risk Level：
 |-------|---------|---------------------|
 | `R0` | read-only：只读发现、分析、报告 | 记录事实来源、`unsupported_checks` 和 `partial` 原因 |
 | `R1` | low-risk write：创建草稿、生成临时产物等低风险写入 | 写前说明范围，写后返回结果链接或标识 |
-| `R2` | high-risk write：权限变更、批量移动、标签修改等高风险写入 | 写前计划、准确 diff、用户显式确认、fresh read 验证 |
+| `R2` | high-risk write：权限变更、批量移动、标签修改等高风险写入 | 写前计划、准确 diff、用户显式确认、执行结果 |
 | `R3` | destructive / recovery-sensitive write：删除、自动归档、双向同步、rollback cleanup | 恢复边界、执行日志、分批策略、失败停止条件和单独确认 |
 
 Structure Level：
@@ -112,7 +112,7 @@ Structure Level：
 |----------|--------|------|-----------|------------|-----------------------------------------------------------------|
 | `permission_governance` | Registered | `R2` | `S2` | [`lark-drive-workflow-permission-governance.md`](lark-drive-workflow-permission-governance.md) | 权限审计、公开链接/外部访问、复制/下载/评论/分享设置、权限申请、owner 转移 / 批量 owner 转移、密级标签调整 |
 | `knowledge_organize` | Registered | `R2-R3` | `S3` | [`lark-drive-workflow-knowledge-organize.md`](lark-drive-workflow-knowledge-organize.md) | 整理云盘 / 文件夹 / 文档库 / 知识库、盘点目录结构、归类资源、生成整理方案，并在用户确认后创建目录或移动资源      |
-| `topic_move_collector` | Registered | `R2-R3` | `S3` | [`lark-drive-workflow-topic-move-collector.md`](lark-drive-workflow-topic-move-collector.md) | 按主题、关键词或内容线索跨容器搜索资料，验证相关性和移动资格，并在用户确认后归档到 Drive 文件夹或 Wiki 节点    |
+| `topic_move_collector` | Registered | `R2-R3` | `S3` | [`lark-drive-workflow-topic-move-collector.md`](lark-drive-workflow-topic-move-collector.md) | 按主题、关键词或内容线索跨容器搜索资料，判断相关性和移动资格，并在用户确认后归档到 Drive 文件夹或 Wiki 节点    |
 
 ## Workflow Loading
 
