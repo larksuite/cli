@@ -52,6 +52,17 @@ type dbSubcodeMeta struct {
 	Message string
 }
 
+const (
+	dbSingleEnvSubcode = "k_dl_1600000"
+	dbAuditOffSubcode  = "k_dl_4000028"
+
+	dbSingleEnvReadHint = "this is a single-env app and it has no dev branch. For this read-only request, pass `--environment online` to read its online database. " +
+		"Only if separate dev and online databases are required, initialize multi-env with `lark-cli apps +db-env-create --app-id <app_id> --environment dev`."
+	dbSingleEnvWriteHint = "this is a single-env app and it has no dev branch. This command can change data or configuration: do not remove `--environment` or replay it against online as an ordinary retry. " +
+		"If the intended target is the production online environment, first inspect the request with explicit `--environment online --dry-run`, then execute it only after confirming the target and production impact. " +
+		"Otherwise, if a separate dev database is required, initialize multi-env with `lark-cli apps +db-env-create --app-id <app_id> --environment dev`."
+)
+
 // dbSubcodeTable maps stable dataloom subcodes to a classification and a hint that
 // names the actual fix.
 //
@@ -63,16 +74,17 @@ var dbSubcodeTable = map[string]dbSubcodeMeta{
 	// A dev branch was requested for an app that still has the single online
 	// database. Reading online does not require the irreversible multi-env split;
 	// callers should only initialize it when they actually need separate branches.
-	"k_dl_1600000": {
+	dbSingleEnvSubcode: {
 		Category: errs.CategoryValidation,
 		Subtype:  errs.SubtypeFailedPrecondition,
-		Hint: "this is a single-env app and it has no dev branch. Omit `--environment` or pass `--environment online` to use its online database. " +
-			"Only if separate dev and online databases are required, initialize multi-env with `lark-cli apps +db-env-create --app-id <app_id> --environment dev`.",
+		// The shared fallback must be safe for write-capable commands. Read-only
+		// callers opt into dbSingleEnvReadHint through withAppsReadHint below.
+		Hint:    dbSingleEnvWriteHint,
 		Message: "the requested database branch is not initialized for this app",
 	},
 
 	// Row-level audit events cannot be listed until audit is enabled for the table.
-	"k_dl_4000028": {
+	dbAuditOffSubcode: {
 		Category: errs.CategoryValidation,
 		Subtype:  errs.SubtypeFailedPrecondition,
 		Hint: "enable row-level audit for this table with `lark-cli apps +db-audit-enable --app-id <app_id> --table <table>`, " +
@@ -218,6 +230,23 @@ var dbSubcodeTable = map[string]dbSubcodeMeta{
 			"`+db-env-diff` still previews the pending changes.",
 		Message: "publishing the database requires release approval in this tenant",
 	},
+}
+
+// withAppsReadHint keeps the shared subcode classification but selects the
+// read-only recovery for k_dl_1600000. The default table hint is deliberately
+// write-safe because withAppsHint is also used by destructive commands.
+func withAppsReadHint(err error, fallback string) error {
+	subcode := ""
+	if p, ok := errs.ProblemOf(err); ok {
+		subcode, _, _ = subcodeOf(p.Message)
+	}
+	out := withAppsHint(err, fallback)
+	if subcode == dbSingleEnvSubcode {
+		if p, ok := errs.ProblemOf(out); ok && p.Category == errs.CategoryValidation && p.Subtype == errs.SubtypeFailedPrecondition {
+			p.Hint = dbSingleEnvReadHint
+		}
+	}
+	return out
 }
 
 // dbSubcodePrefix is the marker dataloom stamps on the message ahead of its

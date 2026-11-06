@@ -4,6 +4,7 @@
 package apps
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -214,5 +215,127 @@ func TestAppsDBSyncCreate_OnlineDDLSubcodeOuterCodes(t *testing.T) {
 				t.Fatalf("code = %d, want server code %d preserved", p.Code, code)
 			}
 		})
+	}
+}
+
+func TestAppsDBSingleEnvPrecondition_WriteRecoveryRequiresProductionConfirmation(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		method   string
+		url      string
+		args     []string
+	}{
+		{
+			name:     "db execute",
+			shortcut: AppsDBExecute,
+			method:   "POST",
+			url:      appSQLPath("app_x"),
+			args:     []string{"+db-execute", "--app-id", "app_x", "--environment", "dev", "--sql", "DELETE FROM orders", "--yes", "--as", "user"},
+		},
+		{
+			name:     "cache clear",
+			shortcut: AppsCacheClear,
+			method:   "POST",
+			url:      appCacheClearPath("app_x"),
+			args:     []string{"+cache-clear", "--app-id", "app_x", "--environment", "dev", "--yes", "--as", "user"},
+		},
+		{
+			name:     "cache delete",
+			shortcut: AppsCacheDelete,
+			method:   "DELETE",
+			url:      appCachePath("app_x"),
+			args:     []string{"+cache-delete", "--app-id", "app_x", "--environment", "dev", "--key", "k:1", "--as", "user"},
+		},
+		{
+			name:     "db sync create",
+			shortcut: AppsDBSyncCreate,
+			method:   "POST",
+			url:      dbSyncURL,
+			args:     []string{"+db-sync-create", "--app-id", "app_x", "--environment", "dev", "--config", dbSyncCommitConfig, "--yes", "--as", "user"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: tt.method,
+				URL:    tt.url,
+				Body: map[string]interface{}{
+					"code": 400002476,
+					"msg":  "k_dl_1600000：Invalid DB Branch：dev",
+				},
+			})
+
+			err := runAppsShortcut(t, tt.shortcut, tt.args, factory, stdout)
+			if err == nil {
+				t.Fatal("expected single-env precondition error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("error = %T %v, want typed problem", err, err)
+			}
+			for _, want := range []string{"production", "confirm", "--environment online", "--dry-run"} {
+				if !strings.Contains(strings.ToLower(p.Hint), strings.ToLower(want)) {
+					t.Errorf("hint = %q, want it to contain %q", p.Hint, want)
+				}
+			}
+			if strings.Contains(p.Hint, "Omit `--environment`") || strings.Contains(p.Hint, "pass `--environment online` to use") {
+				t.Errorf("hint = %q, write recovery must not present online as an ordinary retry", p.Hint)
+			}
+		})
+	}
+}
+
+func TestAppsCacheWriteTips_RequireExplicitEnvironment(t *testing.T) {
+	for _, shortcut := range []common.Shortcut{AppsCacheClear, AppsCacheDelete} {
+		for _, tip := range shortcut.Tips {
+			if strings.Contains(tip, "Example:") && !strings.Contains(tip, "--environment") {
+				t.Errorf("%s example leaves the write target implicit: %q", shortcut.Command, tip)
+			}
+		}
+	}
+}
+
+func TestAppsDBAuditList_AuditDisabledRecoveryPreservesOnlineEnvironment(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    appAuditListPath("app_x"),
+		OnMatch: func(req *http.Request) {
+			if got := req.URL.Query().Get("env"); got != "online" {
+				t.Errorf("request env = %q, want online", got)
+			}
+		},
+		Body: map[string]interface{}{
+			"code": 400002476,
+			"msg":  "k_dl_4000028：audit not enabled for table orders",
+		},
+	})
+
+	err := runAppsShortcut(t, AppsDBAuditList, []string{
+		"+db-audit-list", "--app-id", "app_x", "--table", "orders", "--environment", "online", "--as", "user",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected audit-disabled precondition error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T %v, want typed problem", err, err)
+	}
+	for _, want := range []string{
+		"+db-audit-status --app-id <app_id> --table <table> --environment online",
+		"single-env",
+		"+db-audit-enable --app-id <app_id> --table <table> --environment online",
+		"multi-env",
+		"+db-audit-enable --app-id <app_id> --table <table> --environment dev",
+		"+db-env-diff",
+		"+db-env-migrate",
+		"confirm",
+	} {
+		if !strings.Contains(p.Hint, want) {
+			t.Errorf("hint = %q, want it to contain %q", p.Hint, want)
+		}
 	}
 }
