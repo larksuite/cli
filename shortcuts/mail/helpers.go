@@ -2551,7 +2551,7 @@ func validateRecipientCount(to, cc, bcc string) error {
 // flag pair before sending: it rejects --inline with --plain-text or with
 // a non-HTML body, and checks that every --attach path passes filename /
 // extension / size rules via the shared filecheck rules.
-func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFlag string, plainText bool, body string) error {
+func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag []string, inlineFlag string, plainText bool, body string) error {
 	if strings.TrimSpace(inlineFlag) != "" {
 		if plainText {
 			return mailValidationError("--inline is not supported with --plain-text (inline images require HTML body)").
@@ -2570,7 +2570,7 @@ func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFl
 	}
 	// Preflight: verify explicit file paths exist and pass blocked-extension
 	// checks so that --dry-run surfaces local errors before Execute.
-	allPaths := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
+	allPaths := append(append([]string(nil), attachFlag...), inlineSpecFilePaths(inlineSpecs)...)
 	if _, err := statAttachmentFiles(fio, allPaths); err != nil {
 		return err
 	}

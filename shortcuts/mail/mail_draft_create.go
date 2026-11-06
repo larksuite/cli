@@ -19,15 +19,16 @@ import (
 // struct so parseDraftCreateInput / buildRawEMLForDraftCreate have a
 // uniform value type to pass around.
 type draftCreateInput struct {
-	To        string
-	Subject   string
-	Body      string
-	From      string
-	CC        string
-	BCC       string
-	Attach    string
-	Inline    string
-	PlainText bool
+	To              string
+	Subject         string
+	Body            string
+	From            string
+	CC              string
+	BCC             string
+	Attach          []string
+	StdinAttachment stdinAttachments
+	Inline          string
+	PlainText       bool
 }
 
 // MailDraftCreate is the `+draft-create` shortcut: create a brand-new mail
@@ -51,6 +52,7 @@ var MailDraftCreate = common.Shortcut{
 		{Name: "cc", Type: "string_array", Desc: "Optional. Cc recipient email address. Repeat --cc once per recipient; quote each value. Display-name format is supported."},
 		{Name: "bcc", Type: "string_array", Desc: "Optional. Bcc recipient email address. Repeat --bcc once per recipient; quote each value. Display-name format is supported."},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
+		attachStdinNameFlag, attachStdinTypeFlag, attachStdinManifestFlag,
 		{Name: "attach", Type: "string_array", Desc: "Optional. Regular attachment file path, relative path only. Repeat --attach once per file; quote each value. Each path must point to a readable local file."},
 		{Name: "inline", Type: "string_array", Desc: "Optional. Inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string. Cannot be used with --plain-text."},
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
@@ -81,7 +83,10 @@ var MailDraftCreate = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		attach := normalizeCommaFlagValues(runtime.StrArray("attach"))
+		if err := validateStdinAttachmentFlags(runtime); err != nil {
+			return err
+		}
+		attach := runtime.StrArray("attach")
 		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
@@ -119,6 +124,10 @@ var MailDraftCreate = common.Shortcut{
 		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		stdinAtt, stdinErr := readStdinAttachment(runtime)
+		if stdinErr != nil {
+			return stdinErr
+		}
 		priority, err := parsePriority(runtime.Str("priority"))
 		if err != nil {
 			return err
@@ -129,14 +138,15 @@ var MailDraftCreate = common.Shortcut{
 			return bErr
 		}
 		input := draftCreateInput{
-			To:        normalizeRecipientFlagValues(runtime.StrArray("to")),
-			Subject:   runtime.Str("subject"),
-			Body:      body,
-			From:      runtime.Str("from"),
-			CC:        normalizeRecipientFlagValues(runtime.StrArray("cc")),
-			BCC:       normalizeRecipientFlagValues(runtime.StrArray("bcc")),
-			Attach:    normalizeCommaFlagValues(runtime.StrArray("attach")),
-			PlainText: runtime.Bool("plain-text"),
+			StdinAttachment: stdinAtt,
+			To:              normalizeRecipientFlagValues(runtime.StrArray("to")),
+			Subject:         runtime.Str("subject"),
+			Body:            body,
+			From:            runtime.Str("from"),
+			CC:              normalizeRecipientFlagValues(runtime.StrArray("cc")),
+			BCC:             normalizeRecipientFlagValues(runtime.StrArray("bcc")),
+			Attach:          runtime.StrArray("attach"),
+			PlainText:       runtime.Bool("plain-text"),
 		}
 		input.Inline, err = normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
@@ -380,7 +390,9 @@ func buildRawEMLForDraftCreate(
 	composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
 	emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, 0) + templateSmallBytes
 	var largeErr error
-	bld, largeErr = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, splitByComma(input.Attach), emlBase, 0)
+	bld = input.StdinAttachment.addTo(bld)
+	emlBase += input.StdinAttachment.emlBytes()
+	bld, largeErr = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, input.Attach, emlBase, input.StdinAttachment.count())
 	if largeErr != nil {
 		return "", lintApplied, lintBlocked, largeErr
 	}

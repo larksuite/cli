@@ -37,6 +37,7 @@ var MailForward = common.Shortcut{
 		{Name: "cc", Type: "string_array", Desc: "CC email address. Repeat --cc once per recipient; quote each value. Display-name format is supported."},
 		{Name: "bcc", Type: "string_array", Desc: "BCC email address. Repeat --bcc once per recipient; quote each value. Display-name format is supported."},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring all HTML auto-detection. Cannot be used with --inline."},
+		attachStdinNameFlag, attachStdinTypeFlag, attachStdinManifestFlag,
 		{Name: "attach", Type: "string_array", Desc: "Attachment file path, appended after original attachments (relative path only). Repeat --attach once per file; quote each value."},
 		{Name: "inline", Type: "string_array", Desc: "Inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string. Cannot be used with --plain-text."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the forward immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
@@ -73,10 +74,13 @@ var MailForward = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateStdinAttachmentFlags(runtime); err != nil {
+			return err
+		}
 		to := normalizeRecipientFlagValues(runtime.StrArray("to"))
 		cc := normalizeRecipientFlagValues(runtime.StrArray("cc"))
 		bcc := normalizeRecipientFlagValues(runtime.StrArray("bcc"))
-		attach := normalizeCommaFlagValues(runtime.StrArray("attach"))
+		attach := runtime.StrArray("attach")
 		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
@@ -117,6 +121,10 @@ var MailForward = common.Shortcut{
 		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		stdinAtt, stdinErr := readStdinAttachment(runtime)
+		if stdinErr != nil {
+			return stdinErr
+		}
 		messageId := runtime.Str("message-id")
 		to := normalizeRecipientFlagValues(runtime.StrArray("to"))
 		body, bErr := resolveBodyFromFlags(runtime)
@@ -126,7 +134,7 @@ var MailForward = common.Shortcut{
 		ccFlag := normalizeRecipientFlagValues(runtime.StrArray("cc"))
 		bccFlag := normalizeRecipientFlagValues(runtime.StrArray("bcc"))
 		plainText := runtime.Bool("plain-text")
-		attachFlag := normalizeCommaFlagValues(runtime.StrArray("attach"))
+		attachFlag := runtime.StrArray("attach")
 		inlineFlag, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
@@ -394,6 +402,8 @@ var MailForward = common.Shortcut{
 		composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, srcInlineBytes) + templateSmallBytes
 
+		bld = stdinAtt.addTo(bld)
+		emlBase += stdinAtt.emlBytes()
 		var allFiles []attachmentFile
 		for i, att := range origAtts {
 			allFiles = append(allFiles, attachmentFile{
@@ -402,7 +412,7 @@ var MailForward = common.Shortcut{
 				SourceIndex: i,
 			})
 		}
-		userFiles, err := statAttachmentFiles(runtime.FileIO(), splitByComma(attachFlag))
+		userFiles, err := statAttachmentFiles(runtime.FileIO(), attachFlag)
 		if err != nil {
 			return err
 		}
@@ -412,7 +422,7 @@ var MailForward = common.Shortcut{
 					f.FileName, float64(f.Size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
 			}
 		}
-		totalCount := len(origAtts) + len(largeAttIDs) + len(userFiles)
+		totalCount := len(origAtts) + len(largeAttIDs) + len(userFiles) + stdinAtt.count()
 		if totalCount > MaxAttachmentCount {
 			return mailFailedPreconditionError("attachment count %d exceeds the limit of %d", totalCount, MaxAttachmentCount)
 		}
