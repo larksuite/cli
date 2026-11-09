@@ -40,6 +40,45 @@ const appDevUploadURLKey = "artifact_url"
 // local process.
 const appDevEnvPrefix = "MIAODA_"
 
+const deployReleaseFallbackHint = "verify the app supports artifact-hosting publish; list your apps with `lark-cli apps +list`"
+
+const (
+	deployReleaseWorkflowFailedCode    = 400002546
+	deployReleaseAlreadyInProgressCode = 400002553
+)
+
+func deployReleaseFailureHint(err error, appID string, releaseData map[string]interface{}) error {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeUnknown {
+		return withAppsHint(err, deployReleaseFallbackHint)
+	}
+
+	switch p.Code {
+	case deployReleaseAlreadyInProgressCode:
+		recoveryHint := fmt.Sprintf("a release is already in progress for this app; do not run +deploy again now and do not create another release. Reuse an earlier release_id only if that +deploy ran earlier in this conversation, targeted the same --app-id %s, the files have not changed since that +deploy, and `lark-cli apps +release-get --app-id %s --release-id <release_id>` confirms that release is still in progress; never use a release_id from another app for this app. If the old release is already in a terminal state, do not treat its finished state as the result of this deploy. In every other case, including cross-app, changed files, terminal, or uncertain ownership, find the current in-progress release for this app with `lark-cli apps +release-list --app-id %s`, then follow it to a terminal state with `lark-cli apps +release-get --app-id %s --release-id <release_id>`. If the current release does not publish the files currently being deployed—for example, files changed after an earlier +deploy or the release was started elsewhere—its result is not this deploy's result: after it reaches a terminal state, run +deploy exactly once more to publish these files; if that is refused again, stop. If you cannot identify the current release, or it is waiting for an approver, stop and report that this deploy has not been published; do not keep retrying", appID, appID, appID, appID)
+		appendDeployReleaseHint(p, recoveryHint)
+		return err
+	case deployReleaseWorkflowFailedCode:
+		releaseID := strings.TrimSpace(common.GetString(releaseData, "release_id"))
+		if isReleaseIDShape(releaseID) {
+			appendDeployReleaseHint(p, fmt.Sprintf("the release workflow failed for this deploy; do not run +deploy again now or inspect app metadata; inspect this release's failure details with `lark-cli apps +release-get --app-id %s --release-id %s`, address those details, then decide whether to publish again", appID, releaseID))
+			return err
+		}
+		appendDeployReleaseHint(p, fmt.Sprintf("the release workflow failed for this deploy; do not run +deploy again now or inspect app metadata; the error response did not include a release_id, so find the most recent release with `lark-cli apps +release-list --app-id %s`, inspect its failure details with `lark-cli apps +release-get --app-id %s --release-id <release_id>`, address those details, then decide whether to publish again", appID, appID))
+		return err
+	default:
+		return withAppsHint(err, deployReleaseFallbackHint)
+	}
+}
+
+func appendDeployReleaseHint(p *errs.Problem, recoveryHint string) {
+	if serverDetail := strings.TrimSpace(p.Hint); serverDetail != "" {
+		p.Hint = serverDetail + "; " + recoveryHint
+		return
+	}
+	p.Hint = recoveryHint
+}
+
 // appDevBuildEnv filters pre_release kvs down to injectable build env vars.
 // Returns KEY=VALUE entries plus the injected key names (sorted, for the
 // audit line on stderr). Keys containing '=', NUL, CR or LF are dropped.
@@ -682,7 +721,7 @@ var AppsDeploy = common.Shortcut{
 		releasePath := fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(appID))
 		releaseData, err := rctx.CallAPITyped("POST", releasePath, nil, map[string]interface{}{})
 		if err != nil {
-			return withAppsHint(err, "verify the app supports artifact-hosting publish; list your apps with `lark-cli apps +list`")
+			return deployReleaseFailureHint(err, appID, releaseData)
 		}
 
 		releaseID := common.GetString(releaseData, "release_id")

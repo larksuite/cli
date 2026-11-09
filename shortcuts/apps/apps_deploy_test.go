@@ -403,6 +403,252 @@ func stubReleases(reg *httpmock.Registry, appID string, respData map[string]inte
 	})
 }
 
+func runAppsDeployReleaseFailure(t *testing.T, mode string, code int, respData map[string]interface{}) *errs.Problem {
+	return runAppsDeployReleaseFailureWithError(t, mode, code, respData, nil)
+}
+
+func runAppsDeployReleaseFailureWithError(t *testing.T, mode string, code int, respData, respError map[string]interface{}) *errs.Problem {
+	t.Helper()
+
+	const appID = "app_x"
+	var args []string
+	switch mode {
+	case "project":
+		root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
+		writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
+		args = []string{"+deploy", "--skip-build", "--as", "user"}
+	case "bare HTML":
+		chdirHTMLPayload(t, map[string]string{"report.html": "<h1>report</h1>"})
+		args = []string{"+deploy", "--file-path", "report.html", "--app-id", appID, "--as", "user"}
+	default:
+		t.Fatalf("unknown deploy mode %q", mode)
+	}
+
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubPreRelease(reg, appID, srv.URL, nil)
+	response := map[string]interface{}{
+		"code": float64(code),
+		"msg":  "release request failed",
+		"data": respData,
+	}
+	if respError != nil {
+		response["error"] = respError
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/" + appID + "/releases",
+		Body:   response,
+	})
+
+	err := runAppsShortcut(t, AppsDeploy, args, factory, stdout)
+	reg.Verify(t)
+	p := requireAppsProblem(t, err, errs.CategoryAPI)
+	if p.Subtype != errs.SubtypeUnknown {
+		t.Errorf("subtype = %q, want unknown", p.Subtype)
+	}
+	if p.Code != code {
+		t.Errorf("code = %d, want %d", p.Code, code)
+	}
+	return p
+}
+
+func TestAppsDeployReleaseFailureHints(t *testing.T) {
+	for _, mode := range []string{"project", "bare HTML"} {
+		t.Run(mode+" release already in progress", func(t *testing.T) {
+			p := runAppsDeployReleaseFailure(t, mode, 400002553, nil)
+			for _, want := range []string{
+				"do not run +deploy again",
+				"lark-cli apps +release-list --app-id app_x",
+				"lark-cli apps +release-get --app-id app_x --release-id <release_id>",
+			} {
+				if !strings.Contains(p.Hint, want) {
+					t.Errorf("hint = %q, want containing %q", p.Hint, want)
+				}
+			}
+			for _, forbidden := range []string{"artifact-hosting publish", "lark-cli apps +list", "lark-cli apps +get"} {
+				if strings.Contains(p.Hint, forbidden) {
+					t.Errorf("hint = %q, must not contain %q", p.Hint, forbidden)
+				}
+			}
+		})
+
+		t.Run(mode+" in-progress release rejects cross-app id reuse", func(t *testing.T) {
+			p := runAppsDeployReleaseFailure(t, mode, 400002553, nil)
+			for _, want := range []string{
+				"ran earlier in this conversation",
+				"same --app-id app_x",
+				"files have not changed since that +deploy",
+				"never use a release_id from another app",
+				"lark-cli apps +release-list --app-id app_x",
+			} {
+				if !strings.Contains(p.Hint, want) {
+					t.Errorf("hint = %q, want cross-app guard containing %q", p.Hint, want)
+				}
+			}
+		})
+
+		t.Run(mode+" in-progress release rejects terminal historical id", func(t *testing.T) {
+			p := runAppsDeployReleaseFailure(t, mode, 400002553, nil)
+			for _, want := range []string{
+				"confirms that release is still in progress",
+				"old release is already in a terminal state",
+				"do not treat its finished state as the result of this deploy",
+				"lark-cli apps +release-list --app-id app_x",
+			} {
+				if !strings.Contains(p.Hint, want) {
+					t.Errorf("hint = %q, want terminal-history guard containing %q", p.Hint, want)
+				}
+			}
+		})
+
+		t.Run(mode+" changed files redeploy after blocker terminal", func(t *testing.T) {
+			p := runAppsDeployReleaseFailure(t, mode, 400002553, nil)
+			for _, want := range []string{
+				"files changed after an earlier +deploy",
+				"its result is not this deploy's result",
+				"after it reaches a terminal state, run +deploy exactly once more",
+			} {
+				if !strings.Contains(p.Hint, want) {
+					t.Errorf("hint = %q, want changed-files recovery containing %q", p.Hint, want)
+				}
+			}
+		})
+
+		for _, code := range []int{400002553, 400002546} {
+			t.Run(fmt.Sprintf("%s preserves server detail for %d", mode, code), func(t *testing.T) {
+				p := runAppsDeployReleaseFailureWithError(t, mode, code, nil, map[string]interface{}{
+					"details": []interface{}{map[string]interface{}{"value": "server release detail"}},
+				})
+				if !strings.HasPrefix(p.Hint, "server release detail") {
+					t.Errorf("hint = %q, want server detail preserved before recovery guidance", p.Hint)
+				}
+				for _, want := range map[int][]string{
+					400002553: {"same --app-id app_x", "lark-cli apps +release-list --app-id app_x"},
+					400002546: {"workflow failed", "lark-cli apps +release-list --app-id app_x"},
+				}[code] {
+					if !strings.Contains(p.Hint, want) {
+						t.Errorf("hint = %q, want recovery guidance containing %q", p.Hint, want)
+					}
+				}
+				if p.Message != "release request failed" {
+					t.Errorf("message = %q, want server message preserved", p.Message)
+				}
+			})
+		}
+
+		t.Run(mode+" release workflow failed", func(t *testing.T) {
+			p := runAppsDeployReleaseFailure(t, mode, 400002546, map[string]interface{}{"release_id": "7712345678901234567"})
+			for _, want := range []string{
+				"workflow failed",
+				"do not run +deploy again",
+				"failure details",
+				"lark-cli apps +release-get --app-id app_x --release-id 7712345678901234567",
+			} {
+				if !strings.Contains(p.Hint, want) {
+					t.Errorf("hint = %q, want containing %q", p.Hint, want)
+				}
+			}
+			for _, forbidden := range []string{"artifact-hosting publish", "lark-cli apps +list", "lark-cli apps +get"} {
+				if strings.Contains(p.Hint, forbidden) {
+					t.Errorf("hint = %q, must not contain %q", p.Hint, forbidden)
+				}
+			}
+		})
+
+		t.Run(mode+" release workflow failed with invalid release id", func(t *testing.T) {
+			p := runAppsDeployReleaseFailure(t, mode, 400002546, map[string]interface{}{"release_id": "rel_failed"})
+			for _, want := range []string{
+				"workflow failed",
+				"do not run +deploy again",
+				"lark-cli apps +release-list --app-id app_x",
+				"lark-cli apps +release-get --app-id app_x --release-id <release_id>",
+			} {
+				if !strings.Contains(p.Hint, want) {
+					t.Errorf("hint = %q, want containing %q", p.Hint, want)
+				}
+			}
+			for _, forbidden := range []string{"--release-id rel_failed", "artifact-hosting publish", "lark-cli apps +list", "lark-cli apps +get"} {
+				if strings.Contains(p.Hint, forbidden) {
+					t.Errorf("hint = %q, must not contain %q", p.Hint, forbidden)
+				}
+			}
+		})
+
+		t.Run(mode+" release workflow failed without release id", func(t *testing.T) {
+			p := runAppsDeployReleaseFailure(t, mode, 400002546, nil)
+			for _, want := range []string{
+				"workflow failed",
+				"do not run +deploy again",
+				"lark-cli apps +release-list --app-id app_x",
+				"lark-cli apps +release-get --app-id app_x --release-id <release_id>",
+			} {
+				if !strings.Contains(p.Hint, want) {
+					t.Errorf("hint = %q, want containing %q", p.Hint, want)
+				}
+			}
+			for _, forbidden := range []string{"artifact-hosting publish", "lark-cli apps +list", "lark-cli apps +get"} {
+				if strings.Contains(p.Hint, forbidden) {
+					t.Errorf("hint = %q, must not contain %q", p.Hint, forbidden)
+				}
+			}
+		})
+
+		t.Run(mode+" other API error keeps fallback", func(t *testing.T) {
+			p := runAppsDeployReleaseFailure(t, mode, 400000072, nil)
+			const want = "verify the app supports artifact-hosting publish; list your apps with `lark-cli apps +list`"
+			if p.Hint != want {
+				t.Errorf("hint = %q, want byte-for-byte %q", p.Hint, want)
+			}
+		})
+
+		t.Run(mode+" other API error preserves server detail", func(t *testing.T) {
+			p := runAppsDeployReleaseFailureWithError(t, mode, 400000072, nil, map[string]interface{}{
+				"details": []interface{}{map[string]interface{}{"value": "server release detail"}},
+			})
+			if p.Hint != "server release detail" {
+				t.Errorf("hint = %q, want unrelated error detail unchanged", p.Hint)
+			}
+		})
+	}
+}
+
+func TestDeployReleaseFailureHintPreservesTypedError(t *testing.T) {
+	cause := errors.New("sentinel cause")
+	original := errs.NewAPIError(errs.SubtypeUnknown, "release request failed").
+		WithCode(deployReleaseAlreadyInProgressCode).
+		WithHint("server release detail").
+		WithLogID("log-id").
+		WithCause(cause)
+	original.Troubleshooter = "https://example.com/troubleshoot"
+	original.UpstreamError = json.RawMessage(`{"details":[{"value":"server release detail"}]}`)
+
+	got := deployReleaseFailureHint(original, "app_x", nil)
+	if got != original {
+		t.Fatalf("returned error = %p, want original %p", got, original)
+	}
+	var apiErr *errs.APIError
+	if !errors.As(got, &apiErr) {
+		t.Fatalf("returned error type = %T, want *errs.APIError", got)
+	}
+	if !errors.Is(got, cause) {
+		t.Fatal("returned error lost sentinel cause")
+	}
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("ProblemOf(%T) failed", got)
+	}
+	if p.Code != deployReleaseAlreadyInProgressCode || p.LogID != "log-id" || p.Troubleshooter != "https://example.com/troubleshoot" {
+		t.Errorf("typed metadata changed: %+v", p)
+	}
+	if string(p.UpstreamError) != `{"details":[{"value":"server release detail"}]}` {
+		t.Errorf("upstream_error = %s, want preserved", p.UpstreamError)
+	}
+	if !strings.HasPrefix(p.Hint, "server release detail; ") || !strings.Contains(p.Hint, "same --app-id app_x") {
+		t.Errorf("hint = %q, want server detail plus recovery guidance", p.Hint)
+	}
+}
+
 func TestAppDevPublishValidate_NoMeta(t *testing.T) {
 	chdirSparkProjectRoot(t, "")
 	factory, stdout, _ := newAppsExecuteFactory(t)

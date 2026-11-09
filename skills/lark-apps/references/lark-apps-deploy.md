@@ -63,6 +63,8 @@ lark-cli apps +deploy --dry-run
 - `routes.json is missing` / schema 校验失败：声明了 `build.command` 的项目由构建脚本负责生成合法 routes.json；让用户检查构建配置，不要手工伪造（buildless 项目无此问题，CLI 会自动生成）。
 - `build command ... failed`：转述 stderr 摘要让用户修构建错误（构建命令来自 spark.json `build.command`）；用户已手动构建时可用 `--skip-build`。
 - `artifact directory ... does not exist`：声明了构建命令时先构建（或去掉 `--skip-build`）；buildless 项目需确认 `build.output` 指向的目录真实存在。
+- `400002553` / `a release is already in progress`：禁止继续重跑 `+deploy`，也不要用 `apps +list` / `apps +get` 查应用元数据。只有先前的 `release_id` 来自本次对话中针对同一个 `--app-id <app_id>` 的本次部署、文件从那次 `+deploy` 后没有变化，且 `lark-cli apps +release-get --app-id <app_id> --release-id <release_id>` 确认它仍在进行中时，才继续跟这一轮；绝不能把另一个 app 的 `release_id` 用到本次 app。旧 ID 已到终态时，不得把它的 `finished` 当成本次部署完成。跨应用、文件已变化、旧发布已终结或归属拿不准时，一律先用 `lark-cli apps +release-list --app-id <app_id>` 核对当前 app 的进行中发布，再用 `+release-get` 跟到终态；若该发布对应旧文件或由别处发起，其结果不是本次部署结果，终态后只再执行一次 `+deploy` 发布当前文件。仍无法确认、正在等审批或再次被拒时停止，并明确本次文件尚未发布。
+- `400002546` / 发布工作流失败：禁止重跑 `+deploy`，也不要用 `apps +list` / `apps +get` 查应用元数据。错误 hint 已给出具体 `release_id` 时，直接执行 `lark-cli apps +release-get --app-id <app_id> --release-id <release_id>` 查看该轮失败详情；没有 ID 时先用 `lark-cli apps +release-list --app-id <app_id>` 找到最近一轮，再用 `+release-get` 查看详情。按失败详情处理后再决定是否重新发布。
 
 ## 裸 HTML 发布（`--file-path` / `--dir`）
 
@@ -204,10 +206,13 @@ lark-cli apps +deploy --file-path ./report.html --access-scope tenant
 | `credential file(s) that should not be published` | 先把凭证文件移出发布范围；确认是公开页面内容才加 `--allow-sensitive` |
 | `exceeds the ... limit` / `packed zip is ... bytes` | 体积超限，收窄 `--dir` 或删减产物 |
 | 路径不存在 / 越出 cwd | 路径只接受 cwd 下的相对路径，先 `cd` 到产物所在目录 |
+| `400002553` / `a release is already in progress` | 禁止继续重跑 `+deploy`，也不要用 `apps +list` / `apps +get` 查应用元数据。只有旧 `release_id` 来自本次对话中同一个 `--app-id <app_id>` 的本次部署、文件从那次 `+deploy` 后没有变化，且 `+release-get` 确认它仍在进行中时才直接跟踪；绝不能跨 app 复用 ID，旧 ID 已终态时也不得把 `finished` 当成本次完成。跨应用、文件已变化、旧发布已终结或归属拿不准时，一律先用 `lark-cli apps +release-list --app-id <app_id>` 核对当前 app 的进行中发布，再用 `+release-get` 跟到终态；若该发布对应旧文件或由别处发起，其结果不是本次部署结果，终态后只再执行一次 `+deploy` 发布当前文件。仍无法确认、等待审批或再次被拒时停止并报告本次文件尚未发布。 |
+| `400002546` / 发布工作流失败 | 禁止重跑 `+deploy`，也不要用 `apps +list` / `apps +get` 查应用元数据。hint 有具体 `release_id` 时直接用 `lark-cli apps +release-get --app-id <app_id> --release-id <release_id>` 查看失败详情；没有 ID 时先用 `lark-cli apps +release-list --app-id <app_id>` 找到最近一轮，再用 `+release-get` 查看详情。 |
 
 ## 输出契约（两种形态共用）
 
 - 发布单受理后**命令立即返回，不原地等待**（agent 运行时不允许长前台等待，轮询由调用方负责）：发布中时返回 `data.release_id` 和 `data.poll_hint`，用 `+release-get --app-id <app_id> --release-id <release_id>` 轮询到 `finished` 后读取 `online_url`（轮询间隔 ≥3s）。
+- `data.status=publishing` 或 `pending` 只表示发布尚未到终态：只执行本次响应的 `data.poll_hint` 查询同一个 `release_id`；不要重跑 `+deploy`、不要创建另一轮 release，也不要用应用列表或应用详情代替发布状态查询。只有同一个 ID 返回 `finished` 才算本次部署完成，`failed` 则按该轮失败详情处理。
 - **在项目根轮询**：`+release-get` 观察到 `finished` 且当前目录 spark.json 记录的正是该 app 时，会自动把 `online_url` 回写进 app 段（`app.online_url`）（无 spark.json 或 id 不匹配时静默跳过）——所以轮询尽量在项目根执行，让状态区保持最新。
 - 同步完成（受理响应即 `finished`）时直接返回 `data.online_url` 并随 app 段回写进 `spark.json`。
 - 裸 HTML 发布不读写 `spark.json`：`data.built` 恒为 `false`，`online_url` 不回写任何本地文件，`poll_hint` 在任意目录都可直接执行。

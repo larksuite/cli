@@ -658,7 +658,7 @@ func executeHTMLDeploy(ctx context.Context, rctx *common.RuntimeContext) error {
 	releasePath := fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(plan.AppID))
 	releaseData, err := rctx.CallAPITyped("POST", releasePath, nil, htmlReleaseBody(plan.ContentHash))
 	if err != nil {
-		return withAppsHint(err, "verify the app supports artifact-hosting publish; list your apps with `lark-cli apps +list`")
+		return deployReleaseFailureHint(err, plan.AppID, releaseData)
 	}
 
 	releaseID := common.GetString(releaseData, "release_id")
