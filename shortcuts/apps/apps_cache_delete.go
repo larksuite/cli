@@ -22,6 +22,7 @@ var AppsCacheDelete = common.Shortcut{
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +cache-delete --app-id <app_id> --environment dev --key <key>",
+		"Choose the environment explicitly. For a single-env app, online is production; use --environment online only after confirming the target and impact.",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
