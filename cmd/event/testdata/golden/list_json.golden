@@ -549,7 +549,7 @@
         "name": "file_token",
         "type": "string",
         "required": true,
-        "description": "Base (bitable) app token to subscribe; subscription is per file. Field changes of other Bases are filtered out.",
+        "description": "Base (bitable) app token to subscribe; subscription is per file. Changes to other Bases are filtered out.",
         "subscription_key": true
       }
     ],
@@ -598,6 +598,9 @@
                   },
                   "after_value": {
                     "properties": {
+                      "description": {
+                        "type": "string"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -612,6 +615,9 @@
                   },
                   "before_value": {
                     "properties": {
+                      "description": {
+                        "type": "string"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -736,7 +742,7 @@
         "name": "file_token",
         "type": "string",
         "required": true,
-        "description": "Base (bitable) app token to subscribe; subscription is per file. Record changes of other Bases are filtered out.",
+        "description": "Base (bitable) app token to subscribe; subscription is per file. Changes to other Bases are filtered out.",
         "subscription_key": true
       }
     ],

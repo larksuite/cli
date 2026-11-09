@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/events/internal/subscribeprep"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/validate"
 )
@@ -28,13 +29,13 @@ const (
 // The drive file-subscription API is keyed per file, so the token is part of
 // the subscription identity: two consumers watching different Bases get their
 // own setup and cleanup instead of sharing one record.
-func fileTokenParam(what string) event.ParamDef {
+func fileTokenParam() event.ParamDef {
 	return event.ParamDef{
 		Name:            "file_token",
 		Type:            event.ParamString,
 		Required:        true,
 		SubscriptionKey: true,
-		Description:     fmt.Sprintf("Base (bitable) app token to subscribe; subscription is per file. %s", what),
+		Description:     "Base (bitable) app token to subscribe; subscription is per file. Changes to other Bases are filtered out.",
 	}
 }
 
@@ -84,6 +85,12 @@ type BitableFieldAction struct {
 }
 
 // BitableFieldDefinition is a field as the event describes it.
+//
+// The server also sends a type-dependent property object (formatter, options,
+// formula_expression and friends). Native output is a verbatim passthrough, so
+// consumers still receive it on stdout; it is left out of this declared shape
+// because modelling a loose per-type blob would not survive a new field type.
+// Declare it once a consumer needs `event schema` to describe those details.
 type BitableFieldDefinition struct {
 	// ID is the field id.
 	ID string `json:"id"`
@@ -91,6 +98,8 @@ type BitableFieldDefinition struct {
 	Name string `json:"name"`
 	// Type is the numeric Base field type, as used by the Base field APIs.
 	Type int `json:"type"`
+	// Description is the field description.
+	Description string `json:"description"`
 }
 
 // DriveFileBitableRecordChangedV1Data is the bitable record changed source payload.
@@ -169,6 +178,12 @@ func bitableFileTokenMatch(raw *event.RawEvent, params map[string]string) bool {
 // record changes, and one unsubscribe stops both. A record that already
 // existed before this consumer started is therefore left alone on exit —
 // tearing it down would silently cut off whoever created it.
+//
+// The probe cannot close the window where two consumers of this file start
+// together: both read is_subscribe=false, both subscribe, and the first to
+// exit stops the other. Closing it needs one subscription scope spanning the
+// file's EventKeys, while the framework scopes PreConsume per EventKey; worth
+// revisiting if consuming both Base keys on one file becomes routine.
 func bitableSubscriptionPreConsume(eventType string) func(context.Context, event.APIClient, map[string]string) (func() error, error) {
 	return func(ctx context.Context, rt event.APIClient, params map[string]string) (func() error, error) {
 		if rt == nil {
@@ -201,7 +216,7 @@ func bitableSubscriptionPreConsume(eventType string) func(context.Context, event
 			return nil, nil
 		}
 		return func() error {
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), bitableCleanupTimeout)
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), subscribeprep.CleanupTimeout)
 			defer cancel()
 			_, err := rt.CallAPI(cleanupCtx, "DELETE", base+"/delete_subscribe"+query, nil)
 			return err

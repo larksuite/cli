@@ -29,9 +29,11 @@ The two subscription models differ and are easy to confuse:
 | `drive.file.bitable_field_changed_v1` | `base:field:read` | user, bot |
 | `drive.file.bitable_record_changed_v1` | `base:record:read` | user, bot |
 
-Subscribing a file needs scopes of its own, separate from the ones that read the event: `docs:event:subscribe` plus one of `drive:drive` / `docs:doc` / `sheets:spreadsheet`. Without them the subscribe call fails with `99991672` before listening starts, and the error hint carries the console link that applies for them. The scopes an app holds for the event itself (for example `base:field:read`) do not grant this.
+The platform accepts any one of several scopes per row — `base:field:read`, `bitable:app` or `drive:drive` for the field key, `base:record:read`, `bitable:app` or `drive:drive` for the record key — but `event consume` prechecks exactly the one in the table, so grant that one rather than a broader equivalent.
 
-The app must also enable `drive.notice.comment_add_v1` under event subscriptions in the developer console (long connection mode) and publish a version; otherwise `event consume` fails up-front and prints a console link in `error.hint`.
+Subscribing the file needs a scope of its own, separate from the one that reads the event: any one of `docs:event:subscribe`, `drive:drive`, `docs:doc`, `sheets:spreadsheet`. A scope held for the event itself (for example `base:field:read`) does not grant it, and no precheck covers it — the subscribe call fails at startup instead, with `99991679` as user (the envelope carries `missing_scopes` and an `auth login --scope` hint) or `99991672` as bot (the hint carries the console grant link).
+
+The app must also enable the EventKey's event type under event subscriptions in the developer console (long connection mode) and publish a version; otherwise `event consume` fails up-front and prints a console link in `error.hint`.
 
 - `--as bot`: receive notices addressed to the bot, such as a comment or reply that @mentions the bot, and replies in comment threads the bot takes part in (these arrive with `is_mentioned: false`).
 - `--as user`: receive the comment notices the authorized user gets, such as being @mentioned or replies in their comment threads.
@@ -119,7 +121,7 @@ Common to both:
 | `.event.operator_id.{open_id,union_id,user_id}` | string | Who made the change; `user_id` is null unless the app holds the user_id contact scope |
 | `.event.subscriber_id_list[]` | object | Subscribers this delivery was produced for |
 
-`drive.file.bitable_field_changed_v1` adds `.event.action_list[]` with `action` (`field_added` / `field_deleted` / `field_edited`), `field_id`, and `before_value` / `after_value` as `{id, name, type}` where `type` is the numeric Base field type. One UI edit can produce several entries: adding a field arrives as `field_added` followed by `field_edited` for the same `field_id`.
+`drive.file.bitable_field_changed_v1` adds `.event.action_list[]` with `action` (`field_added` / `field_deleted` / `field_edited`), `field_id`, and `before_value` / `after_value` as `{id, name, type, description, property}` where `type` is the numeric Base field type and `property` is a type-dependent object (`options`, `formula_expression`, `formatter`, …). `property` is delivered on stdout like every other field — output is a verbatim passthrough — but `event schema` does not describe its keys, so read them off a real event rather than the schema. One UI edit can produce several entries: adding a field arrives as `field_added` followed by `field_edited` for the same `field_id`.
 
 `drive.file.bitable_record_changed_v1` adds `.event.action_list[]` with `record_id`, `action` (`record_added` / `record_deleted` / `record_edited`), and `before_value` / `after_value` as a list of `{field_id, field_value}` covering **every field of the table**, not only the changed ones. `field_value` is a string: empty when the cell has no value, and itself JSON for structured types such as text runs. A change to a formula field's computed value does not produce an event.
 
@@ -137,10 +139,9 @@ lark-cli event consume drive.file.bitable_field_changed_v1 \
 # Project to "who touched which record"
 lark-cli event consume drive.file.bitable_record_changed_v1 \
     -p file_token=<base_token> --as user \
-    --jq '{table: .event.table_id, by: .event.operator_id.union_id,
-           records: (.event.action_list | map({(.action): .record_id}))}'
+    --jq '{table: .event.table_id, by: .event.operator_id.union_id, records: (.event.action_list | map({(.action): .record_id}))}'
 
 # Then read the changed record back
 lark-cli base +record-get --base-token <base_token> --table-id <table_id> \
-    --record-ids <record_id> --as user
+    --record-id <record_id> --as user
 ```

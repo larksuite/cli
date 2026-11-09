@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -21,29 +22,63 @@ type bitableCall struct {
 	path   string
 }
 
+// bitableAPIFailure stands in for a real OAPI refusal: the typed problem it
+// carries is what callers branch on, so the tests assert it survives.
+var bitableAPIFailure = errs.NewPermissionError(errs.SubtypeAppScopeNotApplied,
+	"api POST /open-apis/drive/v1/files/x/subscribe: scope not applied")
+
 // bitableFakeClient is a minimal event.APIClient stub that records calls and
-// answers get_subscribe with a configurable is_subscribe value.
+// answers get_subscribe with a configurable is_subscribe value. failOnPath is
+// matched exactly: "/subscribe" and "/get_subscribe" differ by one character
+// of the path, and a substring match would silently conflate them.
 type bitableFakeClient struct {
-	mu              sync.Mutex
-	calls           []bitableCall
-	alreadySubbed   bool
-	errOnPathSuffix string
+	mu            sync.Mutex
+	calls         []bitableCall
+	alreadySubbed bool
+	failOnPath    string
+	subscribeBody json.RawMessage
 }
 
 func (f *bitableFakeClient) CallAPI(_ context.Context, method, path string, _ interface{}) (json.RawMessage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, bitableCall{method: method, path: path})
-	if f.errOnPathSuffix != "" && strings.Contains(path, f.errOnPathSuffix) {
-		return nil, errors.New("simulated failure")
+	if f.failOnPath != "" && path == f.failOnPath {
+		return nil, bitableAPIFailure
 	}
 	if strings.Contains(path, "/get_subscribe") {
+		if f.subscribeBody != nil {
+			return f.subscribeBody, nil
+		}
 		if f.alreadySubbed {
 			return json.RawMessage(`{"code":0,"data":{"is_subscribe":true}}`), nil
 		}
 		return json.RawMessage(`{"code":0,"data":{"is_subscribe":false}}`), nil
 	}
 	return json.RawMessage(`{"code":0}`), nil
+}
+
+const (
+	bitableGetSubscribePath = "/open-apis/drive/v1/files/BaseTokenAAA/get_subscribe?file_type=bitable"
+	bitableSubscribePath    = "/open-apis/drive/v1/files/BaseTokenAAA/subscribe?file_type=bitable"
+	bitableDeletePath       = "/open-apis/drive/v1/files/BaseTokenAAA/delete_subscribe?file_type=bitable"
+)
+
+// assertBitableAPIFailurePassedThrough proves the client's typed problem
+// reached the caller instead of being flattened into a new error.
+func assertBitableAPIFailurePassedThrough(t *testing.T, err error) {
+	t.Helper()
+	if !errors.Is(err, bitableAPIFailure) {
+		t.Fatalf("the client error did not survive: got %v", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("the returned error carries no typed problem")
+	}
+	if problem.Category != errs.CategoryAuthorization || problem.Subtype != errs.SubtypeAppScopeNotApplied {
+		t.Errorf("problem = %s/%s, want %s/%s", problem.Category, problem.Subtype,
+			errs.CategoryAuthorization, errs.SubtypeAppScopeNotApplied)
+	}
 }
 
 func (f *bitableFakeClient) paths() []string {
@@ -69,7 +104,7 @@ const fieldChangedPayload = `{
     "update_time": 1794220431,
     "operator_id": {"open_id":"ou_1","union_id":"on_1","user_id":null},
     "action_list": [
-      {"action":"field_added","field_id":"fld_1","after_value":{"id":"fld_1","name":"col","type":1}}
+      {"action":"field_added","field_id":"fld_1","after_value":{"id":"fld_1","name":"col","type":1,"description":"what the column holds"}}
     ],
     "subscriber_id_list": [{"open_id":"ou_1","union_id":"on_1","user_id":null}]
   }
@@ -111,6 +146,24 @@ func TestBitableFileTokenMatch(t *testing.T) {
 		{
 			name:    "payload without a file token is dropped",
 			payload: `{"event":{"table_id":"tblAAA"}}`,
+			params:  map[string]string{"file_token": "BaseTokenAAA"},
+			want:    false,
+		},
+		{
+			name:    "file token of the wrong type is dropped",
+			payload: `{"event":{"file_token":42}}`,
+			params:  map[string]string{"file_token": "BaseTokenAAA"},
+			want:    false,
+		},
+		{
+			name:    "event that is not an object is dropped",
+			payload: `{"event":"BaseTokenAAA"}`,
+			params:  map[string]string{"file_token": "BaseTokenAAA"},
+			want:    false,
+		},
+		{
+			name:    "payload that is not an object is dropped",
+			payload: `["BaseTokenAAA"]`,
 			params:  map[string]string{"file_token": "BaseTokenAAA"},
 			want:    false,
 		},
@@ -159,20 +212,32 @@ func TestBitableSubscriptionPreConsume_SubscribesAndCleansUp(t *testing.T) {
 	if cleanup == nil {
 		t.Fatal("a subscription this consumer created must be cleaned up")
 	}
-	want := []string{
-		"GET /open-apis/drive/v1/files/BaseTokenAAA/get_subscribe?file_type=bitable",
-		"POST /open-apis/drive/v1/files/BaseTokenAAA/subscribe?file_type=bitable",
-	}
-	if got := fake.paths(); !equalStrings(got, want) {
+	want := []string{"GET " + bitableGetSubscribePath, "POST " + bitableSubscribePath}
+	if got := fake.paths(); !slices.Equal(got, want) {
 		t.Fatalf("calls = %v, want %v", got, want)
 	}
 	if err := cleanup(); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
-	got := fake.paths()
-	last := got[len(got)-1]
-	if last != "DELETE /open-apis/drive/v1/files/BaseTokenAAA/delete_subscribe?file_type=bitable" {
-		t.Fatalf("cleanup call = %q", last)
+	want = append(want, "DELETE "+bitableDeletePath)
+	if got := fake.paths(); !slices.Equal(got, want) {
+		t.Fatalf("calls after cleanup = %v, want %v", got, want)
+	}
+}
+
+// The nil-client invariant is a programming error, not a user one, so it must
+// surface as a typed internal error rather than a panic downstream.
+func TestBitableSubscriptionPreConsume_NilRuntime(t *testing.T) {
+	pc := bitableSubscriptionPreConsume(eventTypeBitableFieldChangedV1)
+	cleanup, err := pc(context.Background(), nil, map[string]string{"file_token": "BaseTokenAAA"})
+	if err == nil {
+		t.Fatal("expected an error when the runtime client is nil")
+	}
+	if cleanup != nil {
+		t.Fatal("expected nil cleanup on error")
+	}
+	if p, ok := errs.ProblemOf(err); !ok || p.Category != errs.CategoryInternal {
+		t.Errorf("nil-runtime invariant should be a typed internal error, got %T: %v", err, err)
 	}
 }
 
@@ -192,7 +257,7 @@ func TestBitableSubscriptionPreConsume_KeepsPreExistingSubscription(t *testing.T
 }
 
 func TestBitableSubscriptionPreConsume_PropagatesSubscribeFailure(t *testing.T) {
-	fake := &bitableFakeClient{errOnPathSuffix: "/subscribe?"}
+	fake := &bitableFakeClient{failOnPath: bitableSubscribePath}
 	pc := bitableSubscriptionPreConsume(eventTypeBitableFieldChangedV1)
 	cleanup, err := pc(context.Background(), fake, map[string]string{"file_token": "BaseTokenAAA"})
 	if err == nil {
@@ -200,6 +265,47 @@ func TestBitableSubscriptionPreConsume_PropagatesSubscribeFailure(t *testing.T) 
 	}
 	if cleanup != nil {
 		t.Fatal("expected nil cleanup when subscribe failed")
+	}
+	assertBitableAPIFailurePassedThrough(t, err)
+}
+
+// The probe decides whether cleanup may delete the record, so a probe that
+// could not answer must stop the consumer instead of guessing: guessing
+// "not subscribed" would delete a record this consumer did not create.
+func TestBitableSubscriptionPreConsume_PropagatesProbeFailure(t *testing.T) {
+	fake := &bitableFakeClient{failOnPath: bitableGetSubscribePath}
+	pc := bitableSubscriptionPreConsume(eventTypeBitableFieldChangedV1)
+	cleanup, err := pc(context.Background(), fake, map[string]string{"file_token": "BaseTokenAAA"})
+	if err == nil {
+		t.Fatal("expected the get_subscribe failure to surface")
+	}
+	if cleanup != nil {
+		t.Fatal("expected nil cleanup when the probe failed")
+	}
+	assertBitableAPIFailurePassedThrough(t, err)
+	if got := fake.paths(); !slices.Equal(got, []string{"GET " + bitableGetSubscribePath}) {
+		t.Errorf("calls = %v, want the probe only: no subscribe after it failed", got)
+	}
+}
+
+// An unreadable probe response is the CLI's problem, not the user's, and it
+// must keep the cause for the operator who has to explain the failure.
+func TestBitableSubscriptionPreConsume_UndecodableProbeResponse(t *testing.T) {
+	fake := &bitableFakeClient{subscribeBody: json.RawMessage(`{"data":`)}
+	pc := bitableSubscriptionPreConsume(eventTypeBitableFieldChangedV1)
+	_, err := pc(context.Background(), fake, map[string]string{"file_token": "BaseTokenAAA"})
+	if err == nil {
+		t.Fatal("expected an error when the probe response cannot be decoded")
+	}
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("expected *errs.InternalError, got %T: %v", err, err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if ie.Unwrap() == nil {
+		t.Error("the decode cause was dropped")
 	}
 }
 
@@ -249,6 +355,8 @@ func TestBitableFieldChangedNativeShape(t *testing.T) {
 	}
 	if action.AfterValue == nil || action.AfterValue.Name != "col" || action.AfterValue.Type != 1 {
 		t.Errorf("after_value = %+v", action.AfterValue)
+	} else if action.AfterValue.Description != "what the column holds" {
+		t.Errorf("after_value.description = %q", action.AfterValue.Description)
 	}
 }
 
@@ -285,16 +393,4 @@ func TestBitableRecordChangedNativeShape(t *testing.T) {
 	if actions[0].AfterValue[1].FieldValue != "" {
 		t.Errorf("empty cell = %q, want an empty string", actions[0].AfterValue[1].FieldValue)
 	}
-}
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
