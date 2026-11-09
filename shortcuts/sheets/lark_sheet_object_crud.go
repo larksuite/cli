@@ -1453,10 +1453,9 @@ func filterDeleteInput(runtime flagView, token, sheetID, sheetName string) (map[
 // and a comparison written in symbol or abbreviation form.
 
 // condFormatCompareTypes is the union of the compare_type enums across rule
-// types (cellIs's comparison set plus containsText's text-match set). No two
-// entries squash to the same key, so matching a caller's spelling against the
-// union identifies exactly one canonical value without knowing rule_type —
-// which is not on the payload yet when the normalizer runs.
+// types (cellIs's comparison set plus containsText's text-match set). Each
+// spelling resolves to one canonical value within that union. The rule type
+// determines whether the entry uses compare_type in the first place.
 var condFormatCompareTypes = []string{
 	"equal", "notEqual", "greaterThan", "greaterThanOrEqual", "lessThan", "lessThanOrEqual", "between", "notBetween",
 	"beginsWith", "endsWith", "containsText", "notContains", "is",
@@ -1508,11 +1507,8 @@ var condFormatCompareAliases = map[string]string{
 	"less":    "lessThan",
 }
 
-// condFormatShapeKeys are the keys that identify an attrs entry as belonging
-// to a rule whose own contract spells `operator` (timePeriod, iconSet,
-// aboveAverage, dataBar, colorScale). An entry carrying one of them keeps its
-// operator untouched — only the {value} / {text} shapes, whose rules require
-// compare_type, get the rename.
+// condFormatShapeKeys identify time-period and visual rule entries. These
+// shapes keep their operator and numeric thresholds when normalizing aliases.
 var condFormatShapeKeys = []string{"time_period", "icon_type", "value_type", "color"}
 
 // condFormatStyleAliases maps this domain's own cell-style vocabulary onto the
@@ -1731,19 +1727,20 @@ func normalizeCondFormatProperties(runtime flagView, v interface{}) interface{} 
 	if !ok {
 		return v
 	}
+	ruleType, _ := props["rule_type"].(string)
+	ruleType = strings.TrimSpace(ruleType)
+	if runtime != nil {
+		if fromFlag := strings.TrimSpace(runtime.Str("rule-type")); fromFlag != "" {
+			ruleType = fromFlag
+		}
+	}
 	// Data bars, color scales, and icon sets carry their complete visual
 	// definition in attrs. The wire schema still requires the shared style
 	// object, but an empty object adds no formatting and is the only faithful
 	// representation when the caller omitted that inapplicable section. Keep
 	// explicit style values (including null) visible to schema validation.
 	if _, present := props["style"]; !present {
-		ruleType, _ := props["rule_type"].(string)
-		if runtime != nil {
-			if fromFlag := strings.TrimSpace(runtime.Str("rule-type")); fromFlag != "" {
-				ruleType = fromFlag
-			}
-		}
-		switch strings.TrimSpace(ruleType) {
+		switch ruleType {
 		case "dataBar", "colorScale", "iconSet":
 			props["style"] = map[string]interface{}{}
 		}
@@ -1765,25 +1762,31 @@ func normalizeCondFormatProperties(runtime flagView, v interface{}) interface{} 
 		if !isMap {
 			continue
 		}
-		normalizeCondFormatAttrEntry(entry)
+		normalizeCondFormatAttrEntry(entry, ruleType)
 	}
 	return v
 }
 
-// normalizeCondFormatAttrEntry applies the operator rename and the
-// compare_type value canonicalization to one attrs entry.
-func normalizeCondFormatAttrEntry(entry map[string]interface{}) {
-	if _, taken := entry["compare_type"]; !taken && !condFormatEntryHasShapeKey(entry) {
+// normalizeCondFormatAttrEntry folds comparison aliases for rules whose wire
+// contract uses compare_type. Above-average rules use operator with the same
+// comparison values, so the value alone is ambiguous.
+func normalizeCondFormatAttrEntry(entry map[string]interface{}, ruleType string) {
+	// Match the rule types with the same enum tolerance used by the schema,
+	// which canonicalizes the wire rule_type after attrs normalization.
+	allowsCompareAlias := canonicalEnumValue(ruleType, []string{"cellIs", "containsText"}) != ""
+	if ruleType == "" {
+		_, hasValue := entry["value"]
+		_, hasText := entry["text"]
+		allowsCompareAlias = hasValue || hasText
+	}
+	if _, taken := entry["compare_type"]; allowsCompareAlias && !taken && !condFormatEntryHasShapeKey(entry) {
 		for _, spelling := range condFormatCompareTypeSpellings {
 			raw, present := entry[spelling]
 			if !present {
 				continue
 			}
-			// Dispatch on the VALUE, not the key: `operator` is the
-			// timePeriod rule's own slot and holds words like "yesterday"
-			// there, so only a value this enum recognizes moves. That also
-			// makes the other spellings safe to add — a `condition` holding
-			// an object or a period word stays where it is.
+			// Only move a recognized comparison. A condition object or
+			// an unknown word stays visible to schema validation.
 			word, isStr := raw.(string)
 			if !isStr {
 				continue

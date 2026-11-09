@@ -37,6 +37,101 @@ var condFormatDefaultCases = []struct {
 	},
 }
 
+func TestSheets_CondFormatOperatorDryRun(t *testing.T) {
+	setSheetsDryRunEnv(t)
+	const (
+		aboveAverage      = "aboveAverage"
+		cellIsInput       = `[{"operator":">=","value":[2]}]`
+		cellIsAttrs       = `[{"compare_type":"greaterThanOrEqual","value":"2"}]`
+		containsTextInput = `[{"operator":"contains","text":"sample"}]`
+		containsTextAttrs = `[{"compare_type":"containsText","text":"sample"}]`
+	)
+	for _, tc := range []struct {
+		name, operation, flagType, propertiesType, wantType string
+		attrs, wantAttrs                                    string
+	}{
+		{"aboveAverage/create/flag", "create", aboveAverage, "", aboveAverage, `[{"operator":"greaterThan"}]`, ""},
+		{"aboveAverage/update/flag", "update", aboveAverage, "", aboveAverage, `[{"operator":"greaterThanOrEqual"}]`, ""},
+		{"aboveAverage/create/properties", "create", "", aboveAverage, aboveAverage, `[{"operator":"lessThan"}]`, ""},
+		{"aboveAverage/update/properties", "update", "", aboveAverage, aboveAverage, `[{"operator":"lessThanOrEqual"}]`, ""},
+		{"aboveAverage/update/flag precedence", "update", aboveAverage, "CELLIS", aboveAverage, `[{"operator":"greaterThan"}]`, ""},
+		{"cellIs/create/properties", "create", "", "CELLIS", "cellIs", cellIsInput, cellIsAttrs},
+		{"cellIs/update/properties", "update", "", "CELLIS", "cellIs", cellIsInput, cellIsAttrs},
+		{"containsText/create/properties", "create", "", "CONTAINSTEXT", "containsText", containsTextInput, containsTextAttrs},
+		{"containsText/update/properties", "update", "", "CONTAINSTEXT", "containsText", containsTextInput, containsTextAttrs},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wantAttrs := tc.wantAttrs
+			if wantAttrs == "" {
+				wantAttrs = tc.attrs
+			}
+			properties := map[string]any{
+				"attrs": json.RawMessage(tc.attrs),
+				"style": map[string]string{"back_color": "#63BE7B"},
+			}
+			if tc.propertiesType != "" {
+				properties["rule_type"] = tc.propertiesType
+			}
+			propertiesJSON, err := json.Marshal(properties)
+			require.NoError(t, err)
+
+			const sheetID, ruleID = "shDryRun", "ruleDryRun"
+			shortcut := "+cond-format-" + tc.operation
+			args := []string{"sheets", shortcut, "--sheet-id", sheetID, "--ranges", `["A1:A6"]`, "--properties", string(propertiesJSON)}
+			input := map[string]any{"sheet_id": sheetID, "ranges": []string{"A1:A6"}, "properties": properties}
+			if tc.flagType != "" {
+				args = append(args, "--rule-type", tc.flagType)
+				input["rule_type"] = tc.flagType
+			}
+			if tc.operation == "update" {
+				args = append(args, "--rule-id", ruleID)
+				input["rule_id"] = ruleID
+			}
+			operations, err := json.Marshal([]map[string]any{{"shortcut": shortcut, "input": input}})
+			require.NoError(t, err)
+
+			for _, entry := range []struct {
+				name, toolName string
+				args           []string
+			}{
+				{"standalone", "manage_conditional_format_object", args},
+				{"batch", "batch_update", []string{"sheets", "+batch-update", "--operations", string(operations)}},
+			} {
+				t.Run(entry.name, func(t *testing.T) {
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					t.Cleanup(cancel)
+					result, err := clie2e.RunCmd(ctx, clie2e.Request{
+						Args:      append(entry.args, "--spreadsheet-token", "shtDryRun", "--dry-run"),
+						DefaultAs: "bot",
+					})
+					require.NoError(t, err)
+					result.AssertExitCode(t, 0)
+					result.AssertStdoutStatus(t, true)
+					require.Len(t, clie2e.DryRunGet(result.Stdout, "api").Array(), 1)
+					request := clie2e.DryRunGet(result.Stdout, "api.0")
+					require.Equal(t, "POST", request.Get("method").String())
+					require.Equal(t, "/open-apis/sheet_ai/v2/spreadsheets/shtDryRun/tools/invoke_write", request.Get("url").String())
+					require.Equal(t, entry.toolName, request.Get("body.tool_name").String())
+					toolInput := gjson.Parse(request.Get("body.input").String())
+					if entry.toolName == "batch_update" {
+						ops := toolInput.Get("operations").Array()
+						require.Len(t, ops, 1)
+						require.Equal(t, "manage_conditional_format_object", ops[0].Get("tool_name").String())
+						toolInput = ops[0].Get("input")
+					}
+					require.Equal(t, tc.operation, toolInput.Get("operation").String())
+					require.Equal(t, sheetID, toolInput.Get("sheet_id").String())
+					require.Equal(t, tc.wantType, toolInput.Get("properties.rule_type").String())
+					require.JSONEq(t, wantAttrs, toolInput.Get("properties.attrs").Raw)
+					if tc.operation == "update" {
+						require.Equal(t, ruleID, toolInput.Get("conditional_format_id").String())
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestSheets_CondFormatDefaultsBatchDryRun(t *testing.T) {
 	setSheetsDryRunEnv(t)
 	for _, operation := range []string{"create", "update"} {

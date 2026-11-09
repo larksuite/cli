@@ -1094,8 +1094,9 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 		t.Parallel()
 		var props map[string]interface{}
 		// timePeriod's own contract is {operator, time_period}, and dataBar /
-		// colorScale thresholds are numbers — neither may be rewritten.
-		if err := json.Unmarshal([]byte(`{"attrs":[{"operator":"before","time_period":"today"},{"color":"#63BE7B","value_type":"num","value":100}]}`), &props); err != nil {
+		// colorScale thresholds are numbers. An operator alone is ambiguous
+		// without a rule type, so it should also pass through.
+		if err := json.Unmarshal([]byte(`{"attrs":[{"operator":"before","time_period":"today"},{"color":"#63BE7B","value_type":"num","value":100},{"operator":"greaterThan"}]}`), &props); err != nil {
 			t.Fatal(err)
 		}
 		normalizeCondFormatProperties(nil, props)
@@ -1108,6 +1109,7 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 		if second["value"] != float64(100) {
 			t.Errorf("dataBar value = %v (%T), want the number untouched", second["value"], second["value"])
 		}
+		require.Equal(t, map[string]interface{}{"operator": "greaterThan"}, attrs[2])
 	})
 }
 
