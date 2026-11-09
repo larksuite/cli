@@ -48,6 +48,7 @@ lark-cli auth login --domain apps
 | 调试应用运行时缓存：查看/删除单个业务 key、清空指定环境缓存 | `+cache-get`/`+cache-delete`/`+cache-clear` | [`lark-apps-cache.md`](references/lark-apps-cache.md) |
 | **部署/上线应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史 | 本地开发链路先按 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) 确认本次改动已 git commit + git push，再用 `+release-create` / `+release-get`；查历史用 `+release-list` | [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md), [`lark-apps-release-create.md`](references/lark-apps-release-create.md), [`lark-apps-release-get.md`](references/lark-apps-release-get.md), [`lark-apps-release-list.md`](references/lark-apps-release-list.md) |
 | 设置或查看运行时可见范围 | `+access-scope-set`, `+access-scope-get` | 对应 access-scope reference |
+| 把妙搭应用所有者转交给另一个人 | `apps +get` 取 `meta_token` / `meta_doc_type` -> `drive permission.members transfer_owner` | [`lark-apps-owner-transfer.md`](references/lark-apps-owner-transfer.md) |
 | 管理应用协作者（列出/添加/改权限/移除）或协作权限设置 | `+member-list`, `+member-add`, `+member-update`, `+member-remove`, `+member-settings-get`, `+member-settings-set` | 本文「应用协作者与协作权限设置」 |
 | 创意模式（html）应用的评论相关操作 | 创意模式应用评论走 lark-drive 文档评论体系，读取 [`../lark-drive/SKILL.md`](../lark-drive/SKILL.md) 了解评论能力 | [`../lark-drive/SKILL.md`](../lark-drive/SKILL.md) |
 | 管理 `app_...` 应用内角色、角色成员，或查询用户匹配角色 | `+role-list/get/create/update/delete`, `+role-member-list/add/remove`, `+role-match-list` | [`lark-apps-role.md`](references/lark-apps-role.md) |
@@ -67,6 +68,9 @@ lark-cli auth login --domain apps
 - **设置环境变量**：如果用户只给应用名，仍先 `+list --keyword` 解析 app_id；设置 online 环境且用户已经明确说“确认/直接执行”时，调用 `+env-set --environment online ... --yes`，不要再次要求确认。回复和日志摘要里只提 key / env / app，不回显真实 value；需要传复杂值时优先用 `@file` 或 stdin。
 - **删除环境变量**：`+env-delete` 是破坏性操作。除非用户在同一轮已经明确确认删除这个 app/env/key，否则先向用户确认应用、环境、key 和删除后果；确认后再加 `--yes`。不要因为认证失败/重登完成就自动继续删除，必须保留确认门槛。
 
+## 应用所有者转交
+
+应用所有者转交是 Drive 资源操作，属于高风险写入，不等同于添加或修改开发协作者。按 [`lark-apps-owner-transfer.md`](references/lark-apps-owner-transfer.md) 核对当前应用、新所有者、原所有者保留权限、通知和资源位置选项，建议先用 `--dry-run` 预览；只有用户明确确认这些影响后才可带 `--yes` 真正转交，不要在未获用户明确同意时静默追加 `--yes`。
 ## 应用协作者与协作权限设置
 
 这组命令管理妙搭应用的开发协作者和协作策略，不等同于 `+access-scope-*` 的运行时访问范围，也不等同于 `+role-*` 的应用内业务角色。所有命令使用 `app_...` 应用 ID 和 `--as user`。不要读取或判断 `app_type` 来预判支持范围，直接调用对应的协作者命令。
