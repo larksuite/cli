@@ -6,6 +6,7 @@ package skillscheck
 import (
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -64,4 +65,23 @@ func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
 	}
 	sort.Strings(keys)
 	assertStrings(t, keys, directories)
+}
+
+func TestSuiteKeywordsRouteAppsRuntimeDomain(t *testing.T) {
+	repoRoot := filepath.Join("..", "..")
+	raw, err := vfs.ReadFile(filepath.Join(repoRoot, "skill-template", "lark-suite-config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		Keywords map[string][]string `json:"keywords"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+
+	const runtimeDomain = "*.feishuapp.com"
+	if !slices.Contains(config.Keywords["lark-apps"], runtimeDomain) {
+		t.Fatalf("lark-suite keywords for lark-apps must route runtime URL %q", runtimeDomain)
+	}
 }
