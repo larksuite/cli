@@ -2,19 +2,34 @@
 
 > **Prerequisite:** Read [`../SKILL.md`](../SKILL.md) first for the `event consume` essentials (commands, subprocess contract, jq usage).
 
-## Key catalog (1)
+## Key catalog (3)
 
 | EventKey | Purpose |
 |---|---|
 | `drive.notice.comment_add_v1` | A cloud document comment or reply produced a notice for the current user or bot (for example an @mention) |
+| `drive.file.bitable_field_changed_v1` | A field of a subscribed Base (bitable) was added, deleted or edited |
+| `drive.file.bitable_record_changed_v1` | A record of a subscribed Base (bitable) was added, deleted or edited |
 
-This key uses a **Processed schema** (flat output; root path `.`) and carries a **PreConsume hook** that registers the comment notice subscription before listening.
+`drive.notice.comment_add_v1` uses a **Processed schema** (flat output; root path `.`); the two Base keys use a **Native schema** (V2 envelope; output rooted at `.event`). All three carry a **PreConsume hook** that registers the subscription before listening.
+
+The two subscription models differ and are easy to confuse:
+
+| | `drive.notice.comment_add_v1` | the two `drive.file.bitable_*` keys |
+|---|---|---|
+| Subscription record | per (app, identity, event type) | per (app, identity, **file**) |
+| Takes a param | no | `-p file_token=<base_token>` (required) |
+| Covers | that one event type, every document | **every cloud-document file event** on that file |
+| Unsubscribed on exit | no (shared by other consumers) | only when this consumer created it |
 
 ## Scopes & auth
 
 | EventKey | Scope | Auth |
 |---|---|---|
 | `drive.notice.comment_add_v1` | `docs:document.comment:read` | user, bot |
+| `drive.file.bitable_field_changed_v1` | `base:field:read` | user, bot |
+| `drive.file.bitable_record_changed_v1` | `base:record:read` | user, bot |
+
+Subscribing a file needs scopes of its own, separate from the ones that read the event: `docs:event:subscribe` plus one of `drive:drive` / `docs:doc` / `sheets:spreadsheet`. Without them the subscribe call fails with `99991672` before listening starts, and the error hint carries the console link that applies for them. The scopes an app holds for the event itself (for example `base:field:read`) do not grant this.
 
 The app must also enable `drive.notice.comment_add_v1` under event subscriptions in the developer console (long connection mode) and publish a version; otherwise `event consume` fails up-front and prints a console link in `error.hint`.
 
@@ -72,3 +87,60 @@ The event carries identifiers only, not the comment text. Read the content with 
 | `to_open_id` / `to_union_id` / `to_user_id` | string | Notice receiver IDs |
 
 When consuming as the bot, drop the bot's own comments with `--jq 'select(.from_open_id != "<bot_open_id>")'` to avoid reply loops.
+
+## `drive.file.bitable_field_changed_v1` / `drive.file.bitable_record_changed_v1`
+
+### Per-file subscription
+
+Both keys subscribe **per Base**: `event consume` calls `POST /open-apis/drive/v1/files/{file_token}/subscribe?file_type=bitable` on startup with the token passed via `-p file_token=<base_token>`. Missing the param fails validation up-front, before any subscription happens.
+
+That one record covers every cloud-document file event on the file, not just the key being consumed, so two consequences follow:
+
+- Subscribing for field changes also starts record changes, and one unsubscribe stops both.
+- A subscription that already existed when the consumer started is **left in place on exit** — tearing it down would cut off whoever created it. Only a subscription this consumer created is removed.
+
+The subscription is also what makes delivery happen at all. With no subscription on the file, editing it produces no event, however the app is configured.
+
+### Which Base you receive
+
+The app's stream carries every Base subscribed under it, so each consumer filters to its own `file_token`. Events for other Bases never reach stdout.
+
+### Output fields (V2 envelope; root path `.event`)
+
+Common to both:
+
+| Field | Type | Description |
+|---|---|---|
+| `.event.file_token` | string | Base app token |
+| `.event.file_type` | string | Always `bitable` |
+| `.event.table_id` | string | Table the change happened in |
+| `.event.revision` | int | Base revision this change produced |
+| `.event.update_time` | int | When the change was applied, in seconds |
+| `.event.operator_id.{open_id,union_id,user_id}` | string | Who made the change; `user_id` is null unless the app holds the user_id contact scope |
+| `.event.subscriber_id_list[]` | object | Subscribers this delivery was produced for |
+
+`drive.file.bitable_field_changed_v1` adds `.event.action_list[]` with `action` (`field_added` / `field_deleted` / `field_edited`), `field_id`, and `before_value` / `after_value` as `{id, name, type}` where `type` is the numeric Base field type. One UI edit can produce several entries: adding a field arrives as `field_added` followed by `field_edited` for the same `field_id`.
+
+`drive.file.bitable_record_changed_v1` adds `.event.action_list[]` with `record_id`, `action` (`record_added` / `record_deleted` / `record_edited`), and `before_value` / `after_value` as a list of `{field_id, field_value}` covering **every field of the table**, not only the changed ones. `field_value` is a string: empty when the cell has no value, and itself JSON for structured types such as text runs. A change to a formula field's computed value does not produce an event.
+
+### Examples
+
+```bash
+# Stream record changes on one Base
+lark-cli event consume drive.file.bitable_record_changed_v1 \
+    -p file_token=<base_token> --as user
+
+# Sample one field change for payload inspection
+lark-cli event consume drive.file.bitable_field_changed_v1 \
+    -p file_token=<base_token> --as user --max-events 1 --timeout 2m
+
+# Project to "who touched which record"
+lark-cli event consume drive.file.bitable_record_changed_v1 \
+    -p file_token=<base_token> --as user \
+    --jq '{table: .event.table_id, by: .event.operator_id.union_id,
+           records: (.event.action_list | map({(.action): .record_id}))}'
+
+# Then read the changed record back
+lark-cli base +record-get --base-token <base_token> --table-id <table_id> \
+    --record-ids <record_id> --as user
+```
