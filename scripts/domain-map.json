@@ -21,8 +21,6 @@
 
     { "prefix": "skills/lark-im/", "labelDomains": ["im"], "e2eDomains": ["im"] },
     { "prefix": "skills/lark-meeting/", "labelDomains": ["vc"], "e2eDomains": ["vc", "minutes", "note"] },
-    { "prefix": "skills/lark-vc/", "labelDomains": ["vc"], "e2eDomains": ["vc"] },
-    { "prefix": "skills/lark-vc-agent/", "labelDomains": ["vc"], "e2eDomains": ["vc"] },
     { "prefix": "skills/lark-doc/", "labelDomains": ["ccm"], "e2eDomains": ["docs"] },
     { "prefix": "skills/lark-wiki/", "labelDomains": ["ccm"], "e2eDomains": ["wiki"] },
     { "prefix": "skills/lark-drive/", "labelDomains": ["ccm"], "e2eDomains": ["drive"] },
@@ -34,7 +32,6 @@
     { "prefix": "skills/lark-contact/", "labelDomains": ["contact"], "e2eDomains": ["contact"] },
     { "prefix": "skills/lark-apps/", "labelDomains": [], "e2eDomains": ["apps"] },
     { "prefix": "skills/lark-markdown/", "labelDomains": [], "e2eDomains": ["markdown"] },
-    { "prefix": "skills/lark-minutes/", "labelDomains": [], "e2eDomains": ["minutes"] },
     { "prefix": "skills/lark-okr/", "labelDomains": [], "e2eDomains": ["okr"] },
     { "prefix": "skills/lark-slides/", "labelDomains": [], "e2eDomains": ["slides"] },
     { "prefix": "skills/lark-note/", "labelDomains": [], "e2eDomains": ["note"] },
