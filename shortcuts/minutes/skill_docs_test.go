@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 // Capability source test: pins the identity (user/bot) claims made in
-// skills/lark-minutes against the AuthTypes actually declared on the
+// skills/lark-meeting minutes references against the AuthTypes actually declared on the
 // shortcuts, and pins that the write shortcut this PR opened to bot
 // (`+apply-permission`) ships with a reference doc — PR #2278's review found
 // it had none, which made the main SKILL.md's own "read the reference before
@@ -90,15 +90,10 @@ func TestMinutesApplyPermissionHasReference(t *testing.T) {
 	}
 }
 
-func TestLegacyMinutesSkillRoutesToMeetingSkill(t *testing.T) {
-	skill := readSkillDoc(t, "skills/lark-minutes/SKILL.md")
-	for _, must := range []string{
-		"本技能只用于兼容旧名称，不直接处理业务。",
-		"../lark-meeting/SKILL.md",
-	} {
-		if !strings.Contains(skill, must) {
-			t.Errorf("skills/lark-minutes/SKILL.md must preserve compatibility routing %q", must)
-		}
+func TestLegacyMinutesSkillIsRetired(t *testing.T) {
+	_, err := os.Stat("../../skills/lark-minutes")
+	if !os.IsNotExist(err) {
+		t.Fatalf("skills/lark-minutes should be retired, stat err=%v", err)
 	}
 }
 

@@ -387,7 +387,7 @@ func TestRunDryRunsMaterializesNumericPlaceholderFlagValues(t *testing.T) {
 	}}}
 	ex := skillscan.Example{
 		Raw:            "lark-cli vc +meeting-events --meeting-id <meeting_id> --page-size <page_size>",
-		SourceFile:     "skills/lark-vc-agent/SKILL.md",
+		SourceFile:     "skills/lark-meeting/SKILL.md",
 		Line:           120,
 		HasPlaceholder: true,
 	}
