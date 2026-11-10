@@ -97,7 +97,7 @@ Orchestrators should treat `reason: limit/timeout/signal` (all exit 0) as "busin
 
 ### Never `kill -9`
 
-**Avoid `kill -9` on consume processes** for EventKeys whose PreConsume registers a server-side subscription **and** unsubscribes on exit (minutes, vc, board and the two `drive.file.bitable_*` keys): `kill -9` skips the OAPI unsubscribe and leaks the server-side subscription (symptoms: "subscription already exists" on restart, duplicate event delivery). Keys whose subscription is a durable relation with no cleanup (task, approval, `drive.notice.comment_add_v1`) do not leak this way, but SIGTERM or closing stdin remains the right shutdown for every key.
+**Avoid `kill -9` on consume processes** for EventKeys whose PreConsume registers a server-side subscription **and** unsubscribes on exit (minutes, vc, board): `kill -9` skips the OAPI unsubscribe and leaks the server-side subscription (symptoms: "subscription already exists" on restart, duplicate event delivery). Keys whose subscription is a durable relation with no cleanup (task, approval, `drive.notice.comment_add_v1`, the two `drive.file.bitable_*` keys) do not leak this way — nothing is torn down even on a graceful exit, so there is nothing for `kill -9` to skip — but SIGTERM or closing stdin remains the right shutdown for every key.
 
 ### One consume, one EventKey (multi-key = multi-shell)
 

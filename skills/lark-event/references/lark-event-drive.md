@@ -19,7 +19,7 @@ The two subscription models differ and are easy to confuse:
 | Subscription record | per (app, identity, event type) | per (app, identity, **file**) |
 | Takes a param | no | `-p file_token=<base_token>` (required) |
 | Covers | that one event type, every document | **every cloud-document file event** on that file |
-| Unsubscribed on exit | no (shared by other consumers) | only when this consumer created it |
+| Unsubscribed on exit | no (shared by other consumers) | no (shared by every file event on that Base) |
 
 ## Scopes & auth
 
@@ -34,6 +34,8 @@ The platform accepts any one of several scopes per row — `base:field:read`, `b
 Subscribing the file needs a scope of its own, separate from the one that reads the event: any one of `docs:event:subscribe`, `drive:drive`, `docs:doc`, `sheets:spreadsheet`. A scope held for the event itself (for example `base:field:read`) does not grant it, and no precheck covers it — the subscribe call fails at startup instead, with `99991679` as user (the envelope carries `missing_scopes` and an `auth login --scope` hint) or `99991672` as bot (the hint carries the console grant link).
 
 The app must also enable the EventKey's event type under event subscriptions in the developer console (long connection mode) and publish a version; otherwise `event consume` fails up-front and prints a console link in `error.hint`.
+
+That precheck reads the app's **published** version, so it cannot run when the app has no published version or the read itself fails. `event consume` then prints `[event] skipped console precheck: <reason>` on stderr and starts anyway: an event type that was never enabled in the console looks ready and simply never delivers, which is indistinguishable from a quiet Base. Watch for that line — `--quiet` suppresses it, while `--dry-run` reports the same gap as a `console_event_published` precondition with `"status": "unknown"` — and verify the console configuration by hand when either shows up.
 
 - `--as bot`: receive notices addressed to the bot, such as a comment or reply that @mentions the bot, and replies in comment threads the bot takes part in (these arrive with `is_mentioned: false`).
 - `--as user`: receive the comment notices the authorized user gets, such as being @mentioned or replies in their comment threads.
@@ -99,9 +101,17 @@ Both keys subscribe **per Base**: `event consume` calls `POST /open-apis/drive/v
 That one record covers every cloud-document file event on the file, not just the key being consumed, so two consequences follow:
 
 - Subscribing for field changes also starts record changes, and one unsubscribe stops both.
-- A subscription that already existed when the consumer started is **left in place on exit** — tearing it down would cut off whoever created it. Only a subscription this consumer created is removed.
+- The subscription is **never removed on exit**, not even by a graceful shutdown. Like `drive.notice.comment_add_v1`'s, it is a durable relation shared by every consumer of the file: removing it would stop the other Base key too, and the record names neither who created it nor which event types still rely on it, so "remove only what this run created" is not a question it can answer. Re-running the consumer repeats the idempotent subscribe call.
 
 The subscription is also what makes delivery happen at all. With no subscription on the file, editing it produces no event, however the app is configured.
+
+To stop delivery for a Base, cancel it explicitly with the same `--as` identity the consumer used. No typed command covers this endpoint yet, so use the raw escape hatch:
+
+```bash
+lark-cli api DELETE /open-apis/drive/v1/files/<base_token>/delete_subscribe --params '{"file_type":"bitable"}' --as user
+```
+
+This stops **every** cloud-document file event on that Base for this app and identity, including ones another consumer may still depend on.
 
 ### Which Base you receive
 

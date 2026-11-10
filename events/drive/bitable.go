@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/events/internal/subscribeprep"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/validate"
 )
@@ -27,8 +26,8 @@ const (
 // fileTokenParam declares the Base whose changes this consumer wants.
 //
 // The drive file-subscription API is keyed per file, so the token is part of
-// the subscription identity: two consumers watching different Bases get their
-// own setup and cleanup instead of sharing one record.
+// the subscription identity: consumers watching different Bases register
+// against separate records instead of sharing one.
 func fileTokenParam() event.ParamDef {
 	return event.ParamDef{
 		Name:            "file_token",
@@ -170,20 +169,24 @@ func bitableFileTokenMatch(raw *event.RawEvent, params map[string]string) bool {
 }
 
 // bitableSubscriptionPreConsume subscribes the Base named by --param
-// file_token and returns a cleanup that unsubscribes it.
+// file_token, and deliberately leaves that subscription in place on exit.
 //
 // Unlike the per-event_type drive subscription used for comment notices, the
-// file subscription is a single per-(app, identity, file) record shared by
-// every cloud-document file event: subscribing for field changes also starts
-// record changes, and one unsubscribe stops both. A record that already
-// existed before this consumer started is therefore left alone on exit —
-// tearing it down would silently cut off whoever created it.
+// file subscription is a single per-(app, identity, file) record covering
+// every cloud-document file event on that file, not one record per event
+// type: subscribing for field changes also starts record changes, and one
+// unsubscribe would stop both. So it is a durable relation shared by every
+// consumer of the file rather than this run's private resource — the same
+// shape as drive.notice.comment_add_v1, which also subscribes here and
+// returns no cleanup. Re-subscribing on every start is idempotent.
 //
-// The probe cannot close the window where two consumers of this file start
-// together: both read is_subscribe=false, both subscribe, and the first to
-// exit stops the other. Closing it needs one subscription scope spanning the
-// file's EventKeys, while the framework scopes PreConsume per EventKey; worth
-// revisiting if consuming both Base keys on one file becomes routine.
+// Removing the record on exit would be destructive without any concurrency
+// at all: a field-change consumer that subscribes and then exits silently
+// stops a record-change consumer started in between. Nor can the damage be
+// narrowed to "delete only what this run created" — the record carries
+// neither its creator nor the event types still relying on it, so reading it
+// back cannot answer the question. Users cancel a Base's subscription
+// explicitly instead, with DELETE on the file's delete_subscribe endpoint.
 func bitableSubscriptionPreConsume(eventType string) func(context.Context, event.APIClient, map[string]string) (func() error, error) {
 	return func(ctx context.Context, rt event.APIClient, params map[string]string) (func() error, error) {
 		if rt == nil {
@@ -197,48 +200,11 @@ func bitableSubscriptionPreConsume(eventType string) func(context.Context, event
 				WithParam("--param").
 				WithHint("pass it as --param file_token=<base_token>; run `lark-cli event schema %s` for details", eventType)
 		}
-		encoded := validate.EncodePathSegment(fileToken)
-		base := fmt.Sprintf("/open-apis/drive/v1/files/%s", encoded)
-		query := "?file_type=" + bitableFileType
-
-		alreadySubscribed, err := bitableIsSubscribed(ctx, rt, base+"/get_subscribe"+query)
-		if err != nil {
+		path := fmt.Sprintf("/open-apis/drive/v1/files/%s/subscribe?file_type=%s",
+			validate.EncodePathSegment(fileToken), bitableFileType)
+		if _, err := rt.CallAPI(ctx, "POST", path, nil); err != nil {
 			return nil, err
 		}
-		// Subscribe even when the file already carries a record: the call is
-		// idempotent, and doing it unconditionally keeps a stale read of
-		// get_subscribe from leaving the consumer listening to nothing. What
-		// the read decides is only whether to tear the record down on exit.
-		if _, err := rt.CallAPI(ctx, "POST", base+"/subscribe"+query, nil); err != nil {
-			return nil, err
-		}
-		if alreadySubscribed {
-			return nil, nil
-		}
-		return func() error {
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), subscribeprep.CleanupTimeout)
-			defer cancel()
-			_, err := rt.CallAPI(cleanupCtx, "DELETE", base+"/delete_subscribe"+query, nil)
-			return err
-		}, nil
+		return nil, nil
 	}
-}
-
-// bitableIsSubscribed reports whether the file already carries a subscription
-// for this identity, so cleanup only removes what this consumer created.
-func bitableIsSubscribed(ctx context.Context, rt event.APIClient, path string) (bool, error) {
-	raw, err := rt.CallAPI(ctx, "GET", path, nil)
-	if err != nil {
-		return false, err
-	}
-	var envelope struct {
-		Data struct {
-			IsSubscribe bool `json:"is_subscribe"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return false, errs.NewInternalError(errs.SubtypeInvalidResponse,
-			"decode drive file subscription status").WithCause(err)
-	}
-	return envelope.Data.IsSubscribe, nil
 }

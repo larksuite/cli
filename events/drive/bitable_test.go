@@ -27,16 +27,13 @@ type bitableCall struct {
 var bitableAPIFailure = errs.NewPermissionError(errs.SubtypeAppScopeNotApplied,
 	"api POST /open-apis/drive/v1/files/x/subscribe: scope not applied")
 
-// bitableFakeClient is a minimal event.APIClient stub that records calls and
-// answers get_subscribe with a configurable is_subscribe value. failOnPath is
-// matched exactly: "/subscribe" and "/get_subscribe" differ by one character
-// of the path, and a substring match would silently conflate them.
+// bitableFakeClient is a minimal event.APIClient stub that records every call
+// it receives. failOnPath is matched exactly rather than as a substring, so a
+// test can fail one path without catching its neighbours.
 type bitableFakeClient struct {
-	mu            sync.Mutex
-	calls         []bitableCall
-	alreadySubbed bool
-	failOnPath    string
-	subscribeBody json.RawMessage
+	mu         sync.Mutex
+	calls      []bitableCall
+	failOnPath string
 }
 
 func (f *bitableFakeClient) CallAPI(_ context.Context, method, path string, _ interface{}) (json.RawMessage, error) {
@@ -46,23 +43,10 @@ func (f *bitableFakeClient) CallAPI(_ context.Context, method, path string, _ in
 	if f.failOnPath != "" && path == f.failOnPath {
 		return nil, bitableAPIFailure
 	}
-	if strings.Contains(path, "/get_subscribe") {
-		if f.subscribeBody != nil {
-			return f.subscribeBody, nil
-		}
-		if f.alreadySubbed {
-			return json.RawMessage(`{"code":0,"data":{"is_subscribe":true}}`), nil
-		}
-		return json.RawMessage(`{"code":0,"data":{"is_subscribe":false}}`), nil
-	}
 	return json.RawMessage(`{"code":0}`), nil
 }
 
-const (
-	bitableGetSubscribePath = "/open-apis/drive/v1/files/BaseTokenAAA/get_subscribe?file_type=bitable"
-	bitableSubscribePath    = "/open-apis/drive/v1/files/BaseTokenAAA/subscribe?file_type=bitable"
-	bitableDeletePath       = "/open-apis/drive/v1/files/BaseTokenAAA/delete_subscribe?file_type=bitable"
-)
+const bitableSubscribePath = "/open-apis/drive/v1/files/BaseTokenAAA/subscribe?file_type=bitable"
 
 // assertBitableAPIFailurePassedThrough proves the client's typed problem
 // reached the caller instead of being flattened into a new error.
@@ -202,26 +186,26 @@ func TestBitableSubscriptionPreConsume_MissingFileToken(t *testing.T) {
 	}
 }
 
-func TestBitableSubscriptionPreConsume_SubscribesAndCleansUp(t *testing.T) {
+// One file subscription covers every cloud-document file event on the Base
+// and is shared by every consumer of it, so PreConsume registers it and then
+// leaves it alone: handing back a cleanup would let a field-change consumer's
+// exit stop a record-change consumer that is still running. The exact call
+// list also pins down that nothing else is attempted — no ownership probe,
+// since the record names neither its creator nor the event types still using
+// it, and no delete.
+func TestBitableSubscriptionPreConsume_SubscribesWithoutCleanup(t *testing.T) {
 	fake := &bitableFakeClient{}
 	pc := bitableSubscriptionPreConsume(eventTypeBitableRecordChangedV1)
 	cleanup, err := pc(context.Background(), fake, map[string]string{"file_token": "BaseTokenAAA"})
 	if err != nil {
 		t.Fatalf("pre-consume: %v", err)
 	}
-	if cleanup == nil {
-		t.Fatal("a subscription this consumer created must be cleaned up")
+	if cleanup != nil {
+		t.Fatal("a shared per-file subscription must not be torn down on exit")
 	}
-	want := []string{"GET " + bitableGetSubscribePath, "POST " + bitableSubscribePath}
+	want := []string{"POST " + bitableSubscribePath}
 	if got := fake.paths(); !slices.Equal(got, want) {
 		t.Fatalf("calls = %v, want %v", got, want)
-	}
-	if err := cleanup(); err != nil {
-		t.Fatalf("cleanup: %v", err)
-	}
-	want = append(want, "DELETE "+bitableDeletePath)
-	if got := fake.paths(); !slices.Equal(got, want) {
-		t.Fatalf("calls after cleanup = %v, want %v", got, want)
 	}
 }
 
@@ -241,21 +225,6 @@ func TestBitableSubscriptionPreConsume_NilRuntime(t *testing.T) {
 	}
 }
 
-// A file subscription is one shared per-(app, identity, file) record covering
-// every cloud-document file event, so a consumer must not tear down one it
-// found already in place.
-func TestBitableSubscriptionPreConsume_KeepsPreExistingSubscription(t *testing.T) {
-	fake := &bitableFakeClient{alreadySubbed: true}
-	pc := bitableSubscriptionPreConsume(eventTypeBitableFieldChangedV1)
-	cleanup, err := pc(context.Background(), fake, map[string]string{"file_token": "BaseTokenAAA"})
-	if err != nil {
-		t.Fatalf("pre-consume: %v", err)
-	}
-	if cleanup != nil {
-		t.Fatal("a pre-existing subscription must be left in place on exit")
-	}
-}
-
 func TestBitableSubscriptionPreConsume_PropagatesSubscribeFailure(t *testing.T) {
 	fake := &bitableFakeClient{failOnPath: bitableSubscribePath}
 	pc := bitableSubscriptionPreConsume(eventTypeBitableFieldChangedV1)
@@ -267,46 +236,6 @@ func TestBitableSubscriptionPreConsume_PropagatesSubscribeFailure(t *testing.T) 
 		t.Fatal("expected nil cleanup when subscribe failed")
 	}
 	assertBitableAPIFailurePassedThrough(t, err)
-}
-
-// The probe decides whether cleanup may delete the record, so a probe that
-// could not answer must stop the consumer instead of guessing: guessing
-// "not subscribed" would delete a record this consumer did not create.
-func TestBitableSubscriptionPreConsume_PropagatesProbeFailure(t *testing.T) {
-	fake := &bitableFakeClient{failOnPath: bitableGetSubscribePath}
-	pc := bitableSubscriptionPreConsume(eventTypeBitableFieldChangedV1)
-	cleanup, err := pc(context.Background(), fake, map[string]string{"file_token": "BaseTokenAAA"})
-	if err == nil {
-		t.Fatal("expected the get_subscribe failure to surface")
-	}
-	if cleanup != nil {
-		t.Fatal("expected nil cleanup when the probe failed")
-	}
-	assertBitableAPIFailurePassedThrough(t, err)
-	if got := fake.paths(); !slices.Equal(got, []string{"GET " + bitableGetSubscribePath}) {
-		t.Errorf("calls = %v, want the probe only: no subscribe after it failed", got)
-	}
-}
-
-// An unreadable probe response is the CLI's problem, not the user's, and it
-// must keep the cause for the operator who has to explain the failure.
-func TestBitableSubscriptionPreConsume_UndecodableProbeResponse(t *testing.T) {
-	fake := &bitableFakeClient{subscribeBody: json.RawMessage(`{"data":`)}
-	pc := bitableSubscriptionPreConsume(eventTypeBitableFieldChangedV1)
-	_, err := pc(context.Background(), fake, map[string]string{"file_token": "BaseTokenAAA"})
-	if err == nil {
-		t.Fatal("expected an error when the probe response cannot be decoded")
-	}
-	var ie *errs.InternalError
-	if !errors.As(err, &ie) {
-		t.Fatalf("expected *errs.InternalError, got %T: %v", err, err)
-	}
-	if ie.Subtype != errs.SubtypeInvalidResponse {
-		t.Errorf("subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
-	}
-	if ie.Unwrap() == nil {
-		t.Error("the decode cause was dropped")
-	}
 }
 
 // The token goes into the request path, so it must be escaped rather than
