@@ -9,7 +9,7 @@
 
 - `meeting_id` 来自 `+meeting-list-active --as user`：后续读取事件继续 `--as user`。
 - `meeting_id` 来自 `+meeting-list-active --as bot --user-id <user_open_id>` 或 `+meeting-join --as bot`：后续读取事件继续 `--as bot`。
-- 会议进行中，应用身份下的应用机器人必须当前在该会中；应用身份 active meeting 返回的是“目标用户在会中且应用机器人也在会中”的会议，不表示可以读取任意 `meeting_id`。
+- 应用身份下，应用机器人必须当前在该会中；应用身份 active meeting 返回的是“目标用户在会中且应用机器人也在会中”的会议，不表示可以读取任意 `meeting_id`。
 
 ## 命令
 
@@ -53,7 +53,7 @@ lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token 
 
 - `+meeting-events` 支持 `--as user` 和 `--as bot`。
 - 用户身份路径：用户身份发现的会议继续用用户身份读取。
-- 应用身份路径：会议进行中，应用机器人必须当前在会中；不要拿任意 `meeting_id` 直接查。
+- 应用身份路径：应用机器人必须当前在会中；不要拿任意 `meeting_id` 直接查。
 - 不要在拿到 `meeting_id` 后随意切换身份。身份不一致时，常见结果是空列表、`no permission` 或 `bot is not in meeting`。
 
 ### 3. 应用身份的可见性条件
@@ -65,7 +65,7 @@ lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token 
 
 - **会议进行中**：要求应用机器人**当前仍在会中**。
 - **应用机器人从未真实入会过**：会中读取会返回 `10005 bot is not in meeting`。
-- **会议已经结束**：应用机器人和智能体员工曾真实参会、且最终参会记录不是被踢出时，可在结束后 5 分钟内补拉；超过宽限期后改用会议详情、纪要、逐字稿或录制等会后产物。
+- **会议已经结束**：应用机器人和智能体员工可在结束后 5 分钟内补拉；超过宽限期后改用会议详情、纪要、逐字稿或录制等会后产物。
 
 ### 4. 自动分页规则
 
