@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.100] - 2026-11-10
+
+### Bug Fixes
+
+- **apps**: name export's real gate and reject unusable ids and paths (#2899)
+- scope apps recovery hints to failure causes (#2897)
+- **apps**: classify database precondition subcodes (#2900)
+- **apps**: recognize feishuapp runtime domains (#2906)
+
+### Misc
+
+- remove unused skills (#2908)
+
 ## [v1.0.99] - 2026-11-04
 
 ### Features
@@ -2241,6 +2254,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.100]: https://github.com/larksuite/cli/releases/tag/v1.0.100
 [v1.0.99]: https://github.com/larksuite/cli/releases/tag/v1.0.99
 [v1.0.98]: https://github.com/larksuite/cli/releases/tag/v1.0.98
 [v1.0.97]: https://github.com/larksuite/cli/releases/tag/v1.0.97
