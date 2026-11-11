@@ -26,6 +26,8 @@ lark-cli auth login --domain apps
 
 按具体操作查命令（开发路径先用下方「选择开发路径」判定表定好再进来取命令）：
 
+创意模式（`/page/<token>`）专属能力的命令必须使用 `page-` 前缀，表明该命令只适用于创意模式应用；后续新增创意模式专属命令也遵循这个命名规则。
+
 | 用户意图 | 先用 | 按需读取 |
 |---|---|---|
 | 创建**新**应用资产、拿 app_id | `+create` | [`lark-apps-create.md`](references/lark-apps-create.md) |
@@ -36,7 +38,8 @@ lark-cli auth login --domain apps
 | HTML 应用 / 创意模式 — 写 HTML 页面/网站、静态页、PPT/deck、落地页、仪表盘、UI mockup、原型、线框图、视觉探索 | 加载 [`creative-design/creative-design.md`](creative-design/creative-design.md)（含完整开发与发布流程） | [`creative-design/creative-design.md`](creative-design/creative-design.md) |
 | 旧版存量 HTML 应用（无 Git 管理）继续上传已有静态产物 | `+html-publish`（仅兼容旧链路；新建 html / 创意模式 / creative-design 产物不得使用） | [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) |
 | 开发已有应用 / 初始化本地仓库（开发方式已定为本地后；先解析 app_id，勿 `+create` 新建） | `+init`（或手动 `+git-credential-init` + 原生 git）。**执行前必读** [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)，含端到端流程和领域规则 | [`lark-apps-init.md`](references/lark-apps-init.md), [`lark-apps-git-credential.md`](references/lark-apps-git-credential.md) |
-| 阅读 / 分析 / 总结一个妙搭应用的内容（任意应用模式，含创意模式应用的 `/page/<token>` 链接）；只要一份源码快照、不做本地开发；或要取**别人分享给你的**应用源码（你对其仓库无权限） | `+export`（下载 zip 后解压读源码；不配 git 凭证、不建工作区）。创意模式应用的 `/page/` 链接直接传 `--meta-token <token>`，不必先 `+get` 换 app_id。要继续开发用 `+init` 而非本命令 | [`lark-apps-export.md`](references/lark-apps-export.md) |
+| 阅读 / 分析 / 总结创意应用（`/page/<token>`）的内容；只想查看工程结构或某个文件写了什么；或只有**查看权限**（协作者、无下载权限） | `+page-source-list`（列一个目录，不递归）、`+page-source-get`（读单个 UTF-8 文件，stdout 原样输出）。先 list 摸结构再 get 读文件；两者只需 view 权限，只覆盖 git 源码形态的创意应用 | [`lark-apps-page-source-list.md`](references/lark-apps-page-source-list.md), [`lark-apps-page-source-get.md`](references/lark-apps-page-source-get.md) |
+| 用户明确要**导出 / 下载 / 归档**整份源码快照，或要离线分析、全文检索、把整包喂给别的工具；任意应用模式需要一份 zip | `+export`（下载 zip 后解压读源码；不配 git 凭证、不建工作区）。创意模式应用的 `/page/` 链接直接传 `--meta-token <token>`，不必先 `+get` 换 app_id。要继续开发用 `+init` 而非本命令。**需要下载权限** | [`lark-apps-export.md`](references/lark-apps-export.md) |
 | 本地开发时 `.env.local` 损坏/丢失，重新拉取启动期环境变量 | `+env-pull` | [`lark-apps-env-pull.md`](references/lark-apps-env-pull.md) |
 | 管理应用环境变量（查看/设置/删除） | `+env-list`, `+env-set`, `+env-delete` | [`lark-apps-env.md`](references/lark-apps-env.md) |
 | 网页/另一台电脑开通数据库后同步本地环境变量 | `+env-pull`（之后重启本地开发进程） | [`lark-apps-env-pull.md`](references/lark-apps-env-pull.md) |
@@ -127,7 +130,7 @@ lark-cli apps +member-settings-set --app-id <app_id> --external-access disabled 
 - 开发态链接 `https://miaoda.feishu.cn/app/{app_id}`（full_stack / frontend 应用）：进应用编辑/开发态、管理与继续开发应用的入口，也是 frontend 升级为 full_stack 的入口（云端会话）。创意模式（html）应用开发态和发布态是同一个链接，无需额外提供开发态链接。
 - 发布态链接来源：`+release-get` 轮询 `finished` 给 `online_url` / `failed` 给 `error_logs`（html / frontend / full_stack 统一走 `+release-get`）。
 - html 应用的主链路是创意模式开发方式：按 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) 初始化仓库、在仓库内产出 HTML 及关联文件，并通过 git commit / git push / `+release-create` / `+release-get` 发布部署。任何 git 操作（clone / pull / push）报错时，先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令。如果刷新凭证也失败，**停止并向用户报告**：原始 git 错误、凭证刷新失败原因，以及是否可能是当前环境（操作系统、沙箱）限制导致（如 macOS Keychain 在沙箱中不可用、Linux 加密文件目录不可写等）。不要改走 `+html-publish`，也不要把 `+html-publish` 当作本地开发链路的 fallback。
-- 创意模式（html）应用的链接格式为 `https://{租户域名}/page/{meta_token}`，**开发态和发布态是同一个链接**（区别于 full_stack 应用两者分开）。此链接形似飞书文档链接。`+get --app-id <meta_token>` 可获取应用信息（含 `app_id`），`+get --app-id <app_id>` 可获取 `meta_token`。看到 `/page/xxx` 链接时，它是妙搭创意模式应用，不要当成飞书文档跳过；用户要看懂 / 总结这个应用的内容时，直接 `+export --meta-token <token>` 导出源码阅读。
+- 创意模式（html）应用的链接格式为 `https://{租户域名}/page/{meta_token}`，**开发态和发布态是同一个链接**（区别于 full_stack 应用两者分开）。此链接形似飞书文档链接。`+get --app-id <meta_token>` 可获取应用信息（含 `app_id`），`+get --app-id <app_id>` 可获取 `meta_token`。看到 `/page/xxx` 链接时，它是妙搭创意模式应用，不要当成飞书文档跳过；用户要看懂 / 总结这个应用的内容时，git 源码形态先用 `+page-source-list` 浏览目录，再用 `+page-source-get --meta-token <token> --path <path>` 读取相关文件。只有用户明确要导出 / 下载 / 归档整份源码快照时，才主动选择 `+export`。
 
 ## 平台资源与应用源码边界
 
@@ -145,7 +148,7 @@ lark-cli apps +member-settings-set --app-id <app_id> --external-access disabled 
 
 `app_id` 必须是妙搭应用 ID（`app_` 开头）。`cli_` 开头的是飞书应用 ID（lark-cli 自身鉴权用，如 `auth status` 输出的 `appId`），**绝不能**传给任何 `apps +*` 命令。
 
-如果你拿到的是 `https://{租户域名}/page/<meta_token>` 这类链接里的 meta_token — 这是创意模式应用的 **meta_token**（链接形似飞书文档）。只为阅读 / 导出源码时不需要 `app_id`，直接 `+export --meta-token <meta_token>`；其余命令需要 `app_id` 时，先用 `+get` 解析出 `app_id`。如果拿到的不是链接、也不是 `app_` 开头，可能是裸 meta_token，同样先用 `+get --app-id <token>` 尝试获取应用信息，能正常返回则说明是 meta_token：
+如果你拿到的是 `https://{租户域名}/page/<meta_token>` 这类链接里的 meta_token — 这是创意模式应用的 **meta_token**（链接形似飞书文档）。只为查看内容时不需要 `app_id`，git 源码形态优先用 `+page-source-list` / `+page-source-get --meta-token <meta_token>`（只需查看权限）。只有明确要导出 / 下载 / 归档整份源码时，才主动选择 `+export --meta-token <meta_token>`（需要下载权限）。其余命令需要 `app_id` 时，先用 `+get` 解析出 `app_id`。如果拿到的不是链接、也不是 `app_` 开头，可能是裸 meta_token，同样先用 `+get --app-id <token>` 尝试获取应用信息，能正常返回则说明是 meta_token：
 
 ```bash
 lark-cli apps +get --app-id <meta_token> -q '.data.app.app_id'

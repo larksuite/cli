@@ -26,11 +26,12 @@ import (
 //   - 9 role（role CRUD + role-member list/add/remove + role-match-list）
 //   - 6 creative app member/permission settings
 //   - 7 db-sync（create/list/get/enable/disable/update/delete）
-//   - 1 user-id-convert = 100。
-func TestAppsShortcuts_Returns100(t *testing.T) {
+//   - 2 source（list/get）
+//   - 1 user-id-convert = 102。
+func TestAppsShortcuts_Returns102(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 100 {
-		t.Fatalf("Shortcuts() returned %d entries, want 100", len(got))
+	if len(got) != 102 {
+		t.Fatalf("Shortcuts() returned %d entries, want 102", len(got))
 	}
 }
 

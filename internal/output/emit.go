@@ -26,13 +26,27 @@ type ScanResult struct {
 // When MODE=off, no provider registered, or the command is not allowlisted,
 // returns a zero ScanResult.
 func ScanForSafety(cmdPath string, data any, errOut io.Writer) ScanResult {
-	alert, csErr := runContentSafety(cmdPath, data, errOut)
+	return scanForSafety(cmdPath, data, errOut, false)
+}
+
+// ScanTextForSafety scans a bounded raw text response without the default
+// provider's per-field truncation used for structured API responses.
+func ScanTextForSafety(cmdPath, text string, errOut io.Writer) ScanResult {
+	return scanForSafety(cmdPath, text, errOut, true)
+}
+
+func scanForSafety(cmdPath string, data any, errOut io.Writer, fullText bool) ScanResult {
+	alert, csErr := runContentSafety(cmdPath, data, errOut, fullText)
 	if errors.Is(csErr, errBlocked) {
 		return ScanResult{
 			Alert:    alert,
 			Blocked:  true,
 			BlockErr: wrapBlockError(alert),
 		}
+	}
+	if csErr != nil && fullText {
+		return ScanResult{Blocked: true, BlockErr: errs.NewInternalError(errs.SubtypeUnknown,
+			"could not complete content safety scan").WithCause(csErr)}
 	}
 	return ScanResult{Alert: alert}
 }

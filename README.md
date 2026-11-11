@@ -268,6 +268,20 @@ Errors go to **stderr**, non-zero exit code:
 
 To check whether a command succeeded, test `ok == true` (or the exit code) — **not** `code == 0`. Unlike raw OpenAPI responses (`{"code": 0, "msg": "ok", ...}`), the success envelope carries no `code` or `msg` field; `code` appears only inside `error` as the upstream OpenAPI code. See [errs/ERROR_CONTRACT.md](errs/ERROR_CONTRACT.md) for the full error taxonomy.
 
+`apps +page-source-get` is a raw-file exception: without `--output`, stdout contains
+only the original UTF-8 file bytes, regardless of `--format`; `--jq` is rejected.
+Before writing stdout, the command buffers up to the source API's 10 MiB limit
+and applies the configured content-safety provider. Block mode emits no file
+bytes; warn mode writes its warning to stderr and preserves the original bytes.
+Raw text scanning requests the complete string, without the default provider's
+128 KiB structured-field limit. Scan errors or a 30-second timeout return an
+error before any source bytes are written.
+With `--output`, it saves the file and returns the normal path/size result.
+Use `apps +page-source-list --meta-token <token>` to list project source paths with
+view permission on a shared creative page. These commands accept the bare token
+from `/page/<token>` and are separate from uploaded storage assets (`+file-list`
+and `+file-get`). These commands require user authentication.
+
 ### Pagination
 
 ```bash

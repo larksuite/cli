@@ -47,6 +47,10 @@ func (s *scanner) scanString(text string, hits map[string]struct{}) {
 	if len(text) > maxStringBytes {
 		text = text[:maxStringBytes]
 	}
+	s.scanCompleteString(text, hits)
+}
+
+func (s *scanner) scanCompleteString(text string, hits map[string]struct{}) {
 	for _, r := range s.rules {
 		if _, already := hits[r.ID]; already {
 			continue

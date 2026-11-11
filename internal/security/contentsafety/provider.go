@@ -39,7 +39,11 @@ func (p *regexProvider) Scan(ctx context.Context, req extcs.ScanRequest) (*extcs
 	data := normalize(req.Data)
 	s := &scanner{rules: cfg.Rules}
 	hits := make(map[string]struct{})
-	s.walk(ctx, data, hits, 0)
+	if text, ok := data.(string); ok && req.FullText {
+		s.scanCompleteString(text, hits)
+	} else {
+		s.walk(ctx, data, hits, 0)
+	}
 
 	if len(hits) == 0 {
 		return nil, nil
@@ -75,7 +79,10 @@ func (p *regexProvider) loadOrCreate(errOut io.Writer) (*Config, error) {
 }
 
 func init() {
-	extcs.Register(&regexProvider{
-		configDir: core.GetConfigDir(),
-	})
+	extcs.Register(NewProvider(core.GetConfigDir()))
+}
+
+// NewProvider creates a regex provider using the given CLI-owned config directory.
+func NewProvider(configDir string) extcs.Provider {
+	return &regexProvider{configDir: configDir}
 }
