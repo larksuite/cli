@@ -32,7 +32,7 @@ metadata:
 
 ## 草稿操作决策（写操作前必须执行）
 
-先用 `+cycle-detail --prefer-draft=true` 读取目标内容，并检查 Objective/KR 的 `is_draft`：
+先用 `+cycle-detail --prefer-draft=true` 读取目标内容，以所属 Objective 的 `is_draft` 判断有无草稿。只有当前身份有草稿读取权限时，`true` 才表示已有草稿，`false` 才可判断无草稿。字段缺失表示未知：先补查所属 Objective，确认读取支持草稿且身份有权限；仍无法确认时，不据此选择 `--apply-to-draft=false` 或发布草稿。
 
 支持草稿的写操作中，`--apply-to-draft=true` 会在所属 Objective 尚无草稿时自动创建其草稿，无需先手动进入草稿态。
 

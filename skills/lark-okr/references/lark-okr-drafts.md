@@ -8,7 +8,7 @@ Objective、KR、对齐关系和量化指标都可能返回 `is_draft`。`true` 
 
 ## 操作决策
 
-1. 写操作前，用 `+cycle-detail --prefer-draft=true` 获取当前内容并检查相关 Objective/KR 的 `is_draft`。
+1. 写操作前，用 `+cycle-detail --prefer-draft=true` 获取当前内容，以所属 Objective 的 `is_draft` 判断有无草稿。只有当前身份有草稿读取权限时，`true` 才表示已有草稿，`false` 才可判断无草稿。字段缺失表示未知：先补查所属 Objective，确认读取支持草稿且身份有权限；仍无法确认时，不据此选择 `--apply-to-draft=false` 或发布草稿。
 2. 默认场景，或用户明确要求人工确认：用 `--apply-to-draft=true` 编辑草稿，展示变更并等待确认，再发布草稿。
 3. 用户明确要求无需人工确认：
    - 已有草稿（相关内容 `is_draft=true`）：仍编辑草稿，并在写入成功后立即发布。

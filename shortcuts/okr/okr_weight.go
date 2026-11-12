@@ -312,7 +312,7 @@ var OKRWeight = common.Shortcut{
 		} else {
 			// key-result level
 			listParams := map[string]interface{}{
-				"page_size": 100, "prefer_draft": true,
+				"page_size": 100, "prefer_draft": applyToDraft,
 			}
 			listPath := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/key_results", objectiveID)
 			apis = apis.
@@ -416,7 +416,7 @@ var OKRWeight = common.Shortcut{
 			}
 		} else {
 			// key-result level
-			keyResults, err := fetchKeyResultsWithDraftPreference(ctx, runtime, objectiveID, true)
+			keyResults, err := fetchKeyResultsWithDraftPreference(ctx, runtime, objectiveID, applyToDraft)
 			if err != nil {
 				return err
 			}

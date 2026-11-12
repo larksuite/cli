@@ -8,7 +8,7 @@
 
 ## Summary
 
-- `TestOKR_DraftFlagsDryRun`: default and explicit draft/published flags for reads, O/KR creation, batch creation, patch, indicators, and KR weights.
+- `TestOKR_DraftFlagsDryRun`: default and explicit draft/published flags for reads, O/KR creation, batch creation, patch, indicators, and KR weights; KR weight normalization reads the same view as the write.
 - `TestOKR_PatchDraftScoreRejectedDryRun`: typed validation errors for O/KR scores in draft mode. Existing score dry-runs explicitly use published mode.
 - `TestOKR_DraftActionsDryRun`: POST paths for publishing and discarding an O draft.
 - `TestOKR_DraftLifecycleLive`: bot creates a draft-only O/KR, verifies published-view absence, publishes, edits both drafts, verifies isolation, discards, and edits published content. Deletes the created O during cleanup.

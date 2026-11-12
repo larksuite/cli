@@ -31,7 +31,7 @@ func TestOKR_DraftFlagsDryRun(t *testing.T) {
 		{"patch_key_result", []string{"+patch", "--level", "key-result", "--target-id", "123", "--content", `{"text":"KR"}`}, "apply-to-draft", []string{"api.0.body.apply_to_draft"}},
 		{"indicator_objective", []string{"+indicator-update", "--level", "objective", "--id", "123", "--value", "1"}, "apply-to-draft", []string{"api.0.params.prefer_draft", "api.1.body.apply_to_draft"}},
 		{"indicator_key_result", []string{"+indicator-update", "--level", "key-result", "--id", "123", "--value", "1"}, "apply-to-draft", []string{"api.0.params.prefer_draft", "api.1.body.apply_to_draft"}},
-		{"key_result_weight", []string{"+weight", "--level", "key-result", "--cycle-id", "123", "--objective-id", "456", "--weights", `[{"id":"789","weight":1}]`}, "apply-to-draft", []string{"api.1.body.apply_to_draft"}},
+		{"key_result_weight", []string{"+weight", "--level", "key-result", "--cycle-id", "123", "--objective-id", "456", "--weights", `[{"id":"789","weight":1}]`}, "apply-to-draft", []string{"api.0.params.prefer_draft", "api.1.body.apply_to_draft"}},
 	}
 	for _, tc := range cases {
 		for _, mode := range []string{"default", "true", "false"} {

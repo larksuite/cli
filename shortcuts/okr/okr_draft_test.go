@@ -5,9 +5,12 @@ package okr
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -130,5 +133,54 @@ func TestDropDraftExecuteRequiresYes(t *testing.T) {
 		"+drop-draft", "--objective-id", "456", "--yes",
 	}); err != nil {
 		t.Fatalf("unexpected error with --yes: %v", err)
+	}
+}
+
+func TestDraftActionResponseProjection(t *testing.T) {
+	for _, shortcut := range []common.Shortcut{OKRPublishDraft, OKRDropDraft} {
+		for _, tc := range []struct {
+			name      string
+			data      map[string]interface{}
+			wantID    string
+			wantError bool
+		}{
+			{"returned_id", map[string]interface{}{"objective_id": "999"}, "999", false},
+			{"omitted_id", map[string]interface{}{}, "123", false},
+			{"empty_id", map[string]interface{}{"objective_id": ""}, "123", false},
+			{"null_id", map[string]interface{}{"objective_id": nil}, "123", false},
+			{"invalid_type", map[string]interface{}{"objective_id": 123}, "", true},
+		} {
+			t.Run(shortcut.Command+"/"+tc.name, func(t *testing.T) {
+				f, stdout, _, reg := cmdutil.TestFactory(t, draftTestConfig(t))
+				action := "draft_publish"
+				args := []string{shortcut.Command, "--objective-id", "123"}
+				if shortcut.Command == "+drop-draft" {
+					action = "draft_drop"
+					args = append(args, "--yes")
+				}
+				reg.Register(&httpmock.Stub{Method: "POST", URL: "/open-apis/okr/v2/objectives/123/" + action, Body: map[string]interface{}{"code": 0, "data": tc.data}})
+				err := runDraftShortcut(t, shortcut, f, stdout, args)
+				if tc.wantError {
+					var internalErr *errs.InternalError
+					if !errors.As(err, &internalErr) || internalErr.Subtype != errs.SubtypeInvalidResponse {
+						t.Fatalf("want typed invalid_response, got %v", err)
+					}
+					var cause *json.UnmarshalTypeError
+					if !errors.As(err, &cause) {
+						t.Fatalf("decode error cause was lost: %v", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if got := gjson.Get(stdout.String(), "data.objective_id").String(); got != tc.wantID {
+					t.Fatalf("objective_id = %q, want %q", got, tc.wantID)
+				}
+				if got := gjson.Get(stdout.String(), "data.action").String(); got != action {
+					t.Fatalf("action = %q, want %q", got, action)
+				}
+			})
+		}
 	}
 }

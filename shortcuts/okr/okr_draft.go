@@ -5,6 +5,7 @@ package okr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -31,8 +32,18 @@ func executeObjectiveDraftAction(runtime *common.RuntimeContext, action, verb, s
 	if err != nil {
 		return wrapOkrNetworkErr(err, "failed to %s objective draft", verb)
 	}
-	if responseID, ok := data["objective_id"].(string); ok && responseID != "" {
-		objectiveID = responseID
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid objective draft response: %s", err).WithCause(err)
+	}
+	var response struct {
+		ObjectiveID string `json:"objective_id"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid objective draft response: %s", err).WithCause(err)
+	}
+	if response.ObjectiveID != "" {
+		objectiveID = response.ObjectiveID
 	}
 
 	result := map[string]interface{}{
