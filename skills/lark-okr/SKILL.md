@@ -126,10 +126,15 @@ Shortcut 是对常用操作的高级封装（`lark-cli okr +<verb> [flags]`）�
 
 ## API Resources
 
+带草稿选择参数的原生接口按以下规则显式选择状态：
+
+- 读取接口若暴露 `prefer_draft`，可使用 `--prefer-draft=true` 草稿优先读取草稿态（无草稿态的内容则获取对应的发布态），使用 `--prefer-draft=false` 仅获取发布态内容。
+- 写入或删除接口若暴露 `apply_to_draft`，使用 `--apply-to-draft=true` 操作草稿，使用 `--apply-to-draft=false` 操作发布态。
+
 ### alignments
 
-- `delete` — 删除对齐关系
-- `get` — 获取对齐关系
+- `delete` — 删除对齐关系；可通过 `--apply-to-draft=true|false` 选择操作草稿态还是发布态
+- `get` — 获取对齐关系；可通过 `--prefer-draft=true|false` 选择是否优先获取草稿态数据
 
 > **操作指南：** [OKR 对齐关系管理](references/lark-okr-alignments.md) 包含 list/create/delete 完整工作流
 
@@ -143,49 +148,60 @@ Shortcut 是对常用操作的高级封装（`lark-cli okr +<verb> [flags]`）�
 
 ### cycle.objectives
 
-- `list` — 批量获取用户周期下的目标
+- `create` — 创建目标；可通过 `--apply-to-draft=true|false` 选择是否创建草稿 Objective
+  - 建议直接使用 [lark-okr-create.md](references/lark-okr-create.md) 或 [lark-okr-batch-create.md](references/lark-okr-batch-create.md)
+- `list` — 批量获取用户周期下的目标；可通过 `--prefer-draft=true|false` 选择是否优先读取草稿数据
+  - 建议直接使用 [lark-okr-cycle-detail.md](references/lark-okr-cycle-detail.md)
 
 ### indicators
 
-- `patch` — 更新量化指标
+- `patch` — 更新量化指标；草稿选择：`--apply-to-draft=true|false`
 
 > **操作指南：** [OKR 量化指标管理](references/lark-okr-indicators.md) 包含目标/KR 指标查询和 patch 更新完整工作流
 
 ### key_results
 
-- `delete` — 删除关键结果
-- `get` — 获取关键结果
-- `patch` — 更新关键结果
+- `delete` — 删除关键结果；可通过 `--apply-to-draft=true|false` 选择是否删除草稿 KR
+  - 草稿态/发布态下的 KR 互不干涉，尝试删除在对应状态下不存在的 KR 时，会返回 1001004: okr data not found 错误
+- `get` — 获取关键结果；可通过 `--prefer-draft=true|false` 选择是否优先读取草稿数据
+- `patch` — 更新关键结果；可通过 `--apply-to-draft=true|false` 选择是否编辑草稿 KR
+  - 建议直接使用 [lark-okr-patch.md](references/lark-okr-patch.md)
 
 ### key_result.indicators
 
-- `list` — 获取关键结果的量化指标
+- `list` — 获取关键结果的量化指标；可通过 `--prefer-draft=true|false` 选择是否优先读取草稿数据
 
 > **操作指南：** [OKR 量化指标管理](references/lark-okr-indicators.md)
 
 ### objectives
 
-- `delete` — 删除目标
-- `get` — 获取目标
-- `key_results_position` — 更新全部关键结果的位置
+- `delete` — 删除目标，会一并删除草稿和发布态 objective，仅草稿的 objective 亦可删除
+- `get` — 获取目标；可通过 `--prefer-draft=true|false` 选择是否优先读取草稿数据
+- `key_results_position` — 更新全部关键结果的位置；可通过 `--apply-to-draft=true|false` 选择是否操作草稿数据
     - 请求中必须携带对应周期下全部关键结果的 ID，否则会参数校验失败。以传入的关键结果ID顺序重新排列关键结果。
-- `key_results_weight` — 更新全部关键结果的权重
+    - 建议直接使用 [lark-okr-reorder.md](references/lark-okr-reorder.md)
+- `key_results_weight` — 更新全部关键结果的权重；可通过 `--apply-to-draft=true|false` 选择是否操作草稿数据
     - 类似 `objectives_weight`, 请求中必须同时修改对应目标下全部关键结果的权重，且所有权重值的和必须等于 1 ，否则会参数校验失败。
-- `patch` — 更新目标
+    - 建议直接使用 [lark-okr-weight.md](references/lark-okr-weight.md)
+- `patch` — 更新目标；可通过 `--apply-to-draft=true|false` 选择是否编辑草稿 Objective
+    - 建议直接使用 [lark-okr-patch.md](references/lark-okr-patch.md)
 
 ### objective.alignments
 
-- `create` — 创建对齐关系
+- `create` — 创建对齐关系；可通过 `--apply-to-draft=true|false` 选择是否创建草稿对齐
     - 对齐不允许对齐自己的目标，且发起对齐的目标和被对齐的目标所在周期时间上必须有重叠，否则会参数校验失败。
-- `list` — 批量获取目标下的对齐关系
+- `list` — 批量获取目标下的对齐关系；可通过 `--prefer-draft=true|false` 选择是否优先读取草稿数据
+- 可参考 [lark-okr-alignments.md](references/lark-okr-alignments.md) 了解工作流详情
 
 ### objective.indicators
 
-- `list` — 获取目标的量化指标
+- `list` — 获取目标的量化指标；可通过 `--prefer-draft=true|false` 选择是否优先读取草稿数据
 
 ### objective.key_results
 
-- `list` — 批量获取目标下的关键结果
+- `create` — 创建关键结果；可通过 `--apply-to-draft=true|false` 选择是否创建草稿 KR
+  - 建议直接使用 [lark-okr-create.md](references/lark-okr-create.md) 或 [lark-okr-batch-create.md](references/lark-okr-batch-create.md)
+- `list` — 批量获取目标下的关键结果；可通过 `--prefer-draft=true|false` 选择是否优先读取草稿数据
 
 ## 不在本 skill 范围
 
