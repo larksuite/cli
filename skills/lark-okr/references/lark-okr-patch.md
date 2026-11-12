@@ -21,15 +21,27 @@ lark-cli okr +patch \
   --score 0.7 \
   --apply-to-draft=false
 
-# 同时更新目标的多个字段（richtext 风格，完整 ContentBlock 格式）
+# 同时更新草稿目标的正文和截止日期（richtext 风格）
 lark-cli okr +patch \
   --level objective \
   --target-id 1234567890123456789 \
   --style richtext \
   --content '{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"更新后的目标内容"}}]}}]}' \
-  --notes '{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"更新后的备注"}}]}}]}' \
-  --score 0.5 \
   --deadline 1735776000000 \
+  --apply-to-draft=true
+
+# 备注不支持草稿，单独更新发布态备注
+lark-cli okr +patch \
+  --level objective \
+  --target-id 1234567890123456789 \
+  --notes '{"text":"更新后的备注"}' \
+  --apply-to-draft=false
+
+# 评分不支持草稿，单独更新发布态评分
+lark-cli okr +patch \
+  --level objective \
+  --target-id 1234567890123456789 \
+  --score 0.5 \
   --apply-to-draft=false
 
 # 预览 API 调用而不实际执行
@@ -68,7 +80,7 @@ lark-cli okr +patch \
      - 如需复杂格式：使用 `richtext` 风格，构造 ContentBlock JSON。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。
    - **score**：0-1 之间的数字，最多一位小数（如 0.3、0.7、1.0）
    - **deadline**：毫秒级时间戳
-3. 按 [OKR 草稿工作流](lark-okr-drafts.md) 选择并显式传 `--apply-to-draft=true|false`，再执行命令。
+3. content/deadline 按 [OKR 草稿工作流](lark-okr-drafts.md) 选择 `--apply-to-draft=true|false`；已有草稿时修改草稿，避免之后发布覆盖发布态修改。score 和 notes 不支持草稿，使用独立请求并显式传 `--apply-to-draft=false`。
 4. 报告结果：更新的级别、目标 ID、以及哪些字段被更新。
 
 ## 输出
@@ -94,7 +106,7 @@ lark-cli okr +patch \
 
 - **`--notes` 仅适用于目标**：关键结果（key-result）不支持 notes 字段，使用时会报错。
 - **score 格式**：必须在 0-1 之间，且最多一位小数（如 0.5 正确，0.51 错误）。
-- **草稿不支持 score**：传 `--score` 时必须同时传 `--apply-to-draft=false`；草稿读取中 score 可能不返回。
+- **草稿不支持 score 和 notes**：这两个字段必须使用 `--apply-to-draft=false` 修改发布态；已有草稿时，不要在这些请求中混入 content/deadline 修改。草稿读取中不支持的字段可能不返回。
 - **严格验证**：输入格式严格根据 `--style` 值验证，不会自动检测。使用 ContentBlock JSON 时必须指定 `--style richtext`。
 - **simple 风格输入限制**：simple 风格的输入不支持 `docs` 和 `images` 字段，如需包含文档或图片请使用 `richtext` 风格。
 

@@ -5,8 +5,8 @@
 直接更新目标（Objective）或关键结果（Key Result）的指标当前值，无需手动查询指标 ID。
 
 > **查询指标：** 如需查看指标详情，请使用原生 API：
-> - 目标指标：`lark-cli okr objective.indicators list --objective-id <id>`
-> - KR 指标：`lark-cli okr key_result.indicators list --key-result-id <id>`
+> - 目标指标：`lark-cli okr objective.indicators list --objective-id <id> --params '{"prefer_draft":true}'`
+> - KR 指标：`lark-cli okr key_result.indicators list --key-result-id <id> --params '{"prefer_draft":true}'`
 
 ## 推荐命令
 
@@ -42,7 +42,7 @@ lark-cli okr +indicator-update \
 ## 工作流程
 
 1. 使用 `+cycle-list` 和 `+cycle-detail` 获取目标 ID 或 KR ID。
-2. 如需查看当前指标值，使用 `objective.indicators list` 或 `key_result.indicators list` 查询。
+2. 如需查看当前指标值，使用 `objective.indicators list` 或 `key_result.indicators list` 查询，通过 `--params` 中的 `prefer_draft` 选择与写入一致的视图。
   若当前量化指标没有 start_value/current_value/target_value/unit 这些字段，代表当前量化指标为未设置的默认初始进度。
 3. 按 [OKR 草稿工作流](lark-okr-drafts.md) 选择 `--apply-to-draft=true|false`，再执行 `+indicator-update`。
   使用 +indicator-update 为默认初始进度设置当前值会将该量化指标配置为默认的百分比模式。若用户不希望将指标设置为百分比，请使用原生 API 详细设置，参考 [lark-okr-indicators.md](lark-okr-indicators.md)
