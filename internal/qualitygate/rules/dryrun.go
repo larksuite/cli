@@ -906,7 +906,8 @@ func runCommand(ctx context.Context, cliBin string, argv []string) commandResult
 	if runErr == nil {
 		return result
 	}
-	if exitErr, ok := runErr.(*exec.ExitError); ok {
+	var exitErr *exec.ExitError
+	if errors.As(runErr, &exitErr) {
 		result.ExitCode = exitErr.ExitCode()
 	} else {
 		result.ExitCode = 1
