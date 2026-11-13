@@ -836,9 +836,9 @@ func applyTemplate(
 	// IsPlainTextMode propagation: template value wins.
 	res.IsPlainTextMode = tpl.IsPlainTextMode
 
-	// Q4: warn when reply / reply-all + template has to/cc/bcc (likely
-	// duplicates against the reply-derived recipients).
-	if (kind == templateShortcutReply || kind == templateShortcutReplyAll) &&
+	// Q4: reply appends template recipients without a later de-duplication
+	// pass. Reply-all normalizes its merged recipient lists after this step.
+	if kind == templateShortcutReply &&
 		(len(tpl.Tos) > 0 || len(tpl.Ccs) > 0 || len(tpl.Bccs) > 0) {
 		res.Warnings = append(res.Warnings,
 			"template to/cc/bcc are appended without de-duplication; "+
