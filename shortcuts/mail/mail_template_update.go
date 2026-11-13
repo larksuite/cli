@@ -64,7 +64,7 @@ var MailTemplateUpdate = common.Shortcut{
 		for _, spec := range inlineSpecsFromFlagValuesForLog(runtime.StrArray("inline")) {
 			addTemplateUploadSteps(runtime, api, spec.FilePath)
 		}
-		for _, p := range normalizeCommaListFlagValues(runtime.StrArray("attach")) {
+		for _, p := range runtime.StrArray("attach") {
 			addTemplateUploadSteps(runtime, api, p)
 		}
 		api = api.PUT(templateMailboxPath(mailboxID, tid)).
@@ -77,7 +77,7 @@ var MailTemplateUpdate = common.Shortcut{
 			"template_id":        tid,
 			"is_plain_text_mode": runtime.Bool("set-plain-text"),
 			"name_len":           len([]rune(runtime.Str("set-name"))),
-			"attachments_total":  len(normalizeCommaListFlagValues(runtime.StrArray("attach"))) + len(parseLocalImgs(content)) + countInlineSpecsForLog(runtime.StrArray("inline")),
+			"attachments_total":  len(runtime.StrArray("attach")) + len(parseLocalImgs(content)) + countInlineSpecsForLog(runtime.StrArray("inline")),
 			"inline_count":       len(parseLocalImgs(content)) + countInlineSpecsForLog(runtime.StrArray("inline")),
 			"tos_count":          countAddresses(runtime.Str("set-to")),
 			"ccs_count":          countAddresses(runtime.Str("set-cc")),
@@ -232,7 +232,7 @@ var MailTemplateUpdate = common.Shortcut{
 		rewritten, newAtts, err := buildTemplatePayloadFromFlags(
 			ctx, runtime, tpl.Name, tpl.Subject, tpl.TemplateContent,
 			tpl.Tos, tpl.Ccs, tpl.Bccs,
-			normalizeCommaListFlagValues(runtime.StrArray("attach")),
+			runtime.StrArray("attach"),
 			inlineSpecs,
 		)
 		if err != nil {

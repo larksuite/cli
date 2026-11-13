@@ -33,6 +33,7 @@ var MailSend = common.Shortcut{
 		{Name: "cc", Type: "string_array", Desc: "CC email address. Repeat --cc once per recipient; quote each value. Display-name format is supported."},
 		{Name: "bcc", Type: "string_array", Desc: "BCC email address. Repeat --bcc once per recipient; quote each value. Display-name format is supported."},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
+		attachStdinNameFlag, attachStdinTypeFlag, attachStdinManifestFlag,
 		{Name: "attach", Type: "string_array", Desc: "Attachment file path, relative path only. Repeat --attach once per file; quote each value."},
 		{Name: "inline", Type: "string_array", Desc: "Inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string. Cannot be used with --plain-text."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the email immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
@@ -73,10 +74,13 @@ var MailSend = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateStdinAttachmentFlags(runtime); err != nil {
+			return err
+		}
 		to := normalizeRecipientFlagValues(runtime.StrArray("to"))
 		cc := normalizeRecipientFlagValues(runtime.StrArray("cc"))
 		bcc := normalizeRecipientFlagValues(runtime.StrArray("bcc"))
-		attach := normalizeCommaFlagValues(runtime.StrArray("attach"))
+		attach := runtime.StrArray("attach")
 		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
@@ -131,6 +135,10 @@ var MailSend = common.Shortcut{
 		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		stdinAtt, stdinErr := readStdinAttachment(runtime)
+		if stdinErr != nil {
+			return stdinErr
+		}
 		to := normalizeRecipientFlagValues(runtime.StrArray("to"))
 		subject := runtime.Str("subject")
 		body, err := resolveBodyFromFlags(runtime)
@@ -140,7 +148,7 @@ var MailSend = common.Shortcut{
 		ccFlag := normalizeRecipientFlagValues(runtime.StrArray("cc"))
 		bccFlag := normalizeRecipientFlagValues(runtime.StrArray("bcc"))
 		plainText := runtime.Bool("plain-text")
-		attachFlag := normalizeCommaFlagValues(runtime.StrArray("attach"))
+		attachFlag := runtime.StrArray("attach")
 		inlineFlag, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
@@ -314,7 +322,9 @@ var MailSend = common.Shortcut{
 		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 		composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, 0) + templateSmallBytes
-		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, splitByComma(attachFlag), emlBase, 0)
+		bld = stdinAtt.addTo(bld)
+		emlBase += stdinAtt.emlBytes()
+		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, attachFlag, emlBase, stdinAtt.count())
 		if err != nil {
 			return err
 		}
