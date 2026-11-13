@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	xhtml "golang.org/x/net/html"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
@@ -301,6 +302,173 @@ func TestAutoResolveSignatureID_ReturnsReplyID(t *testing.T) {
 	got := autoResolveSignatureID(rt, "mbx-reply-id", "user@example.com", true)
 	if got != "sig-reply-42" {
 		t.Fatalf("expected reply default sig ID %q, got %q", "sig-reply-42", got)
+	}
+}
+
+func TestResolveSignature_DriveImageCIDReference(t *testing.T) {
+	const cid = "signature-logo-cid"
+	const imageURL = "https://drive.example.com/image?cid=" + cid + "&token=example"
+	rt, reg := newSigTestRuntime(t)
+	stubSigListResponse(reg, "mbx-drive-image", []map[string]interface{}{{
+		"id": "sig-drive-image", "signature_type": "USER",
+		"content": `<div>Signature<img data-src="editor-only" src="https://drive.example.com/image?cid=signature-logo-cid&amp;token=example" data-cid="signature-logo-cid" width="120"></div>`,
+		"images": []map[string]interface{}{{
+			"cid": cid, "image_name": "logo.png", "download_url": imageURL,
+		}},
+	}}, nil)
+	rt.Factory.HttpClient = func() (*http.Client, error) {
+		return &http.Client{Transport: signatureRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() == imageURL {
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"image/png"}}, Body: io.NopCloser(strings.NewReader("image bytes")), Request: req}, nil
+			}
+			return reg.RoundTrip(req)
+		})}, nil
+	}
+	sig, err := resolveSignature(context.Background(), rt, "mbx-drive-image", "sig-drive-image", "", true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := injectSignatureIntoBody("<div>Hello</div>", sig)
+	if err := validateInlineCIDs(body, signatureCIDs(sig), nil); err != nil {
+		t.Fatalf("saved signature image must be referenced by its inline CID: %v", err)
+	}
+	if attrs := signatureImageAttributes(t, body); attrs["src"] != "cid:"+cid {
+		t.Fatalf("expected actual MIME CID source, got attributes %#v", attrs)
+	}
+	if !strings.Contains(body, `data-src="editor-only"`) || !strings.Contains(body, `width="120"`) {
+		t.Fatalf("image metadata must be preserved: %q", body)
+	}
+	bld := emlbuilder.New().From("", "sender@example.com").To("", "recipient@example.com").HTMLBody([]byte(body))
+	raw, err := addSignatureImagesToBuilder(bld, sig).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.ToLower(string(raw)), strings.ToLower("Content-ID: <"+cid+">")) {
+		t.Fatalf("expected matching MIME inline image: %q", raw)
+	}
+}
+
+func TestSignatureImagesHTML(t *testing.T) {
+	images := []draftpkg.SignatureImage{{CID: "<logo>"}}
+	for _, tc := range []struct {
+		name, input, want string
+	}{
+		{"data CID", `<img data-src="lazy" src='https://drive.example.com/image' data-cid='logo' width='20'>`, `<img data-src="lazy" src="cid:logo" data-cid="logo" width="20">`},
+		{"query CID", `<IMG SRC="https://drive.example.com/image?x=1&amp;cid=logo"/>`, `<img src="cid:logo"/>`},
+		{"existing CID", `<img src="cid:logo">`, `<img src="cid:logo">`},
+		{"unattached CID", `<img src="https://drive.example.com/image?cid=other" data-cid="other">`, `<img src="https://drive.example.com/image?cid=other" data-cid="other">`},
+		{"unrelated remote", `<img src="https://example.com/logo.png">`, `<img src="https://example.com/logo.png">`},
+		{"no src", `<img data-src="https://drive.example.com/image" data-cid="logo">`, `<img data-src="https://drive.example.com/image" data-cid="logo">`},
+		{"comment", `<!-- <img src="https://drive.example.com/image" data-cid="logo"> -->`, `<!-- <img src="https://drive.example.com/image" data-cid="logo"> -->`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := signatureImagesHTML(tc.input, images); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+			if got := signatureImagesHTML(tc.input, nil); got != tc.input {
+				t.Fatalf("without downloaded images HTML must be unchanged: %q", got)
+			}
+		})
+	}
+}
+
+// Inspect real HTML attributes: the shared regex CID validator can mistake a
+// src-looking string inside title for an image source.
+func signatureImageAttributes(t *testing.T, content string) map[string]string {
+	t.Helper()
+	z := xhtml.NewTokenizer(strings.NewReader(content))
+	for {
+		tt := z.Next()
+		if tt == xhtml.ErrorToken {
+			t.Fatal("no image found")
+		}
+		if tt != xhtml.StartTagToken && tt != xhtml.SelfClosingTagToken {
+			continue
+		}
+		tok := z.Token()
+		if tok.Data != "img" {
+			continue
+		}
+		attrs := make(map[string]string)
+		for _, attr := range tok.Attr {
+			attrs[attr.Key] = attr.Val
+		}
+		return attrs
+	}
+}
+
+func TestSignatureImagesHTMLQuotedSrcDecoy(t *testing.T) {
+	const prefix = `<DIV title='untouched &amp;'>text<!-- keep --><a href="https://drive.example/image">link</a>`
+	const suffix = `<img src='https://unrelated.example/image'><script>"<img src='decoy'>"</script></DIV>`
+	input := prefix + `<img title=" src='decoy'" src="https://drive.example/image" data-cid="logo">` + suffix
+	got := signatureImagesHTML(input, []draftpkg.SignatureImage{{CID: "logo"}})
+	attrs := signatureImageAttributes(t, got)
+	if attrs["src"] != "cid:logo" {
+		t.Errorf("actual src = %q, want cid:logo; HTML = %s", attrs["src"], got)
+	}
+	if attrs["title"] != " src='decoy'" || attrs["data-cid"] != "logo" {
+		t.Errorf("unrelated attributes changed: %#v", attrs)
+	}
+	if !strings.HasPrefix(got, prefix) || !strings.HasSuffix(got, suffix) {
+		t.Errorf("unrelated markup changed: %s", got)
+	}
+}
+
+func TestSignatureImagesHTMLPreservesExistingCIDWithStaleMetadata(t *testing.T) {
+	for _, src := range []string{"cid:existing", "CID:existing"} {
+		input := `<img src="` + src + `" data-cid="logo" title="keep">`
+		got := signatureImagesHTML(input, []draftpkg.SignatureImage{{CID: "logo"}})
+		if got != input {
+			t.Errorf("existing CID must take precedence over stale metadata: got %s, want %s", got, input)
+		}
+		if err := validateInlineCIDs(got, []string{"logo"}, nil); err == nil {
+			t.Error("stale CID conflict must fail validation, not silently remap the image")
+		}
+	}
+}
+
+func TestSignatureImagesHTMLDuplicateSourcePreservesRaw(t *testing.T) {
+	for _, input := range []string{
+		`<img src="cid:existing" src="https://drive.example/image" data-cid="logo">`,
+		`<img src="https://drive.example/image" src="cid:existing" data-cid="logo">`,
+		`<IMG SRC='https://drive.example/first' src=https://drive.example/second data-cid=logo />`,
+	} {
+		got := signatureImagesHTML(input, []draftpkg.SignatureImage{{CID: "logo"}})
+		if got != input {
+			t.Errorf("ambiguous src attributes must remain byte-for-byte unchanged: got %s, want %s", got, input)
+		}
+		if err := validateInlineCIDs(got, []string{"logo"}, nil); err == nil {
+			t.Error("unreferenced signature image must still fail CID validation")
+		}
+	}
+}
+
+func TestSignatureImagesHTMLDuplicateDataCIDPreservesRaw(t *testing.T) {
+	for _, input := range []string{
+		`<img src="https://drive.example/image" data-cid="other" data-cid="logo">`,
+		`<img src="https://drive.example/image?cid=logo" data-cid="logo" data-cid="other">`,
+		`<IMG SRC='https://drive.example/image' DATA-CID=logo data-cid=logo />`,
+	} {
+		got := signatureImagesHTML(input, []draftpkg.SignatureImage{{CID: "logo"}})
+		if got != input {
+			t.Errorf("ambiguous data-cid attributes must remain byte-for-byte unchanged: got %s, want %s", got, input)
+		}
+		if err := validateInlineCIDs(got, []string{"logo"}, nil); err == nil {
+			t.Error("unreferenced signature image must still fail CID validation")
+		}
+	}
+}
+
+func TestSignatureImagesHTMLUnquotedSource(t *testing.T) {
+	for _, input := range []string{
+		`<img src=https://drive.example/image data-cid=logo width=20>`,
+		`<img src=https://drive.example/image?cid=logo width=20>`,
+	} {
+		got := signatureImagesHTML(input, []draftpkg.SignatureImage{{CID: "logo"}})
+		attrs := signatureImageAttributes(t, got)
+		if attrs["src"] != "cid:logo" || attrs["width"] != "20" {
+			t.Errorf("unquoted source was not rewritten with metadata preserved: %#v; HTML = %s", attrs, got)
+		}
 	}
 }
 
