@@ -27,6 +27,7 @@ func Shortcuts() []common.Shortcut {
 		BaseFieldCreate,
 		BaseFieldUpdate,
 		BaseFieldDelete,
+		BaseFieldGroupCreate,
 		BaseFieldSearchOptions,
 		BaseFieldExtensionGet,
 		BaseFieldExtensionUpdate,
