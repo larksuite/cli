@@ -39,6 +39,7 @@ var MailDraftEdit = common.Shortcut{
 		{Name: "patch-file", Desc: "Advanced edit entry point for body edits, incremental recipient changes, header edits, attachment changes, or inline-image changes. Use --body/--body-file for quick full-body replacement; use --patch-file with set_body/set_reply_body when you need typed body ops, especially set_reply_body to preserve an existing reply/forward quote block. Run --inspect first to check has_quoted_content, then --print-patch-template for the JSON structure. Relative path only."},
 		{Name: "print-patch-template", Type: "bool", Desc: "Print the JSON template and supported operations for the --patch-file flag. Recommended first step before generating a patch file. No draft read or write is performed."},
 		{Name: "set-priority", Desc: "Set email priority: high, normal, low. Setting 'normal' removes any existing priority header."},
+		sendSeparatelyFlag,
 		{Name: "set-event-summary", Desc: "Set calendar event title. Must be used together with --set-event-start and --set-event-end."},
 		{Name: "set-event-start", Desc: "Set calendar event start time (ISO 8601)."},
 		{Name: "set-event-end", Desc: "Set calendar event end time (ISO 8601)."},
@@ -328,6 +329,10 @@ func executeDraftInspect(runtime *common.RuntimeContext, mailboxID, draftID stri
 		if projection.Priority != "" {
 			fmt.Fprintf(w, "priority: %s\n", sanitizeForTerminal(projection.Priority))
 		}
+		// Always shown, including "unknown" — a draft without the
+		// CLI-written header has no locally-known separate-send state, and
+		// the absence must not be reported as false.
+		fmt.Fprintf(w, "send_separately: %s\n", projection.SendSeparately)
 	})
 	return nil
 }
@@ -443,6 +448,37 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 		} else {
 			patch.Ops = append(patch.Ops, draftpkg.PatchOp{Op: "remove_header", Name: "X-Cli-Priority"})
 		}
+	}
+
+	// --send-separately → inject a set_header op on the CLI/OAPI-specific
+	// X-Cli-Send-Separately header. The explicit cancel ("false") is written
+	// as a present header — never removed — so it always reaches the save
+	// layer (three-state contract: unset = keep the draft's stored value).
+	// A --patch-file op that touches the same header with a different
+	// outcome is a parameter conflict; an identical value is accepted.
+	if sendSeparately := runtime.Str("send-separately"); sendSeparately != "" {
+		ssValue, ssErr := parseSendSeparately(sendSeparately)
+		if ssErr != nil {
+			return patch, ssErr
+		}
+		for _, op := range patch.Ops {
+			if !strings.EqualFold(strings.TrimSpace(op.Name), draftpkg.SendSeparatelyHeader) {
+				continue
+			}
+			switch op.Op {
+			case "set_header":
+				if !strings.EqualFold(strings.TrimSpace(op.Value), ssValue) {
+					return patch, sendSeparatelyConflictError()
+				}
+			case "remove_header":
+				return patch, sendSeparatelyConflictError()
+			}
+		}
+		patch.Ops = append(patch.Ops, draftpkg.PatchOp{
+			Op:    "set_header",
+			Name:  draftpkg.SendSeparatelyHeader,
+			Value: ssValue,
+		})
 	}
 
 	// --set-event-* / --remove-event → set_calendar / remove_calendar op.
@@ -637,6 +673,7 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			"`replace_inline` keeps the original filename and content_type when those fields are omitted",
 			"protected headers require `allow_protected_header_edits=true`",
 			"--set-priority high|normal|low controls draft priority via X-Cli-Priority header (CLI/OAPI specific). high → set_header X-Cli-Priority=1; low → set_header X-Cli-Priority=5; normal → remove_header X-Cli-Priority. Backend mail-data-access headersToPbBodyExtra recognizes X-Cli-Priority but not standard X-Priority/Importance for OAPI flow.",
+			"--send-separately true|false controls per-recipient separate sending via the X-Cli-Send-Separately header (same CLI/OAPI-specific channel as X-Cli-Priority). Both true and false are written as a present set_header value so the explicit cancel is never dropped; omit the flag to keep the draft's stored setting. A --patch-file set_header/remove_header on X-Cli-Send-Separately that disagrees with the flag is rejected as a parameter conflict.",
 		},
 		"command_example":    "lark-cli mail +draft-edit --print-patch-template",
 		"patch_file_example": "lark-cli mail +draft-edit --draft-id d_xxx --patch-file ./patch.json",
