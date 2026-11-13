@@ -75,6 +75,8 @@ lark-cli docs +update --doc "xx" --command block_delete --start-block-id blkFirs
 
 ## 通用安全规则
 
+- 对用户可能同步维护的已有文档，每次写操作前重新局部 fetch 目标内容、block ID 和最新 revision，并在对应写操作中通过 `--revision-id` 显式传入本次 fetch 返回的 revision ID，不要依赖默认值 `-1`。若发生版本冲突，重新 fetch 最新内容，基于新版本重新生成局部修改后再重试。
+- 只修改用户本轮明确授权的最小范围，不要顺带调整未请求的结构、措辞或相邻内容；仅当用户明确要求整体重建时才使用 `overwrite`。
 - 每次写操作后都按 block ID 已变化处理。新插入或复制的内容一定使用新 ID；替换、删除和覆盖会使旧 ID 失效；移动会改变章节与 range 语义。
 - 同一 block 有多处修改时，应合并为一次 `block_replace`，避免连续使用旧 ID。
 
