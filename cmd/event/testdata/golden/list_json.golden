@@ -539,6 +539,386 @@
     }
   },
   {
+    "key": "drive.file.bitable_field_changed_v1",
+    "display_name": "Bitable field changed",
+    "description": "Pushed when a field of a subscribed Base (bitable) is added, deleted or edited.",
+    "event_type": "drive.file.bitable_field_changed_v1",
+    "subscription_type": "event",
+    "params": [
+      {
+        "name": "file_token",
+        "type": "string",
+        "required": true,
+        "description": "Base (bitable) app token to subscribe; subscription is per file. Changes to other Bases are filtered out.",
+        "subscription_key": true
+      }
+    ],
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/operator_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/operator_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/operator_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "base:field:read"
+    ],
+    "auth_types": [
+      "user",
+      "bot"
+    ],
+    "required_console_events": [
+      "drive.file.bitable_field_changed_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "action_list": {
+              "items": {
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "after_value": {
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "integer"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "before_value": {
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "integer"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "field_id": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "file_token": {
+              "type": "string"
+            },
+            "file_type": {
+              "type": "string"
+            },
+            "operator_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "subscriber_id_list": {
+              "items": {
+                "properties": {
+                  "open_id": {
+                    "type": "string"
+                  },
+                  "union_id": {
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "table_id": {
+              "type": "string"
+            },
+            "update_time": {
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "drive.file.bitable_record_changed_v1",
+    "display_name": "Bitable record changed",
+    "description": "Pushed when a record of a subscribed Base (bitable) is added, deleted or edited. Formula-only changes do not trigger it.",
+    "event_type": "drive.file.bitable_record_changed_v1",
+    "subscription_type": "event",
+    "params": [
+      {
+        "name": "file_token",
+        "type": "string",
+        "required": true,
+        "description": "Base (bitable) app token to subscribe; subscription is per file. Changes to other Bases are filtered out.",
+        "subscription_key": true
+      }
+    ],
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/operator_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/operator_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/operator_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "base:record:read"
+    ],
+    "auth_types": [
+      "user",
+      "bot"
+    ],
+    "required_console_events": [
+      "drive.file.bitable_record_changed_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "action_list": {
+              "items": {
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "after_value": {
+                    "items": {
+                      "properties": {
+                        "field_id": {
+                          "type": "string"
+                        },
+                        "field_value": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "before_value": {
+                    "items": {
+                      "properties": {
+                        "field_id": {
+                          "type": "string"
+                        },
+                        "field_value": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "record_id": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "file_token": {
+              "type": "string"
+            },
+            "file_type": {
+              "type": "string"
+            },
+            "operator_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "subscriber_id_list": {
+              "items": {
+                "properties": {
+                  "open_id": {
+                    "type": "string"
+                  },
+                  "union_id": {
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "table_id": {
+              "type": "string"
+            },
+            "update_time": {
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
     "key": "drive.notice.comment_add_v1",
     "display_name": "Comment notice added",
     "description": "Triggered when a cloud document comment or reply notifies the current user or bot, for example by @mentioning it.",
