@@ -31,6 +31,7 @@ import (
 )
 
 type refreshHTTPTestStep struct {
+	status      int
 	body        string
 	err         error
 	markWritten bool
@@ -72,6 +73,8 @@ func refreshHTTPResponse(req *http.Request, body string) *http.Response {
 	}
 }
 
+// scriptedRefreshClient returns a transport that replays the configured responses and errors.
+// Each step can override the HTTP status or simulate a request written before a failure.
 func scriptedRefreshClient(t *testing.T, steps []refreshHTTPTestStep, calls *atomic.Int32) *http.Client {
 	t.Helper()
 	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -95,7 +98,11 @@ func scriptedRefreshClient(t *testing.T, steps []refreshHTTPTestStep, calls *ato
 		if step.err != nil {
 			return nil, step.err
 		}
-		return refreshHTTPResponse(req, step.body), nil
+		response := refreshHTTPResponse(req, step.body)
+		if step.status != 0 {
+			response.StatusCode = step.status
+		}
+		return response, nil
 	})}
 }
 
@@ -353,6 +360,8 @@ func TestRefreshDPoPTokenRecoversClockAndKeepsBinding(t *testing.T) {
 	}
 }
 
+// TestRefreshFailureDeterminesStoredTokenDisposition checks retries, typed errors, and stored tokens.
+// A later rate limit must not erase the uncertainty of an earlier written request.
 func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 	sentinel := errors.New("transport unavailable")
 	sharedNetworkErr := errs.NewNetworkError(errs.SubtypeNetworkTransport,
@@ -365,10 +374,48 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 		wantCategory             errs.Category
 		wantSubtype              errs.Subtype
 		wantRetryable            bool
+		wantCode                 int
 		wantNeedAuth             bool
 		wantCause                error
 		wantInvalidResponseCause bool
 	}{
+		{
+			name: "plain text rate limits preserve after retry",
+			steps: []refreshHTTPTestStep{
+				{status: http.StatusTooManyRequests, body: "ratelimit triggered"},
+				{status: http.StatusTooManyRequests, body: "ratelimit triggered"},
+			},
+			wantCalls:     2,
+			wantPreserved: true,
+			wantCategory:  errs.CategoryAPI,
+			wantSubtype:   errs.SubtypeRateLimit,
+			wantRetryable: true,
+			wantCode:      http.StatusTooManyRequests,
+		},
+		{
+			name: "JSON rate limits take precedence over unknown error codes",
+			steps: []refreshHTTPTestStep{
+				{status: http.StatusTooManyRequests, body: `{"code":123456,"error":"slow_down"}`},
+				{status: http.StatusTooManyRequests, body: `{"code":123456,"error":"slow_down"}`},
+			},
+			wantCalls:     2,
+			wantPreserved: true,
+			wantCategory:  errs.CategoryAPI,
+			wantSubtype:   errs.SubtypeRateLimit,
+			wantRetryable: true,
+			wantCode:      http.StatusTooManyRequests,
+		},
+		{
+			name: "rate limit does not undo an earlier uncertain refresh",
+			steps: []refreshHTTPTestStep{
+				{err: sharedNetworkErr, markWritten: true},
+				{status: http.StatusTooManyRequests, body: "ratelimit triggered"},
+			},
+			wantCalls:    2,
+			wantCategory: errs.CategoryAuthentication,
+			wantSubtype:  errs.SubtypeTokenMissing,
+			wantNeedAuth: true,
+		},
 		{
 			name: "policy challenge stops and preserves",
 			steps: []refreshHTTPTestStep{{
@@ -454,6 +501,9 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 				t.Fatalf("token = %+v, want nil on refresh failure", token)
 			}
 			problem := requireRefreshProblem(t, err, tt.wantCategory, tt.wantSubtype, tt.wantRetryable)
+			if tt.wantCode != 0 && problem.Code != tt.wantCode {
+				t.Fatalf("code = %d, want %d", problem.Code, tt.wantCode)
+			}
 			if tt.wantNeedAuth {
 				if !IsNeedUserAuthorizationError(err) {
 					t.Fatalf("error = %v, want need-user-authorization sentinel", err)
@@ -487,6 +537,28 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 	}
 	if !sharedNetworkErr.Retryable {
 		t.Fatal("shared network error was mutated")
+	}
+}
+
+// TestRefreshSucceedsAfterRateLimit verifies that a rejected attempt can be retried with the same credential.
+func TestRefreshSucceedsAfterRateLimit(t *testing.T) {
+	setupStoredTokenTest(t)
+	stored := newRefreshTestToken()
+	if err := SetStoredToken(stored); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	client := scriptedRefreshClient(t, []refreshHTTPTestStep{
+		{status: http.StatusTooManyRequests, body: "ratelimit triggered"},
+		{body: `{"access_token":"access-new","refresh_token":"refresh-new","expires_in":120,"refresh_token_expires_in":600}`},
+	}, &calls)
+	token, err := GetValidAccessToken(context.Background(), client, newRefreshTestOptions(stored))
+	if err != nil || token == nil || token.AccessToken != "access-new" || calls.Load() != 2 {
+		t.Fatalf("refresh = (%+v, %v, %d calls), want success after one retry", token, err, calls.Load())
+	}
+	current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
+	if current == nil || current.RefreshToken != "refresh-new" {
+		t.Fatalf("stored token = %#v, want rotated credential", current)
 	}
 }
 
