@@ -29,9 +29,9 @@ var GetMyTasks = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search for tasks by summary (exact match first, then partial match)"},
 		{Name: "complete", Type: "bool", Desc: "if true, query completed tasks;if false, query incompleted tasks; if not provided, both completed and incompleted tasks are queried."},
-		{Name: "created_at", Desc: "query tasks created after this time (date/relative/ms)"},
-		{Name: "due-start", Desc: "query tasks with due date after this time (date/relative/ms)"},
-		{Name: "due-end", Desc: "query tasks with due date before this time (date/relative/ms)"},
+		{Name: "created_at", Desc: "query tasks created after this time (date/relative/Unix seconds/milliseconds with 13+ digits)"},
+		{Name: "due-start", Desc: "query tasks with due date after this time (date/relative/Unix seconds/milliseconds with 13+ digits)"},
+		{Name: "due-end", Desc: "query tasks with due date before this time (date/relative/Unix seconds/milliseconds with 13+ digits)"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages (max 40)"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max page limit (default 20, max 40 with --page-all)"},
 		{Name: "page-token", Desc: "start from the specified page token"},
@@ -77,30 +77,27 @@ var GetMyTasks = common.Shortcut{
 		// parse time flags to ms timestamp if provided
 		var createdAfterMs, dueStartMs, dueEndMs int64
 		if createdStr := runtime.Str("created_at"); createdStr != "" {
-			tStr, err := parseTimeFlagSec(createdStr, "start")
+			tStr, err := parseTimeFlagMillis(createdStr, "start")
 			if err != nil {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid created_at: %v", err).WithParam("--created_at")
 			}
 			createdAfterMs, _ = strconv.ParseInt(tStr, 10, 64)
-			createdAfterMs *= 1000 // Convert sec to ms
 		}
 
 		if dueStartStr := runtime.Str("due-start"); dueStartStr != "" {
-			tStr, err := parseTimeFlagSec(dueStartStr, "start")
+			tStr, err := parseTimeFlagMillis(dueStartStr, "start")
 			if err != nil {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid due-start: %v", err).WithParam("--due-start")
 			}
 			dueStartMs, _ = strconv.ParseInt(tStr, 10, 64)
-			dueStartMs *= 1000
 		}
 
 		if dueEndStr := runtime.Str("due-end"); dueEndStr != "" {
-			tStr, err := parseTimeFlagSec(dueEndStr, "end")
+			tStr, err := parseTimeFlagMillis(dueEndStr, "end")
 			if err != nil {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid due-end: %v", err).WithParam("--due-end")
 			}
 			dueEndMs, _ = strconv.ParseInt(tStr, 10, 64)
-			dueEndMs *= 1000
 		}
 
 		var allItems []interface{}
