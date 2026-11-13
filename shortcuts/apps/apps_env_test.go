@@ -264,6 +264,9 @@ func TestAppsEnvVarSet_ExecutesWithYesAndDoesNotEchoValue(t *testing.T) {
 			t.Fatalf("stdout missing %q: %s", want, got)
 		}
 	}
+	if !strings.Contains(got, envVarReleaseNote) {
+		t.Fatalf("stdout missing release note %q: %s", envVarReleaseNote, got)
+	}
 }
 
 func TestAppsEnvVarDelete_IsHighRiskWrite(t *testing.T) {
@@ -282,7 +285,7 @@ func TestAppsEnvVarDelete_BuildsDeleteBodyWithKeys(t *testing.T) {
 	reg.Register(stub)
 
 	if err := runAppsShortcut(t, AppsEnvVarDelete,
-		[]string{"+env-delete", "--app-id", "app_x", "--environment", "online",
+		[]string{"+env-delete", "--app-id", "app_x", "--environment", "dev",
 			"--key", "SECRET_ONE", "--key", "SECRET_TWO", "--yes", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -291,18 +294,21 @@ func TestAppsEnvVarDelete_BuildsDeleteBodyWithKeys(t *testing.T) {
 	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if sent["env"] != "online" {
-		t.Fatalf("body.env = %v, want online", sent["env"])
+	if sent["env"] != "dev" {
+		t.Fatalf("body.env = %v, want dev", sent["env"])
 	}
 	keys, ok := sent["keys"].([]interface{})
 	if !ok || len(keys) != 2 || keys[0] != "SECRET_ONE" || keys[1] != "SECRET_TWO" {
 		t.Fatalf("body.keys = %#v, want SECRET_ONE/SECRET_TWO", sent["keys"])
 	}
 	got := stdout.String()
-	for _, want := range []string{`"env": "online"`, `"deleted_keys"`, `"SECRET_ONE"`, `"SECRET_TWO"`} {
+	for _, want := range []string{`"env": "dev"`, `"deleted_keys"`, `"SECRET_ONE"`, `"SECRET_TWO"`} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stdout missing %q: %s", want, got)
 		}
+	}
+	if !strings.Contains(got, envVarReleaseNote) {
+		t.Fatalf("stdout missing release note %q: %s", envVarReleaseNote, got)
 	}
 }
 
@@ -337,28 +343,29 @@ func TestAppsEnvVarDelete_NotModifiableHint(t *testing.T) {
 	}
 }
 
-func TestAppsEnvVarDelete_OnlineDryRunDoesNotRequireYes(t *testing.T) {
-	factory, stdout, _ := newAppsExecuteFactory(t)
-	if err := runAppsShortcut(t, AppsEnvVarDelete,
-		[]string{"+env-delete", "--app-id", "app_x", "--environment", "online",
-			"--key", "SECRET_ONE", "--key", "SECRET_TWO", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
-		t.Fatalf("dry-run err=%v", err)
-	}
-
-	var dryRun dryRunAPIEnvelope
-	got := stdout.String()
-	if err := json.Unmarshal([]byte(got), &dryRun); err != nil {
-		t.Fatalf("decode dry-run: %v\n%s", err, got)
-	}
-	if len(dryRun.API) != 1 || dryRun.API[0].Method != "POST" || dryRun.API[0].URL != "/open-apis/spark/v1/apps/app_x/delete_env_vars" {
-		t.Fatalf("dry-run api = %#v", dryRun.API)
-	}
-	if dryRun.API[0].Body["env"] != "online" {
-		t.Fatalf("dry-run body.env = %v, want online", dryRun.API[0].Body["env"])
-	}
-	keys, ok := dryRun.API[0].Body["keys"].([]interface{})
-	if !ok || len(keys) != 2 || keys[0] != "SECRET_ONE" || keys[1] != "SECRET_TWO" {
-		t.Fatalf("dry-run body.keys = %#v, want SECRET_ONE/SECRET_TWO", dryRun.API[0].Body["keys"])
+func TestAppsEnvVarDelete_RejectsOnlineEnvironment(t *testing.T) {
+	for _, args := range [][]string{
+		{"+env-delete", "--app-id", "app_x", "--environment", "online",
+			"--key", "SECRET_ONE", "--yes", "--as", "user"},
+		{"+env-delete", "--app-id", "app_x", "--environment", "online",
+			"--key", "SECRET_ONE", "--dry-run", "--as", "user"},
+	} {
+		factory, stdout, _ := newAppsExecuteFactory(t)
+		err := runAppsShortcut(t, AppsEnvVarDelete, args, factory, stdout)
+		requireAppsProblem(t, err, errs.CategoryValidation)
+		var validation *errs.ValidationError
+		if !errors.As(err, &validation) {
+			t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+		}
+		if validation.Param != "--environment" {
+			t.Fatalf("validation param = %q, want --environment", validation.Param)
+		}
+		if validation.Subtype != errs.SubtypeFailedPrecondition {
+			t.Fatalf("validation subtype = %q, want %q", validation.Subtype, errs.SubtypeFailedPrecondition)
+		}
+		if !strings.Contains(err.Error(), "disabled") {
+			t.Fatalf("error should explain online delete is disabled: %v", err)
+		}
 	}
 }
 
