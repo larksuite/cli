@@ -187,3 +187,10 @@ func IsPlatformEndpointURL(candidate *url.URL) bool {
 	}
 	return IsPlatformEndpointHost(candidate.Hostname())
 }
+
+// ClientAssertionAudience returns the client_assertion `aud` value for the
+// brand: the bare accounts host per the App Authentication JWT spec —
+// "accounts.feishu.cn" or "accounts.larksuite.com".
+func ClientAssertionAudience(brand LarkBrand) string {
+	return strings.TrimPrefix(ResolveEndpoints(brand).Accounts, "https://")
+}

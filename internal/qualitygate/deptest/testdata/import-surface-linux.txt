@@ -182,6 +182,7 @@ golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/html/charset
 golang.org/x/sync/errgroup
+golang.org/x/sync/singleflight
 golang.org/x/sys/unix
 golang.org/x/term
 golang.org/x/text/encoding

@@ -16,11 +16,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/identitydiag"
+	"github.com/larksuite/cli/internal/keylesshelper"
+	"github.com/larksuite/cli/internal/keylessprovider"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/transport"
@@ -167,6 +171,9 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 		checks = append(checks, fail("identity_ready", "no usable bot or user identity is available", ""))
 	}
 
+	// ── 3b. private-key JWT signer (local; runs even with --offline) ──
+	checks = append(checks, teeSignerCheck(opts.Ctx, f, cfg))
+
 	// ── 4 & 5. Endpoint reachability ──
 	checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
 
@@ -178,6 +185,56 @@ func identityCheck(name string, id identitydiag.Identity) checkResult {
 		return pass(name, id.Message)
 	}
 	return warn(name, id.Message, id.Hint)
+}
+
+// teeSignerCheck checks the configured private-key JWT signer using its existing
+// key. Other authentication methods skip signer checks, including with --offline.
+func teeSignerCheck(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) checkResult {
+	if cfg == nil || !core.IsPrivateKeyJWTLocalKeyPairAuthMethod(cfg.AuthMethod) {
+		return skip("tee_signer", "not required for client_secret authentication")
+	}
+	if cfg.KeySource == core.SecretSourceKeyFile {
+		signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
+		if err != nil {
+			return fail("tee_signer", "private-key file signer is unavailable", err.Error())
+		}
+		pub, err := signer.PublicKey(ctx, keysigner.KeyRef{Label: cfg.KeyLabel})
+		if err != nil {
+			return fail("tee_signer", "private-key file is unusable", err.Error())
+		}
+		kid, err := keysigner.PublicKeyThumbprint(pub)
+		if err != nil {
+			return fail("tee_signer", "private-key file is unusable", err.Error())
+		}
+		return pass("tee_signer", fmt.Sprintf("private-key file available (kid %s)", kid))
+	}
+	if cfg.KeyProvider == core.KeylessProviderLarkSuite {
+		helper, err := keylessprovider.Resolve(ctx, cfg.KeyProvider)
+		if err != nil {
+			return fail("tee_signer", "OpenClaw keyless signer is unavailable",
+				fmt.Sprintf("repair or reinstall the OpenClaw plugin and platform signer: %v", err))
+		}
+		if err := helper.Probe(ctx, cfg.KeyLabel); err != nil {
+			return fail("tee_signer", "OpenClaw keyless signer probe failed",
+				fmt.Sprintf("repair or reinstall the OpenClaw plugin and platform signer: %v", err))
+		}
+		return pass("tee_signer", "OpenClaw keyless signer available")
+	}
+	signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
+	if err != nil {
+		return fail("tee_signer", "configured signing backend is unavailable", err.Error())
+	}
+	store := keylesshelper.NewKeyStoreWithSigners(f.Keychain, signer)
+	key, err := store.ProbeKeyContext(ctx, signer.Name(), cfg.KeyLabel)
+	if err != nil {
+		return fail("tee_signer", "configured signing key is unusable", err.Error())
+	}
+	kid, err := key.Thumbprint()
+	if err != nil {
+		return fail("tee_signer", "configured signing key is invalid", err.Error())
+	}
+	backend := signer.Name()
+	return pass("tee_signer", fmt.Sprintf("%s signer available (kid %s)", backend, kid))
 }
 
 // networkChecks probes Open API and MCP endpoints concurrently.
@@ -284,12 +341,11 @@ func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
 		}
 	}
 
-	result := map[string]interface{}{
+	output.PrintJson(f.IOStreams.Out, map[string]interface{}{
 		"ok":        allOK,
 		"workspace": core.CurrentWorkspace().Display(),
 		"checks":    checks,
-	}
-	output.PrintJson(f.IOStreams.Out, result)
+	})
 	if !allOK {
 		return output.ErrBare(1)
 	}

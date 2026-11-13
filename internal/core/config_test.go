@@ -6,10 +6,12 @@ package core
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // stubKeychain is a minimal KeychainAccess that always returns ErrNotFound.
@@ -159,6 +161,104 @@ func TestResolveConfigFromMulti_CarriesLang(t *testing.T) {
 	}
 }
 
+// TestResolveConfigFromMulti_PrivateKeyJWTLocalKeyPairSkipsSecretResolution ensures
+// private_key_jwt_local_keypair authentication ignores a stale AppSecret reference.
+func TestResolveConfigFromMulti_PrivateKeyJWTLocalKeyPairSkipsSecretResolution(t *testing.T) {
+	method := AuthMethodPrivateKeyJWTLocalKeyPair
+	raw := &MultiAppConfig{
+		Apps: []AppConfig{{
+			AppId: "cli_pk",
+			// This mismatched keychain ref would fail if secret
+			// resolution were reached.
+			AppSecret:  SecretInput{Ref: &SecretRef{Source: "keychain", ID: "appsecret:cli_OTHER"}},
+			Brand:      BrandFeishu,
+			AuthMethod: method,
+			KeyRef:     &SecretRef{Source: "tee", ID: "agent-key"},
+			Users:      []AppUser{},
+		}},
+	}
+	cfg, err := ResolveConfigFromMulti(raw, stubKeychain{}, "", ProfileFromConfig)
+	if err != nil {
+		t.Fatalf("%s with stale secret ref must skip secret resolution: %v", method, err)
+	}
+	if cfg.AuthMethod != method || cfg.KeySource != SecretSourceTEE || cfg.KeyLabel != "agent-key" {
+		t.Errorf("got authMethod=%q keySource=%q keyLabel=%q", cfg.AuthMethod, cfg.KeySource, cfg.KeyLabel)
+	}
+}
+
+func TestResolveConfigFromMulti_KeyProviderRouting(t *testing.T) {
+	base := AppConfig{
+		AppId: "cli_pk", Brand: BrandFeishu, AuthMethod: AuthMethodPrivateKeyJWTLocalKeyPair,
+		KeyRef: &SecretRef{Source: SecretSourceTEE, ID: "key-1"}, Users: []AppUser{},
+	}
+
+	for _, provider := range []string{
+		"",
+		KeylessProviderLarkSuite,
+		keysigner.MacOSSecureEnclaveSignerName,
+		keysigner.MacOSKeychainSignerName,
+		keysigner.WindowsPlatformKSPSignerName,
+		keysigner.WindowsSoftwareKSPSignerName,
+		keysigner.LinuxTPMSignerName,
+		keysigner.SoftwareSignerName,
+	} {
+		app := base
+		ref := *base.KeyRef
+		ref.Provider = provider
+		app.KeyRef = &ref
+		cfg, err := ResolveConfigFromMulti(&MultiAppConfig{Apps: []AppConfig{app}}, stubKeychain{}, "", ProfileFromConfig)
+		if err != nil {
+			t.Fatalf("provider %q: %v", provider, err)
+		}
+		if cfg.KeyProvider != provider {
+			t.Fatalf("KeyProvider = %q, want %q", cfg.KeyProvider, provider)
+		}
+	}
+
+	app := base
+	ref := *base.KeyRef
+	ref.Provider = "unknown.provider"
+	app.KeyRef = &ref
+	if _, err := ResolveConfigFromMulti(&MultiAppConfig{Apps: []AppConfig{app}}, stubKeychain{}, "", ProfileFromConfig); err == nil {
+		t.Fatal("unknown provider must fail closed")
+	}
+
+	fileApp := base
+	const keyPath = "/keys/app.pem"
+	fileApp.KeyRef = &SecretRef{Source: SecretSourceKeyFile, ID: keyPath}
+	cfg, err := ResolveConfigFromMulti(&MultiAppConfig{Apps: []AppConfig{fileApp}}, stubKeychain{}, "", ProfileFromConfig)
+	if err != nil {
+		t.Fatalf("file keyRef: %v", err)
+	}
+	if cfg.KeySource != SecretSourceKeyFile || cfg.KeyLabel != keyPath {
+		t.Fatalf("file key routing = source:%q label:%q", cfg.KeySource, cfg.KeyLabel)
+	}
+
+	fileApp.KeyRef.Provider = KeylessProviderLarkSuite
+	if _, err := ResolveConfigFromMulti(&MultiAppConfig{Apps: []AppConfig{fileApp}}, stubKeychain{}, "", ProfileFromConfig); err == nil {
+		t.Fatal("file keyRef with provider must fail closed")
+	}
+
+}
+
+// TestResolveConfigFromMulti_PrivateKeyJWTLocalKeyPairRejectsBadKeyRef ensures the stricter keyRef
+// check (Source=="tee" && ID!="") rejects malformed handles.
+func TestResolveConfigFromMulti_PrivateKeyJWTLocalKeyPairRejectsBadKeyRef(t *testing.T) {
+	for i, ref := range []*SecretRef{
+		{Source: "keychain", ID: "x"},         // wrong source
+		{Source: "tee", ID: ""},               // empty id
+		{Source: SecretSourceKeyFile, ID: ""}, // empty file path
+	} {
+		raw := &MultiAppConfig{Apps: []AppConfig{{
+			AppId: "cli_pk", Brand: BrandFeishu,
+			AuthMethod: AuthMethodPrivateKeyJWTLocalKeyPair, KeyRef: ref, Users: []AppUser{},
+		}}}
+		if _, err := ResolveConfigFromMulti(raw, stubKeychain{}, "", ProfileFromConfig); err == nil {
+			t.Errorf("case %d: expected ConfigError for bad keyRef", i)
+		}
+	}
+}
+
 func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T) {
 	// Keychain ref matches appId, so validation passes.
 	// The subsequent ResolveSecretInput will fail (no real keychain),
@@ -250,5 +350,59 @@ func TestResolveConfigFromMulti_NormalizesBrand(t *testing.T) {
 	}
 	if cfg.Brand != BrandLark {
 		t.Errorf("Brand = %q, want %q (normalized at ingress)", cfg.Brand, BrandLark)
+	}
+}
+
+func TestResolveConfigFromMulti_RejectsUnknownAuthMethod(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:      "cli_abc",
+		AppSecret:  PlainSecret("my-secret"),
+		Brand:      BrandFeishu,
+		AuthMethod: "bogus_method",
+	}}}
+
+	_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err == nil {
+		t.Fatal("expected error for unknown authMethod")
+	}
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) {
+		t.Fatalf("expected ConfigError, got %T: %v", err, err)
+	}
+}
+
+func TestResolveConfigFromMulti_PrivateKeyJWTLocalKeyPairRequiresKeyRef(t *testing.T) {
+	method := AuthMethodPrivateKeyJWTLocalKeyPair
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:      "cli_abc",
+		Brand:      BrandFeishu,
+		AuthMethod: method,
+	}}}
+
+	_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err == nil {
+		t.Fatalf("expected error for %s without keyRef", method)
+	}
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) {
+		t.Fatalf("expected ConfigError, got %T: %v", err, err)
+	}
+
+	if configErr.Category != errs.CategoryConfig || configErr.Subtype != errs.SubtypeInvalidConfig {
+		t.Fatalf("problem = %+v, want config/invalid_config", configErr.Problem)
+	}
+	if !strings.Contains(configErr.Hint, "lark-cli config init --private-key-jwt") ||
+		!strings.Contains(configErr.Hint, "existing-app") ||
+		!strings.Contains(configErr.Hint, "cli_abc") || strings.Contains(configErr.Hint, "--new") {
+		t.Fatalf("hint = %q, want existing-app key registration for cli_abc", configErr.Hint)
+	}
+
+	raw.Apps[0].KeyRef = &SecretRef{Source: "tee", ID: "larksuite-cli-agent"}
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err != nil {
+		t.Fatalf("unexpected error with keyRef present: %v", err)
+	}
+	if cfg.AuthMethod != method || cfg.KeyLabel != "larksuite-cli-agent" {
+		t.Errorf("AuthMethod = %q, KeyLabel = %q", cfg.AuthMethod, cfg.KeyLabel)
 	}
 }

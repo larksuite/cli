@@ -101,6 +101,19 @@ lark-cli auth login --recommend
 lark-cli calendar +agenda
 ```
 
+如需使用私钥认证，可在第 1 步选择以下任一方式：
+
+```bash
+# 交互式配置私钥认证
+lark-cli config init --private-key-jwt
+
+# 使用 CLI 管理的签名密钥创建新应用
+lark-cli config init --new --private-key-jwt
+
+# 使用 PEM 私钥配置已有应用，其公钥须已注册到该应用
+lark-cli config init --app-id cli_xxx --private-key-file ./private.pem
+```
+
 ### 快速开始（AI Agent）
 
 > 以下步骤面向 AI Agent，部分步骤需要用户在浏览器中配合完成。
