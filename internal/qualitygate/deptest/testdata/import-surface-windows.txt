@@ -44,6 +44,9 @@ github.com/larksuite/oapi-sdk-go/v3
 github.com/larksuite/oapi-sdk-go/v3/cache
 github.com/larksuite/oapi-sdk-go/v3/card
 github.com/larksuite/oapi-sdk-go/v3/core
+github.com/larksuite/oapi-sdk-go/v3/core/accesstoken
+github.com/larksuite/oapi-sdk-go/v3/core/accesstoken/authorizationcode
+github.com/larksuite/oapi-sdk-go/v3/core/accesstoken/refreshtoken
 github.com/larksuite/oapi-sdk-go/v3/event
 github.com/larksuite/oapi-sdk-go/v3/event/dispatcher
 github.com/larksuite/oapi-sdk-go/v3/event/dispatcher/callback
@@ -56,13 +59,16 @@ github.com/larksuite/oapi-sdk-go/v3/service/aily/v1
 github.com/larksuite/oapi-sdk-go/v3/service/apaas
 github.com/larksuite/oapi-sdk-go/v3/service/apaas/v1
 github.com/larksuite/oapi-sdk-go/v3/service/application
+github.com/larksuite/oapi-sdk-go/v3/service/application/v5
 github.com/larksuite/oapi-sdk-go/v3/service/application/v6
+github.com/larksuite/oapi-sdk-go/v3/service/application/v7
 github.com/larksuite/oapi-sdk-go/v3/service/approval
 github.com/larksuite/oapi-sdk-go/v3/service/approval/v4
 github.com/larksuite/oapi-sdk-go/v3/service/attendance
 github.com/larksuite/oapi-sdk-go/v3/service/attendance/v1
 github.com/larksuite/oapi-sdk-go/v3/service/auth
 github.com/larksuite/oapi-sdk-go/v3/service/auth/v3
+github.com/larksuite/oapi-sdk-go/v3/service/auth/v4
 github.com/larksuite/oapi-sdk-go/v3/service/authen
 github.com/larksuite/oapi-sdk-go/v3/service/authen/v1
 github.com/larksuite/oapi-sdk-go/v3/service/baike
@@ -75,6 +81,8 @@ github.com/larksuite/oapi-sdk-go/v3/service/block
 github.com/larksuite/oapi-sdk-go/v3/service/block/v2
 github.com/larksuite/oapi-sdk-go/v3/service/board
 github.com/larksuite/oapi-sdk-go/v3/service/board/v1
+github.com/larksuite/oapi-sdk-go/v3/service/bot
+github.com/larksuite/oapi-sdk-go/v3/service/bot/v4
 github.com/larksuite/oapi-sdk-go/v3/service/calendar
 github.com/larksuite/oapi-sdk-go/v3/service/calendar/v4
 github.com/larksuite/oapi-sdk-go/v3/service/cardkit
@@ -99,6 +107,8 @@ github.com/larksuite/oapi-sdk-go/v3/service/drive/v1
 github.com/larksuite/oapi-sdk-go/v3/service/drive/v2
 github.com/larksuite/oapi-sdk-go/v3/service/ehr
 github.com/larksuite/oapi-sdk-go/v3/service/ehr/v1
+github.com/larksuite/oapi-sdk-go/v3/service/elearning
+github.com/larksuite/oapi-sdk-go/v3/service/elearning/v2
 github.com/larksuite/oapi-sdk-go/v3/service/event
 github.com/larksuite/oapi-sdk-go/v3/service/event/v1
 github.com/larksuite/oapi-sdk-go/v3/service/ext
@@ -127,6 +137,7 @@ github.com/larksuite/oapi-sdk-go/v3/service/moments
 github.com/larksuite/oapi-sdk-go/v3/service/moments/v1
 github.com/larksuite/oapi-sdk-go/v3/service/okr
 github.com/larksuite/oapi-sdk-go/v3/service/okr/v1
+github.com/larksuite/oapi-sdk-go/v3/service/okr/v2
 github.com/larksuite/oapi-sdk-go/v3/service/optical_char_recognition
 github.com/larksuite/oapi-sdk-go/v3/service/optical_char_recognition/v1
 github.com/larksuite/oapi-sdk-go/v3/service/passport
@@ -134,6 +145,7 @@ github.com/larksuite/oapi-sdk-go/v3/service/passport/v1
 github.com/larksuite/oapi-sdk-go/v3/service/payroll
 github.com/larksuite/oapi-sdk-go/v3/service/payroll/v1
 github.com/larksuite/oapi-sdk-go/v3/service/performance
+github.com/larksuite/oapi-sdk-go/v3/service/performance/v1
 github.com/larksuite/oapi-sdk-go/v3/service/performance/v2
 github.com/larksuite/oapi-sdk-go/v3/service/personal_settings
 github.com/larksuite/oapi-sdk-go/v3/service/personal_settings/v1
@@ -146,6 +158,8 @@ github.com/larksuite/oapi-sdk-go/v3/service/security_and_compliance/v1
 github.com/larksuite/oapi-sdk-go/v3/service/security_and_compliance/v2
 github.com/larksuite/oapi-sdk-go/v3/service/sheets
 github.com/larksuite/oapi-sdk-go/v3/service/sheets/v3
+github.com/larksuite/oapi-sdk-go/v3/service/spark
+github.com/larksuite/oapi-sdk-go/v3/service/spark/v1
 github.com/larksuite/oapi-sdk-go/v3/service/speech_to_text
 github.com/larksuite/oapi-sdk-go/v3/service/speech_to_text/v1
 github.com/larksuite/oapi-sdk-go/v3/service/task
@@ -155,6 +169,10 @@ github.com/larksuite/oapi-sdk-go/v3/service/tenant
 github.com/larksuite/oapi-sdk-go/v3/service/tenant/v2
 github.com/larksuite/oapi-sdk-go/v3/service/translation
 github.com/larksuite/oapi-sdk-go/v3/service/translation/v1
+github.com/larksuite/oapi-sdk-go/v3/service/trust_party
+github.com/larksuite/oapi-sdk-go/v3/service/trust_party/v1
+github.com/larksuite/oapi-sdk-go/v3/service/unified_kms
+github.com/larksuite/oapi-sdk-go/v3/service/unified_kms/v1
 github.com/larksuite/oapi-sdk-go/v3/service/vc
 github.com/larksuite/oapi-sdk-go/v3/service/vc/v1
 github.com/larksuite/oapi-sdk-go/v3/service/verification
