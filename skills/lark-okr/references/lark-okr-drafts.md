@@ -10,11 +10,10 @@ Objective、KR、对齐关系和量化指标都可能返回 `is_draft`。`true` 
 
 1. 写操作前，用 `+cycle-detail --prefer-draft=true` 获取当前内容，以所属 Objective 的 `is_draft` 判断有无草稿。只有当前身份可编辑对应的 OKR 时，`true` 才表示已有草稿，`false` 才可判断无草稿。
    - 以 user 身份访问时，仅有归属于当前登陆用户的 OKR 才可读取到草稿，他人的 OKR 总是返回发布态。
-2. 默认场景，或用户明确要求人工确认：用 `--apply-to-draft=true` 编辑草稿，展示变更并等待确认，再发布草稿。
-3. 用户明确要求无需人工确认：
-   - 已有草稿（相关内容 `is_draft=true`）：仍编辑草稿，并在写入成功后立即发布。
-   - 无草稿：可以用 `--apply-to-draft=false` 直接修改发布态。
-4. 不得在已有草稿时使用 `--apply-to-draft=false` 绕过草稿，否则发布草稿时可能覆盖刚刚写入发布态的内容。
+2. 用户明确要求“不介入”“无需确认”“不要二次确认”或直接完成发布态变更时，选择发布态流程：所有支持草稿的写操作都显式传 `--apply-to-draft=false`。
+3. 其他场景选择草稿流程：用 `--apply-to-draft=true` 编辑草稿，展示草稿结果并停止，等待用户确认。
+4. 只在用户看过当前草稿后明确要求发布时，才调用 `+publish-draft`。除非有明确指示（如“发布已有的草稿”），否则不应当在无用户确认的情况下发布草稿。
+5. 在操作发布态流程中遇到已有草稿时，不得自动发布或撤销该草稿。继续用 `--apply-to-draft=false` 操作发布态，保留已有草稿，并告知用户该草稿以后发布时可能覆盖本次发布态修改。
 
 ```bash
 # 草稿优先读取；有草稿时返回草稿内容
@@ -31,12 +30,12 @@ lark-cli okr +patch \
   --apply-to-draft=true \
   --as user
 
-# 用户确认后，或无需确认但操作前已有草稿时，发布整个 Objective 草稿
+# 用户看过当前草稿并明确确认发布后，发布整个 Objective 草稿
 lark-cli okr +publish-draft \
   --objective-id 7000000000000000002 \
   --as user
 
-# 仅当无需确认且操作前无草稿时，直接修改发布态
+# 用户明确要求不介入或无需确认时，直接修改发布态
 lark-cli okr +patch \
   --level objective \
   --target-id 7000000000000000002 \
@@ -47,7 +46,7 @@ lark-cli okr +patch \
 
 ## 发布与撤销
 
-发布整个 Objective 草稿：
+只有用户看过当前草稿并明确确认发布后，才发布整个 Objective 草稿：
 
 ```bash
 lark-cli okr +publish-draft \
