@@ -535,7 +535,7 @@ func TestMailReply_WritePathLintAutofixesFontInEML(t *testing.T) {
 		t.Fatalf("reply failed: %v", err)
 	}
 
-	captured := mustDecodeRawEMLFromStub(t, stub)
+	captured := decodedSinglePartBodyForTest(t, mustDecodeRawEMLFromStub(t, stub))
 	if strings.Contains(captured, "<font") {
 		t.Errorf("+reply writing-path should rewrite <font>, EML still has it: %q", captured)
 	}
@@ -574,7 +574,7 @@ func TestMailReplyAll_WritePathLintAutofixesFontInEML(t *testing.T) {
 		t.Fatalf("reply-all failed: %v", err)
 	}
 
-	captured := mustDecodeRawEMLFromStub(t, stub)
+	captured := decodedSinglePartBodyForTest(t, mustDecodeRawEMLFromStub(t, stub))
 	if strings.Contains(captured, "<font") {
 		t.Errorf("+reply-all writing-path should rewrite <font>, EML still has it: %q", captured)
 	}
@@ -609,7 +609,7 @@ func TestMailForward_WritePathLintAutofixesFontInEML(t *testing.T) {
 		t.Fatalf("forward failed: %v", err)
 	}
 
-	captured := mustDecodeRawEMLFromStub(t, stub)
+	captured := decodedSinglePartBodyForTest(t, mustDecodeRawEMLFromStub(t, stub))
 	if strings.Contains(captured, "<font") {
 		t.Errorf("+forward writing-path should rewrite <font>, EML still has it: %q", captured)
 	}
