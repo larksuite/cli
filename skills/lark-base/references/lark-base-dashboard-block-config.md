@@ -1,5 +1,23 @@
 # Base Dashboard Block 配置
 
+## 展示配置：切换行列
+
+`+dashboard-block-update` 用独立布尔参数显式控制图表横纵轴互换：
+
+```bash
+lark-cli base +dashboard-block-update \
+  --base-token <base_token> \
+  --dashboard-id <dashboard_id> \
+  --block-id <block_id> \
+  --switch-row-column=true
+```
+
+- 开启传 `--switch-row-column=true`，关闭传 `--switch-row-column=false`；不传则不修改现有状态。
+- 仅 `column`、`line`、`bar`、`area`、`scatter` 支持；`combo` 及其他组件不支持。
+- 不支持的组件返回 `api/feature_not_available`（服务端码 `800004045`），不会静默成功，也不会提交同一 PATCH 中的其他改动。
+- `+dashboard-block-get` 对支持类型返回 `display_config.switch_row_column`；历史未配置组件回读为 `false`，不改变其默认展示。
+- `display_config` 是展示配置，不属于 `data_config`，不要把 `switch_row_column` 填入 `--data-config`。
+
 Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 Dashboard block 扁平单数据源 `data_config` 的单一事实来源（SSOT），包含组件类型、字段结构、筛选格式、约束和可复制模板。BaseApp 图表的外层结构不同，但每个 `data_sources[]` 元素复用本文的字段取值、筛选、分组、排序及规范化规则；创建或更新 App 组件时，还必须读取 [BaseApp Block data_config](lark-base-app-block-data-config.md) 了解共享 `base_token`、多数据源封装，以及 App 独有的列表组件协议。
 
 ## 支持的组件类型（`type` 枚举）
