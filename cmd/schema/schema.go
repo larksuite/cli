@@ -41,6 +41,13 @@ type SchemaOptions struct {
 	// form ("im.messages.reply") or the space-separated form ("im messages
 	// reply"); apicatalog.ParsePath normalizes both.
 	Args []string
+
+	Search    string
+	SearchSet bool
+	Limit     int
+	Offset    int
+	LimitSet  bool
+	OffsetSet bool
 }
 
 // NewCmdSchema creates the schema command. If runF is non-nil it is called instead of the default runner (test hook).
@@ -62,10 +69,23 @@ func NewCmdSchemaWithVisibility(
 	cmd := &cobra.Command{
 		Use:   "schema [path | service resource method]",
 		Short: "View API method parameters, types, and scopes",
-		Args:  cobra.MaximumNArgs(8),
+		Long: "View API method parameters, types, and scopes.\n\n" +
+			"Use --search to discover API methods offline by path, description, input fields, or scopes. " +
+			"Every whitespace-separated term must match (case-insensitive, literal substrings). " +
+			"An optional path limits the search to a service, resource, or method. " +
+			"Search returns ranked compact results in an ok/data JSON envelope; " +
+			"use a result's schema_path without --search for its full schema. " +
+			"Shortcuts are not part of this API catalog. No login or API request is needed.",
+		Example: "  lark-cli schema --search 'upload file'\n" +
+			"  lark-cli schema calendar --search 'event' --limit 5\n" +
+			"  lark-cli schema --search 'chat_id' --offset 10",
+		Args: cobra.MaximumNArgs(8),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Args = append([]string(nil), args...)
 			opts.Ctx = cmd.Context()
+			opts.SearchSet = cmd.Flags().Changed("search")
+			opts.LimitSet = cmd.Flags().Changed("limit")
+			opts.OffsetSet = cmd.Flags().Changed("offset")
 			if runF != nil {
 				return runF(opts)
 			}
@@ -73,6 +93,9 @@ func NewCmdSchemaWithVisibility(
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
+	cmd.Flags().StringVar(&opts.Search, "search", "", "Search API methods by keywords instead of emitting full schemas")
+	cmd.Flags().IntVar(&opts.Limit, "limit", 10, "Maximum search results (1-100; requires --search)")
+	cmd.Flags().IntVar(&opts.Offset, "offset", 0, "Skip this many ranked search results (requires --search)")
 
 	// Tolerated for agent compatibility; ignored — schema only emits the JSON
 	// envelope, and its output is identity-independent (strict-mode filtering
@@ -110,6 +133,12 @@ func completeSchemaPath(
 }
 
 func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) error {
+	if err := validateSearchOptions(opts); err != nil {
+		return err
+	}
+	if opts.SearchSet {
+		return schemaSearchRun(opts, visibility)
+	}
 	out := opts.Factory.IOStreams.Out
 	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
 	return runSchemaCatalog(out, apicatalog.ParsePath(opts.Args), mode, opts.Factory.APICatalog, opts.Factory.Affordance, visibility)
