@@ -13,6 +13,7 @@
 - `<pre lang="go" caption="示例"><code>fmt.Println(&quot;hello&quot;)</code></pre>`：代码必须放在 `<code>` 内，禁止直接放在 `<pre>` 下；`caption` 可省略。
 - `<img path="@./photo.png"/>`：上传当前工作目录内的本地图片。也可用 `<img href="URL"/>` 上传公开 HTTP(S) 网络图片，或用 `<img src="token"/>` 复制原始图片；三者任选一个，可选 `width`、`height`、`caption`、`name`。使用 `href` 时，CLI 会将远程图片转为本地资源并完成上传；响应须为 PNG、JPEG、GIF 或 WebP，单图不超过 20MiB。内部网络图片须先下载到本地再使用 `path`。
 - `<source path="@./report.pdf" name="报告.pdf"/>`：上传本地附件；也可使用 `<source token="token" name="xx"/>` 复制已有附件。可独立使用、放入 `<p>` 作为行内附件，或写成 `<figure view-type="Card|Preview"><source/></figure>`；
+- XML 写入时，CLI 自动为 `<p>` 内的每个行内附件添加独立的 `<span>`，保留附件后方的文字和其他附件；已有独立 `<span>` 不重复包装。独立附件和 `<figure>` 中的附件不变。
 - `<checkbox done="true|false">todo</checkbox>`
 - `p, h1-h9, li, checkbox, title` 支持可选属性 `align`，可选值为 `left`、`center`、`right`，例如 `<p align="center">居中正文</p>`。
 
