@@ -19,14 +19,15 @@ import (
 
 // createParams holds the parsed parameters for single-object create operations.
 type createParams struct {
-	Level       string
-	CycleID     string
-	ObjectiveID string
-	Style       string
-	Content     *ContentBlock
-	Notes       *ContentBlock
-	CategoryID  string
-	UserIDType  string
+	Level        string
+	CycleID      string
+	ObjectiveID  string
+	Style        string
+	Content      *ContentBlock
+	Notes        *ContentBlock
+	CategoryID   string
+	UserIDType   string
+	ApplyToDraft bool
 }
 
 type createContentMultipleJSONValuesError struct{}
@@ -38,9 +39,10 @@ func (createContentMultipleJSONValuesError) Error() string {
 var errCreateContentMultipleJSONValues createContentMultipleJSONValuesError
 
 type okrCreateRequestBody struct {
-	Content    *ContentBlock `json:"content"`
-	Notes      *ContentBlock `json:"notes,omitempty"`
-	CategoryID string        `json:"category_id,omitempty"`
+	Content      *ContentBlock `json:"content"`
+	Notes        *ContentBlock `json:"notes,omitempty"`
+	CategoryID   string        `json:"category_id,omitempty"`
+	ApplyToDraft bool          `json:"apply_to_draft"`
 }
 
 type okrCreateObjectiveQuery struct {
@@ -147,6 +149,7 @@ func projectCreateRequestBody(body okrCreateRequestBody) map[string]interface{} 
 	if body.CategoryID != "" {
 		result["category_id"] = body.CategoryID
 	}
+	result["apply_to_draft"] = body.ApplyToDraft
 	return result
 }
 
@@ -183,12 +186,13 @@ func projectCreateKeyResultResponse(data map[string]interface{}) (*okrCreateKeyR
 // parseCreateParams parses and validates flags from runtime into request-ready parameters.
 func parseCreateParams(runtime *common.RuntimeContext) (*createParams, error) {
 	p := &createParams{
-		Level:       runtime.Str("level"),
-		CycleID:     runtime.Str("cycle-id"),
-		ObjectiveID: runtime.Str("objective-id"),
-		Style:       runtime.Str("style"),
-		CategoryID:  runtime.Str("category-id"),
-		UserIDType:  runtime.Str("user-id-type"),
+		Level:        runtime.Str("level"),
+		CycleID:      runtime.Str("cycle-id"),
+		ObjectiveID:  runtime.Str("objective-id"),
+		Style:        runtime.Str("style"),
+		CategoryID:   runtime.Str("category-id"),
+		UserIDType:   runtime.Str("user-id-type"),
+		ApplyToDraft: runtime.Bool("apply-to-draft"),
 	}
 
 	contentStr := runtime.Str("content")
@@ -249,6 +253,7 @@ var OKRCreate = common.Shortcut{
 		{Name: "notes", Desc: "objective notes: semi-plain JSON {\"text\":\"...\",\"mention\":[\"...\"]} (simple) or ContentBlock JSON (richtext)", Input: []string{common.File, common.Stdin}},
 		{Name: "category-id", Desc: "objective category ID; use only when classification is requested or the tenant requires categories"},
 		{Name: "user-id-type", Default: "open_id", Desc: "user ID type: open_id | union_id | user_id"},
+		{Name: "apply-to-draft", Type: "bool", Default: "true", Desc: "create content in the objective draft"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		level := runtime.Str("level")
@@ -308,7 +313,7 @@ var OKRCreate = common.Shortcut{
 				Desc(fmt.Sprintf("Dry-run skipped: %s", err.Error()))
 		}
 
-		body := projectCreateRequestBody(okrCreateRequestBody{Content: p.Content, Notes: p.Notes, CategoryID: p.CategoryID})
+		body := projectCreateRequestBody(okrCreateRequestBody{Content: p.Content, Notes: p.Notes, CategoryID: p.CategoryID, ApplyToDraft: p.ApplyToDraft})
 
 		if p.Level == "objective" {
 			params := projectCreateObjectiveQuery(okrCreateObjectiveQuery{
@@ -340,7 +345,7 @@ var OKRCreate = common.Shortcut{
 			return err
 		}
 
-		body := projectCreateRequestBody(okrCreateRequestBody{Content: p.Content, Notes: p.Notes, CategoryID: p.CategoryID})
+		body := projectCreateRequestBody(okrCreateRequestBody{Content: p.Content, Notes: p.Notes, CategoryID: p.CategoryID, ApplyToDraft: p.ApplyToDraft})
 
 		if p.Level == "objective" {
 			queryParams := projectCreateObjectiveQuery(okrCreateObjectiveQuery{

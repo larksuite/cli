@@ -33,6 +33,23 @@ Category (分类): Objective 的分组标签
 
 ---
 
+## 关于草稿
+
+Objective、KeyResult、Indicator 和 Alignment 支持草稿，用于保存尚未发布的内容或修改。草稿仅对 OKR 所有者本人的用户身份，以及具备相应应用数据权限的 bot 身份可见。
+
+OKR 的草稿以 Objective 为维度聚合，即一个 Objective，其下的 KeyResult 以及它们的 Indicator，以及该 Objective **发起的** Alignment 统一发布或撤销。
+
+当一个发布态 Objective 进入草稿态时，会连同其下的 KeyResult 等，复制一个此刻内容的草稿态快照，除 Objective 的位置和权重外，后续对发布态的编辑不会自动同步至草稿态。 
+发布草稿时，草稿支持的内容覆盖对应的发布态内容；撤销时丢弃草稿，保留当前发布态，不回滚对发布态或共用字段的修改。
+
+可以直接创建仅有草稿的 Objective，发布后才生成发布态目标。也可以在已有 Objective 的草稿中新增 KeyResult 和 Alignment，这些新增内容在发布前不可通过发布态读取。Indicator 随 Objective/KeyResult 一起创建。
+
+Objective 的位置和权重在草稿态与发布态间共用，修改会立即在两态生效；KeyResult 的位置和权重则分别保存。
+
+具体操作参见 [lark-okr-drafts.md](lark-okr-drafts.md)。
+
+---
+
 ## Cycle (用户周期)
 
 用户周期是 OKR 的顶层容器，代表一个时间段内的所有目标与关键结果。
@@ -93,6 +110,7 @@ Category (分类): Objective 的分组标签
 | `weight`      | `number`       | 否  | 目标权重，范围 [0, 1]，支持三位小数                                   |
 | `deadline`    | `string`       | 否  | 截止时间，毫秒时间戳，shortcut 会将其解析为日期时间                          |
 | `category_id` | `string`       | 否  | 所属分类 ID                                                 |
+| `is_draft`    | `boolean`      | 否  | `true` 表示本次返回草稿态内容；`false` 表示发布态内容                    |
 
 > **SHORTCUT：**
 > - `okr +cycle-detail` [lark-okr-cycle-detail.md](lark-okr-cycle-detail.md) 获取某个用户周期下的全部目标和关键结果。时间相关的字段会以日期时间格式解析
@@ -123,6 +141,7 @@ Category (分类): Objective 的分组标签
 | `score`        | `number`       | 否  | 关键结果分数，范围 [0, 1]，支持一位小数                                   |
 | `weight`       | `number`       | 否  | 权重，范围 [0, 1]，支持三位小数                                       |
 | `deadline`     | `string`       | 否  | 截止时间，毫秒时间戳                                                |
+| `is_draft`     | `boolean`      | 否  | `true` 表示本次返回草稿态内容；`false` 表示发布态内容                      |
 
 > **API：**
 > - `objective.key_results.list` — 获取目标下的关键结果列表
@@ -258,6 +277,7 @@ Category (分类): Objective 的分组标签
 | `current_value`                | `number`        | 否  | 当前值，范围 [-99999999999, 99999999999] |
 | `current_value_calculate_type` | `integer`       | 否  | 当前值计算方式，见下表                        |
 | `unit`                         | `IndicatorUnit` | 否  | 指标单位                               |
+| `is_draft`                     | `boolean`       | 否  | `true` 表示本次返回草稿态内容；`false` 表示发布态内容 |
 
 ### 修改指南
 
@@ -320,6 +340,7 @@ Category (分类): Objective 的分组标签
 | `from_entity_id`   | `string`  | 是  | 发起对齐的实体 ID            |
 | `to_entity_type`   | `integer` | 是  | 被对齐的实体类型，固定为 `2`（目标）  |
 | `to_entity_id`     | `string`  | 是  | 被对齐的实体 ID             |
+| `is_draft`         | `boolean` | 否  | `true` 表示本次返回草稿态关系；`false` 表示发布态关系 |
 
 > **API：**
 > - `alignments.get` — 获取对齐关系

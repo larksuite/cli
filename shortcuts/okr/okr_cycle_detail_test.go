@@ -174,6 +174,29 @@ func TestCycleDetailDryRun(t *testing.T) {
 	if !strings.Contains(output, "/open-apis/okr/v2/cycles/456/objectives") {
 		t.Fatalf("dry-run output should contain API path, got: %s", output)
 	}
+	if !strings.Contains(output, `"prefer_draft": true`) {
+		t.Fatalf("dry-run should prefer drafts by default, got: %s", output)
+	}
+	if !strings.Contains(output, "/open-apis/okr/v2/objectives/%3Cobjective_id_from_previous_call%3E/key_results") {
+		t.Fatalf("dry-run should include the key result list call, got: %s", output)
+	}
+}
+
+func TestCycleDetailDryRunCanDisableDraftPreference(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, cycleDetailTestConfig(t))
+	err := runCycleDetailShortcut(t, f, stdout, []string{
+		"+cycle-detail", "--cycle-id", "456", "--prefer-draft=false", "--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"prefer_draft": false`) {
+		t.Fatalf("dry-run should pass prefer_draft=false, got: %s", stdout.String())
+	}
+	if strings.Count(stdout.String(), `"prefer_draft": false`) != 2 {
+		t.Fatalf("both objective and KR list calls should pass prefer_draft=false, got: %s", stdout.String())
+	}
 }
 
 // --- Execute tests ---
@@ -584,5 +607,81 @@ func TestCycleDetailExecute_APIError(t *testing.T) {
 	err := runCycleDetailShortcut(t, f, stdout, []string{"+cycle-detail", "--cycle-id", "400"})
 	if err == nil {
 		t.Fatal("expected error for API failure")
+	}
+}
+
+func TestCycleDetailExecute_SortsPositionsAcrossPages(t *testing.T) {
+	for _, style := range []string{"simple", "richtext"} {
+		for _, preferDraft := range []string{"true", "false"} {
+			t.Run(style+"/"+preferDraft, func(t *testing.T) {
+				t.Parallel()
+				f, stdout, _, reg := cmdutil.TestFactory(t, cycleDetailTestConfig(t))
+				// The earlier position arrives on the second page.
+				for _, page := range []struct {
+					id       string
+					position int
+					hasMore  bool
+				}{{"obj-2", 2, true}, {"obj-1", 1, false}} {
+					reg.Register(&httpmock.Stub{
+						Method: "GET",
+						URL:    "/open-apis/okr/v2/cycles/900/objectives",
+						Body: map[string]interface{}{
+							"code": 0,
+							"data": map[string]interface{}{
+								"items": []interface{}{map[string]interface{}{
+									"id": page.id, "position": page.position,
+								}},
+								"has_more": page.hasMore, "page_token": "next",
+							},
+						},
+					})
+				}
+				for _, id := range []string{"obj-1", "obj-2"} {
+					reg.Register(&httpmock.Stub{
+						Method: "GET",
+						URL:    "/open-apis/okr/v2/objectives/" + id + "/key_results",
+						Body: map[string]interface{}{
+							"code": 0,
+							"data": map[string]interface{}{
+								"items": []interface{}{
+									map[string]interface{}{"id": id + "-kr-2", "position": 2},
+									map[string]interface{}{"id": id + "-kr-1", "position": 1},
+								},
+							},
+						},
+					})
+				}
+				if err := runCycleDetailShortcut(t, f, stdout, []string{
+					"+cycle-detail", "--cycle-id", "900", "--style", style, "--prefer-draft=" + preferDraft,
+				}); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				data := decodeEnvelope(t, stdout)
+				objectives := data["objectives"].([]interface{})
+				if len(objectives) != 2 {
+					t.Fatalf("objectives count = %d, want 2", len(objectives))
+				}
+				for i, wantID := range []string{"obj-1", "obj-2"} {
+					obj := objectives[i].(map[string]interface{})
+					if obj["id"] != wantID || obj["position"] != float64(i+1) {
+						t.Fatalf("objective[%d] = %v, want %s at position %d", i, obj, wantID, i+1)
+					}
+					krs := obj["key_results"].([]interface{})
+					if len(krs) != 2 {
+						t.Fatalf("key results count = %d, want 2", len(krs))
+					}
+					for j, kr := range krs {
+						item := kr.(map[string]interface{})
+						wantKR := wantID + "-kr-1"
+						if j == 1 {
+							wantKR = wantID + "-kr-2"
+						}
+						if item["id"] != wantKR || item["position"] != float64(j+1) {
+							t.Fatalf("key result[%d] = %v, want %s at position %d", j, item, wantKR, j+1)
+						}
+					}
+				}
+			})
+		}
 	}
 }

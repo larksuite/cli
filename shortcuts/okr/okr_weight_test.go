@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"net/http"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -407,6 +410,9 @@ func TestWeightDryRun_Objectives(t *testing.T) {
 	if !strings.Contains(output, "objective_weights") {
 		t.Fatalf("dry-run output should contain objective_weights in body, got: %s", output)
 	}
+	if !strings.Contains(output, `"prefer_draft": true`) {
+		t.Fatalf("weight normalization should read the draft-preferred list, got: %s", output)
+	}
 }
 
 func TestWeightDryRun_KeyResults(t *testing.T) {
@@ -431,6 +437,23 @@ func TestWeightDryRun_KeyResults(t *testing.T) {
 	}
 	if !strings.Contains(output, "key_result_weights") {
 		t.Fatalf("dry-run output should contain key_result_weights in body, got: %s", output)
+	}
+	if !strings.Contains(output, `"prefer_draft": true`) || !strings.Contains(output, `"apply_to_draft": true`) {
+		t.Fatalf("KR weight should default to the draft view, got: %s", output)
+	}
+}
+
+func TestWeightDryRun_KeyResultsCanUpdatePublishedState(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
+	err := runWeightShortcut(t, f, stdout, []string{
+		"+weight", "--level", "key-result", "--cycle-id", "123", "--objective-id", "456",
+		"--weights", `[{"id":"kr1","weight":1}]`, "--apply-to-draft=false", "--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"apply_to_draft": false`) || !strings.Contains(stdout.String(), `"prefer_draft": false`) {
+		t.Fatalf("KR weight should read and write published content, got: %s", stdout.String())
 	}
 }
 
@@ -743,5 +766,70 @@ func TestNormalizeWeights_ZeroOriginalWeights(t *testing.T) {
 	}
 	if math.Abs(item2Weight-0.5) > 1e-9 {
 		t.Fatalf("expected item 2 weight = 0.5 (even distribution), got %.10f", item2Weight)
+	}
+}
+
+func TestWeightExecute_KeyResultsUsesWriteView(t *testing.T) {
+	for _, applyToDraft := range []bool{false, true} {
+		t.Run(strconv.FormatBool(applyToDraft), func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, weightTestConfig(t))
+			published := []map[string]interface{}{
+				{"id": "kr1", "weight": 0.2, "position": 2},
+				{"id": "kr2", "weight": 0.2, "position": 3},
+				{"id": "kr3", "weight": 0.6, "position": 1},
+			}
+			draft := []map[string]interface{}{
+				{"id": "kr1", "weight": 0.1, "position": 3},
+				{"id": "kr2", "weight": 0.6, "position": 1},
+				{"id": "kr4", "weight": 0.3, "position": 2},
+			}
+			var preference string
+			list := &httpmock.Stub{Method: "GET", URL: "/open-apis/okr/v2/objectives/456/key_results"}
+			list.OnMatch = func(req *http.Request) {
+				preference = req.URL.Query().Get("prefer_draft")
+				items := published
+				if preference == "true" {
+					items = draft
+				}
+				list.Body = map[string]interface{}{"code": 0, "data": map[string]interface{}{"items": items, "has_more": false}}
+			}
+			reg.Register(list)
+			update := &httpmock.Stub{
+				Method: "PUT", URL: "/open-apis/okr/v2/objectives/456/key_results_weight",
+				Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+			}
+			reg.Register(update)
+			err := runWeightShortcut(t, f, stdout, []string{
+				"+weight", "--level", "key-result", "--cycle-id", "123", "--objective-id", "456",
+				"--weights", `[{"id":"kr1","weight":0.4}]`, "--apply-to-draft=" + strconv.FormatBool(applyToDraft),
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if preference != strconv.FormatBool(applyToDraft) {
+				t.Fatalf("prefer_draft = %q, want %t", preference, applyToDraft)
+			}
+			type weight struct {
+				ID     string  `json:"key_result_id"`
+				Weight float64 `json:"weight"`
+			}
+			var submitted struct {
+				ApplyToDraft *bool    `json:"apply_to_draft"`
+				Weights      []weight `json:"key_result_weights"`
+			}
+			if err := json.Unmarshal(update.CapturedBody, &submitted); err != nil {
+				t.Fatal(err)
+			}
+			if submitted.ApplyToDraft == nil || *submitted.ApplyToDraft != applyToDraft {
+				t.Fatalf("incorrect apply_to_draft: %s", update.CapturedBody)
+			}
+			want := []weight{{"kr3", 0.45}, {"kr1", 0.4}, {"kr2", 0.15}}
+			if applyToDraft {
+				want = []weight{{"kr2", 0.4}, {"kr4", 0.2}, {"kr1", 0.4}}
+			}
+			if !reflect.DeepEqual(submitted.Weights, want) {
+				t.Fatalf("submitted weights = %#v, want %#v", submitted.Weights, want)
+			}
+		})
 	}
 }

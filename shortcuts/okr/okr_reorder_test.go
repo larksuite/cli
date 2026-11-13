@@ -320,6 +320,9 @@ func TestReorderDryRun_Objectives(t *testing.T) {
 	if !strings.Contains(output, "objective_ids") {
 		t.Fatalf("dry-run output should contain objective_ids in body, got: %s", output)
 	}
+	if !strings.Contains(output, `"prefer_draft": true`) {
+		t.Fatalf("reorder list should always prefer drafts, got: %s", output)
+	}
 }
 
 func TestReorderDryRun_KeyResults(t *testing.T) {
@@ -345,6 +348,9 @@ func TestReorderDryRun_KeyResults(t *testing.T) {
 	}
 	if !strings.Contains(output, "key_result_ids") {
 		t.Fatalf("dry-run output should contain key_result_ids in body, got: %s", output)
+	}
+	if !strings.Contains(output, `"prefer_draft": true`) || !strings.Contains(output, `"apply_to_draft": true`) {
+		t.Fatalf("KR reorder should read and update the draft view, got: %s", output)
 	}
 }
 

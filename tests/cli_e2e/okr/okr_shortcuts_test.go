@@ -255,6 +255,7 @@ func TestOKR_PatchDryRun_Objective_AllFields(t *testing.T) {
 			"--content", `{"text":"new content"}`,
 			"--notes", `{"text":"new notes"}`,
 			"--score", "0.7",
+			"--apply-to-draft=false",
 			"--deadline", "1735776000000",
 			"--dry-run",
 		},
@@ -263,6 +264,7 @@ func TestOKR_PatchDryRun_Objective_AllFields(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	output := result.Stdout
+	assert.Equal(t, gjson.False, clie2e.DryRunGet(output, "api.0.body.apply_to_draft").Type, "score updates must target published content")
 	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/objectives/456"), "dry-run should contain objective API path, got: %s", output)
 	assert.True(t, strings.Contains(output, "content=true"), "dry-run should show content patch, got: %s", output)
 	assert.True(t, strings.Contains(output, "notes=true"), "dry-run should show notes patch, got: %s", output)
@@ -283,6 +285,7 @@ func TestOKR_PatchDryRun_KeyResult(t *testing.T) {
 			"--level", "key-result",
 			"--target-id", "789",
 			"--score", "0.5",
+			"--apply-to-draft=false",
 			"--user-id-type", "user_id",
 			"--dry-run",
 		},
@@ -291,6 +294,7 @@ func TestOKR_PatchDryRun_KeyResult(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	output := result.Stdout
+	assert.Equal(t, gjson.False, clie2e.DryRunGet(output, "api.0.body.apply_to_draft").Type, "score updates must target published content")
 	assert.True(t, strings.Contains(output, "PATCH"), "dry-run should contain PATCH method, got: %s", output)
 	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/key_results/789"), "dry-run should contain key_result API path, got: %s", output)
 	assert.True(t, strings.Contains(output, "score=true"), "dry-run should show score patch, got: %s", output)
@@ -363,6 +367,7 @@ func createTestObjectives(t *testing.T, ctx context.Context, cycleID string, suf
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"okr", "+batch-create",
+			"--apply-to-draft=false",
 			"--cycle-id", cycleID,
 			"--input", string(inputJSON),
 		},
@@ -408,7 +413,7 @@ func cleanupLiveTest(t *testing.T, created []liveTestCreated) {
 			krID := obj.KRIDs[j]
 			result, err := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 				Args: []string{
-					"okr", "v2/key_results", "delete",
+					"okr", "key_results", "delete",
 					"--key-result-id", krID,
 					"--yes",
 				},
@@ -424,7 +429,7 @@ func cleanupLiveTest(t *testing.T, created []liveTestCreated) {
 		// Then delete the objective
 		result, err := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args: []string{
-				"okr", "v2/objectives", "delete",
+				"okr", "objectives", "delete",
 				"--objective-id", obj.ObjectiveID,
 				"--yes",
 			},
@@ -446,9 +451,10 @@ func createLiveObjective(t *testing.T, ctx context.Context, cycleID string, suff
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"okr", "+create",
+			"--apply-to-draft=false",
 			"--level", "objective",
 			"--cycle-id", cycleID,
-			"--content", fmt.Sprintf(`{"text":"E2E Single Objective %s","mention":["ou_test"]}`, suffix),
+			"--content", fmt.Sprintf(`{"text":"E2E Single Objective %s"}`, suffix),
 		},
 		DefaultAs: "user",
 	})
@@ -466,9 +472,10 @@ func createLiveKeyResult(t *testing.T, ctx context.Context, objectiveID string, 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"okr", "+create",
+			"--apply-to-draft=false",
 			"--level", "key-result",
 			"--objective-id", objectiveID,
-			"--content", fmt.Sprintf(`{"text":"E2E Single KR %s","mention":["ou_test"]}`, suffix),
+			"--content", fmt.Sprintf(`{"text":"E2E Single KR %s"}`, suffix),
 		},
 		DefaultAs: "user",
 	})
@@ -502,6 +509,7 @@ func TestOKR_BatchCreateLive(t *testing.T) {
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"okr", "+cycle-detail",
+			"--prefer-draft=false",
 			"--cycle-id", cycleID,
 		},
 		DefaultAs: "user",
@@ -548,6 +556,7 @@ func TestOKR_CreateLive_Objective(t *testing.T) {
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"okr", "+cycle-detail",
+			"--prefer-draft=false",
 			"--cycle-id", cycleID,
 		},
 		DefaultAs: "user",
@@ -586,6 +595,7 @@ func TestOKR_CreateLive_KeyResultUnderExistingObjective(t *testing.T) {
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"okr", "+cycle-detail",
+			"--prefer-draft=false",
 			"--cycle-id", cycleID,
 		},
 		DefaultAs: "user",
@@ -657,6 +667,7 @@ func TestOKR_ReorderLive(t *testing.T) {
 	result, err = clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"okr", "+cycle-detail",
+			"--prefer-draft=false",
 			"--cycle-id", cycleID,
 		},
 		DefaultAs: "user",
@@ -721,6 +732,7 @@ func TestOKR_WeightLive(t *testing.T) {
 	result, err = clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"okr", "+cycle-detail",
+			"--prefer-draft=false",
 			"--cycle-id", cycleID,
 		},
 		DefaultAs: "user",

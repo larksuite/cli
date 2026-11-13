@@ -204,6 +204,7 @@ type KeyResult struct {
 	Score       *float64      `json:"score,omitempty"`
 	Weight      *float64      `json:"weight,omitempty"`
 	Deadline    *string       `json:"deadline,omitempty"`
+	IsDraft     *bool         `json:"is_draft,omitempty"`
 }
 
 // Objective 目标
@@ -220,6 +221,7 @@ type Objective struct {
 	Weight     *float64      `json:"weight,omitempty"`
 	Deadline   *string       `json:"deadline,omitempty"`
 	CategoryID *string       `json:"category_id,omitempty"`
+	IsDraft    *bool         `json:"is_draft,omitempty"`
 }
 
 // Owner OKR 所有者
@@ -354,6 +356,7 @@ func (k *KeyResult) ToResp() *RespKeyResult {
 		Position:    k.Position,
 		Score:       k.Score,
 		Weight:      k.Weight,
+		IsDraft:     k.IsDraft,
 	}
 	if k.Deadline != nil {
 		d := formatTimestamp(*k.Deadline)
@@ -384,6 +387,7 @@ func (o *Objective) ToResp() *RespObjective {
 		Score:      o.Score,
 		Weight:     o.Weight,
 		CategoryID: o.CategoryID,
+		IsDraft:    o.IsDraft,
 	}
 	if o.Deadline != nil {
 		d := formatTimestamp(*o.Deadline)

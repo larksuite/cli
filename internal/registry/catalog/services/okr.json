@@ -19,6 +19,13 @@
               "required": true,
               "description": "Alignment ID. How to get: Call the \"List Alignment of an Objective\" API",
               "example": "7342342398472398473"
+            },
+            "apply_to_draft": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否删除草稿目标上的对齐",
+              "default": ""
             }
           },
           "parameterOrder": [
@@ -103,6 +110,13 @@
                 "department_id",
                 "open_department_id"
               ]
+            },
+            "prefer_draft": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否优先返回草稿态",
+              "default": ""
             }
           },
           "parameterOrder": [
@@ -240,6 +254,11 @@
                   "description": "Entity ID being aligned to",
                   "required": true,
                   "example": "7342342398472398473"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "对齐是否来自草稿目标",
+                  "required": false
                 }
               }
             }
@@ -840,6 +859,11 @@
                   "description": "目标的分类 ID",
                   "required": false,
                   "example": "1"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "目标是否为草稿态",
+                  "required": false
                 }
               }
             }
@@ -1067,6 +1091,11 @@
                   "description": "目标的分类 ID",
                   "required": false,
                   "example": "1"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "目标是否为草稿态",
+                  "required": false
                 }
               }
             }
@@ -1273,6 +1302,11 @@
               "example": 0.5,
               "max": "1",
               "min": "0"
+            },
+            "apply_to_draft": {
+              "type": "boolean",
+              "description": "是否为创建草稿目标",
+              "required": false
             }
           },
           "responseBody": {
@@ -1369,6 +1403,13 @@
                 "department_id",
                 "open_department_id"
               ]
+            },
+            "prefer_draft": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否优先获取草稿态数据",
+              "default": ""
             }
           },
           "parameterOrder": [
@@ -1510,6 +1551,11 @@
                   "description": "目标的分类 ID",
                   "required": false,
                   "example": "1"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "目标是否为草稿态",
+                  "required": false
                 }
               }
             }
@@ -1731,6 +1777,11 @@
                 1,
                 2
               ]
+            },
+            "apply_to_draft": {
+              "type": "boolean",
+              "description": "是否修改草稿指标",
+              "required": false
             }
           },
           "responseBody": {
@@ -1954,6 +2005,11 @@
                       "example": "PERCENT"
                     }
                   }
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "指标是否来自草稿态",
+                  "required": false
                 }
               }
             }
@@ -1985,6 +2041,13 @@
               "required": true,
               "description": "Key Result ID. How to get: call the \"Get Key Results of an Objective\" API",
               "example": "7342342398472398473"
+            },
+            "apply_to_draft": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否为删除草稿态关键结果",
+              "default": ""
             }
           },
           "parameterOrder": [
@@ -2069,6 +2132,13 @@
                 "department_id",
                 "open_department_id"
               ]
+            },
+            "prefer_draft": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否优先获取草稿态数据",
+              "default": ""
             }
           },
           "parameterOrder": [
@@ -2180,6 +2250,11 @@
                   "description": "目标的截止时间，时间戳",
                   "required": false,
                   "example": "1760604634563"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "关键结果是否为草稿态",
+                  "required": false
                 }
               }
             }
@@ -2320,6 +2395,11 @@
               "description": "Key Result deadline, millisecond timestamp",
               "required": false,
               "example": "1760604634563"
+            },
+            "apply_to_draft": {
+              "type": "boolean",
+              "description": "是否为操作草稿关键结果",
+              "required": false
             }
           },
           "responseBody": {
@@ -2428,6 +2508,11 @@
                   "description": "目标的截止时间，时间戳",
                   "required": false,
                   "example": "1760604634563"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "关键结果是否为草稿态",
+                  "required": false
                 }
               }
             }
@@ -2507,6 +2592,13 @@
                 "department_id",
                 "open_department_id"
               ]
+            },
+            "prefer_draft": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否优先获取草稿数据",
+              "default": ""
             }
           },
           "parameterOrder": [
@@ -2733,6 +2825,11 @@
                       "example": "PERCENT"
                     }
                   }
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "指标是否来自草稿态",
+                  "required": false
                 }
               }
             }
@@ -2847,6 +2944,14 @@
                 "department_id",
                 "open_department_id"
               ]
+            },
+            "prefer_draft": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否优先获取草稿态目标",
+              "default": "",
+              "example": "true"
             }
           },
           "parameterOrder": [
@@ -2977,6 +3082,11 @@
                   "description": "目标的分类 ID",
                   "required": false,
                   "example": "1"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "目标是否为草稿态",
+                  "required": false
                 }
               }
             }
@@ -3061,6 +3171,11 @@
               "type": "array",
               "description": "Key Result ID list, ordered by sequence number",
               "required": true
+            },
+            "apply_to_draft": {
+              "type": "boolean",
+              "description": "是否为排序草稿态的关键结果",
+              "required": false
             }
           },
           "responseBody": {
@@ -3168,6 +3283,11 @@
                   "description": "目标的截止时间，时间戳",
                   "required": false,
                   "example": "1760604634563"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "关键结果是否为草稿态",
+                  "required": false
                 }
               }
             }
@@ -3269,6 +3389,11 @@
                   "min": "0"
                 }
               }
+            },
+            "apply_to_draft": {
+              "type": "boolean",
+              "description": "是否操作草稿态 KR 的权重。",
+              "required": false
             }
           },
           "responseBody": {
@@ -3376,6 +3501,11 @@
                   "description": "目标的截止时间，时间戳",
                   "required": false,
                   "example": "1760604634563"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "关键结果是否为草稿态",
+                  "required": false
                 }
               }
             }
@@ -3570,6 +3700,11 @@
               "description": "Objective category ID",
               "required": false,
               "example": "7342342398472398473"
+            },
+            "apply_to_draft": {
+              "type": "boolean",
+              "description": "是否为修改草稿态目标",
+              "required": false
             }
           },
           "responseBody": {
@@ -3697,6 +3832,11 @@
                   "description": "目标的分类 ID",
                   "required": false,
                   "example": "1"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "目标是否为草稿态",
+                  "required": false
                 }
               }
             }
@@ -3754,6 +3894,11 @@
               "description": "Aligned entity ID",
               "required": true,
               "example": "7342342398472398473"
+            },
+            "apply_to_draft": {
+              "type": "boolean",
+              "description": "是否为草稿目标创建对齐",
+              "required": false
             }
           },
           "responseBody": {
@@ -3873,6 +4018,13 @@
                 "department_id",
                 "open_department_id"
               ]
+            },
+            "prefer_draft": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否优先返回草稿对齐",
+              "default": ""
             }
           },
           "parameterOrder": [
@@ -4021,6 +4173,11 @@
                   "description": "Entity ID being aligned to",
                   "required": true,
                   "example": "7342342398472398473"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "对齐是否来自草稿目标",
+                  "required": false
                 }
               }
             }
@@ -4099,6 +4256,13 @@
                 "department_id",
                 "open_department_id"
               ]
+            },
+            "prefer_draft": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否优先获取草稿数据",
+              "default": ""
             }
           },
           "parameterOrder": [
@@ -4325,6 +4489,11 @@
                       "example": "PERCENT"
                     }
                   }
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "指标是否来自草稿态",
+                  "required": false
                 }
               }
             }
@@ -4469,6 +4638,11 @@
               "example": 0.5,
               "max": "1",
               "min": "0"
+            },
+            "apply_to_draft": {
+              "type": "boolean",
+              "description": "是否为创建草稿关键结果",
+              "required": false
             }
           },
           "responseBody": {
@@ -4567,6 +4741,13 @@
                 "department_id",
                 "open_department_id"
               ]
+            },
+            "prefer_draft": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否优先获取草稿态关键结果内容",
+              "default": ""
             }
           },
           "parameterOrder": [
@@ -4689,6 +4870,11 @@
                   "description": "目标的截止时间，时间戳",
                   "required": false,
                   "example": "1760604634563"
+                },
+                "is_draft": {
+                  "type": "boolean",
+                  "description": "关键结果是否为草稿态",
+                  "required": false
                 }
               }
             }

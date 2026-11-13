@@ -11,18 +11,21 @@
 lark-cli okr +batch-create \
   --cycle-id 7000000000000000001 \
   --input '[{"text":"提升产品用户体验","mention":["ou_xxxxxxxx"],"notes":"重点关注核心路径体验","krs":[{"text":"页面加载速度提升 50%","mention":["ou_yyyyyyyy"]},{"text":"用户满意度达到 4.8 分"}]},{"text":"拓展新市场份额","krs":[{"text":"新增 10 个城市覆盖"},{"text":"市场份额提升至 25%"}]}]' \
+  --apply-to-draft=true \
   --as user
 
 # 从文件读取输入
 lark-cli okr +batch-create \
   --cycle-id 7000000000000000001 \
   --input @okr_batch.json \
+  --apply-to-draft=true \
   --as user
 
 # 预览 API 调用（Dry-run）
 lark-cli okr +batch-create \
   --cycle-id 7000000000000000001 \
   --input @okr_batch.json \
+  --apply-to-draft=false \
   --dry-run \
   --as user
 ```
@@ -39,6 +42,7 @@ lark-cli okr +batch-create \
 | `--input`        | 是  | —         | JSON 数组格式的 Objective 列表。支持 `@文件路径` 从文件读取或 `-` 从 stdin 读取。 |
 | `--category-id`  | 否  | —         | 默认 Objective 分类 ID。仅用于 input 中未设置 `category_id` 的 Objective。通常不需要传入，见下方“分类提示”。 |
 | `--user-id-type` | 否  | `open_id` | mention 中使用的用户 ID 类型：`open_id` \| `union_id` \| `user_id`  |
+| `--apply-to-draft` | 否 | `true` | `true` 批量创建未发布的 Objective 草稿及其 KR，无需预先创建草稿；`false` 直接创建发布态。命令中应按 [草稿工作流](lark-okr-drafts.md) 显式传值。 |
 | `--dry-run`      | 否  | —         | 预览 API 调用而不实际执行                                            |
 | `--format`       | 否  | `json`    | 输出格式                                                       |
 
@@ -77,7 +81,7 @@ lark-cli okr +batch-create \
 
 1. 使用 `+cycle-list` 获取可用的 OKR 周期 ID
 2. 构造 `--input` JSON 数组，包含要创建的 Objective 和 KR
-3. 执行 `lark-cli okr +batch-create --cycle-id <id> --input '...'`
+3. 按 [OKR 草稿工作流](lark-okr-drafts.md) 选择并显式传 `--apply-to-draft=true|false`，再执行命令。
 
 ## 输出
 

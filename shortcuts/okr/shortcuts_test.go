@@ -19,5 +19,7 @@ func TestShortcutsRegistration(t *testing.T) {
 		convey.So(commands, convey.ShouldContain, "+create")
 		convey.So(commands, convey.ShouldContain, "+batch-create")
 		convey.So(commands, convey.ShouldContain, "+patch")
+		convey.So(commands, convey.ShouldContain, "+publish-draft")
+		convey.So(commands, convey.ShouldContain, "+drop-draft")
 	})
 }
