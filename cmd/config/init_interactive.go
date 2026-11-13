@@ -56,7 +56,7 @@ func runInteractiveConfigInit(ctx context.Context, f *cmdutil.Factory, msg *init
 		return runExistingAppForm(f, msg)
 	}
 
-	return runCreateAppFlow(ctx, f, "", msg)
+	return runCreateAppFlow(ctx, f, "", msg, "")
 }
 
 // runExistingAppForm shows a huh form for manually entering App ID / App Secret / Brand.
@@ -150,7 +150,13 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 
 // runCreateAppFlow runs the "create new app" flow via OpenClaw device flow.
 // If brandOverride is non-empty, skip the interactive brand selection.
-func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, msg *initMsg) (*configInitResult, error) {
+func runCreateAppFlow(
+	ctx context.Context,
+	f *cmdutil.Factory,
+	brandOverride core.LarkBrand,
+	msg *initMsg,
+	appID string,
+) (*configInitResult, error) {
 	var larkBrand core.LarkBrand
 	if brandOverride != "" {
 		larkBrand = brandOverride
@@ -182,7 +188,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	// Registration is platform traffic, so it must use the provider-aware
 	// transport as well as the shared proxy configuration.
 	httpClient := transport.NewHTTPClient(0)
-	authResp, err := larkauth.RequestAppRegistration(ctx, httpClient, larkBrand, f.IOStreams.ErrOut)
+	authResp, err := larkauth.RequestAppRegistration(ctx, httpClient, larkBrand, appID, f.IOStreams.ErrOut)
 	if err != nil {
 		return nil, classifyRegistrationBeginError(err)
 	}
@@ -222,7 +228,9 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	}
 
 	fmt.Fprintln(f.IOStreams.ErrOut)
-	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.AppCreated, result.ClientID))
+	if appID == "" {
+		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.AppCreated, result.ClientID))
+	}
 
 	return &configInitResult{
 		Mode:      "create",
