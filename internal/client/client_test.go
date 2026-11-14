@@ -288,6 +288,178 @@ func TestPaginateAll_PageLimitStopsPagination(t *testing.T) {
 	}
 }
 
+func TestPaginateAll_LaterPageTransportErrorIsReturned(t *testing.T) {
+	apiCalls := 0
+	sentinel := errors.New("page two transport failed")
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalls++
+		if apiCalls == 1 {
+			return jsonResponse(map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{
+					"items":      []interface{}{map[string]interface{}{"id": "first"}},
+					"has_more":   true,
+					"page_token": "next",
+				},
+			}), nil
+		}
+		return nil, sentinel
+	})
+
+	ac, _ := newTestAPIClient(t, rt)
+	result, err := ac.PaginateAll(context.Background(), RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/test/v1/items",
+		As:     "bot",
+	}, PaginationOptions{PageLimit: 10, PageDelay: -1})
+
+	if result != nil {
+		t.Fatalf("result = %#v, want nil when a later page fails", result)
+	}
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want page-two transport error", err)
+	}
+	if apiCalls != 2 {
+		t.Fatalf("apiCalls = %d, want 2", apiCalls)
+	}
+}
+
+func TestPaginateAll_LaterPageAPIErrorIsReturned(t *testing.T) {
+	apiCalls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalls++
+		if apiCalls == 1 {
+			return jsonResponse(map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{
+					"items":      []interface{}{map[string]interface{}{"id": "first"}},
+					"has_more":   true,
+					"page_token": "next",
+				},
+			}), nil
+		}
+		return jsonResponse(map[string]interface{}{
+			"code": 123456,
+			"msg":  "page two business failure",
+			"data": map[string]interface{}{"detail": "page two failed"},
+		}), nil
+	})
+
+	ac, _ := newTestAPIClient(t, rt)
+	result, err := ac.PaginateAll(context.Background(), RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/test/v1/items",
+		As:     "bot",
+	}, PaginationOptions{PageLimit: 10, PageDelay: -1})
+
+	if result != nil {
+		t.Fatalf("result = %#v, want nil when a later page fails", result)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Code != 123456 || problem.Message != "page two business failure" {
+		t.Fatalf("problem = %#v, %v; want typed page-two API error", problem, ok)
+	}
+	if apiCalls != 2 {
+		t.Fatalf("apiCalls = %d, want 2", apiCalls)
+	}
+}
+
+func TestStreamPages_LaterPageErrorPreservesEarlierItems(t *testing.T) {
+	apiCalls := 0
+	sentinel := errors.New("page two transport failed")
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalls++
+		if apiCalls == 1 {
+			return jsonResponse(map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{
+					"items":      []interface{}{map[string]interface{}{"id": "first"}},
+					"has_more":   true,
+					"page_token": "next",
+				},
+			}), nil
+		}
+		return nil, sentinel
+	})
+
+	ac, _ := newTestAPIClient(t, rt)
+	var streamedItems []interface{}
+	result, hasItems, err := ac.StreamPages(context.Background(), RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/test/v1/items",
+		As:     "bot",
+	}, func(items []interface{}) error {
+		streamedItems = append(streamedItems, items...)
+		return nil
+	}, PaginationOptions{PageLimit: 10, PageDelay: -1})
+
+	if result != nil {
+		t.Fatalf("result = %#v, want nil when a later page fails", result)
+	}
+	if hasItems {
+		t.Fatal("hasItems = true, want false when pagination returns an error")
+	}
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want page-two transport error", err)
+	}
+	if len(streamedItems) != 1 {
+		t.Fatalf("streamedItems = %d, want one item from the successful first page", len(streamedItems))
+	}
+	if apiCalls != 2 {
+		t.Fatalf("apiCalls = %d, want 2", apiCalls)
+	}
+}
+
+func TestStreamPages_LaterPageAPIErrorPreservesEarlierItems(t *testing.T) {
+	apiCalls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalls++
+		if apiCalls == 1 {
+			return jsonResponse(map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{
+					"items":      []interface{}{map[string]interface{}{"id": "first"}},
+					"has_more":   true,
+					"page_token": "next",
+				},
+			}), nil
+		}
+		return jsonResponse(map[string]interface{}{
+			"code": 654321,
+			"msg":  "page two business failure",
+			"data": map[string]interface{}{"detail": "page two failed"},
+		}), nil
+	})
+
+	ac, _ := newTestAPIClient(t, rt)
+	var streamedItems []interface{}
+	result, hasItems, err := ac.StreamPages(context.Background(), RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/test/v1/items",
+		As:     "bot",
+	}, func(items []interface{}) error {
+		streamedItems = append(streamedItems, items...)
+		return nil
+	}, PaginationOptions{PageLimit: 10, PageDelay: -1})
+
+	if result != nil {
+		t.Fatalf("result = %#v, want nil when a later page fails", result)
+	}
+	if hasItems {
+		t.Fatal("hasItems = true, want false when pagination returns an error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Code != 654321 || problem.Message != "page two business failure" {
+		t.Fatalf("problem = %#v, %v; want typed page-two API error", problem, ok)
+	}
+	if len(streamedItems) != 1 {
+		t.Fatalf("streamedItems = %d, want one item from the successful first page", len(streamedItems))
+	}
+	if apiCalls != 2 {
+		t.Fatalf("apiCalls = %d, want 2", apiCalls)
+	}
+}
+
 func TestPaginateAll_NaturalEndClearsPageToken(t *testing.T) {
 	apiCalls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
