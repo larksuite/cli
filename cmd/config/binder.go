@@ -15,6 +15,10 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
+// dshSettingsFile is the DeepSeek Harness settings document, held directly in
+// the harness home directory.
+const dshSettingsFile = "settings.yaml"
+
 // Candidate is the source-agnostic view of a bindable account.
 // It carries only the identity fields needed by selectCandidate / TUI;
 // secrets remain inside the SourceBinder implementation.
@@ -48,6 +52,8 @@ func newBinder(source string, opts *BindOptions) (SourceBinder, error) {
 		return &hermesBinder{opts: opts, path: resolveHermesEnvPath()}, nil
 	case "lark-channel":
 		return &larkChannelBinder{opts: opts, path: resolveLarkChannelConfigPath()}, nil
+	case "dsh":
+		return &dshBinder{opts: opts, path: resolveDSHSettingsPath()}, nil
 	default:
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported source: %s", source).WithParam("--source")
 	}
@@ -331,6 +337,78 @@ func (b *larkChannelBinder) Build(appID string) (*core.AppConfig, error) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// dshBinder
+// ──────────────────────────────────────────────────────────────
+
+// dshBinder binds from the DeepSeek Harness settings document, the same way
+// openclawBinder reads openclaw.json and hermesBinder reads Hermes's .env: the
+// host's own config file, at a path derived from the host's own home variable.
+// The lark-channel plugin persists its app credential into that document
+// during onboarding, so there is no separate handoff artifact to read.
+type dshBinder struct {
+	opts *BindOptions
+	path string
+
+	// Cached between ListCandidates and Build so we don't re-read the file.
+	cfg *binding.DSHSettingsRoot
+}
+
+func (b *dshBinder) Name() string       { return "dsh" }
+func (b *dshBinder) ConfigPath() string { return b.path }
+
+func (b *dshBinder) ListCandidates() ([]Candidate, error) {
+	cfg, err := binding.ReadDSHSettings(b.path)
+	if err != nil {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "cannot read %s: %v", b.path, err).
+			WithHint("verify the DeepSeek Harness lark-channel plugin is installed and has completed onboarding").
+			WithCause(err)
+	}
+	if cfg.LarkChannel.AppID == "" {
+		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "lark-channel.appId missing in %s", b.path).
+			WithHint("complete the plugin's first-boot QR onboarding so it persists appId/appSecret into this file")
+	}
+	b.cfg = cfg
+	return []Candidate{{AppID: cfg.LarkChannel.AppID, Label: "default"}}, nil
+}
+
+func (b *dshBinder) Build(appID string) (*core.AppConfig, error) {
+	if b.cfg == nil {
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: Build called before ListCandidates")
+	}
+	if b.cfg.LarkChannel.AppID != appID {
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: appID %q does not match config", appID)
+	}
+	if b.cfg.LarkChannel.AppSecret == "" {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "lark-channel.appSecret is empty in %s", b.path).
+			WithHint("complete the plugin's first-boot QR onboarding so it persists appId/appSecret into this file")
+	}
+
+	stored, err := core.ForStorage(appID, core.PlainSecret(b.cfg.LarkChannel.AppSecret), b.opts.Factory.Keychain)
+	if err != nil {
+		return nil, errs.NewInternalError(errs.SubtypeStorage, "keychain unavailable: %v", err).
+			WithHint("use file: reference in config to bypass keychain").
+			WithCause(err)
+	}
+
+	return &core.AppConfig{
+		AppId:     appID,
+		AppSecret: stored,
+		Brand:     dshBrand(b.cfg.LarkChannel.Domain),
+	}, nil
+}
+
+// dshBrand maps the plugin's open-platform domain to a brand. The settings
+// document stores the raw URL rather than a brand name, so it cannot go
+// through core.ParseBrand, which only recognises the literal "lark". Mirrors
+// the plugin's own rule (dsh-lark/src/runtime.ts: domain.includes('larksuite')).
+func dshBrand(domain string) core.LarkBrand {
+	if strings.Contains(domain, "larksuite") {
+		return core.BrandLark
+	}
+	return core.BrandFeishu
+}
+
+// ──────────────────────────────────────────────────────────────
 // Source-specific helpers (path / dotenv / brand) — kept private to this package.
 // Moved here from bind.go so bind.go can focus on orchestration.
 // ──────────────────────────────────────────────────────────────
@@ -345,6 +423,8 @@ func sourceDisplayName(source string) string {
 		return "Hermes"
 	case "lark-channel":
 		return "Lark Channel"
+	case "dsh":
+		return "DeepSeek Harness"
 	default:
 		return source
 	}
@@ -380,6 +460,24 @@ func resolveLarkChannelConfigPath() string {
 		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
 	}
 	return filepath.Join(home, ".lark-channel", "config.json")
+}
+
+// resolveDSHSettingsPath returns the path to the DeepSeek Harness settings
+// document. Respects DSH_HOME; defaults to ~/.dsh/settings.yaml — the same
+// shape as resolveHermesEnvPath's HERMES_HOME handling.
+//
+// DSH_HOME is authoritative here because the harness injects it into every
+// shell it spawns (shell-env's collect()), after discarding inherited DSH_*
+// values — so a relocated harness home reaches this process intact.
+func resolveDSHSettingsPath() string {
+	if harnessHome := strings.TrimSpace(os.Getenv("DSH_HOME")); harnessHome != "" {
+		return filepath.Join(expandHome(harnessHome), dshSettingsFile)
+	}
+	home, err := vfs.UserHomeDir()
+	if err != nil || home == "" {
+		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
+	}
+	return filepath.Join(home, ".dsh", dshSettingsFile)
 }
 
 // resolveOpenClawConfigPath resolves openclaw.json path using the same priority
