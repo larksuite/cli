@@ -39,8 +39,8 @@ lark-cli mail +rule-enable --as user --rule-id "<rule_id>"
 lark-cli mail +rule-delete --as user --rule-id "<rule_id>" --dry-run
 lark-cli mail +rule-delete --as user --rule-id "<rule_id>" --yes
 
-# 调整顺序：完整顺序或单条移动二选一
-lark-cli mail +rule-reorder --as user --rule-ids "<rule_id_1>,<rule_id_2>,<rule_id_3>"
+# 调整顺序：可只写要前置排序的部分 ID；CLI 会按当前列表补齐未提及规则
+lark-cli mail +rule-reorder --as user --rule-ids "<rule_id_3>,<rule_id_1>"
 lark-cli mail +rule-reorder --as user --move-rule-id "<rule_id_3>" --before-rule-id "<rule_id_1>"
 ```
 
@@ -81,6 +81,7 @@ lark-cli mail +rule-reorder --as user --move-rule-id "<rule_id_3>" --before-rule
 
 - 读路径宽容：`+rule-list` / `+rule-get` 遇到未知枚举或扩展字段仍输出规则，`unknowns[]` 会说明无法识别的 raw 片段，`raw` 会保留原始规则。
 - 更新规则：`+rule-update` 是“传什么改什么”。只改名称、启停、match 或 stop-after-match 时保留未触碰的 raw；传入新的 `--condition(s)` 时替换 condition items，未传 `--match` 就保留当前 match_type；传入新的 `--action(s)` 时替换 action items。
+- 排序规则：`+rule-reorder --rule-ids` 接受当前规则 ID 的有序子集。CLI 会先读取当前规则列表，提交顺序为“用户给出的 ID + 当前列表中未提及的 ID（保持原相对顺序）”。输入重复 ID、未知 ID 或当前列表为空时不会调用排序接口。
 - 输入校验：用户输入 alias/语义字符串时必须能映射到当前 shortcut 支持的枚举，否则报错；用户直接输入当前 shortcut 不认识的枚举数字，也报错。
 - raw fallback：需要写入当前 shortcut 尚未建模的服务端字段时，读取 `raw` 后使用原子 `user_mailbox.rules` 命令。
 
