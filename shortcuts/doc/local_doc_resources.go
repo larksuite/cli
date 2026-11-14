@@ -392,6 +392,9 @@ func rewriteRawLocalResourceTag(runtime *common.RuntimeContext, raw, name string
 		}
 		href, hasHref := tag.attr("href")
 		if !hasHref {
+			if tag.hasAttr("src") {
+				return "", localDocResource{}, false, common.ValidationErrorf("<img> src is not supported for document writes; use <img path=...>, <img href=...>, or block_copy_insert_after").WithParam("img")
+			}
 			return raw, localDocResource{}, false, nil
 		}
 		conflicts := []string{"src", "token", "img_key", "img-key", "url"}
