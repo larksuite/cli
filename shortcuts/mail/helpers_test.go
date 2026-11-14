@@ -844,7 +844,7 @@ func TestResolveComposeMailboxID(t *testing.T) {
 		want    string
 	}{
 		{"default", "", "", "me"},
-		{"explicit from", "", "shared@example.com", "shared@example.com"},
+		{"explicit from", "", "shared@example.com", "me"},
 		{"explicit mailbox", "owner@example.com", "", "owner@example.com"},
 		{"mailbox takes priority over from", "owner@example.com", "alias@example.com", "owner@example.com"},
 	}
