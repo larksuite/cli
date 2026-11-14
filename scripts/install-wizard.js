@@ -35,6 +35,8 @@ const messages = {
     step2Spinner:   "正在安装 Skills...",
     step2Done:      "Skills 已安装",
     step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g",
+    step2LayoutFail: "Skills 安装失败。运行以下命令重试: lark-cli update --skills-layout %s",
+    layoutInvalid:  "--skills-layout 必须是 separate 或 suite",
     step3:          "正在配置应用...",
     step3NotFound:  "未找到 lark-cli，终止",
     step3Found:     "发现已配置应用 (App ID: %s)，继续使用？",
@@ -64,6 +66,8 @@ const messages = {
     step2Spinner:   "Installing skills...",
     step2Done:      "Skills installed",
     step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g",
+    step2LayoutFail: "Failed to install skills. Run manually: lark-cli update --skills-layout %s",
+    layoutInvalid:  "--skills-layout must be one of separate or suite",
     step3:          "Configuring app...",
     step3NotFound:  "lark-cli not found. Aborting",
     step3Found:     "Found existing app (App ID: %s). Use this app?",
@@ -216,6 +220,26 @@ function parseLangArg() {
   return null;
 }
 
+/** Parse --skills-layout from process.argv, returns "separate", "suite", or null. */
+function parseSkillsLayoutArg() {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    let value;
+    if (args[i] === "--skills-layout") {
+      value = args[i + 1];
+    } else if (args[i].startsWith("--skills-layout=")) {
+      value = args[i].slice("--skills-layout=".length);
+    } else {
+      continue;
+    }
+
+    const layout = (value || "").toLowerCase();
+    if (layout === "separate" || layout === "suite") return layout;
+    throw new Error("--skills-layout must be one of separate or suite");
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Steps
 // ---------------------------------------------------------------------------
@@ -271,10 +295,33 @@ async function skillsAlreadyInstalled() {
   }
 }
 
-async function stepInstallSkills(msg) {
+async function stepInstallSkills(msg, requestedLayout) {
   const s = p.spinner();
   s.start(msg.step2Spinner);
   try {
+    if (requestedLayout) {
+      const larkCli = whichLarkCli();
+      if (!larkCli) throw new Error("lark-cli not found");
+      const output = await runSilentAsync(larkCli, ["update", "--skills-layout", requestedLayout, "--json"], {
+        timeout: 120000,
+      });
+      let doneMessage = msg.step2Done;
+      let warning = "";
+      try {
+        const result = JSON.parse(output.toString());
+        if (result.skills_action === "in_sync") {
+          doneMessage = msg.step2Skip;
+        }
+        if (typeof result.skills_warning === "string" && result.skills_warning) {
+          warning = result.skills_warning;
+        }
+      } catch (_) {
+        // A successful update with non-JSON output should not fail installation.
+      }
+      s.stop(doneMessage);
+      if (warning) p.log.warn(warning);
+      return;
+    }
     if (await skillsAlreadyInstalled()) {
       s.stop(msg.step2Skip);
       return;
@@ -290,7 +337,10 @@ async function stepInstallSkills(msg) {
     }
     s.stop(msg.step2Done);
   } catch (_) {
-    s.stop(fmt(msg.step2Fail, SKILLS_REPO_FALLBACK));
+    const failure = requestedLayout
+      ? fmt(msg.step2LayoutFail, requestedLayout)
+      : fmt(msg.step2Fail, SKILLS_REPO_FALLBACK);
+    s.stop(failure);
     process.exit(1);
   }
 }
@@ -363,18 +413,25 @@ async function main() {
   const isInteractive = !!process.stdin.isTTY;
   const lang = isInteractive ? await stepSelectLang() : (parseLangArg() || "en");
   const msg = messages[lang];
+  let skillsLayout;
+  try {
+    skillsLayout = parseSkillsLayoutArg();
+  } catch (_) {
+    p.log.error(msg.layoutInvalid);
+    process.exit(1);
+  }
 
   if (isInteractive) {
     p.intro(msg.setup);
     await stepInstallGlobally(msg);
-    await stepInstallSkills(msg);
+    await stepInstallSkills(msg, skillsLayout);
     await stepConfigInit(msg, lang);
     await stepAuthLogin(msg);
     p.outro(msg.done);
   } else {
     console.log(msg.setup);
     await stepInstallGlobally(msg);
-    await stepInstallSkills(msg);
+    await stepInstallSkills(msg, skillsLayout);
     console.log(msg.nonTtyHint);
   }
 }
