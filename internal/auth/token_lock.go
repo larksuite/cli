@@ -78,10 +78,9 @@ func WithTATIssuanceLock(ctx context.Context, appID string, fn func() error) err
 
 // withTokenStorageLock runs fn while holding both the process-local and
 // cross-process locks for one account. The lock is not reentrant: fn must not
-// call SetStoredToken, RemoveStoredToken, refreshWithLock, or another mutation
-// path that reacquires the lock for the same account, because doing so will
-// deadlock. Token storage mutations inside fn must use helpers that require the
-// caller to hold the lock, such as writeStoredToken, deleteStoredToken,
+// call SetStoredToken, RemoveStoredToken, refreshWithLock, or any
+// other path that reacquires the same account lock. Inside fn, use
+// readStoredToken, writeStoredToken, deleteStoredToken,
 // compareAndSwapStoredToken, or compareAndDeleteStoredToken.
 func withTokenStorageLock(appID, userOpenID string, fn func() error) (err error) {
 	return withTokenStorageLockContext(context.Background(), appID, userOpenID, fn)

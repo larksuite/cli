@@ -48,6 +48,10 @@ func accountKey(appId, userOpenId string) string {
 	return fmt.Sprintf("%s:%s", appId, userOpenId)
 }
 
+func accountKeyV2(appID, userOpenID string) string {
+	return "uat:v2:" + accountKey(appID, userOpenID)
+}
+
 // MaskToken masks a token for safe logging.
 func MaskToken(token string) string {
 	if len(token) <= 8 {
@@ -58,34 +62,44 @@ func MaskToken(token string) string {
 
 // GetStoredToken reads the stored UAT and preserves storage and decode errors.
 func GetStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
-	token, err := readStoredToken(appId, userOpenId)
-	if errors.Is(err, errStoredTokenCorrupt) {
-		return nil, withCorruptTokenRecovery(err)
-	}
+	token, _, err := readStoredToken(appId, userOpenId)
 	return token, err
 }
 
-func readStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
-	jsonStr, err := keychain.Get(keychain.LarkCliService, accountKey(appId, userOpenId))
+func readStoredToken(appID, userOpenID string) (*StoredUAToken, string, error) {
+	account := accountKeyV2(appID, userOpenID)
+	token, err := readStoredTokenAt(appID, userOpenID, account)
+	if err != nil || token != nil {
+		return token, account, err
+	}
+	account = accountKey(appID, userOpenID)
+	token, err = readStoredTokenAt(appID, userOpenID, account)
+	return token, account, err
+}
+
+func readStoredTokenAt(appID, userOpenID, account string) (*StoredUAToken, error) {
+	raw, err := keychain.Get(keychain.LarkCliService, account)
 	if err != nil {
 		return nil, err
 	}
-	if jsonStr == "" {
+	if raw == "" {
 		return nil, nil
 	}
-	var token StoredUAToken
-	if err := json.Unmarshal([]byte(jsonStr), &token); err != nil {
-		return nil, errs.NewInternalError(errs.SubtypeStorage,
+	var token *StoredUAToken
+	if err := json.Unmarshal([]byte(raw), &token); err != nil {
+		return nil, withCorruptTokenRecovery(errs.NewInternalError(errs.SubtypeStorage,
 			"failed to decode stored token: %v", err).
-			WithCause(errors.Join(errStoredTokenCorrupt, err))
+			WithCause(errors.Join(errStoredTokenCorrupt, err)))
 	}
-	if err := validateStoredToken(&token, appId, userOpenId); err != nil {
-		return nil, err
+	if token != nil || account == accountKey(appID, userOpenID) {
+		if err := validateStoredToken(token, appID, userOpenID); err != nil {
+			return nil, withCorruptTokenRecovery(err)
+		}
+		if token.TokenType == "" {
+			token.TokenType = StoredTokenTypeBearer
+		}
 	}
-	if token.TokenType == "" {
-		token.TokenType = StoredTokenTypeBearer
-	}
-	return &token, nil
+	return token, nil
 }
 
 // withCorruptTokenRecovery attaches re-authorization guidance to a read-side
@@ -156,20 +170,20 @@ func dpopKeyUnavailableHint() recovery.Hint {
 	).WithFallback("restore access to the platform key store outside the sandbox; if the key is lost, re-authorize this profile through the distribution's supported authorization flow")
 }
 
-// SetStoredToken persists a UAT.
+// SetStoredToken persists a newly authorized UAT in v2.
 func SetStoredToken(token *StoredUAToken) error {
 	if token == nil {
 		return errs.NewInternalError(errs.SubtypeStorage,
 			"cannot store a nil token")
 	}
 	return withTokenStorageLock(token.AppId, token.UserOpenId, func() error {
-		return writeStoredToken(token.AppId, token.UserOpenId, token)
+		return writeStoredToken(token.AppId, token.UserOpenId, accountKeyV2(token.AppId, token.UserOpenId), token)
 	})
 }
 
-// writeStoredToken persists token for the supplied account. The caller must
-// hold that account's token storage lock.
-func writeStoredToken(appID, userOpenID string, token *StoredUAToken) error {
+// writeStoredToken persists token at account. The caller must hold the account's
+// token storage lock.
+func writeStoredToken(appID, userOpenID, account string, token *StoredUAToken) error {
 	if token == nil {
 		return errs.NewInternalError(errs.SubtypeStorage,
 			"cannot store a nil token")
@@ -177,22 +191,20 @@ func writeStoredToken(appID, userOpenID string, token *StoredUAToken) error {
 	if err := validateStoredToken(token, appID, userOpenID); err != nil {
 		return err
 	}
-	key := accountKey(appID, userOpenID)
-	previous, _ := readStoredToken(appID, userOpenID)
+	// A new authorization can replace an unreadable credential at its destination.
+	previous, _ := readStoredTokenAt(appID, userOpenID, account)
 	data, err := json.Marshal(token)
 	if err != nil {
-		return err
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to encode stored token").WithCause(err)
 	}
-	if err := keychain.Set(keychain.LarkCliService, key, string(data)); err != nil {
+	if err := keychain.Set(keychain.LarkCliService, account, string(data)); err != nil {
 		return err
 	}
 	// The token now owns its new key. Best-effort cleanup of the superseded key
 	// happens only after the token write, so a cleanup failure cannot roll back
 	// into a token record whose new key was deleted by the caller.
-	if previous != nil && previous.DPoPKeyID != "" && previous.DPoPKeyID != token.DPoPKeyID {
-		if err := dpop.NewKeyStore(nil).Delete(previous.DPoPKeyID); err != nil {
-			keychain.LogAuthError("dpop", "cleanup-superseded-key", err)
-		}
+	if previous != nil && previous.DPoPKeyID != token.DPoPKeyID {
+		cleanupStoredTokenKey(previous)
 	}
 	return nil
 }
@@ -223,21 +235,40 @@ func RemoveStoredToken(appId, userOpenId string) error {
 	})
 }
 
-// deleteStoredToken removes the supplied account's token. The caller must hold
-// that account's token storage lock.
+// deleteStoredToken clears both entries. The caller must hold the account lock.
 func deleteStoredToken(appID, userOpenID string) error {
-	// Reading is only needed for best-effort DPoP key cleanup. The token record
-	// must remain removable when credential storage cannot read it.
-	current, _ := readStoredToken(appID, userOpenID)
+	current, _ := readStoredTokenAt(appID, userOpenID, accountKeyV2(appID, userOpenID))
+	legacy, _ := readStoredTokenAt(appID, userOpenID, accountKey(appID, userOpenID))
+	// Remove the fallback first so a partial failure cannot revive it through v2.
 	if err := keychain.Remove(keychain.LarkCliService, accountKey(appID, userOpenID)); err != nil {
 		return err
 	}
-	if current != nil && current.DPoPKeyID != "" {
-		if err := dpop.NewKeyStore(nil).Delete(current.DPoPKeyID); err != nil {
-			keychain.LogAuthError("dpop", "cleanup-removed-token-key", err)
+	defer cleanupStoredTokenKey(legacy)
+	if err := keychain.Remove(keychain.LarkCliService, accountKeyV2(appID, userOpenID)); err != nil {
+		return err
+	}
+	cleanupStoredTokenKey(current)
+	return nil
+}
+
+func cleanupStoredTokenKey(token *StoredUAToken) {
+	if token == nil || token.DPoPKeyID == "" {
+		return
+	}
+	// A retained legacy session may still own the key being replaced in v2.
+	for _, account := range []string{accountKeyV2(token.AppId, token.UserOpenId), accountKey(token.AppId, token.UserOpenId)} {
+		current, err := readStoredTokenAt(token.AppId, token.UserOpenId, account)
+		if err != nil {
+			keychain.LogAuthError("dpop", "cleanup-token-key", err)
+			return
+		}
+		if current != nil && current.DPoPKeyID == token.DPoPKeyID {
+			return
 		}
 	}
-	return nil
+	if err := dpop.NewKeyStore(nil).Delete(token.DPoPKeyID); err != nil {
+		keychain.LogAuthError("dpop", "cleanup-token-key", err)
+	}
 }
 
 // isSameStoredTokenGeneration reports whether two snapshots represent the same
@@ -255,9 +286,9 @@ func isSameStoredTokenGeneration(current, expected *StoredUAToken) bool {
 	return current.AccessToken == expected.AccessToken
 }
 
-// compareAndSwapStoredToken replaces expected with updated when the stored
-// token generation still matches expected. The caller must hold the storage
-// lock for appID and userOpenID.
+// compareAndSwapStoredToken replaces expected with updated in the same entry
+// when the stored token generation still matches expected. The caller must
+// hold the storage lock for appID and userOpenID.
 func compareAndSwapStoredToken(appID, userOpenID string, expected, updated *StoredUAToken) (*StoredUAToken, bool, error) {
 	if expected == nil || updated == nil {
 		return nil, false, errs.NewInternalError(errs.SubtypeStorage,
@@ -269,14 +300,14 @@ func compareAndSwapStoredToken(appID, userOpenID string, expected, updated *Stor
 			"cannot compare and swap stored tokens for different accounts")
 	}
 
-	current, err := GetStoredToken(appID, userOpenID)
+	current, account, err := readStoredToken(appID, userOpenID)
 	if err != nil {
 		return nil, false, err
 	}
 	if !isSameStoredTokenGeneration(current, expected) {
 		return current, false, nil
 	}
-	if err := writeStoredToken(appID, userOpenID, updated); err != nil {
+	if err := writeStoredToken(appID, userOpenID, account, updated); err != nil {
 		return current, false, err
 	}
 	return updated, true, nil
@@ -295,7 +326,7 @@ func compareAndDeleteStoredToken(appID, userOpenID string, expected *StoredUATok
 			"cannot compare and delete a stored token for a different account")
 	}
 
-	current, err := GetStoredToken(appID, userOpenID)
+	current, _, err := readStoredToken(appID, userOpenID)
 	if err != nil {
 		return nil, false, err
 	}
