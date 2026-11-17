@@ -29,10 +29,6 @@ const (
 // larger responses hit maxDepth/maxStringBytes well before this fires.
 const scanTimeout = 100 * time.Millisecond
 
-// Bounded raw source responses need more scan time than small structured
-// responses; timeout must not release unscanned bytes.
-const fullTextScanTimeout = 30 * time.Second
-
 // modeFromEnv reads LARKSUITE_CLI_CONTENT_SAFETY_MODE.
 func modeFromEnv(errOut io.Writer) mode {
 	raw := strings.TrimSpace(os.Getenv(envvars.CliContentSafetyMode))
@@ -73,7 +69,7 @@ func normalizeCommandPath(cobraPath string) string {
 var errBlocked = fmt.Errorf("content safety blocked")
 
 // runContentSafety orchestrates the scan: mode check -> provider -> scan with timeout + panic recovery.
-func runContentSafety(cobraPath string, data any, errOut io.Writer, fullText bool) (*extcs.Alert, error) {
+func runContentSafety(cobraPath string, data any, errOut io.Writer) (*extcs.Alert, error) {
 	m := modeFromEnv(errOut)
 	if m == modeOff {
 		return nil, nil
@@ -94,11 +90,7 @@ func runContentSafety(cobraPath string, data any, errOut io.Writer, fullText boo
 		err   error
 	}
 	ch := make(chan result, 1)
-	timeout := scanTimeout
-	if fullText {
-		timeout = fullTextScanTimeout
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
 	defer cancel()
 
 	// Give the goroutine its own writer so it cannot race on errOut after timeout.
@@ -111,7 +103,7 @@ func runContentSafety(cobraPath string, data any, errOut io.Writer, fullText boo
 				ch <- result{nil, fmt.Errorf("content safety panic: %v", r)}
 			}
 		}()
-		a, e := p.Scan(ctx, extcs.ScanRequest{Path: cmdPath, Data: data, ErrOut: scanErrBuf, FullText: fullText})
+		a, e := p.Scan(ctx, extcs.ScanRequest{Path: cmdPath, Data: data, ErrOut: scanErrBuf})
 		ch <- result{a, e}
 	}()
 
@@ -122,16 +114,10 @@ func runContentSafety(cobraPath string, data any, errOut io.Writer, fullText boo
 			_, _ = io.Copy(errOut, scanErrBuf)
 		}
 	case <-ctx.Done():
-		if fullText {
-			return nil, ctx.Err()
-		}
 		return nil, nil // timeout, fail-open; scanErrBuf stays with the goroutine
 	}
 
 	if res.err != nil {
-		if fullText {
-			return nil, res.err
-		}
 		fmt.Fprintf(errOut, "warning: content safety scan error: %v\n", res.err)
 		return nil, nil // fail-open
 	}

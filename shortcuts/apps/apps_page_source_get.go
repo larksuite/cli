@@ -81,7 +81,7 @@ var AppsPageSourceGet = common.Shortcut{
 			if len(content) > maxPageSourceFileBytes {
 				return errs.NewAPIError(errs.SubtypeFailedPrecondition, "source content exceeds the 10 MiB server limit")
 			}
-			scan := output.ScanTextForSafety(rctx.CommandPath(), string(content), rctx.IO().ErrOut)
+			scan := output.ScanForSafety(rctx.CommandPath(), string(content), rctx.IO().ErrOut)
 			if scan.Blocked {
 				return scan.BlockErr
 			}

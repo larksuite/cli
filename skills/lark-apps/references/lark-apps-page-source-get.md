@@ -47,7 +47,7 @@ lark-cli apps +page-source-get --meta-token <token> --path src/main.ts --output 
 
 给 `--output` 时：stdout 是 JSON envelope，含 `output`（落盘绝对路径）与 `size_bytes`；`--format pretty` 输出一行 `Saved <path> (<n> bytes)`。
 
-不给 `--output` 时，stdout 写出前会按已启用的内容安全配置扫描；block 命中时拒绝输出，warn 命中时在 stderr 提示但保留原文。`--output` 落盘路径不扫描文件正文。
+不给 `--output` 时，stdout 写出前复用现有内容安全扫描；block 命中时拒绝输出，warn 命中时在 stderr 提示但保留原文。沿用现有扫描范围和失败处理：默认扫描器每个字符串最多检查前 128 KiB，扫描出错或超时不阻止输出，因此不保证整份源码均已扫描。`--output` 落盘路径不扫描文件正文。
 
 ## 错误处理
 
@@ -56,6 +56,6 @@ lark-cli apps +page-source-get --meta-token <token> --path src/main.ts --output 
 | 401 / 403 | 按 `error.hint` 处理认证或权限问题，通用规则见 lark-shared。 |
 | 400 | 路径指向目录。改用 `+page-source-list --path <目录>` |
 | 404 | 路径在该提交里不存在（或 token 错）。用 `+page-source-list --path <父目录>` 核对真实文件名，注意大小写 |
-| 413 | 文件超过 10 MiB。本命令不做分块读取，需要时改用 `+export` 取整包 |
+| 413 | 文件超过 10 MiB，本命令不做分块读取。需要整包时可用 `+export`，但须为应用的 `edit` 或 `full_access` 协作者；`copy_download_by=full-access` 时须有 `full_access`。只有 `view` 权限时，请所有者授予对应角色，或请有权限的协作者导出；详见 [`+export`](lark-apps-export.md) |
 | 422 | 应用不支持源码读取，或该路径是二进制 / 非 UTF-8 / 符号链接 |
 | 429 | 触发限流，按指数退避重试 |

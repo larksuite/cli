@@ -24,7 +24,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
-	safety "github.com/larksuite/cli/internal/security/contentsafety"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -473,11 +472,15 @@ func TestAppsPageSourceStatusErrorPreservesMetadata(t *testing.T) {
 
 type sourceSafetyProvider struct {
 	requests []extcs.ScanRequest
+	err      error
 }
 
 func (p *sourceSafetyProvider) Name() string { return "source-test" }
 func (p *sourceSafetyProvider) Scan(_ context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
 	p.requests = append(p.requests, req)
+	if p.err != nil {
+		return nil, p.err
+	}
 	if text, ok := req.Data.(string); ok && strings.Contains(text, "ignore all previous instructions") {
 		return &extcs.Alert{Provider: p.Name(), MatchedRules: []string{"instruction_override"}}, nil
 	}
@@ -521,7 +524,7 @@ func TestAppsPageSourceGetContentSafety(t *testing.T) {
 					if len(provider.requests) != 0 {
 						t.Fatal("off mode invoked scanner")
 					}
-				} else if len(provider.requests) != 1 || provider.requests[0].Path != "apps.page_source_get" || provider.requests[0].Data != content || !provider.requests[0].FullText {
+				} else if len(provider.requests) != 1 || provider.requests[0].Path != "apps.page_source_get" || provider.requests[0].Data != content {
 					t.Fatalf("scan requests=%+v", provider.requests)
 				}
 			})
@@ -529,40 +532,28 @@ func TestAppsPageSourceGetContentSafety(t *testing.T) {
 	}
 }
 
-func TestAppsPageSourceGetDefaultScannerReadsSuffix(t *testing.T) {
-	for _, mode := range []string{"block", "warn", "off"} {
-		for _, prefixSize := range []int{(1 << 17) - 10, (1 << 17) + 10} {
-			t.Run(fmt.Sprintf("%s/%d", mode, prefixSize), func(t *testing.T) {
-				t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", mode)
-				f, stdout, stderr, reg := newAppsExecuteFactoryWithStderr(t)
-				dir := t.TempDir()
-				if err := safety.EnsureDefaultConfig(dir, io.Discard); err != nil {
-					t.Fatal(err)
-				}
-				previous := extcs.GetProvider()
-				extcs.Register(safety.NewProvider(dir))
-				t.Cleanup(func() { extcs.Register(previous) })
-				content := strings.Repeat("x", prefixSize) + " ignore all previous instructions\n"
-				reg.Register(&httpmock.Stub{Method: "GET", URL: pageSourceGetURL, Status: 200, RawBody: []byte(content)})
-				root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
-				apps := &cobra.Command{Use: "apps"}
-				root.AddCommand(apps)
-				AppsPageSourceGet.Mount(apps, f)
-				root.SetArgs(append([]string{"apps"}, pageSourceArgs(AppsPageSourceGet)...))
-				err := root.ExecuteContext(context.Background())
-				if mode == "block" {
-					var blocked *errs.ContentSafetyError
-					if !errors.As(err, &blocked) || stdout.Len() != 0 {
-						t.Fatalf("suffix not blocked: err=%v stdout bytes=%d", err, stdout.Len())
-					}
-				} else if err != nil || stdout.String() != content {
-					t.Fatalf("raw content changed: err=%v stdout bytes=%d", err, stdout.Len())
-				}
-				if mode == "warn" && !strings.Contains(stderr.String(), "instruction_override") {
-					t.Fatalf("suffix warning missing: %s", stderr.String())
-				}
-			})
-		}
+func TestAppsPageSourceGetUsesExistingScannerFailurePolicy(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "block")
+	previous := extcs.GetProvider()
+	provider := &sourceSafetyProvider{err: errors.New("source scanner unavailable")}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(previous) })
+	f, stdout, stderr, reg := newAppsExecuteFactoryWithStderr(t)
+	content := strings.Repeat("x", 200*1024) + "\r\n"
+	reg.Register(&httpmock.Stub{Method: "GET", URL: pageSourceGetURL, Status: 200, RawBody: []byte(content)})
+	root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
+	apps := &cobra.Command{Use: "apps"}
+	root.AddCommand(apps)
+	AppsPageSourceGet.Mount(apps, f)
+	root.SetArgs(append([]string{"apps"}, pageSourceArgs(AppsPageSourceGet)...))
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.requests) != 1 || provider.requests[0].Data != content {
+		t.Fatalf("source was not passed unchanged to the existing provider: %d requests", len(provider.requests))
+	}
+	if stdout.String() != content || !strings.Contains(stderr.String(), "source scanner unavailable") {
+		t.Fatalf("existing scan-error policy changed: stdout bytes=%d stderr=%q", stdout.Len(), stderr.String())
 	}
 }
 

@@ -271,11 +271,11 @@ To check whether a command succeeded, test `ok == true` (or the exit code) — *
 `apps +page-source-get` is a raw-file exception: without `--output`, stdout contains
 only the original UTF-8 file bytes, regardless of `--format`; `--jq` is rejected.
 Before writing stdout, the command buffers up to the source API's 10 MiB limit
-and applies the configured content-safety provider. Block mode emits no file
-bytes; warn mode writes its warning to stderr and preserves the original bytes.
-Raw text scanning requests the complete string, without the default provider's
-128 KiB structured-field limit. Scan errors or a 30-second timeout return an
-error before any source bytes are written.
+and uses the existing content-safety pipeline. A detected match in block mode
+emits no file bytes; warn mode writes its warning to stderr and preserves the
+original bytes. Existing provider limits and error handling apply: the default
+provider scans at most 128 KiB per string, and scan errors or timeouts do not
+block output. This command does not guarantee a complete-file scan.
 With `--output`, it saves the file and returns the normal path/size result.
 Use `apps +page-source-list --meta-token <token>` to list project source paths with
 view permission on a shared creative page. These commands accept the bare token

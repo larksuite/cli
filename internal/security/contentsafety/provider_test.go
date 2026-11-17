@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	extcs "github.com/larksuite/cli/extension/contentsafety"
@@ -27,21 +26,6 @@ func TestProvider_Name(t *testing.T) {
 	p := &regexProvider{configDir: t.TempDir()}
 	if p.Name() != "regex" {
 		t.Errorf("Name() = %q, want %q", p.Name(), "regex")
-	}
-}
-
-func TestProviderFullTextPreservesRegexBoundaries(t *testing.T) {
-	dir := writeTestConfig(t, `{"allowlist":["all"],"rules":[{"id":"span","pattern":"begin.*end$"}]}`)
-	p := NewProvider(dir)
-	text := "begin" + strings.Repeat("x", maxStringBytes+10) + "end"
-	for _, fullText := range []bool{false, true} {
-		alert, err := p.Scan(context.Background(), extcs.ScanRequest{Path: "apps.page_source_get", Data: text, FullText: fullText, ErrOut: io.Discard})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if (alert != nil) != fullText {
-			t.Fatalf("FullText=%v alert=%+v", fullText, alert)
-		}
 	}
 }
 
