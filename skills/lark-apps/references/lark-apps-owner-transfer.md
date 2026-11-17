@@ -70,11 +70,13 @@ lark-cli drive metas batch_query \
   --as user --format json
 ```
 
-当 `remove_old_owner=false` 时，原所有者仍可执行该读取；当原所有者已被移除或读取失败时，由新所有者使用自己的 user profile 执行。若需要核验原所有者保留的权限，再由仍有权限的一方读取直接成员列表，确认原所有者 `member_id` 对应的 `perm`：
+当 `remove_old_owner=false` 时，原所有者仍可执行该读取；当原所有者已被移除或读取失败时，由新所有者使用自己的 user profile 执行。若需要核验原所有者保留的权限，且 `meta_doc_type=apps`，再由仍有权限的一方读取直接成员列表，确认原所有者 `member_id` 对应的 `perm`：
 
 ```bash
-lark-cli drive +member-list --token '<meta_token>' --type '<meta_doc_type>' --as user --format json
+lark-cli drive +member-list --token '<meta_token>' --type apps --as user --format json
 ```
+
+当前开源版的 `+member-list` 不接受 `miaoda_apps`；不要将原始 type 改成 `apps` 来执行上面的命令。此时由仍有权限的一方在应用权限页面核验原所有者权限，无法核验时将权限核验结论标为 partial。
 
 若当前身份无法读取 metadata 或成员列表，把对应核验结论标为 partial，不要用 `apps +get` 可访问性代替 owner 或权限级别证据。
 
