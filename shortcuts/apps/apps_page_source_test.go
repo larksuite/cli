@@ -20,6 +20,8 @@ import (
 	"github.com/larksuite/cli/errs"
 	extcs "github.com/larksuite/cli/extension/contentsafety"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	safety "github.com/larksuite/cli/internal/security/contentsafety"
@@ -29,6 +31,43 @@ import (
 
 const pageSourceListURL = "/open-apis/spark/v1/apps/source/files"
 const pageSourceGetURL = "/open-apis/spark/v1/apps/source/file"
+
+func TestAppsPageSourceUnauthorizedRecovery(t *testing.T) {
+	for _, sc := range []common.Shortcut{AppsPageSourceList, AppsPageSourceGet} {
+		t.Run(sc.Command, func(t *testing.T) {
+			f, out, reg := newAppsExecuteFactory(t)
+			endpoint := pageSourceListURL
+			if sc.Command == "+page-source-get" {
+				endpoint = pageSourceGetURL
+			}
+			reg.Register(&httpmock.Stub{Method: "GET", URL: endpoint, Status: 401,
+				RawBody: []byte("unauthorized"), Headers: http.Header{"Content-Type": {"text/plain"}, "X-Tt-Logid": {"source-log"}}})
+			err := runAppsShortcut(t, sc, pageSourceArgs(sc), f, out)
+			err = f.PresentError(err, cmdutil.ErrorPresentationOptions{Identity: core.AsUser})
+			p := requireAppsProblem(t, err, errs.CategoryAuthentication)
+			if p.Subtype != errs.SubtypeTokenMissing || p.Code != 401 || p.LogID != "source-log" || errors.Unwrap(err) == nil || out.Len() != 0 {
+				t.Fatalf("lost error contract: %+v; stdout=%s", p, out)
+			}
+			if !strings.Contains(p.Hint, "auth login") {
+				t.Fatalf("missing user authorization recovery: %s", p.Hint)
+			}
+		})
+	}
+}
+
+func TestAppsPageSourceSkillRecoveryContract(t *testing.T) {
+	for _, name := range []string{"get", "list"} {
+		doc := readAppsSkillDoc(t, "../../skills/lark-apps/references/lark-apps-page-source-"+name+".md")
+		for _, want := range []string{"view", "error.hint", "lark-shared"} {
+			if !strings.Contains(doc, want) {
+				t.Errorf("%s: missing %s", name, want)
+			}
+		}
+		if strings.Contains(doc, "Agent Employee") || strings.Contains(doc, "401 未授权 | 缺") {
+			t.Errorf("%s: unsupported identity or inferred scope guidance", name)
+		}
+	}
+}
 
 func pageSourceArgs(sc common.Shortcut) []string {
 	args := []string{sc.Command, "--meta-token", "share-token", "--as", "user"}

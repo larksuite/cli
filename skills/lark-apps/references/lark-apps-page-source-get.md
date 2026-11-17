@@ -33,7 +33,6 @@
 - `--path` 必填，相对工程根目录的文件路径，正斜杠，不许 `..`。
 - `--output` 可选，相对当前目录的落盘路径。
 - 单文件上限 10 MiB（服务端与 CLI 同口径）。
-- 必须用**用户身份**（`--as user`）调用。Agent Employee profile 暂不支持，会在鉴权阶段失败。
 
 ## 示例
 
@@ -54,8 +53,7 @@ lark-cli apps +page-source-get --meta-token <token> --path src/main.ts --output 
 
 | 情况 | 怎么办 |
 |---|---|
-| 401 未授权 | 缺 `spark:app:read` scope，按提示授权后重试 |
-| 403 权限不足 | 当前登录用户对该创意页没有 view 权限。find 所有者加协作者，重试无解 |
+| 401 / 403 | 按 `error.hint` 处理认证或权限问题，通用规则见 lark-shared。 |
 | 400 | 路径指向目录。改用 `+page-source-list --path <目录>` |
 | 404 | 路径在该提交里不存在（或 token 错）。用 `+page-source-list --path <父目录>` 核对真实文件名，注意大小写 |
 | 413 | 文件超过 10 MiB。本命令不做分块读取，需要时改用 `+export` 取整包 |
