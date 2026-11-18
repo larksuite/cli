@@ -51,6 +51,30 @@ func TestMissingScopes(t *testing.T) {
 			required:    []string{"b"},
 			expected:    nil,
 		},
+		{
+			name:        "parent docx:document satisfies docx:document:create",
+			storedScope: "docx:document",
+			required:    []string{"docx:document:create"},
+			expected:    nil,
+		},
+		{
+			name:        "parent docx:document satisfies multiple docx scopes",
+			storedScope: "docx:document",
+			required:    []string{"docx:document:create", "docx:document:readonly", "docx:document:write_only"},
+			expected:    nil,
+		},
+		{
+			name:        "parent docx:document does not satisfy unrelated scope",
+			storedScope: "docx:document",
+			required:    []string{"docx:document:create", "im:message"},
+			expected:    []string{"im:message"},
+		},
+		{
+			name:        "child docx:document:create does not satisfy parent docx:document",
+			storedScope: "docx:document:create",
+			required:    []string{"docx:document"},
+			expected:    []string{"docx:document"},
+		},
 	}
 
 	for _, tt := range tests {
