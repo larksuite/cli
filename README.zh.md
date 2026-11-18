@@ -295,6 +295,28 @@ lark-cli schema calendar.events.instance_view
 lark-cli schema im.messages.delete
 ```
 
+不知道方法的准确名称时，可以搜索内置 API 目录：
+
+```bash
+lark-cli schema --search 'upload file'
+lark-cli schema calendar --search 'event' --limit 5
+lark-cli schema --search 'chat_id' --offset 10
+```
+
+搜索离线运行，无需登录。关键词以空白分隔，每个词都必须在命令路径、描述、
+输入字段名称或描述（包括嵌套字段和 flag 名称）、scopes 中找到匹配；匹配不区分
+大小写，按字面子串处理。路径匹配优先于描述、输入字段和 scopes，同分时按命令名
+排序。可通过服务、资源或方法路径限定范围。搜索不包含快捷命令和响应字段。
+严格身份模式及命令可见性规则在排序、计数和分页之前生效。
+
+搜索返回 `ok`/`data` JSON 信封。`data` 包含原始 `query`、`total`、`offset`、
+`limit`、`has_more` 和 `results` 数组（无匹配时为空数组）。每条结果包含
+`schema_path`、保留 argv 参数边界的 `command_path`、描述、风险、`access_tokens`、
+`scopes`、`required_scopes` 和匹配来源 `matched_fields`（`path`、`description`、
+`input` 或 `scope`）。使用 `lark-cli schema <schema_path>` 查看完整 schema。
+不传 `--search` 时，原有完整 schema 输出保持不变。`--limit` 默认为 10（范围
+1–100），`--offset` 默认为 0；这两个参数都必须与 `--search` 一起使用。
+
 ## 安全与风险提示（使用前必读）
 
 本工具可供 AI Agent 调用以自动化操作飞书/Lark 开放平台，存在模型幻觉、执行不可控、提示词注入等固有风险；授权飞书权限后，AI Agent 将以您的用户身份在授权范围内执行操作，可能导致敏感数据泄露、越权操作等高风险后果，请您谨慎操作和使用。

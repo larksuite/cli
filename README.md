@@ -294,6 +294,31 @@ lark-cli schema calendar.events.instance_view
 lark-cli schema im.messages.delete
 ```
 
+Discover methods without knowing their exact names using the embedded API catalog:
+
+```bash
+lark-cli schema --search 'upload file'
+lark-cli schema calendar --search 'event' --limit 5
+lark-cli schema --search 'chat_id' --offset 10
+```
+
+Search runs offline without login. It matches every whitespace-separated term as a
+case-insensitive literal substring across command paths, descriptions, input field
+names/descriptions (including nested fields and flag names), and scopes. Paths rank
+ahead of descriptions, inputs, and scopes; ties use command-name order. An optional
+service, resource, or method path narrows the search. Shortcuts and response fields
+are not searched. Existing strict identity and command visibility rules apply
+before ranking, counting, and pagination.
+
+Search returns an `ok`/`data` JSON envelope. `data` contains the original `query`,
+`total`, `offset`, `limit`, `has_more`, and a `results` array (empty when no methods
+match). Each result includes `schema_path`, `command_path` as argv segments,
+description, risk, `access_tokens`, `scopes`, `required_scopes`, and `matched_fields`
+(`path`, `description`, `input`, or `scope`). Use
+`lark-cli schema <schema_path>` to inspect a result's complete schema. Without
+`--search`, the existing full-schema output is unchanged. `--limit` defaults to 10
+(range 1–100), `--offset` defaults to 0, and both flags require `--search`.
+
 ## Security & Risk Warnings (Read Before Use)
 
 This tool can be invoked by AI Agents to automate operations on the Lark/Feishu Open Platform, and carries inherent risks such as model hallucinations, unpredictable execution, and prompt injection. After you authorize Lark/Feishu permissions, the AI Agent will act under your user identity within the authorized scope, which may lead to high-risk consequences such as leakage of sensitive data or unauthorized operations. Please use with caution.
