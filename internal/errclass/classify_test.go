@@ -698,10 +698,10 @@ func TestExtractMissingScopes_Dedup(t *testing.T) {
 // A future drift in subtype-specific field gating therefore fails this test
 // without the test hand-copying either implementation.
 //
-// One upstream-derived field is a documented exception: `code` (the Lark
-// API numeric code). The pre-flight check runs against a locally cached
+// Upstream-derived `code` and `upstream` diagnostics are documented exceptions.
+// The pre-flight check runs against a locally cached
 // scope list and has no upstream response to extract it from. The
-// comparison below strips that key from both envelopes so the assertion
+// comparison below strips those keys from both envelopes so the assertion
 // isolates the contract fields that MUST converge: Subtype, Category,
 // Message, Hint, Identity, MissingScopes, ConsoleURL.
 func TestServiceShortcutEnvelopeConverge(t *testing.T) {
@@ -730,7 +730,7 @@ func TestServiceShortcutEnvelopeConverge(t *testing.T) {
 		t.Fatal("direct path failed to emit typed envelope")
 	}
 
-	// Strip `code` from both envelopes — see test doc above.
+	// Strip server-only fields from both envelopes — see test doc above.
 	stripA := stripUpstreamFields(t, bufA.Bytes())
 	stripB := stripUpstreamFields(t, bufB.Bytes())
 	if stripA != stripB {
@@ -739,7 +739,7 @@ func TestServiceShortcutEnvelopeConverge(t *testing.T) {
 }
 
 // stripUpstreamFields parses an envelope JSON and re-marshals it with the
-// upstream-derived "code" key removed from the inner "error" block. Used by
+// upstream-derived "code" and "upstream" keys removed from the inner "error" block. Used by
 // the convergence test to isolate contract fields shared between the
 // dispatcher and pre-flight paths.
 func stripUpstreamFields(t *testing.T, raw []byte) string {
@@ -750,6 +750,7 @@ func stripUpstreamFields(t *testing.T, raw []byte) string {
 	}
 	if errBlock, ok := obj["error"].(map[string]any); ok {
 		delete(errBlock, "code")
+		delete(errBlock, "upstream")
 	}
 	out, err := json.Marshal(obj)
 	if err != nil {

@@ -114,6 +114,7 @@ func CloneTyped(err error) (error, bool) {
 		clone.MissingScopes = slices.Clone(original.MissingScopes)
 		clone.RequestedScopes = slices.Clone(original.RequestedScopes)
 		clone.GrantedScopes = slices.Clone(original.GrantedScopes)
+		clone.WithUpstream(original.Upstream)
 		return &clone, true
 	case *errs.ConfigError:
 		if original == nil {
