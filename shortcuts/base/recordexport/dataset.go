@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 )
 
 const RecordIDColumnName = "record_id"
@@ -224,7 +223,7 @@ func ParseMatrix(data map[string]any) (Page, error) {
 		values := make([]any, 1, len(exportColumns))
 		values[0] = recordIDs[rowIndex]
 		for _, sourceIndex := range exportSourceIndexes {
-			value, err := normalizeCell(sourceColumns[sourceIndex], row[sourceIndex], timezone)
+			value, err := normalizeCell(sourceColumns[sourceIndex], row[sourceIndex])
 			if err != nil {
 				return Page{}, &MatrixError{Reason: fmt.Sprintf(
 					"row %d column %q: %v", rowIndex+1, sourceColumns[sourceIndex].Name, err,
@@ -291,7 +290,7 @@ func (d *Dataset) AppendPage(page Page) error {
 	return nil
 }
 
-func normalizeCell(column Column, value any, timezone string) (any, error) {
+func normalizeCell(column Column, value any) (any, error) {
 	spec, ok := specForFieldType(column.FieldType)
 	if !ok || spec.kind == KindJSON {
 		return value, nil
@@ -332,9 +331,6 @@ func normalizeCell(column Column, value any, timezone string) (any, error) {
 		if !ok {
 			return nil, newDetailErrorf("expected string, got %T", value)
 		}
-		if column.FieldType == "datetime" || column.FieldType == "created_at" || column.FieldType == "updated_at" {
-			return normalizeDateTime(text, timezone)
-		}
 		return text, nil
 	case KindNumber:
 		switch value.(type) {
@@ -356,21 +352,6 @@ func normalizeCell(column Column, value any, timezone string) (any, error) {
 	default:
 		return nil, newDetailErrorf("unsupported value kind %q", spec.kind)
 	}
-}
-
-func normalizeDateTime(value, timezone string) (string, error) {
-	if _, err := time.Parse(time.RFC3339Nano, value); err == nil {
-		return value, nil
-	}
-	location, err := time.LoadLocation(timezone)
-	if err != nil {
-		return "", wrapDetailErrorf(err, "invalid timezone %q", timezone)
-	}
-	parsed, err := time.ParseInLocation("2006-01-02 15:04:05", value, location)
-	if err != nil {
-		return "", newDetailErrorf("expected YYYY-MM-DD HH:mm:ss or RFC3339, got %q", value)
-	}
-	return parsed.Format(time.RFC3339), nil
 }
 
 func stringList(raw any, name string) ([]string, error) {

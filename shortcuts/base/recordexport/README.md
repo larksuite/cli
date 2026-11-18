@@ -2,8 +2,8 @@
 
 The NDJSON exporter validates matrix dimensions and preserves column alignment.
 Known Base v3 field types use their declared cell shape: array fields normalize
-null to `[]`, checkboxes normalize null to `false`, and timestamps normalize to
-RFC3339. Buttons have no record value and export as null with physical type `null`.
+null to `[]`, checkboxes normalize null to `false`, and timestamp strings pass
+through unchanged. Buttons have no record value and export as null with physical type `null`.
 
 Unknown field types export with manifest `field_type: "not_support"` and
 `physical_type: "json"`. Their decoded JSON values pass through without cell

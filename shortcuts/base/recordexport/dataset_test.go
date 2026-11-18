@@ -30,6 +30,8 @@ func TestReadFieldTypesRoundTripNDJSON(t *testing.T) {
 		{"datetime", "2026-08-04T12:30:00+08:00"},
 		{"created_at", "2026-08-04T12:30:00+08:00"},
 		{"updated_at", "2026-08-04T12:30:00+08:00"},
+		{"created_at", "2026-08-04 12:30:00"},
+		{"updated_at", "2026-08-04 12:30:00"},
 		{"created_by", []any{map[string]any{"id": "ou_creator"}}},
 		{"updated_by", []any{map[string]any{"id": "ou_updater"}}},
 		{"button", nil}, {"not_support", nil},
@@ -194,7 +196,7 @@ func TestParseMatrixNormalizesTypedRows(t *testing.T) {
 	if owners, ok := first[3].([]any); !ok || len(owners) != 0 {
 		t.Fatalf("empty Owner = %#v, want []", first[3])
 	}
-	if got := first[4]; got != "2026-08-04T12:30:00+08:00" {
+	if got := first[4]; got != "2026-08-04 12:30:00" {
 		t.Fatalf("Due = %#v", got)
 	}
 	if got := first[6]; got != false {
@@ -223,17 +225,6 @@ func TestParseMatrixNormalizesTypedRows(t *testing.T) {
 	}
 	if got := secondRow["Done"]; got != false {
 		t.Fatalf("NDJSON Done = %#v, want false", got)
-	}
-}
-
-func TestNormalizeDateTimePreservesUpstreamOffset(t *testing.T) {
-	value := "2026-11-01T01:30:00.123456-04:00"
-	got, err := normalizeDateTime(value, "America/New_York")
-	if err != nil {
-		t.Fatalf("normalizeDateTime() error = %v", err)
-	}
-	if got != value {
-		t.Fatalf("normalizeDateTime() = %q, want unchanged %q", got, value)
 	}
 }
 
