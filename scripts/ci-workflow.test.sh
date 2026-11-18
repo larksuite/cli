@@ -170,6 +170,21 @@ if grep -Fq '${{ secrets.' <<<"$script_test_section"; then
   exit 1
 fi
 
+if ! grep -Fq 'bash scripts/check-layering-ratchet.sh "$QUALITY_GATE_CHANGED_FROM"' <<<"$lint_section"; then
+  echo "lint should enforce the layering ratchet with the tested key-set checker"
+  exit 1
+fi
+
+if grep -Fq "grep -vcE" <<<"$lint_section"; then
+  echo "lint should not enforce the layering ratchet by row count alone"
+  exit 1
+fi
+
+if grep -Fq "LAYERING_RATCHET_INITIAL_" "$workflow"; then
+  echo "CI must use the immutable checked-in layering bootstrap snapshot"
+  exit 1
+fi
+
 if grep -Fq "metadata-gate:" "$workflow"; then
   echo "metadata-gate should not run alongside deterministic-gate because both would upload the same facts artifact"
   exit 1
