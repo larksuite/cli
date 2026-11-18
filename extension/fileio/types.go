@@ -60,6 +60,50 @@ type ExclusiveFileIO interface {
 	SaveExclusive(path string, opts SaveOptions, body io.Reader) (SaveResult, error)
 }
 
+// AppendingFileIO is an optional extension for providers that can append to an
+// existing partial file, used by resumable downloads.
+//
+// A provider that cannot implement AppendTo must leave this interface
+// unimplemented; a caller that needs to resume an interrupted download then
+// fails fast instead of silently restarting from byte 0.
+type AppendingFileIO interface {
+	FileIO
+
+	// AppendTo opens path (creating it when missing) and streams body onto the
+	// end of the file, returning the number of bytes written. A failed write
+	// keeps the bytes already on disk so a later call can resume. AppendTo must
+	// apply the same output-path validation as Save.
+	AppendTo(path string, opts SaveOptions, body io.Reader) (SaveResult, error)
+}
+
+// ResumableFileIO is the optional complete backend for resumable downloads.
+// It owns every operation on the partial/checkpoint artifacts so callers do
+// not bypass a provider's storage namespace or path policy.
+//
+// A provider that cannot implement the full lifecycle must leave this
+// interface unimplemented. Callers using --continue then fail fast instead of
+// mixing provider operations with local filesystem calls.
+type ResumableFileIO interface {
+	AppendingFileIO
+
+	// ReadResumeArtifact reads one checkpoint or partial artifact after applying
+	// the provider's input-path policy.
+	ReadResumeArtifact(path string) ([]byte, error)
+
+	// WriteResumeArtifact atomically writes one checkpoint artifact, creating
+	// parent directories as needed and applying the provider's output policy.
+	WriteResumeArtifact(path string, data []byte) error
+
+	// RemoveResumeArtifact removes one checkpoint or partial artifact and
+	// applies the provider's output policy.
+	RemoveResumeArtifact(path string) error
+
+	// CommitResumeArtifact publishes a completed partial at targetPath. When
+	// overwrite is false, the commit must fail if targetPath already exists;
+	// when true, it replaces the target according to provider semantics.
+	CommitResumeArtifact(partialPath, targetPath string, overwrite bool) error
+}
+
 // WorkspaceFileIO is an optional extension for commands that own temporary
 // workspace entries. RemoveWorkspaceEntry must remove exactly one file or one
 // empty directory, never recursively, and must apply the same path validation

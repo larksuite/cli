@@ -15,6 +15,11 @@ Choose the representation contract deliberately:
 - `download.ImmutableSource`: permits multipart assembly without an ETag because
   the caller guarantees the source identifier pins the bytes.
 
+When resuming from a local offset, set `Transfer.StartOffset` together with
+the checkpoint's strong `Transfer.ExpectedETag`. The engine sends `If-Range`
+on the first resumed request and rejects a changed representation; the caller
+owns the partial artifact and may discard it before reopening from byte zero.
+
 External commands normally use the higher-level `command.Download`, which wires
 an authenticated OpenAPI transport and invocation-scoped FileIO while retaining
 the same engine options:
