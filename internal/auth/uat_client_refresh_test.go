@@ -118,9 +118,7 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 	opts := newRefreshTestOptions(stored)
 	var errOut bytes.Buffer
 	opts.ErrOut = &errOut
-	if err := SetStoredToken(stored); err != nil {
-		t.Fatalf("SetStoredToken() error = %v", err)
-	}
+	seedLegacyToken(t, stored)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -171,6 +169,9 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 	current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
 	if current == nil || current.RefreshToken != "refresh-new" || current.Scope != stored.Scope || current.GrantedAt != stored.GrantedAt {
 		t.Fatalf("stored token = %#v, want refreshed generation with stable metadata", current)
+	}
+	if raw, err := keychain.Get(keychain.LarkCliService, accountKeyV2(stored.AppId, stored.UserOpenId)); err != nil || raw != "" {
+		t.Fatalf("legacy Bearer refresh wrote v2: %v", err)
 	}
 	if got := errOut.String(); !strings.Contains(got, "Some requested scopes were silently trimmed") {
 		t.Fatalf("stderr = %q, want status_message", got)
@@ -230,14 +231,15 @@ func TestRefreshDPoPTokenRecoversClockAndKeepsBinding(t *testing.T) {
 		DPoPJKT:              jkt,
 		DPoPKeySecurityLevel: string(key.SecurityLevel()),
 	}
-	if err := SetStoredToken(stored); err != nil {
-		t.Fatal(err)
-	}
+	seedLegacyToken(t, stored)
 
 	var heartbeatCalls, tokenCalls int
 	var proofs []string
 	serverTime := now.Add(2 * time.Minute).UTC()
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if raw, err := keychain.Get(keychain.LarkCliService, accountKeyV2(stored.AppId, stored.UserOpenId)); err != nil || raw != "" {
+			t.Fatalf("legacy DPoP clock synchronization wrote v2: %v", err)
+		}
 		switch req.URL.Path {
 		case dpop.HeartbeatPath:
 			heartbeatCalls++
@@ -276,6 +278,9 @@ func TestRefreshDPoPTokenRecoversClockAndKeepsBinding(t *testing.T) {
 	if current == nil || current.TokenType != StoredTokenTypeDPoP || current.DPoPKeyID != key.ID() ||
 		current.DPoPJKT != jkt || current.RefreshToken != "refresh-new" || current.ClockSyncedAtMs == 0 {
 		t.Fatalf("stored refreshed binding = %#v", current)
+	}
+	if raw, err := keychain.Get(keychain.LarkCliService, accountKeyV2(stored.AppId, stored.UserOpenId)); err != nil || raw != "" {
+		t.Fatalf("legacy DPoP refresh wrote v2: %v", err)
 	}
 
 	otherKey, err := store.EnsureContext(context.Background(), "other-user-key")
@@ -528,9 +533,10 @@ func TestRefreshDoesNotOverwriteNewerGeneration(t *testing.T) {
 				body: tt.body,
 				beforeReply: func() error {
 					if tt.deleteNext {
-						return deleteStoredToken(stored.AppId, stored.UserOpenId)
+						// Simulate another process deleting the Bearer entry during refresh.
+						return keychain.Remove(keychain.LarkCliService, accountKeyV2(stored.AppId, stored.UserOpenId))
 					}
-					return writeStoredToken(stored.AppId, stored.UserOpenId, &newGeneration)
+					return writeStoredToken(stored.AppId, stored.UserOpenId, accountKeyV2(stored.AppId, stored.UserOpenId), &newGeneration)
 				},
 			}}, &calls)
 
@@ -876,5 +882,103 @@ func TestDPoPTokenWithoutRefreshTokenSynchronizesClockBeforeExpiryDecision(t *te
 	problem := requireRefreshProblem(t, err, errs.CategoryAuthentication, errs.SubtypeTokenMissing, false)
 	if !strings.Contains(problem.Hint, `"Refresh user_access_token"`) || mustGetStoredToken(t, negativeSkewExpiredToken.AppId, negativeSkewExpiredToken.UserOpenId) != nil {
 		t.Fatalf("expired DPoP hint = %q or token still stored", problem.Hint)
+	}
+}
+
+func TestDPoPUATClockSyncTTL(t *testing.T) {
+	setupStoredTokenTest(t)
+	store, stored := newPersistedDPoPToken(t)
+	now := time.Now()
+	stored.ExpiresAt = now.Add(2 * time.Hour).UnixMilli()
+	stored.ClockSyncedAtMs = now.Add(-uatClockSyncTTL).UnixMilli()
+	seedLegacyToken(t, stored)
+	opts := newRefreshTestOptions(stored)
+	opts.DPoPKeyStore = store
+	calls := 0
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != dpop.HeartbeatPath {
+			t.Fatalf("clock synchronization rotated token: %s", req.URL.Path)
+		}
+		return refreshHTTPResponse(req, `{"code":0,"data":{"now":"`+strconv.FormatInt(time.Now().Add(time.Minute).Unix(), 10)+`"}}`), nil
+	})}
+	for range 2 {
+		result, err := GetValidAccessToken(context.Background(), client, opts)
+		if err != nil || result == nil || result.DPoP == nil || result.AccessToken != stored.AccessToken {
+			t.Fatalf("GetValidAccessToken() = (%+v, %v)", result, err)
+		}
+	}
+	current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
+	if calls != 1 || current.ClockSyncedAtMs < now.UnixMilli() || current.ClockOffsetMs < 58_000 || current.ClockOffsetMs > 61_000 {
+		t.Fatalf("clock was not calibrated once and reused: calls=%d token=%+v", calls, current)
+	}
+	want := *stored
+	want.ClockOffsetMs, want.ClockSyncedAtMs = current.ClockOffsetMs, current.ClockSyncedAtMs
+	if *current != want {
+		t.Fatal("calibration changed credentials")
+	}
+	if raw, err := keychain.Get(keychain.LarkCliService, accountKeyV2(stored.AppId, stored.UserOpenId)); err != nil || raw != "" {
+		t.Fatalf("legacy clock synchronization wrote v2: %v", err)
+	}
+}
+
+func TestDPoPUATClockSyncFailuresPreserveCredentials(t *testing.T) {
+	for _, scenario := range []string{"network", "expired RT", "cancel"} {
+		t.Run(scenario, func(t *testing.T) {
+			setupStoredTokenTest(t)
+			store, stored := newPersistedDPoPToken(t)
+			stored.ClockSyncedAtMs = time.Now().Add(-time.Hour).UnixMilli()
+			if scenario == "expired RT" {
+				stored.ClockOffsetMs = (24 * time.Hour).Milliseconds()
+			}
+			if err := SetStoredToken(stored); err != nil {
+				t.Fatal(err)
+			}
+			opts := newRefreshTestOptions(stored)
+			opts.DPoPKeyStore = store
+			var warnings bytes.Buffer
+			opts.ErrOut = &warnings
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var heartbeatCalls, refreshCalls int
+			client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path == core.OAuthTokenV3Path {
+					refreshCalls++
+					return refreshHTTPResponse(req, `{"access_token":"access-new","refresh_token":"refresh-new","token_type":"DPoP","expires_in":7200,"refresh_token_expires_in":86400}`), nil
+				}
+				heartbeatCalls++
+				if deadline, ok := req.Context().Deadline(); !ok || time.Until(deadline) > 5*time.Second {
+					t.Fatal("heartbeat must have a timeout of at most 5 seconds")
+				}
+				if scenario == "cancel" {
+					cancel()
+					<-req.Context().Done()
+					return nil, req.Context().Err()
+				}
+				return nil, errors.New("injected failure")
+			})}
+			result, err := GetValidAccessToken(ctx, client, opts)
+			current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
+			switch scenario {
+			case "cancel":
+				if result != nil || !errors.Is(err, ctx.Err()) {
+					t.Fatalf("cancellation = (%+v, %v)", result, err)
+				}
+			case "expired RT":
+				if err != nil || result == nil || result.AccessToken != "access-new" || current.RefreshToken != "refresh-new" || refreshCalls != 1 {
+					t.Fatalf("stale clock prevented server refresh: %v", err)
+				}
+			default:
+				if err != nil || result == nil || result.AccessToken != stored.AccessToken || warnings.Len() == 0 {
+					t.Fatalf("best-effort calibration = (%+v, %v)", result, err)
+				}
+			}
+			if heartbeatCalls != 1 || (scenario != "expired RT" && (refreshCalls != 0 || current == nil || *current != *stored)) {
+				t.Fatal("failed calibration changed credentials or retried")
+			}
+			if _, err := store.LoadContext(context.Background(), stored.DPoPKeyID); err != nil {
+				t.Fatalf("failed calibration removed key: %v", err)
+			}
+		})
 	}
 }

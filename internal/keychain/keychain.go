@@ -26,7 +26,8 @@ const (
 	// Entries are distinguished by account key format:
 	//   - AppSecret: "appsecret:<appId>"
 	//   - Stored TAT: "tat:v1:<sha256(appId)>"
-	//   - UAT:       "<appId>:<userOpenId>"
+	//   - UAT (Bearer/DPoP): "uat:v2:<appId>:<userOpenId>"
+	//   - Legacy UAT: "<appId>:<userOpenId>" (read fallback)
 	LarkCliService = "lark-cli"
 )
 
