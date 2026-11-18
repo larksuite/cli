@@ -5,12 +5,15 @@ package localfileio
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // TestPolicy_HomeEnvCannotMoveAllowRoot pins the built-in allowlist against
@@ -436,5 +439,274 @@ func TestPolicy_HomeCredentialFilesAreDenied(t *testing.T) {
 	if _, err := SafeInputPath("some-ordinary-file.txt"); err != nil &&
 		!strings.Contains(err.Error(), "cannot inspect path") {
 		t.Errorf("an ordinary name in the home directory should not be denied, got: %v", err)
+	}
+}
+
+// probeFS counts the paths a validation reads, so a test can assert that the
+// credential directories were never touched. It wraps the real filesystem:
+// what is under test is which paths get asked about, not how they answer.
+//
+// It sees this package's own calls, which is where the roots were resolved. It
+// does not see inside the standard library, so it cannot rule out the per-entry
+// lstat os.ReadDir falls back to on a filesystem that reports no dirent type —
+// that condition is documented at listing() instead.
+type probeFS struct {
+	vfs.FS
+	mu       sync.Mutex
+	paths    []string
+	readDirs []string
+}
+
+func (p *probeFS) record(name string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.paths = append(p.paths, name)
+}
+
+func (p *probeFS) Stat(name string) (fs.FileInfo, error)  { p.record(name); return p.FS.Stat(name) }
+func (p *probeFS) Lstat(name string) (fs.FileInfo, error) { p.record(name); return p.FS.Lstat(name) }
+func (p *probeFS) Open(name string) (*os.File, error)     { p.record(name); return p.FS.Open(name) }
+
+func (p *probeFS) ReadDir(name string) ([]os.DirEntry, error) {
+	p.mu.Lock()
+	p.readDirs = append(p.readDirs, name)
+	p.mu.Unlock()
+	return p.FS.ReadDir(name)
+}
+
+// readDirCount reports how many times a directory was enumerated.
+func (p *probeFS) readDirCount(dir string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n := 0
+	for _, seen := range p.readDirs {
+		if seen == dir {
+			n++
+		}
+	}
+	return n
+}
+
+// touched reports the recorded paths that name the given entry.
+func (p *probeFS) touched(name string) []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var hits []string
+	for _, path := range p.paths {
+		if strings.Contains(strings.ToLower(path), name) {
+			hits = append(hits, path)
+		}
+	}
+	return hits
+}
+
+// installProbeFS routes the package's filesystem access through a recorder for
+// the duration of the test.
+func installProbeFS(t *testing.T) *probeFS {
+	t.Helper()
+	probe := &probeFS{FS: vfs.DefaultFS}
+	vfs.DefaultFS = probe
+	t.Cleanup(func() { vfs.DefaultFS = probe.FS })
+	return probe
+}
+
+// fakeHome returns a home directory holding real (unlinked) credential
+// directories, resolved so the test compares the same spelling the policy does.
+func fakeHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	home, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	for _, name := range []string{".ssh", ".aws", ".config"} {
+		if err := os.MkdirAll(filepath.Join(home, name), 0o700); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+	}
+	return home
+}
+
+// TestPolicy_TargetOutsideHomeLeavesCredentialDirsUntouched is the regression
+// test for #2726: validating a path that has nothing to do with the home
+// directory must not stat ~/.ssh and its neighbours. Security tooling that
+// guards those paths raises an alarm on every such access, and a download into
+// the working directory has no reason to cause one.
+func TestPolicy_TargetOutsideHomeLeavesCredentialDirsUntouched(t *testing.T) {
+	home := fakeHome(t)
+	outside := t.TempDir()
+	outside, _ = filepath.EvalSymlinks(outside)
+	target := filepath.Join(outside, "download.png")
+
+	group := newHomeDenyGroup(home)
+	probe := installProbeFS(t)
+	roots := group.rootsToCheck(target, target, ancestors(target))
+
+	if len(roots) != 0 {
+		t.Errorf("resolved %d deny roots for a target outside the home directory; want none", len(roots))
+	}
+	if hits := probe.touched(".ssh"); len(hits) != 0 {
+		t.Errorf("validation reached the SSH directory: %v", hits)
+	}
+	if hits := probe.touched(".aws"); len(hits) != 0 {
+		t.Errorf("validation reached the AWS directory: %v", hits)
+	}
+}
+
+// TestPolicy_TargetInsideHomeProbesOnlyItsOwnComponent covers the case Windows
+// makes the common one: there the working directory almost always sits under
+// C:\Users\<account>, so "inside the home directory" cannot by itself be the
+// reason to stat every credential directory. Only the component the target is
+// actually in may be resolved.
+func TestPolicy_TargetInsideHomeProbesOnlyItsOwnComponent(t *testing.T) {
+	home := fakeHome(t)
+	target := filepath.Join(home, "projects", "report.txt")
+
+	group := newHomeDenyGroup(home)
+	probe := installProbeFS(t)
+	roots := group.rootsToCheck(target, target, ancestors(target))
+
+	if len(roots) != 0 {
+		t.Errorf("resolved %d deny roots for a target in an ordinary home subdirectory; want none", len(roots))
+	}
+	if hits := probe.touched(".ssh"); len(hits) != 0 {
+		t.Errorf("validation reached the SSH directory: %v", hits)
+	}
+}
+
+// TestPolicy_TargetInsideDenyRootResolvesThatRoot pins the other half: a target
+// that really is inside a credential directory selects that root — and only
+// that one — so identity comparison still has the FileInfo it needs to see
+// through alternate spellings of the name.
+func TestPolicy_TargetInsideDenyRootResolvesThatRoot(t *testing.T) {
+	home := fakeHome(t)
+	target := filepath.Join(home, ".ssh", "id_rsa")
+
+	group := newHomeDenyGroup(home)
+	roots := group.rootsToCheck(target, target, ancestors(target))
+
+	if len(roots) != 1 || roots[0].label != "~/.ssh" {
+		t.Fatalf("selected %d roots %v for a target inside ~/.ssh; want exactly ~/.ssh", len(roots), labelsOf(roots))
+	}
+	if label, ok := identityLabel(ancestors(target), roots); !ok || label != "~/.ssh" {
+		t.Errorf("identity comparison lost the ~/.ssh root: label=%q ok=%v", label, ok)
+	}
+}
+
+func labelsOf(roots []policyEntry) []string {
+	labels := make([]string, 0, len(roots))
+	for _, e := range roots {
+		labels = append(labels, e.label)
+	}
+	return labels
+}
+
+// TestPolicy_LinkedCredentialRootIsStillResolved covers the case the skipping
+// rule has to keep: a deny root that is a symlink out of the home directory can
+// match a target that is outside it too, so it must still be resolved. The
+// directory listing is what reveals the link — without opening it.
+func TestPolicy_LinkedCredentialRootIsStillResolved(t *testing.T) {
+	home := t.TempDir()
+	home, _ = filepath.EvalSymlinks(home)
+	elsewhere := t.TempDir()
+	elsewhere, _ = filepath.EvalSymlinks(elsewhere)
+	if err := os.Symlink(elsewhere, filepath.Join(home, ".ssh")); err != nil {
+		t.Skipf("cannot create the probe symlink: %v", err)
+	}
+	target := filepath.Join(elsewhere, "id_rsa")
+
+	group := newHomeDenyGroup(home)
+	roots := group.rootsToCheck(target, target, ancestors(target))
+
+	if label, ok := matchRoots(target, target, roots); !ok || label != "~/.ssh" {
+		t.Errorf("a credential directory linked out of the home directory stopped matching: label=%q ok=%v", label, ok)
+	}
+}
+
+// TestPolicy_HardLinkedCredentialFileIsDenied covers the alias a directory
+// listing cannot show and symlink resolution cannot follow: a second name for
+// a credential file. "~/report.txt" and "~/.npmrc" are then one file, and only
+// identity comparison can say so — which means the roots that could be that
+// file have to be resolved, however innocent the name the caller used.
+func TestPolicy_HardLinkedCredentialFileIsDenied(t *testing.T) {
+	home := fakeHome(t)
+	npmrc := filepath.Join(home, ".npmrc")
+	if err := os.WriteFile(npmrc, []byte("//registry.npmjs.org/:_authToken=probe"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	alias := filepath.Join(home, "report.txt")
+	if err := os.Link(npmrc, alias); err != nil {
+		t.Skipf("cannot create the probe hard link: %v", err)
+	}
+
+	group := newHomeDenyGroup(home)
+	roots := group.rootsToCheck(alias, alias, ancestors(alias))
+
+	label, ok := identityLabel(ancestors(alias), roots)
+	if !ok || label != "~/.npmrc" {
+		t.Errorf("a hard link to ~/.npmrc was not denied: label=%q ok=%v roots=%v", label, ok, labelsOf(roots))
+	}
+}
+
+// TestPolicy_SinglyLinkedFileSkipsCredentialProbe pins the other side of the
+// link-count rule: an ordinary file carries one name, cannot be a credential
+// file under an alias, and so must not cause any of them to be resolved.
+func TestPolicy_SinglyLinkedFileSkipsCredentialProbe(t *testing.T) {
+	home := fakeHome(t)
+	report := filepath.Join(home, "report.txt")
+	if err := os.WriteFile(report, []byte("ordinary"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	group := newHomeDenyGroup(home)
+	probe := installProbeFS(t)
+	roots := group.rootsToCheck(report, report, ancestors(report))
+
+	if len(roots) != 0 {
+		t.Errorf("resolved %v for a singly-linked ordinary file; want none", labelsOf(roots))
+	}
+	if hits := probe.touched(".npmrc"); len(hits) != 0 {
+		t.Errorf("validation reached the npm credential file: %v", hits)
+	}
+}
+
+// TestPolicy_UnlistableHomeIsEnumeratedOnce pins the negative half of the
+// listing cache. A home directory that allows access by name while refusing
+// enumeration answers the classification question with an error, and that
+// answer has to be kept: re-reading the directory for every name on every
+// validation costs a syscall per name, and under access control it logs
+// another denial each time.
+func TestPolicy_UnlistableHomeIsEnumeratedOnce(t *testing.T) {
+	home := fakeHome(t)
+	npmrc := filepath.Join(home, ".npmrc")
+	if err := os.WriteFile(npmrc, []byte("token"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	alias := filepath.Join(home, "report.txt")
+	if err := os.Link(npmrc, alias); err != nil {
+		t.Skipf("cannot create the probe hard link: %v", err)
+	}
+	if err := os.Chmod(home, 0o300); err != nil {
+		t.Skipf("cannot drop read permission on the fixture home: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(home, 0o700) })
+	if _, err := os.ReadDir(home); err == nil {
+		t.Skip("the fixture home is still listable; the test needs an unreadable one")
+	}
+
+	group := newHomeDenyGroup(home)
+	probe := installProbeFS(t)
+	for range 2 {
+		group.rootsToCheck(alias, alias, ancestors(alias))
+	}
+
+	if n := probe.readDirCount(home); n != 1 {
+		t.Errorf("enumerated the home directory %d times across two validations; want 1", n)
+	}
+	// Fail-closed is not traded away for the caching: an unreadable directory
+	// still resolves its roots, so the hard link stays denied.
+	roots := group.rootsToCheck(alias, alias, ancestors(alias))
+	if label, ok := identityLabel(ancestors(alias), roots); !ok || label != "~/.npmrc" {
+		t.Errorf("hard link stopped being denied when the home could not be listed: label=%q ok=%v", label, ok)
 	}
 }
