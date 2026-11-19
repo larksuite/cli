@@ -128,6 +128,7 @@ metadata:
 - 软删除邮件：优先使用 `+message-trash`。ref: [`+message-trash`](references/lark-mail-message-trash.md)
 - 软删除会话：已有 `thread_id` 时可使用 `+thread-trash`。ref: [`+thread-trash`](references/lark-mail-thread-trash.md)
 - 收信规则：查看、创建、更新、删除、启停、排序自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
+- 邮箱允许/拒收发件人名单：查看、添加、删除个人邮箱级 allow/block sender，优先使用 `+allow-senders-*` / `+blocked-senders-*` shortcut。ref: [lark-mail-senders](references/lark-mail-senders.md)
 - 分享邮件到 IM：分享邮件或会话到群聊、个人会话。ref: [lark-mail-share-to-chat](references/lark-mail-share-to-chat.md)
 - 发送日程邀请邮件：在邮件中嵌入 `text/calendar` 日程邀请。ref: [lark-mail-calendar-invite](references/lark-mail-calendar-invite.md)
 - 编写复杂 HTML 正文：复杂 HTML、本地图片、安全不确定时读取规范或运行 `+lint-html`；普通正文无需预读。ref: [lark-mail-html](references/lark-mail-html.md)
@@ -299,3 +300,6 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+template-create`](references/lark-mail-template-create.md) | Create a personal mail template. Scans HTML <img src> local paths (reusing draft inline-image detection), uploads inline images and non-inline attachments to Drive, rewrites HTML to cid: references, and POSTs a Template payload to mail.user_mailbox.templates.create. |
 | [`+template-update`](references/lark-mail-template-update.md) | Update an existing mail template. Supports --inspect (read-only projection), --print-patch-template (prints a JSON skeleton for --patch-file), and flat flags (--set-subject / --set-name / etc). Internally it GETs the template, applies the patch, rewrites <img> local paths to cid: refs, and PUTs a full-replace update (no optimistic locking: last-write-wins). |
 | [`+lint-html`](references/lark-mail-lint-html.md) | Lint mail HTML body for compatibility / safety / Feishu-native rules. Returns warnings/errors and (default) auto-fixed HTML. Read-only: no draft, no API call. Use this BEFORE creating a draft to preview what the writing-path lint would change, or as a CI gate for static HTML templates. |
+| [`+allow-senders-list`](references/lark-mail-senders.md) / [`+blocked-senders-list`](references/lark-mail-senders.md) | List/search user mailbox allow/block sender entries. Read-only; supports `--mailbox`, `--keyword`, `--page-size`, and `--page-token`. |
+| [`+allow-senders-add`](references/lark-mail-senders.md) / [`+blocked-senders-add`](references/lark-mail-senders.md) | Add email addresses or domains to a user mailbox allow/block sender list. Uses `mail:user_mailbox.message:modify`; normalizes add inputs to lowercase and reports per-item API failures. |
+| [`+allow-senders-remove`](references/lark-mail-senders.md) / [`+blocked-senders-remove`](references/lark-mail-senders.md) | Remove email addresses or domains from a user mailbox allow/block sender list. Preserves the sender spelling supplied by the caller so historical mixed-case entries can be removed. |
