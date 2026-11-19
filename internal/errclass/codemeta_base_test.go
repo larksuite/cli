@@ -49,3 +49,21 @@ func TestLookupCodeMetaBaseTableCopyCodes(t *testing.T) {
 		})
 	}
 }
+
+func TestLookupCodeMetaBaseDashboardDisplayConfigCodes(t *testing.T) {
+	tests := []struct {
+		code    int
+		subtype errs.Subtype
+	}{
+		{code: 800004006, subtype: errs.SubtypeInvalidParameters},
+		{code: 800004045, subtype: errs.SubtypeFeatureNotAvailable},
+	}
+	for _, test := range tests {
+		t.Run(fmt.Sprint(test.code), func(t *testing.T) {
+			meta, ok := LookupCodeMeta(test.code)
+			if !ok || meta.Category != errs.CategoryAPI || meta.Subtype != test.subtype || meta.Retryable {
+				t.Fatalf("LookupCodeMeta(%d) = %#v, %v", test.code, meta, ok)
+			}
+		})
+	}
+}
