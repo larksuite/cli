@@ -12,7 +12,7 @@ import (
 )
 
 // CleanupUnreferencedSigningKey removes a CLI-managed key after its configuration
-// has been saved or removed. User-owned files and external signer keys are retained.
+// has been saved or removed. User-owned PEM files are retained.
 func CleanupUnreferencedSigningKey(ctx context.Context, kc keychain.KeychainAccess, previous core.AppConfig, current *core.MultiAppConfig) error {
 	if previous.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair {
 		return nil

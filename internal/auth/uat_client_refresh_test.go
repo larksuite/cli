@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keychain"
@@ -37,17 +36,6 @@ type refreshHTTPTestStep struct {
 	err         error
 	markWritten bool
 	beforeReply func() error
-}
-
-type failSecondAssertionSigner struct {
-	calls atomic.Int32
-}
-
-func (s *failSecondAssertionSigner) SignClientAssertion(context.Context, string, string, string) (string, string, error) {
-	if s.calls.Add(1) == 1 {
-		return jwt.ClientAssertionType, "assertion-first", nil
-	}
-	return "", "", errors.New("second assertion failed")
 }
 
 var invalidProofRefreshResponse = `{"code":` + strconv.Itoa(dpop.ClockSkewErrorCode) + `,"error":"` + dpop.InvalidProofOAuthError + `"}`
@@ -125,64 +113,28 @@ func requireRefreshProblem(t *testing.T, err error, category errs.Category, subt
 	return problem
 }
 
-func TestDoRefreshToken_ProviderResolutionFailsBeforeHTTP(t *testing.T) {
-	stored := newRefreshTestToken()
-	opts := newRefreshTestOptions(stored)
-	opts.AuthMethod = core.AuthMethodPrivateKeyJWTLocalKeyPair
-	opts.KeyProvider = core.KeylessProviderLarkSuite
-	opts.KeyLabel = "openclaw-lark"
-
-	previous := resolveExternalAssertionSigner
-	resolveExternalAssertionSigner = func(context.Context, string) (clientAssertionSigner, error) {
-		return nil, errors.New("provider unavailable")
-	}
-	t.Cleanup(func() { resolveExternalAssertionSigner = previous })
-
-	var calls atomic.Int32
-	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		calls.Add(1)
-		return nil, errors.New("must not send")
-	})}
-	refreshed, err := doRefreshToken(context.Background(), client, opts, stored)
-	if err == nil || refreshed != nil {
-		t.Fatalf("doRefreshToken() = (%v, %v), want provider error", refreshed, err)
-	}
-	if calls.Load() != 0 {
-		t.Fatalf("HTTP calls = %d, want 0", calls.Load())
-	}
-	if stored.RefreshToken != "refresh-old" {
-		t.Fatalf("refresh token mutated to %q", stored.RefreshToken)
-	}
-}
-
 func TestDoRefreshToken_UncertainRequestThenSigningFailurePreservesToken(t *testing.T) {
+	signer := newFakeAuthSigner(t)
 	setupStoredTokenTest(t)
 	stored := newRefreshTestToken()
 	if err := SetStoredToken(stored); err != nil {
 		t.Fatalf("SetStoredToken() error = %v", err)
 	}
 	opts := newRefreshTestOptions(stored)
-	opts.AuthMethod = core.AuthMethodPrivateKeyJWTLocalKeyPair
-	opts.KeyProvider = core.KeylessProviderLarkSuite
-	opts.KeyLabel = "openclaw-lark"
-
-	signer := &failSecondAssertionSigner{}
-	previous := resolveExternalAssertionSigner
-	resolveExternalAssertionSigner = func(context.Context, string) (clientAssertionSigner, error) {
-		return signer, nil
-	}
-	t.Cleanup(func() { resolveExternalAssertionSigner = previous })
+	opts.AuthMethod, opts.Signer, opts.KeyLabel = core.AuthMethodPrivateKeyJWTLocalKeyPair, signer, "app-key"
+	signErr := errors.New("second assertion failed")
 
 	var calls atomic.Int32
 	client := scriptedRefreshClient(t, []refreshHTTPTestStep{{
 		err: errors.New("connection lost after write"), markWritten: true,
+		beforeReply: func() error {
+			signer.signErr = signErr
+			return nil
+		},
 	}}, &calls)
 	refreshed, err := doRefreshToken(context.Background(), client, opts, stored)
-	if err == nil || refreshed != nil {
-		t.Fatalf("doRefreshToken() = (%v, %v), want signing error", refreshed, err)
-	}
-	if calls.Load() != 1 || signer.calls.Load() != 2 {
-		t.Fatalf("HTTP calls=%d sign calls=%d, want 1 and 2", calls.Load(), signer.calls.Load())
+	if !errors.Is(err, signErr) || refreshed != nil || calls.Load() != 1 {
+		t.Fatalf("doRefreshToken() = (%v, %v), HTTP calls=%d, want signing error after one request", refreshed, err, calls.Load())
 	}
 	if IsNeedUserAuthorizationError(err) {
 		t.Fatalf("signing failure replaced with need-user-authorization: %v", err)

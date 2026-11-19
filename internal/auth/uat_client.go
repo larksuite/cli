@@ -37,7 +37,6 @@ type UATCallOptions struct {
 	DPoPKeyStore *dpop.KeyStore
 	AuthMethod   string
 	KeyLabel     string
-	KeyProvider  string
 	Signer       keysigner.Signer
 }
 
@@ -71,7 +70,6 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer, signer keysigner.S
 		DPoPKeyStore: dpop.NewKeyStore(nil),
 		AuthMethod:   cfg.AuthMethod,
 		KeyLabel:     cfg.KeyLabel,
-		KeyProvider:  cfg.KeyProvider,
 		Signer:       signer,
 	}
 }
@@ -338,16 +336,11 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 		return nil, err
 	}
 	clientAuth := ClientAuth{
-		AppID:       opts.AppId,
-		AppSecret:   opts.AppSecret,
-		AuthMethod:  opts.AuthMethod,
-		Signer:      opts.Signer,
-		KeyLabel:    opts.KeyLabel,
-		KeyProvider: opts.KeyProvider,
-	}
-	clientAuth, err := clientAuth.ResolveSigner(ctx)
-	if err != nil {
-		return nil, err
+		AppID:      opts.AppId,
+		AppSecret:  opts.AppSecret,
+		AuthMethod: opts.AuthMethod,
+		Signer:     opts.Signer,
+		KeyLabel:   opts.KeyLabel,
 	}
 	// Once token rotation starts, finish it even if the caller disconnects.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uatRefreshTimeout)

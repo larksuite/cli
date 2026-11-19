@@ -8,6 +8,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 func TestTokenTypeString(t *testing.T) {
@@ -58,8 +59,8 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 		SupportedIdentities: 3,
 		AuthMethod:          core.AuthMethodPrivateKeyJWTLocalKeyPair,
 		KeySource:           core.KeySourceTEE,
-		KeyLabel:            "openclaw-lark",
-		KeyProvider:         core.KeylessProviderLarkSuite,
+		KeyLabel:            "app-key",
+		KeyProvider:         keysigner.SoftwareSignerName,
 	}
 
 	acct := AccountFromCliConfig(cfg)

@@ -17,7 +17,7 @@ func TestNewUATCallOptions(t *testing.T) {
 		AppSecret:  "secret",
 		Brand:      core.BrandLark,
 		UserOpenId: "ou_test",
-		AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeyLabel: "key-1", KeyProvider: core.KeylessProviderLarkSuite,
+		AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeyLabel: "key-1",
 		DPoPMode: core.DPoPModeRequired, CredentialSource: core.CredentialSourceLocal,
 	}
 	errOut := &bytes.Buffer{}
@@ -40,7 +40,7 @@ func TestNewUATCallOptions(t *testing.T) {
 	if opts.ErrOut != errOut {
 		t.Error("ErrOut not set correctly")
 	}
-	if opts.AuthMethod != cfg.AuthMethod || opts.KeyLabel != cfg.KeyLabel || opts.KeyProvider != cfg.KeyProvider || opts.Signer != signer {
+	if opts.AuthMethod != cfg.AuthMethod || opts.KeyLabel != cfg.KeyLabel || opts.Signer != signer {
 		t.Fatal("lost signing-key configuration")
 	}
 	if opts.DPoPMode != cfg.DPoPMode || opts.DPoPKeyStore == nil {

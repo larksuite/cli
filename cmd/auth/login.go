@@ -45,12 +45,12 @@ type LoginOptions struct {
 
 var pollDeviceToken = larkauth.PollDeviceToken
 
-func resolveClientAuth(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) (larkauth.ClientAuth, error) {
+func resolveClientAuth(f *cmdutil.Factory, cfg *core.CliConfig) (larkauth.ClientAuth, error) {
 	signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
 	if err != nil {
 		return larkauth.ClientAuth{}, err
 	}
-	return larkauth.ClientAuthFromConfig(cfg, signer).ResolveSigner(ctx)
+	return larkauth.ClientAuthFromConfig(cfg, signer), nil
 }
 
 // NewCmdAuthLogin creates the auth login subcommand.
@@ -335,7 +335,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	if err != nil {
 		return err
 	}
-	clientAuth, err := resolveClientAuth(opts.Ctx, f, config)
+	clientAuth, err := resolveClientAuth(f, config)
 	if err != nil {
 		if errs.IsTyped(err) {
 			return err
@@ -512,7 +512,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	if err != nil {
 		return err
 	}
-	clientAuth, err := resolveClientAuth(opts.Ctx, f, config)
+	clientAuth, err := resolveClientAuth(f, config)
 	if err != nil {
 		if errs.IsTyped(err) {
 			return err

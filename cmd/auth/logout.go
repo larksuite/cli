@@ -98,7 +98,7 @@ func authLogoutRun(opts *LogoutOptions) error {
 	cfg, authErr := core.ResolveConfigFromMulti(multi, f.Keychain, f.Invocation.Profile, f.Invocation.ProfileSource)
 	var clientAuth larkauth.ClientAuth
 	if authErr == nil {
-		clientAuth, authErr = resolveClientAuth(ctx, f, cfg)
+		clientAuth, authErr = resolveClientAuth(f, cfg)
 	}
 
 	for _, user := range app.Users {

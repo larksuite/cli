@@ -6,7 +6,6 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -87,26 +86,24 @@ func TestRevokeToken_MissingSigningKeyDoesNotUseSecret(t *testing.T) {
 	}
 }
 
-func TestRevokeToken_ExternalSigner(t *testing.T) {
-	helper := &fakeExternalAssertionSigner{}
+func TestRevokeToken_PrivateKeyJWT(t *testing.T) {
 	ca := ClientAuth{AppID: "cli_revoke", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		KeyProvider: core.KeylessProviderLarkSuite, KeyLabel: "external-key", externalSigner: helper}
-	client := &http.Client{Transport: revokeRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if err := req.ParseForm(); err != nil {
-			t.Fatal(err)
-		}
-		if req.PostForm.Get("client_assertion") != fmt.Sprintf("external.jwt.%d", helper.calls) || req.PostForm.Has("client_secret") ||
-			req.PostForm.Get("client_assertion_type") != jwt.ClientAssertionType || req.Header.Get("Authorization") != "" || req.Header.Get("DPoP") != "" {
-			t.Fatal("external assertion was not used for revocation")
-		}
-		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
-	})}
+		KeyLabel: "app-key", Signer: newFakeAuthSigner(t)}
 	for _, brand := range []core.LarkBrand{core.BrandFeishu, core.BrandLark} {
+		client := &http.Client{Transport: revokeRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if err := req.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			claims := jwtTestPart(t, req.PostForm.Get("client_assertion"), 1)
+			if claims["iss"] != ca.AppID || claims["aud"] != core.ClientAssertionAudience(brand) ||
+				req.PostForm.Get("client_assertion_type") != jwt.ClientAssertionType || req.PostForm.Has("client_secret") ||
+				req.Header.Get("Authorization") != "" || req.Header.Get("DPoP") != "" {
+				t.Fatal("unexpected private-key JWT revocation request")
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
+		})}
 		if err := RevokeToken(context.Background(), client, ca, brand, "token", "access_token"); err != nil {
 			t.Fatal(err)
-		}
-		if helper.keyRef != ca.KeyLabel || helper.clientID != ca.AppID || helper.audience != core.ClientAssertionAudience(brand) {
-			t.Fatalf("unexpected signer arguments: %+v", helper)
 		}
 	}
 }

@@ -70,13 +70,8 @@ type tatDPoPAttempt struct {
 //
 // The caller owns the context timeout.
 func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, ca auth.ClientAuth, mode core.DPoPMode) (*FetchedToken, error) {
-	var err error
-	ca, err = ca.ResolveSigner(ctx)
-	if err != nil {
-		return nil, err
-	}
 	var result *FetchedToken
-	err = auth.WithTATIssuanceLock(ctx, ca.AppID, func() error {
+	err := auth.WithTATIssuanceLock(ctx, ca.AppID, func() error {
 		var issueErr error
 		result, issueErr = fetchTAT(ctx, httpClient, brand, ca, mode, nil)
 		return issueErr

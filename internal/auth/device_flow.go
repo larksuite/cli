@@ -278,10 +278,6 @@ func pollDeviceToken(ctx context.Context, httpClient *http.Client, ca ClientAuth
 
 	endpoints := ResolveOAuthEndpoints(brand)
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
-	ca, err := ca.ResolveSigner(ctx)
-	if err != nil {
-		return nil, err
-	}
 	currentInterval := interval
 	attempts := 0
 	invalidProofs := 0

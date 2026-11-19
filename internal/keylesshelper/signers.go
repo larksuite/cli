@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
+// Package keylesshelper manages local application signing keys and referenced PEM files.
 package keylesshelper
 
 import (

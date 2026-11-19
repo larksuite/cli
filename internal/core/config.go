@@ -54,8 +54,6 @@ type KeyRef struct {
 const (
 	KeySourceTEE  = "tee"
 	KeySourceFile = "file"
-	// KeylessProviderLarkSuite identifies the external OpenClaw signer.
-	KeylessProviderLarkSuite = "larksuite.keyless"
 )
 
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
@@ -369,12 +367,10 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		provider := app.KeyRef.Provider
 		switch app.KeyRef.Source {
 		case KeySourceTEE:
-			if provider != KeylessProviderLarkSuite &&
-				provider != keysigner.SoftwareSignerName &&
-				!keysigner.IsPlatformSignerName(provider) {
+			if provider != keysigner.SoftwareSignerName && !keysigner.IsPlatformSignerName(provider) {
 				return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
 					"unknown keyless signer provider %q", provider).
-					WithHint("use a signer provider recorded by config init, or %s for an external signer", KeylessProviderLarkSuite)
+					WithHint("use a signer provider recorded by config init")
 			}
 		case KeySourceFile:
 			if provider != "" {

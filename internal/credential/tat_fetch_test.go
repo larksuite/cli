@@ -187,14 +187,12 @@ func privateKeyJWTTestClient(t *testing.T) auth.ClientAuth {
 
 func TestFetchTATRequiresValidSignerBeforeHTTP(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	for _, provider := range []string{"", "unknown.provider"} {
-		rt := &stubRoundTripper{}
-		_, err := FetchTAT(context.Background(), &http.Client{Transport: rt}, core.BrandFeishu, auth.ClientAuth{
-			AppID: "cli_app", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeyProvider: provider, KeyLabel: "key",
-		}, core.DPoPModeDisabled)
-		if err == nil || rt.gotReq != nil {
-			t.Fatalf("provider %q: expected failure before token request", provider)
-		}
+	rt := &stubRoundTripper{}
+	_, err := FetchTAT(context.Background(), &http.Client{Transport: rt}, core.BrandFeishu, auth.ClientAuth{
+		AppID: "cli_app", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeyLabel: "key",
+	}, core.DPoPModeDisabled)
+	if err == nil || rt.gotReq != nil {
+		t.Fatal("missing signer must fail before the token request")
 	}
 }
 

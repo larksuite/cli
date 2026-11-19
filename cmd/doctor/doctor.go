@@ -23,7 +23,6 @@ import (
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/keylesshelper"
-	"github.com/larksuite/cli/internal/keylessprovider"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -207,18 +206,6 @@ func teeSignerCheck(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig
 			return fail("tee_signer", "private-key file is unusable", err.Error())
 		}
 		return pass("tee_signer", fmt.Sprintf("private-key file available (kid %s)", kid))
-	}
-	if cfg.KeyProvider == core.KeylessProviderLarkSuite {
-		helper, err := keylessprovider.Resolve(ctx, cfg.KeyProvider)
-		if err != nil {
-			return fail("tee_signer", "OpenClaw keyless signer is unavailable",
-				fmt.Sprintf("repair or reinstall the OpenClaw plugin and platform signer: %v", err))
-		}
-		if err := helper.Probe(ctx, cfg.KeyLabel); err != nil {
-			return fail("tee_signer", "OpenClaw keyless signer probe failed",
-				fmt.Sprintf("repair or reinstall the OpenClaw plugin and platform signer: %v", err))
-		}
-		return pass("tee_signer", "OpenClaw keyless signer available")
 	}
 	signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
 	if err != nil {

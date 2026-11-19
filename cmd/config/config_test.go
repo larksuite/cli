@@ -257,7 +257,6 @@ func TestPersistInitResultCleansReplacedSigningKey(t *testing.T) {
 		{name: "same key", newLabel: "old-key"},
 		{name: "shared by another app", profile: "prod", sharedAppID: "cli_other"},
 		{name: "user-owned file", oldSource: core.KeySourceFile},
-		{name: "external provider", oldProvider: core.KeylessProviderLarkSuite},
 		{name: "malformed provider", oldProvider: " " + keysigner.SoftwareSignerName},
 		{name: "save fails", profile: "cli_test", saveFailure: true},
 		{name: "keychain locked", keychainLocked: true, wantDeleted: true},

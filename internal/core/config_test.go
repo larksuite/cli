@@ -104,7 +104,6 @@ func TestSigningKeyRefConfigJSON(t *testing.T) {
 		`{"source":"tee","provider":"macos-keychain","id":"managed-key"}`,
 		`{"source":"tee","provider":"macos-secure-enclave","id":"enclave-key"}`,
 		`{"source":"file","id":` + string(fileID) + `}`,
-		`{"source":"tee","provider":"larksuite.keyless","id":"provider-key"}`,
 	} {
 		var ref KeyRef
 		require.NoError(t, json.Unmarshal([]byte(input), &ref))
@@ -214,7 +213,7 @@ func TestResolveConfigFromMulti_CarriesLang(t *testing.T) {
 
 func TestResolveSigningKeyProviders(t *testing.T) {
 	for _, provider := range []string{
-		KeylessProviderLarkSuite, keysigner.SoftwareSignerName,
+		keysigner.SoftwareSignerName,
 		keysigner.MacOSKeychainSignerName, keysigner.MacOSSecureEnclaveSignerName,
 		keysigner.WindowsPlatformKSPSignerName, keysigner.WindowsSoftwareKSPSignerName, keysigner.LinuxTPMSignerName,
 	} {
@@ -240,11 +239,11 @@ func TestResolveConfigRejectsInvalidKeyRef(t *testing.T) {
 		{Source: KeySourceTEE, ID: "key", Provider: "unknown.provider"},
 		{Source: KeySourceTEE, ID: "key", Provider: " macos-keychain "},
 		{Source: KeySourceTEE, ID: "key", Provider: "MacOS-Keychain"},
-		{Source: KeySourceTEE, ID: "key", Provider: "larksuite.keyless "},
+		{Source: KeySourceTEE, ID: "key", Provider: "larksuite.keyless"},
 		{Source: KeySourceFile},
 		{Source: KeySourceFile, ID: "./private.pem"},
 		{Source: KeySourceFile, ID: "~/private.pem"},
-		{Source: KeySourceFile, ID: file, Provider: KeylessProviderLarkSuite},
+		{Source: KeySourceFile, ID: file, Provider: keysigner.SoftwareSignerName},
 		{Source: KeySourceFile, ID: file, Provider: " "},
 	} {
 		raw := &MultiAppConfig{Apps: []AppConfig{{AppId: "cli_pk", AuthMethod: AuthMethodPrivateKeyJWTLocalKeyPair, KeyRef: &ref}}}

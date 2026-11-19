@@ -15,32 +15,17 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/keylesshelper"
-	"github.com/larksuite/cli/internal/keylessprovider"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // ClientAuth describes how to authenticate the OAuth client at the token
 // endpoint: with a client_secret (default) or a signed client_assertion.
 type ClientAuth struct {
-	AppID       string
-	AppSecret   string
-	AuthMethod  string // "" == client_secret; private_key_jwt_local_keypair
-	Signer      keysigner.Signer
-	KeyLabel    string
-	KeyProvider string
-
-	// externalSigner is a verified provider snapshot prepared once for a
-	// multi-request operation (for example a device-flow poll loop). The helper
-	// still re-verifies its binary and mints a fresh assertion on every call.
-	externalSigner clientAssertionSigner
-}
-
-type clientAssertionSigner interface {
-	SignClientAssertion(context.Context, string, string, string) (string, string, error)
-}
-
-var resolveExternalAssertionSigner = func(ctx context.Context, provider string) (clientAssertionSigner, error) {
-	return keylessprovider.Resolve(ctx, provider)
+	AppID      string
+	AppSecret  string
+	AuthMethod string // "" == client_secret; private_key_jwt_local_keypair
+	Signer     keysigner.Signer
+	KeyLabel   string
 }
 
 // ResolveConfigSigner resolves the host-local credential signer required by cfg.
@@ -50,9 +35,6 @@ func ResolveConfigSigner(cfg *core.CliConfig, kc keychain.KeychainAccess) (keysi
 	}
 	switch cfg.KeySource {
 	case core.KeySourceTEE:
-		if cfg.KeyProvider == core.KeylessProviderLarkSuite {
-			return nil, nil
-		}
 		return keylesshelper.ResolveSigner(cfg.KeyProvider, kc)
 	case core.KeySourceFile:
 		return &keylesshelper.FileSigner{}, nil
@@ -68,55 +50,12 @@ func ClientAuthFromConfig(cfg *core.CliConfig, signer keysigner.Signer) ClientAu
 		return ClientAuth{}
 	}
 	return ClientAuth{
-		AppID:       cfg.AppID,
-		AppSecret:   cfg.AppSecret,
-		AuthMethod:  cfg.AuthMethod,
-		KeyLabel:    cfg.KeyLabel,
-		KeyProvider: cfg.KeyProvider,
-		Signer:      signer,
+		AppID:      cfg.AppID,
+		AppSecret:  cfg.AppSecret,
+		AuthMethod: cfg.AuthMethod,
+		KeyLabel:   cfg.KeyLabel,
+		Signer:     signer,
 	}
-}
-
-// ResolveSigner prepares an external private-key JWT signer for reuse within
-// one operation and returns the prepared copy. Built-in signers and
-// client_secret authentication need no provider discovery. Keeping the
-// resolved helper on ClientAuth separates expensive provider discovery from
-// assertion minting: callers may reuse the returned value, while every call to
-// ApplyClientAssertion still asks the signer for a fresh assertion.
-func (c ClientAuth) ResolveSigner(ctx context.Context) (ClientAuth, error) {
-	if c.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair || c.KeyProvider == "" ||
-		c.KeyProvider == keysigner.SoftwareSignerName || keysigner.IsPlatformSignerName(c.KeyProvider) {
-		return c, nil
-	}
-	if c.KeyProvider != core.KeylessProviderLarkSuite {
-		return c, fmt.Errorf("unsupported %s provider %q", c.AuthMethod, c.KeyProvider)
-	}
-	if c.externalSigner != nil {
-		return c, nil
-	}
-	helper, err := resolveExternalAssertionSigner(ctx, c.KeyProvider)
-	if err != nil {
-		return c, err
-	}
-	if helper == nil {
-		return c, fmt.Errorf("%s provider %q resolved without a signer", c.AuthMethod, c.KeyProvider)
-	}
-	c.externalSigner = helper
-	return c, nil
-}
-
-// signClientAssertion signs with an imported or managed key.
-func signClientAssertion(ctx context.Context, signer keysigner.Signer, keyLabel, clientID, audience string) (string, string, error) {
-	if signer == nil {
-		return "", "", fmt.Errorf("private-key JWT requires a signer")
-	}
-	// Imported PEM keys have no managed lifecycle or shared native keychain.
-	if file, ok := signer.(*keylesshelper.FileSigner); ok {
-		assertion, err := file.SignClientAssertion(ctx, keysigner.KeyRef{Label: keyLabel}, clientID, audience, time.Now())
-		return jwt.ClientAssertionType, assertion, err
-	}
-	assertion, err := keylesshelper.SignClientAssertionContext(ctx, signer, keyLabel, clientID, audience, time.Now())
-	return jwt.ClientAssertionType, assertion, err
 }
 
 // ApplyClientAssertion adds client_assertion(+type) to a token-endpoint form
@@ -127,22 +66,16 @@ func (c ClientAuth) ApplyClientAssertion(ctx context.Context, form url.Values, a
 	if c.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair {
 		return false, nil
 	}
-	var err error
-	if c.KeyProvider != "" {
-		c, err = c.ResolveSigner(ctx)
-		if err != nil {
-			return false, err
-		}
-	}
-	helper := c.externalSigner
-	if helper == nil && c.Signer == nil {
+	if c.Signer == nil {
 		return false, fmt.Errorf("%s requires a key signer, but none is available on this build", c.AuthMethod)
 	}
-	var assertionType, assertion string
-	if helper != nil {
-		assertionType, assertion, err = helper.SignClientAssertion(ctx, c.KeyLabel, c.AppID, audience)
+	var assertion string
+	var err error
+	// Imported PEM keys have no managed lifecycle or shared native keychain.
+	if file, ok := c.Signer.(*keylesshelper.FileSigner); ok {
+		assertion, err = file.SignClientAssertion(ctx, keysigner.KeyRef{Label: c.KeyLabel}, c.AppID, audience, time.Now())
 	} else {
-		assertionType, assertion, err = signClientAssertion(ctx, c.Signer, c.KeyLabel, c.AppID, audience)
+		assertion, err = keylesshelper.SignClientAssertionContext(ctx, c.Signer, c.KeyLabel, c.AppID, audience, time.Now())
 	}
 	if err != nil {
 		if _, typed := errs.ProblemOf(err); !typed && errors.Is(err, keysigner.ErrKeyNotFound) {
@@ -153,7 +86,7 @@ func (c ClientAuth) ApplyClientAssertion(ctx context.Context, form url.Values, a
 		}
 		return false, err
 	}
-	form.Set("client_assertion_type", assertionType)
+	form.Set("client_assertion_type", jwt.ClientAssertionType)
 	form.Set("client_assertion", assertion)
 	return true, nil
 }

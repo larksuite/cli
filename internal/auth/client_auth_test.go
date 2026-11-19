@@ -90,17 +90,6 @@ func (*fakeAuthSigner) Name() string { return keysigner.MacOSKeychainSignerName 
 
 func (*fakeAuthSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL3 }
 
-type fakeExternalAssertionSigner struct {
-	keyRef, clientID, audience string
-	calls                      int
-}
-
-func (f *fakeExternalAssertionSigner) SignClientAssertion(_ context.Context, keyRef, clientID, audience string) (string, string, error) {
-	f.keyRef, f.clientID, f.audience = keyRef, clientID, audience
-	f.calls++
-	return jwt.ClientAssertionType, fmt.Sprintf("external.jwt.%d", f.calls), nil
-}
-
 func newFakeAuthSigner(t *testing.T) *fakeAuthSigner {
 	t.Helper()
 	root := t.TempDir()
@@ -225,49 +214,6 @@ func TestClientAuthSigningKeyMissing(t *testing.T) {
 	}
 }
 
-func TestClientAuth_ApplyClientAssertion_UnknownProviderFailsClosed(t *testing.T) {
-	ca := ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: newFakeAuthSigner(t), KeyLabel: "k", KeyProvider: "evil.provider"}
-	form := url.Values{}
-	used, err := ca.ApplyClientAssertion(context.Background(), form, "aud")
-	if err == nil || used || form.Has("client_assertion") {
-		t.Fatalf("unsupported provider %q: used=%v err=%v", ca.KeyProvider, used, err)
-	}
-}
-
-func TestClientAuthReusesExternalSignerAndRemintsAssertions(t *testing.T) {
-	fake := &fakeExternalAssertionSigner{}
-	resolveCalls := 0
-	previous := resolveExternalAssertionSigner
-	resolveExternalAssertionSigner = func(_ context.Context, provider string) (clientAssertionSigner, error) {
-		resolveCalls++
-		if provider != core.KeylessProviderLarkSuite {
-			t.Fatalf("unexpected provider %q", provider)
-		}
-		return fake, nil
-	}
-	t.Cleanup(func() { resolveExternalAssertionSigner = previous })
-
-	cfg := &core.CliConfig{AppID: "cli_external", AppSecret: "must-not-send", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeyLabel: "openclaw-lark", KeyProvider: core.KeylessProviderLarkSuite}
-	original := ClientAuthFromConfig(cfg, newFakeAuthSigner(t))
-	prepared, err := original.ResolveSigner(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	forms := []url.Values{{}, {}}
-	for _, form := range forms {
-		used, err := prepared.ApplyClientAssertion(context.Background(), form, "open.feishu.cn")
-		if err != nil || !used || form.Has("client_secret") || form.Get("client_assertion") != fmt.Sprintf("external.jwt.%d", fake.calls) {
-			t.Fatalf("external assertion: used=%t err=%v", used, err)
-		}
-	}
-	if fake.keyRef != cfg.KeyLabel || fake.clientID != cfg.AppID || fake.audience != "open.feishu.cn" {
-		t.Fatalf("unexpected external signer arguments: %+v", fake)
-	}
-	if resolveCalls != 1 || fake.calls != 2 || forms[0].Get("client_assertion") == forms[1].Get("client_assertion") {
-		t.Fatalf("resolveCalls=%d signCalls=%d assertions=(%q,%q)", resolveCalls, fake.calls, forms[0].Get("client_assertion"), forms[1].Get("client_assertion"))
-	}
-}
-
 func TestResolveConfigSignerRestoresRegistrationBackends(t *testing.T) {
 	cfg := &core.CliConfig{AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeySource: core.KeySourceTEE, KeyLabel: "key-1"}
 	kc := softwareTestKeychain{}
@@ -276,9 +222,6 @@ func TestResolveConfigSignerRestoresRegistrationBackends(t *testing.T) {
 		resolved, err := ResolveConfigSigner(cfg, kc)
 		if err != nil || resolved == nil || resolved.Name() != cfg.KeyProvider {
 			t.Fatalf("resolve %q: got %v, err = %v", cfg.KeyProvider, resolved, err)
-		}
-		if _, err := ClientAuthFromConfig(cfg, resolved).ResolveSigner(context.Background()); err != nil {
-			t.Fatalf("prepare %q: %v", cfg.KeyProvider, err)
 		}
 	}
 
