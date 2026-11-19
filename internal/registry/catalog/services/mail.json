@@ -471,6 +471,514 @@
         }
       }
     },
+    "user_mailbox.allow_senders": {
+      "methods": {
+        "batch_create": {
+          "id": "user_mailbox.allow_sender.batch_create",
+          "path": "user_mailboxes/{user_mailbox_id}/allow_senders/batch_create",
+          "httpMethod": "POST",
+          "description": "Add email addresses or domains to a user's allow list",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "User email address. Use me for the current user when calling with a user access token",
+              "example": "me"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id"
+          ],
+          "requestBody": {
+            "items": {
+              "type": "array",
+              "description": "Senders to add to the allow list",
+              "required": true,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "Email address or domain",
+                  "required": true,
+                  "example": "trusted.example.com"
+                },
+                "sender_type": {
+                  "type": "integer",
+                  "description": "Sender type: 1 for an email address, 2 for a domain",
+                  "required": true,
+                  "example": 2,
+                  "options": [
+                    {
+                      "value": 1,
+                      "description": "Email address"
+                    },
+                    {
+                      "value": 2,
+                      "description": "Domain"
+                    }
+                  ],
+                  "enum": [
+                    1,
+                    2
+                  ],
+                  "enumName": "UserSenderType",
+                  "max": "2",
+                  "min": "1"
+                }
+              }
+            }
+          },
+          "responseBody": {
+            "failed_items": {
+              "type": "array",
+              "description": "Senders that could not be added",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "Email address or domain",
+                  "required": false,
+                  "example": "trusted.example.com"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "description": "Failure reason",
+                  "required": false,
+                  "example": "INVALID",
+                  "enum": [
+                    "INVALID",
+                    "SELF_ADDRESS",
+                    "SELF_DOMAIN",
+                    "CONFLICT_BLOCK",
+                    "QUOTA_EXCEEDED"
+                  ],
+                  "enumName": "UserSenderFailedReasonCode"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_create&project=mail&resource=user_mailbox.allow_sender&version=v1"
+        },
+        "batch_remove": {
+          "id": "user_mailbox.allow_sender.batch_remove",
+          "path": "user_mailboxes/{user_mailbox_id}/allow_senders/batch_remove",
+          "httpMethod": "POST",
+          "description": "Remove email addresses or domains from a user's allow list",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "User email address. Use me for the current user when calling with a user access token",
+              "example": "me"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id"
+          ],
+          "requestBody": {
+            "senders": {
+              "type": "array",
+              "description": "Email addresses or domains to remove",
+              "required": true,
+              "example": [
+                "trusted.example.com"
+              ]
+            }
+          },
+          "responseBody": {
+            "failed_items": {
+              "type": "array",
+              "description": "Senders that could not be removed",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "Email address or domain",
+                  "required": false,
+                  "example": "trusted.example.com"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "description": "Failure reason",
+                  "required": false,
+                  "example": "INVALID",
+                  "enum": [
+                    "INVALID",
+                    "SELF_ADDRESS",
+                    "SELF_DOMAIN",
+                    "CONFLICT_BLOCK",
+                    "QUOTA_EXCEEDED"
+                  ],
+                  "enumName": "UserSenderFailedReasonCode"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_remove&project=mail&resource=user_mailbox.allow_sender&version=v1"
+        },
+        "list": {
+          "id": "user_mailbox.allow_sender.list",
+          "path": "user_mailboxes/{user_mailbox_id}/allow_senders",
+          "httpMethod": "GET",
+          "description": "List or search a user's allowed email addresses and domains",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "User email address. Use me for the current user when calling with a user access token",
+              "example": "me"
+            },
+            "keyword": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Filter records by email address or domain",
+              "example": "trusted.example.com"
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "Maximum number of records to return",
+              "example": 20
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Pagination token returned by the previous request",
+              "example": "next_page_token"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id",
+            "keyword",
+            "page_size",
+            "page_token"
+          ],
+          "responseBody": {
+            "has_more": {
+              "type": "boolean",
+              "description": "Whether more records are available",
+              "required": false,
+              "example": false
+            },
+            "page_token": {
+              "type": "string",
+              "description": "Pagination token for the next request",
+              "required": false,
+              "example": "next_page_token"
+            },
+            "items": {
+              "type": "array",
+              "description": "Allowed sender records",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "Email address or domain",
+                  "required": false,
+                  "example": "trusted.example.com"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Record creation time",
+                  "required": false,
+                  "example": "1716279320000"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:readonly",
+            "mail:user_mailbox.message:modify"
+          ],
+          "requiredScopes": [
+            "mail:user_mailbox.message:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.allow_sender&version=v1"
+        }
+      }
+    },
+    "user_mailbox.blocked_senders": {
+      "methods": {
+        "batch_create": {
+          "id": "user_mailbox.blocked_sender.batch_create",
+          "path": "user_mailboxes/{user_mailbox_id}/blocked_senders/batch_create",
+          "httpMethod": "POST",
+          "description": "Add email addresses or domains to a user's block list",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "User email address. Use me for the current user when calling with a user access token",
+              "example": "me"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id"
+          ],
+          "requestBody": {
+            "items": {
+              "type": "array",
+              "description": "Senders to add to the block list",
+              "required": true,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "Email address or domain",
+                  "required": true,
+                  "example": "spam@example.com"
+                },
+                "sender_type": {
+                  "type": "integer",
+                  "description": "Sender type: 1 for an email address, 2 for a domain",
+                  "required": true,
+                  "example": 1,
+                  "options": [
+                    {
+                      "value": 1,
+                      "description": "Email address"
+                    },
+                    {
+                      "value": 2,
+                      "description": "Domain"
+                    }
+                  ],
+                  "enum": [
+                    1,
+                    2
+                  ],
+                  "enumName": "UserSenderType",
+                  "max": "2",
+                  "min": "1"
+                }
+              }
+            }
+          },
+          "responseBody": {
+            "failed_items": {
+              "type": "array",
+              "description": "Senders that could not be added",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "Email address or domain",
+                  "required": false,
+                  "example": "spam@example.com"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "description": "Failure reason",
+                  "required": false,
+                  "example": "INVALID",
+                  "enum": [
+                    "INVALID",
+                    "SELF_ADDRESS",
+                    "SELF_DOMAIN",
+                    "CONFLICT_BLOCK",
+                    "QUOTA_EXCEEDED"
+                  ],
+                  "enumName": "UserSenderFailedReasonCode"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_create&project=mail&resource=user_mailbox.blocked_sender&version=v1"
+        },
+        "batch_remove": {
+          "id": "user_mailbox.blocked_sender.batch_remove",
+          "path": "user_mailboxes/{user_mailbox_id}/blocked_senders/batch_remove",
+          "httpMethod": "POST",
+          "description": "Remove email addresses or domains from a user's block list",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "User email address. Use me for the current user when calling with a user access token",
+              "example": "me"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id"
+          ],
+          "requestBody": {
+            "senders": {
+              "type": "array",
+              "description": "Email addresses or domains to remove",
+              "required": true,
+              "example": [
+                "spam@example.com"
+              ]
+            }
+          },
+          "responseBody": {
+            "failed_items": {
+              "type": "array",
+              "description": "Senders that could not be removed",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "Email address or domain",
+                  "required": false,
+                  "example": "spam@example.com"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "description": "Failure reason",
+                  "required": false,
+                  "example": "INVALID",
+                  "enum": [
+                    "INVALID",
+                    "SELF_ADDRESS",
+                    "SELF_DOMAIN",
+                    "CONFLICT_BLOCK",
+                    "QUOTA_EXCEEDED"
+                  ],
+                  "enumName": "UserSenderFailedReasonCode"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:modify"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_remove&project=mail&resource=user_mailbox.blocked_sender&version=v1"
+        },
+        "list": {
+          "id": "user_mailbox.blocked_sender.list",
+          "path": "user_mailboxes/{user_mailbox_id}/blocked_senders",
+          "httpMethod": "GET",
+          "description": "List or search a user's blocked email addresses and domains",
+          "parameters": {
+            "user_mailbox_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "User email address. Use me for the current user when calling with a user access token",
+              "example": "me"
+            },
+            "keyword": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Filter records by email address or domain",
+              "example": "spam@example.com"
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "Maximum number of records to return",
+              "example": 20
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Pagination token returned by the previous request",
+              "example": "next_page_token"
+            }
+          },
+          "parameterOrder": [
+            "user_mailbox_id",
+            "keyword",
+            "page_size",
+            "page_token"
+          ],
+          "responseBody": {
+            "has_more": {
+              "type": "boolean",
+              "description": "Whether more records are available",
+              "required": false,
+              "example": false
+            },
+            "page_token": {
+              "type": "string",
+              "description": "Pagination token for the next request",
+              "required": false,
+              "example": "next_page_token"
+            },
+            "items": {
+              "type": "array",
+              "description": "Blocked sender records",
+              "required": false,
+              "properties": {
+                "sender": {
+                  "type": "string",
+                  "description": "Email address or domain",
+                  "required": false,
+                  "example": "spam@example.com"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Record creation time",
+                  "required": false,
+                  "example": "1716279320000"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mail:user_mailbox.message:readonly",
+            "mail:user_mailbox.message:modify"
+          ],
+          "requiredScopes": [
+            "mail:user_mailbox.message:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mail&resource=user_mailbox.blocked_sender&version=v1"
+        }
+      }
+    },
     "user_mailbox.drafts": {
       "methods": {
         "cancel_scheduled_send": {
