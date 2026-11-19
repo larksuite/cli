@@ -5,6 +5,7 @@ package skillscan
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -61,5 +62,82 @@ func TestHasPlaceholderDistinguishesHTMLFromPlaceholders(t *testing.T) {
 		if !HasPlaceholder(raw) {
 			t.Fatalf("expected placeholder for %q", raw)
 		}
+	}
+}
+
+func TestHarvestFollowsQuotedArgumentsAcrossLines(t *testing.T) {
+	// A quoted flag value continues a shell word without a trailing backslash,
+	// which is how the shipped skills spell multi-line JSON. Stopping at the
+	// first unescaped newline hands the caller a fragment with an unclosed
+	// quote, and the example goes unvalidated.
+	got, err := Harvest(filepath.Join("testdata", "multiline"))
+	if err != nil {
+		t.Fatalf("Harvest() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d examples, want 2: %#v", len(got), got)
+	}
+
+	for _, ex := range got {
+		if hasOpenQuote(ex.Raw) {
+			t.Errorf("harvested example ends inside a quote: %q", ex.Raw)
+		}
+	}
+
+	if !strings.Contains(got[0].Raw, `"shaper": {"format": "flat"}`) {
+		t.Errorf("single-quoted JSON was truncated: %q", got[0].Raw)
+	}
+	if !strings.HasSuffix(got[0].Raw, "}'") {
+		t.Errorf("single-quoted value did not close: %q", got[0].Raw)
+	}
+	if !strings.Contains(got[1].Raw, "line one line two") {
+		t.Errorf("double-quoted value was truncated: %q", got[1].Raw)
+	}
+}
+
+func TestHasOpenQuote(t *testing.T) {
+	tests := map[string]bool{
+		`lark-cli docs +fetch --doc A3Ij`:      false,
+		`lark-cli base +data-query --dsl '{`:   true,
+		`lark-cli base +data-query --dsl '{}'`: false,
+		`lark-cli docs +fetch --note "open`:    true,
+		`lark-cli docs +fetch --note "shut"`:   false,
+		// inside single quotes a backslash is literal, so the quote still closes
+		`lark-cli docs +fetch --note 'a\'`: false,
+		// outside quotes a backslash escapes the quote that follows
+		`lark-cli docs +fetch --note \'`: false,
+	}
+	for raw, want := range tests {
+		if got := hasOpenQuote(raw); got != want {
+			t.Errorf("hasOpenQuote(%q) = %v, want %v", raw, got, want)
+		}
+	}
+}
+
+func TestHarvestStopsQuotedContinuationAtClosingFence(t *testing.T) {
+	// An example whose quote never closes is a real defect and should still be
+	// reported as unparsable, but following the quote past the fence would
+	// swallow every later command in the file and silently drop them from
+	// validation.
+	got, err := Harvest(filepath.Join("testdata", "unterminated"))
+	if err != nil {
+		t.Fatalf("Harvest() error = %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("got %d examples, want 3: %#v", len(got), got)
+	}
+
+	if strings.Contains(got[0].Raw, "```") || strings.Contains(got[0].Raw, "Prose") {
+		t.Errorf("broken example absorbed the fence or the prose after it: %q", got[0].Raw)
+	}
+	if !hasOpenQuote(got[0].Raw) {
+		t.Errorf("a genuinely unterminated quote should stay unterminated: %q", got[0].Raw)
+	}
+
+	if !strings.Contains(got[1].Raw, "+chat-list") {
+		t.Errorf("command after the broken fence was dropped: %#v", got)
+	}
+	if !strings.Contains(got[2].Raw, "A3Ijlater") {
+		t.Errorf("last command in the file was dropped: %#v", got)
 	}
 }
