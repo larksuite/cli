@@ -16,7 +16,7 @@ lark-cli task +comment --task-id "<task_guid>" --content "Looks good!"
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `--task-id <guid>` | Yes | The task GUID to comment on. For Feishu task applinks, use the `guid` query parameter, not the `suite_entity_num` / display task ID like `t104121`. |
-| `--content <text>` | Yes | The text content of the comment. |
+| `--content <text>` | Yes | The text content of the comment. Rendered as Markdown in the client; risky spans are silently dropped, never degrade to plain text. Writes succeed and read back unchanged, so this is undetectable from the API side (issue #2359). Prefer plain text unless Markdown is intentional. |
 
 ## Workflow
 
