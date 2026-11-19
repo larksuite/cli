@@ -39,5 +39,6 @@ func Shortcuts() []common.Shortcut {
 		MailTemplateCreate,
 		MailTemplateUpdate,
 		MailLintHTML,
+		MailRulesReorder,
 	}
 }
