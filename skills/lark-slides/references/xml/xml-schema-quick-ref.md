@@ -352,6 +352,21 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 
 隐藏 `<chart>` 的图例只能通过不写或删除 `<chartLegend>` 实现，`<chartLegend>` 不支持 `position="none"`。
 
+`<chart>` 支持自动修复能力 `chart_auto_fix`：开启后，服务端会在写入前自动校正图表数据与结构上的常见问题（如缺失的必需子元素、分类/系列格式不规范等），尽量保证图表可正常渲染。在含 `<chart>` 的页面上，通过在 `<slide>` 内写一条 XML 注释 marker 来声明：
+
+```xml
+<slide xmlns="https://www.larkoffice.com/sml/2.0">
+  <!-- slide-engine-experiment:chart_auto_fix=true -->
+  <data>
+    <chart> ... </chart>
+  </data>
+</slide>
+```
+
+- 取值 `true`（开启自动修复）或 `false`（关闭，按原样写入），大小写不敏感；其他值会被服务端拒绝并报参数错误。
+- 每页最多一条 marker；解析后会从 XML 中移除，不出现在最终内容里。
+- 不写 marker 时按关闭处理。生成图表时，若不确定图表 XML 是否完全规范，写 `chart_auto_fix=true` 以获得服务端兜底修复。
+
 详细用法见 [slides_xml_schema_definition.xml](slides_xml_schema_definition.xml)。
 
 ### embed
