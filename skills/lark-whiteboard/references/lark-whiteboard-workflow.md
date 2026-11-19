@@ -84,6 +84,6 @@ diagram.png           ← 渲染结果
 写入画板时按最终产物类型选择 `+update --input_format`：
 
 - Mermaid / PlantUML / SVG 产物直接写入时，`--input_format` 取单值 `mermaid` / `plantuml` / `svg`；写入非空已有画板并需要 overwrite 时，先确认会整板重建；SVG 修改已有画板时先走 [`../routes/svg-edit.md`](../routes/svg-edit.md) 的确认 workflow。
-- 只有 DSL 产物或已明确需要 OpenAPI 原生节点格式时，才先用 `npx -y @larksuite/whiteboard-cli@^0.2.13 --to openapi --format json` 转换，再用 `raw` 写入。
+- 只有 DSL 产物或已明确需要 OpenAPI 原生节点格式时，才先用 `npx -y @larksuite/whiteboard-cli@^0.2.14 --to openapi --format json` 转换，再用 `raw` 写入。
 
 具体命令示例、`--overwrite`、`--idempotent-token` 和 `--as user/bot` 的使用方式，统一参考 [`whiteboard +update`](./lark-whiteboard-update.md)。

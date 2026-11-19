@@ -272,14 +272,14 @@ SVG 通过 `image/svg+xml` Blob 加载到画布，**不在 HTML DOM 中**，因�
   x?: number; y?: number;
   width?: WBSizeValue;          // 默认 48
   height?: WBSizeValue;         // 默认 48，保持正方形
-  name: string;                 // 图标名称，从 npx -y @larksuite/whiteboard-cli@^0.2.13 --icons 输出中选取
+  name: string;                 // 图标名称，从 npx -y @larksuite/whiteboard-cli@^0.2.14 --icons 输出中选取
   color?: string;               // 可选颜色覆盖，hex 格式如 '#FF6600'
 }
 ```
 
 **获取可用图标**：规划好内容和布局后，运行以下命令查看所有可用图标名，从中选取：
 ```bash
-npx -y @larksuite/whiteboard-cli@^0.2.13 --icons
+npx -y @larksuite/whiteboard-cli@^0.2.14 --icons
 ```
 
 用法：
