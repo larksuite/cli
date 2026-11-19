@@ -6,26 +6,27 @@ package registry
 import "github.com/larksuite/cli/internal/meta"
 
 // DeclaredScopesForMethod returns the scopes declared by a method for the given
-// identity. Prefers the explicit `requiredScopes` field when present; otherwise
-// returns the single recommended scope from `scopes` (or the first scope as a
-// final fallback). Returns nil when the method has no scope information.
+// identity. The recommended entry from `scopes` is the method's base permission;
+// `requiredScopes` contains additional all-must-match permissions. Both belong
+// in the login-time conjunction. Returns nil when the method has no scope
+// information.
 func DeclaredScopesForMethod(m meta.Method, identity string) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(m.RequiredScopes)+1)
+	if recommended := SelectRecommendedScopeFromStrings(m.Scopes, identity); recommended != "" {
+		seen[recommended] = struct{}{}
+		out = append(out, recommended)
+	}
 	if len(m.RequiredScopes) > 0 {
-		out := make([]string, 0, len(m.RequiredScopes))
 		for _, s := range m.RequiredScopes {
-			if s != "" {
+			if s == "" {
+				continue
+			}
+			if _, ok := seen[s]; !ok {
+				seen[s] = struct{}{}
 				out = append(out, s)
 			}
 		}
-		if len(out) > 0 {
-			return out
-		}
 	}
-	if len(m.Scopes) == 0 {
-		return nil
-	}
-	if recommended := SelectRecommendedScopeFromStrings(m.Scopes, identity); recommended != "" {
-		return []string{recommended}
-	}
-	return nil
+	return out
 }
