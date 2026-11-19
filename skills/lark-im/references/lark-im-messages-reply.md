@@ -41,6 +41,8 @@ When using `--as user`, the reply is sent as the authorized end user and require
 - Use `--text` for exact plain text, especially logs, code, indentation, or literal Markdown characters.
 - Use `--content` when you need exact `post` JSON, a card, a title, multiple locales, or any structure that `--markdown` cannot express reliably.
 
+For long or generated replies, pass `--markdown @./reply.md` or pipe the body with `--markdown -` so shell metacharacters are never interpreted.
+
 ## What `--markdown` Really Does
 
 `--markdown` accepts Markdown-like input and converts it to the Feishu `post` payload required by the reply API.
