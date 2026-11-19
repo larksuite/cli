@@ -11,6 +11,16 @@ Docx 封面图不是正文里的 `<img token="...">` 素材块。读取、更新
 - 用户要删除文档封面图：`docs +resource-delete --type cover`
 - 用户要下载正文图片、附件、画板缩略图：继续使用 [`docs +media-download`](lark-doc-media-download.md)
 
+## 原生标题图标与封面的区别
+
+原生标题图标是飞书在文档标题旁显示的 emoji 图标，与文档封面和正文素材不同。当前 CLI 不支持读取、设置、替换或移除该图标；`docs +resource-*` 只接受 `--type cover`，不要构造 `--type icon` 或 `--emoji` 等未支持的参数。
+
+截至本说明核对时，公开的 [Docx 文档基本信息接口](https://open.feishu.cn/document/server-docs/docs/docs/docx-v1/document/get)未提供原生标题图标字段，也未发现对应的公开图标更新接口。CLI 无法通过现有封面接口完成这项操作；需求跟踪见 [#2834](https://github.com/larksuite/cli/issues/2834)，后续应以开放平台实际发布的接口为准。
+
+需要设置图标时，在有编辑权限的飞书客户端或网页中点击文档左上角标题，选择图标；知识库页面也可以点击目录中的图标。更换或移除时点击已有图标。详见[飞书官方操作说明](https://www.feishu.cn/hc/en-US/articles/627693109450-set-document-icons)。不要未经用户明确要求就把 emoji 加进标题文本，这会修改名称，不能设置原生图标。
+
+`drive +cover --spec icon` 仅下载文件列表的小图标规格，不返回可编辑的标题图标元数据，也不能设置或移除原生标题图标，详见 [`drive +cover`](../../lark-drive/references/lark-drive-cover.md)。
+
 ## 命令
 
 ```bash
