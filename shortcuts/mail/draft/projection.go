@@ -41,6 +41,15 @@ const LargeAttachmentIDsHeader = "X-Lms-Large-Attachment-Ids"
 // [{"file_key":"<token>","file_name":"...","file_size":...}].
 const ServerLargeAttachmentHeader = "X-Lark-Large-Attachment"
 
+// SendSeparatelyHeader is the header the CLI writes into a draft's raw EML
+// to carry an explicit "send separately to each recipient" setting through
+// the OAPI drafts.create / drafts.update flow. Values: "true" / "false".
+// Absence means "no explicit setting" — the server keeps whatever is stored
+// on the draft (a brand-new draft without the header is a normal send).
+// Follows the same CLI/OAPI-specific header convention as X-Cli-Priority
+// (recognised server-side by mail-data-access headersToPbBodyExtra).
+const SendSeparatelyHeader = "X-Cli-Send-Separately"
+
 // quoteWrapperRe matches an actual <div> element whose class attribute
 // contains QuoteWrapperClass. This avoids false positives when the
 // string appears as plain text, inside <pre> blocks, or in
@@ -141,8 +150,30 @@ func Project(snapshot *DraftSnapshot) DraftProjection {
 	proj.LargeAttachmentsSummary = projectLargeAttachments(snapshot.Headers, htmlBody)
 
 	proj.Priority = parsePriorityFromHeaders(snapshot.Headers)
+	proj.SendSeparately = parseSendSeparatelyFromHeaders(snapshot.Headers)
 
 	return proj
+}
+
+// parseSendSeparatelyFromHeaders derives the read-side "send separately"
+// projection from the CLI-written EML header. Returns "true" / "false" when
+// the header carries a recognisable value, and "unknown" when the header is
+// absent or unrecognised — a missing header MUST NOT be projected as false:
+// absence only means the draft carries no CLI-written explicit setting, and
+// the true state is whatever the server has stored. It is never inferred
+// from the recipient count.
+func parseSendSeparatelyFromHeaders(headers []Header) string {
+	v := headerValue(headers, SendSeparatelyHeader)
+	if v == "" {
+		return "unknown"
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true":
+		return "true"
+	case "false":
+		return "false"
+	}
+	return "unknown"
 }
 
 // parsePriorityFromHeaders derives the read-side priority projection from
