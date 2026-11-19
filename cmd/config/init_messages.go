@@ -73,17 +73,43 @@ var initMsgEn = &initMsg{
 	LangPreferenceSet:    "Language preference set to: %s",
 }
 
-// getInitMsg picks the zh/en TUI bundle; non-English falls back to zh.
+// getInitMsg picks the zh/en TUI bundle. zh_cn — and values expressing no
+// preference — render Chinese; every other supported locale renders English.
 func getInitMsg(lang i18n.Lang) *initMsg {
-	if lang.IsEnglish() {
+	if lang.UsesEnglishUI() {
 		return initMsgEn
 	}
 	return initMsgZh
 }
 
-// promptLangSelection shows the 中文/English picker and returns the chosen locale.
-func promptLangSelection() (i18n.Lang, error) {
+// pickerCanExpress reports whether the 中文/English picker can represent l
+// without losing it.
+//
+// Only a recognized locale outside zh_cn/en_us cannot be: the picker has no
+// option for it, so a bare Enter would silently rewrite it. Those runs skip the
+// picker and keep what --lang set.
+//
+// Everything else can be. Unset, mis-cased and unrecognized values express no
+// usable preference — the same reading UsesEnglishUI applies to them — so there
+// is nothing to destroy, and skipping the picker would strand the user with no
+// interactive way to set one. A short code ("zh") maps onto the option that
+// writes its canonical form, so picking it loses nothing either.
+func pickerCanExpress(l i18n.Lang) bool {
+	canonical, ok := i18n.Parse(string(l))
+	if !ok {
+		return true
+	}
+	return canonical == i18n.LangZhCN || canonical == i18n.LangEnUS
+}
+
+// promptLangSelection shows the 中文/English picker and returns the chosen
+// locale. current pre-selects the option already in effect, so a user who
+// already expressed a preference keeps it by pressing Enter.
+func promptLangSelection(current i18n.Lang) (i18n.Lang, error) {
 	lang := i18n.LangZhCN
+	if current.UsesEnglishUI() {
+		lang = i18n.LangEnUS
+	}
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[i18n.Lang]().
