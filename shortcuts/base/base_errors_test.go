@@ -11,19 +11,6 @@ import (
 	"github.com/larksuite/cli/internal/errclass"
 )
 
-func TestErrorDetailHelpers(t *testing.T) {
-	detail := map[string]interface{}{"message": "boom", "hint": "retry later"}
-	if got := extractErrorHint(map[string]interface{}{"data": map[string]interface{}{"error": detail}}); got != "retry later" {
-		t.Fatalf("hint=%q", got)
-	}
-	if got := extractDataErrorMessage(map[string]interface{}{"data": map[string]interface{}{"error": detail}}); got != "boom" {
-		t.Fatalf("message=%q", got)
-	}
-	if got := extractDataErrorMessage(map[string]interface{}{"data": map[string]interface{}{}}); got != "" {
-		t.Fatalf("message=%q", got)
-	}
-}
-
 func TestHandleBaseAPIResultErrorPaths(t *testing.T) {
 	if _, err := handleBaseAPIResultAny(nil, assertErr{}, "list fields"); err == nil || !strings.Contains(err.Error(), "list fields") {
 		t.Fatalf("err=%v", err)
@@ -85,11 +72,33 @@ func TestHandleBaseAPIResultPromotesBaseErrorFields(t *testing.T) {
 	if p.Message != "The cell value does not match the expected input shape." {
 		t.Fatalf("message=%q", p.Message)
 	}
-	if p.Hint != "Provide a number value." {
+	if want := "Provide a number value.\n" + `debug_info: path="Amount";value="abc";table={"id":"tbl_1","name":"Orders"}`; p.Hint != want {
 		t.Fatalf("hint=%q", p.Hint)
 	}
 	if p.LogID != "20260508160000000000000000000000" {
 		t.Fatalf("logID=%q", p.LogID)
+	}
+}
+
+func TestBaseAPIErrorDetailPriority(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		body    string
+		message string
+		hint    string
+	}{
+		{"nested", `{"code":800030201,"data":{"error":{"message":"nested","value":null}},"error":{"message":"top","path":"ignored"}}`, "nested", `debug_info: value=null`},
+		{"fallback", `{"code":800030201,"data":{},"error":{"message":"top","path":"field"}}`, "top", `debug_info: path="field"`},
+		{"explicit null", `{"code":800030201,"msg":"summary","data":{"error":null},"error":{"message":"top","path":"ignored"}}`, "summary", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original := errs.NewAPIError(errs.SubtypeUnknown, "outer failure").WithCode(800030201)
+			err := enrichBaseAPIErrorFromBody(original, []byte(tc.body), errclass.ClassifyContext{})
+			p, ok := errs.ProblemOf(err)
+			if !ok || err != original || p.Message != tc.message || p.Hint != tc.hint {
+				t.Fatalf("problem=%+v, want message=%q and hint=%q", p, tc.message, tc.hint)
+			}
+		})
 	}
 }
 
