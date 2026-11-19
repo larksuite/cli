@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/lockfile"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 
@@ -268,6 +269,7 @@ var EventSubscribe = common.Shortcut{
 			larkws.WithEventHandler(eventDispatcher),
 			larkws.WithDomain(domain),
 			larkws.WithLogger(sdkLogger),
+			larkws.WithHttpClient(transport.SDKBootstrapHTTPClient()),
 		)
 
 		// --- Graceful shutdown ---
