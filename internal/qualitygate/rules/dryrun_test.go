@@ -69,6 +69,19 @@ func TestRunCommandRemovesTemporaryConfigDir(t *testing.T) {
 	}
 }
 
+// TestRunCommandPreservesExitStatus keeps subprocess failure distinct from a
+// failure to start the executable.
+func TestRunCommandPreservesExitStatus(t *testing.T) {
+	result := runCommand(context.Background(), "sh", []string{"-c", "exit 7"})
+	if result.Err == nil || result.ExitCode != 7 {
+		t.Fatalf("subprocess result = %#v; want exit status 7", result)
+	}
+	result = runCommand(context.Background(), filepath.Join(t.TempDir(), "missing-executable"), nil)
+	if result.Err == nil || result.ExitCode != 1 {
+		t.Fatalf("start failure result = %#v; want exit status 1", result)
+	}
+}
+
 func TestExtractDryRunJSONReportsNonAPIRequest(t *testing.T) {
 	_, _, err := extractDryRunJSON([]byte(`{"ok":true,"event":"subscribe"}`))
 	if !errors.Is(err, errNoDryRunAPI) {

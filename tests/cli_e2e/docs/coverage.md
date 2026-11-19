@@ -6,6 +6,7 @@
 - Coverage: 75.0%
 
 ## Summary
+- Pending runtime revalidation: `TestDocsFormulaEscapesWorkflowAsUser` creates a temporary document with inline and block LaTeX pipe formulas, appends another formula, and reads actual `<latex>` nodes after each write. It uses the candidate binary and the existing folder/document cleanup. Run this focused case with a verified user identity before claiming runtime coverage; it does not change the command coverage counts below.
 - TestDocs_CreateAndFetchWorkflow: proves `docs +create` and `docs +fetch`; key `t.Run(...)` proof points are `create as bot` and `fetch as bot`.
 - TestDocs_CreateAndFetchWorkflowAsUser: proves the same shortcut pair with UAT injection via `create as user` and `fetch as user`; creates its own Drive folder fixture first, then reads back the created doc by token.
 - TestDocsFetchDryRunXMLIncludesCommentsForUserAndBot, TestDocsFetchDryRunMarkdownFormatsIncludeCommentSidecar, and TestDocsFetchCommentsWorkflowAsBot / AsUser prove XML, Markdown, and IM Markdown fetches default to comment v2 for identical UAT/TAT request bodies; XML carries local `comment-refs`, while Markdown keeps comments only in `reference_map.comments`. The live workflows cover full/partial filtering plus JSON/explicit-legacy-pretty output behavior.

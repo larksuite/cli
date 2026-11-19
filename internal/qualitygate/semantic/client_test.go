@@ -6,6 +6,7 @@ package semantic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -590,7 +591,7 @@ func TestFromEnvWithConfigRejectsInvalidTimeoutSeconds(t *testing.T) {
 		Allowed:         []string{"semantic-review-v1"},
 		AllowedBaseURLs: []string{"https://ark.ap-southeast.bytepluses.com/api/v3"},
 	}
-	if _, _, err := FromEnvWithConfig(cfg); err == nil {
-		t.Fatal("FromEnvWithConfig accepted invalid timeout")
+	if _, _, err := FromEnvWithConfig(cfg); !errors.Is(err, ErrReviewerConfiguration) {
+		t.Fatalf("invalid timeout error = %v; want reviewer configuration classification", err)
 	}
 }

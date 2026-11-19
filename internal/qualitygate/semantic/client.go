@@ -79,11 +79,11 @@ func FromEnvWithConfig(cfg ModelConfig) (Client, bool, error) {
 	}
 	normalizedBase, err := normalizeBaseURL(base)
 	if err != nil {
-		return Client{}, false, fmt.Errorf("%w: %v", ErrReviewerConfiguration, err)
+		return Client{}, false, fmt.Errorf("%w: %w", ErrReviewerConfiguration, err)
 	}
 	timeout, err := timeoutFromEnv()
 	if err != nil {
-		return Client{}, false, fmt.Errorf("%w: %v", ErrReviewerConfiguration, err)
+		return Client{}, false, fmt.Errorf("%w: %w", ErrReviewerConfiguration, err)
 	}
 	return Client{
 		BaseURL:       normalizedBase,

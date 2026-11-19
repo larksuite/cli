@@ -131,6 +131,8 @@ func prepareDocsV2WriteInput(runtime *common.RuntimeContext, input docsV2WriteIn
 	return prepareDocsV2WriteInputForFormat(runtime, runtime.Str("doc-format"), input)
 }
 
+// prepareDocsV2WriteInputForFormat prepares local resources and reference maps
+// without rewriting formula escapes owned by the document service.
 func prepareDocsV2WriteInputForFormat(runtime *common.RuntimeContext, format string, input docsV2WriteInput) (docsV2WriteInput, error) {
 	refMap := cloneReferenceMapObject(input.ReferenceMap)
 	html5RefMap, err := html5ReferenceMapFromObject(refMap)
