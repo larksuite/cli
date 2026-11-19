@@ -35,6 +35,7 @@ var MailReplyAll = common.Shortcut{
 		{Name: "bcc", Type: "string_array", Desc: "BCC email address. Repeat --bcc once per recipient; quote each value."},
 		{Name: "remove", Type: "string_array", Desc: "Address to exclude from the outgoing reply. Repeat --remove once per address; quote each value."},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring all HTML auto-detection. Cannot be used with --inline."},
+		attachStdinNameFlag, attachStdinTypeFlag, attachStdinManifestFlag,
 		{Name: "attach", Type: "string_array", Desc: "Attachment file path, relative path only. Repeat --attach once per file; quote each value."},
 		{Name: "inline", Type: "string_array", Desc: "Inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string. Cannot be used with --plain-text."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the reply immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
@@ -70,7 +71,10 @@ var MailReplyAll = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		attach := normalizeCommaFlagValues(runtime.StrArray("attach"))
+		if err := validateStdinAttachmentFlags(runtime); err != nil {
+			return err
+		}
+		attach := runtime.StrArray("attach")
 		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
@@ -112,6 +116,10 @@ var MailReplyAll = common.Shortcut{
 		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		stdinAtt, stdinErr := readStdinAttachment(runtime)
+		if stdinErr != nil {
+			return stdinErr
+		}
 		messageId := runtime.Str("message-id")
 		body, bErr := resolveBodyFromFlags(runtime)
 		if bErr != nil {
@@ -122,7 +130,7 @@ var MailReplyAll = common.Shortcut{
 		bccFlag := normalizeRecipientFlagValues(runtime.StrArray("bcc"))
 		removeList := normalizeCommaListFlagValues(runtime.StrArray("remove"))
 		plainText := runtime.Bool("plain-text")
-		attachFlag := normalizeCommaFlagValues(runtime.StrArray("attach"))
+		attachFlag := runtime.StrArray("attach")
 		inlineFlag, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
 		if err != nil {
 			return err
@@ -350,7 +358,9 @@ var MailReplyAll = common.Shortcut{
 		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 		composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, srcInlineBytes) + templateSmallBytes
-		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, splitByComma(attachFlag), emlBase, 0)
+		bld = stdinAtt.addTo(bld)
+		emlBase += stdinAtt.emlBytes()
+		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, attachFlag, emlBase, stdinAtt.count())
 		if err != nil {
 			return err
 		}
