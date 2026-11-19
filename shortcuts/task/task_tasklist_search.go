@@ -34,7 +34,7 @@ var SearchTasklist = common.Shortcut{
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max page limit (default 20, max 40)"},
 		{Name: "page-token", Desc: "page token"},
 		{Name: "creator", Desc: "creator open_ids, comma-separated"},
-		{Name: "create-time", Desc: "create time range: start,end (supports ISO/date/relative/ms)"},
+		{Name: "create-time", Desc: "create time range: start,end (ISO/date/relative/Unix seconds/milliseconds with 13+ digits)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body, err := buildTasklistSearchBody(runtime)

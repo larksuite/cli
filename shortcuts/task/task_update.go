@@ -30,7 +30,7 @@ var UpdateTask = common.Shortcut{
 		{Name: "task-id", Desc: "task GUID or task applink URL (comma-separated for multiple)", Required: true},
 		{Name: "summary", Desc: "task title"},
 		{Name: "description", Desc: "task description"},
-		{Name: "due", Desc: "due date (ISO 8601 / date:YYYY-MM-DD / relative:+2d / ms timestamp)"},
+		{Name: "due", Desc: "due date (ISO 8601 / YYYY-MM-DD / relative:+2d / Unix seconds / milliseconds with 13+ digits)"},
 		{Name: "data", Desc: "JSON payload for task object"},
 	},
 
