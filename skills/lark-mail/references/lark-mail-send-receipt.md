@@ -32,7 +32,7 @@ lark-cli mail +send-receipt --message-id <message-id> --dry-run
 |------|------|------|------|
 | `--message-id <id>` | 是 | — | 请求了已读回执的原邮件 message ID |
 | `--mailbox <email>` | 否 | `me` | 回执邮件归属的邮箱 |
-| `--from <email>` | 否 | 邮箱主地址 | 回执 From 头 |
+| `--from <email>` | 否 | `--mailbox != me`，其次原邮件 To/Cc 命中的我的可发信地址，再其次邮箱默认发信地址，最后主邮箱地址 | 回执 From 头 |
 | `--yes` | 是 | — | 确认高危写操作。仅在用户明确同意发回执后附上 |
 | `--dry-run` | 否 | — | 仅打印请求，不执行 |
 
