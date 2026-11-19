@@ -33,6 +33,14 @@ func withDocMediaDownloadRecoveryHint(err error, mediaType string) error {
 		return err
 	}
 
+	if mediaType != "whiteboard" && problem.Code == 1063001 {
+		problem.Retryable = false
+		if !strings.Contains(problem.Hint, "stop retrying") {
+			const hint = "Document media export-permission preflight rejected the token; stop retrying the same input. Fetch the document again and pass the exact current <img token> or <source token>; do not pass a document token, block ID, whiteboard token, or stale media token."
+			appendDocRecoveryHint(problem, hint)
+		}
+	}
+
 	if mediaType != "whiteboard" &&
 		problem.Category == errs.CategoryNetwork &&
 		problem.Code == http.StatusForbidden &&
