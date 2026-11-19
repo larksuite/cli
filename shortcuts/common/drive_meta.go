@@ -7,6 +7,9 @@ package common
 type DriveMeta struct {
 	Title string
 	URL   string
+	// LatestModifyTime is the server's latest_modify_time (Unix seconds as a
+	// string); it changes when file content is replaced in place.
+	LatestModifyTime string
 }
 
 // FetchDriveMeta looks up document metadata via the drive metas batch_query API.
@@ -39,8 +42,9 @@ func FetchDriveMeta(runtime *RuntimeContext, token, docType string, withURL bool
 	}
 	meta, _ := metas[0].(map[string]interface{})
 	return DriveMeta{
-		Title: GetString(meta, "title"),
-		URL:   GetString(meta, "url"),
+		Title:            GetString(meta, "title"),
+		URL:              GetString(meta, "url"),
+		LatestModifyTime: GetStringLoose(meta, "latest_modify_time"),
 	}, nil
 }
 

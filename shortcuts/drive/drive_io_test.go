@@ -1814,6 +1814,8 @@ func TestDriveDownloadHTTP429SuggestsBackoff(t *testing.T) {
 		URL:     "/open-apis/drive/v1/files/file_download_limited/download",
 		Status:  http.StatusTooManyRequests,
 		RawBody: []byte("rate limited"),
+		// The ranged download engine retries 429 before surfacing it.
+		Reusable: true,
 	})
 
 	tmpDir := t.TempDir()
@@ -1824,14 +1826,14 @@ func TestDriveDownloadHTTP429SuggestsBackoff(t *testing.T) {
 		"--output", "blocked.bin",
 		"--as", "bot",
 	}, f, nil)
+	// Replay-safe download transports classify HTTP 429 as a typed, retryable
+	// rate limit (the same contract as im resource downloads).
 	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Category != errs.CategoryNetwork || problem.Code != http.StatusTooManyRequests {
-		t.Fatalf("problem=%+v ok=%v, want network HTTP 429", problem, ok)
+	if !ok || problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != http.StatusTooManyRequests || !problem.Retryable {
+		t.Fatalf("problem=%+v ok=%v, want retryable API rate limit HTTP 429", problem, ok)
 	}
-	for _, want := range []string{"stop immediate retries", "retry later with exponential backoff"} {
-		if !strings.Contains(problem.Hint, want) {
-			t.Fatalf("hint=%q, want %q", problem.Hint, want)
-		}
+	if !strings.Contains(problem.Hint, "exponential backoff") {
+		t.Fatalf("hint=%q, want exponential backoff guidance", problem.Hint)
 	}
 	if strings.Contains(problem.Hint, "1 minute") {
 		t.Fatalf("hint=%q, want no fixed retry duration", problem.Hint)
@@ -2003,8 +2005,8 @@ func TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted(t *testing.T) {
 
 	data := decodeDriveEnvelope(t, stdout)
 	apis, _ := data["api"].([]interface{})
-	if len(apis) != 4 {
-		t.Fatalf("api count = %d, want 4\nstdout=%s", len(apis), stdout.String())
+	if len(apis) != 5 {
+		t.Fatalf("api count = %d, want 5\nstdout=%s", len(apis), stdout.String())
 	}
 	lookup, _ := apis[0].(map[string]interface{})
 	params, _ := lookup["params"].(map[string]interface{})
@@ -2027,13 +2029,28 @@ func TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted(t *testing.T) {
 	if third["method"] != "GET" || third["url"] != "/open-apis/drive/v1/files/resolved_file_token/download" {
 		t.Fatalf("third api = %#v, want file download", third)
 	}
-	if third["desc"] != "[4] Download file bytes; Content-Disposition filename wins over metadata title when present" {
-		t.Fatalf("third desc = %#v, want metadata-aware step 4", third["desc"])
+	if third["desc"] != "[4] Download file bytes; Content-Disposition filename wins over metadata title when present in 128 MiB Range requests" {
+		t.Fatalf("third desc = %#v, want metadata-aware ranged step 4", third["desc"])
+	}
+	assertDriveDownloadDryRunRevisionRecheck(t, apis[4], "[5]")
+}
+
+// assertDriveDownloadDryRunRevisionRecheck verifies the plan documents the
+// post-download revision check that guards multipart assembly.
+func assertDriveDownloadDryRunRevisionRecheck(t *testing.T, api interface{}, step string) {
+	t.Helper()
+	recheck, _ := api.(map[string]interface{})
+	if recheck["method"] != "POST" || recheck["url"] != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("recheck api = %#v, want metadata batch_query", recheck)
+	}
+	desc, _ := recheck["desc"].(string)
+	if !strings.HasPrefix(desc, step+" ") || !strings.Contains(desc, "latest_modify_time") {
+		t.Fatalf("recheck desc = %q, want %s latest_modify_time re-check", desc, step)
 	}
 }
 
-// TestDriveDownloadDryRunExplicitOutputSkipsMetadata verifies explicit output skips title lookup after resolving the entity.
-func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
+// TestDriveDownloadDryRunExplicitOutputPlansRevisionMetadata verifies explicit output plans a best-effort revision read and the ranged download.
+func TestDriveDownloadDryRunExplicitOutputPlansRevisionMetadata(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
@@ -2049,8 +2066,8 @@ func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
 
 	data := decodeDriveEnvelope(t, stdout)
 	apis, _ := data["api"].([]interface{})
-	if len(apis) != 3 {
-		t.Fatalf("api count = %d, want 3\nstdout=%s", len(apis), stdout.String())
+	if len(apis) != 5 {
+		t.Fatalf("api count = %d, want 5\nstdout=%s", len(apis), stdout.String())
 	}
 	lookup, _ := apis[0].(map[string]interface{})
 	params, _ := lookup["params"].(map[string]interface{})
@@ -2061,13 +2078,21 @@ func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
 	if first["method"] != "GET" || first["url"] != "/open-apis/drive/v1/permissions/resolved_file_token/members/auth" {
 		t.Fatalf("first api = %#v, want export permission auth", first)
 	}
-	second, _ := apis[2].(map[string]interface{})
-	if second["method"] != "GET" || second["url"] != "/open-apis/drive/v1/files/resolved_file_token/download" {
-		t.Fatalf("second api = %#v, want file download", second)
+	revision, _ := apis[2].(map[string]interface{})
+	if revision["method"] != "POST" || revision["url"] != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("revision api = %#v, want metadata batch_query", revision)
 	}
-	if second["desc"] != "[3] Download file bytes to the explicit output path" {
-		t.Fatalf("api desc = %#v, want explicit-output step 3", second["desc"])
+	if desc, _ := revision["desc"].(string); !strings.Contains(desc, "on failure the download uses one full response") {
+		t.Fatalf("revision desc = %q, want best-effort fallback", desc)
 	}
+	download, _ := apis[3].(map[string]interface{})
+	if download["method"] != "GET" || download["url"] != "/open-apis/drive/v1/files/resolved_file_token/download" {
+		t.Fatalf("download api = %#v, want file download", download)
+	}
+	if download["desc"] != "[4] Download file bytes to the explicit output path in 128 MiB Range requests" {
+		t.Fatalf("api desc = %#v, want explicit-output ranged step 4", download["desc"])
+	}
+	assertDriveDownloadDryRunRevisionRecheck(t, apis[4], "[5]")
 	if data["output"] != "report.bin" {
 		t.Fatalf("output = %#v, want report.bin", data["output"])
 	}
