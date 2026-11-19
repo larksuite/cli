@@ -91,5 +91,9 @@
   "okr": {
     "en": { "title": "OKR", "description": "Lark OKR objectives, key results, alignments, indicators, progresses" },
     "zh": { "title": "OKR", "description": "飞书 OKR 目标、关键结果、对齐、量化指标、进展记录" }
+  },
+  "lingo": {
+    "en": { "title": "Lingo", "description": "Dictionary entry lookup and fuzzy search" },
+    "zh": { "title": "词典", "description": "企业词典词条查询与模糊搜索" }
   }
 }
