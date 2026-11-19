@@ -7,6 +7,7 @@
 超过 20 个 ID 可以直接传入 CLI；CLI 会按 20 个 ID 自动拆批并合并输出，不需要手动拆批，也不要逐封循环调用 `+message`。
 
 本 shortcut 是 `mail +message` 的批量版本。每个返回的 `messages[]` 项使用与 `+message` 相同的归一化结构：安全元数据字段直接透传，正文和辅助字段由 shortcut 派生。
+当服务端返回 `reply_to_message_id` 时，每个 `messages[]` 项会保留该字段；服务端未返回或字段为空时省略。
 
 优先使用本 shortcut，因为：
 - 正文字段已 base64url 解码

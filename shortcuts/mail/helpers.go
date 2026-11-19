@@ -145,6 +145,7 @@ func printMessageOutputSchema(runtime *common.RuntimeContext) {
 		"_description": "Output field reference for mail +message / +messages / +thread",
 		"fields": map[string]string{
 			"message_id":                             "Email message ID",
+			"reply_to_message_id":                    "Message ID of the email this message replies to; omitted when not returned by the server",
 			"thread_id":                              "Thread ID",
 			"subject":                                "Email subject",
 			"head_from":                              "Sender object: {mail_address, name}",
@@ -1181,6 +1182,7 @@ type mailSecurityLevelOutput struct {
 // It is not the public JSON contract of `mail +message` / `mail +thread`.
 type normalizedMessageForCompose struct {
 	MessageID            string                   `json:"message_id"`
+	ReplyToMessageID     string                   `json:"reply_to_message_id,omitempty"`
 	ThreadID             string                   `json:"thread_id"`
 	SMTPMessageID        string                   `json:"smtp_message_id"`
 	Subject              string                   `json:"subject"`
@@ -1315,7 +1317,8 @@ func fetchAttachmentURLsWith(
 // auto-passed through to the public output because they are replaced by a
 // derived public shape (see buildPublicAttachments / derivedMessageFields).
 var rawMessageExcludedFields = map[string]struct{}{
-	"attachments": {},
+	"attachments":         {},
+	"reply_to_message_id": {},
 }
 
 // derivedMessageFields names the public output keys that are synthesized
@@ -1323,6 +1326,7 @@ var rawMessageExcludedFields = map[string]struct{}{
 // shouldExposeRawMessageField and by the output schema printed for agents.
 var derivedMessageFields = []string{
 	"draft_id",
+	"reply_to_message_id",
 	"body_plain_text",
 	"body_preview",
 	"body_html",
@@ -1349,6 +1353,9 @@ func buildMessageOutput(msg map[string]interface{}, html bool) map[string]interf
 
 	if draftID := derivedDraftID(msg, normalized.MessageID); draftID != "" {
 		out["draft_id"] = draftID
+	}
+	if normalized.ReplyToMessageID != "" {
+		out["reply_to_message_id"] = normalized.ReplyToMessageID
 	}
 	if normalized.ReplyTo != "" {
 		out["reply_to"] = normalized.ReplyTo
@@ -1423,17 +1430,18 @@ func derivedDraftID(msg map[string]interface{}, messageID string) string {
 //   - sanitizes body_plain_text for terminal output (strips ANSI escapes and bare CR)
 func buildMessageForCompose(msg map[string]interface{}, urlMap map[string]string, html bool) normalizedMessageForCompose {
 	out := normalizedMessageForCompose{
-		MessageID:     strVal(msg["message_id"]),
-		ThreadID:      strVal(msg["thread_id"]),
-		SMTPMessageID: strVal(msg["smtp_message_id"]),
-		Subject:       strVal(msg["subject"]),
-		From:          toAddressObject(msg["head_from"]),
-		To:            toAddressList(msg["to"]),
-		CC:            toAddressList(msg["cc"]),
-		BCC:           toAddressList(msg["bcc"]),
-		Date:          strVal(msg["date"]),
-		InReplyTo:     strVal(msg["in_reply_to"]),
-		References:    toStringList(msg["references"]),
+		MessageID:        strVal(msg["message_id"]),
+		ReplyToMessageID: strVal(msg["reply_to_message_id"]),
+		ThreadID:         strVal(msg["thread_id"]),
+		SMTPMessageID:    strVal(msg["smtp_message_id"]),
+		Subject:          strVal(msg["subject"]),
+		From:             toAddressObject(msg["head_from"]),
+		To:               toAddressList(msg["to"]),
+		CC:               toAddressList(msg["cc"]),
+		BCC:              toAddressList(msg["bcc"]),
+		Date:             strVal(msg["date"]),
+		InReplyTo:        strVal(msg["in_reply_to"]),
+		References:       toStringList(msg["references"]),
 	}
 	out.ReplyTo = strVal(msg["reply_to"])
 	out.ReplyToSMTPMessageID = strVal(msg["reply_to_smtp_message_id"])
