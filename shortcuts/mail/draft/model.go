@@ -16,8 +16,9 @@ import (
 )
 
 type DraftRaw struct {
-	DraftID string
-	RawEML  string
+	IsSendSeparately *bool
+	DraftID          string
+	RawEML           string
 }
 
 type DraftResult struct {

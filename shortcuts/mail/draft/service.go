@@ -4,6 +4,7 @@
 package draft
 
 import (
+	"encoding/json"
 	"net/url"
 	"strings"
 
@@ -43,9 +44,24 @@ func GetRaw(runtime *common.RuntimeContext, mailboxID, draftID string) (DraftRaw
 	if gotDraftID == "" {
 		gotDraftID = draftID
 	}
+	var state struct {
+		Draft struct {
+			Message struct {
+				IsSendSeparately *bool `json:"is_send_separately"`
+			} `json:"message"`
+		} `json:"draft"`
+	}
+	encoded, encodeErr := json.Marshal(data)
+	if encodeErr != nil {
+		return DraftRaw{}, encodeErr
+	}
+	if err := json.Unmarshal(encoded, &state); err != nil {
+		return DraftRaw{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid draft separately-send state")
+	}
 	return DraftRaw{
-		DraftID: gotDraftID,
-		RawEML:  raw,
+		IsSendSeparately: state.Draft.Message.IsSendSeparately,
+		DraftID:          gotDraftID,
+		RawEML:           raw,
 	}, nil
 }
 
@@ -55,7 +71,12 @@ func GetRaw(runtime *common.RuntimeContext, mailboxID, draftID string) (DraftRaw
 // assembled the EML with emlbuilder; for high-level compose paths use the
 // MailDraftCreate shortcut instead.
 func CreateWithRaw(runtime *common.RuntimeContext, mailboxID, rawEML string) (DraftResult, error) {
-	data, err := runtime.CallAPITyped("POST", mailboxPath(mailboxID, "drafts"), nil, map[string]interface{}{"raw": rawEML})
+	return CreateWithRawSetting(runtime, mailboxID, rawEML, nil)
+}
+
+// CreateWithRawSetting preserves optional separately-send input on the wire.
+func CreateWithRawSetting(runtime *common.RuntimeContext, mailboxID, rawEML string, separately *bool) (DraftResult, error) {
+	data, err := runtime.CallAPITyped("POST", mailboxPath(mailboxID, "drafts"), nil, draftWriteBody(rawEML, separately))
 	if err != nil {
 		return DraftResult{}, err
 	}
@@ -76,7 +97,12 @@ func CreateWithRaw(runtime *common.RuntimeContext, mailboxID, rawEML string) (Dr
 // carries the (possibly re-issued) draft ID and the preview reference URL
 // when the backend provides one.
 func UpdateWithRaw(runtime *common.RuntimeContext, mailboxID, draftID, rawEML string) (DraftResult, error) {
-	data, err := runtime.CallAPITyped("PUT", mailboxPath(mailboxID, "drafts", draftID), nil, map[string]interface{}{"raw": rawEML})
+	return UpdateWithRawSetting(runtime, mailboxID, draftID, rawEML, nil)
+}
+
+// UpdateWithRawSetting sends explicit false as well as true; nil preserves state.
+func UpdateWithRawSetting(runtime *common.RuntimeContext, mailboxID, draftID, rawEML string, separately *bool) (DraftResult, error) {
+	data, err := runtime.CallAPITyped("PUT", mailboxPath(mailboxID, "drafts", draftID), nil, draftWriteBody(rawEML, separately))
 	if err != nil {
 		return DraftResult{}, err
 	}
@@ -150,4 +176,12 @@ func extractReference(data map[string]interface{}) string {
 		return extractReference(draft)
 	}
 	return ""
+}
+
+func draftWriteBody(raw string, separately *bool) map[string]interface{} {
+	body := map[string]interface{}{"raw": raw}
+	if separately != nil {
+		body["is_send_separately"] = *separately
+	}
+	return body
 }
