@@ -18,10 +18,10 @@
 ## 脱敏口径（安全关键）
 
 - `list` / `get` / `update` / `enable` / `disable`：返回结构里 **无** `api_key` 字段，只有 `key_preview`（格式：`****` + 原始密钥末 4 位，如 `****5f4a`）。
-- `create` / `reset`：**仅** 在 `data.api_key`（顶层）返回原始密钥一次；同时在 stderr 打印一次性提示：
-  ```
-  warning: this api_key is shown only once and is NOT stored by lark-cli — copy it now and store it in your own secret manager.
-  ```
+- `create` / `reset`：原始密钥只返回一次、CLI 绝不重存；字段位置随 `--format` 分流，机器解析不要合并标准流：
+  - `--format json`（默认）：标准信封，密钥在 `data.api_key`、提示在 `data.notice`，stderr 不输出，stdout 始终是单一纯 JSON 文档；脚本只读 stdout 即可，即使用户写了 `2>&1` 合流仍可解析。
+  - `--format ndjson`：无信封单行记录、没有 `data` 外壳，密钥与提示分别在顶层 `api_key`、`notice` 字段，stderr 同样不输出。
+  - `--format pretty` / `table` / `csv`：提示以 `warning: this api_key is shown only once ...` 打到 stderr，stdout 保持人类可读输出。
 - 原始密钥绝不写入 cache / config / recent / debug log / 错误信息。
 
 ## 一次性密钥语义
