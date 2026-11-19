@@ -85,6 +85,13 @@ lark-cli im +messages-search --query "test" --dry-run
 | `--as <identity>` | No | Identity type: `user` or `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 
+Each result uses the shared message shape (see
+[lark-im-message-enrichment.md](lark-im-message-enrichment.md)). A message that
+is one side of a thread reply the sender also sent to the chat carries
+`synced_from_thread_reply` or `synced_to_chat_message`; both sides may appear in
+the same result set, so before counting or summarizing, dedupe on those IDs —
+but only for a side that is actually present in the results.
+
 ## Core Constraints
 
 ### 1. Provide at least one filter whenever possible

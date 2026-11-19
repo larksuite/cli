@@ -34,8 +34,12 @@ func TestExpandThreadReplies(t *testing.T) {
 							"msg_type":    "text",
 							"create_time": "1710500000",
 							"thread_id":   "omt_1",
-							"sender":      map[string]interface{}{"name": "Alice"},
-							"body":        map[string]interface{}{"content": `{"text":"reply @_user_1"}`},
+							"sync_to_chat_info": map[string]interface{}{
+								"type":               2,
+								"related_message_id": "om_synced_1",
+							},
+							"sender": map[string]interface{}{"name": "Alice"},
+							"body":   map[string]interface{}{"content": `{"text":"reply @_user_1"}`},
 							"mentions": []interface{}{
 								map[string]interface{}{"key": "@_user_1", "name": "Bob"},
 							},
@@ -62,6 +66,9 @@ func TestExpandThreadReplies(t *testing.T) {
 	}
 	if replies[0]["content"] != "reply @Bob" {
 		t.Fatalf("thread reply content = %#v, want %#v", replies[0]["content"], "reply @Bob")
+	}
+	if replies[0]["synced_to_chat_message"] != "om_synced_1" {
+		t.Fatalf("thread reply synced_to_chat_message = %#v, want om_synced_1", replies[0]["synced_to_chat_message"])
 	}
 	if messages[0]["thread_has_more"] != true {
 		t.Fatalf("thread_has_more = %#v, want true", messages[0]["thread_has_more"])

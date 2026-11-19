@@ -23,6 +23,8 @@ import (
 //   - root_id, thread_id, reply_to
 //   - content: human-readable text converted via convertlib
 //   - mentions: compact mentions array with key, id, name
+//   - synced_from_thread_reply / synced_from_thread / synced_to_chat_message:
+//     flat markers for a thread reply the sender also sent to the chat
 type ImMessageProcessor struct{}
 
 func (p *ImMessageProcessor) EventType() string { return "im.message.receive_v1" }
@@ -35,17 +37,18 @@ func (p *ImMessageProcessor) Transform(_ context.Context, raw *RawEvent, mode Tr
 	// Compact: unmarshal event portion into IM message structure
 	var ev struct {
 		Message struct {
-			MessageID   string        `json:"message_id"`
-			RootID      string        `json:"root_id"`
-			ParentID    string        `json:"parent_id"`
-			ThreadID    string        `json:"thread_id"`
-			ChatID      string        `json:"chat_id"`
-			ChatType    string        `json:"chat_type"`
-			MessageType string        `json:"message_type"`
-			Content     string        `json:"content"`
-			CreateTime  string        `json:"create_time"`
-			UpdateTime  string        `json:"update_time"`
-			Mentions    []interface{} `json:"mentions"`
+			MessageID      string          `json:"message_id"`
+			RootID         string          `json:"root_id"`
+			ParentID       string          `json:"parent_id"`
+			ThreadID       string          `json:"thread_id"`
+			ChatID         string          `json:"chat_id"`
+			ChatType       string          `json:"chat_type"`
+			MessageType    string          `json:"message_type"`
+			Content        string          `json:"content"`
+			CreateTime     string          `json:"create_time"`
+			UpdateTime     string          `json:"update_time"`
+			Mentions       []interface{}   `json:"mentions"`
+			SyncToChatInfo json.RawMessage `json:"sync_to_chat_info"`
 		} `json:"message"`
 		Sender struct {
 			SenderType string `json:"sender_type"`
@@ -60,6 +63,15 @@ func (p *ImMessageProcessor) Transform(_ context.Context, raw *RawEvent, mode Tr
 
 	// Card messages (interactive) are not yet supported for compact conversion;
 	// return raw event data directly.
+	//
+	// This returns before the sync-to-chat projection below, so an interactive
+	// message never carries synced_from_thread_reply / synced_from_thread /
+	// synced_to_chat_message. Nothing is lost: the raw payload still holds the
+	// nested sync_to_chat_info. No API surface creates a card reply with "also
+	// send to chat" (the option is a client-side action on text/post replies),
+	// so this is not expected to occur; if upstream ever does emit the relation
+	// on an interactive message, apply the projection before this branch rather
+	// than letting the two shapes diverge silently.
 	if ev.Message.MessageType == "interactive" {
 		fmt.Fprintf(os.Stderr, "%s[hint]%s card message (interactive) compact conversion is not yet supported, returning raw event data\n", output.Dim, output.Reset)
 		return raw
@@ -125,6 +137,7 @@ func (p *ImMessageProcessor) Transform(_ context.Context, raw *RawEvent, mode Tr
 	if mentions := compactMentions(ev.Message.Mentions); len(mentions) > 0 {
 		out["mentions"] = mentions
 	}
+	convertlib.ApplySyncToChatFields(out, convertlib.DecodeSyncToChatRelation(ev.Message.SyncToChatInfo))
 	return out
 }
 

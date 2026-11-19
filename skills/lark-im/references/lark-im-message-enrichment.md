@@ -19,6 +19,42 @@ This is the single source of truth for the automatic message-enrichment contract
 
 On per-thread fetch failure the host gets `thread_replies_error: true` (mirrors the reactions data contract); budget-truncated or budget-skipped threads do NOT carry that flag.
 
+## Thread reply also sent to the chat
+
+In Feishu a user replying inside a thread can tick "also send to chat". The
+server then stores the reply twice: the original inside the thread, and a copy
+as a normal chat-level message. Both have their own `message_id`, the same
+content, and independent reactions. The CLI marks both sides:
+
+| On the message | Field | Value |
+|---|---|---|
+| The chat-level copy | `synced_from_thread_reply` | `message_id` of the original reply; its thread is in `synced_from_thread` |
+| The original reply | `synced_to_chat_message` | `message_id` of the chat-level copy |
+
+Rules:
+
+- **Deduplicate only against what you actually have.** Both sides *can* appear
+  in one result — the copy at top level, the original inside the root's
+  `thread_replies` — but that is not guaranteed. Skip a message only when the
+  `message_id` its relation field points at is itself present in the current
+  result set. Two ways it can be absent:
+    - `+messages-mget` expands thread replies only for messages that carry a
+      top-level `thread_id`. The copy does not have one (its thread is inside
+      `synced_from_thread`), so requesting the copy alone fetches neither the
+      root nor the original reply.
+    - `+chat-messages-list` only expands roots that fall inside the requested
+      page and time range; if the root is outside them, the original reply is
+      not in the output either.
+- **Pick the side to reply to.** `+messages-reply --reply-in-thread` on the
+  original lands in the thread; `+messages-reply` on the copy lands in the main
+  chat.
+- **Absence means "the CLI did not project a supported relation"** — not "fetch
+  failed", and not strictly "not synced". Ordinary messages carry neither field,
+  but so does a message whose upstream relation was unusable (unrecognised
+  `type`, wrong field types, missing `related_message_id`); those are dropped
+  whole rather than half-reported. Treat absence as "no usable link", and do not
+  infer that the message is unsynced.
+
 ## Resource auto-download (`--download-resources`, opt-in)
 
 `+chat-messages-list`, `+messages-mget`, and `+threads-messages-list` accept an **opt-in** `--download-resources` flag. It is **off by default** — when omitted, output and the request count are identical to before (no `resources` block, no extra round-trips).
@@ -50,5 +86,6 @@ lark-cli auth login --scope "im:message.reactions:read"
 | Message was never edited | `update_time` field is omitted |
 | Whole batch failed | Messages in that batch carry no `reactions`; one line on stderr: `warning: reactions_batch_query_failed: ...` |
 | Some message IDs failed | Failed IDs go to stderr: `warning: reactions_partial_failed: N message(s) failed (...)` |
+| CLI projected no usable thread-reply sync relation (message is unsynced, **or** the upstream relation was unusable) | Neither `synced_from_thread_reply` nor `synced_to_chat_message` is present. The absence is not reversible into "unsynced" |
 
 When deciding "has the user already reacted?", branch on the **presence of the `reactions` field plus its `counts` contents**, not on whether a value is `null` — the field's absence means "no data attached" (which usually means "no reactions exist"), not "fetch failed".
