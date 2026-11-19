@@ -61,6 +61,8 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '测试' --dry-run
 
 ## 参数
 
+列表型参数兼容重复 flag 与旧单 flag 写法，例如 `--to a@example.com --to b@example.com` 和 `--to 'a@example.com,b@example.com'`；`--remove`、`--attach` 同理。`--inline` 每次接受一个 JSON object 或 array，重复值按出现顺序合并且不会按逗号切分。
+
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--message-id <id>` | 是 | 被回复的邮件 ID |
@@ -68,13 +70,13 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '测试' --dry-run
 | `--body-file <path>` | 二选一 | 从文件读取回复正文 HTML（相对路径，仅限 cwd 子树）。与 `--body` 互斥。文件大小上限 32 MB |
 | `--from <email>` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `--mailbox` 指定所属邮箱。默认读取邮箱主地址 |
 | `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。当发件人（`--from`）与邮箱不同时使用。可通过 `accessible_mailboxes` 查询可用邮箱 |
-| `--to '<email>'` | 否 | 额外收件人。多个额外收件人请重复传 `--to`，每次只放一个地址，参数值用单引号包住；追加到自动聚合结果 |
-| `--cc '<email>'` | 否 | 额外抄送。多个抄送请重复传 `--cc`，每次只放一个地址，参数值用单引号包住 |
-| `--bcc '<email>'` | 否 | 密送邮箱。多个密送请重复传 `--bcc`，每次只放一个地址，参数值用单引号包住。与 `--event-*` 不兼容（见 `+send` 日程邀请约束） |
-| `--remove '<email>'` | 否 | 从自动聚合结果中排除的邮箱。多个排除地址请重复传 `--remove`，每次只放一个地址，参数值用单引号包住；按传入顺序处理 |
+| `--to '<email>'` | 否 | 额外收件人。可重复传或单次传逗号地址列表；追加到自动聚合结果 |
+| `--cc '<email>'` | 否 | 额外抄送。可重复传或单次传逗号地址列表 |
+| `--bcc '<email>'` | 否 | 密送邮箱。可重复传或单次传逗号地址列表。与 `--event-*` 不兼容 |
+| `--remove '<email>'` | 否 | 从自动聚合结果中排除的邮箱。可重复传或单次传逗号地址列表；按传入顺序处理 |
 | `--plain-text` | 否 | 强制纯文本模式，忽略所有 HTML 自动检测。不可与 `--inline` 同时使用。纯文本模式下也会自动追加纯文本签名（HTML 签名经 `PlainTextFromHTML` 转换，内联图片丢弃） |
-| `--attach '<path>'` | 否 | 附件文件路径。多个附件请重复传 `--attach`，每次只放一个相对路径，参数值用单引号包住；按传入顺序追加。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（HTML 邮件插入下载卡片，纯文本邮件追加下载链接），单个文件上限 3 GB |
-| `--inline '<json>'` | 否 | 高级用法：手动指定内嵌图片 CID 映射。多个 inline 图片请重复传 `--inline`，每次只放一个 JSON object，并用单引号包住：`'{"cid":"mycid","file_path":"./logo.png"}'`。`file_path` 必须是相对路径；CID 应唯一，例如随机十六进制字符串；在 body 中用 `<img src="cid:mycid">` 引用。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。不可与 `--plain-text` 同时使用 |
+| `--attach '<path>'` | 否 | 附件文件路径。可重复传或单次传逗号路径列表；按传入顺序追加，单个文件上限 3 GB |
+| `--inline '<json>'` | 否 | 手动指定内嵌图片 CID 映射。每次接受 JSON object 或 array；可重复传并按顺序合并，不按逗号切分。不可与 `--plain-text` 同时使用 |
 | `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到回复正文与引用块之间。运行 `mail +signature` 查看可用签名。与 `--no-signature` 互斥 |
 | `--no-signature` | 否 | 跳过默认签名自动追加。与 `--signature-id` 互斥，同时使用时返回参数校验错误（退出码 2） |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
