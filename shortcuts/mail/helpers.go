@@ -368,6 +368,153 @@ func resolveComposeSenderEmail(runtime *common.RuntimeContext) string {
 	return email
 }
 
+type composeScenario int
+
+const (
+	composeScenarioNew composeScenario = iota
+	composeScenarioReply
+)
+
+type composeIdentity struct {
+	Email      string
+	Name       string
+	IsDefault  bool
+	SelfEmails []string
+}
+
+// resolveComposeIdentity selects the From identity for one compose command.
+// Explicit flags preserve their historical behavior and avoid any additional
+// API call. Automatic selection uses settings/send_as when it is trustworthy;
+// a failed or malformed settings response falls back to the old primary-email
+// lookup so the new dependency cannot block existing commands.
+func resolveComposeIdentity(runtime *common.RuntimeContext, mailboxID string, scenario composeScenario, originalTo, originalCC []string) composeIdentity {
+	if from := runtime.Str("from"); from != "" {
+		return composeIdentity{Email: from}
+	}
+	if mailbox := runtime.Str("mailbox"); mailbox != "" && mailbox != "me" {
+		return composeIdentity{Email: mailbox}
+	}
+
+	legacy := func() composeIdentity {
+		email, _ := fetchMailboxPrimaryEmail(runtime, "me")
+		return composeIdentity{Email: email}
+	}
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "settings", "send_as"), nil, nil)
+	if err != nil {
+		return legacy()
+	}
+	identities, ok := parseSendAsIdentities(data)
+	if !ok {
+		return legacy()
+	}
+
+	primaryEmail, _ := fetchMailboxPrimaryEmail(runtime, "me")
+	primary := composeIdentity{Email: primaryEmail, Name: composeFallbackName(runtime)}
+	selfEmails := make([]string, 0, len(identities)+1)
+	for _, identity := range identities {
+		if strings.TrimSpace(identity.Email) != "" {
+			selfEmails = append(selfEmails, identity.Email)
+		}
+	}
+	if strings.TrimSpace(primary.Email) != "" {
+		selfEmails = append(selfEmails, primary.Email)
+	}
+	if scenario == composeScenarioReply {
+		if identity, found := firstMatchingComposeIdentity(originalTo, originalCC, identities, primary); found {
+			identity = withComposeFallbackName(identity, runtime)
+			identity.SelfEmails = selfEmails
+			return identity
+		}
+	}
+	if identity, found := uniqueDefaultComposeIdentity(identities); found {
+		identity = withComposeFallbackName(identity, runtime)
+		identity.SelfEmails = selfEmails
+		return identity
+	}
+	primary.SelfEmails = selfEmails
+	return primary
+}
+
+func composeFallbackName(runtime *common.RuntimeContext) string {
+	if runtime == nil || runtime.Config == nil {
+		return ""
+	}
+	return runtime.Config.UserName
+}
+
+func withComposeFallbackName(identity composeIdentity, runtime *common.RuntimeContext) composeIdentity {
+	if strings.TrimSpace(identity.Name) == "" {
+		identity.Name = composeFallbackName(runtime)
+	}
+	return identity
+}
+
+func parseSendAsIdentities(data map[string]interface{}) ([]composeIdentity, bool) {
+	raw, exists := data["sendable_addresses"]
+	if !exists {
+		if nested, ok := data["data"].(map[string]interface{}); ok {
+			raw, exists = nested["sendable_addresses"]
+		}
+	}
+	if !exists {
+		return nil, false
+	}
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil, false
+	}
+	identities := make([]composeIdentity, 0, len(items))
+	for _, item := range items {
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		isDefault, _ := entry["is_default"].(bool)
+		identities = append(identities, composeIdentity{
+			Email:     strVal(entry["email_address"]),
+			Name:      strVal(entry["name"]),
+			IsDefault: isDefault,
+		})
+	}
+	return identities, true
+}
+
+func uniqueDefaultComposeIdentity(identities []composeIdentity) (composeIdentity, bool) {
+	var selected composeIdentity
+	count := 0
+	for _, identity := range identities {
+		if identity.IsDefault {
+			count++
+			selected = identity
+		}
+	}
+	return selected, count == 1 && strings.TrimSpace(selected.Email) != ""
+}
+
+func firstMatchingComposeIdentity(originalTo, originalCC []string, identities []composeIdentity, primary composeIdentity) (composeIdentity, bool) {
+	byEmail := make(map[string]composeIdentity, len(identities)+1)
+	for _, identity := range identities {
+		key := strings.ToLower(strings.TrimSpace(identity.Email))
+		if key != "" {
+			if _, exists := byEmail[key]; !exists {
+				byEmail[key] = identity
+			}
+		}
+	}
+	if key := strings.ToLower(strings.TrimSpace(primary.Email)); key != "" {
+		if _, exists := byEmail[key]; !exists {
+			byEmail[key] = primary
+		}
+	}
+	for _, address := range append(append([]string(nil), originalTo...), originalCC...) {
+		key := strings.ToLower(strings.TrimSpace(address))
+		if identity, exists := byEmail[key]; exists {
+			return identity, true
+		}
+	}
+	return composeIdentity{}, false
+}
+
 // fetchSelfEmailSet returns a set of addresses to exclude as "self" in
 // reply-all. It always tries profile("me"); when mailboxID or senderEmail
 // differ from "me", those are added to the set as well so that shared-
