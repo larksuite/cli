@@ -18,6 +18,7 @@ import (
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 	"github.com/larksuite/cli/shortcuts/mail/signature"
+	xhtml "golang.org/x/net/html"
 )
 
 // signatureFlag is the common flag definition for --signature-id, shared by all compose shortcuts.
@@ -135,6 +136,7 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 				Data:        data,
 			})
 		}
+		rendered = signatureImagesHTML(rendered, images)
 	}
 
 	return &signatureResult{
@@ -142,6 +144,69 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 		RenderedContent: rendered,
 		Images:          images,
 	}, nil
+}
+
+// signatureImagesHTML converts editor Drive image sources to MIME CID references.
+// Only downloaded signature images are eligible; unrelated remote images remain
+// untouched. Read and update actual token attributes, never src-looking text
+// inside another attribute. Only changed img tokens are serialized; all other
+// markup is copied verbatim.
+func signatureImagesHTML(content string, images []draftpkg.SignatureImage) string {
+	cids := make(map[string]string, len(images))
+	for _, img := range images {
+		if cid := normalizeInlineCID(img.CID); cid != "" {
+			cids[cid] = cid
+		}
+	}
+	if len(cids) == 0 {
+		return content
+	}
+	var out strings.Builder
+	z := xhtml.NewTokenizer(strings.NewReader(content))
+	for {
+		tt := z.Next()
+		raw := string(z.Raw())
+		if tt == xhtml.ErrorToken {
+			out.WriteString(raw)
+			return out.String()
+		}
+		if tt == xhtml.StartTagToken || tt == xhtml.SelfClosingTagToken {
+			tok := z.Token()
+			if tok.Data == "img" {
+				var src, cid string
+				var srcCount, cidCount int
+				for _, attr := range tok.Attr {
+					switch attr.Key {
+					case "src":
+						srcCount++
+						src = attr.Val
+					case "data-cid":
+						cidCount++
+						cid = normalizeInlineCID(attr.Val)
+					}
+				}
+				// Duplicate image references are ambiguous; preserve the raw token.
+				if srcCount > 1 || cidCount > 1 || strings.HasPrefix(strings.ToLower(strings.TrimSpace(src)), "cid:") {
+					out.WriteString(raw)
+					continue
+				}
+				if cid == "" {
+					if u, err := url.Parse(src); err == nil {
+						cid = normalizeInlineCID(u.Query().Get("cid"))
+					}
+				}
+				if _, ok := cids[cid]; ok {
+					for i := range tok.Attr {
+						if tok.Attr[i].Key == "src" {
+							tok.Attr[i].Val = "cid:" + cid
+							raw = tok.String()
+						}
+					}
+				}
+			}
+		}
+		out.WriteString(raw)
+	}
 }
 
 // injectSignatureIntoBody inserts signature HTML into the body, placing
