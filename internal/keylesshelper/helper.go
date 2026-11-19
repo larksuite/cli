@@ -26,12 +26,11 @@ const (
 	helperOutputLimit      = 1_048_576
 	helperStderrLimit      = 65_536
 	helperExecutionTimeout = 10 * time.Second
-	defaultKeyLabel        = "larksuite-cli-agent"
 )
 
 type request struct {
 	Op       string `json:"op"`
-	KeyRef   string `json:"keyRef,omitempty"`
+	KeyRef   string `json:"keyRef"`
 	ClientID string `json:"clientId,omitempty"`
 	Audience string `json:"aud,omitempty"`
 }
@@ -51,14 +50,12 @@ type protocolError struct {
 // Command is one verified provider executable. It is intentionally impossible
 // to construct from an app-config path, argv, or environment variable.
 type Command struct {
-	argv        []string
+	binaryPath  string
 	providerCWD string
 	providerSHA string
 }
 
-// NewProviderCommand builds the fixed empty-argv command used by a verified
-// provider executable. Provider execution never accepts argv from app config or
-// the environment.
+// NewProviderCommand binds the verified executable to its package directory.
 func NewProviderCommand(binaryPath, providerRoot, expectedSHA256 string) (*Command, error) {
 	if strings.TrimSpace(binaryPath) == "" || strings.TrimSpace(providerRoot) == "" {
 		return nil, fmt.Errorf("provider binary path and root must be non-empty")
@@ -66,14 +63,14 @@ func NewProviderCommand(binaryPath, providerRoot, expectedSHA256 string) (*Comma
 	if len(expectedSHA256) != 64 {
 		return nil, fmt.Errorf("provider binary digest must be a SHA-256 hex string")
 	}
-	return &Command{argv: []string{binaryPath}, providerCWD: providerRoot, providerSHA: expectedSHA256}, nil
+	return &Command{binaryPath: binaryPath, providerCWD: providerRoot, providerSHA: expectedSHA256}, nil
 }
 
 // Probe asks this resolved helper for its public key.
 func (c *Command) Probe(ctx context.Context, keyRef string) error {
 	resp, err := c.execute(ctx, request{
 		Op:     "pubkey",
-		KeyRef: defaultKeyRef(keyRef),
+		KeyRef: keyRef,
 	})
 	if err != nil {
 		return err
@@ -85,7 +82,7 @@ func (c *Command) Probe(ctx context.Context, keyRef string) error {
 func (c *Command) SignClientAssertion(ctx context.Context, keyRef, clientID, audience string) (string, string, error) {
 	resp, err := c.execute(ctx, request{
 		Op:       "sign-assertion",
-		KeyRef:   defaultKeyRef(keyRef),
+		KeyRef:   keyRef,
 		ClientID: clientID,
 		Audience: audience,
 	})
@@ -105,10 +102,18 @@ func (c *Command) SignClientAssertion(ctx context.Context, keyRef, clientID, aud
 }
 
 func (c *Command) execute(ctx context.Context, req request) (response, error) {
-	if err := verifyProviderBinary(c.argv[0], c.providerSHA); err != nil {
+	if req.KeyRef == "" {
+		return response{}, errors.New("keyless helper requires a key reference")
+	}
+	if err := verifyProviderBinary(c.binaryPath, c.providerSHA); err != nil {
 		return response{}, err
 	}
-	return runCommandConfigured(ctx, c.argv, req, c.providerCWD, providerEnvironment())
+	ctx, cancel := context.WithTimeout(ctx, helperExecutionTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, c.binaryPath)
+	cmd.Dir = c.providerCWD
+	cmd.Env = providerEnvironment()
+	return runHelper(ctx, cmd, req)
 }
 
 func verifyProviderBinary(path, expectedSHA string) error {
@@ -148,31 +153,16 @@ func validateResponse(resp response) error {
 	return nil
 }
 
-func defaultKeyRef(keyRef string) string {
-	if keyRef != "" {
-		return keyRef
-	}
-	return defaultKeyLabel
-}
-
-func runCommandConfigured(ctx context.Context, argv []string, req request, cwd string, env []string) (response, error) {
+func runHelper(ctx context.Context, cmd *exec.Cmd, req request) (response, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return response{}, fmt.Errorf("marshal keyless helper request: %w", err)
 	}
 	body = append(body, '\n')
 
-	helperCtx, cancel := withExecutionTimeout(ctx)
-	defer cancel()
-
 	// Cancellation kills the helper; WaitDelay bounds pipe draining when a
 	// descendant keeps stdout or stderr open after the helper exits.
-	cmd := exec.CommandContext(helperCtx, argv[0], argv[1:]...)
 	cmd.WaitDelay = 10 * time.Second
-	if cwd != "" {
-		cmd.Dir = cwd
-		cmd.Env = env
-	}
 	cmd.Stdin = bytes.NewReader(body)
 	stdout := &limitedBuffer{limit: helperOutputLimit}
 	stderr := &limitedBuffer{limit: helperStderrLimit}
@@ -180,7 +170,7 @@ func runCommandConfigured(ctx context.Context, argv []string, req request, cwd s
 	cmd.Stderr = stderr
 
 	runErr := cmd.Run()
-	if err := helperCtx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		// Never parse or include helper output on cancellation. A partially written
 		// response may contain a client assertion or other credential material.
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -214,7 +204,7 @@ func providerEnvironment() []string {
 	// runtime/proxy/library injection variables. HOME/TMPDIR/SystemRoot are the
 	// minimal cross-platform values currently needed by supported backends.
 	keep := map[string]bool{"HOME": true, "TMPDIR": true, "TEMP": true, "TMP": true, "SystemRoot": true, "WINDIR": true}
-	var env []string
+	env := []string{} // A nil Cmd.Env would inherit the entire host environment.
 	for _, entry := range os.Environ() {
 		name := entry
 		if idx := strings.IndexByte(entry, '='); idx >= 0 {
@@ -225,10 +215,6 @@ func providerEnvironment() []string {
 		}
 	}
 	return env
-}
-
-func withExecutionTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(ctx, helperExecutionTimeout)
 }
 
 func helperRunError(runErr error, stderr string) error {

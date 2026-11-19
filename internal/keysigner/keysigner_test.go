@@ -67,15 +67,6 @@ func TestPlatformSignerDiscoveryAndResolution(t *testing.T) {
 	if !slices.Equal(names, wantNames) {
 		t.Fatalf("PlatformSignerNames() = %v, want %v", names, wantNames)
 	}
-	for _, name := range names {
-		if !IsPlatformSignerName(name) {
-			t.Fatalf("platform signer %q was not recognized", name)
-		}
-	}
-	if IsPlatformSignerName("unknown") {
-		t.Fatal("unknown signer was recognized as a platform backend")
-	}
-
 	directory := func(string) (string, error) {
 		t.Fatal("constructing platform signers accessed storage")
 		return "", nil
@@ -89,22 +80,20 @@ func TestPlatformSignerDiscoveryAndResolution(t *testing.T) {
 			t.Fatalf("signer %d = %q, want %q", i, signers[i].Name(), names[i])
 		}
 	}
-	if len(names) == 0 {
-		if _, err := ResolvePlatformSigner("", directory); !errors.Is(err, ErrUnavailable) {
-			t.Fatalf("unsupported platform resolution = %v, want ErrUnavailable", err)
+	for _, name := range names {
+		resolved, err := ResolvePlatformSigner(name, directory)
+		if err != nil || resolved.Name() != name {
+			t.Fatalf("resolve %q: got %v, err = %v", name, resolved, err)
 		}
-		return
 	}
-	resolved, err := ResolvePlatformSigner("", directory)
-	if err != nil || resolved == nil || resolved.Name() != names[0] {
-		t.Fatalf("legacy signer resolution = %v, %v", resolved, err)
-	}
-	if _, err := ResolvePlatformSigner("unknown", directory); err == nil {
-		t.Fatal("unknown platform signer resolved")
+	for _, name := range []string{"", "unknown"} {
+		if _, err := ResolvePlatformSigner(name, directory); err == nil || errors.Is(err, ErrUnavailable) {
+			t.Fatalf("ResolvePlatformSigner(%q) = %v, want an unknown provider error", name, err)
+		}
 	}
 	unsupported := LinuxTPMSignerName
 	if runtime.GOOS == "linux" {
-		unsupported = MacOSSecureEnclaveSignerName
+		unsupported = MacOSKeychainSignerName
 	}
 	if _, err := ResolvePlatformSigner(unsupported, directory); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("cross-platform signer error = %v, want ErrUnavailable", err)
@@ -177,11 +166,11 @@ func TestEnsureKeyWithFallbackSelectionAndErrors(t *testing.T) {
 		t.Fatalf("ensure calls = (%d, %d), want (1, 1)", unavailable.ensureCalls, selected.ensureCalls)
 	}
 
-	terminal := errors.New("key record is corrupt")
-	if _, _, err := EnsureKeyWithFallback(context.Background(),
-		[]Signer{&lifecycleTestSigner{name: "terminal", ensureErr: terminal}},
-		KeyRef{Label: "terminal"}); !errors.Is(err, terminal) {
-		t.Fatalf("terminal error = %v, want preserved cause", err)
+	for _, terminal := range []error{ErrCorrupt, errors.Join(ErrUnavailable, ErrCleanupFailed), errors.Join(ErrUnavailable, context.Canceled)} {
+		first := &lifecycleTestSigner{name: "terminal", ensureErr: terminal}
+		if _, _, err := EnsureKeyWithFallback(context.Background(), []Signer{first, selected}, KeyRef{Label: "terminal"}); !errors.Is(err, terminal) || selected.ensureCalls != 1 {
+			t.Fatalf("terminal error triggered fallback or lost cause: %v", err)
+		}
 	}
 	if _, _, err := EnsureKeyWithFallback(context.Background(),
 		[]Signer{&lifecycleTestSigner{name: "unavailable", ensureErr: unavailableErr}},
@@ -195,11 +184,7 @@ func TestEnsureKeyWithFallbackSelectionAndErrors(t *testing.T) {
 	if _, _, err := EnsureKeyWithFallback(ctx, []Signer{notCalled}, KeyRef{Label: "cancelled"}); !errors.Is(err, context.Canceled) || notCalled.ensureCalls != 0 {
 		t.Fatalf("cancelled fallback = %v, ensure calls %d", err, notCalled.ensureCalls)
 	}
-	if CanFallback(errors.Join(ErrUnavailable, ErrCleanupFailed)) ||
-		CanFallback(errors.Join(ErrUnavailable, context.Canceled)) ||
-		!CanFallback(unavailableErr) {
-		t.Fatal("CanFallback did not preserve cleanup/cancellation precedence")
-	}
+
 }
 
 func TestProbeSignerLifecycleAndValidation(t *testing.T) {

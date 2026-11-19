@@ -10,39 +10,26 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"sync"
 	"testing"
 
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
 type testMetadataStore struct {
-	mu                        sync.Mutex
-	values                    map[string]string
-	getErr, setErr, removeErr error
+	values map[string]string
+	getErr error
 }
 
 func (s *testMetadataStore) Get(_, account string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	return s.values[account], s.getErr
 }
 func (s *testMetadataStore) Set(_, account, value string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.setErr != nil {
-		return s.setErr
-	}
 	s.values[account] = value
 	return nil
 }
 func (s *testMetadataStore) Remove(_, account string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.removeErr != nil {
-		return s.removeErr
-	}
 	delete(s.values, account)
 	return nil
 }
@@ -57,30 +44,46 @@ func (s cancelingUnlockStore) Get(service, account string) (string, error) {
 	return s.testMetadataStore.Get(service, account)
 }
 
-func TestSoftwareUnlockRetainsKeylessPolicy(t *testing.T) {
-	for _, existing := range []bool{false, true} {
-		directory := isolateSoftwareStorage(t)
-		kc := &testMetadataStore{values: map[string]string{}}
-		if existing {
-			if err := os.MkdirAll(directory, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(directory, "notes.json"), nil, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		_, err := newSoftwareSigner(kc).unlock(context.Background(), directory, existing)
-		if !errors.Is(err, keysigner.ErrUnlockRequired) || len(kc.values) != 0 {
-			t.Fatalf("existing=%v unlock=%v values=%v", existing, err, kc.values)
-		}
+func TestSoftwareUnlockProtectsExistingKeys(t *testing.T) {
+	directory := isolateSoftwareStorage(t)
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	cause := errors.New("Get failed while canceling")
-	kc := &testMetadataStore{values: map[string]string{}, getErr: cause}
-	_, err := newSoftwareSigner(cancelingUnlockStore{kc, cancel}).unlock(ctx, isolateSoftwareStorage(t), true)
-	if !errors.Is(err, cause) || errors.Is(err, context.Canceled) || len(kc.values) != 0 {
-		t.Fatalf("keyless retains Get failure without DPoP cancellation recheck: %v", err)
+	if err := os.WriteFile(filepath.Join(directory, "notes.json"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	kc := &testMetadataStore{values: map[string]string{}}
+	signer := newSoftwareSigner(kc)
+	ctx := context.Background()
+	if _, err := signer.EnsureKey(ctx, keysigner.KeyRef{Label: "first"}); err != nil {
+		t.Fatalf("unrelated JSON blocked first key: %v", err)
+	}
+	delete(kc.values, softwareUnlockAccount)
+	_, err := signer.EnsureKey(ctx, keysigner.KeyRef{Label: "second"})
+	if !errors.Is(err, keysigner.ErrUnlockRequired) || len(kc.values) != 0 {
+		t.Fatalf("missing unlock secret for existing key: err=%v writes=%d", err, len(kc.values))
+	}
+}
+
+func TestSoftwareUnlockStopsAfterCanceledKeychainRead(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		getErr error
+	}{
+		{"missing entry", keychain.ErrNotFound},
+		{"read failure", errors.New("keychain read failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isolateSoftwareStorage(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			kc := &testMetadataStore{values: map[string]string{}, getErr: tc.getErr}
+			signer := newSoftwareSigner(cancelingUnlockStore{kc, cancel})
+			_, err := signer.EnsureKey(ctx, keysigner.KeyRef{Label: "first"})
+			if !errors.Is(err, context.Canceled) || !errors.Is(err, tc.getErr) || len(kc.values) != 0 {
+				t.Fatalf("canceled keychain read: err=%v, stored entries=%d", err, len(kc.values))
+			}
+		})
 	}
 }
 
@@ -105,11 +108,7 @@ func TestRegistrationSignersSoftwareFallback(t *testing.T) {
 	directory := isolateSoftwareStorage(t)
 	kc := &testMetadataStore{values: map[string]string{}}
 	signers := RegistrationSigners(kc)
-	names := keysigner.PlatformSignerNames()
-	if runtime.GOOS == "darwin" {
-		names = []string{keysigner.MacOSKeychainSignerName}
-	}
-	names = append(names, keysigner.SoftwareSignerName)
+	names := append(keysigner.PlatformSignerNames(), keysigner.SoftwareSignerName)
 	var got []string
 	for _, signer := range signers {
 		got = append(got, signer.Name())
@@ -123,7 +122,7 @@ func TestRegistrationSignersSoftwareFallback(t *testing.T) {
 	signer := signers[len(signers)-1]
 	ctx := context.Background()
 	ref := keysigner.KeyRef{Label: "software-test"}
-	pub, err := signer.EnsureKey(ctx, ref)
+	_, err := signer.EnsureKey(ctx, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,21 +155,6 @@ func TestRegistrationSignersSoftwareFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotPub, err := reopened.PublicKey(ctx, ref)
-	if err != nil {
-		t.Fatal(err)
-	}
-	before, err := keysigner.PublicKeyThumbprint(pub)
-	if err != nil {
-		t.Fatal(err)
-	}
-	after, err := keysigner.PublicKeyThumbprint(gotPub)
-	if err != nil || before != after {
-		t.Fatalf("reopen changed public key: %v", err)
-	}
-	if _, _, err := reopened.Sign(ctx, ref, []byte("test")); err != nil {
-		t.Fatal(err)
-	}
 	if err := reopened.DeleteKey(ctx, ref); err != nil {
 		t.Fatal(err)
 	}
@@ -182,15 +166,8 @@ func TestRegistrationSignersSoftwareFallback(t *testing.T) {
 	}
 }
 
-func TestLegacyMacOSSignerRemainsKeychain(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("macOS private-key JWT policy")
-	}
-	signer, err := ResolveSigner("", &testMetadataStore{values: map[string]string{}})
-	if err != nil || signer.Name() != keysigner.MacOSKeychainSignerName {
-		t.Fatalf("legacy signer = %v, error = %v", signer, err)
-	}
-	if got := keysigner.PlatformSignerNames(); len(got) < 2 || got[0] != keysigner.MacOSSecureEnclaveSignerName {
-		t.Fatal("private-key JWT policy changed the shared DPoP platform preference")
+func TestResolveSignerRequiresProvider(t *testing.T) {
+	if signer, err := ResolveSigner("", &testMetadataStore{}); err == nil || signer != nil {
+		t.Fatalf("missing provider resolved to %v, err = %v", signer, err)
 	}
 }

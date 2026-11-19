@@ -36,7 +36,7 @@ type ConfigInitOptions struct {
 	New                       bool
 	PrivateKeyJWTLocalKeyPair bool // select private_key_jwt_local_keypair with a generated key or PrivateKeyFile
 	PrivateKeyFile            string
-	registrationSigners       []keysigner.Signer
+	registrationStore         *keylesshelper.KeyStore
 
 	Lang         string // raw --lang (string for cobra); normalized to canonical/"" in validateInitLang
 	langExplicit bool   // true when --lang was explicitly passed
@@ -163,7 +163,7 @@ func ProjectInitHelp(cmd *cobra.Command, canReferenceBind bool) {
 }
 
 func requestedInitAuthMethod(opts *ConfigInitOptions) string {
-	if opts.PrivateKeyJWTLocalKeyPair || opts.PrivateKeyFile != "" {
+	if opts.PrivateKeyJWTLocalKeyPair {
 		return core.AuthMethodPrivateKeyJWTLocalKeyPair
 	}
 	return core.AuthMethodClientSecret
@@ -214,7 +214,7 @@ func guardAgentWorkspace(opts *ConfigInitOptions) error {
 
 // hasAnyNonInteractiveFlag returns true if any non-interactive flag is set.
 func (o *ConfigInitOptions) hasAnyNonInteractiveFlag() bool {
-	return o.New || o.PrivateKeyFile != "" || o.AppID != "" || o.AppSecretStdin
+	return o.New || o.AppID != "" || o.AppSecretStdin
 }
 
 // cleanupOldConfig clears keychain entries (AppSecret + UAT) for all apps in existing config except the app whose AppId equals skipAppID.
@@ -233,36 +233,27 @@ func cleanupOldConfig(existing *core.MultiAppConfig, f *cmdutil.Factory, skipApp
 	}
 }
 
+// initTargetProfile matches --name by profile name, as saveAsProfile does.
+func initTargetProfile(existing *core.MultiAppConfig, profileName string) *core.AppConfig {
+	if existing == nil {
+		return nil
+	}
+	if profileName == "" {
+		return existing.CurrentAppConfig("")
+	}
+	if idx := findProfileIndexByName(existing, profileName); idx >= 0 {
+		return &existing.Apps[idx]
+	}
+	return nil
+}
+
 // removeStaleSecretForPrivateKeyJWTLocalKeyPair clears a secret left in the keychain when
 // the same appId is migrated from client_secret to private_key_jwt_local_keypair.
 func removeStaleSecretForPrivateKeyJWTLocalKeyPair(existing *core.MultiAppConfig, profileName, appID string, kc keychain.KeychainAccess) {
-	if existing == nil {
-		return
-	}
-	var prior *core.AppConfig
-	if profileName != "" {
-		if idx := findProfileIndexByName(existing, profileName); idx >= 0 {
-			prior = &existing.Apps[idx]
-		}
-	} else {
-		prior = existing.CurrentAppConfig("")
-	}
+	prior := initTargetProfile(existing, profileName)
 	if prior != nil && prior.AppId == appID && !prior.AppSecret.IsZero() {
 		core.RemoveSecretStore(prior.AppSecret, kc)
 	}
-}
-
-// keyRefFromResult builds the signer reference for private_key_jwt_local_keypair,
-// or nil for client_secret.
-func keyRefFromResult(r *configInitResult) *core.SecretRef {
-	if r != nil && core.IsPrivateKeyJWTLocalKeyPairAuthMethod(r.AuthMethod) && r.KeyLabel != "" {
-		source := r.KeySource
-		if source == "" {
-			source = core.SecretSourceTEE
-		}
-		return &core.SecretRef{Source: source, Provider: r.KeyProvider, ID: r.KeyLabel}
-	}
-	return nil
 }
 
 // cleanupReplacedSigningKeys runs only after the new binding has been saved.
@@ -278,7 +269,7 @@ func cleanupReplacedSigningKeys(ctx context.Context, f *cmdutil.Factory, previou
 }
 
 // saveAsOnlyApp overwrites config.json with a single-app config.
-func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, lang, authMethod string, keyRef *core.SecretRef) error {
+func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, lang, authMethod string, keyRef *core.KeyRef) error {
 	config := &core.MultiAppConfig{
 		Apps: []core.AppConfig{{
 			AppId: appId, AppSecret: secret, Brand: brand, Lang: i18n.Lang(lang), Users: []core.AppUser{},
@@ -293,7 +284,7 @@ func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, 
 // Without profileName: cleans up old config and saves as the only app.
 // authMethod/keyRef carry the credential type: ("", nil) for client_secret or
 // private_key_jwt_local_keypair plus its signer reference.
-func saveInitConfig(profileName string, existing *core.MultiAppConfig, f *cmdutil.Factory, appId string, secret core.SecretInput, brand core.LarkBrand, lang, authMethod string, keyRef *core.SecretRef) error {
+func saveInitConfig(profileName string, existing *core.MultiAppConfig, f *cmdutil.Factory, appId string, secret core.SecretInput, brand core.LarkBrand, lang, authMethod string, keyRef *core.KeyRef) error {
 	var previous *core.MultiAppConfig
 	if existing != nil {
 		copied := *existing
@@ -344,7 +335,7 @@ func wrapSaveConfigError(err error) error {
 // saveAsProfile appends or updates a named profile in the config.
 // If a profile with the same name exists, it updates it; otherwise appends.
 // When updating, cleans up old keychain secrets if AppId changed.
-func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, profileName, appId string, secret core.SecretInput, brand core.LarkBrand, lang, authMethod string, keyRef *core.SecretRef) error {
+func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, profileName, appId string, secret core.SecretInput, brand core.LarkBrand, lang, authMethod string, keyRef *core.KeyRef) error {
 	multi := existing
 	if multi == nil {
 		multi = &core.MultiAppConfig{}
@@ -492,60 +483,46 @@ func privateKeyFileResult(
 		Brand:      brand,
 		AppID:      appID,
 		AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		KeySource:  core.SecretSourceKeyFile,
-		KeyLabel:   path,
+		KeyRef:     &core.KeyRef{Source: core.KeySourceFile, ID: path},
 		KeyID:      kid,
 	}, nil
 }
 
-func persistInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName string, result *configInitResult) error {
+func persistInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, result *configInitResult) error {
 	existing, _ := core.LoadMultiAppConfig()
 
 	switch {
-	case core.IsPrivateKeyJWTLocalKeyPairAuthMethod(result.AuthMethod):
+	case result.AuthMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair:
 		previous := existing
 		if existing != nil {
 			copied := *existing
 			copied.Apps = append([]core.AppConfig(nil), existing.Apps...)
 			previous = &copied
 		}
-		if err := saveInitConfig(profileName, existing, f, result.AppID, core.SecretInput{}, result.Brand, opts.Lang, result.AuthMethod, keyRefFromResult(result)); err != nil {
+		if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, core.SecretInput{}, result.Brand, opts.Lang, result.AuthMethod, result.KeyRef); err != nil {
 			return wrapSaveConfigError(err)
 		}
-		removeStaleSecretForPrivateKeyJWTLocalKeyPair(previous, profileName, result.AppID, f.Keychain)
+		removeStaleSecretForPrivateKeyJWTLocalKeyPair(previous, opts.ProfileName, result.AppID, f.Keychain)
 		return nil
 	case result.AppSecret != "":
 		secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
 		if err != nil {
 			return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 		}
-		if err := saveInitConfig(profileName, existing, f, result.AppID, secret, result.Brand, opts.Lang, "", nil); err != nil {
+		if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang, "", nil); err != nil {
 			return wrapSaveConfigError(err)
 		}
 		return nil
 	case result.Mode == "existing" && result.AppID != "":
-		return wrapUpdateExistingProfileErr(updateExistingProfileWithoutSecret(existing, profileName, result.AppID, result.Brand, opts.Lang))
+		return wrapUpdateExistingProfileErr(updateExistingProfileWithoutSecret(existing, opts.ProfileName, result.AppID, result.Brand, opts.Lang))
 	default:
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "App ID and App Secret cannot be empty").WithParam("--app-id")
 	}
 }
 
 func probeInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, result *configInitResult) error {
-	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(result.AuthMethod) {
-		signer := result.Signer
-		if signer != nil {
-			return runProbePrivateKeyJWTLocalKeyPair(opts.Ctx, f, result.Brand, result.AppID, signer, result.KeyLabel)
-		}
-		if result.KeySource == core.SecretSourceKeyFile {
-			signer = &keylesshelper.FileSigner{}
-		} else {
-			var err error
-			signer, err = keylesshelper.ResolveSigner(result.KeyProvider, f.Keychain)
-			if err != nil {
-				return errs.NewConfigError(errs.SubtypeInvalidConfig, "%v", err).WithCause(err)
-			}
-		}
-		return runProbePrivateKeyJWTLocalKeyPair(opts.Ctx, f, result.Brand, result.AppID, signer, result.KeyLabel)
+	if result.AuthMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair {
+		return runProbePrivateKeyJWTLocalKeyPair(opts.Ctx, f, result.Brand, result.AppID, result.Signer, result.KeyRef.ID)
 	}
 	if result.AppSecret != "" {
 		return runProbe(opts.Ctx, f, result.AppID, result.AppSecret, result.Brand)
@@ -553,28 +530,22 @@ func probeInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, result *config
 	return nil
 }
 
-func persistAndPrintResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName string, result *configInitResult) error {
-	if err := persistInitResult(opts, f, profileName, result); err != nil {
+func persistAndPrintResult(opts *ConfigInitOptions, f *cmdutil.Factory, result *configInitResult) error {
+	if err := persistInitResult(opts, f, result); err != nil {
 		return err
 	}
 	printLangPreferenceConfirmation(opts)
-	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(result.AuthMethod) {
-		data := map[string]interface{}{"appId": result.AppID, "authMethod": result.AuthMethod, "brand": result.Brand}
-		if result.KeyID != "" {
-			data["kid"] = result.KeyID
-		}
-		output.PrintJson(f.IOStreams.Out, data)
+	if result.AuthMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair {
+		output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+			"appId":      result.AppID,
+			"authMethod": result.AuthMethod,
+			"brand":      result.Brand,
+			"kid":        result.KeyID,
+		})
 	} else {
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "appSecret": "****", "brand": result.Brand})
 	}
 	return nil
-}
-
-func configRegistrationSigners(opts *ConfigInitOptions, f *cmdutil.Factory) []keysigner.Signer {
-	if opts.registrationSigners != nil {
-		return opts.registrationSigners
-	}
-	return keylesshelper.RegistrationSigners(f.Keychain)
 }
 
 func configInitRun(opts *ConfigInitOptions) error {
@@ -612,7 +583,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 		existing = nil // treat as empty
 	}
 
-	// Validate --profile name before any registration, file read, or write.
+	// Validate --name before any registration, file read, or write.
 	if opts.ProfileName != "" {
 		if err := core.ValidateProfileName(opts.ProfileName); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithCause(err)
@@ -629,13 +600,16 @@ func configInitRun(opts *ConfigInitOptions) error {
 		if fileErr != nil {
 			return fileErr
 		}
-		return persistAndPrintResult(opts, f, opts.ProfileName, result)
+		return persistAndPrintResult(opts, f, result)
 	}
 
-	// Check private_key_jwt_local_keypair key generation before showing the TUI,
-	// so unsupported machines fail before the user chooses a create flow.
-	if opts.PrivateKeyJWTLocalKeyPair && !opts.New {
-		if _, err := resolveRegisterAuthMethod(opts.Ctx, core.AuthMethodPrivateKeyJWTLocalKeyPair, configRegistrationSigners(opts, f)); err != nil {
+	// Fail before opening the TUI or starting remote registration.
+	store := opts.registrationStore
+	if opts.PrivateKeyJWTLocalKeyPair {
+		if store == nil {
+			store = keylesshelper.NewKeyStore(keylesshelper.RegistrationSigners(f.Keychain)...)
+		}
+		if err := probeRegistrationSigner(opts.Ctx, store); err != nil {
 			return err
 		}
 	}
@@ -675,22 +649,23 @@ func configInitRun(opts *ConfigInitOptions) error {
 
 	// Mode 3: Create new app directly (--new)
 	if opts.New {
-		result, err := runCreateAppFlow(opts.Ctx, f, parseBrand(opts.Brand), requestedInitAuthMethod(opts), msg, "", configRegistrationSigners(opts, f))
+		result, err := runCreateAppFlow(opts.Ctx, f, parseBrand(opts.Brand), requestedInitAuthMethod(opts), msg, "", store)
 		if err != nil {
 			return err
 		}
 		if result == nil {
 			return errs.NewInternalError(errs.SubtypeSDKError, "app creation returned no result")
 		}
-		if err := persistAndPrintResult(opts, f, opts.ProfileName, result); err != nil {
+		if err := persistAndPrintResult(opts, f, result); err != nil {
 			return err
 		}
 		return probeInitResult(opts, f, result)
 	}
 
 	// Mode 4: Interactive TUI (terminal)
+	defaults := initTargetProfile(existing, opts.ProfileName)
 	if !opts.hasAnyNonInteractiveFlag() && f.IOStreams.IsTerminal {
-		result, err := runInteractiveConfigInit(opts.Ctx, f, requestedInitAuthMethod(opts), msg, configRegistrationSigners(opts, f))
+		result, err := runInteractiveConfigInit(opts.Ctx, f, requestedInitAuthMethod(opts), msg, store, defaults)
 		if err != nil {
 			return err
 		}
@@ -699,10 +674,10 @@ func configInitRun(opts *ConfigInitOptions) error {
 				WithParam("--app-id")
 		}
 
-		if err := persistInitResult(opts, f, opts.ProfileName, result); err != nil {
+		if err := persistInitResult(opts, f, result); err != nil {
 			return err
 		}
-		if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(result.AuthMethod) {
+		if result.AuthMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair {
 			if err := probeInitResult(opts, f, result); err != nil {
 				return err
 			}
@@ -712,7 +687,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 			output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.ConfigSaved, result.AppID))
 		}
 		printLangPreferenceConfirmation(opts)
-		if !core.IsPrivateKeyJWTLocalKeyPairAuthMethod(result.AuthMethod) {
+		if result.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair {
 			return probeInitResult(opts, f, result)
 		}
 		return nil
@@ -724,11 +699,6 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 
 	// Mode 5: Legacy interactive (readline fallback)
-	firstApp := (*core.AppConfig)(nil)
-	if existing != nil {
-		firstApp = existing.CurrentAppConfig("")
-	}
-
 	reader := bufio.NewReader(f.IOStreams.In)
 	readLine := func(prompt string) (string, error) {
 		fmt.Fprintf(f.IOStreams.ErrOut, "%s: ", prompt)
@@ -743,8 +713,8 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 
 	prompt := "App ID"
-	if firstApp != nil && firstApp.AppId != "" {
-		prompt += fmt.Sprintf(" [%s]", firstApp.AppId)
+	if defaults != nil && defaults.AppId != "" {
+		prompt += fmt.Sprintf(" [%s]", defaults.AppId)
 	}
 	appIdInput, err := readLine(prompt)
 	if err != nil {
@@ -752,7 +722,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 
 	prompt = "App Secret"
-	if firstApp != nil && !firstApp.AppSecret.IsZero() {
+	if defaults != nil && !defaults.AppSecret.IsZero() {
 		prompt += " [****]"
 	}
 	appSecretInput, err := readLine(prompt)
@@ -761,8 +731,8 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 
 	prompt = "Brand (lark/feishu)"
-	if firstApp != nil && firstApp.Brand != "" {
-		prompt += fmt.Sprintf(" [%s]", firstApp.Brand)
+	if defaults != nil && defaults.Brand != "" {
+		prompt += fmt.Sprintf(" [%s]", defaults.Brand)
 	} else {
 		prompt += " [feishu]"
 	}
@@ -772,18 +742,18 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 
 	resolvedAppId := appIdInput
-	if resolvedAppId == "" && firstApp != nil {
-		resolvedAppId = firstApp.AppId
+	if resolvedAppId == "" && defaults != nil {
+		resolvedAppId = defaults.AppId
 	}
 	var resolvedSecret core.SecretInput
 	if appSecretInput != "" {
 		resolvedSecret = core.PlainSecret(appSecretInput)
-	} else if firstApp != nil {
-		resolvedSecret = firstApp.AppSecret
+	} else if defaults != nil {
+		resolvedSecret = defaults.AppSecret
 	}
 	resolvedBrand := brandInput
-	if resolvedBrand == "" && firstApp != nil {
-		resolvedBrand = string(firstApp.Brand)
+	if resolvedBrand == "" && defaults != nil {
+		resolvedBrand = string(defaults.Brand)
 	}
 	if resolvedBrand == "" {
 		resolvedBrand = "feishu"

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/errs"
@@ -45,11 +44,19 @@ const (
 	AuthMethodPrivateKeyJWTLocalKeyPair = "private_key_jwt_local_keypair"
 )
 
-// IsPrivateKeyJWTLocalKeyPairAuthMethod reports whether method signs client assertions
-// with a generated key pair or a local private key file.
-func IsPrivateKeyJWTLocalKeyPairAuthMethod(method string) bool {
-	return method == AuthMethodPrivateKeyJWTLocalKeyPair
+// KeyRef identifies the application signing key for private_key_jwt_local_keypair.
+type KeyRef struct {
+	Source   string `json:"source"`             // "tee" | "file"
+	Provider string `json:"provider,omitempty"` // required for "tee", omitted for "file"
+	ID       string `json:"id"`                 // provider key handle or absolute PEM path
 }
+
+const (
+	KeySourceTEE  = "tee"
+	KeySourceFile = "file"
+	// KeylessProviderLarkSuite identifies the external OpenClaw signer.
+	KeylessProviderLarkSuite = "larksuite.keyless"
+)
 
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
@@ -66,11 +73,8 @@ type AppConfig struct {
 	// AuthMethod selects how tokens are minted. Empty == AuthMethodClientSecret
 	// (back-compat). private_key_jwt_local_keypair uses the generated key or PEM
 	// file selected by KeyRef instead of sending an app secret.
-	AuthMethod string `json:"authMethod,omitempty"`
-	// KeyRef identifies the signer input for private_key_jwt_local_keypair.
-	// Source "tee" stores an opaque managed-key handle (including software-file);
-	// source "file" stores a resolved PEM path without embedding private material.
-	KeyRef *SecretRef `json:"keyRef,omitempty"`
+	AuthMethod string  `json:"authMethod,omitempty"`
+	KeyRef     *KeyRef `json:"keyRef,omitempty"`
 }
 
 // ProfileName returns the display name for this app config.
@@ -234,7 +238,7 @@ type CliConfig struct {
 	AuthMethod          string // "" == client_secret; private_key_jwt_local_keypair
 	KeySource           string // tee or file for private_key_jwt_local_keypair
 	KeyLabel            string // resolved platform handle or private-key file path
-	KeyProvider         string // built-in backend name, external provider, or empty legacy auto-selection
+	KeyProvider         string // required for tee keys, empty for PEM files
 }
 
 // identityBotBit is the bit flag for bot identity in SupportedIdentities.
@@ -356,26 +360,30 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	// stored secret reference for coexistence/recovery, but do not resolve or
 	// send it while private_key_jwt_local_keypair authentication is selected.
 	var secret string
-	if IsPrivateKeyJWTLocalKeyPairAuthMethod(app.AuthMethod) {
+	if app.AuthMethod == AuthMethodPrivateKeyJWTLocalKeyPair {
 		if app.KeyRef == nil || app.KeyRef.ID == "" {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
 				"%s requires a valid keyRef", app.AuthMethod).
 				WithHint("run `lark-cli config init --private-key-jwt` in a terminal, choose the existing-app option, and enter app ID %s to re-register its signing key", app.AppId)
 		}
-		provider := strings.TrimSpace(app.KeyRef.Provider)
+		provider := app.KeyRef.Provider
 		switch app.KeyRef.Source {
-		case SecretSourceTEE:
-			if provider != "" && provider != KeylessProviderLarkSuite &&
+		case KeySourceTEE:
+			if provider != KeylessProviderLarkSuite &&
 				provider != keysigner.SoftwareSignerName &&
 				!keysigner.IsPlatformSignerName(provider) {
 				return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
-					"unknown keyless signer provider %q", app.KeyRef.Provider).
+					"unknown keyless signer provider %q", provider).
 					WithHint("use a signer provider recorded by config init, or %s for an external signer", KeylessProviderLarkSuite)
 			}
-		case SecretSourceKeyFile:
+		case KeySourceFile:
 			if provider != "" {
 				return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
-					"private-key file references cannot select provider %q", app.KeyRef.Provider)
+					"private-key file references cannot select provider %q", provider)
+			}
+			if !filepath.IsAbs(app.KeyRef.ID) {
+				return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+					"keyRef.id must be an absolute path for a private-key file")
 			}
 		default:
 			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
@@ -415,7 +423,7 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	if app.KeyRef != nil {
 		cfg.KeySource = app.KeyRef.Source
 		cfg.KeyLabel = app.KeyRef.ID
-		cfg.KeyProvider = strings.TrimSpace(app.KeyRef.Provider)
+		cfg.KeyProvider = app.KeyRef.Provider
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId

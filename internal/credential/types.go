@@ -32,7 +32,7 @@ type Account struct {
 	AuthMethod          string // "" == client_secret; private_key_jwt_local_keypair
 	KeySource           string // tee or file for private_key_jwt_local_keypair
 	KeyLabel            string // platform handle or private-key file path
-	KeyProvider         string // built-in backend name, external provider, or empty legacy auto-selection
+	KeyProvider         string // required for tee keys, empty for PEM files
 }
 
 const runtimePlaceholderAppSecret = "__LARKSUITE_CLI_TOKEN_ONLY__"

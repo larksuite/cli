@@ -158,16 +158,8 @@ func NewPlatformSigners(directory func(string) (string, error)) []Signer {
 	return signers
 }
 
-// ResolvePlatformSigner restores one recorded native backend. An empty name
-// selects the strongest backend available on the current OS for legacy records.
+// ResolvePlatformSigner restores the native backend recorded in an application key reference.
 func ResolvePlatformSigner(name string, directory func(string) (string, error)) (Signer, error) {
-	if name == "" {
-		signers := NewPlatformSigners(directory)
-		if len(signers) == 0 {
-			return nil, ErrUnavailable
-		}
-		return signers[0], nil
-	}
 	if !IsPlatformSignerName(name) {
 		return nil, fmt.Errorf("keysigner: unknown platform signer %q", name)
 	}

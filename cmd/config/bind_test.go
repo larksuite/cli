@@ -91,13 +91,11 @@ func TestConfigBindRun_OpenClawAuthMethodPrecedence(t *testing.T) {
 		name, channel, method string
 		wantError, wantSecret bool
 	}{
-		{"private_key_jwt_local_keypair with secret", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"private_key_jwt_local_keypair","keyRef":"key-b"`, core.AuthMethodPrivateKeyJWTLocalKeyPair, false, false},
 		{"inherited keyless with account secret", `"authMethod":"private_key_jwt_local_keypair","keyRef":"key-b","accounts":{"a":{"appId":"cli_a"},"b":{"appId":"cli_b","appSecret":"leftover-secret"}}`, core.AuthMethodPrivateKeyJWTLocalKeyPair, false, false},
 		{"unresolvable secret ignored", `"appId":"cli_b","appSecret":"${BIND_TEST_ABSENT_SECRET}","authMethod":"private_key_jwt_local_keypair","keyRef":"key-b"`, core.AuthMethodPrivateKeyJWTLocalKeyPair, false, false},
 		{"missing key reference", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"private_key_jwt_local_keypair"`, "", true, false},
 		{"unknown method", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"unknown"`, "", true, false},
 		{"explicit client secret", `"appId":"cli_b","appSecret":"leftover-secret","authMethod":"client_secret"`, "", false, true},
-		{"implicit client secret", `"appId":"cli_b","appSecret":"leftover-secret"`, "", false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			saveWorkspace(t)
@@ -138,7 +136,7 @@ func TestConfigBindRun_OpenClawAuthMethodPrecedence(t *testing.T) {
 					t.Fatalf("unexpected persisted authentication: %+v", app)
 				}
 				if tc.method != "" {
-					want := &core.SecretRef{Source: core.SecretSourceTEE, Provider: core.KeylessProviderLarkSuite, ID: "key-b"}
+					want := &core.KeyRef{Source: core.KeySourceTEE, Provider: core.KeylessProviderLarkSuite, ID: "key-b"}
 					if !reflect.DeepEqual(app.KeyRef, want) {
 						t.Fatalf("keyRef = %+v, want %+v", app.KeyRef, want)
 					}

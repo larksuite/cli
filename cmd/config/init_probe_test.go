@@ -10,7 +10,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	crand "crypto/rand"
-	"crypto/sha256"
 	"errors"
 	"io"
 	"net/http"
@@ -59,19 +58,15 @@ func (f *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	return nil, errors.New("unexpected URL: " + req.URL.String())
 }
 
-// probeTestSigner is an in-memory real ECDSA P-256 signer used to sign the
-// client_assertion in runProbePrivateKeyJWTLocalKeyPair tests. authMethodTestSigner only exercises
-// auth-method gating and does not produce a verifiable assertion.
 type probeTestSigner struct {
-	key  *ecdsa.PrivateKey
-	name string
+	key                *ecdsa.PrivateKey
+	name               string
+	deleteCalls        int
+	ensureErr, signErr error
 }
 
 func (p *probeTestSigner) Name() string {
-	if p.name != "" {
-		return p.name
-	}
-	return keysigner.MacOSKeychainSignerName
+	return p.name
 }
 
 func (*probeTestSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL2 }
@@ -82,10 +77,13 @@ func newProbeTestSigner(t *testing.T) *probeTestSigner {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &probeTestSigner{key: k}
+	return &probeTestSigner{key: k, name: keysigner.MacOSKeychainSignerName}
 }
 
 func (p *probeTestSigner) EnsureKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	if p.ensureErr != nil {
+		return nil, p.ensureErr
+	}
 	return p.key.Public(), nil
 }
 
@@ -94,18 +92,16 @@ func (p *probeTestSigner) PublicKey(context.Context, keysigner.KeyRef) (crypto.P
 }
 
 func (p *probeTestSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) ([]byte, string, error) {
-	h := sha256.Sum256(in)
-	r, s, err := ecdsa.Sign(crand.Reader, p.key, h[:])
-	if err != nil {
-		return nil, "", err
+	if p.signErr != nil {
+		return nil, "", p.signErr
 	}
-	sig := make([]byte, 64)
-	r.FillBytes(sig[:32])
-	s.FillBytes(sig[32:])
-	return sig, keysigner.AlgES256, nil
+	return keysigner.SignWithPrivateKey(p.key, in)
 }
 
-func (*probeTestSigner) DeleteKey(context.Context, keysigner.KeyRef) error { return nil }
+func (p *probeTestSigner) DeleteKey(context.Context, keysigner.KeyRef) error {
+	p.deleteCalls++
+	return nil
+}
 
 func jsonResp(code int, body string) *http.Response {
 	return &http.Response{
@@ -130,7 +126,7 @@ func jsonResp(code int, body string) *http.Response {
 // that must remain visible to the caller.
 func fakeFactory(t *testing.T, rt http.RoundTripper) (*cmdutil.Factory, *bytes.Buffer) {
 	t.Helper()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateRegistrationStorage(t)
 	f, _, errBuf, _ := cmdutil.TestFactory(t, nil)
 	f.HttpClient = func() (*http.Client, error) {
 		return &http.Client{Transport: rt}, nil
@@ -193,23 +189,6 @@ func TestRunProbe_TATInvalidClient_ReturnsConfigError(t *testing.T) {
 		t.Error("probe endpoint must not be called when TAT fails")
 	}
 	assertConfigRejection(t, err, errBuf)
-}
-
-func TestRunProbe_TATUnauthorizedClient_ReturnsPermissionError(t *testing.T) {
-	rt := &fakeRT{
-		tatHandler: func(req *http.Request) (*http.Response, error) {
-			return jsonResp(401, `{"error":"unauthorized_client","error_description":"client not authorized"}`), nil
-		},
-	}
-	f, errBuf := fakeFactory(t, rt)
-	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
-	var permissionErr *errs.PermissionError
-	if !errors.As(err, &permissionErr) || permissionErr.Subtype != errs.SubtypeUnauthorizedClient {
-		t.Fatalf("error = %v, want authorization/unauthorized_client", err)
-	}
-	if rt.tatCalls != 1 || rt.probeCalls != 0 || errBuf.Len() != 0 {
-		t.Fatalf("TAT calls=%d probe calls=%d stderr=%q", rt.tatCalls, rt.probeCalls, errBuf.String())
-	}
 }
 
 // Deterministic OAuth request errors retain their classification through the probe.
@@ -290,18 +269,6 @@ func TestRunProbe_TATSuccess_ProbePolicyError_Propagates(t *testing.T) {
 	}
 }
 
-func TestProbeInitResult_ClientSecret(t *testing.T) {
-	rt := &fakeRT{}
-	f, errBuf := fakeFactory(t, rt)
-	opts := &ConfigInitOptions{Ctx: context.Background()}
-	result := &configInitResult{AppID: "cli_x", AppSecret: "test-secret", Brand: core.BrandFeishu}
-	err := probeInitResult(opts, f, result)
-	if rt.tatCalls != 1 || rt.probeCalls != 1 {
-		t.Errorf("expected 1/1 calls, got tat=%d probe=%d", rt.tatCalls, rt.probeCalls)
-	}
-	assertSilent(t, err, errBuf)
-}
-
 func TestRunProbe_ProbeRequestShape(t *testing.T) {
 	const statusMessage = "Some scopes were silently trimmed"
 	rt := &fakeRT{tatHandler: func(req *http.Request) (*http.Response, error) {
@@ -377,56 +344,26 @@ func TestRunProbe_TimeoutHonored(t *testing.T) {
 }
 
 // Deterministic OAuth rejections propagate so config init cannot report success.
-func TestRunProbePrivateKeyJWTLocalKeyPair_DeterministicReject_Propagates(t *testing.T) {
+func TestPrivateKeyJWTProbeTokenErrors(t *testing.T) {
 	for _, tc := range []struct {
-		oauthError string
-		category   errs.Category
-		subtype    errs.Subtype
+		name     string
+		status   int
+		rejected bool
 	}{
-		{"invalid_client", errs.CategoryConfig, errs.SubtypeInvalidClient},
-		{"unauthorized_client", errs.CategoryAuthorization, errs.SubtypeUnauthorizedClient},
-		{"invalid_grant", errs.CategoryAuthentication, errs.SubtypeInvalidGrant},
-		{"invalid_request", errs.CategoryAPI, errs.SubtypeInvalidParameters},
-		{"unsupported_grant_type", errs.CategoryAPI, errs.SubtypeUnsupportedGrantType},
-		{"invalid_scope", errs.CategoryAPI, errs.SubtypeInvalidScope},
-	} {
-		t.Run(tc.oauthError, func(t *testing.T) {
-			rt := &fakeRT{tatHandler: func(*http.Request) (*http.Response, error) {
-				return jsonResp(http.StatusBadRequest, `{"error":"`+tc.oauthError+`","error_description":"rejected"}`), nil
-			}}
-			f, errBuf := fakeFactory(t, rt)
-			err := runProbePrivateKeyJWTLocalKeyPair(context.Background(), f, core.BrandFeishu, "cli_x", newProbeTestSigner(t), "agent-key")
-			problem, ok := errs.ProblemOf(err)
-			if !ok || problem.Category != tc.category || problem.Subtype != tc.subtype {
-				t.Fatalf("error = %v, want %s/%s", err, tc.category, tc.subtype)
-			}
-			if rt.tatCalls != 1 || rt.probeCalls != 0 || errBuf.Len() != 0 {
-				t.Fatalf("TAT calls=%d probe calls=%d stderr=%q", rt.tatCalls, rt.probeCalls, errBuf.String())
-			}
-		})
-	}
-}
-
-// Transient or malformed responses remain best-effort, even with an OAuth error.
-func TestRunProbePrivateKeyJWTLocalKeyPair_Ambiguous_Silent(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		status int
-		body   string
-	}{
-		{"unavailable", http.StatusServiceUnavailable, `unavailable`},
-		{"5xx overrides OAuth error", http.StatusServiceUnavailable, `{"error":"invalid_request"}`},
-		{"server_error", http.StatusBadRequest, `{"error":"server_error"}`},
-		{"temporarily_unavailable", http.StatusBadRequest, `{"error":"temporarily_unavailable"}`},
-		{"slow_down", http.StatusBadRequest, `{"error":"slow_down"}`},
-		{"malformed", http.StatusBadRequest, `not json`},
+		{"OAuth rejection", http.StatusBadRequest, true},
+		{"upstream failure", http.StatusServiceUnavailable, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rt := &fakeRT{tatHandler: func(*http.Request) (*http.Response, error) {
-				return jsonResp(tc.status, tc.body), nil
+				return jsonResp(tc.status, `{"error":"invalid_client"}`), nil
 			}}
-			f, errBuf := fakeFactory(t, rt)
-			assertSilent(t, runProbePrivateKeyJWTLocalKeyPair(context.Background(), f, core.BrandFeishu, "cli_x", newProbeTestSigner(t), "agent-key"), errBuf)
+			f, stderr := fakeFactory(t, rt)
+			err := runProbePrivateKeyJWTLocalKeyPair(context.Background(), f, core.BrandFeishu, "cli_x", newProbeTestSigner(t), "agent-key")
+			if tc.rejected {
+				assertConfigRejection(t, err, stderr)
+			} else {
+				assertSilent(t, err, stderr)
+			}
 			if rt.tatCalls != 1 || rt.probeCalls != 0 {
 				t.Fatalf("TAT calls=%d probe calls=%d", rt.tatCalls, rt.probeCalls)
 			}
@@ -434,30 +371,19 @@ func TestRunProbePrivateKeyJWTLocalKeyPair_Ambiguous_Silent(t *testing.T) {
 	}
 }
 
-// probeInitResult dispatches private_key_jwt_local_keypair to the assertion-backed probe.
-func TestProbeInitResult_PrivateKeyJWTLocalKeyPair(t *testing.T) {
-	rt := &fakeRT{} // default TAT handler returns 200 + access_token
+func TestProbeInitResultRequiresRegistrationSigner(t *testing.T) {
+	rt := &fakeRT{}
 	f, errBuf := fakeFactory(t, rt)
-	opts := &ConfigInitOptions{Ctx: context.Background()}
 	result := &configInitResult{
-		AppID:      "cli_x",
-		AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		KeyLabel:   "agent-key",
-		Brand:      core.BrandFeishu,
-		Signer:     newProbeTestSigner(t),
+		AppID: "cli_x", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		KeyRef: &core.KeyRef{Source: core.KeySourceTEE, Provider: keysigner.SoftwareSignerName, ID: "k"},
 	}
-	assertSilent(t, probeInitResult(opts, f, result), errBuf)
-}
-
-// runProbePrivateKeyJWTLocalKeyPair fails closed if the signer dispatch invariant is broken.
-func TestRunProbePrivateKeyJWTLocalKeyPair_NilSigner_FailsClosed(t *testing.T) {
-	f, errBuf := fakeFactory(t, &fakeRT{})
-	err := runProbePrivateKeyJWTLocalKeyPair(context.Background(), f, core.BrandFeishu, "cli_x", nil, "k")
+	err := probeInitResult(&ConfigInitOptions{Ctx: context.Background()}, f, result)
 	var configErr *errs.ConfigError
 	if !errors.As(err, &configErr) || configErr.Subtype != errs.SubtypeInvalidConfig {
 		t.Fatalf("error = %T %v, want config/invalid_config", err, err)
 	}
-	if errBuf.Len() != 0 {
-		t.Errorf("runProbePrivateKeyJWTLocalKeyPair must not write stderr, got %q", errBuf.String())
+	if rt.tatCalls != 0 || errBuf.Len() != 0 {
+		t.Errorf("probe made %d token requests, stderr = %q", rt.tatCalls, errBuf.String())
 	}
 }

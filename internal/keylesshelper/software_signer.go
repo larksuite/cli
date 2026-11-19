@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
-	"strings"
 
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/keysigner"
@@ -29,6 +28,9 @@ type softwareSigner struct {
 }
 
 func newSoftwareSigner(kc keychain.KeychainAccess) softwareSigner {
+	if kc == nil {
+		kc = keychain.Default()
+	}
 	signer := softwareSigner{keychain: kc}
 	signer.SoftwareSigner = signingstore.SoftwareSigner{Open: signer.open}
 	return signer
@@ -62,13 +64,15 @@ func (s softwareSigner) unlock(ctx context.Context, directory string, allowCreat
 		return nil, err
 	}
 	encoded, err := s.keychain.Get(keychain.LarkCliService, softwareUnlockAccount)
+	if cancelErr := ctx.Err(); cancelErr != nil {
+		return nil, errors.Join(cancelErr, err)
+	}
 	if err != nil && !errors.Is(err, keychain.ErrNotFound) {
 		return nil, err
 	}
 	return signingstore.ResolveSecret(s.keychain, directory, encoded, allowCreate, signingstore.SecretPolicy{
 		Account:     softwareUnlockAccount,
 		Description: "software unlock secret",
-		IsKeyFile:   func(name string) bool { return strings.HasSuffix(name, ".json") },
 		Missing:     func(string) error { return keysigner.ErrUnlockRequired },
 	})
 }

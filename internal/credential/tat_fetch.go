@@ -22,19 +22,17 @@ import (
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/dpop"
-	"github.com/larksuite/cli/internal/keysigner"
 )
 
 type tatResponse struct {
-	Code              int    `json:"code"`
-	AccessToken       string `json:"access_token"`
-	TenantAccessToken string `json:"tenant_access_token"`
-	ExpiresIn         int64  `json:"expires_in"`
-	Error             string `json:"error"`
-	ErrorDescription  string `json:"error_description"`
-	Msg               string `json:"msg"`
-	StatusMessage     string `json:"status_message"`
-	TokenType         string `json:"token_type"`
+	Code             int    `json:"code"`
+	AccessToken      string `json:"access_token"`
+	ExpiresIn        int64  `json:"expires_in"`
+	Error            string `json:"error"`
+	ErrorDescription string `json:"error_description"`
+	Msg              string `json:"msg"`
+	StatusMessage    string `json:"status_message"`
+	TokenType        string `json:"token_type"`
 }
 
 type FetchedToken struct {
@@ -56,9 +54,9 @@ type tatDPoPAttempt struct {
 }
 
 // FetchTAT mints a tenant token using the configured client authentication and
-// DPoP mode, serializing issuance per app. Disabled mode does not access key
-// storage, so the post-config-init probe can validate credentials without a
-// keychain read. A non-empty status message is advisory and does not change the
+// DPoP mode, serializing issuance per app. Disabled mode skips DPoP key
+// storage so config init can probe the application credentials alone.
+// A non-empty status message is advisory and does not change the
 // successful token result.
 //
 // A deterministic client-side rejection (e.g. invalid_client) returns the
@@ -314,9 +312,6 @@ func requestTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBra
 		return requestTAT(ctx, httpClient, brand, ca, proofKey, keyStore, attempt, true, invalidProofsLeft)
 	}
 
-	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(ca.AuthMethod) && result.AccessToken == "" {
-		result.AccessToken = result.TenantAccessToken
-	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 && result.Error == "" && result.Code == 0 && result.AccessToken != "" {
 		if result.ExpiresIn <= 0 {
 			return nil, fmt.Errorf("TAT response has invalid expires_in %d", result.ExpiresIn)
@@ -384,17 +379,4 @@ func tatRetryAfterSeconds(header http.Header) int {
 		}
 	}
 	return 0
-}
-
-// FetchTATWithAssertion validates an application key without issuing a DPoP
-// binding. Normal credential resolution uses FetchTAT.
-func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) (string, error) {
-	result, err := FetchTAT(ctx, httpClient, brand, auth.ClientAuth{
-		AppID: clientID, AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		Signer: signer, KeyLabel: keyLabel,
-	}, core.DPoPModeDisabled)
-	if err != nil {
-		return "", err
-	}
-	return result.AccessToken, nil
 }

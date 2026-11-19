@@ -11,7 +11,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,11 +31,16 @@ func testClientAssertion() string {
 	return header + ".e30.c2ln"
 }
 
+func runTestHelper(ctx context.Context, mode string, req request) (response, error) {
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestHelperProcess$")
+	cmd.Env = append(providerEnvironment(), helperProcessMode+"="+mode)
+	return runHelper(ctx, cmd, req)
+}
+
 func TestRunCommandProtocol(t *testing.T) {
-	t.Setenv(helperProcessMode, "reply")
-	resp, err := runCommandConfigured(context.Background(), []string{os.Args[0], "-test.run=^TestHelperProcess$"}, request{
+	resp, err := runTestHelper(context.Background(), "reply", request{
 		Op: "sign-assertion", KeyRef: "key-1", ClientID: "cli_a", Audience: "aud",
-	}, "", nil)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,26 +50,23 @@ func TestRunCommandProtocol(t *testing.T) {
 }
 
 func TestRunCommandTimeoutDoesNotLeakOutput(t *testing.T) {
-	t.Setenv(helperProcessMode, "hang")
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	_, err := runCommandConfigured(ctx, []string{os.Args[0], "-test.run=^TestHelperProcess$"}, request{Op: "pubkey", KeyRef: "key-1"}, "", nil)
+	_, err := runTestHelper(ctx, "hang", request{Op: "pubkey", KeyRef: "key-1"})
 	if !errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "secret.jwt") {
 		t.Fatalf("error = %v", err)
 	}
 }
 
 func TestRunCommandRejectsOutputBeyondLimitAfterValidJSON(t *testing.T) {
-	t.Setenv(helperProcessMode, "overflow")
-	_, err := runCommandConfigured(context.Background(), []string{os.Args[0], "-test.run=^TestHelperProcess$"}, request{Op: "pubkey", KeyRef: "key-1"}, "", nil)
+	_, err := runTestHelper(context.Background(), "overflow", request{Op: "pubkey", KeyRef: "key-1"})
 	if err == nil || !strings.Contains(err.Error(), "exceeded") {
 		t.Fatalf("error = %v, want output limit rejection", err)
 	}
 }
 
 func TestRunCommandRejectsTrailingJSON(t *testing.T) {
-	t.Setenv(helperProcessMode, "trailing")
-	_, err := runCommandConfigured(context.Background(), []string{os.Args[0], "-test.run=^TestHelperProcess$"}, request{Op: "pubkey", KeyRef: "key-1"}, "", nil)
+	_, err := runTestHelper(context.Background(), "trailing", request{Op: "pubkey", KeyRef: "key-1"})
 	if err == nil || !strings.Contains(err.Error(), "trailing JSON") {
 		t.Fatalf("error = %v, want trailing JSON rejection", err)
 	}
@@ -72,6 +76,16 @@ func TestValidateResponseDoesNotExposeHelperMessage(t *testing.T) {
 	err := validateResponse(response{Error: &protocolError{Type: "signing_failed", Message: "secret.jwt"}})
 	if err == nil || strings.Contains(err.Error(), "secret.jwt") {
 		t.Fatalf("error = %v, want fixed redacted message", err)
+	}
+}
+
+func TestProviderCommandRequiresKeyRef(t *testing.T) {
+	var command Command
+	if err := command.Probe(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "key reference") {
+		t.Fatalf("empty probe key: %v", err)
+	}
+	if _, _, err := command.SignClientAssertion(context.Background(), "", "cli_a", "aud"); err == nil || !strings.Contains(err.Error(), "key reference") {
+		t.Fatalf("empty signing key: %v", err)
 	}
 }
 
@@ -107,8 +121,9 @@ func TestProviderEnvironmentFiltersUntrustedVariables(t *testing.T) {
 func TestHelperProcess(t *testing.T) {
 	switch os.Getenv(helperProcessMode) {
 	case "reply":
-		var req request
-		if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
+		var req map[string]string
+		want := map[string]string{"op": "sign-assertion", "keyRef": "key-1", "clientId": "cli_a", "aud": "aud"}
+		if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil || !maps.Equal(req, want) {
 			os.Exit(2)
 		}
 		_ = json.NewEncoder(os.Stdout).Encode(response{

@@ -190,10 +190,10 @@ func identityCheck(name string, id identitydiag.Identity) checkResult {
 // teeSignerCheck checks the configured private-key JWT signer using its existing
 // key. Other authentication methods skip signer checks, including with --offline.
 func teeSignerCheck(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) checkResult {
-	if cfg == nil || !core.IsPrivateKeyJWTLocalKeyPairAuthMethod(cfg.AuthMethod) {
+	if cfg == nil || cfg.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair {
 		return skip("tee_signer", "not required for client_secret authentication")
 	}
-	if cfg.KeySource == core.SecretSourceKeyFile {
+	if cfg.KeySource == core.KeySourceFile {
 		signer, err := larkauth.ResolveConfigSigner(cfg, f.Keychain)
 		if err != nil {
 			return fail("tee_signer", "private-key file signer is unavailable", err.Error())
@@ -224,8 +224,7 @@ func teeSignerCheck(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig
 	if err != nil {
 		return fail("tee_signer", "configured signing backend is unavailable", err.Error())
 	}
-	store := keylesshelper.NewKeyStoreWithSigners(f.Keychain, signer)
-	key, err := store.ProbeKeyContext(ctx, signer.Name(), cfg.KeyLabel)
+	key, err := keylesshelper.ProbeKeyContext(ctx, signer, cfg.KeyLabel)
 	if err != nil {
 		return fail("tee_signer", "configured signing key is unusable", err.Error())
 	}

@@ -57,7 +57,7 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 		Lang:                i18n.LangJaJP,
 		SupportedIdentities: 3,
 		AuthMethod:          core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		KeySource:           core.SecretSourceTEE,
+		KeySource:           core.KeySourceTEE,
 		KeyLabel:            "openclaw-lark",
 		KeyProvider:         core.KeylessProviderLarkSuite,
 	}

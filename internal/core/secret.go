@@ -12,21 +12,12 @@ import (
 // SecretRef — external secret reference
 // ---------------------------------------------------------------------------
 
-// SecretRef references a secret stored externally.
+// SecretRef references an app secret in a file or the credential store.
 type SecretRef struct {
 	Source   string `json:"source"`             // "file" | "keychain"
-	Provider string `json:"provider,omitempty"` // optional provider/backend selector
-	ID       string `json:"id"`                 // env var name / file path / command / keychain key
+	Provider string `json:"provider,omitempty"` // optional, reserved
+	ID       string `json:"id"`                 // file path or keychain account
 }
-
-// KeylessProviderLarkSuite identifies the external OpenClaw signer route.
-// Built-in platform signers persist their keysigner backend name instead.
-const KeylessProviderLarkSuite = "larksuite.keyless"
-
-const (
-	SecretSourceTEE     = "tee"
-	SecretSourceKeyFile = "file" // user-owned private key, ID is its FileIO-resolved path
-)
 
 // ---------------------------------------------------------------------------
 // SecretInput — union type: plain string or SecretRef
@@ -48,7 +39,7 @@ func (s SecretInput) IsZero() bool {
 	return s.Plain == "" && s.Ref == nil
 }
 
-// IsSecretRef returns true if this is a SecretRef object (env/file/keychain).
+// IsSecretRef reports whether the app secret is stored by reference.
 func (s SecretInput) IsSecretRef() bool {
 	return s.Ref != nil
 }
@@ -85,7 +76,7 @@ func (s *SecretInput) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("appSecret must be a string or {source, id} object")
 }
 
-// ValidSecretSources is the set of recognized SecretRef sources.
+// ValidSecretSources lists the sources accepted for appSecret references.
 var ValidSecretSources = map[string]bool{
 	"file": true, "keychain": true,
 }

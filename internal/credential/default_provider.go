@@ -163,18 +163,15 @@ const (
 	tatRefreshTimeout  = 30 * time.Second
 )
 
-func NewDefaultTokenProvider(defaultAcct *DefaultAccountProvider, httpClient func() (*http.Client, error), errOut io.Writer, resolveSigner func(*core.CliConfig) (keysigner.Signer, error)) *DefaultTokenProvider {
-	if resolveSigner == nil {
-		resolveSigner = func(cfg *core.CliConfig) (keysigner.Signer, error) {
-			return auth.ResolveConfigSigner(cfg, defaultAcct.keychain())
-		}
-	}
+func NewDefaultTokenProvider(defaultAcct *DefaultAccountProvider, httpClient func() (*http.Client, error), errOut io.Writer) *DefaultTokenProvider {
 	return &DefaultTokenProvider{
-		defaultAcct:   defaultAcct,
-		httpClient:    httpClient,
-		errOut:        errOut,
-		timeNow:       time.Now,
-		resolveSigner: resolveSigner,
+		defaultAcct: defaultAcct,
+		httpClient:  httpClient,
+		errOut:      errOut,
+		timeNow:     time.Now,
+		resolveSigner: func(cfg *core.CliConfig) (keysigner.Signer, error) {
+			return auth.ResolveConfigSigner(cfg, defaultAcct.keychain())
+		},
 	}
 }
 
@@ -200,11 +197,12 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	if err != nil {
 		return nil, err
 	}
-	signer, err := p.resolveSigner(acct.ToCliConfig())
+	cfg := acct.ToCliConfig()
+	signer, err := p.resolveSigner(cfg)
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut, signer))
+	resolved, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(cfg, p.errOut, signer))
 	if err != nil {
 		return nil, err
 	}
@@ -298,11 +296,12 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	if err != nil {
 		return nil, 0, err
 	}
-	signer, err := p.resolveSigner(acct.ToCliConfig())
+	cfg := acct.ToCliConfig()
+	signer, err := p.resolveSigner(cfg)
 	if err != nil {
 		return nil, 0, err
 	}
-	token, err := FetchTAT(ctx, httpClient, acct.Brand, auth.ClientAuthFromConfig(acct.ToCliConfig(), signer), acct.DPoPMode)
+	token, err := FetchTAT(ctx, httpClient, acct.Brand, auth.ClientAuthFromConfig(cfg, signer), acct.DPoPMode)
 	if err != nil {
 		return nil, 0, err
 	}

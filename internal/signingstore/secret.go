@@ -37,12 +37,11 @@ func AcquireUnlockLock(ctx context.Context, lockDirectory string) (*flock.Flock,
 	return lock, nil
 }
 
-// SecretPolicy retains domain-owned namespace, file detection and recovery errors.
+// SecretPolicy specifies the domain's unlock account and recovery error.
 // Retrieval and cancellation priority remain at the caller, under the unlock lock.
 type SecretPolicy struct {
 	Account     string
 	Description string
-	IsKeyFile   func(string) bool
 	Missing     func(directory string) error
 }
 
@@ -72,7 +71,7 @@ func ResolveSecret(kc keychain.KeychainAccess, directory, encoded string, allowC
 	}
 	for _, entry := range entries {
 		// Losing the secret must not silently replace it while encrypted keys exist.
-		if policy.IsKeyFile(entry.Name()) {
+		if keysigner.IsKeyFileName(entry.Name()) {
 			return nil, policy.Missing(directory)
 		}
 	}

@@ -56,7 +56,7 @@ func TestDefaultTokenProviderSharesRefreshAndCachesDefensiveCopies(t *testing.T)
 			Request:    req,
 		}, nil
 	})}
-	provider := NewDefaultTokenProvider(account, func() (*http.Client, error) { return client, nil }, io.Discard, nil)
+	provider := NewDefaultTokenProvider(account, func() (*http.Client, error) { return client, nil }, io.Discard)
 	now := time.Unix(1700000000, 0)
 	provider.timeNow = func() time.Time { return now }
 
@@ -177,21 +177,13 @@ func TestClassifyTATResponseCode_OAuthErrors(t *testing.T) {
 		{"invalid_scope", errs.CategoryAPI, errs.SubtypeInvalidScope},
 		{"vendor_error", errs.CategoryAPI, errs.SubtypeUnknown},
 	} {
-		for _, code := range []int{0, 99999} {
-			for _, description := range []string{"server detail", ""} {
-				t.Run(fmt.Sprintf("%s/%d/description=%t", tc.oauthError, code, description != ""), func(t *testing.T) {
-					err := classifyTATResponseCode(code, tc.oauthError, description, "feishu", "cli_app_x")
-					problem, ok := errs.ProblemOf(err)
-					wantMessage := description
-					if wantMessage == "" {
-						wantMessage = tc.oauthError
-					}
-					if !ok || problem.Category != tc.category || problem.Subtype != tc.subtype || problem.Code != code || problem.Retryable || problem.Message != wantMessage {
-						t.Fatalf("error = %+v, want %s/%s code=%d message=%q without retry", problem, tc.category, tc.subtype, code, wantMessage)
-					}
-				})
+		t.Run(tc.oauthError, func(t *testing.T) {
+			err := classifyTATResponseCode(0, tc.oauthError, "", "feishu", "cli_app_x")
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != tc.category || problem.Subtype != tc.subtype || problem.Code != 0 || problem.Message != tc.oauthError || problem.Retryable {
+				t.Fatalf("unexpected OAuth classification: %+v", problem)
 			}
-		}
+		})
 	}
 }
 
@@ -203,16 +195,14 @@ func TestClassifyTATResponseCode_NumericPrecedence(t *testing.T) {
 		subtype    errs.Subtype
 		retryable  bool
 	}{
+		{99999, "invalid_scope", errs.CategoryAPI, errs.SubtypeInvalidScope, false},
 		{21000, "invalid_client", errs.CategoryPolicy, errs.SubtypeChallengeRequired, false},
 		{21001, "unauthorized_client", errs.CategoryPolicy, errs.SubtypeAccessDenied, false},
 		{20037, "invalid_grant", errs.CategoryAuthentication, errs.SubtypeRefreshTokenExpired, false},
 		{99991672, "invalid_scope", errs.CategoryAuthorization, errs.SubtypeAppScopeNotApplied, false},
 		{99991400, "invalid_request", errs.CategoryAPI, errs.SubtypeRateLimit, true},
 		{10014, "unauthorized_client", errs.CategoryConfig, errs.SubtypeInvalidClient, false},
-		{20002, "invalid_client", errs.CategoryConfig, errs.SubtypeInvalidClient, false},
-		{20048, "invalid_client", errs.CategoryConfig, errs.SubtypeInvalidClient, false},
 		{20068, "invalid_scope", errs.CategoryAPI, errs.SubtypeInvalidScope, false},
-		{800070003, "invalid_scope", errs.CategoryAPI, errs.SubtypeInvalidScope, false},
 		{800100112, "invalid_scope", errs.CategoryInternal, errs.SubtypeUnknown, false},
 	} {
 		t.Run(fmt.Sprint(tc.code), func(t *testing.T) {

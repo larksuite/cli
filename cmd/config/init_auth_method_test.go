@@ -6,11 +6,9 @@ package config
 import (
 	"bytes"
 	"context"
-	"crypto"
 	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -26,6 +24,7 @@ import (
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -36,54 +35,108 @@ func (f registrationTestTransport) RoundTrip(req *http.Request) (*http.Response,
 	return f(req)
 }
 
+func isolateRegistrationStorage(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", root)
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", root)
+}
+
+func mockRegistrationTransport(t *testing.T, handler registrationTestTransport) {
+	t.Helper()
+	t.Setenv("LARK_CLI_NO_PROXY", "")
+	t.Setenv("LARKSUITE_CLI_PROXY_ENABLE", "false")
+	t.Setenv("LARKSUITE_CLI_PROXY_ADDRESS", "")
+	t.Setenv("LARKSUITE_CLI_CA_PATH", "")
+	previousTransport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = previousTransport })
+	http.DefaultTransport = handler
+}
+
+func TestConfigInitNewDefaultsToClientSecret(t *testing.T) {
+	clearAgentEnv(t)
+	mockRegistrationTransport(t, func(req *http.Request) (*http.Response, error) {
+		switch req.FormValue("action") {
+		case "begin":
+			if req.Form.Get("auth_method") != core.AuthMethodClientSecret || req.Form.Has("auth_attestation") {
+				t.Fatal("expected client_secret registration without an attestation")
+			}
+			return jsonResp(200, `{"device_code":"test-device","verification_uri_complete":"https://example.com/verify","expire_in":5,"interval":1}`), nil
+		case "poll":
+			return jsonResp(200, `{"client_id":"cli_test","client_secret":"test-secret"}`), nil
+		default:
+			return nil, errors.New("unexpected registration action")
+		}
+	})
+	rt := &fakeRT{}
+	f, _ := fakeFactory(t, rt)
+	cmd := NewCmdConfigInit(f, nil)
+	cmd.SetArgs([]string{"--new"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if rt.tatCalls != 1 || rt.probeCalls != 1 {
+		t.Fatalf("client-secret registration made %d TAT and %d probe calls", rt.tatCalls, rt.probeCalls)
+	}
+	saved, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := saved.CurrentAppConfig("")
+	if app == nil || app.AppId != "cli_test" || app.AppSecret.IsZero() || app.AuthMethod != "" || app.KeyRef != nil {
+		t.Fatal("expected app-secret configuration without signing fields")
+	}
+}
+
+func registrationTokenTransport(t *testing.T, appID string) *fakeRT {
+	t.Helper()
+	return &fakeRT{tatHandler: func(req *http.Request) (*http.Response, error) {
+		if err := req.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if got := req.Form.Get("grant_type"); got != jwt.GrantTypeJWTBearer {
+			t.Fatalf("grant_type = %q", got)
+		}
+		if req.Header.Get("DPoP") != "" {
+			t.Fatal("registration probe requested a DPoP-bound token")
+		}
+		if req.Method != http.MethodPost || req.Form.Get("client_id") != appID || req.Form.Get("client_assertion") == "" ||
+			req.Form.Has("client_secret") || req.Header.Get("Authorization") != "" {
+			t.Fatalf("registration probe did not use a client assertion: %v", req.Form)
+		}
+		return jsonResp(200, `{"access_token":"test-token","expires_in":7200,"token_type":"Bearer"}`), nil
+	}}
+}
+
 func TestConfigInitPrivateKeyJWTLocalKeyPairRegistration(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		supported  []string
-		wantError  bool
-		software   bool
-		wireMethod string
+		name      string
+		supported []string
+		wantError bool
+		provider  string
+		profile   string
 	}{
-		{"client secret only", []string{core.AuthMethodClientSecret}, true, false, ""},
-		{"client_secret and private_key_jwt_local_keypair", []string{core.AuthMethodClientSecret, core.AuthMethodPrivateKeyJWTLocalKeyPair}, false, false, core.AuthMethodPrivateKeyJWTLocalKeyPair},
-		{"private_key_jwt_local_keypair only", []string{core.AuthMethodPrivateKeyJWTLocalKeyPair}, false, false, core.AuthMethodPrivateKeyJWTLocalKeyPair},
-		{"capabilities omitted", nil, false, false, core.AuthMethodPrivateKeyJWTLocalKeyPair},
-		{"software fallback uses private_key_jwt_local_keypair", []string{core.AuthMethodPrivateKeyJWTLocalKeyPair}, false, true, core.AuthMethodPrivateKeyJWTLocalKeyPair},
+		{"client secret only", []string{core.AuthMethodClientSecret}, true, keysigner.MacOSKeychainSignerName, ""},
+		{"client_secret and private_key_jwt_local_keypair", []string{core.AuthMethodClientSecret, core.AuthMethodPrivateKeyJWTLocalKeyPair}, false, keysigner.MacOSKeychainSignerName, ""},
+		{"private_key_jwt_local_keypair only", []string{core.AuthMethodPrivateKeyJWTLocalKeyPair}, false, keysigner.MacOSSecureEnclaveSignerName, "prod"},
+		{"capabilities omitted", nil, false, keysigner.MacOSKeychainSignerName, ""},
+		{"software fallback uses private_key_jwt_local_keypair", []string{core.AuthMethodPrivateKeyJWTLocalKeyPair}, false, keysigner.SoftwareSignerName, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			clearAgentEnv(t)
-			t.Setenv("LARK_CLI_NO_PROXY", "")
-			t.Setenv("LARKSUITE_CLI_PROXY_ENABLE", "false")
-			t.Setenv("LARKSUITE_CLI_PROXY_ADDRESS", "")
-			t.Setenv("LARKSUITE_CLI_CA_PATH", "")
-			signers := []keysigner.Signer{newProbeTestSigner(t)}
-			rt := &fakeRT{tatHandler: func(req *http.Request) (*http.Response, error) {
-				if err := req.ParseForm(); err != nil {
-					t.Fatal(err)
-				}
-				if got := req.Form.Get("grant_type"); got != jwt.GrantTypeJWTBearer {
-					t.Fatalf("grant_type = %q", got)
-				}
-				if req.Form.Get("client_id") != "cli_test" || req.Form.Get("client_assertion") == "" ||
-					req.Form.Has("client_secret") || req.Header.Get("Authorization") != "" {
-					t.Fatalf("registration probe did not use a client assertion: %v", req.Form)
-				}
-				return jsonResp(200, `{"access_token":"test-token","expires_in":7200,"token_type":"Bearer"}`), nil
-			}}
+			registeredSigner := newProbeTestSigner(t)
+			registeredSigner.name = tc.provider
+			signers := []keysigner.Signer{registeredSigner}
+			rt := registrationTokenTransport(t, "cli_test")
 			f, _ := fakeFactory(t, rt)
-			wantProvider := keysigner.MacOSKeychainSignerName
-			if tc.software {
-				wantProvider = keysigner.SoftwareSignerName
-				software := newProbeTestSigner(t)
-				software.name = keysigner.SoftwareSignerName
-				signers = []keysigner.Signer{authMethodTestSigner{ensureErr: keysigner.ErrUnavailable}, software}
+			if tc.provider == keysigner.SoftwareSignerName {
+				signers = []keysigner.Signer{&probeTestSigner{ensureErr: keysigner.ErrUnavailable}, registeredSigner}
 			}
 			out := new(bytes.Buffer)
 			f.IOStreams.Out = out
 			var actions []string
-			previousTransport := http.DefaultTransport
-			t.Cleanup(func() { http.DefaultTransport = previousTransport })
-			http.DefaultTransport = registrationTestTransport(func(req *http.Request) (*http.Response, error) {
+			mockRegistrationTransport(t, func(req *http.Request) (*http.Response, error) {
 				if req.Method != http.MethodPost || req.URL.String() != core.ResolveEndpoints(core.BrandFeishu).Accounts+larkauth.PathAppRegistration {
 					t.Fatalf("unexpected registration request: %s %s", req.Method, req.URL)
 				}
@@ -94,14 +147,28 @@ func TestConfigInitPrivateKeyJWTLocalKeyPairRegistration(t *testing.T) {
 				actions = append(actions, action)
 				switch action {
 				case "init":
+					if registeredSigner.deleteCalls != 1 {
+						t.Fatalf("temporary keys deleted before init = %d, want 1", registeredSigner.deleteCalls)
+					}
 					body, err := json.Marshal(map[string]interface{}{"nonce": "test-nonce", "supported_auth_methods": tc.supported})
 					if err != nil {
 						t.Fatal(err)
 					}
 					return jsonResp(200, string(body)), nil
 				case "begin":
-					if req.Form.Get("auth_method") != tc.wireMethod || req.Form.Get("auth_attestation") == "" {
-						t.Fatalf("begin auth_method = %q, want %q; attestation present = %v", req.Form.Get("auth_method"), tc.wireMethod, req.Form.Get("auth_attestation") != "")
+					if req.Form.Has("clientID") || req.Form.Get("auth_method") != core.AuthMethodPrivateKeyJWTLocalKeyPair {
+						t.Fatal("incorrect authentication method or target app for new registration")
+					}
+					parts := strings.Split(req.Form.Get("auth_attestation"), ".")
+					if len(parts) != 3 {
+						t.Fatal("begin sent an invalid attestation")
+					}
+					payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+					var claims struct {
+						Nonce string `json:"nonce"`
+					}
+					if err != nil || json.Unmarshal(payload, &claims) != nil || claims.Nonce != "test-nonce" {
+						t.Fatal("begin attestation did not use the nonce from init")
 					}
 					return jsonResp(200, `{"device_code":"test-device","verification_uri_complete":"https://example.com/verify","expire_in":60,"interval":1}`), nil
 				case "poll":
@@ -114,10 +181,14 @@ func TestConfigInitPrivateKeyJWTLocalKeyPairRegistration(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			cmd := NewCmdConfigInit(f, func(opts *ConfigInitOptions) error {
-				opts.registrationSigners = signers
+				opts.registrationStore = keylesshelper.NewKeyStore(signers...)
 				return configInitRun(opts)
 			})
-			cmd.SetArgs([]string{"--new", "--private-key-jwt"})
+			args := []string{"--new", "--private-key-jwt"}
+			if tc.profile != "" {
+				args = append(args, "--name", tc.profile)
+			}
+			cmd.SetArgs(args)
 			err := cmd.ExecuteContext(ctx)
 			if tc.wantError {
 				problem, ok := errs.ProblemOf(err)
@@ -135,26 +206,57 @@ func TestConfigInitPrivateKeyJWTLocalKeyPairRegistration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !slices.Equal(actions, []string{"init", "begin", "poll"}) || rt.tatCalls != 1 {
-				t.Fatalf("actions=%v, token calls=%d", actions, rt.tatCalls)
+			if !slices.Equal(actions, []string{"init", "begin", "poll"}) || rt.tatCalls != 1 || rt.probeCalls != 0 {
+				t.Fatalf("actions=%v, TAT calls=%d, probe calls=%d", actions, rt.tatCalls, rt.probeCalls)
 			}
 			saved, err := core.LoadMultiAppConfig()
 			if err != nil {
 				t.Fatal(err)
 			}
-			app := saved.CurrentAppConfig("")
-			if app == nil || app.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair || app.KeyRef == nil || app.KeyRef.Source != core.SecretSourceTEE || app.KeyRef.Provider != wantProvider || !app.AppSecret.IsZero() {
+			app := saved.CurrentAppConfig(tc.profile)
+			if app == nil || app.AppId != "cli_test" || (tc.profile != "" && app.Name != tc.profile) ||
+				app.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair || !app.AppSecret.IsZero() {
 				t.Fatalf("saved app = %+v", app)
 			}
-			var result struct {
-				AuthMethod string `json:"authMethod"`
-				KeyID      string `json:"kid"`
+			if ref := app.KeyRef; ref == nil || ref.ID == "" || ref.Source != core.KeySourceTEE || ref.Provider != tc.provider {
+				t.Fatalf("saved keyRef = %+v", ref)
 			}
-			if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair || result.KeyID == "" {
-				t.Fatalf("output = %s, error = %v", out, err)
-			}
+			assertRegistrationOutput(t, out, registeredSigner.key)
 		})
 	}
+}
+
+func assertRegistrationOutput(t *testing.T, out *bytes.Buffer, key *ecdsa.PrivateKey) {
+	t.Helper()
+	var result struct {
+		AuthMethod string `json:"authMethod"`
+		KeyID      string `json:"kid"`
+	}
+	wantKid, err := keysigner.PublicKeyThumbprint(key.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair || result.KeyID != wantKid {
+		t.Fatalf("output = %s, error = %v", out, err)
+	}
+}
+
+func writeTestPrivateKey(t *testing.T, key *ecdsa.PrivateKey) (string, []byte) {
+	t.Helper()
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	path := filepath.Join(t.TempDir(), "private.pem")
+	if err := vfs.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path, data
 }
 
 func TestConfigInitPrivateKeyFileSelectsPrivateKeyJWTLocalKeyPair(t *testing.T) {
@@ -162,42 +264,21 @@ func TestConfigInitPrivateKeyFileSelectsPrivateKeyJWTLocalKeyPair(t *testing.T) 
 		t.Run(name, func(t *testing.T) {
 			clearAgentEnv(t)
 			key := newProbeTestSigner(t).key
-			der, err := x509.MarshalPKCS8PrivateKey(key)
-			if err != nil {
-				t.Fatal(err)
-			}
-			keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
-			path := filepath.Join(t.TempDir(), "private.pem")
-			if err := vfs.WriteFile(path, keyPEM, 0o600); err != nil {
-				t.Fatal(err)
-			}
-			path, err = filepath.EvalSymlinks(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			rt := &fakeRT{tatHandler: func(req *http.Request) (*http.Response, error) {
-				if err := req.ParseForm(); err != nil {
-					t.Fatal(err)
-				}
-				if req.Method != http.MethodPost || req.Form.Get("client_id") != "cli_file" || req.Form.Get("client_assertion") == "" || req.Form.Has("client_secret") {
-					t.Fatalf("file assertion request = %s %v", req.Method, req.Form)
-				}
-				if got := req.Form.Get("grant_type"); got != jwt.GrantTypeJWTBearer {
-					t.Fatalf("grant_type = %q", got)
-				}
-				return jsonResp(200, `{"access_token":"test-token","expires_in":7200,"token_type":"Bearer"}`), nil
-			}}
+			path, keyPEM := writeTestPrivateKey(t, key)
+			rt := registrationTokenTransport(t, "cli_file")
 			f, _ := fakeFactory(t, rt)
 			out := new(bytes.Buffer)
 			f.IOStreams.Out = out
 			cmd := NewCmdConfigInit(f, func(opts *ConfigInitOptions) error {
-				if got := requestedInitAuthMethod(opts); got != core.AuthMethodPrivateKeyJWTLocalKeyPair {
-					t.Fatalf("key file selected auth method %q", got)
-				}
-				opts.registrationSigners = []keysigner.Signer{}
+				opts.registrationStore = keylesshelper.NewKeyStore()
 				return configInitRun(opts)
 			})
-			args := []string{"--app-id", "cli_file", "--private-key-file", path}
+			inputPath := path
+			if !explicit {
+				cmdutil.TestChdir(t, filepath.Dir(path))
+				inputPath = filepath.Base(path)
+			}
+			args := []string{"--app-id", "cli_file", "--private-key-file", inputPath}
 			if explicit {
 				args = append(args, "--private-key-jwt")
 			}
@@ -214,20 +295,10 @@ func TestConfigInitPrivateKeyFileSelectsPrivateKeyJWTLocalKeyPair(t *testing.T) 
 			}
 			app := saved.CurrentAppConfig("")
 			if app == nil || app.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair || app.KeyRef == nil ||
-				app.KeyRef.Source != core.SecretSourceKeyFile || app.KeyRef.ID != path || app.KeyRef.Provider != "" || !app.AppSecret.IsZero() {
+				app.KeyRef.Source != core.KeySourceFile || app.KeyRef.ID != path || app.KeyRef.Provider != "" || !app.AppSecret.IsZero() {
 				t.Fatalf("saved file app = %+v", app)
 			}
-			var result struct {
-				AuthMethod string `json:"authMethod"`
-				KeyID      string `json:"kid"`
-			}
-			wantKid, err := keysigner.PublicKeyThumbprint(key.Public())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair || result.KeyID != wantKid {
-				t.Fatalf("output = %s, error = %v", out, err)
-			}
+			assertRegistrationOutput(t, out, key)
 			cfg, err := core.ResolveConfigFromMulti(saved, f.Keychain, "", core.ProfileFromConfig)
 			if err != nil {
 				t.Fatal(err)
@@ -249,235 +320,49 @@ func TestConfigInitPrivateKeyFileSelectsPrivateKeyJWTLocalKeyPair(t *testing.T) 
 	}
 }
 
-type authMethodTestSigner struct {
-	ensureErr error
-	signErr   error
-}
-
-func (authMethodTestSigner) Name() string { return keysigner.MacOSKeychainSignerName }
-
-func (authMethodTestSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL2 }
-
-func (s authMethodTestSigner) EnsureKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
-	if s.ensureErr != nil {
-		return nil, s.ensureErr
-	}
-	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	return private.Public(), nil
-}
-
-func (authMethodTestSigner) PublicKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
-	return nil, nil
-}
-
-func (s authMethodTestSigner) Sign(context.Context, keysigner.KeyRef, []byte) ([]byte, string, error) {
-	if s.signErr != nil {
-		return nil, "", s.signErr
-	}
-	return make([]byte, 64), keysigner.AlgES256, nil
-}
-
-func (authMethodTestSigner) DeleteKey(context.Context, keysigner.KeyRef) error { return nil }
-
-// TestResolveRegisterAuthMethod covers the non-interactive gating paths. The
-// darwin keychain signer is compiled into every build, so the test cannot rely
-// on the binary lacking a signer — it forces a known no-signer state for the
-// rejection cases, then registers a stub for the success case.
-func TestResolveRegisterAuthMethod(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	ctx := context.Background()
-
-	if m, err := resolveRegisterAuthMethod(ctx, core.AuthMethodClientSecret, nil); err != nil || m != core.AuthMethodClientSecret {
-		t.Errorf("client_secret: got (%q, %v), want (client_secret, nil)", m, err)
-	}
-
-	if m, err := resolveRegisterAuthMethod(ctx, "", nil); err != nil || m != core.AuthMethodClientSecret {
-		t.Errorf("default: got (%q, %v), want (client_secret, nil)", m, err)
-	}
-
-	if _, err := resolveRegisterAuthMethod(ctx, "bogus", nil); err == nil {
-		t.Error("bogus auth-method: expected error")
-	}
-
-	method := core.AuthMethodPrivateKeyJWTLocalKeyPair
-	if _, err := resolveRegisterAuthMethod(ctx, method, nil); err == nil {
-		t.Errorf("%s without a signer: expected error", method)
-	}
-
-	signers := []keysigner.Signer{authMethodTestSigner{}}
-	if got, err := resolveRegisterAuthMethod(ctx, core.AuthMethodPrivateKeyJWTLocalKeyPair, signers); err != nil || got != core.AuthMethodPrivateKeyJWTLocalKeyPair {
-		t.Errorf("private_key_jwt_local_keypair with signer: got (%q, %v)", got, err)
-	}
-
-	if m, err := resolveRegisterAuthMethod(ctx, "", signers); err != nil || m != core.AuthMethodClientSecret {
-		t.Errorf("default with terminal signer: got (%q, %v), want (client_secret, nil)", m, err)
-	}
-}
-
-func TestConfigInitRunRejectsPrivateKeyJWTLocalKeyPairIncompatibleModes(t *testing.T) {
-	tests := []struct {
-		name       string
-		configure  func(*ConfigInitOptions, *cmdutil.Factory)
-		wantTarget string
-		wantParam  string
+func TestConfigInitRejectsIncompatiblePrivateKeyJWTFlags(t *testing.T) {
+	for _, tc := range []struct {
+		target string
+		args   []string
 	}{
-		{
-			name: "target app id",
-			configure: func(opts *ConfigInitOptions, _ *cmdutil.Factory) {
-				opts.AppID = "cli_test"
-			},
-			wantTarget: "--app-id",
-			wantParam:  "--private-key-jwt",
-		},
-		{
-			name: "new app with target app id",
-			configure: func(opts *ConfigInitOptions, _ *cmdutil.Factory) {
-				opts.New = true
-				opts.AppID = "cli_test"
-			},
-			wantTarget: "--app-id",
-			wantParam:  "--private-key-jwt",
-		},
-		{
-			name: "app secret stdin import",
-			configure: func(opts *ConfigInitOptions, f *cmdutil.Factory) {
-				opts.AppSecretStdin = true
-				f.IOStreams.In = strings.NewReader("secret\n")
-			},
-			wantTarget: "--app-secret-stdin",
-			wantParam:  "--private-key-jwt",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-			f, _, _, _ := cmdutil.TestFactory(t, nil)
-			opts := &ConfigInitOptions{
-				Factory:                   f,
-				Ctx:                       context.Background(),
-				PrivateKeyJWTLocalKeyPair: true,
-			}
-			tc.configure(opts, f)
-
-			err := configInitRun(opts)
-			if err == nil {
-				t.Fatal("expected incompatible mode error")
-			}
-			problem, ok := errs.ProblemOf(err)
-			if !ok {
-				t.Fatalf("error is not typed: %T %[1]v", err)
-			}
-			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
-				t.Fatalf("problem = %s/%s, want validation/invalid_argument", problem.Category, problem.Subtype)
-			}
-			var validationErr *errs.ValidationError
-			if !errors.As(err, &validationErr) {
-				t.Fatalf("error = %T, want *errs.ValidationError", err)
-			}
-			if validationErr.Param != tc.wantParam {
-				t.Fatalf("param = %q, want %s", validationErr.Param, tc.wantParam)
-			}
-			if !strings.Contains(problem.Message, tc.wantTarget) {
-				t.Fatalf("message = %q, want %s", problem.Message, tc.wantTarget)
+		{"--app-id", []string{"--app-id", "cli_test"}},
+		{"--app-id", []string{"--new", "--app-id", "cli_test"}},
+		{"--app-secret-stdin", []string{"--app-secret-stdin"}},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			clearAgentEnv(t)
+			f, _ := fakeFactory(t, &fakeRT{})
+			cmd := NewCmdConfigInit(f, nil)
+			cmd.SetArgs(append([]string{"--private-key-jwt"}, tc.args...))
+			err := cmd.Execute()
+			var invalid *errs.ValidationError
+			if !errors.As(err, &invalid) || invalid.Subtype != errs.SubtypeInvalidArgument || invalid.Param != "--private-key-jwt" || !strings.Contains(invalid.Message, tc.target) {
+				t.Fatalf("expected conflicting flags in validation error, got %v", err)
 			}
 		})
 	}
 }
 
-func TestResolveRegisterAuthMethod_PrivateKeyJWTLocalKeyPairRejectsSignerFailures(t *testing.T) {
-	probeErr := errors.New("probe exploded")
-
-	tests := []struct {
-		name      string
-		signer    keysigner.Signer
-		wantCause error
+func TestConfigInitRejectsUnavailableSignerBeforeRegistration(t *testing.T) {
+	signFailure := newProbeTestSigner(t)
+	signFailure.signErr = errors.New("probe signing failed")
+	for _, tc := range []struct {
+		terminal bool
+		signer   *probeTestSigner
+		cause    error
 	}{
-		{
-			name:   "unavailable hardware",
-			signer: authMethodTestSigner{ensureErr: keysigner.ErrUnavailable},
-		},
-		{
-			name:      "probe failure",
-			signer:    authMethodTestSigner{signErr: probeErr},
-			wantCause: probeErr,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-			_, err := resolveRegisterAuthMethod(
-				context.Background(),
-				core.AuthMethodPrivateKeyJWTLocalKeyPair,
-				[]keysigner.Signer{tc.signer},
-			)
-			if err == nil {
-				t.Fatal("expected signer failure")
-			}
-			if tc.wantCause != nil && !errors.Is(err, tc.wantCause) {
-				t.Fatalf("error does not preserve cause: %v", err)
-			}
-			problem, ok := errs.ProblemOf(err)
-			if !ok {
-				t.Fatalf("error is not typed: %T %[1]v", err)
-			}
-			if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeInvalidClient {
-				t.Fatalf("problem = %s/%s, want config/invalid_client", problem.Category, problem.Subtype)
-			}
-			wantMessage := "this machine does not support --private-key-jwt"
-			if problem.Message != wantMessage {
-				t.Fatalf("message = %q, want %q", problem.Message, wantMessage)
-			}
-			for _, detail := range []string{"sks", "/dev/tpm", "tpm", "TEE", "Keychain", "probe", "keychain signer"} {
-				if strings.Contains(problem.Message, detail) {
-					t.Fatalf("message exposes internal detail %q: %q", detail, problem.Message)
-				}
-			}
-			if !strings.Contains(problem.Hint, "omit --private-key-jwt") {
-				t.Fatalf("hint = %q, want guidance to omit --private-key-jwt", problem.Hint)
-			}
-			if strings.Contains(problem.Hint, "fix the local signer") {
-				t.Fatalf("hint exposes unnecessary signer recovery: %q", problem.Hint)
-			}
+		{true, signFailure, signFailure.signErr},
+		{false, &probeTestSigner{ensureErr: keysigner.ErrUnavailable}, keysigner.ErrUnavailable},
+	} {
+		f, _ := fakeFactory(t, &fakeRT{})
+		f.IOStreams.IsTerminal = tc.terminal
+		err := configInitRun(&ConfigInitOptions{
+			Factory: f, Ctx: context.Background(), PrivateKeyJWTLocalKeyPair: true,
+			registrationStore: keylesshelper.NewKeyStore(tc.signer),
 		})
-	}
-}
-
-func TestConfigInitRun_PrivateKeyJWTLocalKeyPairRejectsBeforeInteractiveMode(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-
-	f, _, _, _ := cmdutil.TestFactory(t, nil)
-	f.IOStreams.IsTerminal = true
-	opts := &ConfigInitOptions{
-		Factory:                   f,
-		Ctx:                       context.Background(),
-		PrivateKeyJWTLocalKeyPair: true,
-		Lang:                      "zh_cn",
-		UILang:                    "zh_cn",
-		registrationSigners: []keysigner.Signer{
-			authMethodTestSigner{ensureErr: keysigner.ErrUnavailable},
-		},
-	}
-
-	for _, terminal := range []bool{true, false} {
-		f.IOStreams.IsTerminal = terminal
-		err := configInitRun(opts)
-		if err == nil {
-			t.Fatal("config init --private-key-jwt on unsupported machine: expected error before interactive mode")
-		}
-		problem, ok := errs.ProblemOf(err)
-		if !ok {
-			t.Fatalf("error is not typed: %T %[1]v", err)
-		}
-		if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeInvalidClient {
-			t.Fatalf("problem = %s/%s, want config/invalid_client", problem.Category, problem.Subtype)
-		}
-		if problem.Message != "this machine does not support --private-key-jwt" {
-			t.Fatalf("message = %q", problem.Message)
+		problem := assertRegistrationProblem(t, err, tc.cause, errs.CategoryConfig, errs.SubtypeInvalidClient)
+		if problem.Message != "this machine does not support --private-key-jwt" || !strings.Contains(problem.Hint, "omit --private-key-jwt") {
+			t.Fatalf("unexpected preflight error: %+v", problem)
 		}
 	}
 }

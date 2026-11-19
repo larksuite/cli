@@ -184,18 +184,18 @@ func (b *openclawBinder) Build(appID string) (*core.AppConfig, error) {
 		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: appID %q not in candidates", appID)
 	}
 	if selected.AuthMethod != "" && selected.AuthMethod != core.AuthMethodClientSecret &&
-		!core.IsPrivateKeyJWTLocalKeyPairAuthMethod(selected.AuthMethod) {
+		selected.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair {
 		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
 			"unknown authMethod %q for app %s in %s", selected.AuthMethod, selected.AppID, b.path).
 			WithHint("supported keyless value is %s", core.AuthMethodPrivateKeyJWTLocalKeyPair)
 	}
-	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(selected.AuthMethod) &&
+	if selected.AuthMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair &&
 		strings.TrimSpace(selected.KeyRef) == "" {
 		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
 			"keyless app %s in %s is missing keyRef", selected.AppID, b.path).
 			WithHint("re-run OpenClaw onboarding so the account records its signer keyRef")
 	}
-	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(selected.AuthMethod) {
+	if selected.AuthMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair {
 		if !selected.AppSecret.IsZero() {
 			fmt.Fprintf(b.opts.Factory.IOStreams.ErrOut,
 				"Warning: authMethod %s takes precedence for app %s; appSecret is ignored and will not be imported. OpenClaw configuration is unchanged.\n",
@@ -205,8 +205,8 @@ func (b *openclawBinder) Build(appID string) (*core.AppConfig, error) {
 			AppId:      selected.AppID,
 			Brand:      core.ParseBrand(selected.Brand),
 			AuthMethod: selected.AuthMethod,
-			KeyRef: &core.SecretRef{
-				Source:   core.SecretSourceTEE,
+			KeyRef: &core.KeyRef{
+				Source:   core.KeySourceTEE,
 				Provider: core.KeylessProviderLarkSuite,
 				ID:       strings.TrimSpace(selected.KeyRef),
 			},

@@ -17,10 +17,13 @@ func TestNewUATCallOptions(t *testing.T) {
 		AppSecret:  "secret",
 		Brand:      core.BrandLark,
 		UserOpenId: "ou_test",
+		AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeyLabel: "key-1", KeyProvider: core.KeylessProviderLarkSuite,
+		DPoPMode: core.DPoPModeRequired, CredentialSource: core.CredentialSourceLocal,
 	}
 	errOut := &bytes.Buffer{}
 
-	opts := NewUATCallOptions(cfg, errOut, nil)
+	signer := newFakeAuthSigner(t)
+	opts := NewUATCallOptions(cfg, errOut, signer)
 
 	if opts.AppId != "app123" {
 		t.Errorf("AppId = %q, want app123", opts.AppId)
@@ -37,37 +40,10 @@ func TestNewUATCallOptions(t *testing.T) {
 	if opts.ErrOut != errOut {
 		t.Error("ErrOut not set correctly")
 	}
-}
-
-// TestNewUATCallOptions_PrivateKeyJWTLocalKeyPair verifies the auth-method fields propagate
-// so the refresh path can mint a client_assertion instead of sending a secret.
-func TestNewUATCallOptions_PrivateKeyJWTLocalKeyPair(t *testing.T) {
-	cfg := &core.CliConfig{
-		AppID:            "cli_pk",
-		Brand:            core.BrandFeishu,
-		UserOpenId:       "ou_test",
-		AuthMethod:       core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		KeyLabel:         "agent-key",
-		KeyProvider:      core.KeylessProviderLarkSuite,
-		DPoPMode:         core.DPoPModeRequired,
-		CredentialSource: core.CredentialSourceLocal,
+	if opts.AuthMethod != cfg.AuthMethod || opts.KeyLabel != cfg.KeyLabel || opts.KeyProvider != cfg.KeyProvider || opts.Signer != signer {
+		t.Fatal("lost signing-key configuration")
 	}
-	signer := newFakeAuthSigner(t)
-	opts := NewUATCallOptions(cfg, &bytes.Buffer{}, signer)
-
-	if opts.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair {
-		t.Errorf("AuthMethod = %q, want private_key_jwt_local_keypair", opts.AuthMethod)
-	}
-	if opts.KeyLabel != "agent-key" {
-		t.Errorf("KeyLabel = %q, want agent-key", opts.KeyLabel)
-	}
-	if opts.KeyProvider != core.KeylessProviderLarkSuite {
-		t.Errorf("KeyProvider = %q, want %q", opts.KeyProvider, core.KeylessProviderLarkSuite)
-	}
-	if opts.Signer != signer {
-		t.Fatal("Signer was not propagated")
-	}
-	if opts.DPoPMode != core.DPoPModeRequired || opts.DPoPKeyStore == nil {
-		t.Fatal("private-key JWT configuration lost the local DPoP policy")
+	if opts.DPoPMode != cfg.DPoPMode || opts.DPoPKeyStore == nil {
+		t.Fatal("lost local DPoP policy")
 	}
 }

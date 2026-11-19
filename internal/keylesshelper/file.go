@@ -17,8 +17,10 @@ import (
 	"io/fs"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
@@ -33,9 +35,21 @@ var ErrLifecycleNotSupported = errors.New("signing key lifecycle operation is un
 
 // FileSigner reads a host-local credential referenced by keysigner.KeyRef.Label
 // through vfs. It is independent of workspace FileIO and never copies the key.
-type FileSigner struct{}
+type FileSigner struct {
+	// Set only on the private copy used to sign a single assertion.
+	key crypto.Signer
+}
 
-func (s *FileSigner) load(ref keysigner.KeyRef) (crypto.Signer, error) {
+func (s *FileSigner) load(ctx context.Context, ref keysigner.KeyRef) (crypto.Signer, error) {
+	if ctx != nil && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if ref.Label == "" {
+		return nil, fmt.Errorf("keysigner: private key file path is empty")
+	}
+	if s.key != nil {
+		return s.key, nil
+	}
 	data, err := readPrivateKeyData(ref.Label)
 	if err != nil {
 		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "cannot read private key file: %v", err).WithCause(err)
@@ -47,6 +61,16 @@ func (s *FileSigner) load(ref keysigner.KeyRef) (crypto.Signer, error) {
 	return key, nil
 }
 
+// SignClientAssertion reads the PEM once so a rotation cannot separate the
+// public key used for kid from the private key used for the signature.
+func (s *FileSigner) SignClientAssertion(ctx context.Context, ref keysigner.KeyRef, clientID, audience string, now time.Time) (string, error) {
+	key, err := s.load(ctx, ref)
+	if err != nil {
+		return "", fmt.Errorf("jwt: public key: %w", err)
+	}
+	return jwt.SignClientAssertion(ctx, &FileSigner{key: key}, ref, clientID, audience, now)
+}
+
 func (s *FileSigner) EnsureKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
 	return s.PublicKey(ctx, ref)
 }
@@ -56,13 +80,7 @@ func (*FileSigner) Name() string { return FileSignerName }
 func (*FileSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL3 }
 
 func (s *FileSigner) PublicKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
-	if ctx != nil && ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-	if ref.Label == "" {
-		return nil, fmt.Errorf("keysigner: private key file path is empty")
-	}
-	key, err := s.load(ref)
+	key, err := s.load(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -74,13 +92,7 @@ func (s *FileSigner) PublicKey(ctx context.Context, ref keysigner.KeyRef) (crypt
 }
 
 func (s *FileSigner) Sign(ctx context.Context, ref keysigner.KeyRef, signingInput []byte) ([]byte, string, error) {
-	if ctx != nil && ctx.Err() != nil {
-		return nil, "", ctx.Err()
-	}
-	if ref.Label == "" {
-		return nil, "", fmt.Errorf("keysigner: private key file path is empty")
-	}
-	key, err := s.load(ref)
+	key, err := s.load(ctx, ref)
 	if err != nil {
 		return nil, "", err
 	}

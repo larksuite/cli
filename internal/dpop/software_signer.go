@@ -5,13 +5,10 @@ package dpop
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
-	"strings"
 
 	"github.com/gofrs/flock"
 
@@ -83,7 +80,6 @@ func (s softwareSigner) unlock(ctx context.Context, directory string, allowCreat
 	return signingstore.ResolveSecret(s.keychain, directory, encoded, allowCreate, signingstore.SecretPolicy{
 		Account:     softwareUnlockAccount,
 		Description: "DPoP software unlock secret",
-		IsKeyFile:   isSoftwareKeyFile,
 		Missing:     missingSoftwareUnlockSecret,
 	})
 }
@@ -119,7 +115,7 @@ func (s softwareSigner) resetUnrecoverableKeys(ctx context.Context) (removed boo
 		return false, err
 	}
 	for _, entry := range entries {
-		if !isSoftwareKeyFile(entry.Name()) {
+		if !keysigner.IsKeyFileName(entry.Name()) {
 			continue
 		}
 		path := filepath.Join(directory, entry.Name())
@@ -139,15 +135,6 @@ func (s softwareSigner) resetUnrecoverableKeys(ctx context.Context) (removed boo
 		removed = true
 	}
 	return removed, nil
-}
-
-func isSoftwareKeyFile(name string) bool {
-	digest := strings.TrimSuffix(name, ".json")
-	if len(digest) != sha256.Size*2 || name == digest || digest != strings.ToLower(digest) {
-		return false
-	}
-	_, err := hex.DecodeString(digest)
-	return err == nil
 }
 
 func missingSoftwareUnlockSecret(directory string) error {

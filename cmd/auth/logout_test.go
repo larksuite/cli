@@ -63,7 +63,7 @@ func TestAuthLogoutRun_PrivateKeyJWT(t *testing.T) {
 			}
 			app := core.AppConfig{Name: "keyless", AppId: "cli_keyless", Brand: core.BrandFeishu,
 				AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
-				KeyRef:     &core.SecretRef{Source: core.SecretSourceKeyFile, ID: keyPath},
+				KeyRef:     &core.KeyRef{Source: core.KeySourceFile, ID: keyPath},
 				AppSecret:  core.SecretInput{Ref: &core.SecretRef{Source: "keychain", ID: "must-not-resolve"}},
 				Users:      []core.AppUser{{UserOpenId: "ou_keyless"}}}
 			other := core.AppConfig{Name: "other", AppId: "cli_other", Brand: core.BrandFeishu,

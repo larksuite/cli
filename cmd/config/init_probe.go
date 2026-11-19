@@ -85,12 +85,8 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	return nil
 }
 
-// runProbePrivateKeyJWTLocalKeyPair does a best-effort key-binding validation: it signs a
-// client_assertion with the configured key (file or generated) and mints a token.
-// A typed error (a deterministic server rejection — e.g. the key
-// is not bound to this app) is propagated so `config init` exits non-zero with
-// the canonical envelope; untyped errors (transport / HTTP / parse / timeout)
-// are swallowed (return nil). The mint itself is the probe — no second call.
+// runProbePrivateKeyJWTLocalKeyPair checks the application key by minting a token
+// with a client assertion and DPoP disabled. Only typed failures block config init.
 func runProbePrivateKeyJWTLocalKeyPair(parent context.Context, factory *cmdutil.Factory, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) error {
 	if factory == nil {
 		return nil
@@ -107,12 +103,12 @@ func runProbePrivateKeyJWTLocalKeyPair(parent context.Context, factory *cmdutil.
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 
-	if _, err := credential.FetchTATWithAssertion(ctx, httpClient, brand, clientID, signer, keyLabel); err != nil {
-		// Preserve token resolution's typed failures; ambiguous failures stay silent.
-		if errs.IsTyped(err) {
-			return err
-		}
-		return nil
+	_, err = credential.FetchTAT(ctx, httpClient, brand, auth.ClientAuth{
+		AppID: clientID, AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		Signer: signer, KeyLabel: keyLabel,
+	}, core.DPoPModeDisabled)
+	if errs.IsTyped(err) {
+		return err
 	}
 	return nil
 }

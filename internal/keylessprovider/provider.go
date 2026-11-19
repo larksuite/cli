@@ -151,10 +151,6 @@ func resolve(ctx context.Context, provider string) (*keylesshelper.Command, *res
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	provider = strings.TrimSpace(provider)
-	if provider == "" {
-		return nil, nil, nil
-	}
 	if provider != ProviderID {
 		return nil, nil, fmt.Errorf("unknown keyless signer provider %q", provider)
 	}
@@ -187,9 +183,6 @@ func resolve(ctx context.Context, provider string) (*keylesshelper.Command, *res
 		}
 	}
 
-	// An empty home override deliberately preserves the recipient user's normal
-	// HOME. The helper still supplies a minimal environment and never inherits
-	// PATH, proxy, language-runtime, or loader injection variables.
 	command, err := keylesshelper.NewProviderCommand(resolved.binaryPath, resolved.packageDir, resolved.digest)
 	if err != nil {
 		return nil, nil, err

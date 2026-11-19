@@ -11,6 +11,7 @@ package jwt
 
 import (
 	"context"
+	"crypto"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -28,20 +29,13 @@ func b64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 //
 // alg is written into the header (it is part of the signed input) and verified
 // against the alg the signer reports, guarding against a header/key mismatch.
-// typ defaults to "JWT": the server's client_assertion generalizedValidation
-// REQUIRES `typ == "JWT"` (rejects otherwise with "malformed client assertion
-// jwt"), even though the spec examples (§8.1/§8.2) show only alg.
+// The token endpoint requires typ to be "JWT".
 func buildSignedJWT(ctx context.Context, signer keysigner.Signer, ref keysigner.KeyRef, alg string, header, claims map[string]any) (string, error) {
 	if signer == nil {
 		return "", fmt.Errorf("jwt: no signer available for private-key JWT")
 	}
-	if header == nil {
-		header = map[string]any{}
-	}
 	header["alg"] = alg
-	if _, ok := header["typ"]; !ok {
-		header["typ"] = "JWT"
-	}
+	header["typ"] = "JWT"
 
 	hb, err := json.Marshal(header)
 	if err != nil {
@@ -106,17 +100,13 @@ const ClientAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bea
 // defaultAssertionTTL bounds a client_assertion's lifetime.
 const defaultAssertionTTL = 5 * time.Minute
 
-// SignAttestation signs the registration attestation JWT. The public key is
+// SignAttestation signs the registration attestation JWT. The selected public key is
 // embedded in the JWS "jwk" header so the registration backend can bind it to
 // the app during action=begin; the claims carry the server nonce as a
 // proof-of-possession challenge.
-func SignAttestation(ctx context.Context, signer keysigner.Signer, ref keysigner.KeyRef, nonce string, now time.Time) (string, error) {
+func SignAttestation(ctx context.Context, signer keysigner.Signer, ref keysigner.KeyRef, pub crypto.PublicKey, nonce string, now time.Time) (string, error) {
 	if signer == nil {
 		return "", fmt.Errorf("jwt: no signer available for private-key JWT")
-	}
-	pub, err := signer.EnsureKey(ctx, ref)
-	if err != nil {
-		return "", fmt.Errorf("jwt: ensure key: %w", err)
 	}
 	alg, err := keysigner.AlgForKey(pub)
 	if err != nil {

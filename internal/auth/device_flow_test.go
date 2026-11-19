@@ -38,23 +38,6 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
 
-func captureDeviceAuthClient(gotReq **http.Request, gotBody *string, respJSON string) *http.Client {
-	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		*gotReq = req
-		if req.Body != nil {
-			b, _ := io.ReadAll(req.Body)
-			*gotBody = string(b)
-		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(respJSON)),
-		}, nil
-	})}
-}
-
-const deviceAuthRespJSON = `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify","expires_in":300,"interval":5}`
-
 // TestResolveOAuthEndpoints_Feishu validates endpoints for the Feishu brand.
 func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
 	ep := ResolveOAuthEndpoints(core.BrandFeishu)
@@ -136,79 +119,32 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	}
 }
 
-func TestRequestDeviceAuthorization_PrivateKeyJWTLocalKeyPair_UsesAssertionNotBasic(t *testing.T) {
-	var req *http.Request
-	var body string
-	client := captureDeviceAuthClient(&req, &body, deviceAuthRespJSON)
-
-	ca := ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: newFakeAuthSigner(t), KeyLabel: "k"}
-	if _, err := RequestDeviceAuthorization(context.Background(), client, ca, core.BrandFeishu, "im:message:send", nil); err != nil {
-		t.Fatal(err)
-	}
-	if req.Header.Get("Authorization") != "" {
-		t.Errorf("private_key_jwt_local_keypair must NOT send Basic auth, got %q", req.Header.Get("Authorization"))
-	}
-	form, _ := url.ParseQuery(body)
-	if form.Get("client_assertion") == "" {
-		t.Error("missing client_assertion")
-	}
-	if form.Get("client_assertion_type") != jwt.ClientAssertionType {
-		t.Errorf("client_assertion_type = %q", form.Get("client_assertion_type"))
-	}
-	if form.Has("client_secret") {
-		t.Error("client_secret must not be present for private_key_jwt_local_keypair")
-	}
-}
-
-func TestRequestDeviceAuthorization_ClientSecret_UsesBasic(t *testing.T) {
-	var req *http.Request
-	var body string
-	client := captureDeviceAuthClient(&req, &body, deviceAuthRespJSON)
-
-	ca := ClientAuth{AppID: "cli_a", AppSecret: "test-secret"}
-	if _, err := RequestDeviceAuthorization(context.Background(), client, ca, core.BrandFeishu, "", nil); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(req.Header.Get("Authorization"), "Basic ") {
-		t.Errorf("client_secret should use Basic auth, got %q", req.Header.Get("Authorization"))
-	}
-	form, _ := url.ParseQuery(body)
-	if form.Has("client_assertion") {
-		t.Error("client_secret must not send a client_assertion")
+func TestDeviceAuthorizationClientAuthentication(t *testing.T) {
+	for _, ca := range []ClientAuth{
+		{AppID: "cli_a", AppSecret: "secret"},
+		{AppID: "cli_a", AppSecret: "must-not-send", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: newFakeAuthSigner(t), KeyLabel: "key"},
+	} {
+		client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if err := req.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			if ca.Signer == nil {
+				id, secret, ok := req.BasicAuth()
+				if !ok || id != ca.AppID || secret != ca.AppSecret || req.PostForm.Has("client_assertion") {
+					t.Fatal("expected Basic authentication")
+				}
+			} else if req.Header.Get("Authorization") != "" || req.PostForm.Has("client_secret") ||
+				req.PostForm.Get("client_assertion") == "" || req.PostForm.Get("client_assertion_type") != jwt.ClientAssertionType {
+				t.Fatal("expected assertion-only authentication")
+			}
+			return jsonResponse(`{"device_code":"dc","user_code":"uc","verification_uri":"https://example.com","expires_in":60,"interval":1}`), nil
+		})}
+		if _, err := RequestDeviceAuthorization(context.Background(), client, ca, core.BrandFeishu, "", nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
-func TestPollDeviceToken_ReturnsAssertionErrorWithoutRequest(t *testing.T) {
-	var requests atomic.Int32
-	client := &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			requests.Add(1)
-			return nil, errors.New("unexpected request")
-		}),
-	}
-
-	result, err := PollDeviceToken(
-		context.Background(),
-		client,
-		ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair},
-		core.BrandFeishu,
-		"device-code",
-		1,
-		3,
-		nil,
-	)
-	if result != nil {
-		t.Fatalf("PollDeviceToken() result = %#v, want nil", result)
-	}
-	if err == nil || !strings.Contains(err.Error(), "requires a key signer") {
-		t.Fatalf("PollDeviceToken() error = %v, want key signer error", err)
-	}
-	if got := requests.Load(); got != 0 {
-		t.Fatalf("PollDeviceToken() sent %d requests, want 0", got)
-	}
-}
-
-// TestFormatAuthCmdline_TruncatesExtraArgs verifies that long command lines are truncated.
 func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
 	got := keychain.FormatAuthCmdline([]string{
 		"lark-cli",

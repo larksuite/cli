@@ -88,7 +88,7 @@ func configShowRun(opts *ConfigShowOptions) error {
 		"dpopMode":      dpopMode,
 		"users":         users,
 	}
-	if core.IsPrivateKeyJWTLocalKeyPairAuthMethod(authMethod) {
+	if authMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair {
 		if app.KeyRef != nil {
 			data["keyRef"] = app.KeyRef
 		}

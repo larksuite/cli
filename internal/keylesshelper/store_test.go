@@ -10,23 +10,22 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keysigner"
-	"github.com/larksuite/cli/internal/validate"
 )
 
 type storeTestSigner struct {
 	keysigner.Signer
 	name                                             string
-	ensureErr, publicErr, signErr                    error
+	ensureErr, signErr                               error
 	ensureCalls, publicCalls, signCalls, deleteCalls int
-	onEnsure                                         func() error
 	onSign                                           func()
 }
 
@@ -34,11 +33,6 @@ func (s *storeTestSigner) Name() string                           { return s.nam
 func (s *storeTestSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL3 }
 func (s *storeTestSigner) EnsureKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
 	s.ensureCalls++
-	if s.onEnsure != nil {
-		if err := s.onEnsure(); err != nil {
-			return nil, err
-		}
-	}
 	if s.ensureErr != nil {
 		return nil, s.ensureErr
 	}
@@ -46,9 +40,6 @@ func (s *storeTestSigner) EnsureKey(ctx context.Context, ref keysigner.KeyRef) (
 }
 func (s *storeTestSigner) PublicKey(ctx context.Context, ref keysigner.KeyRef) (crypto.PublicKey, error) {
 	s.publicCalls++
-	if s.publicErr != nil {
-		return nil, s.publicErr
-	}
 	return s.Signer.PublicKey(ctx, ref)
 }
 func (s *storeTestSigner) Sign(ctx context.Context, ref keysigner.KeyRef, input []byte) ([]byte, string, error) {
@@ -80,8 +71,8 @@ func TestKeyStoreLifecycle(t *testing.T) {
 	ctx := context.Background()
 	signer := newStoreTestSigner(t)
 	unavailable := &storeTestSigner{name: "unavailable", ensureErr: keysigner.ErrUnavailable}
-	store := NewKeyStoreWithSigners(nil, unavailable, signer)
-	// The entire create + attest operation holds the store lock.
+	store := NewKeyStore(unavailable, signer)
+	// Attestation, client assertion and the health probe each sign under the store lock.
 	signer.onSign = func() {
 		wait, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 		defer cancel()
@@ -94,27 +85,30 @@ func TestKeyStoreLifecycle(t *testing.T) {
 	if err != nil || key == nil || attestation == "" {
 		t.Fatalf("create: %v", err)
 	}
-	if unavailable.ensureCalls != 1 || key.Provider() != signer.Name() {
+	if unavailable.ensureCalls != 1 || key.Provider() != signer.Name() || key.Signer() != signer {
 		t.Fatal("fallback not selected")
+	}
+	if signer.ensureCalls != 1 || signer.publicCalls != 0 {
+		t.Fatalf("attestation key lookup: EnsureKey=%d PublicKey=%d", signer.ensureCalls, signer.publicCalls)
 	}
 	if _, err := key.Thumbprint(); err != nil {
 		t.Fatal(err)
 	}
 	before := signer.ensureCalls
-	assertion, err := store.SignClientAssertionContext(ctx, key.Provider(), key.ID(), "cli_test", "https://example.invalid", time.Now())
+	assertion, err := SignClientAssertionContext(ctx, key.Signer(), key.ID(), "cli_test", "https://example.invalid", time.Now())
 	if err != nil || assertion == "" || signer.ensureCalls != before {
 		t.Fatalf("assertion recreated key: %v", err)
 	}
-	if _, err := store.LoadContext(ctx, key.Provider(), key.ID()); err != nil {
+	if _, err := ProbeKeyContext(ctx, key.Signer(), key.ID()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ProbeKeyContext(ctx, key.Provider(), key.ID()); err != nil {
+	if signer.signCalls != 3 {
+		t.Fatalf("attestation, assertion and probe signed %d times, want 3", signer.signCalls)
+	}
+	if err := key.DeleteContext(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DeleteKeyContext(ctx, key); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.LoadContext(ctx, key.Provider(), key.ID()); !errors.Is(err, keysigner.ErrKeyNotFound) {
+	if _, err := ProbeKeyContext(ctx, key.Signer(), key.ID()); !errors.Is(err, keysigner.ErrKeyNotFound) {
 		t.Fatalf("missing key: %v", err)
 	}
 	if signer.ensureCalls != before {
@@ -122,27 +116,10 @@ func TestKeyStoreLifecycle(t *testing.T) {
 	}
 }
 
-func TestKeyStoreDoesNotFallbackForExistingOrCorruptKeys(t *testing.T) {
-	isolateSoftwareStorage(t)
-	signer := newStoreTestSigner(t)
-	cause := errors.New("corrupt native storage")
-	broken := &storeTestSigner{name: "recorded", ensureErr: cause, publicErr: keysigner.ErrKeyNotFound}
-	store := NewKeyStoreWithSigners(nil, broken, signer)
-	if _, err := store.EnsureContext(context.Background(), "key"); !errors.Is(err, cause) {
-		t.Fatal(err)
-	}
-	if _, err := store.LoadContext(context.Background(), "recorded", "key"); !errors.Is(err, keysigner.ErrKeyNotFound) {
-		t.Fatal(err)
-	}
-	if signer.ensureCalls != 0 || signer.publicCalls != 0 {
-		t.Fatal("silently changed provider")
-	}
-}
-
 func TestKeyStoreProbeAndFailedAttestationCleanup(t *testing.T) {
 	isolateSoftwareStorage(t)
 	signer := newStoreTestSigner(t)
-	store := NewKeyStoreWithSigners(nil, signer)
+	store := NewKeyStore(signer)
 	if err := store.ProbeWritableContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +131,7 @@ func TestKeyStoreProbeAndFailedAttestationCleanup(t *testing.T) {
 	if !errors.Is(err, signer.signErr) || key == nil {
 		t.Fatalf("lost cleanup handle: %v", err)
 	}
-	if err := store.DeleteKeyContext(context.Background(), key); err != nil {
+	if err := key.DeleteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if signer.deleteCalls != 2 {
@@ -162,109 +139,81 @@ func TestKeyStoreProbeAndFailedAttestationCleanup(t *testing.T) {
 	}
 }
 
-func TestKeyStoreConstructorsAndKeySnapshot(t *testing.T) {
-	kc := &testMetadataStore{values: map[string]string{}}
+func TestKeySnapshotsRegisteredIdentity(t *testing.T) {
 	signer := newStoreTestSigner(t)
-	for _, store := range []*KeyStore{NewKeyStore(kc), NewKeyStoreWithSigners(kc, signer)} {
-		if store.keychain != kc {
-			t.Fatal("constructor discarded credential store")
-		}
-	}
-	if store := NewKeyStoreWithSigners(kc); len(store.signers) != 0 {
-		t.Fatal("explicit empty signer list enabled default backends")
-	}
-	second := &storeTestSigner{name: "second"}
-	signers := []keysigner.Signer{signer, second}
-	store := NewKeyStoreWithSigners(kc, signers...)
-	signers[0] = second
-	if len(store.signers) != 2 || store.signers[0] != signer || store.signers[1] != second {
-		t.Fatal("constructor did not preserve an independent ordered signer list")
-	}
-	var absent *Key
-	if absent.ID() != "" || absent.Provider() != "" || absent.SecurityLevel() != "" {
-		t.Fatal("nil key has metadata")
-	}
-	if _, err := absent.Thumbprint(); !errors.Is(err, ErrKeyNotFound) {
-		t.Fatal(err)
-	}
-	if _, err := absent.PublicJWK(); !errors.Is(err, ErrKeyNotFound) {
-		t.Fatal(err)
-	}
-	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := newKey("key", private.Public(), signer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, public := range []crypto.PublicKey{&ec.PublicKey, &rsaKey.PublicKey} {
-		key, err := newKey("key", public, signer)
-		if err != nil {
-			t.Fatal(err)
-		}
-		before, err := key.Thumbprint()
-		if err != nil {
-			t.Fatal(err)
-		}
-		provider := key.Provider()
-		switch value := public.(type) {
-		case *ecdsa.PublicKey:
-			value.X.SetInt64(1)
-		case *rsa.PublicKey:
-			value.N.SetInt64(1)
-		}
-		signer.name = "mutated-backend"
-		after, err := key.Thumbprint()
-		if err != nil || before != after || key.Provider() != provider || key.SecurityLevel() != keysigner.SecurityLevelL3 {
-			t.Fatalf("mutable key snapshot: %v", err)
-		}
+	before, err := key.Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := signer.Name()
+	private.X.SetInt64(1)
+	signer.name = "changed"
+	after, err := key.Thumbprint()
+	if err != nil || before != after || key.Provider() != name {
+		t.Fatalf("registered key identity changed: %v", err)
 	}
 }
 
-func TestKeyStoreProbeFallbackStopsOnCleanupAndCancellation(t *testing.T) {
+func TestCleanupUnreferencedSigningKeyRoutesSecureEnclave(t *testing.T) {
 	isolateSoftwareStorage(t)
-	for _, cause := range []error{keysigner.ErrCleanupFailed, context.Canceled, context.DeadlineExceeded} {
-		first := &storeTestSigner{name: "first", ensureErr: errors.Join(keysigner.ErrUnavailable, cause)}
-		next := newStoreTestSigner(t)
-		err := NewKeyStoreWithSigners(nil, first, next).ProbeWritableContext(context.Background())
-		if !errors.Is(err, cause) || next.ensureCalls != 0 {
-			t.Fatalf("unsafe fallback: %v, next=%d", err, next.ensureCalls)
-		}
+	previous := core.AppConfig{
+		AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		KeyRef:     &core.KeyRef{Source: core.KeySourceTEE, Provider: keysigner.MacOSSecureEnclaveSignerName, ID: "key-1"},
+	}
+	// A canceled operation tests the cleanup route without accessing hardware.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	current := &core.MultiAppConfig{Apps: []core.AppConfig{previous}}
+	if err := CleanupUnreferencedSigningKey(ctx, &testMetadataStore{}, previous, current); err != nil {
+		t.Fatalf("cleanup reached a referenced key: %v", err)
+	}
+	want := keysigner.ErrUnavailable
+	if runtime.GOOS == "darwin" {
+		want = context.Canceled
+	}
+	if err := CleanupUnreferencedSigningKey(ctx, &testMetadataStore{}, previous, nil); !errors.Is(err, want) {
+		t.Fatalf("cleanup unreferenced key: got %v, want %v", err, want)
 	}
 }
 
-func TestSignerDirectoryPreservesSoftwareNamespace(t *testing.T) {
-	legacy, err := validate.SafeEnvDirPath(isolateSoftwareStorage(t), "test storage")
-	if err != nil {
+func TestCleanupSoftwareKeyAfterUnlockSecretLost(t *testing.T) {
+	directory := isolateSoftwareStorage(t)
+	kc := &testMetadataStore{values: map[string]string{}}
+	ctx := context.Background()
+	signer := newSoftwareSigner(kc)
+	ref := &core.KeyRef{Source: core.KeySourceTEE, Provider: signer.Name(), ID: "cleanup-test"}
+	if _, err := signer.EnsureKey(ctx, keysigner.KeyRef{Label: ref.ID}); err != nil {
 		t.Fatal(err)
 	}
-	base, err := signerDirectory(keysigner.SoftwareSignerName)
-	if err != nil {
+	files, err := filepath.Glob(filepath.Join(directory, "*.json"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("expected one encrypted key, got %v, err = %v", files, err)
+	}
+	delete(kc.values, softwareUnlockAccount)
+	previous := core.AppConfig{AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeyRef: ref}
+	shared := &core.MultiAppConfig{Apps: []core.AppConfig{previous}}
+	if err := CleanupUnreferencedSigningKey(ctx, kc, previous, shared); err != nil {
 		t.Fatal(err)
 	}
-	actual, err := signerDirectory(filepath.Join("keyless", keysigner.SoftwareSignerName))
-	if err != nil {
+	if _, err := os.Stat(files[0]); err != nil {
+		t.Fatalf("shared key was not retained: %v", err)
+	}
+	if err := CleanupUnreferencedSigningKey(ctx, kc, previous, nil); err != nil {
 		t.Fatal(err)
 	}
-	if actual != legacy || base == actual {
-		t.Fatalf("software namespace changed: base=%s actual=%s legacy=%s", base, actual, legacy)
+	if _, err := os.Stat(files[0]); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unreferenced encrypted key: stat error = %v", err)
 	}
-}
-
-func TestKeyStoreMissingKeyPreservesBothErrorIdentities(t *testing.T) {
-	isolateSoftwareStorage(t)
-	signer := &storeTestSigner{name: "recorded", publicErr: keysigner.ErrKeyNotFound}
-	_, err := NewKeyStoreWithSigners(nil, signer).LoadContext(context.Background(), signer.Name(), "missing")
-	if !errors.Is(err, ErrKeyNotFound) || !errors.Is(err, keysigner.ErrKeyNotFound) {
-		t.Fatalf("missing cause: %v", err)
-	}
-	var store *KeyStore
-	if _, err := store.LoadContext(context.Background(), "recorded", "missing"); !errors.Is(err, ErrKeyNotFound) {
-		t.Fatal(err)
-	}
-	if err := store.DeleteKeyContext(context.Background(), &Key{}); err != nil {
-		t.Fatal(err)
+	if err := CleanupUnreferencedSigningKey(ctx, kc, previous, nil); err != nil {
+		t.Fatalf("repeat cleanup: %v", err)
 	}
 }
 

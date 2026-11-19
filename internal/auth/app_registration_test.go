@@ -109,7 +109,7 @@ func TestRequestAppRegistration_UsesFeishuBootstrapAndConfiguredVerificationBran
 				}
 				return jsonResponse(`{"device_code":"d","user_code":"TEST-CODE","expire_in":60,"interval":5}`), nil
 			})}
-			resp, err := RequestAppRegistration(context.Background(), client, c.brand, AppRegistrationBeginOptions{}, io.Discard)
+			resp, err := RequestAppRegistration(context.Background(), client, c.brand, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 			if err != nil {
 				t.Fatalf("RequestAppRegistration(%q) error = %v", c.brand, err)
 			}
@@ -133,7 +133,7 @@ func TestRequestAppRegistration_RewritesVerificationURL(t *testing.T) {
 	})}
 
 	for _, brand := range []core.LarkBrand{core.BrandFeishu, core.BrandLark} {
-		resp, err := RequestAppRegistration(context.Background(), client, brand, AppRegistrationBeginOptions{}, io.Discard)
+		resp, err := RequestAppRegistration(context.Background(), client, brand, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 		if err != nil {
 			t.Fatalf("RequestAppRegistration(%q) error = %v", brand, err)
 		}
@@ -178,7 +178,7 @@ func TestRegisterAppWithDiscovery_LarkFlowUsesProtocolBootstrap(t *testing.T) {
 		t.Errorf("unexpected host polled: %s", r.URL.Host)
 		return jsonResponse(`{}`), nil
 	})}
-	resp, err := RequestAppRegistration(context.Background(), client, core.BrandLark, AppRegistrationBeginOptions{}, io.Discard)
+	resp, err := RequestAppRegistration(context.Background(), client, core.BrandLark, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 	if err != nil {
 		t.Fatalf("RequestAppRegistration error = %v", err)
 	}
@@ -351,7 +351,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err := RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","expire_in":60,"interval":3}`), core.BrandFeishu, AppRegistrationBeginOptions{}, io.Discard)
+		serve(`{"device_code":"d","expire_in":60,"interval":3}`), core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 	if err != nil {
 		t.Fatalf("begin error = %v", err)
 	}
@@ -360,7 +360,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err = RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","expires_in":45}`), core.BrandFeishu, AppRegistrationBeginOptions{}, io.Discard)
+		serve(`{"device_code":"d","expires_in":45}`), core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 	if err != nil {
 		t.Fatalf("legacy begin error = %v", err)
 	}
@@ -369,7 +369,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err = RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","interval":0}`), core.BrandFeishu, AppRegistrationBeginOptions{}, io.Discard)
+		serve(`{"device_code":"d","interval":0}`), core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 	if err != nil {
 		t.Fatalf("defaults begin error = %v", err)
 	}
@@ -378,7 +378,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	if _, err := RequestAppRegistration(context.Background(),
-		serve(`{"interval":5}`), core.BrandFeishu, AppRegistrationBeginOptions{}, io.Discard); err == nil {
+		serve(`{"interval":5}`), core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard); err == nil {
 		t.Error("missing device_code: expected error, got nil")
 	}
 }
@@ -459,7 +459,7 @@ func TestRequestAppRegistration_BodyReadCancelKeepsCause(t *testing.T) {
 			Header:     make(http.Header),
 		}, nil
 	})}
-	_, err := RequestAppRegistration(context.Background(), client, core.BrandFeishu, AppRegistrationBeginOptions{}, io.Discard)
+	_, err := RequestAppRegistration(context.Background(), client, core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want a context.Canceled cause", err)
 	}
@@ -469,43 +469,20 @@ type errReader struct{ err error }
 
 func (r *errReader) Read([]byte) (int, error) { return 0, r.err }
 
-// captureClient returns an http.Client that records the last request's form body
-// and replies with the given JSON payload.
-func captureClient(gotBody *url.Values, respJSON string) *http.Client {
-	return &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if req.Body != nil {
-				body, _ := io.ReadAll(req.Body)
-				values, _ := url.ParseQuery(string(body))
-				*gotBody = values
-			}
-			return jsonResponse(respJSON), nil
-		}),
-	}
-}
-
-func TestRequestAppRegistrationInit_ParsesNonceAndMethods(t *testing.T) {
-	var body url.Values
-	httpClient := captureClient(&body, `{"nonce":"n-123","supported_auth_methods":["client_secret","private_key_jwt_local_keypair"]}`)
-
-	out, err := RequestAppRegistrationInit(context.Background(), httpClient)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Nonce != "n-123" {
-		t.Errorf("nonce = %q, want n-123", out.Nonce)
-	}
-	if len(out.SupportedAuthMethods) != 2 || out.SupportedAuthMethods[1] != "private_key_jwt_local_keypair" {
-		t.Errorf("methods = %v", out.SupportedAuthMethods)
-	}
-	if body.Get("action") != "init" {
-		t.Errorf("action = %q, want init", body.Get("action"))
-	}
+func captureRegistrationForm(t *testing.T, form *url.Values, reply string) *http.Client {
+	t.Helper()
+	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if err := req.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		*form = req.PostForm
+		return jsonResponse(reply), nil
+	})}
 }
 
 func TestRequestAppRegistrationInit_ErrorOnMissingNonce(t *testing.T) {
 	var body url.Values
-	httpClient := captureClient(&body, `{"supported_auth_methods":["client_secret"]}`)
+	httpClient := captureRegistrationForm(t, &body, `{"supported_auth_methods":["client_secret"]}`)
 	if _, err := RequestAppRegistrationInit(context.Background(), httpClient); err == nil {
 		t.Fatal("expected error when server returns no nonce")
 	}
@@ -513,25 +490,14 @@ func TestRequestAppRegistrationInit_ErrorOnMissingNonce(t *testing.T) {
 
 const beginRespJSON = `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify","expires_in":300,"interval":5}`
 
-func TestRequestAppRegistration_BeginDefaultsToClientSecret(t *testing.T) {
-	var body url.Values
-	httpClient := captureClient(&body, beginRespJSON)
-
-	if _, err := RequestAppRegistration(context.Background(), httpClient, core.BrandFeishu, AppRegistrationBeginOptions{}, nil); err != nil {
+func TestRequestAppRegistrationTargetsExistingApp(t *testing.T) {
+	var form url.Values
+	opts := AppRegistrationBeginOptions{AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, AuthAttestation: "signed.jwt.value", TargetAppID: "cli_existing"}
+	if _, err := RequestAppRegistration(context.Background(), captureRegistrationForm(t, &form, beginRespJSON), core.BrandFeishu, opts, nil); err != nil {
 		t.Fatal(err)
 	}
-	if body.Get("action") != "begin" {
-		t.Errorf("action = %q", body.Get("action"))
-	}
-	if body.Get("auth_method") != "client_secret" {
-		t.Errorf("auth_method = %q, want client_secret (default)", body.Get("auth_method"))
-	}
-	if body.Has("auth_attestation") {
-		t.Errorf("auth_attestation should be absent for client_secret, got %q", body.Get("auth_attestation"))
-	}
-	// A new-app begin must not carry an existing clientID.
-	if body.Has("clientID") {
-		t.Errorf("clientID should be absent when TargetAppID is empty, got %q", body.Get("clientID"))
+	if form.Get("clientID") != opts.TargetAppID || form.Get("auth_attestation") != opts.AuthAttestation {
+		t.Fatalf("unexpected begin form: %v", form)
 	}
 }
 
@@ -555,8 +521,8 @@ func TestRequestAppRegistration_VerificationURICompleteFallback(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var body url.Values
-			hc := captureClient(&body, tc.resp)
-			got, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, AppRegistrationBeginOptions{}, nil)
+			hc := captureRegistrationForm(t, &body, tc.resp)
+			got, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -564,62 +530,5 @@ func TestRequestAppRegistration_VerificationURICompleteFallback(t *testing.T) {
 				t.Errorf("VerificationUriComplete = %q, want %q", got.VerificationUriComplete, tc.want)
 			}
 		})
-	}
-}
-
-func TestRegistrationResultComplete(t *testing.T) {
-	if registrationResultComplete(&AppRegistrationResult{}, core.AuthMethodPrivateKeyJWTLocalKeyPair) {
-		t.Error("missing client_id must remain incomplete")
-	}
-	if !registrationResultComplete(&AppRegistrationResult{ClientID: "cli_x"}, core.AuthMethodPrivateKeyJWTLocalKeyPair) {
-		t.Error("private_key_jwt_local_keypair client_id without client_secret must be complete")
-	}
-	if registrationResultComplete(&AppRegistrationResult{ClientID: "cli_x"}, core.AuthMethodClientSecret) {
-		t.Error("client_secret registration without client_secret must remain incomplete")
-	}
-	if !registrationResultComplete(&AppRegistrationResult{ClientID: "cli_x", ClientSecret: "set"}, core.AuthMethodClientSecret) {
-		t.Error("client_secret registration with both credentials must be complete")
-	}
-}
-
-func TestRequestAppRegistration_BeginPrivateKeyJWTLocalKeyPair(t *testing.T) {
-	var body url.Values
-	httpClient := captureClient(&body, beginRespJSON)
-
-	opts := AppRegistrationBeginOptions{
-		AuthMethod:      core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		AuthAttestation: "header.claims.sig",
-	}
-	if _, err := RequestAppRegistration(context.Background(), httpClient, core.BrandFeishu, opts, nil); err != nil {
-		t.Fatal(err)
-	}
-	if body.Get("auth_method") != "private_key_jwt_local_keypair" {
-		t.Errorf("auth_method = %q, want private_key_jwt_local_keypair", body.Get("auth_method"))
-	}
-	if body.Get("auth_attestation") != "header.claims.sig" {
-		t.Errorf("auth_attestation = %q", body.Get("auth_attestation"))
-	}
-}
-
-func TestRequestAppRegistration_BeginPrivateKeyJWTLocalKeyPairExistingAppID(t *testing.T) {
-	var body url.Values
-	hc := captureClient(&body, beginRespJSON)
-
-	opts := AppRegistrationBeginOptions{
-		AuthMethod:      core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		AuthAttestation: "header.claims.sig",
-		TargetAppID:     "cli_existing",
-	}
-	if _, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, opts, nil); err != nil {
-		t.Fatal(err)
-	}
-	if body.Get("auth_method") != "private_key_jwt_local_keypair" {
-		t.Errorf("auth_method = %q, want private_key_jwt_local_keypair", body.Get("auth_method"))
-	}
-	if body.Get("auth_attestation") != "header.claims.sig" {
-		t.Errorf("auth_attestation = %q", body.Get("auth_attestation"))
-	}
-	if body.Get("clientID") != "cli_existing" {
-		t.Errorf("clientID = %q, want cli_existing", body.Get("clientID"))
 	}
 }

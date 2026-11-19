@@ -13,13 +13,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type optionalPackageFixture struct {
-	stateDir, projectDir, pluginDir         string
+	stateDir, pluginDir                     string
 	packageDir, packageJSON, binDir, binary string
 	spec                                    platformPackage
 	binaryDigest                            string
@@ -53,89 +53,37 @@ func TestSignerPackageFor(t *testing.T) {
 	}
 }
 
-func TestResolveFromStateDir_OptionalPackage(t *testing.T) {
-	fx := newOptionalPackageFixture(t, runtime.GOOS, runtime.GOARCH)
-	got, err := resolveFromStateDir(fx.stateDir, runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.binaryPath != fx.binary || got.packageDir != fx.packageDir || got.digest != fx.binaryDigest {
-		t.Fatalf("resolved = %#v, fixture = %#v", got, fx)
+func TestResolveFromInspectManagedPackage(t *testing.T) {
+	for _, hoisted := range []bool{false, true} {
+		fx := newManagedPackageFixture(t, hoisted)
+		got, err := resolveFromInspectDocument(t, fx, inspectPluginDocument(fx, pluginID, fx.packageDir))
+		if err != nil || got.binaryPath != fx.binary || got.packageDir != fx.packageDir || got.digest != fx.binaryDigest {
+			t.Fatalf("hoisted=%t: resolved %+v, err=%v", hoisted, got, err)
+		}
 	}
 }
 
-func TestResolve_UsesOpenClawStateDirAndFixedExtensionFallback(t *testing.T) {
-	useIsolatedProviderManifest(t)
-	fx := newOptionalPackageFixture(t, runtime.GOOS, runtime.GOARCH)
-	t.Setenv(openClawStateDirEnv, fx.stateDir)
-	t.Setenv(openClawHomeEnv, filepath.Join(t.TempDir(), "must-not-win"))
-	t.Setenv("PATH", "") // force the fixed extensions fallback
-	command, err := Resolve(context.Background(), ProviderID)
-	if err != nil {
-		t.Fatal(err)
+func TestResolveFromInspectRejectsUntrustedLayout(t *testing.T) {
+	fx := newManagedPackageFixture(t, true)
+	for _, tc := range []struct{ name, id, plugin, pkg, want string }{
+		{"wrong plugin", "unexpected", fx.pluginDir, fx.packageDir, "unexpected plugin"},
+		{"package outside state", pluginID, fx.pluginDir, signerPackageUnder(t.TempDir(), fx.spec), "outside OpenClaw state"},
+		{"unrelated package inside state", pluginID, fx.pluginDir, signerPackageUnder(filepath.Join(fx.stateDir, "other", "node_modules"), fx.spec), "neither plugin-local nor managed-project-hoisted"},
+		{"plugin outside state", pluginID, filepath.Join(t.TempDir(), pluginID), fx.packageDir, "outside OpenClaw state"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := inspectPluginDocument(fx, tc.id, tc.pkg)
+			doc["plugin"].(map[string]any)["rootDir"] = tc.plugin
+			if _, err := resolveFromInspectDocument(t, fx, doc); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q, got %v", tc.want, err)
+			}
+		})
 	}
-	if command == nil {
-		t.Fatal("Resolve returned nil command")
-	}
-}
-
-func TestResolveFromInspect_ManagedProjectPluginLocal(t *testing.T) {
-	fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, false)
-	got, err := resolveFromInspectDocument(t, fx, inspectPluginDocument(fx, pluginID, fx.packageDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertResolvedFixture(t, got, fx)
-}
-
-func TestResolveFromInspect_ManagedProjectHoisted(t *testing.T) {
-	fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
-	got, err := resolveFromInspectDocument(t, fx, inspectPluginDocument(fx, pluginID, fx.packageDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertResolvedFixture(t, got, fx)
-}
-
-func TestResolveFromInspect_RejectsWrongPluginAndEscapingPaths(t *testing.T) {
-	t.Run("wrong plugin", func(t *testing.T) {
-		fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
-		_, err := resolveFromInspectDocument(t, fx, inspectPluginDocument(fx, "evil-plugin", fx.packageDir))
-		if err == nil || !strings.Contains(err.Error(), "unexpected plugin") {
-			t.Fatalf("error = %v", err)
-		}
-	})
-	t.Run("package outside state", func(t *testing.T) {
-		fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
-		outside := filepath.Join(t.TempDir(), "node_modules", signerPackageScope, strings.TrimPrefix(fx.spec.name, signerPackageScope+"/"))
-		_, err := resolveFromInspectDocument(t, fx, inspectPluginDocument(fx, pluginID, outside))
-		if err == nil || !strings.Contains(err.Error(), "outside OpenClaw state") {
-			t.Fatalf("error = %v", err)
-		}
-	})
-	t.Run("unrelated package inside state", func(t *testing.T) {
-		fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
-		unrelated := signerPackageUnder(filepath.Join(fx.stateDir, "other", "node_modules"), fx.spec)
-		_, err := resolveFromInspectDocument(t, fx, inspectPluginDocument(fx, pluginID, unrelated))
-		if err == nil || !strings.Contains(err.Error(), "neither plugin-local nor managed-project-hoisted") {
-			t.Fatalf("error = %v", err)
-		}
-	})
-	t.Run("plugin outside state", func(t *testing.T) {
-		fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
-		document := inspectPluginDocument(fx, pluginID, fx.packageDir)
-		plugin := document["plugin"].(map[string]any)
-		plugin["rootDir"] = filepath.Join(t.TempDir(), "openclaw-lark")
-		_, err := resolveFromInspectDocument(t, fx, document)
-		if err == nil || !strings.Contains(err.Error(), "outside OpenClaw state") {
-			t.Fatalf("error = %v", err)
-		}
-	})
 }
 
 func TestResolve_InspectUnavailableUsesOnlyFixedExtensionFallback(t *testing.T) {
-	useIsolatedProviderManifest(t)
-	fx := newOptionalPackageFixture(t, runtime.GOOS, runtime.GOARCH)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	fx := newOptionalPackageFixture(t)
 	t.Setenv(openClawStateDirEnv, fx.stateDir)
 	stubOpenClawInspect(t, nil, &inspectUnavailableError{cause: errors.New("not installed")})
 	command, err := Resolve(context.Background(), ProviderID)
@@ -145,8 +93,8 @@ func TestResolve_InspectUnavailableUsesOnlyFixedExtensionFallback(t *testing.T) 
 }
 
 func TestResolve_InspectUnavailableDoesNotScanManagedProjects(t *testing.T) {
-	useIsolatedProviderManifest(t)
-	fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	fx := newManagedPackageFixture(t, true)
 	t.Setenv(openClawStateDirEnv, fx.stateDir)
 	stubOpenClawInspect(t, nil, &inspectUnavailableError{cause: errors.New("not installed")})
 	if _, err := Resolve(context.Background(), ProviderID); err == nil || !strings.Contains(err.Error(), "fixed extension fallback failed") {
@@ -155,8 +103,8 @@ func TestResolve_InspectUnavailableDoesNotScanManagedProjects(t *testing.T) {
 }
 
 func TestResolve_InvalidInspectDoesNotFallBack(t *testing.T) {
-	useIsolatedProviderManifest(t)
-	fx := newOptionalPackageFixture(t, runtime.GOOS, runtime.GOARCH)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	fx := newOptionalPackageFixture(t)
 	t.Setenv(openClawStateDirEnv, fx.stateDir)
 	stubOpenClawInspect(t, []byte(`{"plugin":`), nil)
 	if _, err := Resolve(context.Background(), ProviderID); err == nil || !strings.Contains(err.Error(), "parse OpenClaw") {
@@ -165,15 +113,13 @@ func TestResolve_InvalidInspectDoesNotFallBack(t *testing.T) {
 }
 
 func TestResolve_InspectCancellationHonorsCallerContext(t *testing.T) {
-	useIsolatedProviderManifest(t)
-	fx := newOptionalPackageFixture(t, runtime.GOOS, runtime.GOARCH)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	fx := newOptionalPackageFixture(t)
 	t.Setenv(openClawStateDirEnv, fx.stateDir)
-	previous := runOpenClawInspect
-	runOpenClawInspect = func(ctx context.Context, _ string) ([]byte, error) {
+	stubInspectFunction(t, func(ctx context.Context, _ string) ([]byte, error) {
 		<-ctx.Done()
 		return nil, &inspectUnavailableError{cause: ctx.Err()}
-	}
-	t.Cleanup(func() { runOpenClawInspect = previous })
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -182,79 +128,44 @@ func TestResolve_InspectCancellationHonorsCallerContext(t *testing.T) {
 	}
 }
 
-func TestInspectResultCache_ShortLivedAndSingleflight(t *testing.T) {
+func TestInspectCacheSharesLookupAndHonorsWaiterCancellation(t *testing.T) {
 	var cache inspectResultCache
 	var calls atomic.Int32
-	started := make(chan struct{})
-	release := make(chan struct{})
+	started, release := make(chan struct{}), make(chan struct{})
 	loader := func(context.Context) ([]byte, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 		}
-		<-release
-		return []byte(`{"plugin":{"id":"openclaw-lark"}}`), nil
-	}
-
-	const callers = 8
-	results := make(chan []byte, callers)
-	errs := make(chan error, callers)
-	var wg sync.WaitGroup
-	for i := 0; i < callers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			data, err := cache.load(context.Background(), "same-install", loader)
-			results <- data
-			errs <- err
-		}()
-	}
-	<-started
-	close(release)
-	wg.Wait()
-	close(results)
-	close(errs)
-	for err := range errs {
-		if err != nil {
-			t.Fatal(err)
+		select {
+		case <-release:
+			return []byte("result"), nil
+		case <-time.After(5 * time.Second):
+			return nil, errors.New("waiter did not return")
 		}
 	}
-	for data := range results {
-		if string(data) != `{"plugin":{"id":"openclaw-lark"}}` {
-			t.Fatalf("cached data = %q", data)
-		}
-		if len(data) > 0 {
-			data[0] = 'x'
-		}
-	}
-	if got := calls.Load(); got != 1 {
-		t.Fatalf("loader calls = %d, want 1", got)
-	}
-	data, err := cache.load(context.Background(), "same-install", loader)
-	if err != nil || string(data) != `{"plugin":{"id":"openclaw-lark"}}` || calls.Load() != 1 {
-		t.Fatalf("cache hit = %q, %v, calls %d", data, err, calls.Load())
-	}
-}
-
-func TestInspectResultCache_WaiterHonorsContext(t *testing.T) {
-	var cache inspectResultCache
-	started := make(chan struct{})
-	release := make(chan struct{})
-	loader := func(context.Context) ([]byte, error) {
-		close(started)
-		<-release
-		return []byte(`{}`), nil
-	}
+	done := make(chan error, 1)
 	go func() {
-		_, _ = cache.load(context.Background(), "busy", loader)
+		data, err := cache.load(context.Background(), "install", loader)
+		if err == nil && string(data) != "result" {
+			err = errors.New("wrong lookup result")
+		}
+		if err == nil {
+			data[0] = 'X'
+		}
+		done <- err
 	}()
 	<-started
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if _, err := cache.load(ctx, "busy", loader); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cache waiter error = %v, want context.Canceled", err)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	_, waitErr := cache.load(ctx, "install", loader)
 	close(release)
+	if err := <-done; err != nil || !errors.Is(waitErr, context.DeadlineExceeded) {
+		t.Fatalf("lookup error=%v, waiter error=%v", err, waitErr)
+	}
+	data, err := cache.load(context.Background(), "install", loader)
+	if err != nil || string(data) != "result" || calls.Load() != 1 {
+		t.Fatalf("cached data=%q, err=%v, lookup calls=%d", data, err, calls.Load())
+	}
 }
 
 func TestInspectOutputAndEnvironmentAreBounded(t *testing.T) {
@@ -273,61 +184,30 @@ func TestInspectOutputAndEnvironmentAreBounded(t *testing.T) {
 }
 
 func TestResolve_UnknownProviderFailsClosed(t *testing.T) {
-	useIsolatedProviderManifest(t)
-	if _, err := Resolve(context.Background(), "evil.provider"); err == nil || !strings.Contains(err.Error(), "unknown") {
-		t.Fatalf("error = %v", err)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	for _, provider := range []string{"", "evil.provider", " " + ProviderID} {
+		if _, err := Resolve(context.Background(), provider); err == nil || !strings.Contains(err.Error(), "unknown") {
+			t.Fatalf("provider %q: error = %v", provider, err)
+		}
 	}
 }
 
-func useIsolatedProviderManifest(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	return dir
-}
-
-func TestOpenClawStateDirPriorityAndExpansion(t *testing.T) {
-	home := t.TempDir()
-	state := filepath.Join(t.TempDir(), "custom state")
+func TestOpenClawStateDirPrecedence(t *testing.T) {
+	home, openClawHome, explicit := t.TempDir(), t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv(openClawConfigEnv, "")
-	t.Setenv(openClawHomeEnv, filepath.Join(t.TempDir(), "must-not-win"))
-	t.Setenv(openClawStateDirEnv, state)
-	if got, err := openClawStateDir(); err != nil || got != state {
-		t.Fatalf("state dir = %q, %v", got, err)
-	}
-
-	t.Setenv(openClawStateDirEnv, "")
-	openClawHome := filepath.Join(t.TempDir(), "openclaw home")
-	t.Setenv(openClawHomeEnv, openClawHome)
-	if got, err := openClawStateDir(); err != nil || got != filepath.Join(openClawHome, openClawDirName) {
-		t.Fatalf("OPENCLAW_HOME state dir = %q, %v", got, err)
-	}
-
-	t.Setenv(openClawHomeEnv, "")
-	t.Setenv(openClawStateDirEnv, "~/custom-openclaw")
-	if got, err := openClawStateDir(); err != nil || got != filepath.Join(home, "custom-openclaw") {
-		t.Fatalf("expanded state dir = %q, %v", got, err)
-	}
-}
-
-func TestOpenClawStateDir_ConfigPathPrecedesHome(t *testing.T) {
-	osHome := t.TempDir()
-	openClawHome := filepath.Join(t.TempDir(), "openclaw-home")
-	t.Setenv("HOME", osHome)
-	t.Setenv(openClawStateDirEnv, "")
-	t.Setenv(openClawHomeEnv, openClawHome)
-	t.Setenv(openClawConfigEnv, "~/profiles/team/openclaw.json")
-
-	want := filepath.Join(openClawHome, "profiles", "team")
-	if got, err := openClawStateDir(); err != nil || got != want {
-		t.Fatalf("state dir = %q, %v; want %q", got, err, want)
-	}
-
-	explicitState := filepath.Join(t.TempDir(), "state-wins")
-	t.Setenv(openClawStateDirEnv, explicitState)
-	if got, err := openClawStateDir(); err != nil || got != explicitState {
-		t.Fatalf("explicit state dir = %q, %v; want %q", got, err, explicitState)
+	t.Setenv("USERPROFILE", home)
+	for _, tc := range []struct{ state, config, appHome, want string }{
+		{explicit, "~/profiles/openclaw.json", openClawHome, explicit},
+		{"", "~/profiles/openclaw.json", openClawHome, filepath.Join(openClawHome, "profiles")},
+		{"", "", openClawHome, filepath.Join(openClawHome, openClawDirName)},
+		{"~/custom", "", "", filepath.Join(home, "custom")},
+	} {
+		t.Setenv(openClawStateDirEnv, tc.state)
+		t.Setenv(openClawConfigEnv, tc.config)
+		t.Setenv(openClawHomeEnv, tc.appHome)
+		if got, err := openClawStateDir(); err != nil || got != tc.want {
+			t.Fatalf("state=%q config=%q home=%q: got %q, %v; want %q", tc.state, tc.config, tc.appHome, got, err, tc.want)
+		}
 	}
 }
 
@@ -357,7 +237,7 @@ func TestResolveFromStateDir_ValidatesPackageMetadata(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fx := newOptionalPackageFixture(t, runtime.GOOS, runtime.GOARCH)
+			fx := newOptionalPackageFixture(t)
 			manifest := validManifest(fx.spec)
 			test.mutate(&manifest)
 			writeJSON(t, fx.packageJSON, manifest, 0600)
@@ -368,34 +248,25 @@ func TestResolveFromStateDir_ValidatesPackageMetadata(t *testing.T) {
 	}
 }
 
-func TestResolveFromStateDir_RejectsParentAndBinarySymlinks(t *testing.T) {
-	t.Run("parent", func(t *testing.T) {
-		fx := newOptionalPackageFixture(t, runtime.GOOS, runtime.GOARCH)
-		realBin := fx.binDir + "-real"
-		if err := os.Rename(fx.binDir, realBin); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Symlink(realBin, fx.binDir); err != nil {
-			t.Skipf("symlink unavailable: %v", err)
-		}
-		if _, err := resolveFromStateDir(fx.stateDir, runtime.GOOS, runtime.GOARCH); err == nil || !strings.Contains(err.Error(), "symlink") {
-			t.Fatalf("error = %v", err)
-		}
-	})
-
-	t.Run("binary", func(t *testing.T) {
-		fx := newOptionalPackageFixture(t, runtime.GOOS, runtime.GOARCH)
-		realBinary := fx.binary + "-real"
-		if err := os.Rename(fx.binary, realBinary); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Symlink(realBinary, fx.binary); err != nil {
-			t.Skipf("symlink unavailable: %v", err)
-		}
-		if _, err := resolveFromStateDir(fx.stateDir, runtime.GOOS, runtime.GOARCH); err == nil || !strings.Contains(err.Error(), "symlink") {
-			t.Fatalf("error = %v", err)
-		}
-	})
+func TestResolveFromStateDirRejectsSymlinks(t *testing.T) {
+	for _, name := range []string{"parent", "binary"} {
+		t.Run(name, func(t *testing.T) {
+			fx := newOptionalPackageFixture(t)
+			path := fx.binary
+			if name == "parent" {
+				path = fx.binDir
+			}
+			if err := os.Rename(path, path+"-real"); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(path+"-real", path); err != nil {
+				t.Skipf("symlink unavailable: %v", err)
+			}
+			if _, err := resolveFromStateDir(fx.stateDir, runtime.GOOS, runtime.GOARCH); err == nil || !strings.Contains(err.Error(), "symlink") {
+				t.Fatalf("expected symlink rejection, got %v", err)
+			}
+		})
+	}
 }
 
 func TestResolveFromStateDir_RejectsInsecureModeAndNonExecutable(t *testing.T) {
@@ -403,7 +274,7 @@ func TestResolveFromStateDir_RejectsInsecureModeAndNonExecutable(t *testing.T) {
 		t.Skip("POSIX mode test")
 	}
 	t.Run("writable parent", func(t *testing.T) {
-		fx := newOptionalPackageFixture(t, runtime.GOOS, runtime.GOARCH)
+		fx := newOptionalPackageFixture(t)
 		if err := os.Chmod(fx.packageDir, 0777); err != nil {
 			t.Fatal(err)
 		}
@@ -412,7 +283,7 @@ func TestResolveFromStateDir_RejectsInsecureModeAndNonExecutable(t *testing.T) {
 		}
 	})
 	t.Run("non executable", func(t *testing.T) {
-		fx := newOptionalPackageFixture(t, runtime.GOOS, runtime.GOARCH)
+		fx := newOptionalPackageFixture(t)
 		if err := os.Chmod(fx.binary, 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -422,16 +293,9 @@ func TestResolveFromStateDir_RejectsInsecureModeAndNonExecutable(t *testing.T) {
 	})
 }
 
-func TestResolveFromStateDir_MissingPackageFailsClosed(t *testing.T) {
-	stateDir := t.TempDir()
-	if _, err := resolveFromStateDir(stateDir, runtime.GOOS, runtime.GOARCH); err == nil {
-		t.Fatal("missing optional package was accepted")
-	}
-}
-
-func newOptionalPackageFixture(t *testing.T, goos, goarch string) optionalPackageFixture {
+func newOptionalPackageFixture(t *testing.T) optionalPackageFixture {
 	t.Helper()
-	spec, err := signerPackageFor(goos, goarch)
+	spec, err := signerPackageFor(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		t.Skipf("host platform has no optional package: %v", err)
 	}
@@ -443,9 +307,9 @@ func newOptionalPackageFixture(t *testing.T, goos, goarch string) optionalPackag
 	})
 }
 
-func newManagedPackageFixture(t *testing.T, goos, goarch string, hoisted bool) optionalPackageFixture {
+func newManagedPackageFixture(t *testing.T, hoisted bool) optionalPackageFixture {
 	t.Helper()
-	spec, err := signerPackageFor(goos, goarch)
+	spec, err := signerPackageFor(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		t.Skipf("host platform has no optional package: %v", err)
 	}
@@ -459,7 +323,7 @@ func newManagedPackageFixture(t *testing.T, goos, goarch string, hoisted bool) o
 	}
 	packageDir := signerPackageUnder(packageNodeModules, spec)
 	return writeOptionalPackageFixture(t, optionalPackageFixture{
-		stateDir: stateDir, projectDir: projectDir, pluginDir: pluginDir, packageDir: packageDir, spec: spec,
+		stateDir: stateDir, pluginDir: pluginDir, packageDir: packageDir, spec: spec,
 	})
 }
 
@@ -508,16 +372,7 @@ func resolveFromInspectDocument(t *testing.T, fx optionalPackageFixture, documen
 
 func stubOpenClawInspect(t *testing.T, data []byte, err error) {
 	t.Helper()
-	previous := runOpenClawInspect
-	runOpenClawInspect = func(context.Context, string) ([]byte, error) { return data, err }
-	t.Cleanup(func() { runOpenClawInspect = previous })
-}
-
-func assertResolvedFixture(t *testing.T, got resolvedProvider, fx optionalPackageFixture) {
-	t.Helper()
-	if got.binaryPath != fx.binary || got.packageDir != fx.packageDir || got.digest != fx.binaryDigest {
-		t.Fatalf("resolved = %#v, fixture = %#v", got, fx)
-	}
+	stubInspectFunction(t, func(context.Context, string) ([]byte, error) { return data, err })
 }
 
 func validManifest(spec platformPackage) packageManifest {

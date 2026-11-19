@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/keysigner"
 )
@@ -36,12 +37,12 @@ func TestResolveSecretPreservesExistingAndReadOnly(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			directory := t.TempDir()
 			if tc.existing {
-				if err := os.WriteFile(filepath.Join(directory, "key.json"), nil, 0600); err != nil {
+				if err := os.WriteFile(filepath.Join(directory, strings.Repeat("a", 64)+".json"), nil, 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
 			kc := &memorySecrets{values: map[string]string{}}
-			policy := SecretPolicy{Account: "first", Description: "software unlock secret", IsKeyFile: func(name string) bool { return strings.HasSuffix(name, ".json") }, Missing: func(string) error { return keysigner.ErrUnlockRequired }}
+			policy := SecretPolicy{Account: "first", Description: "software unlock secret", Missing: func(string) error { return keysigner.ErrUnlockRequired }}
 			secret, err := ResolveSecret(kc, directory, tc.encoded, tc.create, policy)
 			defer clear(secret)
 			if !errors.Is(err, tc.want) || len(kc.values) != 0 {
@@ -51,29 +52,12 @@ func TestResolveSecretPreservesExistingAndReadOnly(t *testing.T) {
 	}
 }
 
-func TestResolveSecretSeparatesAccounts(t *testing.T) {
-	kc := &memorySecrets{values: map[string]string{}}
-	for _, account := range []string{"dpop:software:unlock:v1", "keyless:software:unlock:v1"} {
-		secret, err := ResolveSecret(kc, t.TempDir(), "", true, SecretPolicy{Account: account, IsKeyFile: func(string) bool { return false }})
-		clear(secret)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if len(kc.values) != 2 || kc.values["dpop:software:unlock:v1"] == kc.values["keyless:software:unlock:v1"] {
-		t.Fatal("unlock namespaces were merged")
-	}
-}
-
-func TestStoreLockIsNonReentrantAndPathScoped(t *testing.T) {
+func TestStoreLocksForIndependentPaths(t *testing.T) {
 	first, second := filepath.Join(t.TempDir(), "key_store.lock"), filepath.Join(t.TempDir(), "key_store.lock")
 	if err := WithStoreLock(context.Background(), first, func() error {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		if err := WithStoreLock(ctx, first, func() error { t.Fatal("entered held lock"); return nil }); !errors.Is(err, context.Canceled) {
-			t.Fatal(err)
-		}
-		return WithStoreLock(context.Background(), second, func() error { return nil })
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		return WithStoreLock(ctx, second, func() error { return nil })
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -43,7 +43,7 @@ func TestClassifyRegistrationBeginError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assertRegistrationProblem(t, classifyRegistrationBeginError(tt.err), tt.err, tt.category, tt.subtype)
+			assertRegistrationProblem(t, classifyRegistrationRequestError("begin", tt.err), tt.err, tt.category, tt.subtype)
 		})
 	}
 }

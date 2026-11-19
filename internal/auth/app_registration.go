@@ -115,9 +115,8 @@ type AppRegistrationInit struct {
 }
 
 // AppRegistrationBeginOptions parametrizes the registration begin request.
-// A zero value selects the legacy client_secret flow, preserving prior behavior.
 type AppRegistrationBeginOptions struct {
-	AuthMethod      string // "" => client_secret; private_key_jwt_local_keypair
+	AuthMethod      string // client_secret or private_key_jwt_local_keypair
 	AuthAttestation string // private_key_jwt_local_keypair attestation JWT
 	TargetAppID     string // existing app to update; empty creates a new app
 }
@@ -212,15 +211,10 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 	ep := core.ResolveEndpoints(brand)
 	endpoint := appRegistrationEndpoint(registrationBootstrapBrand)
 
-	authMethod := opts.AuthMethod
-	if authMethod == "" {
-		authMethod = core.AuthMethodClientSecret
-	}
-
 	form := url.Values{}
 	form.Set("action", "begin")
 	form.Set("archetype", "PersonalAgent")
-	form.Set("auth_method", authMethod)
+	form.Set("auth_method", opts.AuthMethod)
 	form.Set("request_user_info", "open_id tenant_brand")
 	if opts.AuthAttestation != "" {
 		form.Set("auth_attestation", opts.AuthAttestation)
@@ -314,7 +308,7 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 		VerificationUriComplete: verificationUriComplete,
 		ExpiresIn:               expiresIn,
 		Interval:                interval,
-		RequestedAuthMethod:     authMethod,
+		RequestedAuthMethod:     opts.AuthMethod,
 	}, nil
 }
 
@@ -322,7 +316,7 @@ func registrationResultComplete(result *AppRegistrationResult, requestedAuthMeth
 	if result.ClientID == "" {
 		return false
 	}
-	return result.ClientSecret != "" || core.IsPrivateKeyJWTLocalKeyPairAuthMethod(requestedAuthMethod)
+	return result.ClientSecret != "" || requestedAuthMethod == core.AuthMethodPrivateKeyJWTLocalKeyPair
 }
 
 // BuildVerificationURL appends CLI tracking parameters to the verification URL.

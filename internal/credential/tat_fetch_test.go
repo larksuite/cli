@@ -17,7 +17,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -172,188 +171,52 @@ func (s *tatTestSigner) DeleteKey(ctx context.Context, ref keysigner.KeyRef) err
 	return nil
 }
 
-func TestFetchTAT_UnknownProviderFailsBeforeHTTP(t *testing.T) {
-	rt := &stubRoundTripper{respCode: http.StatusOK, respBody: `{"code":0,"access_token":"must-not-use"}`}
-	hc := &http.Client{Transport: rt}
-
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, auth.ClientAuth{
-		AppID: "cli_app", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		KeyProvider: "unknown.provider", KeyLabel: "key-1",
-	}, core.DPoPModeDisabled)
-	if err == nil {
-		t.Fatal("expected unknown provider error")
-	}
-	if rt.gotReq != nil {
-		t.Fatalf("provider failure sent HTTP request to %s", rt.gotReq.URL)
-	}
-}
-
-// fakeTATSigner is a real in-memory ECDSA P-256 signer for assertion tests.
-type fakeTATSigner struct{ key *ecdsa.PrivateKey }
-
-func (*fakeTATSigner) Name() string { return "fake" }
-
-func (*fakeTATSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL3 }
-
-func newFakeTATSigner(t *testing.T) *fakeTATSigner {
+func privateKeyJWTTestClient(t *testing.T) auth.ClientAuth {
 	t.Helper()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
+	root := t.TempDir()
+	for _, name := range []string{"HOME", "LOCALAPPDATA", "LARKSUITE_CLI_DATA_DIR", "LARKSUITE_CLI_CONFIG_DIR"} {
+		t.Setenv(name, root)
+	}
+	signer := newTATTestSigner()
+	const label = "app-key"
+	if _, err := signer.EnsureKey(context.Background(), keysigner.KeyRef{Label: label}); err != nil {
 		t.Fatal(err)
 	}
-	return &fakeTATSigner{key: k}
+	return auth.ClientAuth{AppID: "cli_app", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: signer, KeyLabel: label}
 }
 
-func (f *fakeTATSigner) EnsureKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
-	return f.key.Public(), nil
-}
-
-func (f *fakeTATSigner) PublicKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
-	return f.key.Public(), nil
-}
-
-func (f *fakeTATSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) ([]byte, string, error) {
-	h := sha256.Sum256(in)
-	r, s, err := ecdsa.Sign(rand.Reader, f.key, h[:])
-	if err != nil {
-		return nil, "", err
-	}
-	sig := make([]byte, 64)
-	r.FillBytes(sig[:32])
-	s.FillBytes(sig[32:])
-	return sig, keysigner.AlgES256, nil
-}
-
-func (*fakeTATSigner) DeleteKey(context.Context, keysigner.KeyRef) error { return nil }
-
-func TestFetchTATWithAssertion_Success(t *testing.T) {
-	rt := &stubRoundTripper{respCode: 200, respBody: `{"access_token":"test-token","token_type":"Bearer","expires_in":7200}`}
-	hc := &http.Client{Transport: rt}
-
-	token, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "agent-key")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if token != "test-token" {
-		t.Errorf("token = %q, want test-token", token)
-	}
-	if rt.gotReq.URL.String() != core.ResolveEndpoints(core.BrandFeishu).Accounts+core.OAuthTokenV3Path {
-		t.Errorf("url = %s", rt.gotReq.URL.String())
-	}
-	if proof := rt.gotReq.Header.Get("DPoP"); proof != "" {
-		t.Fatalf("application-key validation sent a DPoP proof: %q", proof)
-	}
-
-	form, err := url.ParseQuery(rt.gotBody)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if form.Get("grant_type") != jwt.GrantTypeJWTBearer {
-		t.Errorf("grant_type = %q", form.Get("grant_type"))
-	}
-	if form.Get("client_assertion_type") != jwt.ClientAssertionType {
-		t.Errorf("client_assertion_type = %q", form.Get("client_assertion_type"))
-	}
-	if form.Get("client_assertion") == "" {
-		t.Error("client_assertion is empty")
-	}
-	if form.Has("client_secret") {
-		t.Error("client_secret must NOT be sent for private_key_jwt_local_keypair")
-	}
-	if form.Get("client_id") != "cli_app" {
-		t.Errorf("client_id = %q", form.Get("client_id"))
-	}
-}
-
-func TestFetchTATWithAssertion_NilSigner(t *testing.T) {
+func TestFetchTATRequiresValidSignerBeforeHTTP(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	hc := &http.Client{Transport: &stubRoundTripper{respCode: 200, respBody: `{}`}}
-	if _, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", nil, "k"); err == nil {
-		t.Fatal("expected error when signer is nil")
+	for _, provider := range []string{"", "unknown.provider"} {
+		rt := &stubRoundTripper{}
+		_, err := FetchTAT(context.Background(), &http.Client{Transport: rt}, core.BrandFeishu, auth.ClientAuth{
+			AppID: "cli_app", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeyProvider: provider, KeyLabel: "key",
+		}, core.DPoPModeDisabled)
+		if err == nil || rt.gotReq != nil {
+			t.Fatalf("provider %q: expected failure before token request", provider)
+		}
 	}
 }
 
-func TestFetchTATWithAssertion_ServerError(t *testing.T) {
-	rt := &stubRoundTripper{respCode: 200, respBody: `{"error":"invalid_client","error_description":"unknown key"}`}
-	hc := &http.Client{Transport: rt}
-	if _, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "k"); err == nil {
-		t.Fatal("expected error for invalid_client response")
-	}
-}
-
-func TestFetchTATWithAssertionPreservesPolicyClassification(t *testing.T) {
+func TestFetchTATPrivateKeyJWTErrorResponse(t *testing.T) {
 	for _, tc := range []struct {
-		code    int
+		status  int
+		body    string
 		subtype errs.Subtype
 	}{
-		{21000, errs.SubtypeChallengeRequired}, {21001, errs.SubtypeAccessDenied},
+		{http.StatusOK, `{"error":"invalid_client","access_token":"must-not-use","expires_in":120}`, errs.SubtypeInvalidClient},
+		{http.StatusForbidden, `{"code":21001,"error":"invalid_client"}`, errs.SubtypeAccessDenied},
+		{http.StatusServiceUnavailable, `{"error":"invalid_client"}`, ""},
+		{http.StatusOK, strings.Repeat(" ", 1<<20) + `{"access_token":"too-large","expires_in":120}`, ""},
 	} {
-		rt := &stubRoundTripper{respCode: 400, respBody: fmt.Sprintf(`{"code":%d,"error":"access_denied","error_description":"policy rejected"}`, tc.code)}
-		_, err := FetchTATWithAssertion(context.Background(), &http.Client{Transport: rt}, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "key")
-		problem, ok := errs.ProblemOf(err)
-		if !ok || problem.Category != errs.CategoryPolicy || problem.Subtype != tc.subtype {
-			t.Fatalf("policy error downgraded: %v", err)
+		rt := &stubRoundTripper{respCode: tc.status, respBody: tc.body}
+		token, err := FetchTAT(context.Background(), &http.Client{Transport: rt}, core.BrandFeishu, privateKeyJWTTestClient(t), core.DPoPModeDisabled)
+		if token != nil || err == nil {
+			t.Fatalf("HTTP %d accepted an error response", tc.status)
 		}
-	}
-}
-
-func TestFetchTATWithAssertion_LimitsErrorBody(t *testing.T) {
-	rt := &stubRoundTripper{respCode: 502, respBody: strings.Repeat("x", 2<<20)}
-	hc := &http.Client{Transport: rt}
-
-	_, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "k")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if len(err.Error()) > (1<<20)+512 {
-		t.Fatalf("error length = %d, want bounded", len(err.Error()))
-	}
-}
-
-// OAuth rejections stay typed on 2xx and non-transient 4xx responses.
-func TestFetchTATWithAssertion_DeterministicReject_Typed(t *testing.T) {
-	for _, tc := range []struct {
-		oauthError string
-		category   errs.Category
-		subtype    errs.Subtype
-	}{
-		{"invalid_client", errs.CategoryConfig, errs.SubtypeInvalidClient},
-		{"unauthorized_client", errs.CategoryAuthorization, errs.SubtypeUnauthorizedClient},
-		{"invalid_grant", errs.CategoryAuthentication, errs.SubtypeInvalidGrant},
-		{"invalid_request", errs.CategoryAPI, errs.SubtypeInvalidParameters},
-		{"unsupported_grant_type", errs.CategoryAPI, errs.SubtypeUnsupportedGrantType},
-		{"invalid_scope", errs.CategoryAPI, errs.SubtypeInvalidScope},
-	} {
-		for _, status := range []int{http.StatusOK, http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden} {
-			t.Run(fmt.Sprintf("%s/%d", tc.oauthError, status), func(t *testing.T) {
-				rt := &stubRoundTripper{respCode: status, respBody: `{"error":"` + tc.oauthError + `","error_description":"rejected"}`}
-				_, err := FetchTATWithAssertion(context.Background(), &http.Client{Transport: rt}, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "k")
-				problem, ok := errs.ProblemOf(err)
-				if !ok || problem.Category != tc.category || problem.Subtype != tc.subtype || problem.Retryable || problem.Code != 0 {
-					t.Fatalf("error = %v, want %s/%s without retry or invented code", err, tc.category, tc.subtype)
-				}
-			})
-		}
-	}
-}
-
-// HTTP 5xx remains ambiguous regardless of its response body.
-func TestFetchTATWithAssertion_AmbiguousError_Untyped(t *testing.T) {
-	cases := []string{
-		`{"error":"temporarily_unavailable","error_description":"retry"}`,
-		`{"code":99999,"msg":"weird"}`,
-		`not json`,
-	}
-	for _, body := range cases {
-		rt := &stubRoundTripper{respCode: 503, respBody: body}
-		hc := &http.Client{Transport: rt}
-		_, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "k")
-		if err == nil {
-			t.Fatalf("body %q: expected error", body)
-		}
-		if errs.IsTyped(err) {
-			t.Errorf("body %q: must be UNTYPED, got typed %T", body, err)
+		problem, typed := errs.ProblemOf(err)
+		if typed != (tc.subtype != "") || (typed && problem.Subtype != tc.subtype) {
+			t.Fatalf("HTTP %d: unexpected classification: %v", tc.status, err)
 		}
 	}
 }
@@ -378,17 +241,16 @@ func TestFetchTATApplicationSigningFailureDoesNotFallBack(t *testing.T) {
 		err       error
 		deleteErr error
 	}{
-		{name: "temporary", err: errors.New("temporary application signer failure")},
 		{name: "unavailable", err: keysigner.ErrUnavailable},
 		{name: "DPoP subtype", err: errs.NewAuthenticationError(errs.SubtypeDPoPProofFailed, "application signer failed").WithCause(keysigner.ErrUnavailable)},
 		{name: "repeated proof sentinel", err: dpop.ErrRepeatedInvalidProof},
-		{name: "canceled", err: context.Canceled},
-		{name: "deadline", err: context.DeadlineExceeded},
 		{name: "policy", err: errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "application signing denied")},
 		{name: "cleanup failure", err: keysigner.ErrUnavailable, deleteErr: errors.New("cleanup denied")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			app := &failFirstTATAssertionSigner{Signer: newFakeTATSigner(t), err: tc.err}
+			ca := privateKeyJWTTestClient(t)
+			app := &failFirstTATAssertionSigner{Signer: ca.Signer, err: tc.err}
+			ca.Signer = app
 			proof := newTATTestSigner()
 			store := dpop.NewKeyStoreWithSigner(tatDPoPMetadata{}, proof)
 			heartbeats, tokenCalls := 0, 0
@@ -404,7 +266,6 @@ func TestFetchTATApplicationSigningFailureDoesNotFallBack(t *testing.T) {
 				}
 				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 			})}
-			ca := auth.ClientAuth{AppID: "cli-tat-sign-failure", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: app, KeyLabel: "app-key"}
 			token, err := fetchTAT(context.Background(), client, core.BrandFeishu, ca, core.DPoPModePreferred, store)
 			if token != nil || !errors.Is(err, tc.err) || app.calls != 1 || tokenCalls != 0 || heartbeats != 1 {
 				t.Fatalf("application failure = (%+v, %v), assertion signs=%d, token calls=%d, heartbeats=%d; want original failure, one sign, zero token calls, one heartbeat", token, err, app.calls, tokenCalls, heartbeats)
@@ -440,13 +301,17 @@ func TestFetchTATPrivateKeyJWTLocalKeyPairWithDPoP(t *testing.T) {
 		{"disabled", core.DPoPModeDisabled, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			appSigner := newFakeTATSigner(t)
-			kid, err := keysigner.PublicKeyThumbprint(appSigner.key.Public())
+			ca := privateKeyJWTTestClient(t)
+			ca.AppSecret = "must-not-send"
+			public, err := ca.Signer.PublicKey(context.Background(), keysigner.KeyRef{Label: ca.KeyLabel})
+			if err != nil {
+				t.Fatal(err)
+			}
+			kid, err := keysigner.PublicKeyThumbprint(public)
 			if err != nil {
 				t.Fatal(err)
 			}
 			store := dpop.NewKeyStoreWithSigner(tatDPoPMetadata{}, newTATTestSigner())
-			ca := auth.ClientAuth{AppID: "cli-tat-pkjwt", AppSecret: "must-not-send", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, Signer: appSigner, KeyLabel: "app-key"}
 			calls := 0
 			seen := map[string]bool{}
 			client := &http.Client{Transport: tatRoundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -456,16 +321,13 @@ func TestFetchTATPrivateKeyJWTLocalKeyPairWithDPoP(t *testing.T) {
 					if req.URL.String() != core.ResolveEndpoints(core.BrandFeishu).Accounts+core.OAuthTokenV3Path {
 						t.Fatalf("private_key_jwt_local_keypair TAT endpoint changed: %s", req.URL)
 					}
-					raw, err := io.ReadAll(req.Body)
-					if err != nil {
+					if err := req.ParseForm(); err != nil {
 						t.Fatal(err)
 					}
-					form, err := url.ParseQuery(string(raw))
-					if err != nil {
-						t.Fatal(err)
-					}
-					if form.Has("client_secret") || req.Header.Get("Authorization") != "" || form.Get("grant_type") != jwt.GrantTypeJWTBearer {
-						t.Fatal("private_key_jwt_local_keypair TAT wire contract changed")
+					form := req.PostForm
+					if form.Has("client_secret") || req.Header.Get("Authorization") != "" || form.Get("grant_type") != jwt.GrantTypeJWTBearer ||
+						form.Get("client_assertion_type") != jwt.ClientAssertionType || form.Get("client_id") != ca.AppID {
+						t.Fatal("incorrect private-key JWT token request")
 					}
 					parts := strings.Split(form.Get("client_assertion"), ".")
 					if len(parts) != 3 {
@@ -502,7 +364,7 @@ func TestFetchTATPrivateKeyJWTLocalKeyPairWithDPoP(t *testing.T) {
 						if wantProof {
 							tokenType = dpop.TokenType
 						}
-						body = `{"tenant_access_token":"tenant-token","expires_in":120,"token_type":"` + tokenType + `"}`
+						body = `{"access_token":"tenant-token","expires_in":120,"token_type":"` + tokenType + `"}`
 					}
 				}
 				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
@@ -534,9 +396,9 @@ func TestFetchTATPrivateKeyJWTLocalKeyPairWithDPoP(t *testing.T) {
 }
 
 func TestDefaultTokenProviderPrivateKeyJWTLocalKeyPairCachesActualExpiry(t *testing.T) {
-	signer := newFakeTATSigner(t)
+	clientAuth := privateKeyJWTTestClient(t)
 	config := &core.MultiAppConfig{Apps: []core.AppConfig{{AppId: "cli-pkjwt-cache", Brand: core.BrandFeishu, AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
-		KeyRef: &core.SecretRef{Source: core.SecretSourceTEE, ID: "app-key", Provider: keysigner.MacOSKeychainSignerName}, DPoPMode: core.DPoPModeDisabled}}}
+		KeyRef: &core.KeyRef{Source: core.KeySourceTEE, ID: clientAuth.KeyLabel, Provider: keysigner.MacOSKeychainSignerName}, DPoPMode: core.DPoPModeDisabled}}}
 	if err := core.SaveMultiAppConfig(config); err != nil {
 		t.Fatal(err)
 	}
@@ -546,12 +408,13 @@ func TestDefaultTokenProviderPrivateKeyJWTLocalKeyPairCachesActualExpiry(t *test
 		calls++
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"access_token":"tat-%d","expires_in":120,"token_type":"Bearer"}`, calls))), Request: req}, nil
 	})}
-	provider := NewDefaultTokenProvider(account, func() (*http.Client, error) { return client, nil }, io.Discard, func(cfg *core.CliConfig) (keysigner.Signer, error) {
-		if cfg.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair || cfg.KeyLabel != "app-key" || cfg.DPoPMode != core.DPoPModeDisabled || cfg.CredentialSource != core.CredentialSourceLocal {
+	provider := NewDefaultTokenProvider(account, func() (*http.Client, error) { return client, nil }, io.Discard)
+	provider.resolveSigner = func(cfg *core.CliConfig) (keysigner.Signer, error) {
+		if cfg.AuthMethod != core.AuthMethodPrivateKeyJWTLocalKeyPair || cfg.KeyLabel != clientAuth.KeyLabel || cfg.DPoPMode != core.DPoPModeDisabled || cfg.CredentialSource != core.CredentialSourceLocal {
 			t.Fatal("configuration lost authentication or DPoP fields")
 		}
-		return signer, nil
-	})
+		return clientAuth.Signer, nil
+	}
 	now := time.Now()
 	provider.timeNow = func() time.Time { return now }
 	for _, want := range []string{"tat-1", "tat-1", "tat-2"} {

@@ -14,112 +14,60 @@ import (
 	"testing"
 )
 
-func TestResolve_ManifestMissPersistsAndHitSkipsInspect(t *testing.T) {
-	configDir := useIsolatedProviderManifest(t)
-	fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
+func setupManifestTest(t *testing.T) (optionalPackageFixture, *atomic.Int32) {
+	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	fx := newManagedPackageFixture(t, true)
 	t.Setenv(openClawStateDirEnv, fx.stateDir)
-	data := marshalInspectDocument(t, inspectPluginDocument(fx, pluginID, fx.packageDir))
-
-	var calls atomic.Int32
-	stubInspectFunction(t, func(context.Context, string) ([]byte, error) {
-		calls.Add(1)
-		return data, nil
-	})
-	if command, err := Resolve(context.Background(), ProviderID); err != nil || command == nil {
-		t.Fatalf("first Resolve = %v, %v", command, err)
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("inspect calls after miss = %d, want 1", calls.Load())
-	}
-
-	path := filepath.Join(configDir, providerManifestFileName)
-	manifestData, err := os.ReadFile(path)
+	data, err := json.Marshal(inspectPluginDocument(fx, pluginID, fx.packageDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var manifest providerManifest
-	if err := json.Unmarshal(manifestData, &manifest); err != nil {
-		t.Fatalf("manifest is not valid JSON: %v", err)
-	}
-	entry := manifest.Providers[ProviderID]
-	if manifest.Version != providerManifestFormatVersion || entry.PackageDir != fx.packageDir ||
-		entry.BinaryPath != fx.binary || entry.SHA256 != fx.binaryDigest || entry.PackageVersion != "1.2.3" {
-		t.Fatalf("persisted manifest = %#v", manifest)
-	}
-	if runtime.GOOS != "windows" {
-		if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0600 {
-			t.Fatalf("manifest permissions = %v, %v", info, err)
-		}
-	}
-
-	if command, err := Resolve(context.Background(), ProviderID); err != nil || command == nil {
-		t.Fatalf("cached Resolve = %v, %v", command, err)
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("manifest hit restarted inspect; calls = %d", calls.Load())
-	}
+	var calls atomic.Int32
+	stubInspectFunction(t, func(context.Context, string) ([]byte, error) { calls.Add(1); return data, nil })
+	return fx, &calls
 }
 
-func TestResolve_ManifestMutationRefreshes(t *testing.T) {
-	useIsolatedProviderManifest(t)
-	fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
-	t.Setenv(openClawStateDirEnv, fx.stateDir)
-	data := marshalInspectDocument(t, inspectPluginDocument(fx, pluginID, fx.packageDir))
-
-	var calls atomic.Int32
-	stubInspectFunction(t, func(context.Context, string) ([]byte, error) {
-		calls.Add(1)
-		return data, nil
-	})
-	if _, err := Resolve(context.Background(), ProviderID); err != nil {
+func TestResolveManifestLifecycle(t *testing.T) {
+	fx, calls := setupManifestTest(t)
+	path := providerManifestPath()
+	if err := os.WriteFile(path, []byte(`{"version":`), 0600); err != nil {
 		t.Fatal(err)
 	}
-
-	changed := []byte("TEST optional-package signer") // same length, different digest
-	if info, err := os.Stat(fx.binary); err != nil || info.Size() != int64(len(changed)) {
-		t.Fatalf("fixture length precondition failed: %v, %v", info, err)
+	resolve := func(wantCalls int32) {
+		t.Helper()
+		cmd, err := Resolve(context.Background(), ProviderID)
+		if err != nil || cmd == nil || calls.Load() != wantCalls {
+			t.Fatalf("resolve: err=%v, inspect calls=%d, want %d", err, calls.Load(), wantCalls)
+		}
 	}
-	if err := os.WriteFile(fx.binary, changed, 0700); err != nil {
-		t.Fatal(err)
+	resolve(1) // Repair the corrupt manifest.
+	resolve(1) // The repaired entry skips inspection.
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != 0600 {
+			t.Fatalf("manifest permissions: %v, %v", info, err)
+		}
 	}
-	if _, err := Resolve(context.Background(), ProviderID); err != nil {
-		t.Fatal(err)
-	}
-	if calls.Load() != 2 {
-		t.Fatalf("inspect calls after binary mutation = %d, want 2", calls.Load())
-	}
-
 	manifest, err := readProviderManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
 	entry := manifest.Providers[ProviderID]
-	if entry.SHA256 == fx.binaryDigest {
-		t.Fatal("manifest retained the stale signer digest")
+	if entry.PackageDir != fx.packageDir || entry.BinaryPath != fx.binary || entry.SHA256 != fx.binaryDigest || entry.PackageVersion != "1.2.3" {
+		t.Fatalf("unexpected manifest entry: %+v", entry)
 	}
-}
-
-func TestResolve_CorruptManifestSelfHeals(t *testing.T) {
-	configDir := useIsolatedProviderManifest(t)
-	fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
-	t.Setenv(openClawStateDirEnv, fx.stateDir)
-	if err := os.WriteFile(filepath.Join(configDir, providerManifestFileName), []byte(`{"version":`), 0600); err != nil {
+	if err := os.WriteFile(fx.binary, []byte("TEST optional-package signer"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	data := marshalInspectDocument(t, inspectPluginDocument(fx, pluginID, fx.packageDir))
-	var calls atomic.Int32
-	stubInspectFunction(t, func(context.Context, string) ([]byte, error) {
-		calls.Add(1)
-		return data, nil
-	})
-	if _, err := Resolve(context.Background(), ProviderID); err != nil {
+	resolve(2) // A same-size replacement invalidates the recorded digest.
+	resolve(2)
+	if err := os.Remove(fx.binary); err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 1 {
-		t.Fatalf("inspect calls = %d, want 1", calls.Load())
-	}
-	if _, err := readProviderManifest(); err != nil {
-		t.Fatalf("manifest was not repaired: %v", err)
+	stubOpenClawInspect(t, nil, errors.New("inspection unavailable"))
+	if _, err := Resolve(context.Background(), ProviderID); err == nil {
+		t.Fatal("reused stale command")
 	}
 }
 
@@ -127,20 +75,12 @@ func TestResolve_UnsafeManifestIsIgnoredAndReplaced(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX mode and symlink test")
 	}
-	configDir := useIsolatedProviderManifest(t)
-	fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
-	t.Setenv(openClawStateDirEnv, fx.stateDir)
-	data := marshalInspectDocument(t, inspectPluginDocument(fx, pluginID, fx.packageDir))
-	var calls atomic.Int32
-	stubInspectFunction(t, func(context.Context, string) ([]byte, error) {
-		calls.Add(1)
-		return data, nil
-	})
+	_, calls := setupManifestTest(t)
 	if _, err := Resolve(context.Background(), ProviderID); err != nil {
 		t.Fatal(err)
 	}
 
-	path := filepath.Join(configDir, providerManifestFileName)
+	path := providerManifestPath()
 	if err := os.Chmod(path, 0666); err != nil {
 		t.Fatal(err)
 	}
@@ -177,35 +117,6 @@ func TestResolve_UnsafeManifestIsIgnoredAndReplaced(t *testing.T) {
 	if contents, err := os.ReadFile(target); err != nil || string(contents) != targetContents {
 		t.Fatalf("symlink target changed: %q, %v", contents, err)
 	}
-}
-
-func TestResolve_InvalidManifestDoesNotFallBackToStaleCommand(t *testing.T) {
-	useIsolatedProviderManifest(t)
-	fx := newManagedPackageFixture(t, runtime.GOOS, runtime.GOARCH, true)
-	t.Setenv(openClawStateDirEnv, fx.stateDir)
-	data := marshalInspectDocument(t, inspectPluginDocument(fx, pluginID, fx.packageDir))
-	stubInspectFunction(t, func(context.Context, string) ([]byte, error) { return data, nil })
-	if _, err := Resolve(context.Background(), ProviderID); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(fx.binary); err != nil {
-		t.Fatal(err)
-	}
-	stubInspectFunction(t, func(context.Context, string) ([]byte, error) {
-		return nil, errors.New("inspection unavailable")
-	})
-	if _, err := Resolve(context.Background(), ProviderID); err == nil {
-		t.Fatal("Resolve reused an invalid manifest entry")
-	}
-}
-
-func marshalInspectDocument(t *testing.T, document any) []byte {
-	t.Helper()
-	data, err := json.Marshal(document)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return data
 }
 
 func stubInspectFunction(t *testing.T, fn func(context.Context, string) ([]byte, error)) {
