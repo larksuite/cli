@@ -18,9 +18,9 @@ import (
 )
 
 // clearAgentEnv removes every env var that DetectWorkspaceFromEnv treats as
-// an Agent signal (OPENCLAW_* / HERMES_* / LARK_CHANNEL). Prefix-based so the
-// helper stays correct when DetectWorkspaceFromEnv adds new signals; tests
-// no longer drift silently. Mirrors cmd/config/bind_test.go's helper.
+// an Agent signal (OPENCLAW_* / HERMES_* / DSH_* / LARK_CHANNEL). Prefix-based
+// so the helper stays correct when DetectWorkspaceFromEnv adds new signals;
+// tests no longer drift silently. Mirrors cmd/config/bind_test.go's helper.
 func clearAgentEnv(t *testing.T) {
 	t.Helper()
 	for _, kv := range os.Environ() {
@@ -31,6 +31,7 @@ func clearAgentEnv(t *testing.T) {
 		k := kv[:idx]
 		if strings.HasPrefix(k, "OPENCLAW_") ||
 			strings.HasPrefix(k, "HERMES_") ||
+			strings.HasPrefix(k, "DSH_") ||
 			k == "LARK_CHANNEL" {
 			t.Setenv(k, "")
 		}
@@ -105,7 +106,7 @@ func TestBind_InvalidSource(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assertStderrError(t, result, 2, "validation",
-		`invalid --source "invalid"; valid values: openclaw, hermes, lark-channel`, "")
+		`invalid --source "invalid"; valid values: openclaw, hermes, lark-channel, dsh`, "")
 }
 
 func TestBind_MissingSource_NonTTY(t *testing.T) {
@@ -129,7 +130,7 @@ func TestBind_MissingSource_NonTTY(t *testing.T) {
 	// from the typed config errors below.
 	assertStderrError(t, result, 2, "validation",
 		"cannot determine Agent source: no --source flag and no Agent environment detected",
-		"pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context")
+		"pass --source openclaw|hermes|lark-channel|dsh, or run this command inside the corresponding Agent context")
 }
 
 func TestBind_Hermes_Success(t *testing.T) {
@@ -451,4 +452,107 @@ func TestBind_LarkChannel_AutoDetect(t *testing.T) {
 		assert.Equal(t, "lark-channel", errType,
 			"non-zero exit should be from lark-channel bind path\nstderr:\n%s", result.Stderr)
 	}
+}
+
+// writeDSHSettings creates a fake settings document under a harness home and
+// points DSH_HOME at it — the same handoff the harness performs for every
+// shell it manages.
+func writeDSHSettings(t *testing.T, harnessHome, appID, appSecret, domain string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(harnessHome, 0700))
+	content := "lark-channel:\n  appId: " + appID + "\n  appSecret: " + appSecret + "\n"
+	if domain != "" {
+		content += "  domain: " + domain + "\n"
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(harnessHome, "settings.yaml"), []byte(content), 0600))
+	t.Setenv("DSH_HOME", harnessHome)
+}
+
+// TestBind_DSH_Success exercises the full end-to-end happy path: the harness
+// settings document under DSH_HOME → bind reads its lark-channel section →
+// workspace config written to LARKSUITE_CLI_CONFIG_DIR/dsh/config.json.
+func TestBind_DSH_Success(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	configDir := setupTempConfig(t)
+	clearAgentEnv(t)
+	writeDSHSettings(t, t.TempDir(), "cli_dsh_e2e", "dsh_secret", "https://open.larksuite.com")
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{"config", "bind", "--source", "dsh"},
+	})
+	require.NoError(t, err)
+
+	if result.ExitCode == 0 {
+		stdout := result.Stdout
+		assert.True(t, gjson.Get(stdout, "ok").Bool(), "stdout:\n%s", stdout)
+		assert.Equal(t, "dsh", gjson.Get(stdout, "workspace").String(), "stdout:\n%s", stdout)
+		assert.Equal(t, "cli_dsh_e2e", gjson.Get(stdout, "app_id").String(), "stdout:\n%s", stdout)
+
+		expectedConfigPath := filepath.Join(configDir, "dsh", "config.json")
+		assert.Equal(t, expectedConfigPath, gjson.Get(stdout, "config_path").String(), "stdout:\n%s", stdout)
+
+		data, readErr := os.ReadFile(expectedConfigPath)
+		require.NoError(t, readErr)
+		assert.Equal(t, "cli_dsh_e2e", gjson.GetBytes(data, "apps.0.appId").String())
+		// The section stores the open-platform URL, so the brand only lands
+		// correctly if the domain is mapped rather than parsed as a name.
+		assert.Equal(t, "lark", gjson.GetBytes(data, "apps.0.brand").String())
+	} else {
+		// Keychain failure acceptable in CI; verify the error came from the
+		// dsh binder (i.e. routing was correct) rather than another path.
+		errType := gjson.Get(result.Stderr, "error.type").String()
+		assert.Equal(t, "dsh", errType,
+			"non-zero exit should be from dsh bind path\nstderr:\n%s", result.Stderr)
+	}
+}
+
+// TestBind_DSH_AutoDetect verifies DSH_SHELL=1 alone routes the no-flag bind
+// into the dsh workspace — the harness injects it into every shell it manages,
+// which is what lets an agent bind without passing --source.
+func TestBind_DSH_AutoDetect(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	setupTempConfig(t)
+	clearAgentEnv(t)
+	writeDSHSettings(t, t.TempDir(), "cli_dsh_auto", "auto_secret", "")
+	t.Setenv("DSH_SHELL", "1")
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{"config", "bind"}, // no --source
+	})
+	require.NoError(t, err)
+
+	if result.ExitCode == 0 {
+		assert.Equal(t, "dsh", gjson.Get(result.Stdout, "workspace").String(),
+			"stdout:\n%s", result.Stdout)
+	} else {
+		errType := gjson.Get(result.Stderr, "error.type").String()
+		assert.Equal(t, "dsh", errType,
+			"non-zero exit should be from dsh bind path\nstderr:\n%s", result.Stderr)
+	}
+}
+
+// TestBind_DSH_MissingFile verifies the routed error path when the harness has
+// no settings document: the hint must point at the plugin's onboarding, not at
+// `config init` (which would create a parallel local app).
+func TestBind_DSH_MissingFile(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	setupTempConfig(t)
+	clearAgentEnv(t)
+	harnessHome := t.TempDir() // empty — no settings.yaml
+	t.Setenv("DSH_HOME", harnessHome)
+
+	configPath := filepath.Join(harnessHome, "settings.yaml")
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{"config", "bind", "--source", "dsh"},
+	})
+	require.NoError(t, err)
+	assertStderrError(t, result, 3, "config",
+		"cannot read "+configPath+": open "+configPath+": no such file or directory",
+		"verify the DeepSeek Harness lark-channel plugin is installed and has completed onboarding")
 }
