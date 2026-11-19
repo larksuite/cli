@@ -16,7 +16,98 @@ const {
   resolveMirrorUrls,
   resolveReleaseAsset,
   isCurlVersionSupported,
+  replaceBinaryAtomically,
 } = require("./install.js");
+
+describe("replaceBinaryAtomically", () => {
+  function makeFixture(t) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "binary-replace-test-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const source = path.join(dir, "source");
+    const destination = path.join(dir, "lark-cli");
+    return { dir, source, destination };
+  }
+
+  it("replaces an existing binary only after the staged copy is complete", (t) => {
+    const fixture = makeFixture(t);
+    fs.writeFileSync(fixture.source, "new binary");
+    fs.writeFileSync(fixture.destination, "old binary");
+
+    const originalRenameSync = fs.renameSync;
+    let sawAtomicRename = false;
+    fs.renameSync = (stagedPath, targetPath) => {
+      sawAtomicRename = true;
+      assert.equal(path.dirname(stagedPath), fixture.dir);
+      assert.equal(targetPath, fixture.destination);
+      assert.equal(
+        fs.readFileSync(fixture.destination, "utf8"),
+        "old binary",
+        "destination must remain unchanged until the atomic rename"
+      );
+      assert.equal(fs.readFileSync(stagedPath, "utf8"), "new binary");
+      originalRenameSync(stagedPath, targetPath);
+    };
+
+    try {
+      replaceBinaryAtomically(fixture.source, fixture.destination);
+    } finally {
+      fs.renameSync = originalRenameSync;
+    }
+
+    assert.equal(sawAtomicRename, true, "replacement must use rename");
+    assert.equal(fs.readFileSync(fixture.destination, "utf8"), "new binary");
+    assert.deepEqual(
+      fs.readdirSync(fixture.dir).sort(),
+      ["lark-cli", "source"],
+      "staged file should not remain after rename"
+    );
+  });
+
+  it("rejects an empty extracted binary without changing the destination", (t) => {
+    const fixture = makeFixture(t);
+    fs.writeFileSync(fixture.source, "");
+    fs.writeFileSync(fixture.destination, "known-good binary");
+
+    assert.throws(
+      () => replaceBinaryAtomically(fixture.source, fixture.destination),
+      /Extracted binary is empty or not a regular file/
+    );
+    assert.equal(
+      fs.readFileSync(fixture.destination, "utf8"),
+      "known-good binary"
+    );
+  });
+
+  it("keeps the destination when staged-file preparation fails", (t) => {
+    const fixture = makeFixture(t);
+    fs.writeFileSync(fixture.source, "new binary");
+    fs.writeFileSync(fixture.destination, "known-good binary");
+
+    const originalChmodSync = fs.chmodSync;
+    fs.chmodSync = () => {
+      throw new Error("fixture chmod failure");
+    };
+
+    try {
+      assert.throws(
+        () => replaceBinaryAtomically(fixture.source, fixture.destination),
+        /fixture chmod failure/
+      );
+    } finally {
+      fs.chmodSync = originalChmodSync;
+    }
+
+    assert.equal(
+      fs.readFileSync(fixture.destination, "utf8"),
+      "known-good binary"
+    );
+    assert.deepEqual(
+      fs.readdirSync(fixture.dir).sort(),
+      ["lark-cli", "source"],
+      "failed staged file should be removed"
+    );
+  });
+});
 
 describe("resolveReleaseAsset", () => {
   it("preserves a beta package version in tag and archive paths", () => {
