@@ -10,6 +10,34 @@
 
 ## 快速开始
 
+### 仪表盘截图自动推送
+
+仪表盘定时截图使用专用 shortcut 创建并启用 Workflow，无需手写 steps：
+
+```bash
+lark-cli base +dashboard-push-create \
+  --base-token bascnxxxx \
+  --dashboard-id blkxxxx \
+  --title '每日经营看板' \
+  --send-at '2026-09-16 09:00' \
+  --repeat DAILY \
+  --receiver ou_user_xxxx \
+  --receiver oc_group_xxxx \
+  --client-token dashboard-push-20260916 \
+  --content-mode image \
+  --as user
+```
+
+约束与恢复方式：
+
+- 目标环境必须已经支持公共 Workflow create/get 中的 Dashboard image 消息段；截图由 Base owner 身份渲染。创建前确认 owner 有仪表盘访问权限，并确认个人或群组接收方可见相应数据。
+- `--send-at` 必须严格使用 `yyyy-MM-dd HH:mm`，并按 Base 时区解释，CLI 不做本地时区转换。
+- `--repeat` 当前支持 `NO_REPEAT` 和 `DAILY`；接收方用可重复的 `--receiver`，个人 ID 必须以 `ou_` 开头，群组 ID 必须以 `oc_` 开头，且不可重复。
+- 本期 `--content-mode` 仅支持 `image`。参数作为未来内容模式扩展点保留，但当前明确拒绝 AI 仪表盘总结。
+- 命令严格执行 create→enable。若 create 失败，不会调用 enable；若 enable 失败，已创建的 `workflow_id` 会随 partial-failure 回执返回且不会自动删除。先运行 `+workflow-get`：已经 enabled 则停止，disabled 才运行 `+workflow-enable`，状态未知则重试查询；不要再次运行 create。
+
+可先附加 `--dry-run` 检查 POST/PATCH 计划。目标 ID 的格式通过本地校验不代表其一定存在或调用身份有权限；最终由服务端返回明确的权限或目标错误。
+
 ### 最简单的 Workflow
 
 新增记录时发送消息通知：
