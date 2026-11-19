@@ -8,12 +8,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const maxKeyFileSize = 64 * 1024
@@ -41,6 +43,16 @@ func withKeyFile(ctx context.Context, directory string, ref KeyRef, operation fu
 	}
 	path := filepath.Join(directory, fmt.Sprintf("%x.json", sha256.Sum256([]byte(ref.Label))))
 	return operation(path, algorithm)
+}
+
+// IsKeyFileName recognizes the lowercase SHA-256 filenames produced by withKeyFile.
+func IsKeyFileName(name string) bool {
+	digest, ok := strings.CutSuffix(name, ".json")
+	if !ok || len(digest) != sha256.Size*2 || digest != strings.ToLower(digest) {
+		return false
+	}
+	_, err := hex.DecodeString(digest)
+	return err == nil
 }
 
 func keyFileAbsent(path string) error {

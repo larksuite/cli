@@ -6,6 +6,10 @@ package config
 import (
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	crand "crypto/rand"
 	"errors"
 	"io"
 	"net/http"
@@ -17,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // fakeRT routes requests to per-path handlers and records what it saw.
@@ -48,8 +53,54 @@ func (f *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 			return jsonResp(200, `{"code":0,"data":{},"msg":"success"}`), nil
 		}
 		return f.probeHandler(req)
+
 	}
 	return nil, errors.New("unexpected URL: " + req.URL.String())
+}
+
+type probeTestSigner struct {
+	key                *ecdsa.PrivateKey
+	name               string
+	deleteCalls        int
+	ensureErr, signErr error
+}
+
+func (p *probeTestSigner) Name() string {
+	return p.name
+}
+
+func (*probeTestSigner) SecurityLevel() keysigner.SecurityLevel { return keysigner.SecurityLevelL2 }
+
+func newProbeTestSigner(t *testing.T) *probeTestSigner {
+	t.Helper()
+	k, err := ecdsa.GenerateKey(elliptic.P256(), crand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &probeTestSigner{key: k, name: keysigner.MacOSKeychainSignerName}
+}
+
+func (p *probeTestSigner) EnsureKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	if p.ensureErr != nil {
+		return nil, p.ensureErr
+	}
+	return p.key.Public(), nil
+}
+
+func (p *probeTestSigner) PublicKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	return p.key.Public(), nil
+}
+
+func (p *probeTestSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) ([]byte, string, error) {
+	if p.signErr != nil {
+		return nil, "", p.signErr
+	}
+	return keysigner.SignWithPrivateKey(p.key, in)
+}
+
+func (p *probeTestSigner) DeleteKey(context.Context, keysigner.KeyRef) error {
+	p.deleteCalls++
+	return nil
 }
 
 func jsonResp(code int, body string) *http.Response {
@@ -75,7 +126,7 @@ func jsonResp(code int, body string) *http.Response {
 // that must remain visible to the caller.
 func fakeFactory(t *testing.T, rt http.RoundTripper) (*cmdutil.Factory, *bytes.Buffer) {
 	t.Helper()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	isolateRegistrationStorage(t)
 	f, _, errBuf, _ := cmdutil.TestFactory(t, nil)
 	f.HttpClient = func() (*http.Client, error) {
 		return &http.Client{Transport: rt}, nil
@@ -140,20 +191,7 @@ func TestRunProbe_TATInvalidClient_ReturnsConfigError(t *testing.T) {
 	assertConfigRejection(t, err, errBuf)
 }
 
-// unauthorized_client is treated as the same credential rejection, propagated.
-func TestRunProbe_TATUnauthorizedClient_ReturnsConfigError(t *testing.T) {
-	rt := &fakeRT{
-		tatHandler: func(req *http.Request) (*http.Response, error) {
-			return jsonResp(401, `{"error":"unauthorized_client","error_description":"client not authorized"}`), nil
-		},
-	}
-	f, errBuf := fakeFactory(t, rt)
-	assertConfigRejection(t, runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu), errBuf)
-}
-
-// Any other deterministic client-side OAuth error (e.g. invalid_scope) falls
-// back to *errs.APIError via BuildAPIError — still typed, so the probe surfaces
-// it rather than swallowing — but is not a credential (ConfigError) rejection.
+// Deterministic OAuth request errors retain their classification through the probe.
 func TestRunProbe_TATOtherClientError_Propagates(t *testing.T) {
 	rt := &fakeRT{
 		tatHandler: func(req *http.Request) (*http.Response, error) {
@@ -162,8 +200,9 @@ func TestRunProbe_TATOtherClientError_Propagates(t *testing.T) {
 	}
 	f, errBuf := fakeFactory(t, rt)
 	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
-	if err == nil || !errs.IsTyped(err) {
-		t.Fatalf("expected a propagated typed error, got %T: %v", err, err)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeInvalidScope || problem.Code != 20068 {
+		t.Fatalf("error = %+v, want api/invalid_scope code=20068", problem)
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("runProbe must not write to stderr, got: %q", errBuf.String())
@@ -228,16 +267,6 @@ func TestRunProbe_TATSuccess_ProbePolicyError_Propagates(t *testing.T) {
 	if errBuf.Len() != 0 {
 		t.Fatalf("runProbe must leave rendering to the root dispatcher, stderr = %q", errBuf.String())
 	}
-}
-
-func TestRunProbe_TATSuccess_ProbeOK_Silent(t *testing.T) {
-	rt := &fakeRT{}
-	f, errBuf := fakeFactory(t, rt)
-	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
-	if rt.tatCalls != 1 || rt.probeCalls != 1 {
-		t.Errorf("expected 1/1 calls, got tat=%d probe=%d", rt.tatCalls, rt.probeCalls)
-	}
-	assertSilent(t, err, errBuf)
 }
 
 func TestRunProbe_ProbeRequestShape(t *testing.T) {
@@ -312,4 +341,49 @@ func TestRunProbe_TimeoutHonored(t *testing.T) {
 	// A timeout is an ambiguous failure (context deadline → untyped), so it
 	// must stay silent and not block.
 	assertSilent(t, err, errBuf)
+}
+
+// Deterministic OAuth rejections propagate so config init cannot report success.
+func TestPrivateKeyJWTProbeTokenErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		status   int
+		rejected bool
+	}{
+		{"OAuth rejection", http.StatusBadRequest, true},
+		{"upstream failure", http.StatusServiceUnavailable, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := &fakeRT{tatHandler: func(*http.Request) (*http.Response, error) {
+				return jsonResp(tc.status, `{"error":"invalid_client"}`), nil
+			}}
+			f, stderr := fakeFactory(t, rt)
+			err := runProbePrivateKeyJWTLocalKeyPair(context.Background(), f, core.BrandFeishu, "cli_x", newProbeTestSigner(t), "agent-key")
+			if tc.rejected {
+				assertConfigRejection(t, err, stderr)
+			} else {
+				assertSilent(t, err, stderr)
+			}
+			if rt.tatCalls != 1 || rt.probeCalls != 0 {
+				t.Fatalf("TAT calls=%d probe calls=%d", rt.tatCalls, rt.probeCalls)
+			}
+		})
+	}
+}
+
+func TestProbeInitResultRequiresRegistrationSigner(t *testing.T) {
+	rt := &fakeRT{}
+	f, errBuf := fakeFactory(t, rt)
+	result := &configInitResult{
+		AppID: "cli_x", AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		KeyRef: &core.KeyRef{Source: core.KeySourceTEE, Provider: keysigner.SoftwareSignerName, ID: "k"},
+	}
+	err := probeInitResult(&ConfigInitOptions{Ctx: context.Background()}, f, result)
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) || configErr.Subtype != errs.SubtypeInvalidConfig {
+		t.Fatalf("error = %T %v, want config/invalid_config", err, err)
+	}
+	if rt.tatCalls != 0 || errBuf.Len() != 0 {
+		t.Errorf("probe made %d token requests, stderr = %q", rt.tatCalls, errBuf.String())
+	}
 }
