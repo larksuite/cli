@@ -48,20 +48,6 @@ lark-cli vc +meeting-events --as <same_identity> --meeting-id <meeting_id> --pag
 
 精确事件 schema 和后续命令见 [`lark-vc-meeting-events`](../references/lark-vc-meeting-events.md) 的文档上下文部分。
 
-## 读取当前会议画面
-
-仅当用户的问题必须读取当前会议合成画面中的视觉信息，且结构化内容不足以回答时读取画面。适用任务包括识别投屏中实际显示的网页地址、界面状态或报错，理解图表、幻灯片等依赖版式或图像的信息，以及查看摄像头画面。
-
-事件、字幕、聊天或可直接读取的共享文档已经足够回答时，不要截图；会议内容查询、总结或共享文档定位也不以截图兜底，不要仅因为会议正在进行就读取画面。
-
-需要读取时执行：
-
-```bash
-lark-cli vc +meeting-screenshot --as <same_identity> --meeting-id <meeting_id>
-```
-
-身份、会议 ID、输出文件和失败处理见 [`lark-vc-meeting-screenshot`](../references/lark-vc-meeting-screenshot.md)。
-
 ## 发送会中文本或表情
 
 只有用户明确要求发送并确认目标会议与内容时执行：

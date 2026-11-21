@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 // Capability source test: pins the identity (user/bot) claims made in
-// skills/lark-vc against the AuthTypes actually declared on the shortcuts.
+// skills/lark-meeting VC references against the AuthTypes actually declared on the shortcuts.
 // PR #2278's review found the docs had already drifted from the code once
 // (SKILL.md claimed `+search` supported bot while vc_search.go stayed
 // user-only) — this test fails loudly the next time that happens instead of

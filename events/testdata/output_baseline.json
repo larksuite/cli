@@ -65,6 +65,27 @@
     "timezone": "Asia/Shanghai",
     "card_content": "{\"header\":{\"title\":{\"tag\":\"plain_text\",\"content\":\"Baseline card\"}}}"
   },
+  "drive.notice.comment_add_v1": {
+    "type": "drive.notice.comment_add_v1",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "app_id": "cli-baseline-app",
+    "tenant_key": "tenant-baseline",
+    "file_token": "file-token-baseline",
+    "file_type": "docx",
+    "comment_id": "comment-id-baseline",
+    "reply_id": "reply-id-baseline",
+    "notice_type": "add_reply",
+    "is_mentioned": true,
+    "visibility": "public",
+    "from_open_id": "ou-baseline-author",
+    "from_union_id": "on-baseline-author",
+    "from_user_id": "user-baseline-author",
+    "from_user_type": "user",
+    "to_open_id": "ou-baseline-receiver",
+    "to_union_id": "on-baseline-receiver",
+    "to_user_id": "user-baseline-receiver"
+  },
   "im.message.receive_v1": {
     "type": "im.message.receive_v1",
     "event_id": "evt-baseline-001",

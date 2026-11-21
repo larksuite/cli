@@ -5,6 +5,7 @@ package apps
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -21,6 +22,18 @@ const apiBasePath = "/open-apis/spark/v1"
 // the correct app id. The app_/cli_ format rule is taught in
 // lark-apps SKILL.md ("app_id 获取"); the hint stays lean and does not repeat it.
 const appIDListHint = "verify --app-id is correct and you have access to the app; list your apps with `lark-cli apps +list`"
+
+// Hints chosen by commonAppsFailureHint for failures whose cause is the app or
+// the platform rather than the request, so the per-command request-fix hint
+// would send the caller after the wrong thing.
+const (
+	appUnavailableHint  = "the app cannot be resolved because it was deleted or is not available to the current tenant; use `lark-cli apps +list` to verify the app_id, then stop polling or operating on this app"
+	appBannedHint       = "this app is banned, so operations cannot continue; stop retrying and contact the app owner or enterprise administrator"
+	dbConnectionHint    = "the platform database connection is unavailable; do not create a dev database or change the app_id because of this error. Wait before trying once more; if it continues, report the request identifier"
+	neutralServerHint   = "the request failed, and the CLI has no specific recovery guidance for this response. Follow any explicit cause in the server message; do not change arguments or retry solely because of the error code. If a write may have taken effect, confirm its outcome before trying again. If the cause remains unclear, report the request identifier"
+	internalFailureHint = "the service returned an internal failure. If this command changes data, first confirm whether the change took effect; if it did, do not run the command again. Otherwise wait before trying once more, and if the outcome is unclear or the failure continues, stop and report the request identifier"
+	appNotFoundHint     = "the app identifier cannot be identified; use `lark-cli apps +list` to verify the app_id without inferring any unavailable state"
+)
 
 // appNoDatabaseCode / appNoDatabaseLegacyCode are the Spark business codes seen
 // when a db command runs against an app that has not initialized a database yet.
@@ -125,10 +138,18 @@ func withObservabilityHint(err error) error {
 	if err == nil {
 		return nil
 	}
-	if p, ok := errs.ProblemOf(err); ok && isAppNoContainerError(p) {
-		p.Message = appNoContainerMessage
-		p.Hint = appNoContainerHint
-		return err
+	if p, ok := errs.ProblemOf(err); ok {
+		// A gateway throttle was not evaluated by the observability service.
+		// Classify it before inspecting message text that can coincidentally
+		// resemble the service's no-container business error.
+		if p.Subtype == errs.SubtypeRateLimit {
+			return withAppsHint(err, appIDListHint)
+		}
+		if isAppNoContainerError(p) {
+			p.Message = appNoContainerMessage
+			p.Hint = appNoContainerHint
+			return err
+		}
 	}
 	return withAppsHint(err, appIDListHint)
 }
@@ -152,12 +173,27 @@ func withObservabilityHint(err error) error {
 // property of the db OpenAPI rather than of any one command — audit, env-create
 // and their neighbours all receive the same code for unrelated reasons. Matching
 // requires an exact known subcode, so commands that never see one are unaffected.
+//
+// Third: failures caused by the app or the platform rather than the request —
+// an app the gateway cannot resolve, a banned app, a database connection failure,
+// an unclassified server error — get a shared hint before the per-command one
+// (see commonAppsFailureHint), because every per-command hint asks the caller to
+// fix the request.
 func withAppsHint(err error, hint string) error {
 	if err == nil {
 		return nil
 	}
 	// p points at the embedded Problem, so the mutation is reflected in err.
 	if p, ok := errs.ProblemOf(err); ok {
+		// Classification beats message heuristics. A gateway throttle was not
+		// evaluated by the database service, so text that resembles a database
+		// state marker must not reclassify it or replace backoff guidance.
+		if p.Subtype == errs.SubtypeRateLimit {
+			if strings.TrimSpace(p.Hint) == "" {
+				p.Hint = appRateLimitHint
+			}
+			return err
+		}
 		if isAppNoDatabaseError(p) {
 			p.Message = appNoDatabaseMessage
 			p.Hint = appNoDatabaseHint
@@ -168,12 +204,156 @@ func withAppsHint(err error, hint string) error {
 		if applyDBSubcode(p) {
 			return err
 		}
-		if strings.TrimSpace(p.Hint) == "" && hintExplainsFailure(p) {
+		if strings.TrimSpace(p.Hint) != "" {
+			return err
+		}
+		// Before the per-command hint: these failures are about the app or the
+		// platform, so a hint written to fix the request cannot explain them.
+		if hint := commonAppsFailureHint(p); hint != "" {
+			p.Hint = hint
+			return err
+		}
+		if hintExplainsFailure(p) {
 			p.Hint = hint
 		}
 		return err
 	}
 	return err
+}
+
+// appRateLimitHint answers a throttled apps call (api/rate_limit — the OpenAPI
+// gateway's 99991400). The server did not judge the request, so the arguments are
+// not what to change; retrying at once only adds to the traffic that tripped the
+// limit. The backoff wording matches the stream client's rate-limit hint
+// (internal/client), so one condition reads the same on every path.
+const appRateLimitHint = "the request was rate limited, not rejected for its arguments, so do not change them; stop immediate retries, then rerun the same command later with exponential backoff and jitter, and send fewer calls in parallel"
+
+// commonAppsFailureHint picks the hint for failures that mean the same thing on
+// every apps command, and returns "" when the per-command hint should apply.
+//
+// Only api/unknown failures qualify (plus one registered code below). A code the
+// classifier already knows keeps its subtype, and whether the per-command hint
+// applies to it is still decided by hintExplainsFailure. Messages are matched
+// whole, ignoring case and one trailing period, against wording observed on the
+// wire; a longer or different message is not guessed at.
+//
+// Order matters: the app-level and connection signatures name the cause, so they
+// come before the code-range fallback that only says the server failed.
+//   - 2320008 is the gateway's answer for an app_id it cannot resolve — the app
+//     was deleted or belongs to another tenant. It reaches every app-scoped
+//     command, and no flag change makes it succeed.
+//   - 500232002 is a generic internal code; only the ban wording identifies the
+//     app state, so other messages under it stay neutral.
+//   - 500002776 collapses every database failure; only a connection failure
+//     (dbConnectionFailurePatterns) says the request was never executed.
+//   - 50001 "upstream internal error" and 500000049 with the generic
+//     "something went wrong" wording are internal failures. On a command that
+//     changes data the change may have partly happened, so the caller confirms
+//     the outcome first; the selector cannot tell reads from writes, so the hint
+//     makes that step conditional.
+//   - Any other 9-digit 5xx code, and 50001 with other wording, only says the
+//     server failed: the neutral hint keeps the server's message in charge and
+//     neither blames nor clears the request.
+//   - 400002484 is registered as validation/invalid_argument ("app id does not
+//     identify an app"); the command hints for it ask about tables or
+//     environments, so it gets the app-identifier hint instead.
+func commonAppsFailureHint(p *errs.Problem) string {
+	if p == nil {
+		return ""
+	}
+	if p.Category == errs.CategoryValidation && p.Subtype == errs.SubtypeInvalidArgument && p.Code == 400002484 {
+		return appNotFoundHint
+	}
+	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeUnknown {
+		return ""
+	}
+	message := normalizedExactMessage(p.Message)
+	switch {
+	case p.Code == 2320008 && message == "app tenant not found":
+		return appUnavailableHint
+	case p.Code == 500232002 && isAppBannedMessage(message):
+		return appBannedHint
+	case p.Code == 500002776 && isDatabaseConnectionMessage(p.Message):
+		return dbConnectionHint
+	case p.Code == 50001 && message == "upstream internal error":
+		return internalFailureHint
+	case p.Code == 500000049 && isGenericInternalFailureMessage(message):
+		return internalFailureHint
+	case (p.Code >= 500000000 && p.Code < 600000000) || p.Code == 50001:
+		return neutralServerHint
+	}
+	return ""
+}
+
+// normalizedExactMessage prepares a server message for whole-message matching:
+// surrounding space and one trailing period are dropped and case is folded.
+func normalizedExactMessage(message string) string {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	return strings.TrimSuffix(normalized, ".")
+}
+
+// isAppBannedMessage matches the ban wording only as the whole message, so a
+// failure that merely quotes the phrase (a SQL error echoing user input) is not
+// read as a ban.
+func isAppBannedMessage(message string) bool {
+	switch message {
+	case "app is banned", "app is banned for miaoda", "[getapp] app is banned for miaoda":
+		return true
+	default:
+		return false
+	}
+}
+
+// isGenericInternalFailureMessage matches the generic internal-failure wording
+// the release endpoints send in both locales.
+func isGenericInternalFailureMessage(message string) bool {
+	switch message {
+	case "something went wrong. please try again later", "出错了，请稍后重试":
+		return true
+	default:
+		return false
+	}
+}
+
+// dbConnectionFailureSubcodes are the k_dl_ prefixes observed in front of a
+// database connection failure. k_dl_000001 is a generic wrapper that also
+// carries ordinary SQL errors, so the text after the prefix decides.
+var dbConnectionFailureSubcodes = map[string]bool{
+	"k_dl_000001":  true,
+	"k_dl_000002":  true,
+	"k_dl_1300002": true,
+	"k_dl_1600052": true,
+}
+
+// dbConnectionFailurePatterns match the whole lower-cased text after the subcode,
+// in the forms observed on the wire. The variable parts are the database user,
+// the pool name, the timeout, and the connection target and stage reported by the
+// driver; anything else — added context, another SQLSTATE, a quoted statement —
+// does not match and falls back to the neutral server hint.
+var dbConnectionFailurePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`^(code:k_dl_1600052,msg:)?get db connection failed$`),
+	regexp.MustCompile(`^error: remaining connection slots are reserved for roles with the superuser attribute \(sqlstate xx000\)$`),
+	regexp.MustCompile(`^error: sorry, too many clients already \(sqlstate xx000\)$`),
+	regexp.MustCompile(`^error: password authentication failed for user '[^']+' \(sqlstate xx000\)$`),
+	regexp.MustCompile(`^error: hikaripool-\S+ - connection is not available, request timed out after \d+ms\. \(sqlstate [0-9a-z]{5}\)$`),
+	regexp.MustCompile("^failed to connect to `user=[^`\\s]+ database=[^`\\s]+`: \\S+ \\(\\S+\\): (dial error|tls error|server error|failed sasl auth|failed to receive message): .+$"),
+}
+
+// isDatabaseConnectionMessage reports whether a database failure message says
+// the platform could not connect to the app database, i.e. the request itself
+// was never executed.
+func isDatabaseConnectionMessage(message string) bool {
+	subcode, remainder, ok := subcodeOf(strings.TrimSpace(message))
+	if !ok || !dbConnectionFailureSubcodes[subcode] {
+		return false
+	}
+	remainder = normalizedExactMessage(remainder)
+	for _, pattern := range dbConnectionFailurePatterns {
+		if pattern.MatchString(remainder) {
+			return true
+		}
+	}
+	return false
 }
 
 // hintExplainsFailure reports whether the caller's hint can plausibly explain this
@@ -201,15 +381,32 @@ func withAppsHint(err error, hint string) error {
 // 400002479 (db-sync task state) is served by withDBSyncHint, which does not
 // delegate here.
 //
-// Deliberately one subtype. Gating on Category instead (deny authentication /
+// SubtypeRateLimit is withheld too: a throttled call was never evaluated, so no
+// sentence about the request can explain it. The OpenAPI gateway's 99991400
+// reached every apps command that passes a request hint this way — +db-execute
+// was told to check table/column names and switch to --environment dev,
+// +trace-get to verify --app-id — and an agent following that sent more calls into
+// the same limit. The failing cases that
+// proved it are TestAppsDBExecute_RateLimitHintIsBackoffNotRequestFix (through the
+// command) and TestAppsHints_RateLimitDoesNotInheritRequestHint (through every
+// hint helper). Unlike the precondition class the hint is not left empty:
+// withAppsHint fills it with appRateLimitHint, and like every other hint only when
+// it is empty, so a rate limit that arrives with its own wording keeps it
+// (TestWithAppsHint_RateLimitKeepsUpstreamHint).
+//
+// Deliberately these two subtypes. Gating on Category instead (deny authentication /
 // authorization / network / ...) contradicts contracts this package asserts on
 // purpose: an authentication failure on +role-list (99991663) is expected to keep
 // the app-access hint, and a 503 on credential issuance the developer-access hint.
 // Those hints are broad enough to survive a caller-standing failure; only the
-// precondition class is guaranteed to be misdescribed. Widen only with a failing
-// case proving the hint is wrong for the new class.
+// precondition and rate-limit classes are guaranteed to be misdescribed. Widen only
+// with a failing case proving the hint is wrong for the new class.
 func hintExplainsFailure(p *errs.Problem) bool {
-	return p.Subtype != errs.SubtypeFailedPrecondition
+	switch p.Subtype {
+	case errs.SubtypeFailedPrecondition, errs.SubtypeRateLimit:
+		return false
+	}
+	return true
 }
 
 // appNoDatabaseMessageMarkers are lowercase substrings of the raw server message

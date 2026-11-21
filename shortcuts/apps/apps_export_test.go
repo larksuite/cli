@@ -182,7 +182,7 @@ func TestAppsExport_AnnotatesNotPublishedEnvelope(t *testing.T) {
 }
 
 // TestAppsExport_TypesPermissionDeniedEnvelope pins the live share-link failure:
-// a viewer without download permission gets HTTP 200 + JSON
+// a viewer who is not an edit or full_access collaborator gets HTTP 200 + JSON
 // {"code":40300,"msg":"permission denied"}, not an HTTP 403, so it flows through
 // the envelope classifier. 40300 is not in the shared spark table, so without
 // annotation the caller sees subtype "unknown" and no next step. It must surface
@@ -218,6 +218,61 @@ func TestAppsExport_TypesPermissionDeniedEnvelope(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
 		t.Error("src.zip was written; a permission error must never become a product")
+	}
+}
+
+// TestAppsExport_PermissionDeniedNamesCollaboratorRole pins what an export 40300
+// actually requires. The server first checks that the caller is an edit or
+// full_access collaborator of the app (logs read "user has none of required
+// roles"), then that the app's copy/download setting lets that role download.
+// The guidance used to say only "you need download permission", which sends the
+// user to ask for a permission that is not the one missing and never mentions the
+// collaborator role. Both server shapes (HTTP 403, and HTTP 200 + code 40300) and
+// the share-token example in Tips must name the role.
+func TestAppsExport_PermissionDeniedNamesCollaboratorRole(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		status      int
+		body        string
+		contentType string
+	}{
+		{"http 403", http.StatusForbidden, "permission denied", "text/plain"},
+		{"200 envelope 40300", http.StatusOK, `{"code":40300,"msg":"permission denied"}`, "application/json; charset=utf-8"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chdirTemp(t)
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			reg.Register(archiveStub("", tc.status, []byte(tc.body), tc.contentType, ""))
+
+			err := runAppsShortcut(t, AppsExport,
+				[]string{"+export", "--meta-token", "share-tok", "--output", "src.zip", "--as", "user"}, factory, stdout)
+			var permErr *errs.PermissionError
+			if !errors.As(err, &permErr) {
+				t.Fatalf("err = %T %v, want *errs.PermissionError", err, err)
+			}
+			for _, want := range []string{"collaborator", "edit or full_access", "copy_download_by", "share token is not enough"} {
+				if !strings.Contains(permErr.Hint, want) {
+					t.Errorf("hint = %q, want it to mention %q", permErr.Hint, want)
+				}
+			}
+			if strings.Contains(permErr.Hint, "need download permission") {
+				t.Errorf("hint = %q still names download permission as the requirement", permErr.Hint)
+			}
+		})
+	}
+	var shareTokenTip string
+	for _, tip := range AppsExport.Tips {
+		if strings.Contains(tip, "download permission") {
+			t.Errorf("tip %q still names download permission as the requirement", tip)
+		}
+		if strings.Contains(tip, "share token") {
+			shareTokenTip = tip
+		}
+	}
+	for _, want := range []string{"edit or full_access", "copy_download_by"} {
+		if !strings.Contains(shareTokenTip, want) {
+			t.Errorf("share-token tip = %q, want it to mention %q", shareTokenTip, want)
+		}
 	}
 }
 
@@ -392,7 +447,7 @@ func TestAppsExport_ClassifiesFailures(t *testing.T) {
 		{"forbidden", 403, "permission denied", func(e error) bool {
 			var t *errs.PermissionError
 			return errors.As(e, &t)
-		}, "download permission"},
+		}, "edit or full_access"},
 		{"not found", 404, "app not found", func(e error) bool {
 			var t *errs.APIError
 			return errors.As(e, &t)

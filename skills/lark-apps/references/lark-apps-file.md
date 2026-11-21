@@ -23,6 +23,7 @@
 - **远端文件统一用 `--path` 精确寻址**（远端路径，带前导 `/`）。只知道文件名时，先用 `+file-list --name <名>` 定位拿到 `path`，再做后续操作。
 - **本地文件 / 输出路径用工作目录内的相对路径**（如 `--file ./report.pdf`、`--output ./out.png`）；路径在别处时先 `cd` 过去或改成相对路径。
 - 上传只接收本地 `--file`：文件名沿用本地文件名，远端路径由平台分配、全局唯一（无需也无法手填）。
+- **Windows 的 Git Bash（MSYS）会改写以 `/` 开头的参数**：`--path /1858537546760216.png` 到达 lark-cli 时已经变成 `C:/Program Files/Git/1858537546760216.png` 这类本地路径。凡是带远端 `--path` 的命令（`+file-get`、`+file-sign`、`+file-download`、`+file-delete`、`+file-list`），遇到盘符开头的 `--path` 都会直接报参数错误（exit 2），不会发请求。改法：在命令前加 `MSYS_NO_PATHCONV=1`（如 `MSYS_NO_PATHCONV=1 lark-cli apps +file-get --app-id app_xxx --path /1858537546760216.png`）；只有一段的路径也可以把开头的 `/` 写成两个（`//1858537546760216.png`）。两种改法不要同时用。
 - file 域不区分环境，没有 `--env`。
 
 ## 各命令
@@ -91,6 +92,7 @@ lark-cli apps +file-quota-get --app-id app_xxx
 ## Agent 规则
 
 - 寻址一律用 `--path`；用户只给文件名时先 `+file-list --name <名>` 定位，多个同名再让用户确认。
+- 报 `--path` 是本地 Windows 路径时，按上面的改法重跑同一条命令；不要换文件，也不要据此判断文件不存在。
 - 上传 / 下载的本地路径用工作目录内相对路径；不在当前目录就 `cd` 过去或改相对路径。
 - 用户要「分享链接 / 临时下载地址」时用 `+file-sign`，把返回的链接转述给用户。
 - 删除前判断意图：已明确要删且授权时可直接带 `--yes`；不确定删哪些时先 `+file-list` 给用户确认。批量删除部分失败不报错，按逐项结果向用户说明哪些成功、哪些没删掉及原因。

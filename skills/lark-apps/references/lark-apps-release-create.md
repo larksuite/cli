@@ -41,3 +41,6 @@ lark-cli apps +release-create --app-id app_xxx --branch sprint/default --apply-r
 5. **只确认一次（仅 frontend / full_stack）**：把实际理由放进现有的一次高影响发布确认，说明将发布的目标和理由；确认后命令必须传入完全相同的理由文本。不要新增第二次理由确认。用户已明确预授权当前发布工作流时，不要再次打断。这里的确认只授权 Agent 发起本次 release，不代表当前用户完成或有权完成后续人工审批；实际审批由服务端配置的审批负责人处理。无论是否经过交互确认（包括预授权），执行结果都必须明确复述本次命令实际使用的完整理由。
 6. **只发布已推送代码**：`+release-create` 部署的是远端 `sprint/default` 上已 push 的代码，不是本地工作区。本地若有本轮修改，先 `git add`、`git commit` 并 `git push origin sprint/default`；`frontend` / `full_stack` 命令中的理由必须与已确认文本一致。`git push` 如遇认证失败、401/403、credential helper 缺失或 token 过期，先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令；刷新凭证也失败时停止并报告，不要换路、手动复制 token 或修改 remote URL。
 7. **查询同一轮状态**：创建后保存返回的 `release_id`，按 [`+release-get`](lark-apps-release-get.md) 处理 publishing、等待审批负责人处理、finished、failed 和未知状态；不要创建另一轮 release 来代替状态查询。
+8. **已有发布正在进行**：不要并发调用 `+release-create`。先用 `+release-list` 找到该轮发布，再用 `+release-get` 跟到终态；终态后必须把它的 `commit_id` 与本轮要发布的 commit 核对。commit 不同且用户对本轮发布的授权仍有效时，再发起本轮发布；无法确认目标 commit 或授权是否仍有效时，明确报告本轮发布未完成，绝不能把另一轮发布 finished 当作本轮成功。
+9. **工作分支落后 main**：把 `origin/main` 合入工作分支（默认 `sprint/default`），解决冲突后正常 push，再发起发布；不要 force-push。
+10. **服务端内部失败**：内部失败不等于 push 被拒，不要 rebase。先用 `+release-list` 核对前一次创建是否已生效：已生效就按第 7 条跟踪那一轮；确认没有创建时，可稍后重试一次；无法确认或再次失败时停止，并报告错误里的请求标识，不要盲目重建发布。

@@ -15,13 +15,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLegacyVCSkillsRouteToMeetingSkill(t *testing.T) {
+func TestLegacyVCSkillsAreRetired(t *testing.T) {
 	for _, skillName := range []string{"lark-vc", "lark-vc-agent"} {
 		t.Run(skillName, func(t *testing.T) {
-			skill := readVCContractFile(t, "skills", skillName, "SKILL.md")
-			require.Contains(t, skill, "本技能只用于兼容旧名称，不直接处理业务。")
-			require.Contains(t, skill, "../lark-meeting/SKILL.md")
-			require.Contains(t, skill, `skills: ["lark-meeting"]`)
+			_, err := vfs.Stat(vcContractPath(t, "skills", skillName))
+			require.ErrorIs(t, err, fs.ErrNotExist)
 		})
 	}
 }

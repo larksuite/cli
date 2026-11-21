@@ -14,6 +14,7 @@ type RespAlignment struct {
 	FromEntityID   string    `json:"from_entity_id"`
 	ToEntityType   string    `json:"to_entity_type"`
 	ToEntityID     string    `json:"to_entity_id"`
+	IsDraft        *bool     `json:"is_draft,omitempty"`
 }
 
 // RespCategory 分类
@@ -50,6 +51,7 @@ type RespIndicator struct {
 	CurrentValue              *float64           `json:"current_value,omitempty"`
 	CurrentValueCalculateType *string            `json:"current_value_calculate_type,omitempty"`
 	Unit                      *RespIndicatorUnit `json:"unit,omitempty"`
+	IsDraft                   *bool              `json:"is_draft,omitempty"`
 }
 
 // RespIndicatorUnit 指标单位
@@ -70,6 +72,7 @@ type RespKeyResult struct {
 	Score       *float64  `json:"score,omitempty"`
 	Weight      *float64  `json:"weight,omitempty"`
 	Deadline    *string   `json:"deadline,omitempty"`
+	IsDraft     *bool     `json:"is_draft,omitempty"`
 }
 
 // RespObjective 目标
@@ -87,6 +90,7 @@ type RespObjective struct {
 	Deadline   *string         `json:"deadline,omitempty"`
 	CategoryID *string         `json:"category_id,omitempty"`
 	KeyResults []RespKeyResult `json:"key_results,omitempty"`
+	IsDraft    *bool           `json:"is_draft,omitempty"`
 }
 
 // RespOwner OKR 所有者
@@ -162,6 +166,7 @@ type RespKeyResultSimple struct {
 	Score       *float64          `json:"score,omitempty"`
 	Weight      *float64          `json:"weight,omitempty"`
 	Deadline    *string           `json:"deadline,omitempty"`
+	IsDraft     *bool             `json:"is_draft,omitempty"`
 }
 
 // RespObjectiveSimple is Objective response with SemiPlainContent instead of ContentBlock JSON string.
@@ -179,6 +184,7 @@ type RespObjectiveSimple struct {
 	Deadline   *string               `json:"deadline,omitempty"`
 	CategoryID *string               `json:"category_id,omitempty"`
 	KeyResults []RespKeyResultSimple `json:"key_results,omitempty"`
+	IsDraft    *bool                 `json:"is_draft,omitempty"`
 }
 
 // RespProgressSimple is Progress response with SemiPlainContent instead of ContentBlock JSON string.
@@ -204,6 +210,7 @@ func (k *KeyResult) ToSimple() *RespKeyResultSimple {
 		Position:    k.Position,
 		Score:       k.Score,
 		Weight:      k.Weight,
+		IsDraft:     k.IsDraft,
 	}
 	if k.Deadline != nil {
 		d := formatTimestamp(*k.Deadline)
@@ -228,6 +235,7 @@ func (o *Objective) ToSimple() *RespObjectiveSimple {
 		Score:      o.Score,
 		Weight:     o.Weight,
 		CategoryID: o.CategoryID,
+		IsDraft:    o.IsDraft,
 	}
 	if o.Deadline != nil {
 		d := formatTimestamp(*o.Deadline)

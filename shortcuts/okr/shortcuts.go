@@ -24,6 +24,8 @@ func Shortcuts() []common.Shortcut {
 		OKRWeight,
 		OKRIndicatorUpdate,
 		OKRPatch,
+		OKRPublishDraft,
+		OKRDropDraft,
 		OKRCycleCommentDetail,
 		OKRListComments,
 		OKRGetComment,

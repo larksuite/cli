@@ -30,7 +30,7 @@ func (closureAPIClient) CallAPI(context.Context, string, string, any) (json.RawM
 // Native keys (Process == nil) are exempt by contract: their declared output
 // is the raw envelope itself.
 func TestAllKeys_MalformedPayloadStaysSchemaClosed(t *testing.T) {
-	const wantProcessedKeys = 13
+	const wantProcessedKeys = 14
 
 	processed := 0
 	for _, def := range compileRealCatalog(t).Definitions() {

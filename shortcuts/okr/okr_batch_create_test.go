@@ -373,6 +373,9 @@ func TestBatchCreateDryRun(t *testing.T) {
 	if !strings.Contains(output, "KR 1.1") {
 		t.Fatalf("dry-run output should contain KR text, got: %s", output)
 	}
+	if !gjson.Get(output, "data.api.0.body.apply_to_draft").Bool() || !gjson.Get(output, "data.api.1.body.apply_to_draft").Bool() {
+		t.Fatalf("objective and KR creation should default apply_to_draft=true, got: %s", output)
+	}
 }
 
 func TestBatchCreateDryRun_WithObjectiveNotes(t *testing.T) {
@@ -618,10 +621,10 @@ func TestBatchCreateExecute_APIErrorOnKR_TriggersRollback(t *testing.T) {
 			"msg":  "invalid parameters",
 		},
 	})
-	// Rollback: delete the created objective
+	// Rollback: drop the newly created objective draft
 	reg.Register(&httpmock.Stub{
-		Method: "DELETE",
-		URL:    "/open-apis/okr/v2/objectives/100",
+		Method: "POST",
+		URL:    "/open-apis/okr/v2/objectives/100/draft_drop",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "ok",
@@ -699,6 +702,7 @@ func TestBatchCreateExecute_RollbackDeleteFails(t *testing.T) {
 		"+batch-create",
 		"--cycle-id", "123",
 		"--input", `[{"text":"Obj 1","krs":[{"text":"KR 1"}]}]`,
+		"--apply-to-draft=false",
 	})
 	if err == nil {
 		t.Fatal("expected error for KR creation failure")

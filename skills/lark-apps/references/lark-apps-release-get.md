@@ -11,12 +11,13 @@
 ## 命令骨架
 
 - 必填：`--app-id`、`--release-id`。
-- `release_id` 来自 `+release-create` 或 `+release-list`。
+- `release_id` 来自 `+release-create` 或 `+release-list`，是一串数字（如 `7712345678901234567`）。`+release-create` 的 JSON 输出里是 `data.release_id`；要直接取值用 `-q '.data.release_id'`，lark-cli 的 `-q` 输出字符串不带引号，可以原样传给 `--release-id`。
+- `--release-id` 只收 64 位整数范围内的纯数字。占位符、发布状态、带引号的 ID、整段命令输出会在本地报参数错误（exit 2），不会发请求；按提示改传真实的 `release_id`，不知道就先 `+release-list`。
 
 ## 示例
 
 ```bash
-lark-cli apps +release-get --app-id app_xxx --release-id release_yyy
+lark-cli apps +release-get --app-id app_xxx --release-id 7712345678901234567
 ```
 
 ## 输出契约
@@ -25,7 +26,7 @@ lark-cli apps +release-get --app-id app_xxx --release-id release_yyy
 - `current_node_info` 内服务端可能返回 camelCase；CLI 会把已知字段统一输出为 `current_node`、`current_status`、`created_at`、`submitted_by.open_id` 和 `result.approval_url`，并保留未知字段。Agent 只读取这些 snake_case 字段。
 - 非终态 `status=publishing` 或 `status=pending` 时先检查 `current_node_info.current_status`，按下方 Agent 规则决定等待审批负责人处理、继续轮询或停止。未完成时不要拿其它链接（包括本次响应里提前出现的 `online_url`、`+list` 里的应用主页或开发态预览 URL）冒充“本轮发布的访问链接”——只回报本轮 release 状态，并说明 `finished` 后才可能使用 `online_url`。
 - `status=finished` 发布成功——若输出含 `online_url`，直接读取它作为本轮发布的线上访问链接；未返回时只报告发布完成，不要编造链接。该链接默认仅创建者可见，交付他人前先告知当前仅本人可见、按需用 `+access-scope-set` 放开可见范围。无需再调 `+list`（`+list` 仍可用于按应用名浏览，但不是发布主流程的必经步骤）。
-- `status=failed` 发布失败——若输出含 `error_logs`（`step`/`error_log`），据此向用户转述关键失败步骤和可行动修复；未返回时不要编造失败原因。在已验证的 BOE 发布链路中，审批被拒绝也返回 `failed`，具体结果以 `error_logs` 为准。
+- `status=failed` 发布失败——若输出含 `error_logs`（`step`/`error_log`），据此向用户转述关键失败步骤和可行动修复；未返回时不要编造失败原因。审批被拒绝时也返回 `failed`，具体结果以 `error_logs` 为准。
 - 只有当这个 `release_id` 已返回 `finished`，随后读到的 `online_url` 才能被表述为“本轮发布后的访问链接”。单独从 `+list` 看到 `is_published=true` 不能证明最新版本已部署。
 
 ## Agent 规则

@@ -8,14 +8,33 @@ import (
 	"testing"
 )
 
+func clearAgentIdentityEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		CliAgentName,
+		"CLAUDECODE",
+		"WORKBUDDY_APP_NAME",
+		"QODERWORK_EXECUTION_ENV",
+		"HERMES_HOME",
+		"OPENCLAW_SHELL",
+		"CODEX_SHELL",
+		"CODEX_VERSION",
+		"CODEX_PERMISSION_PROFILE",
+		"CLIENT_INFO_IDE_TYPE",
+	} {
+		t.Setenv(key, "")
+	}
+}
+
 func TestAgentName_EmptyWhenEnvUnset(t *testing.T) {
-	t.Setenv(CliAgentName, "")
+	clearAgentIdentityEnv(t)
 	if got := AgentName(); got != "" {
 		t.Fatalf("AgentName() = %q, want empty when env unset", got)
 	}
 }
 
 func TestAgentName_ReturnsCleanValue(t *testing.T) {
+	clearAgentIdentityEnv(t)
 	const agentName = "sample-agent"
 	t.Setenv(CliAgentName, agentName)
 	if got := AgentName(); got != agentName {
@@ -24,6 +43,7 @@ func TestAgentName_ReturnsCleanValue(t *testing.T) {
 }
 
 func TestAgentName_TrimsWhitespace(t *testing.T) {
+	clearAgentIdentityEnv(t)
 	const agentName = "sample-agent"
 	t.Setenv(CliAgentName, "  "+agentName+"  ")
 	if got := AgentName(); got != agentName {
@@ -32,6 +52,7 @@ func TestAgentName_TrimsWhitespace(t *testing.T) {
 }
 
 func TestAgentName_RejectsCRLFInjection(t *testing.T) {
+	clearAgentIdentityEnv(t)
 	t.Setenv(CliAgentName, "agent\r\nX-Evil: attack")
 	if got := AgentName(); got != "" {
 		t.Fatalf("AgentName() = %q, want empty for CR/LF value", got)
@@ -39,6 +60,7 @@ func TestAgentName_RejectsCRLFInjection(t *testing.T) {
 }
 
 func TestAgentName_RejectsControlChar(t *testing.T) {
+	clearAgentIdentityEnv(t)
 	t.Setenv(CliAgentName, "agent\x01injected")
 	if got := AgentName(); got != "" {
 		t.Fatalf("AgentName() = %q, want empty for control char value", got)
@@ -46,6 +68,7 @@ func TestAgentName_RejectsControlChar(t *testing.T) {
 }
 
 func TestAgentName_RejectsOverlongValue(t *testing.T) {
+	clearAgentIdentityEnv(t)
 	longVal := strings.Repeat("a", agentNameMaxLen+1)
 	t.Setenv(CliAgentName, longVal)
 	if got := AgentName(); got != "" {

@@ -64,7 +64,7 @@ var AppsDBTableList = common.Shortcut{
 		}
 		data, err := rctx.CallAPITyped("GET", appTablesPath(appID), buildDBTableListParams(rctx), nil)
 		if err != nil {
-			return withAppsHint(err, dbTableListHint)
+			return withAppsReadHint(err, dbTableListHint)
 		}
 		// 白名单投影：只把产品要求的字段组装进 dbTableListItem，替换 server 原始 items[]。
 		// server 给每张表回完整 columns[]（与 +db-table-get 同源、逐字节一致），在 list 里逐表

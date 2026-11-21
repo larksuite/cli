@@ -52,7 +52,7 @@ var AppsCacheGet = common.Shortcut{
 		key := rctx.Str("key")
 		data, err := rctx.CallAPITyped("GET", appCachePath(appID), dbEnvParams(rctx, map[string]interface{}{"key": key}), nil)
 		if err != nil {
-			return withAppsHint(err, appIDListHint)
+			return withAppsReadHint(err, appIDListHint)
 		}
 		out := projectCacheGet(data, key, rctx)
 		rctx.OutFormat(out, nil, func(w io.Writer) {

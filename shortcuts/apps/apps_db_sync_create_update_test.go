@@ -441,8 +441,8 @@ func TestAppsDBSyncUpdateDryRun(t *testing.T) {
 	if _, ok := a.Params["task_id"]; ok {
 		t.Fatalf("task_id must be in body, not query params: %v", a.Params)
 	}
-	if a.Body["env"] != "dev" {
-		t.Fatalf("dry-run body.env = %v", a.Body["env"])
+	if _, ok := a.Body["env"]; ok {
+		t.Fatalf("update ignores --environment, so dry-run body must omit env: %v", a.Body)
 	}
 	if _, ok := a.Params["env"]; ok {
 		t.Fatalf("env must be in body, not query params: %v", a.Params)
@@ -501,6 +501,92 @@ func TestAppsDBSyncUpdateSourceTableErrorHintStaysCommandNeutral(t *testing.T) {
 	// Update must not be steered into a create-only recovery path.
 	if !strings.Contains(p.Hint, "+db-sync-update") {
 		t.Fatalf("update hint = %q, want +db-sync-update guidance", p.Hint)
+	}
+}
+
+// Update cannot create the target table and has no preview, so the create-side
+// recovery for 400002483 (switch action to create, rerun preview) must not reach it.
+func TestAppsDBSyncUpdateTargetTableMissingHint(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PUT", URL: dbSyncUpdateURL,
+		Body: map[string]interface{}{"code": 400002483, "msg": "Target table 'orders' does not exist in the dev environment."},
+	})
+
+	err := runAppsShortcut(t, AppsDBSyncUpdate, []string{
+		"+db-sync-update", "--app-id", "app_x", "--task-id", "streaming_1",
+		"--config", dbSyncCommitConfig, "--yes", "--as", "user",
+	}, factory, stdout)
+	p := requireAppsAPIProblem(t, err)
+	if p.Code != 400002483 || p.Subtype != errs.SubtypeNotFound || p.Message != "Target table 'orders' does not exist in the dev environment." {
+		t.Fatalf("problem metadata changed: %+v", p)
+	}
+	hint := strings.ToLower(p.Hint)
+	for _, want := range []string{
+		"does not exist in the environment this sync task belongs to",
+		"+db-execute --environment",
+		"a table that already exists there",
+		// A multi-environment app's online environment forbids direct DDL, so
+		// the table is created in dev and published instead.
+		"+db-env-migrate",
+		"do not change target.table.action",
+		"do not rerun preview",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("update hint = %q, want %q", p.Hint, want)
+		}
+	}
+	for _, forbid := range []string{"set target.table.action to 'create'", "then rerun preview"} {
+		if strings.Contains(hint, forbid) {
+			t.Errorf("update hint = %q, must not contain create-only guidance %q", p.Hint, forbid)
+		}
+	}
+}
+
+// An upstream hint is already the most specific recovery contract and must survive update wrapping unchanged.
+func TestWithDBSyncUpdateHintKeepsUpstreamHint(t *testing.T) {
+	in := errs.NewAPIError(errs.SubtypeNotFound, "target table missing").
+		WithCode(dbSyncTargetTableMissingCode).
+		WithHint("upstream-specific recovery")
+	p, ok := errs.ProblemOf(withDBSyncUpdateHint(in))
+	if !ok || p.Hint != "upstream-specific recovery" {
+		t.Fatalf("problem = %#v, ok = %v; want upstream hint unchanged", p, ok)
+	}
+}
+
+// Rate limiting outranks update-specific code handling because the request was never evaluated.
+func TestWithDBSyncUpdateHintKeepsRateLimitHint(t *testing.T) {
+	in := errs.NewAPIError(errs.SubtypeRateLimit, "rate limited").WithCode(dbSyncTargetTableMissingCode).WithRetryable()
+	p, ok := errs.ProblemOf(withDBSyncUpdateHint(in))
+	if !ok || p.Hint != appRateLimitHint || p.Subtype != errs.SubtypeRateLimit || !p.Retryable {
+		t.Fatalf("problem = %#v, ok = %v; want rate-limit classification and shared hint", p, ok)
+	}
+}
+
+// Update keeps --environment for compatibility but must omit it from both dev and online requests.
+func TestAppsDBSyncUpdateIgnoresEnvironmentInRequests(t *testing.T) {
+	for _, environment := range []string{"dev", "online"} {
+		t.Run(environment, func(t *testing.T) {
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			stub := &httpmock.Stub{
+				Method: "PUT", URL: dbSyncUpdateURL,
+				Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"task_id": "streaming_1", "status": "active"}},
+			}
+			reg.Register(stub)
+			if err := runAppsShortcut(t, AppsDBSyncUpdate, []string{
+				"+db-sync-update", "--app-id", "app_x", "--task-id", "streaming_1",
+				"--config", dbSyncCommitConfig, "--environment", environment, "--yes", "--as", "user",
+			}, factory, stdout); err != nil {
+				t.Fatalf("execute err=%v", err)
+			}
+			var body map[string]interface{}
+			if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+				t.Fatalf("decode captured body: %v", err)
+			}
+			if _, ok := body["env"]; ok {
+				t.Fatalf("update ignores --environment, so request body must omit env: %v", body)
+			}
+		})
 	}
 }
 

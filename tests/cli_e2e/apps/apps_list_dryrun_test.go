@@ -11,6 +11,7 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // TestAppsListDryRun pins cursor-pagination params: default page_size=20 is
@@ -91,7 +92,7 @@ func TestAppsListDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		for _, p := range []string{"keyword", "ownership", "app_type"} {
+		for _, p := range []string{"keyword", "ownership", "app_type", "owner_id"} {
 			assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params."+p).Exists(),
 				"empty %s must be omitted", p)
 		}
@@ -134,5 +135,34 @@ func TestAppsListDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		assert.Equal(t, "-1", clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").String())
+	})
+
+	t.Run("WithOwner", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"apps", "+list", "--owner-id", "ou_speaker", "--dry-run"},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		assert.Equal(t, "ou_speaker", clie2e.DryRunGet(result.Stdout, "api.0.params.owner_id").String())
+	})
+
+	t.Run("RejectsInvalidOwner", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"apps", "+list", "--owner-id", "12345", "--dry-run"},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 2)
+		require.Empty(t, result.Stdout)
+		require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
+		require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String())
+		require.Equal(t, "--owner-id", gjson.Get(result.Stderr, "error.param").String())
 	})
 }

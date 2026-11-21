@@ -39,8 +39,14 @@ var AppsFileDelete = common.Shortcut{
 		if _, err := requireFileAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
-		if len(cleanDeletePaths(rctx)) == 0 {
+		paths := cleanDeletePaths(rctx)
+		if len(paths) == 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--path is required (at least one remote path)").WithParam("--path")
+		}
+		for _, p := range paths {
+			if err := rejectLocalWindowsPath(p); err != nil {
+				return err
+			}
 		}
 		return nil
 	},

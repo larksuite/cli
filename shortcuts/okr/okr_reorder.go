@@ -61,7 +61,11 @@ func parseReorderOps(opsStr string) ([]reorderOp, error) {
 
 // fetchObjectives fetches all objectives in a cycle.
 func fetchObjectives(ctx context.Context, runtime *common.RuntimeContext, cycleID string) ([]Objective, error) {
-	queryParams := map[string]interface{}{"page_size": "100"}
+	return fetchObjectivesWithDraftPreference(ctx, runtime, cycleID, false)
+}
+
+func fetchObjectivesWithDraftPreference(ctx context.Context, runtime *common.RuntimeContext, cycleID string, preferDraft bool) ([]Objective, error) {
+	queryParams := map[string]interface{}{"page_size": "100", "prefer_draft": preferDraft}
 	var objectives []Objective
 	page := 0
 
@@ -119,7 +123,11 @@ func fetchObjectives(ctx context.Context, runtime *common.RuntimeContext, cycleI
 
 // fetchKeyResults fetches all key results for an objective.
 func fetchKeyResults(ctx context.Context, runtime *common.RuntimeContext, objectiveID string) ([]KeyResult, error) {
-	queryParams := map[string]interface{}{"page_size": "100"}
+	return fetchKeyResultsWithDraftPreference(ctx, runtime, objectiveID, false)
+}
+
+func fetchKeyResultsWithDraftPreference(ctx context.Context, runtime *common.RuntimeContext, objectiveID string, preferDraft bool) ([]KeyResult, error) {
+	queryParams := map[string]interface{}{"page_size": "100", "prefer_draft": preferDraft}
 	var keyResults []KeyResult
 	page := 0
 
@@ -306,7 +314,7 @@ var OKRReorder = common.Shortcut{
 		if level == "objective" {
 			// First fetch objectives
 			listParams := map[string]interface{}{
-				"page_size": 100,
+				"page_size": 100, "prefer_draft": true,
 			}
 			listPath := fmt.Sprintf("/open-apis/okr/v2/cycles/%s/objectives", cycleID)
 			apis = apis.
@@ -335,7 +343,7 @@ var OKRReorder = common.Shortcut{
 		} else {
 			// key-result level
 			listParams := map[string]interface{}{
-				"page_size": 100,
+				"page_size": 100, "prefer_draft": true,
 			}
 			listPath := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/key_results", objectiveID)
 			apis = apis.
@@ -353,6 +361,7 @@ var OKRReorder = common.Shortcut{
 			}
 			reorderBody := map[string]interface{}{
 				"key_result_ids": keyResultIDs,
+				"apply_to_draft": true,
 			}
 			reorderPath := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/key_results_position", objectiveID)
 			apis = apis.
@@ -377,7 +386,7 @@ var OKRReorder = common.Shortcut{
 		var total int
 
 		if level == "objective" {
-			objectives, err := fetchObjectives(ctx, runtime, cycleID)
+			objectives, err := fetchObjectivesWithDraftPreference(ctx, runtime, cycleID, true)
 			if err != nil {
 				return err
 			}
@@ -402,7 +411,7 @@ var OKRReorder = common.Shortcut{
 			}
 		} else {
 			// key-result level
-			keyResults, err := fetchKeyResults(ctx, runtime, objectiveID)
+			keyResults, err := fetchKeyResultsWithDraftPreference(ctx, runtime, objectiveID, true)
 			if err != nil {
 				return err
 			}
@@ -419,6 +428,7 @@ var OKRReorder = common.Shortcut{
 			}
 			body := map[string]interface{}{
 				"key_result_ids": reorderedIDs,
+				"apply_to_draft": true,
 			}
 			path := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/key_results_position", objectiveID)
 			_, err = runtime.CallAPITyped("PUT", path, params, body)

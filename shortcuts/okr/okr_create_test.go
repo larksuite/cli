@@ -515,6 +515,9 @@ func TestCreateDryRun_Objective(t *testing.T) {
 	if got := gjson.Get(output, "data.api.0.body.content.blocks.0.paragraph.elements.1.mention.user_id").String(); got != "ou_123" {
 		t.Fatalf("dry-run mention user_id = %q, want ou_123; output: %s", got, output)
 	}
+	if !gjson.Get(output, "data.api.0.body.apply_to_draft").Bool() {
+		t.Fatalf("apply_to_draft should default to true; output: %s", output)
+	}
 }
 
 func TestCreateDryRun_ObjectiveWithNotes(t *testing.T) {
@@ -570,6 +573,7 @@ func TestCreateDryRun_KeyResult(t *testing.T) {
 		"--style", "richtext",
 		"--content", validCreateRichTextJSON,
 		"--user-id-type", "union_id",
+		"--apply-to-draft=false",
 		"--dry-run",
 	})
 	if err != nil {
@@ -590,6 +594,9 @@ func TestCreateDryRun_KeyResult(t *testing.T) {
 	}
 	if got := gjson.Get(output, "data.api.0.body.content.blocks.0.paragraph.elements.0.text_run.text").String(); got != "test content" {
 		t.Fatalf("dry-run richtext content = %q, want test content; output: %s", got, output)
+	}
+	if gjson.Get(output, "data.api.0.body.apply_to_draft").Bool() {
+		t.Fatalf("apply_to_draft should pass explicit false; output: %s", output)
 	}
 }
 

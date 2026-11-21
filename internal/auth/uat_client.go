@@ -90,7 +90,7 @@ func GetValidAccessToken(ctx context.Context, httpClient *http.Client, opts UATC
 		return nil, NewNeedUserAuthorizationError(opts.UserOpenId)
 	}
 
-	if TokenStatus(stored) == "valid" && !needsNearExpiryDPoPClockSync(stored) {
+	if !needsDPoPClockSync(stored) && TokenStatus(stored) == "valid" {
 		return accessTokenResultFromStored(ctx, stored, opts)
 	}
 
@@ -104,11 +104,14 @@ func GetValidAccessToken(ctx context.Context, httpClient *http.Client, opts UATC
 	return accessTokenResultFromStored(ctx, refreshed, opts)
 }
 
-func needsNearExpiryDPoPClockSync(stored *StoredUAToken) bool {
-	if stored == nil || stored.TokenType != StoredTokenTypeDPoP || stored.RefreshToken != "" {
+func needsDPoPClockSync(stored *StoredUAToken) bool {
+	if stored == nil || stored.TokenType != StoredTokenTypeDPoP {
 		return false
 	}
-	return tokenNow(stored).UnixMilli() >= stored.ExpiresAt-refreshAheadMs
+	now := time.Now().UnixMilli()
+	return stored.ClockSyncedAtMs <= 0 || now < stored.ClockSyncedAtMs ||
+		now-stored.ClockSyncedAtMs >= uatClockSyncTTL.Milliseconds() ||
+		(stored.RefreshToken == "" && tokenNow(stored).UnixMilli() >= stored.ExpiresAt-refreshAheadMs)
 }
 
 func logExpiredStoredTokenCleared(errOut io.Writer, stored *StoredUAToken, userOpenID string) {
@@ -140,7 +143,7 @@ func rejectBearerTokenWhenDPoPRequired(stored *StoredUAToken, opts UATCallOption
 		dpopReauthorizationHint("run `lark-cli auth login` to issue a DPoP-bound token"))
 }
 
-// refreshWithLock serializes the complete refresh transaction with every
+// refreshWithLock serializes clock synchronization and refresh with every
 // stored-token writer and remover for this account.
 func refreshWithLock(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (*StoredUAToken, error) {
 	var refreshed *StoredUAToken
@@ -148,7 +151,7 @@ func refreshWithLock(ctx context.Context, httpClient *http.Client, opts UATCallO
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		freshStored, err := GetStoredToken(opts.AppId, opts.UserOpenId)
+		freshStored, _, err := readStoredToken(opts.AppId, opts.UserOpenId)
 		if err != nil {
 			return err
 		}
@@ -161,7 +164,7 @@ func refreshWithLock(ctx context.Context, httpClient *http.Client, opts UATCallO
 
 		switch TokenStatus(freshStored) {
 		case "valid":
-			if needsNearExpiryDPoPClockSync(freshStored) {
+			if needsDPoPClockSync(freshStored) {
 				break
 			}
 			if opts.ErrOut != nil {
@@ -192,21 +195,7 @@ func refreshWithLock(ctx context.Context, httpClient *http.Client, opts UATCallO
 			return nil
 		}
 
-		if freshStored.RefreshToken != "" {
-			if err := ensureTokenStorageWritable(opts.AppId, opts.UserOpenId); err != nil {
-				if opts.ErrOut != nil {
-					fmt.Fprintf(opts.ErrOut,
-						"[lark-cli] [WARN] uat-client: token storage is not writable while refreshing: %v\n",
-						err)
-				}
-				return err
-			}
-		}
-
-		// Once token rotation starts, finish it even if the caller disconnects.
-		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uatRefreshTimeout)
-		defer cancel()
-		refreshed, err = doRefreshToken(refreshCtx, httpClient, opts, freshStored)
+		refreshed, err = doRefreshToken(ctx, httpClient, opts, freshStored)
 		return err
 	})
 	return refreshed, err
@@ -217,6 +206,8 @@ const (
 	uatRefreshTimeout        = 60 * time.Second
 	refreshRateLimitFallback = time.Second
 	refreshRateLimitMaxDelay = 30 * time.Second
+	uatClockSyncTTL          = 5 * time.Minute
+	uatClockSyncTimeout      = 5 * time.Second
 )
 
 type refreshRequest struct {
@@ -268,7 +259,7 @@ type refreshResult struct {
 	err        error
 }
 
-// doRefreshToken performs the HTTP refresh and applies its storage result.
+// doRefreshToken calibrates DPoP time, then refreshes only if still needed.
 // The caller must hold the account's token storage lock.
 func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
 	return doRefreshTokenWithRetryWait(ctx, httpClient, opts, stored, waitRefreshRetry)
@@ -296,43 +287,61 @@ func doRefreshTokenWithRetryWait(ctx context.Context, httpClient *http.Client, o
 		}
 		proofKey = binding.Key()
 	}
-	if proofKey != nil && stored.TokenType == StoredTokenTypeDPoP {
-		if err := opts.DPoPKeyStore.RequireKeyWritableContext(ctx, proofKey); err != nil {
-			return nil, err
-		}
-	}
-	uncertain := false
-	clockRecoveryUsed := false
+	clockSyncFailed := false
 	if proofKey != nil {
 		if err := synchronizeStoredTokenClock(ctx, httpClient, opts, stored, proofKey); err != nil {
 			problem, ok := errs.ProblemOf(err)
 			if ctx.Err() != nil || !ok || problem.Subtype != errs.SubtypeDPoPClockSyncFailed {
 				return nil, err
 			}
+			clockSyncFailed = true
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: clock synchronization failed; continuing with the existing clock: %v\n", err)
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if TokenStatus(stored) == "valid" {
+		return stored, nil
+	}
+	if TokenStatus(stored) == "expired" && !clockSyncFailed {
+		logExpiredStoredTokenCleared(errOut, stored, opts.UserOpenId)
+		retained, deleted, err := compareAndDeleteStoredToken(opts.AppId, opts.UserOpenId, stored)
+		if err != nil {
+			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove expired token: %v\n", err)
+			return nil, err
+		}
+		if !deleted {
+			return resolveStoredTokenGenerationConflict(retained, opts.UserOpenId)
+		}
+		if stored.RefreshToken == "" {
+			return nil, newExpiredWithoutRefreshTokenError(opts)
+		}
+		return nil, nil
+	}
+	if stored.RefreshToken == "" {
+		return nil, newExpiredWithoutRefreshTokenError(opts)
+	}
+	if proofKey != nil {
+		if err := opts.DPoPKeyStore.RequireKeyWritableContext(ctx, proofKey); err != nil {
+			return nil, err
+		}
+	}
+	if err := ensureTokenStorageWritable(opts.AppId, opts.UserOpenId); err != nil {
+		fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: token storage is not writable while refreshing: %v\n", err)
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// Once token rotation starts, finish it even if the caller disconnects.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uatRefreshTimeout)
+	defer cancel()
+
+	uncertain := false
+	clockRecoveryUsed := false
 	ordinaryAttempts := 0
 	for {
-		if stored.RefreshToken == "" && TokenStatus(stored) == "valid" {
-			return stored, nil
-		}
-		if TokenStatus(stored) == "expired" {
-			logExpiredStoredTokenCleared(errOut, stored, opts.UserOpenId)
-			retained, deleted, err := compareAndDeleteStoredToken(opts.AppId, opts.UserOpenId, stored)
-			if err != nil {
-				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove expired token: %v\n", err)
-				return nil, err
-			}
-			if !deleted {
-				return resolveStoredTokenGenerationConflict(retained, opts.UserOpenId)
-			}
-			if stored.RefreshToken == "" {
-				return nil, newExpiredWithoutRefreshTokenError(opts)
-			}
-			return nil, nil
-		}
-
 		result := refreshOnce(ctx, httpClient, endpoint, opts, stored, proofKey, !clockRecoveryUsed)
 		if result.action == refreshSaveResponse {
 			saved, saveErr := saveRefreshResponse(opts, stored, result.response, proofKey)
@@ -426,7 +435,10 @@ func doRefreshTokenWithRetryWait(ctx context.Context, httpClient *http.Client, o
 }
 
 func synchronizeStoredTokenClock(ctx context.Context, httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken, key *dpop.Key) error {
-	if err := dpop.SynchronizeClock(ctx, httpClient, opts.Domain, key); err != nil {
+	syncCtx, cancel := context.WithTimeout(ctx, uatClockSyncTimeout)
+	err := dpop.SynchronizeClock(syncCtx, httpClient, opts.Domain, key)
+	defer cancel()
+	if err != nil {
 		return err
 	}
 	if err := opts.DPoPKeyStore.SaveContext(ctx, key); err != nil {
@@ -436,9 +448,14 @@ func synchronizeStoredTokenClock(ctx context.Context, httpClient *http.Client, o
 			WithHint("%s", dpop.KeyStoreUnavailableHint)
 	}
 	applyClockState(stored, key.Clock())
-	if err := writeStoredToken(opts.AppId, opts.UserOpenId, stored); err != nil {
+	_, swapped, err := compareAndSwapStoredToken(opts.AppId, opts.UserOpenId, stored, stored)
+	if err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage,
 			"failed to persist synchronized token clock: %v", err).WithCause(err)
+	}
+	if !swapped {
+		return errs.NewInternalError(errs.SubtypeStorage, "stored token changed during clock synchronization").
+			WithRetryable().WithHint("retry the command")
 	}
 	return nil
 }
@@ -581,10 +598,16 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 					WithHint("%s", dpop.KeyStoreUnavailableHint)}
 			}
 			applyClockState(stored, proofKey.Clock())
-			if err := writeStoredToken(opts.AppId, opts.UserOpenId, stored); err != nil {
+			_, swapped, err := compareAndSwapStoredToken(opts.AppId, opts.UserOpenId, stored, stored)
+			if err != nil {
 				return refreshResult{action: refreshStopAndPreserve, err: errs.NewInternalError(
 					errs.SubtypeStorage, "failed to persist recovered token clock: %v", err).
 					WithCause(err)}
+			}
+			if !swapped {
+				return refreshResult{action: refreshStopAndPreserve, err: errs.NewInternalError(
+					errs.SubtypeStorage, "stored token changed during clock recovery").
+					WithRetryable().WithHint("retry the command")}
 			}
 			return refreshResult{action: refreshRetryAfterClockSync, err: errs.NewAuthenticationError(
 				errs.SubtypeDPoPTokenRejected, "Token Endpoint rejected DPoP proof because iat was invalid").
@@ -786,10 +809,7 @@ func ensureTokenStorageWritable(appID, userOpenID string) error {
 	if err := SetStoredToken(probeToken); err != nil {
 		return err
 	}
-	if err := RemoveStoredToken(appID, probeUserOpenID); err != nil {
-		return err
-	}
-	return nil
+	return RemoveStoredToken(appID, probeUserOpenID)
 }
 
 // refreshRateLimitDelay bounds the sole ordinary retry wait. Zero/past dates

@@ -183,7 +183,7 @@ func TestDBSyncConfig(t *testing.T) {
 }
 
 func TestDBSyncEnvironmentHelpDefaultsToOnline(t *testing.T) {
-	for _, shortcut := range []common.Shortcut{AppsDBSyncCreate, AppsDBSyncList, AppsDBSyncUpdate} {
+	for _, shortcut := range []common.Shortcut{AppsDBSyncCreate, AppsDBSyncList} {
 		t.Run(shortcut.Command, func(t *testing.T) {
 			for _, flag := range shortcut.Flags {
 				if flag.Name != "environment" {
@@ -200,8 +200,19 @@ func TestDBSyncEnvironmentHelpDefaultsToOnline(t *testing.T) {
 			t.Fatalf("%s missing --environment flag", shortcut.Command)
 		})
 	}
+	for _, flag := range AppsDBSyncUpdate.Flags {
+		if flag.Name == "environment" {
+			if !strings.Contains(flag.Desc, "ignores this value") || !strings.Contains(flag.Desc, "compatibility") {
+				t.Fatalf("+db-sync-update --environment description = %q, want compatibility/ignored contract", flag.Desc)
+			}
+			return
+		}
+	}
+	t.Fatal("+db-sync-update missing --environment compatibility flag")
 }
 
+// TestDBSyncHint covers how withDBSyncHint chooses between subcode,
+// rate-limit, per-code and fallback guidance while preserving the error.
 func TestDBSyncHint(t *testing.T) {
 	t.Run("nil and untyped errors pass through", func(t *testing.T) {
 		if got := withDBSyncHint(nil, "fallback"); got != nil {
@@ -272,8 +283,11 @@ func TestDBSyncHint(t *testing.T) {
 		if !strings.Contains(p.Hint, "multi-env") || !strings.Contains(p.Hint, "--environment dev") {
 			t.Fatalf("hint = %q, want multi-env online-DDL guidance", p.Hint)
 		}
-		if p.Code != 500002776 || p.LogID != "log_ddl" || p.Subtype != errs.SubtypeUnknown {
+		if p.Code != 500002776 || p.LogID != "log_ddl" || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeFailedPrecondition {
 			t.Fatalf("problem metadata mutated: %+v", p)
+		}
+		if strings.Contains(p.Message, dbSubcodePrefix) {
+			t.Fatalf("message = %q, want consumed subcode prefix stripped", p.Message)
 		}
 	})
 
@@ -289,13 +303,13 @@ func TestDBSyncHint(t *testing.T) {
 		}
 	})
 
-	t.Run("online DDL subcode does not override server hint", func(t *testing.T) {
+	t.Run("online DDL subcode overrides generic server hint", func(t *testing.T) {
 		in := errs.NewAPIError(errs.SubtypeUnknown, "k_dl_4000001：forbid ddl/dcl operation in online env").
 			WithCode(500002776).WithHint("server hint")
 		out := withDBSyncHint(in, "fallback")
 		p, _ := errs.ProblemOf(out)
-		if p.Hint != "server hint" {
-			t.Fatalf("hint = %q, want preserved server hint", p.Hint)
+		if p.Hint != dbSyncOnlineDDLHint {
+			t.Fatalf("hint = %q, want precise online DDL recovery", p.Hint)
 		}
 	})
 }

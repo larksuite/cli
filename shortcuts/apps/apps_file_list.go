@@ -61,6 +61,9 @@ var AppsFileList = common.Shortcut{
 		if _, err := requireFileAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
+		if err := rejectLocalWindowsPath(strings.TrimSpace(rctx.Str("path"))); err != nil {
+			return err
+		}
 		// page_size 前置校验：对齐后端 checkMaxKeys 的 (0, 200] 契约，避免 >200 触发服务端 ErrInvalidRequest。
 		if err := validateFileListPageSize(rctx.Int("page-size")); err != nil {
 			return err

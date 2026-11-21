@@ -26,6 +26,7 @@ type authFSStub struct {
 	mkdirAll  func(string, fs.FileMode) error
 	readFile  func(string) ([]byte, error)
 	writeFile func(string, []byte, fs.FileMode) error
+	remove    func(string) error
 }
 
 func (f authFSStub) MkdirAll(path string, perm fs.FileMode) error {
@@ -47,6 +48,13 @@ func (f authFSStub) WriteFile(path string, data []byte, perm fs.FileMode) error 
 		return f.writeFile(path, data, perm)
 	}
 	return f.OsFs.WriteFile(path, data, perm)
+}
+
+func (f authFSStub) Remove(path string) error {
+	if f.remove != nil {
+		return f.remove(path)
+	}
+	return f.OsFs.Remove(path)
 }
 
 func useAuthFSStub(t *testing.T, stub authFSStub) {

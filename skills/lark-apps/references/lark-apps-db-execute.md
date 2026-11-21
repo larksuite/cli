@@ -67,7 +67,7 @@ lark-cli apps +db-execute --app-id app_xxx --environment dev --sql - --yes < /Us
 新建业务表必须：4 个审计列 + 启用 RLS + 4 条默认 policy，**放在同一次 `+db-execute` 调用里**（RLS / policy / COMMENT / INDEX 一起）。裸表名，不写 `public.` 或 schema 前缀。
 
 ```sql
-CREATE TABLE IF NOT EXISTS <table> (
+CREATE TABLE <table> (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   -- ... 业务列 ...
   name varchar(100) NOT NULL,
@@ -105,7 +105,11 @@ CREATE POLICY "修改本人数据" ON <table>
   );
 ```
 
-建表流程：先 `+db-table-list` / `+db-table-get` 确认表不存在或看现有结构 → 生成 DDL → 向用户展示影响并取得授权 → `+db-execute ... --yes` 执行。
+建表与改表流程（先在同一 `--environment` 下用 `+db-table-list` 判断目标表是否已存在；`+db-table-list` 默认每页 20 条且不自动翻页，若返回 `has_more=true`，必须继续传 `--page-token` 翻页，直到找到目标表或 `has_more=false` 才能判定表不存在）：
+
+- **新建表（翻完列表确认目标表不存在）**：用上方 `CREATE TABLE <table>` 模板（不要写 `IF NOT EXISTS`：遇到同名旧表必须首句即失败并停止；若用 `IF NOT EXISTS` 跳过建表，后面的 `ALTER TABLE` 和 `USING (true)` 宽松 `CREATE POLICY` 仍会对旧表执行，扩大既有行级权限）→ 向用户展示影响并取得授权 → `+db-execute ... --yes` 执行 → 执行后用 `+db-table-get` 回读确认结构。
+- **修改已有表（列表里已存在）**：不要对旧表执行新建表模板或默认策略；先用 `+db-table-get` 看现有结构并审阅现有 RLS 策略与权限 → 生成增量变更 DDL → 针对结构与权限变化向用户说明影响并取得授权 → `+db-execute ... --yes` 执行。
+- **不要用 `+db-table-get` 探测表是否存在**：表不存在时它返回 not found 错误（`400002469`），是一次失败的调用，不是“表不存在”的正常答复。
 
 ## 审计列
 

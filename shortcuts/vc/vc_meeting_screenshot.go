@@ -42,6 +42,7 @@ var VCMeetingScreenshot = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"vc:meeting.realtime:read"},
 	AuthTypes:   []string{"user", "bot"},
+	Hidden:      true, // hidden from --help/completion so agents do not discover it (skill docs removed too); still executable by name
 	Flags: []common.Flag{
 		{Name: "meeting-id", Required: true, Desc: "long numeric meeting ID (not the 9-digit meeting number)"},
 		{Name: "output", Desc: "JPEG output path relative to the current working directory; parent directories are created"},

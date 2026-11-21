@@ -70,7 +70,7 @@ var AppsAccessScopeSet = common.Shortcut{
 		path := fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(appID))
 		data, err := rctx.CallAPITyped("PUT", path, nil, body)
 		if err != nil {
-			return withAppsHint(err, "verify --app-id is correct; for scope=specific, each --targets id must be a valid open_id/department_id/chat_id and --approver a valid open_id; review the current scope with `lark-cli apps +access-scope-get --app-id <app_id>`")
+			return withAppsHint(err, accessScopeFailureHint(err, "verify --app-id is correct; for scope=specific, each --targets id must be a valid open_id/department_id/chat_id and --approver a valid open_id; review the current scope with `lark-cli apps +access-scope-get --app-id <app_id>`"))
 		}
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "access-scope set: %s\n", rctx.Str("scope"))

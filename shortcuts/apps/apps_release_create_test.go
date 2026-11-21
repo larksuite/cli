@@ -49,6 +49,19 @@ func TestBuildPublishBody(t *testing.T) {
 	}
 }
 
+// A running release can belong to another commit, so the hint must not treat its terminal state as this task's completion.
+func TestAppsReleaseCreate_InProgressHintRequiresTargetCommitVerification(t *testing.T) {
+	p := runContextualHintCase(t, contextualHintCase{
+		name: "release A blocks authorized release B", command: "+release-create", method: "POST",
+		path: "/open-apis/spark/v1/apps/app_x/releases", status: 200, code: 400002553,
+		message: "release A is already publishing", args: []string{"+release-create", "--app-id", "app_x", "--as", "user"},
+		want: []string{"commit", "intended", "authorization", "start this release", "not complete"},
+	})
+	if strings.Contains(strings.ToLower(p.Hint), "terminal state completes") {
+		t.Fatalf("hint incorrectly treats another release as completion: %q", p.Hint)
+	}
+}
+
 func TestValidateReleaseApplyReason(t *testing.T) {
 	longASCII := strings.Repeat("a", maxReleaseApplyReasonRunes)
 	longChinese := strings.Repeat("中", maxReleaseApplyReasonRunes)

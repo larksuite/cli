@@ -92,8 +92,6 @@ func TestRefreshRateLimitWaitCancellationPreservesToken(t *testing.T) {
 	if err := SetStoredToken(stored); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	calls := 0
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
@@ -103,13 +101,16 @@ func TestRefreshRateLimitWaitCancellationPreservesToken(t *testing.T) {
 		return &http.Response{StatusCode: 429, Header: http.Header{"Retry-After": []string{"30"}}, Body: io.NopCloser(strings.NewReader("limited")), Request: req}, nil
 	})}
 	waits := 0
-	_, err := doRefreshTokenWithRetryWait(ctx, client, newRefreshTestOptions(stored), stored, func(waitCtx context.Context, delay time.Duration) error {
+	_, err := doRefreshTokenWithRetryWait(context.Background(), client, newRefreshTestOptions(stored), stored, func(waitCtx context.Context, delay time.Duration) error {
 		waits++
 		if delay != 30*time.Second {
 			t.Fatalf("delay = %v", delay)
 		}
+		// Caller cancellation is shielded during token rotation. Inject a
+		// canceled wait context to exercise the retry wait's failure path.
+		canceledWaitCtx, cancel := context.WithCancel(waitCtx)
 		cancel()
-		return waitRefreshRetry(waitCtx, delay)
+		return waitRefreshRetry(canceledWaitCtx, delay)
 	})
 	if waits != 1 {
 		t.Fatalf("waits = %d", waits)

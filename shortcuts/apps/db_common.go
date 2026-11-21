@@ -46,9 +46,10 @@ func dbEnvParams(rctx *common.RuntimeContext, params map[string]interface{}) map
 	return params
 }
 
-// dbEnvBody 把 env 并入请求体顶层：sync_create/sync_update 从 body 读 env（与 config/preview 平级），
-// 不是从 query。语义与 dbEnvParams 一致——仅在显式指定环境（非空）时带 env 键，未指定时省略、
-// 由服务端按应用多环境状态自动选分支。原样返回同一个 map 便于链式。
+// dbEnvBody 把 env 并入请求体顶层。sync_create 从 body 读 env（与 config/preview 平级），
+// 不是从 query。sync_update 的请求合同没有 env 字段，不使用本 helper。仅在显式指定环境
+// （非空）时带 env 键；未指定时省略，db-sync 服务端默认落 online（不按应用多环境状态
+// 自动选分支）。原样返回同一个 map 便于链式。
 func dbEnvBody(rctx *common.RuntimeContext, body map[string]interface{}) map[string]interface{} {
 	if env := dbEnv(rctx); env != "" {
 		body["env"] = env
@@ -329,16 +330,10 @@ var dbSyncCodeHints = map[int]string{
 	400002483: "Set target.table.action to 'create', or create the table with +db-execute, then rerun preview.",
 }
 
-// dbSyncOnlineDDLCode / dbSyncOnlineDDLSubcode identify the online-branch DDL ban.
-// Code 500002776 is generic (many db-sync failures share it), so the online-DDL
-// case is only recognized when the stable subcode k_dl_4000001 is also present in
-// the server msg — matching the subcode (a backend contract), not the free-text
-// English message that follows it. This ban is multi-env-only: shared/single-env
-// apps create tables on online fine and never return it.
-const (
-	dbSyncOnlineDDLCode    = 500002776
-	dbSyncOnlineDDLSubcode = "k_dl_4000001"
-)
+// dbSyncOnlineDDLSubcode identifies the online-branch DDL ban. The outer code is
+// not part of the identity: both the current 400002476 responsibility bucket and
+// the legacy 500002776 bucket carry this stable subcode.
+const dbSyncOnlineDDLSubcode = "k_dl_4000001"
 
 // dbSyncOnlineDDLHint states the product fact rather than framing dev as a retry
 // trick: a multi-env app's online branch does not allow direct table creation, so
@@ -346,8 +341,9 @@ const (
 const dbSyncOnlineDDLHint = "The online branch does not allow creating tables (DDL) directly — this is how multi-env apps work, not a CLI limit. " +
 	"Rerun +db-sync-create with --environment dev to create the table on the dev branch."
 
-// withDBSyncHint attaches data-sync recovery guidance to typed API errors
-// without changing the original category, subtype, code, log_id, or cause.
+// withDBSyncHint attaches data-sync recovery guidance to typed API errors. Known
+// dataloom subcodes are classified by applyDBSubcode; the server code, log_id and
+// cause are preserved.
 func withDBSyncHint(err error, fallback string) error {
 	if err == nil {
 		return nil
@@ -356,14 +352,25 @@ func withDBSyncHint(err error, fallback string) error {
 	if !ok {
 		return err
 	}
-	if strings.TrimSpace(p.Hint) != "" {
+	// A throttled call was never evaluated, so neither the code table nor the
+	// request-shaped fallback can explain it (see hintExplainsFailure).
+	if p.Subtype == errs.SubtypeRateLimit {
+		if strings.TrimSpace(p.Hint) == "" {
+			p.Hint = appRateLimitHint
+		}
 		return err
 	}
-	// Subcode-specific hint takes precedence over the generic code table: the
-	// online-DDL ban shares code 500002776 with unrelated failures, so match the
-	// stable subcode in the msg before falling back to per-code guidance.
-	if p.Code == dbSyncOnlineDDLCode && strings.Contains(p.Message, dbSyncOnlineDDLSubcode) {
-		p.Hint = dbSyncOnlineDDLHint
+	// Capture the identity before applyDBSubcode strips the internal prefix from
+	// the user-facing message. The shared classifier handles both outer codes and
+	// all other known database preconditions.
+	subcode, _, _ := subcodeOf(p.Message)
+	if applyDBSubcode(p) {
+		if subcode == dbSyncOnlineDDLSubcode {
+			p.Hint = dbSyncOnlineDDLHint
+		}
+		return err
+	}
+	if strings.TrimSpace(p.Hint) != "" {
 		return err
 	}
 	if hint := dbSyncCodeHints[p.Code]; hint != "" {
