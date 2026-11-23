@@ -91,7 +91,7 @@ npx skills add larksuite/cli -y -g
 Or install the skills with the [GitHub CLI](https://cli.github.com/):
 
 ```bash
-gh skill install larksuite/cli --scope user
+gh skill install larksuite/cli
 ```
 
 #### Configure & Use
