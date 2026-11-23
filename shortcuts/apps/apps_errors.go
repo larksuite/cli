@@ -8,7 +8,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/client"
 )
 
 func appsValidationError(format string, args ...any) *errs.ValidationError {
@@ -73,33 +72,4 @@ func appsInputPathEntryError(path string, err error) error {
 
 func appsFileIOError(err error, format string, args ...any) *errs.InternalError {
 	return errs.NewInternalError(errs.SubtypeFileIO, format, args...).WithCause(err)
-}
-
-// enrichHTMLPublishAPIError adapts a typed failure from the HTML publish
-// endpoint: refines endpoint-scoped business codes, prefixes the message with
-// command context, and attaches endpoint-specific recovery hints. A
-// still-untyped error is lifted at the SDK boundary instead.
-func enrichHTMLPublishAPIError(err error) error {
-	if err == nil {
-		return nil
-	}
-	p, ok := errs.ProblemOf(err)
-	if !ok {
-		return client.WrapDoAPIError(err)
-	}
-	// The HTML publish business codes (90001/90002) are scoped to this
-	// endpoint, not service-global, so their subtype classification lives
-	// here instead of the global errclass code table. Only an
-	// otherwise-unclassified API error is refined; a stronger upstream
-	// classification is never overridden.
-	if p.Category == errs.CategoryAPI && p.Subtype == errs.SubtypeUnknown && p.Code == errCodeAppNotFound {
-		p.Subtype = errs.SubtypeNotFound
-	}
-	if p.Message != "" {
-		p.Message = "html-publish failed: " + p.Message
-	}
-	if hint := buildHTMLPublishFailureHint(p.Code); hint != "" {
-		p.Hint = hint
-	}
-	return err
 }

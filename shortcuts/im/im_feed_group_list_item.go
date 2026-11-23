@@ -15,6 +15,13 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
+const (
+	feedGroupListItemDefaultPageSize = 50
+	// The endpoint has no published page_size range. Read-only probes show
+	// that 50 succeeds while 51 returns code 230001 "param is invalid".
+	feedGroupListItemMaxPageSize = 50
+)
+
 // ImFeedGroupListItem provides the +feed-group-list-item shortcut: it lists the
 // feed cards inside one feed group and enriches each item with chat_name resolved
 // from its feed_id.
@@ -28,8 +35,8 @@ var ImFeedGroupListItem = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "feed-group-id", Desc: "feed group ID (ofg_xxx); path parameter (required)"},
-		{Name: "page-size", Type: "int", Default: "50", Desc: "page size (1-50)"},
-		{Name: "page-token", Desc: "pagination token for next page"},
+		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", feedGroupListItemDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", feedGroupListItemMaxPageSize)},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
 		{Name: "start-time", Desc: "update-time window start (Unix milliseconds as a decimal string)"},
@@ -48,9 +55,7 @@ var ImFeedGroupListItem = common.Shortcut{
 			Desc("will also POST /open-apis/im/v1/chats/batch_query to resolve chat_name from feed_id; requires im:chat:read")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		// When --page-token is explicitly provided, the user wants a specific page —
-		// no auto-pagination regardless of --page-all.
-		if runtime.Bool("page-all") && !runtime.Cmd.Flags().Changed("page-token") {
+		if runtime.Bool("page-all") {
 			return executeFeedGroupListAllPages(runtime)
 		}
 
@@ -72,8 +77,8 @@ func validateFeedGroupListOptions(rt *common.RuntimeContext) error {
 	if rt.Str("feed-group-id") == "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--feed-group-id is required").WithParam("--feed-group-id")
 	}
-	if n := rt.Int("page-size"); n < 1 || n > 50 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
+	if _, err := common.ValidatePageSizeTyped(rt, "page-size", feedGroupListItemDefaultPageSize, 1, feedGroupListItemMaxPageSize); err != nil {
+		return err
 	}
 	if n := rt.Int("page-limit"); n < 1 || n > 1000 {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")
@@ -146,14 +151,14 @@ func executeFeedGroupListAllPages(rt *common.RuntimeContext) error {
 	allItems := make([]any, 0)
 	allDeletedItems := make([]any, 0)
 	var lastHasMore bool
-	var lastPageToken string
-	prevPageToken := "__START__"
+	lastPageToken := rt.Str("page-token")
+	prevPageToken := lastPageToken
 
 	for page := 0; page < maxPages; page++ {
 		params := larkcore.QueryParams{
 			"page_size": []string{strconv.Itoa(rt.Int("page-size"))},
 		}
-		if page > 0 {
+		if lastPageToken != "" {
 			params["page_token"] = []string{lastPageToken}
 		}
 		if start := rt.Str("start-time"); start != "" {

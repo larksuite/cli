@@ -116,7 +116,7 @@ max_risk: write
 `)
 
 	root := fakeTree(t)
-	if err := applyUserPolicyPruning(root, nil); err != nil {
+	if _, err := applyUserPolicyPruning(root, nil); err != nil {
 		t.Fatalf("apply policy: %v", err)
 	}
 
@@ -175,7 +175,7 @@ func TestApplyUserPolicyPruning_missingFileIsSilent(t *testing.T) {
 	tmpHome(t) // home set but no policy.yml written
 
 	root := fakeTree(t)
-	if err := applyUserPolicyPruning(root, nil); err != nil {
+	if _, err := applyUserPolicyPruning(root, nil); err != nil {
 		t.Fatalf("missing policy should not error, got %v", err)
 	}
 
@@ -196,7 +196,7 @@ func TestApplyUserPolicyPruning_malformedYamlReturnsError(t *testing.T) {
 	writePolicy(t, cfgDir, "::: not yaml :::")
 
 	root := fakeTree(t)
-	err := applyUserPolicyPruning(root, nil)
+	_, err := applyUserPolicyPruning(root, nil)
 	if err == nil {
 		t.Fatalf("malformed yaml should produce an error")
 	}
@@ -221,7 +221,7 @@ func TestApplyUserPolicyPruning_pluginRulesSkipBrokenYaml(t *testing.T) {
 		}},
 	}
 	root := fakeTree(t)
-	if err := applyUserPolicyPruning(root, pluginRules); err != nil {
+	if _, err := applyUserPolicyPruning(root, pluginRules); err != nil {
 		t.Fatalf("plugin rules must shadow (and skip reading) yaml; broken yaml should not error, got %v", err)
 	}
 
@@ -243,7 +243,7 @@ func TestApplyUserPolicyPruning_invalidRuleReturnsError(t *testing.T) {
 	writePolicy(t, cfgDir, "max_risk: nukem\n")
 
 	root := fakeTree(t)
-	err := applyUserPolicyPruning(root, nil)
+	_, err := applyUserPolicyPruning(root, nil)
 	if err == nil {
 		t.Fatalf("invalid MaxRisk should produce an error")
 	}

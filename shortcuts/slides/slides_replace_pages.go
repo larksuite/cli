@@ -6,10 +6,7 @@ package slides
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
-	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -17,25 +14,26 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const replacePagesInitialRevisionID = -1
+
 // SlidesReplacePages rebuilds multiple pages inside an existing presentation.
 // It deliberately creates the new page before deleting the old one so a create
 // failure cannot remove existing user content. The operation is not atomic.
-const replacePagesInitialRevisionID = -1
-
 var SlidesReplacePages = common.Shortcut{
 	Service:     "slides",
 	Command:     "+replace-pages",
-	Description: "Batch rebuild pages inside an existing Slides presentation (create before old page, then delete old page; not atomic)",
+	Description: "Rebuild multiple pages in a presentation: create each new page before old page, then delete old page (not atomic; changes slide_id and element ids)",
 	Risk:        "write",
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
+		requiredPresentationRefFlag(),
 		{Name: "pages", Desc: "JSON array of page replacements (each: {slide_id, content}); supports @file or -", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "continue-on-error", Type: "bool", Desc: "continue with later pages after a create/delete failure; default false"},
 		{Name: "validate-only", Type: "bool", Desc: "validate input and build the create/delete plan without write calls"},
+		noLintFlag(),
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		ref, err := parsePresentationRef(runtime.Str("presentation"))
@@ -59,7 +57,7 @@ var SlidesReplacePages = common.Shortcut{
 		if err != nil {
 			return dry.Set("error", err.Error())
 		}
-		appendReplacePagesDryRunCalls(dry, resolved)
+		appendReplacePagesDryRunCalls(dry, resolved, runtime)
 		return dry.
 			Set("xml_presentation_id", resolved.PresentationID).
 			Set("pages_count", len(resolved.Plan)).
@@ -86,6 +84,17 @@ var SlidesReplacePages = common.Shortcut{
 		results := make([]replacePageResult, 0, len(resolved.Plan))
 		for i, item := range resolved.Plan {
 			result, err := replaceOnePage(runtime, resolved.PresentationID, item, revisionID)
+			if err != nil {
+				// The lint refusal is enriched here for the same reason as on every
+				// other write path: --no-lint is a CLI flag the backend cannot name.
+				// It happens before the --continue-on-error branch below because a
+				// refused page needs the same recovery information either way; the
+				// batch that keeps going only ever sees the per-item record, so
+				// enriching inside the returning branch would have hidden the flag
+				// from the callers most likely to have several pages to fix.
+				err = enrichSlidesLintError(err)
+				recordReplacePageError(&result, err)
+			}
 			results = append(results, result)
 			if result.RevisionID != nil {
 				revisionID = *result.RevisionID
@@ -94,6 +103,11 @@ var SlidesReplacePages = common.Shortcut{
 				if runtime.Bool("continue-on-error") {
 					continue
 				}
+				// The progress hint wrapping the error carries the page, which the
+				// lint hint deliberately does not — inside one item the report
+				// always says slide 1. It is appended only on the returning path:
+				// the per-item records already say which items ran and how each
+				// ended, so the batch that keeps going has no use for a position.
 				return appendSlidesProgressHint(err, fmt.Sprintf("slides +replace-pages stopped at item %d/%d; %d page(s) completed before failure; old page is kept when create failed", i+1, len(resolved.Plan), countReplacedPages(results)))
 			}
 		}
@@ -139,7 +153,25 @@ type replacePageResult struct {
 	NewSlideID string
 	Status     string
 	Error      string
+	// ErrorCode and ErrorHint carry the typed metadata that Error alone drops:
+	// Problem.Error() renders the message and nothing else, so an item recorded
+	// from the string would arrive without the code that identifies it or the
+	// hint that says how to recover from it.
+	ErrorCode  int
+	ErrorHint  string
+	Issues     interface{}
 	RevisionID *int
+}
+
+// recordReplacePageError is the one place a failed item is written down, so the
+// stop-on-error path and the --continue-on-error path cannot record a failure
+// differently. Untyped errors keep only their message, which is all they have.
+func recordReplacePageError(result *replacePageResult, err error) {
+	result.Error = err.Error()
+	if p, ok := errs.ProblemOf(err); ok {
+		result.ErrorCode = p.Code
+		result.ErrorHint = p.Hint
+	}
 }
 
 func prepareReplacePages(runtime *common.RuntimeContext) (*replacePagesPrepared, error) {
@@ -225,50 +257,9 @@ func validateReplacePagesInput(pages []replacePageInput) error {
 	return nil
 }
 
-func validateCompleteSlideXML(content string) error {
-	dec := xml.NewDecoder(strings.NewReader(content))
-	depth := 0
-	seenRoot := false
-	for {
-		tok, err := dec.Token()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			if depth == 0 {
-				if seenRoot {
-					return invalidSlideXMLStructureError("multiple root elements")
-				}
-				if t.Name.Local != "slide" {
-					return invalidSlideXMLStructureError("root element is <%s>, want <slide>", t.Name.Local)
-				}
-				seenRoot = true
-			}
-			depth++
-		case xml.EndElement:
-			depth--
-		case xml.CharData:
-			if depth == 0 && strings.TrimSpace(string(t)) != "" {
-				return invalidSlideXMLStructureError("non-whitespace text outside root element")
-			}
-		}
-	}
-	if !seenRoot {
-		return invalidSlideXMLStructureError("missing root element")
-	}
-	if depth != 0 {
-		return invalidSlideXMLStructureError("unclosed XML element")
-	}
-	return nil
-}
-
-func invalidSlideXMLStructureError(format string, args ...interface{}) error {
-	return errs.NewValidationError(errs.SubtypeInvalidArgument, format, args...)
-}
+// validateCompleteSlideXML, invalidSlideXMLStructureError and revisionFromData
+// live in slides_shared.go: shared helpers used by +add-slide, +delete-slide,
+// and +replace-pages.
 
 func buildReplacePagesPlan(pages []replacePageInput) ([]replacePagePlanItem, error) {
 	plan := make([]replacePagePlanItem, 0, len(pages))
@@ -283,16 +274,13 @@ func buildReplacePagesPlan(pages []replacePageInput) ([]replacePagePlanItem, err
 	return plan, nil
 }
 
-func appendReplacePagesDryRunCalls(dry *common.DryRunAPI, resolved *replacePagesPrepared) {
+func appendReplacePagesDryRunCalls(dry *common.DryRunAPI, resolved *replacePagesPrepared, runtime *common.RuntimeContext) {
 	dry.Desc("Batch replace pages in-place: create each new page before old page, then delete old page (not atomic)")
 	for i, item := range resolved.Plan {
 		dry.POST(fmt.Sprintf("/open-apis/slides_ai/v1/xml_presentations/%s/slide", validate.EncodePathSegment(resolved.PresentationID))).
 			Desc(fmt.Sprintf("[%d/%d] Create replacement before old slide %s", i*2+1, len(resolved.Plan)*2, item.OldSlideID)).
 			Params(map[string]interface{}{"revision_id": "<latest_or_revision_returned_by_previous_step>"}).
-			Body(map[string]interface{}{
-				"slide":           map[string]interface{}{"content": item.Content},
-				"before_slide_id": item.OldSlideID,
-			})
+			Body(replacePageCreateBody(item, runtime))
 		dry.DELETE(fmt.Sprintf("/open-apis/slides_ai/v1/xml_presentations/%s/slide", validate.EncodePathSegment(resolved.PresentationID))).
 			Desc(fmt.Sprintf("[%d/%d] Delete old slide %s after create succeeds", i*2+2, len(resolved.Plan)*2, item.OldSlideID)).
 			Params(map[string]interface{}{
@@ -302,6 +290,20 @@ func appendReplacePagesDryRunCalls(dry *common.DryRunAPI, resolved *replacePages
 	}
 }
 
+// replacePageCreateBody builds the create request body shared by dry-run and
+// execute, so the previewed request and the sent one cannot drift apart on
+// whether the page gets linted.
+func replacePageCreateBody(item replacePagePlanItem, runtime *common.RuntimeContext) map[string]interface{} {
+	return withLintXML(map[string]interface{}{
+		"slide":           map[string]interface{}{"content": item.Content},
+		"before_slide_id": item.OldSlideID,
+	}, runtime)
+}
+
+// replaceOnePage reports how far the item got through Status and returns the
+// failure itself untouched. Recording it belongs to the caller, which is where
+// the error is enriched — writing the message here as well would have produced
+// a per-item record built from a different error than the one the caller sees.
 func replaceOnePage(runtime *common.RuntimeContext, presentationID string, item replacePagePlanItem, revisionID int) (replacePageResult, error) {
 	result := replacePageResult{
 		OldSlideID: item.OldSlideID,
@@ -312,24 +314,22 @@ func replaceOnePage(runtime *common.RuntimeContext, presentationID string, item 
 		"POST",
 		slideURL,
 		map[string]interface{}{"revision_id": revisionID},
-		map[string]interface{}{
-			"slide":           map[string]interface{}{"content": item.Content},
-			"before_slide_id": item.OldSlideID,
-		},
+		replacePageCreateBody(item, runtime),
 	)
 	if err != nil {
 		result.Status = "create_failed"
-		result.Error = err.Error()
 		return result, err
 	}
 	newSlideID := common.GetString(createData, "slide_id")
 	if newSlideID == "" {
 		err := errs.NewInternalError(errs.SubtypeInvalidResponse, "slide.create returned no slide_id for replacement of slide_id %q", item.OldSlideID)
 		result.Status = "create_failed"
-		result.Error = err.Error()
 		return result, err
 	}
 	result.NewSlideID = newSlideID
+	if issues, ok := createData["issues"]; ok {
+		result.Issues = issues
+	}
 	if rev, ok := revisionFromData(createData); ok {
 		revisionID = rev
 		result.RevisionID = &rev
@@ -346,7 +346,6 @@ func replaceOnePage(runtime *common.RuntimeContext, presentationID string, item 
 	)
 	if err != nil {
 		result.Status = "delete_failed"
-		result.Error = err.Error()
 		return result, err
 	}
 	if rev, ok := revisionFromData(deleteData); ok {
@@ -354,13 +353,6 @@ func replaceOnePage(runtime *common.RuntimeContext, presentationID string, item 
 	}
 	result.Status = "replaced"
 	return result, nil
-}
-
-func revisionFromData(data map[string]interface{}) (int, bool) {
-	if _, ok := data["revision_id"]; !ok {
-		return 0, false
-	}
-	return int(common.GetFloat(data, "revision_id")), true
 }
 
 func replacePagesPlanOutput(plan []replacePagePlanItem) []map[string]interface{} {
@@ -388,6 +380,15 @@ func replacePageResultsOutput(results []replacePageResult) []map[string]interfac
 		}
 		if result.Error != "" {
 			m["error"] = result.Error
+		}
+		if result.ErrorCode != 0 {
+			m["error_code"] = result.ErrorCode
+		}
+		if result.ErrorHint != "" {
+			m["hint"] = result.ErrorHint
+		}
+		if result.Issues != nil {
+			m["issues"] = result.Issues
 		}
 		if result.RevisionID != nil {
 			m["revision_id"] = *result.RevisionID

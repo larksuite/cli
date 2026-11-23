@@ -5,6 +5,7 @@ package drive
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -13,8 +14,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// DriveMove moves a Drive file or folder and handles the async task polling
-// required by folder moves.
+// DriveMove moves a Drive file or folder and polls any returned async task.
 var DriveMove = common.Shortcut{
 	Service:     "drive",
 	Command:     "+move",
@@ -49,10 +49,10 @@ var DriveMove = common.Shortcut{
 			Set("file_token", spec.FileToken).
 			Body(spec.RequestBody())
 
-		// If moving a folder, show the async task check step
+		// Folder responses can contain a task or complete without creating one.
 		if spec.FileType == "folder" {
 			dry.GET("/open-apis/drive/v1/files/task_check").
-				Desc("[2] Poll async task status (for folder move)").
+				Desc("[2] If task_id is returned: poll async task status").
 				Params(driveTaskCheckParams("<task_id>"))
 		}
 
@@ -68,7 +68,6 @@ var DriveMove = common.Shortcut{
 		// Default to the caller's root folder so the command can move items
 		// without requiring an explicit destination in common cases.
 		if spec.FolderToken == "" {
-			fmt.Fprintf(runtime.IO().ErrOut, "No target folder specified, getting root folder...\n")
 			rootToken, err := getRootFolderToken(ctx, runtime)
 			if err != nil {
 				return err
@@ -78,8 +77,6 @@ var DriveMove = common.Shortcut{
 			}
 			spec.FolderToken = rootToken
 		}
-
-		fmt.Fprintf(runtime.IO().ErrOut, "Moving %s %s to folder %s...\n", spec.FileType, common.MaskToken(spec.FileToken), common.MaskToken(spec.FolderToken))
 
 		data, err := runtime.CallAPITyped(
 			"POST",
@@ -91,14 +88,28 @@ var DriveMove = common.Shortcut{
 			return err
 		}
 
-		// Folder moves are asynchronous; file moves complete in the initial call.
+		// A successful folder move without a task is synchronously complete.
 		if spec.FileType == "folder" {
-			taskID := common.GetString(data, "task_id")
-			if taskID == "" {
-				return errs.NewInternalError(errs.SubtypeInvalidResponse, "move folder returned no task_id")
+			var result struct {
+				TaskID string `json:"task_id"`
 			}
-
-			fmt.Fprintf(runtime.IO().ErrOut, "Folder move is async, polling task %s...\n", taskID)
+			raw, err := json.Marshal(data)
+			if err == nil {
+				err = json.Unmarshal(raw, &result)
+			}
+			if err != nil {
+				return errs.NewInternalError(errs.SubtypeInvalidResponse, "move folder returned invalid task data").WithCause(err)
+			}
+			taskID := result.TaskID
+			if taskID == "" {
+				runtime.Out(map[string]interface{}{
+					"status":       "success",
+					"file_token":   spec.FileToken,
+					"folder_token": spec.FolderToken,
+					"ready":        true,
+				}, nil)
+				return nil
+			}
 
 			status, ready, err := pollDriveTaskCheck(runtime, taskID)
 			if err != nil {
@@ -115,8 +126,7 @@ var DriveMove = common.Shortcut{
 				"ready":        ready,
 			}
 			if !ready {
-				nextCommand := driveTaskCheckResultCommand(taskID, string(runtime.As()))
-				fmt.Fprintf(runtime.IO().ErrOut, "Folder move task is still in progress. Continue with: %s\n", nextCommand)
+				nextCommand := driveTaskCheckResultCommand(runtime, taskID)
 				out["timed_out"] = true
 				out["next_command"] = nextCommand
 			}

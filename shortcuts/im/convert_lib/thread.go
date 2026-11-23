@@ -197,6 +197,11 @@ func ExpandThreadRepliesWithResources(runtime *common.RuntimeContext, messages [
 		}
 	}
 	mergePrefetch := PrefetchMergeForwardSubItems(runtime, allRawReplies, nameCache)
+	// Folder replies get the same treatment: a thread reply that is a folder
+	// message would otherwise trigger another serial GET per reply inside
+	// FormatMessageItem. PrefetchFolderChildren bounds the fan-out and caches
+	// XML keyed by reply message_id for the render loop below.
+	folderPrefetch := PrefetchFolderChildren(runtime, allRawReplies)
 
 	// Phase 2a: format every plan's replies sequentially. FormatMessageItem
 	// may still touch nameCache for non-merge_forward content types
@@ -214,7 +219,7 @@ func ExpandThreadRepliesWithResources(runtime *common.RuntimeContext, messages [
 		}
 		replies := make([]map[string]interface{}, 0, len(r.rawReplies))
 		for _, raw := range r.rawReplies {
-			replies = append(replies, FormatMessageItemWithMergePrefetchOpts(raw, runtime, nameCache, mergePrefetch, extractResources))
+			replies = append(replies, FormatMessageItemWithFolderPrefetchOpts(raw, runtime, nameCache, mergePrefetch, folderPrefetch, extractResources))
 		}
 		preparedReplies[i] = replies
 	}
@@ -258,6 +263,10 @@ func fetchThreadReplies(runtime *common.RuntimeContext, threadID string, limit i
 		"sort_type":             []string{"ByCreateTimeAsc"},
 		"page_size":             []string{fmt.Sprint(limit)},
 		"card_msg_content_type": []string{"raw_card_content"},
+		// Opt in to server-side sender names: without it, reply senders that
+		// appear only inside this thread carry no sender_name and — since there
+		// is no contact/mention fallback — render as their raw id.
+		"with_sender_name": []string{"true"},
 	}, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("fetch thread replies for %s: %w", threadID, err) //nolint:forbidigo // best-effort internal thread fetch; never surfaced as a final shortcut error (ExpandThreadReplies is void)

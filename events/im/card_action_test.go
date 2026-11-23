@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 func TestCardActionTriggerRegistered(t *testing.T) {
-	def, ok := event.Lookup("card.action.trigger")
+	def, ok := lookupCompiledDef(t, "card.action.trigger")
 	if !ok {
 		t.Fatal("card.action.trigger should be registered via Keys()")
 	}
@@ -243,11 +244,11 @@ func TestProcessCardAction_MalformedPayload(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 	got, err := processCardAction(context.Background(), nil, raw, nil)
-	if err != nil {
-		t.Fatalf("Process should swallow parse errors, got %v", err)
+	if !processing.IsDropMalformed(err) {
+		t.Fatalf("malformed payload must be dropped with a malformed marker, got err=%v", err)
 	}
-	if string(got) != "not json" {
-		t.Errorf("malformed fallback output = %q, want original bytes", string(got))
+	if got != nil {
+		t.Errorf("malformed payload must be dropped without output, got %q", string(got))
 	}
 }
 
@@ -415,6 +416,7 @@ func runCardAction(t *testing.T, payload string, rt event.APIClient) CardActionT
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processCardAction(context.Background(), rt, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

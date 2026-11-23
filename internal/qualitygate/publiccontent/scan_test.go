@@ -251,26 +251,22 @@ func TestScanFileDoesNotTreatURLEncodedCredentialAsPlaceholder(t *testing.T) {
 	}
 }
 
-func TestScanFileDoesNotTreatPlaceholderMarkerSubstringsAsPlaceholders(t *testing.T) {
+func TestScanFileAllowsReadablePlaceholderMarkerSubstrings(t *testing.T) {
 	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
 		"API_KEY=notredactedreal",
 		"API_KEY=notplaceholdersecret",
 		"API_KEY=abcxxxxreal",
 	}, "\n")+"\n"))
-	var count int
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
-			count++
+			t.Fatalf("readable credential words should not be findings: %#v", got)
 		}
-	}
-	if count != 3 {
-		t.Fatalf("placeholder-marker substring findings = %d, want 3: %#v", count, got)
 	}
 }
 
 func TestScanFileDetectsBase64PaddedCredentialAssignments(t *testing.T) {
 	paddedSecretPrefix := "dGhpc2lz" + "YXNlY3JldA"
-	paddedTokenPrefix := "YWJj" + "ZGVmZ2g"
+	paddedTokenPrefix := "UTdrMm1O" + "OXBSNHZYOA"
 	paddedSecret := base64PaddedFixture(paddedSecretPrefix)
 	paddedToken := base64PaddedFixture(paddedTokenPrefix)
 	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
@@ -294,17 +290,25 @@ func TestScanFileDetectsBase64PaddedCredentialAssignments(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsReadableBase64Lookalike(t *testing.T) {
+	got := ScanFile("docs/config.md", []byte("client_secret=placeholder=\n"))
+	if findingRules(got)["public_content_generic_credential"] {
+		t.Fatalf("readable base64 lookalike should not be a credential finding: %#v", got)
+	}
+}
+
 func TestScanFileDetectsQuotedJSONCredentialAssignments(t *testing.T) {
-	jsonToken := "real-json-token"
-	jsonSecret := "real " + "secret value"
-	jsonKey := "real-json-key"
-	jsonTenantToken := "real-tenant-json-token"
-	jsonAppSecret := "real-app-secret"
-	jsonPrefixedKey := "real-prefixed-key"
-	jsonTenantCamelToken := "real-tenant-camel-token"
-	jsonGithubToken := "real-github-token"
-	jsonVendorKey := "real-vendor-key"
-	jsonSlackBotToken := "xoxb-real-token"
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	jsonToken := providerValue
+	jsonSecret := providerValue
+	jsonKey := providerValue
+	jsonTenantToken := providerValue
+	jsonAppSecret := providerValue
+	jsonPrefixedKey := providerValue
+	jsonTenantCamelToken := providerValue
+	jsonGithubToken := providerValue
+	jsonVendorKey := providerValue
+	jsonSlackBotToken := "xoxb_" + "1234567890abcdef"
 	got := ScanFile("docs/public.json", []byte(strings.Join([]string{
 		`{"access_` + `token":"` + jsonToken + `"}`,
 		`{"client_` + `secret": "` + jsonSecret + `"}`,
@@ -334,12 +338,13 @@ func TestScanFileDetectsQuotedJSONCredentialAssignments(t *testing.T) {
 }
 
 func TestScanFileDetectsCredentialPhraseBeforeEnvironmentSuffix(t *testing.T) {
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
 	got := ScanFile("docs/config.yaml", []byte(strings.Join([]string{
-		"API_KEY_OPENAI: real-openai-key",
-		"TOKEN_GITHUB: real-github-token",
-		"CLIENT_SECRET_GOOGLE: real-google-secret",
-		"SECRET_KEY_BASE: real-secret-key-base",
-		"APP_PASSWORD_PROD: real-prod-password",
+		"API_KEY_OPENAI: " + providerValue,
+		"TOKEN_GITHUB: " + providerValue,
+		"CLIENT_SECRET_GOOGLE: " + providerValue,
+		"SECRET_KEY_BASE: " + providerValue,
+		"APP_PASSWORD_PROD: " + providerValue,
 	}, "\n")+"\n"))
 	var count int
 	for _, item := range got {
@@ -347,13 +352,7 @@ func TestScanFileDetectsCredentialPhraseBeforeEnvironmentSuffix(t *testing.T) {
 			continue
 		}
 		count++
-		for _, forbidden := range []string{
-			"real-openai-key",
-			"real-github-token",
-			"real-google-secret",
-			"real-secret-key-base",
-			"real-prod-password",
-		} {
+		for _, forbidden := range []string{providerValue} {
 			if strings.Contains(item.Excerpt, forbidden) {
 				t.Fatalf("credential finding leaked value %q in excerpt %q", forbidden, item.Excerpt)
 			}
@@ -364,85 +363,77 @@ func TestScanFileDetectsCredentialPhraseBeforeEnvironmentSuffix(t *testing.T) {
 	}
 }
 
-func TestScanFileDetectsCredentialValuesThatLookLikeBareIdentifiers(t *testing.T) {
+func TestScanFileAllowsCredentialValuesThatLookLikeBareIdentifiers(t *testing.T) {
 	got := ScanFile("docs/config.yaml", []byte(strings.Join([]string{
 		"API_KEY_OPENAI: prod_key",
 		"CLIENT_SECRET_GOOGLE: prod_secret",
 		"TOKEN_GITHUB: github_token",
 		"APP_PASSWORD_PROD: prod_password",
 	}, "\n")+"\n"))
-	var count int
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
-			count++
+			t.Fatalf("readable identifiers should not be credential findings: %#v", got)
 		}
-	}
-	if count != 4 {
-		t.Fatalf("bare identifier credential findings = %d, want 4: %#v", count, got)
 	}
 }
 
 func TestScanFileDetectsAngleWrappedRealisticCredentialValues(t *testing.T) {
 	stripeLike := "sk_" + "live_1234567890abcdef"
 	patLike := "gh" + "p_1234567890abcdef1234567890abcdef1234"
-	got := ScanFile("docs/config.yaml", []byte(strings.Join([]string{
-		"API_KEY: <" + stripeLike + ">",
-		"SECRET_TOKEN: <" + patLike + ">",
-		"CLIENT_SECRET: <real-client-secret-value>",
-	}, "\n")+"\n"))
-	var count int
-	for _, item := range got {
-		if item.Rule == "public_content_generic_credential" {
-			count++
-		}
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "stripe", text: "API_KEY: <" + stripeLike + ">", want: true},
+		{name: "github", text: "SECRET_TOKEN: <" + patLike + ">", want: true},
+		{name: "readable", text: "CLIENT_SECRET: <real-client-secret-value>", want: false},
 	}
-	if count != 3 {
-		t.Fatalf("angle-wrapped realistic credential findings = %d, want 3: %#v", count, got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertGenericCredentialFinding(t, "docs/config.yaml", tc.text, tc.want)
+		})
 	}
 }
 
 func TestScanFileDetectsCredentialShapedValuesUnderBenignKeys(t *testing.T) {
 	stripeLike := "sk_" + "live_1234567890abcdef"
 	patLike := "gh" + "p_1234567890abcdef1234567890abcdef1234"
-	got := ScanFile("docs/public.json", []byte(strings.Join([]string{
-		`{"access_token_expires_in":"` + patLike + `"}`,
-		`{"refresh_token_expires_in":"` + stripeLike + `"}`,
-		`{"client_secret_status":"real-client-secret-value"}`,
-		`{"client_secret_name":"real-client-secret-value"}`,
-		`{"app_token":"` + patLike + `"}`,
-		`{"sync_token":"` + stripeLike + `"}`,
-		`{"target_token":"real-client-secret-value"}`,
-	}, "\n")+"\n"))
-	var count int
-	for _, item := range got {
-		if item.Rule == "public_content_generic_credential" {
-			count++
-		}
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "expiry provider token", text: `{"access_token_expires_in":"` + patLike + `"}`, want: true},
+		{name: "expiry provider secret", text: `{"refresh_token_expires_in":"` + stripeLike + `"}`, want: true},
+		{name: "status readable", text: `{"client_secret_status":"real-client-secret-value"}`, want: false},
+		{name: "name readable", text: `{"client_secret_name":"real-client-secret-value"}`, want: false},
+		{name: "app provider token", text: `{"app_token":"` + patLike + `"}`, want: true},
+		{name: "sync provider secret", text: `{"sync_token":"` + stripeLike + `"}`, want: true},
+		{name: "target readable", text: `{"target_token":"real-client-secret-value"}`, want: false},
 	}
-	if count != 7 {
-		t.Fatalf("credential-shaped benign-key findings = %d, want 7: %#v", count, got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertGenericCredentialFinding(t, "docs/public.json", tc.text, tc.want)
+		})
 	}
 }
 
-func TestScanFileDetectsBareIdentifierCredentialsWithMetadataSuffixes(t *testing.T) {
+func TestScanFileAllowsBareIdentifierCredentialsWithMetadataSuffixes(t *testing.T) {
 	got := ScanFile("docs/config.yaml", []byte(strings.Join([]string{
 		"API_KEY_NAME: prod_key",
 		"CLIENT_SECRET_NAME: prod_secret",
 		"SECRET_STATUS: prod_secret",
 	}, "\n")+"\n"))
-	var count int
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
-			count++
+			t.Fatalf("readable metadata values should not be credential findings: %#v", got)
 		}
-	}
-	if count != 3 {
-		t.Fatalf("metadata-suffixed bare credential findings = %d, want 3: %#v", count, got)
 	}
 }
 
 func TestScanFileDetectsAccessKeyCredentials(t *testing.T) {
-	accessKey := "AK" + "IAIOSFODNN7EXAMPX"
+	accessKey := "AK" + "IAIOSFODNN7EXAMPXX"
 	got := ScanFile("docs/config.yaml", []byte(strings.Join([]string{
 		"AWS_ACCESS_KEY_ID: " + accessKey,
 		"ACCESS_KEY_ID: " + accessKey,
@@ -593,18 +584,18 @@ func TestScanFileAllowsCredentialReferenceValues(t *testing.T) {
 
 func TestScanFileDetectsMalformedGithubExpressionCredentialValues(t *testing.T) {
 	stripeLike := "sk_" + "live_1234567890abcdef"
-	got := ScanFile("docs/config.yaml", []byte(strings.Join([]string{
-		"API_KEY=${{" + stripeLike + "}}",
-		"TOKEN=${{real-secret-token-value}}",
-	}, "\n")+"\n"))
-	var count int
-	for _, item := range got {
-		if item.Rule == "public_content_generic_credential" {
-			count++
-		}
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "provider", text: "API_KEY=${{" + stripeLike + "}}", want: true},
+		{name: "readable", text: "TOKEN=${{real-secret-token-value}}", want: false},
 	}
-	if count != 2 {
-		t.Fatalf("malformed GitHub expression credential findings = %d, want 2: %#v", count, got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertGenericCredentialFinding(t, "docs/config.yaml", tc.text, tc.want)
+		})
 	}
 }
 
@@ -648,6 +639,7 @@ func TestScanFileAllowsCredentialURLPlaceholders(t *testing.T) {
 func TestScanFileAllowsCredentialURLFixtures(t *testing.T) {
 	got := ScanFile("fixtures/network_test.go", []byte(strings.Join([]string{
 		`proxy := "http://user:pass@proxy:8080"`,
+		`proxy := "http://user:p%40ss@proxy:8080/path"`,
 		`repo := "https://u:t@h/r.git"`,
 		`target := "https://attacker:pw@open.feishu.cn"`,
 		`proxy := "http://admin:s3cret@127.0.0.1:3128"`,
@@ -821,26 +813,36 @@ func TestScanFileDetectsWeakTokenFieldsWithHighConfidenceCredentialValues(t *tes
 	}
 }
 
-func TestScanFileDetectsStrongAuthTokenKeysWithFixtureLikeValues(t *testing.T) {
+func TestScanFileAllowsStrongAuthTokenKeysWithoutStrongValueEvidence(t *testing.T) {
 	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
 		`{"access_token":"img_abc123"}`,
 		`{"api_token":"img_live_secret"}`,
 		`{"service_token":"ab********cd"}`,
 		`{"bot_token":"board_v3_example"}`,
 	}, "\n")+"\n"))
-	var count int
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
-			count++
+			t.Fatalf("token field names alone should not produce findings: %#v", got)
 		}
-	}
-	if count != 4 {
-		t.Fatalf("strong auth token key findings = %d, want 4: %#v", count, got)
 	}
 }
 
 func TestScanFileAllowsTestFixtureSecretValues(t *testing.T) {
-	got := ScanFile("fixtures/calendar_meeting_test.go", []byte(`AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,`+"\n"))
+	got := ScanFile("fixtures/calendar_meeting_test.go", []byte(strings.Join([]string{
+		`AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,`,
+		`cfg := &core.CliConfig{AppID: "a", AppSecret: "s"}`,
+		`os.WriteFile(path, []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600)`,
+		`rt := &stubRoundTripper{respBody: ` + "`" + `{"access_token":"t","token_type":"Bearer"}` + "`" + `}`,
+		`envContent := "FEISHU_APP_ID=cli_hermes_abc\nFEISHU_APP_SECRET=hermes_secret_123\nFEISHU_DOMAIN=lark\n"`,
+		`os.WriteFile(path, []byte("FEISHU_APP_ID=cli_auto\nFEISHU_APP_SECRET=auto_secret\n"), 0600)`,
+		`os.WriteFile(path, []byte("FEISHU_APP_ID=cli_new_app\nFEISHU_APP_SECRET=new_secret\n"), 0600)`,
+		`if got := out.String(); got != "username=x-access-token\npassword=valid-pat\n\n" {`,
+		`if got := out.String(); got != "username=x-access-token\npassword=restored-pat\n\n" {`,
+		`if got := stdout.String(); got != "username=x-access-token\npassword=pat-token\n\n" {`,
+		`return &core.CliConfig{AppID: "dummy", AppSecret: "dummy"}`,
+		`os.WriteFile(path, []byte("API_KEY=replace-me\n"), 0600)`,
+		`body := "APP_ID=\"cli_xxxxx\"\nAPP_SECRET=\"xxxxx\"\n"`,
+	}, "\n")+"\n"))
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
 			t.Fatalf("test fixture secret should not be credential finding: %#v", got)
@@ -848,8 +850,114 @@ func TestScanFileAllowsTestFixtureSecretValues(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsCredentialIdentifierFields(t *testing.T) {
+	got := ScanFile("fixtures/openapi_key_test.go", []byte(strings.Join([]string{
+		`"api_key_id": "k1",`,
+		`"secret_id": "s1",`,
+		`"token_id": "t1",`,
+		`"private_key_id": "pk1",`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("credential identifier fields should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileDetectsCredentialShapedIdentifierFieldValues(t *testing.T) {
+	stripeLike := "sk_" + "live_1234567890abcdef"
+	githubToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	got := ScanFile("fixtures/openapi_key_test.go", []byte(strings.Join([]string{
+		`"api_key_id": "` + stripeLike + `",`,
+		`"token_id": "` + githubToken + `",`,
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("credential-shaped identifier field findings = %d, want 2: %#v", count, got)
+	}
+}
+
+func TestCredentialShapedValueTrimsWhitespaceBeforeDelimiters(t *testing.T) {
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	if !credentialShapedValue(` "` + providerValue + `" `) {
+		t.Fatal("space-padded quoted provider credential should be recognized")
+	}
+}
+
+func TestScanFileDetectsProviderCredentialsAcrossAssignmentSyntaxes(t *testing.T) {
+	providerValue := strings.Join([]string{"gh", "p_", "1234567890abcdef", "1234567890abcdef", "1234"}, "")
+	tests := []struct {
+		name string
+		path string
+		text string
+	}{
+		{name: "Go raw string", path: "pkg/config.go", text: "const clientSecret = `" + providerValue + "`"},
+		{name: "TypeScript template literal", path: "pkg/config.ts", text: "const clientSecret = `" + providerValue + "`;"},
+		{name: "shell backtick", path: "scripts/config.sh", text: "client_secret=`" + providerValue + "`"},
+		{name: "YAML string tag", path: "docs/config.yaml", text: "client_secret: !!str " + providerValue},
+		{name: "YAML string tag double quoted", path: "docs/config.yaml", text: `client_secret: !!str "` + providerValue + `"`},
+		{name: "YAML string tag single quoted", path: "docs/config.yaml", text: `client_secret: !!str '` + providerValue + `'`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ScanFile(tt.path, []byte(tt.text+"\n"))
+			if !findingRules(got)["public_content_generic_credential"] {
+				t.Fatalf("provider credential should be reported: %#v", got)
+			}
+		})
+	}
+}
+
+func TestScanFileDetectsPercentEncodedProviderCredential(t *testing.T) {
+	providerBody := strings.Join([]string{"1234567890abcdef", "1234567890abcdef", "1234"}, "")
+	tests := []string{
+		"access_token: ghp%" + "5F" + providerBody,
+		"access_token_hash: ghp%" + "255F" + providerBody,
+	}
+	for _, text := range tests {
+		got := ScanFile("docs/config.yaml", []byte(text+"\n"))
+		if !findingRules(got)["public_content_generic_credential"] {
+			t.Fatalf("percent-encoded provider credential should be reported: %#v", got)
+		}
+	}
+}
+
+func TestScanFileRequiresCompleteProviderCredentialFormats(t *testing.T) {
+	got := ScanFile("docs/config.yaml", []byte(strings.Join([]string{
+		"token_type: asian",
+		"token_prefix: ASIA",
+		"token_prefix: ghp_",
+		"api_key: sk_live_example",
+		"token_prefix: asianmarketsegment01",
+		"token_prefix: ghp_placeholder_value",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("incomplete provider prefixes should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsEncodedTokenMetadataURL(t *testing.T) {
+	got := ScanFile("docs/config.yaml", []byte("token_url: https%3A%2F%2Fexample.invalid/oauth/token\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("encoded token metadata URL should not be credential finding: %#v", got)
+		}
+	}
+}
+
 func TestScanFileAllowsRegexpTokenValidators(t *testing.T) {
-	got := ScanFile("fixtures/minutes_detail.go", []byte("var validMinuteTokenDetail = regexp.MustCompile(`^[a-z0-9]+$`)\n"))
+	got := ScanFile("fixtures/minutes_detail.go", []byte(strings.Join([]string{
+		"var validMinuteTokenDetail = regexp.MustCompile(`^[a-z0-9]+$`)",
+		"REALISTIC_TOKEN_RE=\"\\\"${TOKEN_BODY}\\\"|\\`${TOKEN_BODY}\\`|\\\\b${TOKEN_BODY}\\\\b\"",
+	}, "\n")+"\n"))
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
 			t.Fatalf("regexp token validator should not be credential finding: %#v", got)
@@ -927,6 +1035,22 @@ func TestScanFileAllowsSourceCodeCredentialNonSecretLiterals(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsSourceCodeSyntheticCredentialIdentifiers(t *testing.T) {
+	got := ScanFile("fixtures/sheets_media.go", []byte(strings.Join([]string{
+		`const fakeOfficeTokenPrefix = "fake_office_"`,
+		`const localOfficeTokenPrefix = "local_office_"`,
+		`const imageLiveSecretMarker = "img_live_secret"`,
+		`const imageProdKeyMarker = "img_prod_key"`,
+		`if strings.HasPrefix(spreadsheetToken, fakeOfficeTokenPrefix) {`,
+		`if strings.HasPrefix(spreadsheetToken, localOfficeTokenPrefix) {`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("source code token prefix references should not be credential findings: %#v", got)
+		}
+	}
+}
+
 func TestScanFileAllowsCredentialLikePublicPlaceholders(t *testing.T) {
 	got := ScanFile("fixtures/placeholders.md", []byte(strings.Join([]string{
 		`app_secret=***`,
@@ -941,21 +1065,17 @@ func TestScanFileAllowsCredentialLikePublicPlaceholders(t *testing.T) {
 	}
 }
 
-func TestScanFileDetectsPartiallyMaskedCredentialValues(t *testing.T) {
+func TestScanFileAllowsPartiallyMaskedCredentialValues(t *testing.T) {
 	got := ScanFile("fixtures/config.md", []byte(strings.Join([]string{
 		"client_secret=realprefix***realsuffix",
 		"client_secret=ab********cd",
 		"access_token=ab********cd",
 		"refresh_token=realprefix********realsuffix",
 	}, "\n")+"\n"))
-	var count int
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
-			count++
+			t.Fatalf("partially masked values should not be credential findings: %#v", got)
 		}
-	}
-	if count != 4 {
-		t.Fatalf("partially masked credential findings = %d, want 4: %#v", count, got)
 	}
 }
 
@@ -972,6 +1092,7 @@ func TestScanFileAllowsDryRunCredentialPlaceholders(t *testing.T) {
 }
 
 func TestScanFileDetectsTypedCredentialAssignmentsWithSecretRHS(t *testing.T) {
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
 	cases := []struct {
 		name string
 		file string
@@ -980,32 +1101,47 @@ func TestScanFileDetectsTypedCredentialAssignmentsWithSecretRHS(t *testing.T) {
 		{
 			name: "typescript simple secret",
 			file: "fixtures/source_secret.ts",
-			text: `const clientSecret: string = "real-client-secret-value"`,
+			text: `const clientSecret: string = "` + providerValue + `"`,
 		},
 		{
-			name: "typescript numeric password",
+			name: "typescript terminated secret",
 			file: "fixtures/source_secret.ts",
-			text: `const password: string = "12345678901234567890"`,
+			text: `const clientSecret: string = "` + providerValue + `";`,
+		},
+		{
+			name: "typescript secret with trailing comment",
+			file: "fixtures/source_secret.ts",
+			text: `const clientSecret: string = "` + providerValue + `"; // production`,
+		},
+		{
+			name: "typescript asserted secret",
+			file: "fixtures/source_secret.ts",
+			text: `const clientSecret: string = "` + providerValue + `" as const;`,
+		},
+		{
+			name: "typescript provider password",
+			file: "fixtures/source_secret.ts",
+			text: `const password: string = "` + providerValue + `"`,
 		},
 		{
 			name: "typescript union secret",
 			file: "fixtures/source_secret.ts",
-			text: `const clientSecret: string | undefined = "real-client-secret-value"`,
+			text: `const clientSecret: string | undefined = "` + providerValue + `"`,
 		},
 		{
 			name: "python simple secret",
 			file: "fixtures/source_secret.py",
-			text: `self.client_secret: str = "real-client-secret-value"`,
+			text: `self.client_secret: str = "` + providerValue + `"`,
 		},
 		{
 			name: "python union secret",
 			file: "fixtures/source_secret.py",
-			text: `self.client_secret: str | None = "real-client-secret-value"`,
+			text: `self.client_secret: str | None = "` + providerValue + `"`,
 		},
 		{
 			name: "python optional secret",
 			file: "fixtures/source_secret.py",
-			text: `self.client_secret: Optional[str] = "real-client-secret-value"`,
+			text: `self.client_secret: Optional[str] = "` + providerValue + `"`,
 		},
 	}
 	for _, tc := range cases {
@@ -1018,24 +1154,154 @@ func TestScanFileDetectsTypedCredentialAssignmentsWithSecretRHS(t *testing.T) {
 	}
 }
 
-func TestScanFileDetectsCredentialShapedSourceCodeLiterals(t *testing.T) {
-	githubToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
-	got := ScanFile("fixtures/source_secret.go", []byte(strings.Join([]string{
-		`const ClientSecret = "real-client-secret-value"`,
-		`const GithubToken = "` + githubToken + `"`,
-		`const Password = "12345678901234567890"`,
-		`const ClientSecretNumber = "12345678901234567890"`,
-		`const ClientSecretFormat = "abc%sdefreal"`,
-		`fmt.Println("done"); const ClientSecret = "abc%sdefreal"`,
-	}, "\n")+"\n"))
+func TestScanFileDetectsRepeatedTypedCredentialAssignments(t *testing.T) {
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	assertGenericCredentialFinding(t, "fixtures/source_secret.ts", `const clientSecret: string = "placeholder";`, false)
+	assertGenericCredentialFinding(t, "fixtures/source_secret.ts", `const clientSecret: string = "`+providerValue+`";`, true)
+
+	got := ScanFile("fixtures/source_secret.ts", []byte(
+		`const clientSecret: string = "placeholder"; const clientSecret: string = "`+providerValue+`";`+"\n",
+	))
 	var count int
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
 			count++
 		}
 	}
-	if count != 6 {
-		t.Fatalf("source code credential-shaped literal findings = %d, want 6: %#v", count, got)
+	if count != 1 {
+		t.Fatalf("repeated typed credential findings = %d, want 1: %#v", count, got)
+	}
+}
+
+func TestScanFileDetectsCredentialShapedSourceCodeLiterals(t *testing.T) {
+	stripeLike := "sk_" + "live_1234567890abcdef"
+	githubToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "stripe", text: `const ClientSecret = "` + stripeLike + `"`, want: true},
+		{name: "github", text: `const GithubToken = "` + githubToken + `"`, want: true},
+		{name: "password number", text: `const Password = "12345678901234567890"`, want: false},
+		{name: "secret number", text: `const ClientSecretNumber = "12345678901234567890"`, want: false},
+		{name: "format literal", text: `const ClientSecretFormat = "abc%sdefreal"`, want: false},
+		{name: "inline format literal", text: `fmt.Println("done"); const ClientSecret = "abc%sdefreal"`, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertGenericCredentialFinding(t, "fixtures/source_secret.go", tc.text, tc.want)
+		})
+	}
+}
+
+func TestScanFileDetectsGoShortDeclarationCredentials(t *testing.T) {
+	providerSecret := "sk_" + "live_1234567890abcdef"
+	providerToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	got := ScanFile("fixtures/source_secret.go", []byte(strings.Join([]string{
+		`clientSecret := "` + providerSecret + `"`,
+		`accessToken := "` + providerToken + `"`,
+	}, "\n")+"\n"))
+
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("Go short declaration credential findings = %d, want 2: %#v", count, got)
+	}
+}
+
+func TestGenericCredentialDecisionMatrix(t *testing.T) {
+	providerToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	highEntropyValue := "Q7k2mN9pR4vX8cL3" + "sT6yU1aD5fG0hJ2z"
+	tokenHash := "6f1ed002ab559585" + "9014ebf0951522d9" +
+		"a0e3c1f4206254d" + "28a13efbbc8d56a30"
+	tests := []struct {
+		name    string
+		path    string
+		text    string
+		comment bool
+		want    bool
+	}{
+		{name: "source synthetic token prefix", path: "pkg/sheets.go", text: `const localOfficeTokenPrefix = "local_office_"`, want: false},
+		{name: "source token kind state", path: "pkg/client.py", text: `self._token_kind: TokenKind | None = None`, want: false},
+		{name: "documentation token prefix", path: "docs/config.yaml", text: `token_prefix: local_office_`, want: false},
+		{name: "documentation token kind", path: "docs/config.yaml", text: `token_kind: bearer`, want: false},
+		{name: "documentation token hash", path: "docs/config.yaml", text: `access_token_hash: ` + tokenHash, want: false},
+		{name: "comment fixture placeholder", text: `AppSecret: "fake-secret"`, comment: true, want: false},
+		{name: "test fixture placeholder", path: "pkg/config_test.go", text: `AppSecret: "fake-secret"`, want: false},
+		{name: "test real-labeled token", path: "pkg/config_test.go", text: `token: "real-tenant-access-token"`, want: false},
+		{name: "test ambiguous concrete secret word", path: "pkg/config_test.go", text: `AppSecret: "supersecret"`, want: false},
+		{name: "resource token placeholder", path: "docs/images.md", text: `"token": "img_abc123"`, want: false},
+		{name: "partially masked token", path: "docs/auth.md", text: `token=ab********cd`, want: false},
+		{name: "source readable secret words", path: "pkg/config.go", text: `const AppSecret = "customer-prod-secret"`, want: false},
+		{name: "documentation readable secret words", path: "docs/config.yaml", text: `client_secret: customer-prod-secret`, want: false},
+		{name: "comment middle fixture marker", text: `API_KEY=prod-fake-key`, comment: true, want: false},
+		{name: "comment negated fixture marker", text: `AppSecret: "not-fake-secret"`, comment: true, want: false},
+		{name: "source with credential words", path: "pkg/config.go", text: `secretWithPassword := "hunter2"`, want: false},
+		{name: "production filename containing sample", path: "pkg/sampler.go", text: `clientSecret := "customer-prod-secret"`, want: false},
+		{name: "provider token under weak key", path: "docs/config.yaml", text: `token: ` + providerToken, want: true},
+		{name: "provider token under hash key", path: "docs/config.yaml", text: `access_token_hash: ` + providerToken, want: true},
+		{name: "high entropy strong secret", path: "docs/config.yaml", text: `client_secret: ` + highEntropyValue, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []Finding
+			if tt.comment {
+				got = ScanComment("issue_comment", tt.text)
+			} else {
+				got = ScanFile(tt.path, []byte(tt.text+"\n"))
+			}
+			if actual := findingRules(got)["public_content_generic_credential"]; actual != tt.want {
+				t.Fatalf("generic credential finding = %v, want %v: %#v", actual, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestScanFileClassifiesLowEvidenceTestFixtureCredentials(t *testing.T) {
+	providerToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	highEntropyValue := "Q7k2mN9pR4vX8cL3" + "sT6yU1aD5fG0hJ2z"
+	tests := []struct {
+		name  string
+		value string
+		want  bool
+	}{
+		{name: "human readable access token", value: "user-access-token", want: false},
+		{name: "delimited secret value", value: "secret-value", want: false},
+		{name: "underscored secret fixture", value: "plain_secret", want: false},
+		{name: "short delimited fixture", value: "t-abc", want: false},
+		{name: "embedded test marker", value: "perm-grant-test-secret-skip", want: false},
+		{name: "real labeled fixture", value: "real-token", want: false},
+		{name: "ambiguous concrete word", value: "supersecret", want: false},
+		{name: "provider token", value: providerToken, want: true},
+		{name: "high entropy secret", value: highEntropyValue, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ScanFile("pkg/config_test.go", []byte(`AppSecret: "`+tt.value+`"`+"\n"))
+			if actual := findingRules(got)["public_content_generic_credential"]; actual != tt.want {
+				t.Fatalf("generic credential finding = %v, want %v: %#v", actual, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestScanFileAllowsLowEvidenceTestFixtureAssignmentSyntaxes(t *testing.T) {
+	got := ScanFile("pkg/config_test.go", []byte(strings.Join([]string{
+		`secret := "secret-value"`,
+		`samplePassword := "sample-password"`,
+		`bodyWithToken := "plain text body\\nDownload: https://example.com/file?token=tok_aaa\\n"`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("low-evidence test fixture assignment should not be reported: %#v", got)
+		}
 	}
 }
 
@@ -1116,9 +1382,10 @@ func TestScanFileAllowsClientTokenIdempotencyExamples(t *testing.T) {
 
 func TestScanFileDetectsCredentialShapedClientTokenValues(t *testing.T) {
 	stripeLike := "sk_" + "live_1234567890abcdef"
+	githubToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
 	got := ScanFile("fixtures/idempotency.md", []byte(strings.Join([]string{
 		`{"client_token":"` + stripeLike + `"}`,
-		`{"client_token":"real-client-secret-value"}`,
+		`{"client_token":"` + githubToken + `"}`,
 	}, "\n")+"\n"))
 	var count int
 	for _, item := range got {
@@ -1152,9 +1419,10 @@ func TestScanFileAllowsTokenLikePlaceholderExamples(t *testing.T) {
 
 func TestScanFileDetectsCredentialShapedTokenLikePlaceholderValues(t *testing.T) {
 	stripeLike := "sk_" + "live_1234567890abcdef"
+	githubToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
 	got := ScanFile("fixtures/placeholders.md", []byte(strings.Join([]string{
 		`{ "resource_token": "` + stripeLike + `" }`,
-		`{ "block_token": "real-client-secret-value" }`,
+		`{ "block_token": "` + githubToken + `" }`,
 	}, "\n")+"\n"))
 	var count int
 	for _, item := range got {
@@ -1368,39 +1636,43 @@ func TestScanFileAllowsConventionalCredentialPlaceholders(t *testing.T) {
 	}
 }
 
-func TestScanFileDetectsCredentialShapedPlaceholderLookalikes(t *testing.T) {
+func TestScanFileAllowsInvalidProviderPlaceholderLookalikes(t *testing.T) {
 	stripeLike := "sk_" + "live_1234567890abcdef"
 	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
 		"client_secret: " + stripeLike + "_HERE",
 		"api_key: YOUR_" + stripeLike,
 	}, "\n")+"\n"))
-	var count int
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
-			count++
+			t.Fatalf("invalid provider placeholder lookalike should not be blocked: %#v", got)
 		}
-	}
-	if count != 2 {
-		t.Fatalf("credential-shaped placeholder lookalike findings = %d, want 2: %#v", count, got)
 	}
 }
 
 func TestScanFileDetectsPercentWrappedCredentialValues(t *testing.T) {
 	stripeLike := "sk_" + "live_1234567890abcdef"
 	patLike := "gh" + "p_1234567890abcdef1234567890abcdef1234"
-	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
-		"CLIENT_SECRET=%" + stripeLike + "%",
-		"GITHUB_TOKEN=%" + patLike + "%",
-		"TOKEN=%real-secret-token-value%",
-	}, "\n")+"\n"))
-	var count int
-	for _, item := range got {
-		if item.Rule == "public_content_generic_credential" {
-			count++
-		}
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "stripe", text: "CLIENT_SECRET=%" + stripeLike + "%", want: true},
+		{name: "github", text: "GITHUB_TOKEN=%" + patLike + "%", want: true},
+		{name: "readable", text: "TOKEN=%real-secret-token-value%", want: false},
 	}
-	if count != 3 {
-		t.Fatalf("percent-wrapped credential findings = %d, want 3: %#v", count, got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertGenericCredentialFinding(t, "docs/config.md", tc.text, tc.want)
+		})
+	}
+}
+
+func assertGenericCredentialFinding(t *testing.T, file, text string, want bool) {
+	t.Helper()
+	got := ScanFile(file, []byte(text+"\n"))
+	if actual := findingRules(got)["public_content_generic_credential"]; actual != want {
+		t.Fatalf("generic credential finding = %v, want %v: %#v", actual, want, got)
 	}
 }
 

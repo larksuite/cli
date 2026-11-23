@@ -10,13 +10,15 @@
 
 - 支持 `--keyword` 按应用名模糊搜索。
 - `--ownership` 枚举：`all` / `mine` / `shared`（默认 `all` = 我创建的 + 共享给我的；`mine` = 仅我创建；`shared` = 仅共享给我）。
-- `--app-type` 枚举：`html` / `full_stack`。
+- `--owner-id <open_id>`：按应用 owner 过滤，只接受 `ou_` 开头的 open_id；由服务端在当前可见范围内过滤，与 `--ownership` 正交（先圈定可见范围，再按 owner 收窄），不传时行为不变。主用法是默认 `all` 叠加 `--owner-id`，回答「某人名下、我可见的应用有哪些」。
+- `--app-type` 枚举：`html` / `frontend` / `full_stack`。
 - 分页：`--page-size` 默认 20，`--page-token` 传上一页 cursor。
 
 ## 示例
 
 ```bash
 lark-cli apps +list --keyword "审批"
+lark-cli apps +list --owner-id ou_speaker_open_id --page-size 50
 lark-cli apps +list --ownership mine --app-type full_stack
 lark-cli apps +list --page-token "<cursor>"
 ```
@@ -34,4 +36,4 @@ lark-cli apps +list --page-token "<cursor>"
 
 多候选时展示名称、app_id、updated_at 让用户确认。用户描述里已经有 `app_xxx` 或妙搭链接时，直接提取，不再 `+list`。
 
-把 `+list` 当定位工具和发布态快照工具，不要把 `is_published` 当部署完成证明。需要证明“最新内容已上线”时，使用对应发布命令的完成状态：全栈看 `+release-get` 的 `finished`，HTML 看 `+html-publish` 的成功返回。
+把 `+list` 当定位工具和发布态快照工具，不要把 `is_published` 当部署完成证明。需要证明“最新内容已上线”时，使用对应发布命令的完成状态：看 `+release-get` 的 `finished`。

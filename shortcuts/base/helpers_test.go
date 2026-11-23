@@ -238,14 +238,14 @@ func TestRecordSelectionHelpers(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 
-	fields, err = resolveRecordGetSelectFields(nil, map[string]interface{}{"select_fields": []interface{}{"Name"}})
+	fields, err = resolveRecordGetSelectFields(nil, "--field-id", map[string]interface{}{"select_fields": []interface{}{"Name"}})
 	if err != nil || !reflect.DeepEqual(fields, []string{"Name"}) {
 		t.Fatalf("fields=%v err=%v", fields, err)
 	}
-	if _, err := resolveRecordGetSelectFields([]string{"Name"}, map[string]interface{}{"select_fields": []interface{}{"Age"}}); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+	if _, err := resolveRecordGetSelectFields([]string{"Name"}, "--field-id", map[string]interface{}{"select_fields": []interface{}{"Age"}}); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Fatalf("err=%v", err)
 	}
-	if _, err := resolveRecordGetSelectFields(nil, map[string]interface{}{"select_fields": []interface{}{}}); err == nil || !strings.Contains(err.Error(), "must not be empty") {
+	if _, err := resolveRecordGetSelectFields(nil, "--field-id", map[string]interface{}{"select_fields": []interface{}{}}); err == nil || !strings.Contains(err.Error(), "must not be empty") {
 		t.Fatalf("err=%v", err)
 	}
 

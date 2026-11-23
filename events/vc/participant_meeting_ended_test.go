@@ -6,24 +6,17 @@ package vc
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
-
-func TestMain(m *testing.M) {
-	for _, k := range Keys() {
-		event.RegisterKey(k)
-	}
-	os.Exit(m.Run())
-}
 
 func TestVCKeys_ProcessedMeetingEndedRegistered(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup(eventTypeMeetingEnded)
+	def, ok := lookupCompiledDef(t, eventTypeMeetingEnded)
 	if !ok {
 		t.Fatalf("%s should be registered via Keys()", eventTypeMeetingEnded)
 	}
@@ -130,18 +123,18 @@ func TestProcessVCParticipantMeetingEnded_MalformedPayload(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 	got, err := processVCParticipantMeetingEnded(context.Background(), nil, raw, nil)
-	if err != nil {
-		t.Fatalf("Process should swallow parse errors, got %v", err)
+	if !processing.IsDropMalformed(err) {
+		t.Fatalf("malformed payload must be dropped with a malformed marker, got err=%v", err)
 	}
-	if string(got) != "not json" {
-		t.Errorf("malformed fallback output = %q, want original bytes", string(got))
+	if got != nil {
+		t.Errorf("malformed payload must be dropped without output, got %q", string(got))
 	}
 }
 
 func TestVCParticipantMeetingEnded_PreConsumeSubscriptionLifecycle(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup("vc.meeting.participant_meeting_ended_v1")
+	def, ok := lookupCompiledDef(t, "vc.meeting.participant_meeting_ended_v1")
 	if !ok {
 		t.Fatal("vc.meeting.participant_meeting_ended_v1 should be registered via Keys()")
 	}
@@ -191,6 +184,7 @@ func runMeetingEnded(t *testing.T, payload string) VCParticipantMeetingEndedOutp
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processVCParticipantMeetingEnded(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

@@ -16,7 +16,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -81,6 +80,7 @@ type calendarEvent struct {
 	OrganizerCalendarID string                    `json:"organizer_calendar_id,omitempty"`
 	Summary             string                    `json:"summary,omitempty"`
 	Description         string                    `json:"description,omitempty"`
+	DescriptionRich     string                    `json:"description_rich,omitempty"`
 	StartTime           *calendarEventTime        `json:"start_time,omitempty"`
 	EndTime             *calendarEventTime        `json:"end_time,omitempty"`
 	VChat               *calendarEventVChat       `json:"vchat,omitempty"`
@@ -93,11 +93,10 @@ type calendarEvent struct {
 	Reminders           []calendarEventReminder   `json:"reminders,omitempty"`
 	Recurrence          string                    `json:"recurrence,omitempty"`
 	Status              string                    `json:"status,omitempty"`
-	IsException         bool                      `json:"is_exception,omitempty"`
+	IsException         bool                      `json:"is_exception"`
 	RecurringEventID    string                    `json:"recurring_event_id,omitempty"`
 	CreateTime          string                    `json:"create_time,omitempty"`
 	EventOrganizer      *calendarEventOrganizer   `json:"event_organizer,omitempty"`
-	AppLink             string                    `json:"app_link,omitempty"`
 	Attachments         []calendarEventAttachment `json:"attachments,omitempty"`
 	EventCheckIn        *calendarEventCheckIn     `json:"event_check_in,omitempty"`
 }
@@ -169,7 +168,7 @@ func buildCalendarEventOutput(event *calendarEvent) (map[string]interface{}, err
 	if status, _ := out["status"].(string); status != "cancelled" {
 		delete(out, "status")
 	}
-
+	collapseDescription(out)
 	return out, nil
 }
 
@@ -226,16 +225,7 @@ var CalendarGet = common.Shortcut{
 		}
 		eventId := strings.TrimSpace(runtime.Str("event-id"))
 
-		data, err := runtime.CallAPITyped("GET",
-			fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/%s",
-				validate.EncodePathSegment(calendarId),
-				validate.EncodePathSegment(eventId)),
-			nil, nil)
-		if err != nil {
-			return err
-		}
-
-		event, err := parseCalendarEvent(data)
+		event, err := resolveCalendarEventOrMaster(runtime, calendarId, eventId)
 		if err != nil {
 			return err
 		}

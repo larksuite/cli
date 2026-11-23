@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 func TestApplyFetchIMMarkdown(t *testing.T) {
@@ -67,6 +69,19 @@ func TestApplyFetchIMMarkdown(t *testing.T) {
 				t.Fatalf("data = %#v, want %#v", tt.data, tt.want)
 			}
 		})
+	}
+}
+
+func TestNewIMMarkdownContextRewritesFallbackURL(t *testing.T) {
+	testurlrewrite.Register(t, func(raw string) string {
+		if raw == "https://larkoffice.com" {
+			return "https://tenant.example.test/base"
+		}
+		return raw
+	})
+
+	if got := newIMMarkdownContext("doc_token").baseURL; got != "https://tenant.example.test/base" {
+		t.Fatalf("baseURL = %q", got)
 	}
 }
 
@@ -975,8 +990,8 @@ func TestConvertToIMMarkdownDocumentExpectedTagsAndEscaping(t *testing.T) {
 		"````Go\nfmt.Println(\"hi\")\n```\n````",
 		"`` `edge` `` $E=mc^2$ --- ![A \\[img\\]](https://example.com/i%281%29.png)",
 		"``report`v1`.pdf``",
-		"`任务``群聊卡片`",
-		"`多维表格``多维表格``OKR`",
+		"`Task``Chat card`",
+		"`Base``Base``OKR`",
 	}, "\n")
 
 	if got := convertToIMMarkdown(input, imCtx); got != want {

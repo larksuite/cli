@@ -9,6 +9,7 @@ import "github.com/larksuite/cli/shortcuts/common"
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		WikiMove,
+		WikiMoveToDrive,
 		WikiNodeCreate,
 		WikiDeleteSpace,
 		WikiSpaceList,

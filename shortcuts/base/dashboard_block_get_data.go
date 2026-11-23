@@ -20,13 +20,15 @@ var BaseDashboardBlockGetData = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		blockIDFlag(true),
+		{Name: "dashboard-id", Desc: "hidden compatibility flag accepted by dashboard block commands; ignored by get-data", Hidden: true},
 	},
 	Tips: []string{
 		"lark-cli base +dashboard-block-get-data --base-token <base_token> --block-id <block_id>",
 		"This command does not need --dashboard-id.",
 		"Use +dashboard-block-get first when you need block metadata like name, type, or data_config.",
 		"This command returns computed chart protocol JSON directly, not wrapped block metadata.",
-		"Text blocks do not have computed chart data; this shortcut is for chart/statistics blocks.",
+		"For a complete dashboard export, read text blocks with +dashboard-block-get; their content is in data_config.text.",
+		"If a chart type does not support computed data, inspect its data_config with +dashboard-block-get, then use +data-query with the same real table, dimensions, measures, and filters; do not omit the block or guess values.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return dryRunDashboardBlockGetData(ctx, runtime)

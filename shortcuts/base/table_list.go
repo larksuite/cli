@@ -12,29 +12,18 @@ import (
 var BaseTableList = common.Shortcut{
 	Service:     "base",
 	Command:     "+table-list",
-	Description: "List tables in a base",
+	Description: "List all tables in a base",
 	Risk:        "read",
 	Scopes:      []string{"base:table:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
-		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Type: "int", Default: "50", Desc: "pagination size, range 1-100"},
-		pageSizeLimitAliasFlag(),
+		{Name: "offset", Type: "int", Default: "0", Desc: "legacy pagination offset; hidden for compatibility", Hidden: true},
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "300", Desc: "legacy pagination size, range 1-300; hidden for compatibility", Hidden: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateLimitPageSizeAlias(runtime); err != nil {
-			return err
-		}
-		if _, err := common.ValidatePageSizeTyped(runtime, "limit", 50, 1, 100); err != nil {
-			return err
-		}
-		if runtime.Changed("page-size") {
-			if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 50, 1, 100); err != nil {
-				return err
-			}
-		}
-		return nil
+		_, err := common.ValidatePageSizeTyped(runtime, "limit", 300, 1, 300)
+		return err
 	},
 	DryRun: dryRunTableList,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

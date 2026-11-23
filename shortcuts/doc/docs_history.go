@@ -102,7 +102,6 @@ var DocsHistoryList = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
-	PostMount:   installDocsShortcutHelp("+history-list"),
 	Flags: []common.Flag{
 		{Name: "doc", Desc: "document URL or token", Required: true},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "history entries to return, range 1-20"},
@@ -156,7 +155,6 @@ var DocsHistoryRevert = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
-	PostMount:   installDocsShortcutHelp("+history-revert"),
 	Flags: []common.Flag{
 		{Name: "doc", Desc: "document URL or token", Required: true},
 		{Name: "history-version-id", Desc: "history_version_id from docs +history-list to revert to", Required: true},
@@ -213,7 +211,6 @@ var DocsHistoryRevertStatus = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
-	PostMount:   installDocsShortcutHelp("+history-revert-status"),
 	Flags: []common.Flag{
 		{Name: "doc", Desc: "document URL or token", Required: true},
 		{Name: "task-id", Desc: "task_id returned by docs +history-revert", Required: true},

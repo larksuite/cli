@@ -7,6 +7,7 @@ package keychain
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -109,9 +110,12 @@ func freeDataBlob(b *windows.DataBlob) {
 
 // platformGet retrieves a value from the Windows registry.
 func platformGet(service, account string) (string, error) {
-	v, ok := registryGet(service, account)
-	if !ok {
+	v, err := registryGet(service, account)
+	if errors.Is(err, registry.ErrNotExist) {
 		return "", nil
+	}
+	if err != nil {
+		return "", err
 	}
 	return v, nil
 }
@@ -131,29 +135,35 @@ func platformRemove(service, account string) error {
 	return registryRemove(service, account)
 }
 
-// registryGet retrieves a string value from the registry under the given service and account.
-func registryGet(service, account string) (string, bool) {
+// registryGet retrieves a credential; only registry.ErrNotExist means missing.
+func registryGet(service, account string) (string, error) {
 	keyPath := registryPathForService(service)
 	k, err := registry.OpenKey(registry.CURRENT_USER, keyPath, registry.QUERY_VALUE)
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("registry open for read failed: %w", err)
 	}
 	defer k.Close()
 
 	b64, _, err := k.GetStringValue(valueNameForAccount(account))
-	if err != nil || b64 == "" {
-		return "", false
+	if err != nil {
+		return "", fmt.Errorf("registry get failed: %w", err)
+	}
+	if b64 == "" {
+		return "", errors.New("registry credential value is empty")
 	}
 	blob, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("registry credential encoding is invalid: %w", err)
 	}
 	entropy := dpapiEntropy(service, account)
 	plain, err := dpapiUnprotect(blob, entropy)
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("dpapi unprotect failed: %w", err)
 	}
-	return string(plain), true
+	if len(plain) == 0 {
+		return "", errors.New("registry credential plaintext is empty")
+	}
+	return string(plain), nil
 }
 
 // registrySet stores a string value in the registry under the given service and account.

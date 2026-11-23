@@ -12,8 +12,17 @@ import (
 type Option func(*requestConfig)
 
 type requestConfig struct {
-	timeout time.Duration
-	headers http.Header
+	timeout    time.Duration
+	headers    http.Header
+	replaySafe bool
+}
+
+// WithReplaySafe allows transient failures to be reported as retryable.
+// DoStream does not retry the request itself.
+func WithReplaySafe() Option {
+	return func(c *requestConfig) {
+		c.replaySafe = true
+	}
 }
 
 // WithTimeout sets a request-level timeout that overrides the client default.

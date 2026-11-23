@@ -11,7 +11,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestWikiMemberAddDryRun(t *testing.T) {
@@ -35,10 +34,10 @@ func TestWikiMemberAddDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/spaces/space_42/members", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "cli_app_123", gjson.Get(result.Stdout, "api.0.body.member_id").String())
-		assert.Equal(t, "appid", gjson.Get(result.Stdout, "api.0.body.member_type").String())
-		assert.Equal(t, "member", gjson.Get(result.Stdout, "api.0.body.member_role").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/spaces/space_42/members", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "cli_app_123", clie2e.DryRunGet(result.Stdout, "api.0.body.member_id").String())
+		assert.Equal(t, "appid", clie2e.DryRunGet(result.Stdout, "api.0.body.member_type").String())
+		assert.Equal(t, "member", clie2e.DryRunGet(result.Stdout, "api.0.body.member_role").String())
 	})
 }

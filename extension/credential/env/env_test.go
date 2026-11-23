@@ -15,6 +15,20 @@ import (
 	"github.com/larksuite/cli/internal/envvars"
 )
 
+func TestMain(m *testing.M) {
+	for _, key := range []string{
+		envvars.CliAppID, envvars.CliAppIDFile, envvars.CliAppSecret, envvars.CliBrand,
+		envvars.CliUserAccessToken, envvars.CliUserAccessTokenFile, envvars.CliTenantAccessToken,
+		envvars.CliTenantAccessTokenFile, envvars.CliTenantAccessTokenSource,
+		envvars.CliDefaultAs, envvars.CliStrictMode,
+	} {
+		if err := os.Unsetenv(key); err != nil {
+			panic(err)
+		}
+	}
+	os.Exit(m.Run())
+}
+
 func TestProvider_Name(t *testing.T) {
 	if (&Provider{}).Name() != "env" {
 		t.Fail()
@@ -243,7 +257,8 @@ func TestResolveToken_MultilineFileRejected(t *testing.T) {
 }
 
 func TestResolveToken_RelativeFileRejected(t *testing.T) {
-	t.Setenv(envvars.CliUserAccessTokenFile, "relative-token")
+	const value = "misplaced-fixture-token"
+	t.Setenv(envvars.CliUserAccessTokenFile, value)
 	_, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeUAT})
 	var blockErr *credential.BlockError
 	if !errors.As(err, &blockErr) {
@@ -251,6 +266,35 @@ func TestResolveToken_RelativeFileRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "absolute path") {
 		t.Fatalf("error = %v, want absolute path message", err)
+	}
+	if strings.Contains(err.Error(), value) {
+		t.Fatalf("error echoed the supplied value: %v", err)
+	}
+}
+
+func TestResolveToken_FileSizeLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		size int
+	}{
+		{"limit", maxCredentialFileBytes},
+		{"oversized", maxCredentialFileBytes + 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			value := strings.Repeat("x", tc.size)
+			t.Setenv(envvars.CliTenantAccessTokenFile, writeEnvFile(t, "tat", value))
+			token, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT})
+			if tc.size == maxCredentialFileBytes {
+				if err != nil || token == nil || token.Value != value {
+					t.Fatalf("could not read file at the size limit: %v", err)
+				}
+				return
+			}
+			var blockErr *credential.BlockError
+			if token != nil || !errors.As(err, &blockErr) || !strings.Contains(blockErr.Reason, "file is too large") {
+				t.Fatalf("expected BlockError for oversized file, got %v", err)
+			}
+		})
 	}
 }
 
@@ -391,6 +435,206 @@ func TestResolveAccount_InvalidDefaultAsRejected(t *testing.T) {
 	if !strings.Contains(err.Error(), envvars.CliDefaultAs) {
 		t.Fatalf("error = %v, want mention of %s", err, envvars.CliDefaultAs)
 	}
+}
+
+type storedTATLookup struct {
+	token *credential.Token
+	err   error
+	calls []string
+}
+
+func (l *storedTATLookup) resolve(_ context.Context, appID string) (*credential.Token, error) {
+	l.calls = append(l.calls, appID)
+	return l.token, l.err
+}
+
+func TestStoredTATSourceIsExplicitAndAccountResolutionDoesNotLookup(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
+	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
+	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
+
+	acct, err := p.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+	if len(lookup.calls) != 0 {
+		t.Fatalf("ResolveAccount() lookup calls = %v, want none", lookup.calls)
+	}
+	if acct == nil || acct.AppID != "cli_test" || !acct.SupportedIdentities.BotOnly() || acct.DefaultAs != credential.IdentityBot {
+		t.Fatalf("ResolveAccount() = %#v, want bot-capable cli_test account", acct)
+	}
+
+	tok, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "cli_test"})
+	if err != nil || tok == nil || tok.Value != "stored-tat" {
+		t.Fatalf("ResolveToken(TAT) = (%#v, %v), want stored-tat", tok, err)
+	}
+	if len(lookup.calls) != 1 || lookup.calls[0] != "cli_test" {
+		t.Fatalf("ResolveToken(TAT) lookup calls = %v, want cli_test", lookup.calls)
+	}
+}
+
+func TestStoredTATSourceUnsetNeverUsesLookup(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	lookup := &storedTATLookup{token: &credential.Token{Value: "must-not-be-used"}}
+	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
+
+	_, err := p.ResolveAccount(context.Background())
+	var blockErr *credential.BlockError
+	if !errors.As(err, &blockErr) {
+		t.Fatalf("ResolveAccount() error = %T %v, want existing APP_ID-only BlockError", err, err)
+	}
+	if len(lookup.calls) != 0 {
+		t.Fatalf("lookup calls = %v, want none without source selector", lookup.calls)
+	}
+}
+
+func TestStoredTATSourceLeavesUserLaneIndependent(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliUserAccessToken, "env-uat")
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
+	t.Setenv(envvars.CliDefaultAs, "user")
+	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
+	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
+
+	acct, err := p.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+	if acct.DefaultAs != credential.IdentityUser || !acct.SupportedIdentities.Has(credential.SupportsUser) || !acct.SupportedIdentities.Has(credential.SupportsBot) {
+		t.Fatalf("account = %#v, want user default with user+bot capability", acct)
+	}
+	if len(lookup.calls) != 0 {
+		t.Fatalf("ResolveAccount() lookup calls = %v, want none", lookup.calls)
+	}
+
+	uat, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeUAT, AppID: "cli_test"})
+	if err != nil || uat == nil || uat.Value != "env-uat" {
+		t.Fatalf("ResolveToken(UAT) = (%#v, %v), want env-uat", uat, err)
+	}
+	if len(lookup.calls) != 0 {
+		t.Fatalf("UAT resolution lookup calls = %v, want none", lookup.calls)
+	}
+
+	tat, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "cli_test"})
+	if err != nil || tat == nil || tat.Value != "stored-tat" {
+		t.Fatalf("ResolveToken(TAT) = (%#v, %v), want stored-tat", tat, err)
+	}
+}
+
+func TestStoredTATSourceStrictUserDoesNotReadStoreDuringAccountResolution(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliStrictMode, "user")
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
+	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
+	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
+
+	acct, err := p.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+	if !acct.SupportedIdentities.UserOnly() || acct.DefaultAs != credential.IdentityUser {
+		t.Fatalf("account = %#v, want strict user account with user default", acct)
+	}
+	if len(lookup.calls) != 0 {
+		t.Fatalf("ResolveAccount() lookup calls = %v, want none", lookup.calls)
+	}
+	if tok, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeUAT, AppID: "cli_test"}); err != nil || tok != nil {
+		t.Fatalf("ResolveToken(UAT) = (%#v, %v), want nil without touching TAT store", tok, err)
+	}
+	if len(lookup.calls) != 0 {
+		t.Fatalf("UAT resolution lookup calls = %v, want none", lookup.calls)
+	}
+}
+
+func TestStoredTATSourcePreservesExplicitUserDefault(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliDefaultAs, "user")
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
+	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
+	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
+
+	acct, err := p.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+	if acct.DefaultAs != credential.IdentityUser || len(lookup.calls) != 0 {
+		t.Fatalf("account=%#v lookup=%v, want explicit user default without store read", acct, lookup.calls)
+	}
+}
+
+func TestStoredTATSourceOverridesLiteralBotTokenLane(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliTenantAccessToken, "env-tat")
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
+	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
+	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
+
+	tok, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "cli_test"})
+	if err != nil || tok == nil || tok.Value != "stored-tat" {
+		t.Fatalf("ResolveToken(TAT) = (%#v, %v), want explicit credential-store source", tok, err)
+	}
+}
+
+func TestStoredTATSourceWithFileAccountAndUAT(t *testing.T) {
+	t.Setenv(envvars.CliAppIDFile, writeEnvFile(t, "app_id", "file-app\n"))
+	t.Setenv(envvars.CliUserAccessTokenFile, writeEnvFile(t, "uat", "file-user\n"))
+	t.Setenv(envvars.CliTenantAccessToken, "unused-tat")
+	t.Setenv(envvars.CliTenantAccessTokenFile, "unused-relative-path")
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
+	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
+	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
+	ctx := context.Background()
+
+	acct, err := p.ResolveAccount(ctx)
+	if err != nil || acct == nil || acct.AppID != "file-app" ||
+		acct.DefaultAs != credential.IdentityUser || acct.SupportedIdentities != credential.SupportsAll {
+		t.Fatalf("ResolveAccount() = (%#v, %v), want file-app with both identities and user default", acct, err)
+	}
+	uat, err := p.ResolveToken(ctx, credential.TokenSpec{Type: credential.TokenTypeUAT, AppID: acct.AppID})
+	if err != nil || uat == nil || uat.Value != "file-user" || uat.Source != "file:"+envvars.CliUserAccessTokenFile {
+		t.Fatalf("ResolveToken(UAT) = (%#v, %v), want file UAT", uat, err)
+	}
+	tat, err := p.ResolveToken(ctx, credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "different-app"})
+	if err != nil || tat != nil || len(lookup.calls) != 0 {
+		t.Fatalf("ResolveToken(other app) = (%#v, %v), lookup calls = %v", tat, err, lookup.calls)
+	}
+	tat, err = p.ResolveToken(ctx, credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: acct.AppID})
+	if err != nil || tat != lookup.token || len(lookup.calls) != 1 || lookup.calls[0] != acct.AppID {
+		t.Fatalf("ResolveToken(TAT) = (%#v, %v), lookup calls = %v", tat, err, lookup.calls)
+	}
+
+	t.Setenv(envvars.CliTenantAccessTokenSource, "")
+	if _, err := p.ResolveAccount(ctx); err == nil || !strings.Contains(err.Error(), "set only one of") {
+		t.Fatalf("ResolveAccount() error = %v, want conflict when env TAT is active", err)
+	}
+	t.Setenv(envvars.CliTenantAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessTokenFile, writeEnvFile(t, "tat", "file-bot"))
+	tat, err = p.ResolveToken(ctx, credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: acct.AppID})
+	if err != nil || tat == nil || tat.Value != "file-bot" || len(lookup.calls) != 1 {
+		t.Fatalf("ResolveToken(TAT) = (%#v, %v), lookup calls = %v, want file token only", tat, err, lookup.calls)
+	}
+}
+
+func TestStoredTATSourceValidatesSelectorAndAppID(t *testing.T) {
+	t.Run("invalid source", func(t *testing.T) {
+		t.Setenv(envvars.CliAppID, "cli_test")
+		t.Setenv(envvars.CliTenantAccessTokenSource, "keychain")
+		_, err := (&Provider{}).ResolveAccount(context.Background())
+		var blockErr *credential.BlockError
+		if !errors.As(err, &blockErr) || !strings.Contains(err.Error(), envvars.CliTenantAccessTokenSource) {
+			t.Fatalf("error = %T %v, want source BlockError", err, err)
+		}
+	})
+
+	t.Run("missing app ID", func(t *testing.T) {
+		t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
+		_, err := (&Provider{}).ResolveAccount(context.Background())
+		var blockErr *credential.BlockError
+		if !errors.As(err, &blockErr) || !strings.Contains(err.Error(), envvars.CliAppID) {
+			t.Fatalf("error = %T %v, want APP_ID BlockError", err, err)
+		}
+	})
 }
 
 func writeEnvFile(t *testing.T, name, content string) string {

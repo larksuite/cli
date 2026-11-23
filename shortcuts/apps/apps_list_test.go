@@ -211,3 +211,106 @@ func TestAppsList_PrettyShowsPublishFields(t *testing.T) {
 		}
 	}
 }
+
+func TestAppsList_WithOwner(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps?owner_id=ou_speaker&page_size=20",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"app_id": "app_owned", "name": "Speaker App", "updated_at": "2026-05-18T10:00:00Z"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--owner-id", "ou_speaker", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	if !strings.Contains(stdout.String(), "app_owned") {
+		t.Fatalf("output missing owned app: %s", stdout.String())
+	}
+}
+
+func TestAppsList_OwnerCombinedWithOwnershipAndAppType(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps?app_type=full_stack&owner_id=ou_speaker&ownership=all&page_size=20",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false},
+		},
+	})
+	if err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--ownership", "all", "--owner-id", "ou_speaker", "--app-type", "full_stack", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+}
+
+func TestAppsList_InvalidOwner(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--owner-id", "12345", "--as", "user"}, factory, stdout)
+	assertValidationParamError(t, err, "--owner-id")
+}
+
+func TestAppsList_BlankOwnerFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		arg  string
+	}{
+		{name: "empty", arg: ""},
+		{name: "spaces", arg: "   "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsList,
+				[]string{"+list", "--owner-id", tc.arg, "--as", "user"}, factory, stdout)
+			assertValidationParamError(t, err, "--owner-id")
+		})
+	}
+}
+
+func TestAppsList_DryRunShowsOwnerParam(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--owner-id", "ou_speaker", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "owner_id") || !strings.Contains(got, "ou_speaker") {
+		t.Fatalf("dry-run missing owner param: %s", got)
+	}
+}
+
+func TestAppsList_DryRunRejectsInvalidOwner(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--owner-id", "badid", "--dry-run", "--as", "user"},
+		factory, stdout)
+	assertValidationParamError(t, err, "--owner-id")
+}
+
+func TestAppsList_NoOmitsOwnerWhenEmpty(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps?page_size=20",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false},
+		},
+	})
+	if err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+}

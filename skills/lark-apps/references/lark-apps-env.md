@@ -1,8 +1,10 @@
 # apps env
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)（认证 / 全局参数 / 安全）。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)（认证 / 全局参数 / 安全）。
 
 管理妙搭应用环境变量。查看用 `+env-list`，设置用 `+env-set`，删除用 `+env-delete`。没有单变量 get 命令；要确认某个 key 是否存在，使用 list 后用 `--jq` 过滤。
+
+环境变量操作只支持专家模式应用；其它应用类型收到该限制后，改 app_id 或重复请求都不会解决问题。变量 value 的服务端上限是 4096 字节，超限时先缩短 value；不要把报错误判成应用 ID 问题。
 
 环境 flag 使用 `--environment`；不要使用旧的 `--env`，也不要使用短选项。
 

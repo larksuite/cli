@@ -6,7 +6,6 @@ package clie2e
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -205,18 +204,18 @@ func setDryRunConfigEnv(t *testing.T) {
 func firstDryRunRequest(t *testing.T, stdout string) map[string]any {
 	t.Helper()
 
-	const prefix = "=== Dry Run ===\n"
-	if !strings.HasPrefix(stdout, prefix) {
-		t.Fatalf("expected dry-run prefix, got:\n%s", stdout)
-	}
-
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimPrefix(stdout, prefix)), &payload); err != nil {
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
 		t.Fatalf("parse dry-run payload: %v\nstdout:\n%s", err, stdout)
 	}
+	require.Equal(t, true, payload["ok"], "payload missing ok envelope: %#v", payload)
+	require.Equal(t, true, payload["dry_run"], "payload missing dry_run marker: %#v", payload)
 
-	apiEntries, ok := payload["api"].([]any)
-	require.True(t, ok, "payload missing api array: %#v", payload)
+	data, ok := payload["data"].(map[string]any)
+	require.True(t, ok, "payload missing data object: %#v", payload)
+
+	apiEntries, ok := data["api"].([]any)
+	require.True(t, ok, "payload data missing api array: %#v", payload)
 	require.Len(t, apiEntries, 1)
 
 	entry, ok := apiEntries[0].(map[string]any)

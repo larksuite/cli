@@ -18,6 +18,21 @@ import (
 
 const cleanupTimeout = 30 * time.Second
 
+func runBaseDryRun(t *testing.T, wantExitCode int, args ...string) *clie2e.Result {
+	t.Helper()
+	setBaseDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	requestArgs := append([]string(nil), args...)
+	requestArgs = append(requestArgs, "--dry-run")
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: requestArgs, DefaultAs: "user"})
+	require.NoError(t, err)
+	result.AssertExitCode(t, wantExitCode)
+	return result
+}
+
 func reportCleanupFailure(parentT *testing.T, prefix string, result *clie2e.Result, err error) {
 	parentT.Helper()
 
@@ -112,10 +127,11 @@ func createBaseWithRetry(t *testing.T, ctx context.Context, name string) string 
 func createTableWithRetry(t *testing.T, parentT *testing.T, ctx context.Context, baseToken string, name string, fieldsJSON string, viewJSON string) (tableID string, primaryFieldID string, primaryViewID string) {
 	t.Helper()
 
-	args := []string{"base", "+table-create", "--base-token", baseToken, "--name", name}
-	if fieldsJSON != "" {
-		args = append(args, "--fields", fieldsJSON)
-	}
+	// +table-create requires --fields; an empty schema here would fail at the
+	// CLI surface with a validation error rather than exercising the API.
+	require.NotEmpty(t, fieldsJSON, "createTableWithRetry requires a field schema")
+
+	args := []string{"base", "+table-create", "--base-token", baseToken, "--name", name, "--fields", fieldsJSON}
 	if viewJSON != "" {
 		args = append(args, "--view", viewJSON)
 	}

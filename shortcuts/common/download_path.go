@@ -90,6 +90,12 @@ func hasExplicitDownloadExtension(path string) bool {
 	return ext != "" && ext != "."
 }
 
+// ExtensionByContentType returns the file extension inferred from a Content-Type
+// header value, or nil if the media type is unknown or empty.
+func ExtensionByContentType(contentType string) *DownloadExtensionResolution {
+	return downloadExtensionByContentType(contentType)
+}
+
 func downloadExtensionByContentType(contentType string) *DownloadExtensionResolution {
 	if contentType == "" {
 		return nil

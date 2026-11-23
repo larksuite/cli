@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // pruneForStrictMode removes commands incompatible with the active strict mode.
@@ -105,9 +106,16 @@ func strictModeStubFrom(child *cobra.Command, mode core.StrictMode) *cobra.Comma
 		},
 		RunE: func(c *cobra.Command, _ []string) error {
 			cd := cmdpolicy.CommandDeniedFromDenial(cmdpolicy.CanonicalPath(c), denial)
-			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", stubMessage).
-				WithHint("denied by %s policy (reason_code %s); %s", cd.Layer, cd.ReasonCode, stubHint).
-				WithCause(cd)
+			hint := recovery.Join("; ",
+				recovery.Text(fmt.Sprintf("denied by %s policy (reason_code %s)", cd.Layer, cd.ReasonCode)),
+				recovery.Command(recovery.TargetConfigStrictMode, stubHint),
+			)
+			return recovery.Annotate(
+				errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", stubMessage).
+					WithHint("%s", hint.String()).
+					WithCause(cd),
+				hint,
+			)
 		},
 	}
 }

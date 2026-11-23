@@ -5,7 +5,7 @@ package apps
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,20 +23,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-type fakeAppsHTMLPublishClient struct {
-	resp  *htmlPublishResponse
-	err   error
-	calls []string
-}
-
-func (f *fakeAppsHTMLPublishClient) HTMLPublish(ctx context.Context, appID string, tarball *htmlPublishTarball) (*htmlPublishResponse, error) {
-	f.calls = append(f.calls, appID)
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.resp, nil
-}
-
 func writeAppsSampleSite(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -46,71 +32,19 @@ func writeAppsSampleSite(t *testing.T) string {
 	return dir
 }
 
-func TestRunHTMLPublish_HappyPath(t *testing.T) {
-	site := writeAppsSampleSite(t)
-	fake := &fakeAppsHTMLPublishClient{
-		resp: &htmlPublishResponse{URL: "https://miaoda/app_x"},
-	}
-	out, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
-	if err != nil {
-		t.Fatalf("err=%v", err)
-	}
-	if out["url"] != "https://miaoda/app_x" {
-		t.Fatalf("url=%v", out["url"])
-	}
-	if len(fake.calls) != 1 || fake.calls[0] != "app_x" {
-		t.Fatalf("calls=%v", fake.calls)
-	}
-}
-
-func TestRunHTMLPublish_OnlyURLInEnvelope(t *testing.T) {
-	// Pin 概要设计 §5.3 不变量 4 "同步语义不会变成异步" (legacy html path only):
-	// envelope 只含 url，未来若有人加 status / release_id 字段会被这个测试拦截。
-	site := writeAppsSampleSite(t)
-	fake := &fakeAppsHTMLPublishClient{
-		resp: &htmlPublishResponse{URL: "https://miaoda/app_x"},
-	}
-	out, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
-	if err != nil {
-		t.Fatalf("err=%v", err)
-	}
-	if len(out) != 1 {
-		t.Fatalf("envelope should only contain 'url', got %d keys: %v", len(out), out)
-	}
-	if _, ok := out["url"]; !ok {
-		t.Fatalf("envelope missing 'url': %v", out)
-	}
-}
-
-func TestRunHTMLPublish_ClientErrorPropagated(t *testing.T) {
-	site := writeAppsSampleSite(t)
-	wantErr := errors.New("server timeout")
-	fake := &fakeAppsHTMLPublishClient{err: wantErr}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("err=%v", err)
-	}
-}
-
-func TestRunHTMLPublish_PathNotFound(t *testing.T) {
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: "/nonexistent"})
+func TestPrepareHTMLPublishTarball_PathNotFound(t *testing.T) {
+	_, err := prepareHTMLPublishTarball(newTestFIO(), "/nonexistent")
 	if err == nil {
 		t.Fatalf("expected error")
 	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client should not be called when path invalid")
-	}
 }
 
-func TestRunHTMLPublish_DirRequiresIndexHTML(t *testing.T) {
-	// 目录形态：缺 index.html 应该被拦
+func TestPrepareHTMLPublishTarball_DirRequiresIndexHTML(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "foo.html"), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	_, err := prepareHTMLPublishTarball(newTestFIO(), dir)
 	if err == nil {
 		t.Fatalf("expected error for missing index.html")
 	}
@@ -121,13 +55,9 @@ func TestRunHTMLPublish_DirRequiresIndexHTML(t *testing.T) {
 	if problem.Hint == "" {
 		t.Fatalf("expected non-empty hint")
 	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client should not be called when index.html missing")
-	}
 }
 
-func TestRunHTMLPublish_DirWithIndexHTMLPasses(t *testing.T) {
-	// 目录含 index.html 应该正常走完
+func TestPrepareHTMLPublishTarball_DirWithIndexHTMLPasses(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
@@ -135,57 +65,49 @@ func TestRunHTMLPublish_DirWithIndexHTMLPasses(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "extra.html"), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
-	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir}); err != nil {
+	tarball, err := prepareHTMLPublishTarball(newTestFIO(), dir)
+	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if len(fake.calls) != 1 {
-		t.Fatalf("client should be called when index.html present")
+	if tarball == nil || tarball.Size == 0 {
+		t.Fatalf("expected non-empty tarball")
 	}
 }
 
-func TestRunHTMLPublish_SingleFileRejectedIfNotNamedIndex(t *testing.T) {
-	// 单文件形态：文件名不是 index.html 也要拦
+func TestPrepareHTMLPublishTarball_SingleFileRejectedIfNotNamedIndex(t *testing.T) {
 	dir := t.TempDir()
 	single := filepath.Join(dir, "foo.html")
 	if err := os.WriteFile(single, []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single})
+	_, err := prepareHTMLPublishTarball(newTestFIO(), single)
 	if err == nil {
 		t.Fatalf("single-file path 'foo.html' should be rejected (not named index.html)")
 	}
 	requireAppsValidationProblem(t, err)
-	if len(fake.calls) != 0 {
-		t.Fatalf("client must not be called when index.html missing")
-	}
 }
 
-func TestRunHTMLPublish_SingleFileNamedIndexPasses(t *testing.T) {
-	// 单文件形态：文件名恰好就是 index.html → 放行
+func TestPrepareHTMLPublishTarball_SingleFileNamedIndexPasses(t *testing.T) {
 	dir := t.TempDir()
 	single := filepath.Join(dir, "index.html")
 	if err := os.WriteFile(single, []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
-	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single}); err != nil {
+	tarball, err := prepareHTMLPublishTarball(newTestFIO(), single)
+	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if len(fake.calls) != 1 {
-		t.Fatalf("client should be called for single index.html")
+	if tarball == nil || tarball.Size == 0 {
+		t.Fatalf("expected non-empty tarball")
 	}
 }
 
-func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
-	// 把上限调到 100 字节验证拦截，defer 恢复原值避免污染其它测试。
+func TestPrepareHTMLPublishTarball_RejectsOversizeTarball(t *testing.T) {
 	orig := maxHTMLPublishTarballBytes
 	maxHTMLPublishTarballBytes = 100
 	defer func() { maxHTMLPublishTarballBytes = orig }()
 
 	dir := t.TempDir()
-	// 写 index.html（满足新加的 index 校验）+ 大文件超 100 字节上限。
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -194,8 +116,7 @@ func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	_, err := prepareHTMLPublishTarball(newTestFIO(), dir)
 	if err == nil {
 		t.Fatalf("expected oversize error")
 	}
@@ -205,9 +126,6 @@ func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
 	}
 	if problem.Hint == "" {
 		t.Fatalf("expected non-empty hint")
-	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client should not be called when tarball oversize")
 	}
 }
 
@@ -264,8 +182,17 @@ func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	got := stdout.String()
-	if !strings.Contains(got, "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code") {
-		t.Fatalf("dry-run missing endpoint: %s", got)
+	if !strings.Contains(got, "/open-apis/spark/v1/apps/app_x/pre_release") {
+		t.Fatalf("dry-run missing pre_release endpoint: %s", got)
+	}
+	if !strings.Contains(got, "presigned_upload_url") {
+		t.Fatalf("dry-run missing TOS PUT step: %s", got)
+	}
+	if !strings.Contains(got, "/open-apis/spark/v1/apps/app_x/releases") {
+		t.Fatalf("dry-run missing release-create endpoint: %s", got)
+	}
+	if !strings.Contains(got, "tos_path") {
+		t.Fatalf("dry-run missing tos_path in release-create body: %s", got)
 	}
 	if !strings.Contains(got, "index.html") {
 		t.Fatalf("dry-run missing file list: %s", got)
@@ -500,18 +427,13 @@ func TestRunHTMLPublish_RejectsOversizeRawCandidates(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake,
-		appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	_, err := prepareHTMLPublishTarball(newTestFIO(), dir)
 	if err == nil {
 		t.Fatalf("expected raw-size cap to fire")
 	}
 	problem := requireAppsValidationProblem(t, err)
 	if !strings.Contains(problem.Message, "raw") || !strings.Contains(problem.Message, "bytes") {
 		t.Fatalf("expected message to explain raw-byte cap, got %q", problem.Message)
-	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client must not be called when raw cap hit")
 	}
 }
 
@@ -555,8 +477,7 @@ func TestRunHTMLPublish_RejectsOversizeHTMLFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "big.html"), []byte(strings.Repeat("x", 4096)), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	_, err := prepareHTMLPublishTarball(newTestFIO(), dir)
 	if err == nil {
 		t.Fatalf("expected per-file oversize error")
 	}
@@ -567,13 +488,9 @@ func TestRunHTMLPublish_RejectsOversizeHTMLFile(t *testing.T) {
 	if problem.Hint == "" {
 		t.Fatalf("expected non-empty hint")
 	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client must not be called when an HTML file is oversize")
-	}
 }
 
-func TestRunHTMLPublish_IgnoresOversizeNonHTML(t *testing.T) {
-	// 单 .html 上限调小，但超限文件是 .png → 不被本护栏拦截，正常发布。
+func TestPrepareHTMLPublishTarball_IgnoresOversizeNonHTML(t *testing.T) {
 	orig := maxHTMLPublishSingleHTMLFileBytes
 	maxHTMLPublishSingleHTMLFileBytes = 100
 	defer func() { maxHTMLPublishSingleHTMLFileBytes = orig }()
@@ -585,12 +502,12 @@ func TestRunHTMLPublish_IgnoresOversizeNonHTML(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "big.png"), []byte(strings.Repeat("x", 4096)), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
-	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir}); err != nil {
+	tarball, err := prepareHTMLPublishTarball(newTestFIO(), dir)
+	if err != nil {
 		t.Fatalf("non-html oversize must not be blocked by the .html cap: %v", err)
 	}
-	if len(fake.calls) != 1 {
-		t.Fatalf("client should be called; calls=%v", fake.calls)
+	if tarball == nil || tarball.Size == 0 {
+		t.Fatalf("expected non-empty tarball")
 	}
 }
 
@@ -625,9 +542,228 @@ func newTOSTestRuntime(t *testing.T) (*common.RuntimeContext, *httpmock.Registry
 	return rt, reg
 }
 
+// registerAppTypeStub registers the GET /apps/{id} stub that the app_type
+// precheck at the top of runHTMLPublishTOS issues via queryAppType. appType is
+// the uppercase server value ("HTML", "FULL_STACK", ...); queryAppType
+// normalizes it to lowercase. httpmock matches a stub when the request URL
+// contains stub.URL (strings.Contains). queryAppType requests the bare
+// /apps/{id} path, which cannot contain a longer /apps/{id}/pre_release or
+// /apps/{id}/releases stub URL, so it only ever matches this app_type stub —
+// resolution stays unambiguous regardless of registration order.
+func registerAppTypeStub(reg *httpmock.Registry, appID, appType string) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/" + appID,
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"app_id":   appID,
+					"app_type": appType,
+				},
+			},
+		},
+	})
+}
+
+// failIfCalled returns an OnMatch hook that fails the test if a stub is hit,
+// proving the app_type precheck short-circuited before that downstream step.
+func failIfCalled(t *testing.T, step string) func(*http.Request) {
+	t.Helper()
+	return func(*http.Request) { t.Errorf("precheck should have rejected before %s", step) }
+}
+
+func TestRunHTMLPublishTOS_RejectsFullStack(t *testing.T) {
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "FULL_STACK")
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/apps/app_tos/pre_release",
+		Optional: true,
+		OnMatch:  failIfCalled(t, "pre_release"),
+		Body:     map[string]interface{}{"code": float64(0)},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/apps/app_tos/releases",
+		Optional: true,
+		OnMatch:  failIfCalled(t, "release-create"),
+		Body:     map[string]interface{}{"code": float64(0)},
+	})
+
+	// A nonexistent --path proves the precheck short-circuits before any
+	// packaging: if the precheck ever moved below prepareHTMLPublishTarball,
+	// walkHTMLPublishCandidates would fail first with a different (non
+	// FailedPrecondition) error and this test would break.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: missing})
+	problem := requireAppsProblem(t, err, errs.CategoryValidation)
+	if problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("subtype=%q, want %q", problem.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if !strings.Contains(problem.Message, "full_stack") {
+		t.Fatalf("message should name the rejected app_type, got %q", problem.Message)
+	}
+	if !strings.Contains(problem.Hint, "+release-create") {
+		t.Fatalf("hint should redirect to +release-create, got %q", problem.Hint)
+	}
+	if !strings.Contains(problem.Hint, "+release-create --help") || !strings.Contains(problem.Hint, "full_stack example") {
+		t.Fatalf("hint must route through the app-type-aware release help, got %q", problem.Hint)
+	}
+	if strings.Contains(problem.Hint, "--apply-reason") {
+		t.Fatalf("+html-publish must not own the release-reason policy, got %q", problem.Hint)
+	}
+}
+
+func TestRunHTMLPublishTOS_RejectsFrontend(t *testing.T) {
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "FRONTEND")
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/apps/app_tos/pre_release",
+		Optional: true,
+		OnMatch:  failIfCalled(t, "pre_release"),
+		Body:     map[string]interface{}{"code": float64(0)},
+	})
+
+	// Nonexistent --path: see the rationale in TestRunHTMLPublishTOS_RejectsFullStack.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: missing})
+	problem := requireAppsProblem(t, err, errs.CategoryValidation)
+	if problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("subtype=%q, want %q", problem.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if !strings.Contains(problem.Message, "frontend") {
+		t.Fatalf("message should name the rejected app_type, got %q", problem.Message)
+	}
+	if !strings.Contains(problem.Hint, "+release-create --help") || !strings.Contains(problem.Hint, "frontend example") {
+		t.Fatalf("hint must route through the app-type-aware release help, got %q", problem.Hint)
+	}
+	if strings.Contains(problem.Hint, "--apply-reason") {
+		t.Fatalf("+html-publish must not own the release-reason policy, got %q", problem.Hint)
+	}
+}
+
+func TestRunHTMLPublishTOS_AllowsModernHTML(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "MODERN_HTML")
+
+	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tosServer.Close()
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos/pre_release",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"kvs": []interface{}{
+					map[string]interface{}{"key": "upload_url", "value": tosServer.URL},
+					map[string]interface{}{"key": "tos_path", "value": "tos://bucket/key"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_tos/releases",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{"release_id": "rel_mh", "status": "publishing"},
+		},
+	})
+
+	out, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: site})
+	if err != nil {
+		t.Fatalf("modern_html should be publishable, got err=%v", err)
+	}
+	if out["release_id"] != "rel_mh" {
+		t.Fatalf("release_id=%v, want rel_mh", out["release_id"])
+	}
+}
+
+func TestRunHTMLPublishTOS_AppNotExist(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+	// queryAppType resolves the app first; a non-existent app surfaces the
+	// backend "app not exist" business code (400002577). The precheck must
+	// translate it into the actionable +list hint (#8), not leak the raw code.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos",
+		Body:   map[string]interface{}{"code": float64(400002577), "msg": "app not exist"},
+	})
+
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: site})
+	if err == nil {
+		t.Fatalf("expected error for non-existent app")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if !strings.Contains(problem.Hint, "+list") {
+		t.Fatalf("hint should point to +list to find the right app_id, got %q", problem.Hint)
+	}
+}
+
+// TestRunHTMLPublishTOS_ReleaseAppTypeErrorTranslated pins the defense-in-depth
+// layer: the app_type precheck passes (HTML), pre_release and TOS upload
+// succeed, but release-create still returns the app_type business code
+// (400000059) — e.g. the type changed mid-flight. The opaque code must be
+// translated into the actionable +release-create hint rather than bubbling raw.
+func TestRunHTMLPublishTOS_ReleaseAppTypeErrorTranslated(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
+
+	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tosServer.Close()
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos/pre_release",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"kvs": []interface{}{
+					map[string]interface{}{"key": "upload_url", "value": tosServer.URL},
+					map[string]interface{}{"key": "tos_path", "value": "tos://bucket/key"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_tos/releases",
+		Body:   map[string]interface{}{"code": float64(400000059), "msg": "app_type invalid"},
+	})
+
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: site})
+	if err == nil {
+		t.Fatalf("expected error from release-create app_type rejection")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if !strings.Contains(problem.Hint, "+release-create") {
+		t.Fatalf("release-create app_type rejection should be translated to a +release-create hint, got %q", problem.Hint)
+	}
+	if !strings.Contains(problem.Hint, "+release-create --help") || !strings.Contains(problem.Hint, "confirm the current app type") {
+		t.Fatalf("release-create app_type rejection must route through app-type-aware help, got %q", problem.Hint)
+	}
+	if strings.Contains(problem.Hint, "--apply-reason") {
+		t.Fatalf("+html-publish must not own the release-reason policy, got %q", problem.Hint)
+	}
+}
+
 func TestRunHTMLPublishTOS_Success(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 
 	// Start httptest server to accept the TOS upload.
 	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -657,7 +793,7 @@ func TestRunHTMLPublishTOS_Success(t *testing.T) {
 	})
 
 	// Register release-create API stub.
-	reg.Register(&httpmock.Stub{
+	releaseStub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/spark/v1/apps/app_tos/releases",
 		Body: map[string]interface{}{
@@ -667,7 +803,8 @@ func TestRunHTMLPublishTOS_Success(t *testing.T) {
 				"status":     "publishing",
 			},
 		},
-	})
+	}
+	reg.Register(releaseStub)
 
 	out, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{
 		AppID: "app_tos",
@@ -679,6 +816,16 @@ func TestRunHTMLPublishTOS_Success(t *testing.T) {
 	if out["release_id"] != "rel_123" {
 		t.Fatalf("release_id=%v, want rel_123", out["release_id"])
 	}
+	var releaseBody map[string]interface{}
+	if err := json.Unmarshal(releaseStub.CapturedBody, &releaseBody); err != nil {
+		t.Fatalf("decode release body: %v", err)
+	}
+	if len(releaseBody) != 1 || releaseBody["tos_path"] != "tos://bucket/key" {
+		t.Fatalf("html release body=%v, want only tos_path", releaseBody)
+	}
+	if _, ok := releaseBody["apply_reason"]; ok {
+		t.Fatalf("html release body must omit apply_reason: %v", releaseBody)
+	}
 }
 
 func TestRunHTMLPublishTOS_MissingIndexHTML(t *testing.T) {
@@ -688,7 +835,8 @@ func TestRunHTMLPublishTOS_MissingIndexHTML(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	rt, _ := newTOSTestRuntime(t)
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{
 		AppID: "app_tos",
 		Path:  dir,
@@ -704,6 +852,7 @@ func TestRunHTMLPublishTOS_MissingIndexHTML(t *testing.T) {
 func TestRunHTMLPublishTOS_PreReleaseError(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 
 	// Register pre_release API stub that returns an error code.
 	reg.Register(&httpmock.Stub{
@@ -727,6 +876,7 @@ func TestRunHTMLPublishTOS_PreReleaseError(t *testing.T) {
 func TestRunHTMLPublishTOS_MissingParams(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 
 	// Register pre_release API stub that returns empty kvs list.
 	reg.Register(&httpmock.Stub{
@@ -756,6 +906,7 @@ func TestRunHTMLPublishTOS_MissingParams(t *testing.T) {
 func TestRunHTMLPublishTOS_MissingParamsObject(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 
 	// Register pre_release API stub that returns no kvs key at all.
 	reg.Register(&httpmock.Stub{
@@ -783,6 +934,7 @@ func TestRunHTMLPublishTOS_MissingParamsObject(t *testing.T) {
 func TestRunHTMLPublishTOS_UploadFails(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 
 	// Start httptest server that returns 500.
 	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

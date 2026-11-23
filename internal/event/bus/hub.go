@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 // exclusiveCleanupWaitTimeout bounds how long TryRegisterExclusive waits for an
@@ -222,24 +222,12 @@ func (h *Hub) Publish(raw *event.RawEvent) {
 	}
 	h.mu.RUnlock()
 
-	// Resolve source time once per Publish (not per subscriber) — same value
-	// across the fan-out. Prefer the upstream header create_time
-	// (raw.SourceTime) over the local arrival timestamp so consumers see
-	// original publisher intent; fall back to Timestamp when SourceTime
-	// wasn't populated (e.g. test-only sources, pre-4.4 RawEvent producers).
-	sourceTime := raw.SourceTime
-	if sourceTime == "" && !raw.Timestamp.IsZero() {
-		sourceTime = fmt.Sprintf("%d", raw.Timestamp.UnixMilli())
-	}
-
+	// SourceTime travels verbatim: when the upstream omitted create_time it
+	// stays empty on the wire. Substituting the local arrival clock here would
+	// disguise a local observation as an upstream fact — consumers that need
+	// the arrival time have the frame's observed_at.
 	for _, s := range matches {
-		msg := protocol.NewEvent(
-			raw.EventType,
-			raw.EventID,
-			sourceTime,
-			s.NextSeq(),
-			raw.Payload,
-		)
+		msg := protocol.NewEvent(raw, s.NextSeq())
 
 		enqueued, dropped := s.PushDropOldest(msg)
 		if dropped {

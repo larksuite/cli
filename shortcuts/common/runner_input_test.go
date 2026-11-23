@@ -4,10 +4,13 @@
 package common
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/spf13/cobra"
@@ -43,6 +46,9 @@ func TestResolveInputFlags_DirectValue(t *testing.T) {
 	if got := rctx.Str("markdown"); got != "hello world" {
 		t.Errorf("expected %q, got %q", "hello world", got)
 	}
+	if rctx.InputResolvedFromSource("markdown") {
+		t.Error("inline value must not be marked as resolved from a source")
+	}
 }
 
 func TestResolveInputFlags_Stdin(t *testing.T) {
@@ -54,6 +60,9 @@ func TestResolveInputFlags_Stdin(t *testing.T) {
 	}
 	if got := rctx.Str("markdown"); got != "content from stdin" {
 		t.Errorf("expected %q, got %q", "content from stdin", got)
+	}
+	if !rctx.InputResolvedFromSource("markdown") {
+		t.Error("stdin value should be marked as resolved from a source")
 	}
 }
 
@@ -74,6 +83,27 @@ func TestResolveInputFlags_File(t *testing.T) {
 	}
 	if got := rctx.Str("markdown"); got != content {
 		t.Errorf("expected %q, got %q", content, got)
+	}
+	if !rctx.InputResolvedFromSource("markdown") {
+		t.Error("@file value should be marked as resolved from a source")
+	}
+}
+
+// TestResolveInputFlags_EscapedAtStaysInline pins that the @@ escape is
+// inline content (a literal leading @), not an external source — heuristic
+// guards keyed on InputResolvedFromSource must still see it.
+func TestResolveInputFlags_EscapedAtStaysInline(t *testing.T) {
+	rctx := newTestRuntimeWithStdin(map[string]string{"markdown": "@@handle"}, "")
+	flags := []Flag{{Name: "markdown", Input: []string{File, Stdin}}}
+
+	if err := resolveInputFlags(rctx, flags); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := rctx.Str("markdown"); got != "@handle" {
+		t.Errorf("expected %q, got %q", "@handle", got)
+	}
+	if rctx.InputResolvedFromSource("markdown") {
+		t.Error("escaped @@ value must not be marked as resolved from a source")
 	}
 }
 
@@ -161,8 +191,11 @@ func TestResolveInputFlags_FileNotFound(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 	vErr := assertValidationParam(t, err, "--markdown")
-	if !strings.Contains(vErr.Message, "cannot read file") {
-		t.Errorf("unexpected error message: %q", vErr.Message)
+	if vErr.Category != errs.CategoryValidation {
+		t.Errorf("Category = %q, want %q", vErr.Category, errs.CategoryValidation)
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("missing-file cause is not preserved: %v", err)
 	}
 }
 
@@ -227,6 +260,35 @@ func TestResolveInputFlags_DuplicateStdin(t *testing.T) {
 	}
 }
 
+// TestResolveInputFlags_FileErrorSuggestsStdin pins the recovery hint when
+// an @file path is rejected (typically an absolute /tmp path): flags that
+// also accept stdin must explain the portable `--flag -` form — never cd'ing
+// into the target directory or copying the file into the project tree.
+func TestResolveInputFlags_FileErrorSuggestsStdin(t *testing.T) {
+	rctx := newTestRuntimeWithStdin(map[string]string{"csv": "@/tmp/does-not-exist.csv"}, "")
+	flags := []Flag{{Name: "csv", Input: []string{File, Stdin}}}
+
+	err := resolveInputFlags(rctx, flags)
+	if err == nil {
+		t.Fatal("expected error for rejected @file path")
+	}
+	vErr := assertValidationParam(t, err, "--csv")
+	if !strings.Contains(vErr.Hint, "pipe the file contents") || !strings.Contains(vErr.Hint, "--csv -") {
+		t.Errorf("hint %q should explain the portable stdin form", vErr.Hint)
+	}
+
+	// A flag without stdin support must not get the stdin hint.
+	rctx = newTestRuntimeWithStdin(map[string]string{"file": "@/tmp/does-not-exist.xlsx"}, "")
+	err = resolveInputFlags(rctx, []Flag{{Name: "file", Input: []string{File}}})
+	if err == nil {
+		t.Fatal("expected error for rejected @file path")
+	}
+	vErr = assertValidationParam(t, err, "--file")
+	if strings.Contains(vErr.Hint, "stdin") {
+		t.Errorf("hint %q must not suggest stdin for a file-only flag", vErr.Hint)
+	}
+}
+
 func TestStripUTF8BOM(t *testing.T) {
 	cases := []struct{ name, in, want string }{
 		{"leading BOM removed", "\uFEFFhello", "hello"},
@@ -237,8 +299,8 @@ func TestStripUTF8BOM(t *testing.T) {
 		{"only the first BOM removed", "\uFEFF\uFEFFx", "\uFEFFx"},
 	}
 	for _, c := range cases {
-		if got := stripUTF8BOM(c.in); got != c.want {
-			t.Errorf("%s: stripUTF8BOM(%q) = %q, want %q", c.name, c.in, got, c.want)
+		if got := StripUTF8BOM(c.in); got != c.want {
+			t.Errorf("%s: StripUTF8BOM(%q) = %q, want %q", c.name, c.in, got, c.want)
 		}
 	}
 }

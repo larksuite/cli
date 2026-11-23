@@ -281,6 +281,12 @@ func TestWorkbook_Validation(t *testing.T) {
 			args:    []string{"--url", testURL, "--title", "X", "--row-count", "999999"},
 			wantMsg: "--row-count must be between",
 		},
+		{
+			name:    "+sheet-create rejects hidden bitable type",
+			sc:      SheetCreate,
+			args:    []string{"--url", testURL, "--title", "Tasks", "--type", "bitable"},
+			wantMsg: `invalid value "bitable" for --type`,
+		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -396,6 +402,37 @@ func TestWorkbookCreate_DryRun(t *testing.T) {
 			t.Errorf("horizontal_alignment occurrences = %d, want 4 in 2x2 range; cells=%s", got, raw)
 		}
 	})
+
+	t.Run("cell style past the data pads empty cells so blank cells can be styled", func(t *testing.T) {
+		t.Parallel()
+		// Data is a single cell (A1), but the style targets A1:C3 — the matrix is
+		// padded to 3x3 with empty cells so the style range fits, letting blank
+		// cells carry styling. The written range must reflect the padded extent.
+		calls := parseDryRunAPI(t, WorkbookCreate, []string{
+			"--title", "X",
+			"--values", `[["a"]]`,
+			"--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1:C3","background_color":"#FFEEAA"}]}]}`,
+		})
+		body, _ := calls[1].(map[string]interface{})["body"].(map[string]interface{})
+		input := decodeToolInput(t, body, "set_cell_range")
+		if input["range"] != "A1:C3" {
+			t.Errorf("range = %v, want A1:C3 (padded to the style extent)", input["range"])
+		}
+		cells, _ := input["cells"].([]interface{})
+		if len(cells) != 3 {
+			t.Fatalf("cells rows = %d, want 3 (padded); cells=%#v", len(cells), input["cells"])
+		}
+		lastRow, _ := cells[2].([]interface{})
+		if len(lastRow) != 3 {
+			t.Fatalf("last row width = %d, want 3 (padded)", len(lastRow))
+		}
+		// A blank padded cell (C3) still carries the style.
+		c3, _ := lastRow[2].(map[string]interface{})
+		c3s, _ := c3["cell_styles"].(map[string]interface{})
+		if c3s["background_color"] != "#FFEEAA" {
+			t.Errorf("padded blank cell C3 style = %#v, want background_color", c3)
+		}
+	})
 	t.Run("style-only payload (cell_merges) still fills and emits merge_cells", func(t *testing.T) {
 		t.Parallel()
 		// Previously workbookCreateStyleDimensions only counted cell_styles, so a
@@ -481,10 +518,14 @@ func TestWorkbookCreate_DataValidation(t *testing.T) {
 		want string
 	}{
 		{"values not 2D", []string{"--title", "X", "--values", `["a","b"]`}, "must be an array"},
-		{"styles not object", []string{"--title", "X", "--styles", `"bold"`}, `shaped as {"styles":[...]}`},
+		{"styles not object", []string{"--title", "X", "--styles", `"bold"`}, `or the bare [...] item list`},
 		{"styles missing array", []string{"--title", "X", "--styles", `{"value":"x"}`}, "--styles.styles is required"},
-		{"styles item missing groups", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","value":"x"}]}`}, "must include at least one of cell_styles/row_sizes/col_sizes/cell_merges"},
-		{"cell styles must be array", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":{"range":"A1","font_weight":"bold"}}]}`}, "cell_styles must be an array"},
+		{"styles item missing groups", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1"}]}`}, "must include at least one of cell_styles/row_sizes/col_sizes/cell_merges"},
+		{"styles item unknown key gets did-you-mean", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","freezee":{"rows":1}}]}`}, `unknown key "freezee" — did you mean "freeze"`},
+		// A section written as one object is lifted into its one-entry list
+		// (foldStyleItemKeys); what still has to be an array is a section
+		// holding something that is neither.
+		{"cell styles must be array", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":"A1"}]}`}, "cell_styles must be an array"},
 		{"cell style needs range", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"font_weight":"bold"}]}]}`}, "range is required"},
 		{"nested cell_styles rejected", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1","cell_styles":{"font_weight":"bold"}}]}]}`}, "put style fields directly"},
 		{"row size needs row range", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","row_sizes":[{"range":"A1","type":"pixel","size":20}]}]}`}, "must use row numbers"},
@@ -594,4 +635,201 @@ func deepEqualJSON(a, b interface{}) bool {
 		return true
 	}
 	return a == b
+}
+
+// TestApplyWorkbookCreateStylesToMatrix covers the pad-then-style behavior
+// directly: a style range past the data grows the matrix with empty cells (so
+// blank cells can be styled), an in-range style leaves the matrix size alone,
+// and a range up/left of the anchor — which padding can't reach — is rejected.
+func TestApplyWorkbookCreateStylesToMatrix(t *testing.T) {
+	t.Parallel()
+	cell := func() interface{} { return map[string]interface{}{} }
+
+	t.Run("pads down and right for a style past the data", func(t *testing.T) {
+		t.Parallel()
+		matrix := [][]interface{}{{cell()}} // 1x1 data
+		styles := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{
+			{Range: "A1:C3", Style: map[string]interface{}{"cell_styles": map[string]interface{}{"background_color": "#FFEEAA"}}},
+		}}
+		out, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 0, 0, "--styles")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(out) != 3 || len(out[0]) != 3 || len(out[2]) != 3 {
+			t.Fatalf("padded matrix = %d rows x %v cols, want 3x3", len(out), out)
+		}
+		// A blank padded corner (C3) carries the style.
+		c3, _ := out[2][2].(map[string]interface{})
+		c3s, _ := c3["cell_styles"].(map[string]interface{})
+		if c3s["background_color"] != "#FFEEAA" {
+			t.Errorf("padded cell C3 = %#v, want background_color", c3)
+		}
+	})
+
+	t.Run("no pad when the style is within the data", func(t *testing.T) {
+		t.Parallel()
+		matrix := [][]interface{}{{cell(), cell()}, {cell(), cell()}} // 2x2 data
+		styles := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{
+			{Range: "A1:B2", Style: map[string]interface{}{"cell_styles": map[string]interface{}{"font_weight": "bold"}}},
+		}}
+		out, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 0, 0, "--styles")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(out) != 2 || len(out[0]) != 2 {
+			t.Errorf("matrix = %dx%d, want 2x2 (no pad)", len(out), len(out[0]))
+		}
+	})
+
+	t.Run("rejects a range up/left of the anchor", func(t *testing.T) {
+		t.Parallel()
+		matrix := [][]interface{}{{cell()}} // anchored at C3 (col 2, row 2)
+		styles := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{
+			{Range: "A1", Style: map[string]interface{}{"cell_styles": map[string]interface{}{"font_weight": "bold"}}},
+		}}
+		_, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 2, 2, "--styles")
+		if err == nil || !strings.Contains(err.Error(), "starts outside the write range") {
+			t.Errorf("err = %v, want 'starts outside the write range'", err)
+		}
+	})
+}
+
+// TestStyleItemRangePrefixNormalization pins the "Sheet!" prefix handling at the
+// shared item parser, so all three --styles carriers (+workbook-create,
+// +table-put, +styles-put) behave the same: a prefix naming the item's own
+// sheet is stripped (row_sizes would otherwise fail parseA1Range), one naming a
+// different sheet is reported instead of silently retargeting.
+func TestStyleItemRangePrefixNormalization(t *testing.T) {
+	t.Parallel()
+
+	t.Run("own-sheet prefix strips across every section", func(t *testing.T) {
+		t.Parallel()
+		item := map[string]interface{}{
+			"name":        "Summary",
+			"cell_styles": []interface{}{map[string]interface{}{"range": "Summary!A1:D1", "font_weight": "bold"}},
+			"cell_merges": []interface{}{map[string]interface{}{"range": "'Summary'!A2:B2"}, "Summary!C2:D2"},
+			"row_sizes":   []interface{}{map[string]interface{}{"range": "Summary!2:3", "type": "pixel", "size": float64(32)}},
+			"col_sizes":   []interface{}{map[string]interface{}{"range": "'Summary'!A:C", "type": "pixel", "size": float64(120)}},
+		}
+		payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]", false)
+		if len(probs) > 0 {
+			t.Fatalf("a redundant own-sheet prefix must be accepted: %v", probs)
+		}
+		got := []string{
+			payload.CellStyles[0].Range,
+			payload.CellMerges[0].Range, payload.CellMerges[1].Range,
+			payload.RowSizes[0].Range, payload.ColSizes[0].Range,
+		}
+		want := []string{"A1:D1", "A2:B2", "C2:D2", "2:3", "A:C"}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("ranges = %v, want %v", got, want)
+			}
+		}
+	})
+
+	t.Run("foreign-sheet prefix reported alongside the item's other issues", func(t *testing.T) {
+		t.Parallel()
+		item := map[string]interface{}{
+			"name":        "Summary",
+			"cell_styles": []interface{}{map[string]interface{}{"range": "Detail!A1:D1", "font_weight": "bold"}},
+			"row_sizes":   []interface{}{map[string]interface{}{"range": "2:3", "type": "snug", "size": float64(32)}},
+		}
+		_, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]", false)
+		joined := make([]string, 0, len(probs))
+		for _, p := range probs {
+			joined = append(joined, p.Error())
+		}
+		all := strings.Join(joined, "\n")
+		// Both must surface in one pass: stripping the mismatched prefix keeps the
+		// section parser from burying the real issue under a syntax error.
+		if !strings.Contains(all, `names sheet "Detail" but the item targets "Summary"`) {
+			t.Fatalf("probs = %v, want the foreign-prefix issue", all)
+		}
+		if !strings.Contains(all, `row_sizes[0].type "snug" is invalid`) {
+			t.Fatalf("probs = %v, want the type issue reported too", all)
+		}
+	})
+
+	t.Run("unnamed item still gets its prefixes stripped", func(t *testing.T) {
+		// +workbook-create --values' styles item needs no name (one sheet, not
+		// yet named), but stripping must not be conditional on having one: the
+		// section parsers feed ranges to parseA1Range, so a surviving prefix
+		// turns an unambiguous spec into a malformed-range error. With no name
+		// there is simply nothing to disagree with, so no mismatch is reported.
+		t.Parallel()
+		item := map[string]interface{}{
+			"cell_styles": []interface{}{map[string]interface{}{"range": "Sheet1!A1:D1", "font_weight": "bold"}},
+			"row_sizes":   []interface{}{map[string]interface{}{"range": "Sheet1!1:1", "size": float64(30)}},
+		}
+		payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]", false)
+		if len(probs) > 0 {
+			t.Fatalf("unexpected probs: %v", probs)
+		}
+		if payload.CellStyles[0].Range != "A1:D1" {
+			t.Fatalf("cell_styles range = %q, want the prefix stripped", payload.CellStyles[0].Range)
+		}
+		if payload.RowSizes[0].Range != "1:1" {
+			t.Fatalf("row_sizes range = %q, want the prefix stripped", payload.RowSizes[0].Range)
+		}
+	})
+
+	t.Run("all three carriers accept a prefixed row_sizes range", func(t *testing.T) {
+		// The regression this guards: prefix stripping used to live only on the
+		// named-item path, so +workbook-create --values (whose item carries no
+		// name) still failed on "Sheet1!2:3" while +table-put / +styles-put
+		// accepted it.
+		t.Parallel()
+		for _, name := range []string{"", "Sheet1"} {
+			item := map[string]interface{}{
+				"row_sizes": []interface{}{map[string]interface{}{"range": "Sheet1!2:3", "size": float64(30)}},
+			}
+			if name != "" {
+				item["name"] = name
+			}
+			payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]", false)
+			if len(probs) > 0 {
+				t.Fatalf("name=%q: unexpected probs: %v", name, probs)
+			}
+			if payload.RowSizes[0].Range != "2:3" {
+				t.Fatalf("name=%q: range = %q, want %q", name, payload.RowSizes[0].Range, "2:3")
+			}
+		}
+	})
+}
+
+// TestWorkbookCreateVisualOpInput pins what the shared visual-op builder emits:
+// one combined freeze operation, and a range with no sheet prefix (the sheet
+// travels in the selector).
+func TestWorkbookCreateVisualOpInput(t *testing.T) {
+	t.Parallel()
+
+	t.Run("freeze rows and columns share one operation", func(t *testing.T) {
+		t.Parallel()
+		ops := workbookCreateVisualOps(&workbookCreateStylePayload{
+			Freeze: &workbookCreateFreezeOp{Rows: 1, Cols: 2},
+		})
+		if len(ops) != 1 {
+			t.Fatalf("ops = %d, want 1 combined freeze (a second call resets the first axis — verified live 07-31)", len(ops))
+		}
+		input, toolName := workbookCreateVisualOpInput(testToken, "sheet-id", "", ops[0])
+		if toolName != "modify_sheet_structure" {
+			t.Fatalf("toolName = %q", toolName)
+		}
+		if input["freeze_rows"] != 1 || input["freeze_columns"] != 2 {
+			t.Fatalf("input = %v, want both axes", input)
+		}
+		if got := ops[0].describe(); got != "freeze rows=1 cols=2" {
+			t.Errorf("describe() = %q", got)
+		}
+	})
+
+	t.Run("sheet prefix is stripped off the range", func(t *testing.T) {
+		t.Parallel()
+		input, toolName := workbookCreateVisualOpInput(testToken, "", "Summary",
+			workbookCreateStyleOp{Kind: "cell_merge", Range: "Summary!A1:B2", MergeType: "all"})
+		if toolName != "merge_cells" || input["range"] != "A1:B2" {
+			t.Fatalf("input = %v (%s), want range A1:B2", input, toolName)
+		}
+	})
 }

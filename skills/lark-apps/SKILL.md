@@ -1,7 +1,7 @@
 ---
 name: lark-apps
 version: 1.0.0
-description: "妙搭（Spark/Miaoda）应用开发与托管：应用创建、HTML静态站点发布、本地全栈开发、云端生成迭代、AI相关能力和飞书平台能力或者其他外部能力集成、日志/Trace/监控指标/PV/UV 查询、环境变量管理。当用户要开发/新建一个系统·工具·平台·应用，或要本地开发 / 云端开发 / 修改 / 部署 / 发布 / 上线 / 拿可分享链接，或用 HTML 做页面·网站·部署到妙搭，或提到妙搭/Spark/Miaoda（应用运行时域名形如 *.aiforce.cloud）、应用数据库、应用文件存储、开放 API Key、可见范围、线上日志、接口请求量、错误量、延迟、访问量、环境变量时使用。不负责普通云盘文件上传（lark-drive）、飞书文档编辑（lark-doc）、原生幻灯片创建（lark-slides）。"
+description: "妙搭（Spark/Miaoda）应用开发与托管：应用创建、本地全栈开发、云端生成迭代、创意设计（UI mockup / 可交互原型 / 线框图 / 落地页 / 仪表盘 / 幻灯片 deck / 视觉探索）、AI相关能力和飞书平台能力或者其他外部能力集成、日志/Trace/监控指标/PV/UV 查询、环境变量管理、应用协作者与协作权限设置、应用角色与成员管理、自动化触发器（定时/记录变更/Webhook/飞书审批）。当用户要开发/新建一个系统·工具·平台·应用，或要本地开发 / 云端开发 / 修改 / 部署 / 发布 / 上线 / 拿可分享链接，或用 HTML 做页面·网站·部署到妙搭，或要设计 / design / mockup / prototype / wireframe / 做 PPT / deck / 视觉探索，或提到妙搭/Spark/Miaoda 应用（链接形如 `/app/app_xxx` 或 `/page/<token>`，运行时域名形如 *.feishuapp.com）、应用数据库、应用文件存储、开放 API Key、可见范围、应用协作者/开发权限、应用角色/角色成员、线上日志、接口请求量、错误量、延迟、访问量、环境变量、给妙搭应用配自动化任务/定时触发/审批通过后自动触发时使用。不负责普通云盘文件上传（lark-drive）、飞书文档编辑（lark-doc）、原生幻灯片创建（lark-slides）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -10,81 +10,149 @@ metadata:
 
 # apps (v1)
 
-妙搭应用属于用户资产。默认用 `--as user`；认证、scope、exit-10、高风险确认、`_notice` 等通用处理只读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，不要在本 skill 里复制。妙搭应用有三条开发路径：**本地全栈**（拉源码本地写）/ **HTML 托管**（发布静态产物）/ **云端会话**（妙搭 AI 生成）。
+妙搭应用属于用户资产。默认用 `--as user`；认证、scope、exit-10、高风险确认、`_notice` 等通用处理只读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，不要在本 skill 里复制。妙搭应用有两条开发路径：**本地开发**（拉源码本地写）/ **云端会话**（妙搭 AI 生成）。
 
-## 身份与一次性授权
+## 身份与授权
 
-妙搭应用是用户的个人资产，统一 `--as user`（见开头）。**首次操作前先一次性把本域 scope 全拿到**，避免每条命令首次跑都触发新一轮授权，或未授权直接打到 openapi 导致服务端报错：
+妙搭应用是用户的个人资产，统一 `--as user`（见开头）。已有用户身份可用时直接执行业务命令，**不要为了预防权限问题主动重新登录**，否则可能中断原任务并触发不必要的设备授权。仅当 CLI 明确返回未登录或缺少本域 scope 时，一次性执行：
 
 ```bash
 lark-cli auth login --domain apps
 ```
 
-因缺权限失败（`error.subtype == "missing_scope"`）时的通用处理见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，同样按 `--domain apps` 授权。
+因缺权限失败（`error.subtype == "missing_scope"`）时的通用处理见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，同样按 `--domain apps` 授权；授权成功后只恢复原业务操作，不扩展任务范围。
 
 ## 意图路由
 
 按具体操作查命令（开发路径先用下方「选择开发路径」判定表定好再进来取命令）：
+
+创意模式（`/page/<token>`）专属能力的命令必须使用 `page-` 前缀，表明该命令只适用于创意模式应用；后续新增创意模式专属命令也遵循这个命名规则。
 
 | 用户意图 | 先用 | 按需读取 |
 |---|---|---|
 | 创建**新**应用资产、拿 app_id | `+create` | [`lark-apps-create.md`](references/lark-apps-create.md) |
 | 找已有 app_id、按名字过滤应用 | `+list --keyword <name>` | [`lark-apps-list.md`](references/lark-apps-list.md) |
 | 查单个应用详情（类型、名称、发布状态等） | `+get --app-id <app_id>` | [`lark-apps-get.md`](references/lark-apps-get.md) |
-| 改应用名或描述 | `+update` | [`lark-apps-update.md`](references/lark-apps-update.md) |
-| 发布本地 `index.html` 或静态目录为可访问 URL | `+html-publish` | [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) |
+| 改应用名、描述或图标（图标优先 `--icon-file` 传本地 png/jpeg；OpenClaw 类应用等类型不支持改图标） | `+update` | [`lark-apps-update.md`](references/lark-apps-update.md) |
+| 删除应用（是否可从 web 端「我的应用 → 回收站」恢复取决于结果里的 `in_trash=true`；CLI 无恢复命令） | `+delete --app-id <app_id> --confirm-name <name> --yes`（先 `+get` 向用户展示名称与 app_id、说明删除后可能进入回收站，也可能永久删除；恢复只在返回 `in_trash=true` 时成立；再等用户明确确认该应用；确认规则见下方「禁止预授权判定底线」②） | [`lark-apps-delete.md`](references/lark-apps-delete.md) |
+| HTML 应用 / 创意模式 — 写 HTML 页面/网站、静态页、PPT/deck、落地页、仪表盘、UI mockup、原型、线框图、视觉探索 | 加载 [`creative-design/creative-design.md`](creative-design/creative-design.md)（含完整开发与发布流程） | [`creative-design/creative-design.md`](creative-design/creative-design.md) |
+| 旧版存量 HTML 应用（无 Git 管理）继续上传已有静态产物 | `+html-publish`（仅兼容旧链路；新建 html / 创意模式 / creative-design 产物不得使用） | [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) |
 | 开发已有应用 / 初始化本地仓库（开发方式已定为本地后；先解析 app_id，勿 `+create` 新建） | `+init`（或手动 `+git-credential-init` + 原生 git）。**执行前必读** [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)，含端到端流程和领域规则 | [`lark-apps-init.md`](references/lark-apps-init.md), [`lark-apps-git-credential.md`](references/lark-apps-git-credential.md) |
+| 阅读 / 分析 / 总结创意应用（`/page/<token>`）的内容；只想查看工程结构或某个文件写了什么；或只有**查看权限**（协作者、无下载权限） | `+page-source-list`（列一个目录，不递归）、`+page-source-get`（读单个 UTF-8 文件，stdout 原样输出）。先 list 摸结构再 get 读文件；两者只需 view 权限，只覆盖 git 源码形态的创意应用 | [`lark-apps-page-source-list.md`](references/lark-apps-page-source-list.md), [`lark-apps-page-source-get.md`](references/lark-apps-page-source-get.md) |
+| 用户明确要**导出 / 下载 / 归档**整份源码快照，或要离线分析、全文检索、把整包喂给别的工具；任意应用模式需要一份 zip | `+export`（下载 zip 后解压读源码；不配 git 凭证、不建工作区）。创意模式应用的 `/page/` 链接直接传 `--meta-token <token>`，不必先 `+get` 换 app_id。要继续开发用 `+init` 而非本命令。**需要下载权限** | [`lark-apps-export.md`](references/lark-apps-export.md) |
 | 本地开发时 `.env.local` 损坏/丢失，重新拉取启动期环境变量 | `+env-pull` | [`lark-apps-env-pull.md`](references/lark-apps-env-pull.md) |
 | 管理应用环境变量（查看/设置/删除） | `+env-list`, `+env-set`, `+env-delete` | [`lark-apps-env.md`](references/lark-apps-env.md) |
+| 网页/另一台电脑开通数据库后同步本地环境变量 | `+env-pull`（之后重启本地开发进程） | [`lark-apps-env-pull.md`](references/lark-apps-env-pull.md) |
+| 查应用是否已开启数据库；给应用开启数据库 | `+features --app-id <app_id>`；确认需求后 `+feature-enable --feature database --app-id <app_id>` | [`lark-apps-features.md`](references/lark-apps-features.md) |
 | 查线上日志、Trace、请求数、错误率、延迟、CPU、memory、PV/UV/访问量 | `+log-list`, `+log-get`, `+trace-list`, `+trace-get`, `+metric-list`, `+analytics-list` | [`lark-apps-observability.md`](references/lark-apps-observability.md) |
 | 看表 / 看结构 / 初始化多环境 / 导入导出数据 / 变更追溯 / 行级审计 / dev→online 发布 / 时间点恢复 / 查 DB 用量 | `+db-table-list`、`+db-table-get`、`+db-env-create`、`+db-data-export`/`+db-data-import`、`+db-changelog-list`、`+db-audit-status`/`+db-audit-enable`/`+db-audit-disable`/`+db-audit-list`、`+db-env-diff`/`+db-env-migrate`、`+db-recovery-diff`/`+db-recovery-apply`、`+db-quota-get` | [`lark-apps-db.md`](references/lark-apps-db.md) |
-| 逐条执行 SQL（SELECT / DML / DDL） | `+db-execute` | [`lark-apps-db-execute.md`](references/lark-apps-db-execute.md) |
+| 逐条执行 SQL（SELECT / DML / DDL）；建表 / 改表 / 写 SQL 的平台规范 | `+db-execute` | [`lark-apps-db-execute.md`](references/lark-apps-db-execute.md)（含「平台 SQL 规范」：审计列 / RLS / `user_profile` / 禁用 SQL / PG 陷阱） |
 | 管理应用文件存储：上传/下载本地文件、列出/查看/删除已存文件、生成临时分享链接、查存储用量 | `+file-upload`/`+file-download`/`+file-list`/`+file-get`/`+file-sign`/`+file-delete`/`+file-quota-get` | [`lark-apps-file.md`](references/lark-apps-file.md) |
-| **部署/上线全栈应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史 | `+release-create`（部署上线动作）, `+release-get`（轮询发布结果，finished 给 online_url / failed 给 error_logs）, `+release-list` | [`lark-apps-release-create.md`](references/lark-apps-release-create.md), [`lark-apps-release-get.md`](references/lark-apps-release-get.md), [`lark-apps-release-list.md`](references/lark-apps-release-list.md) |
+| 调试应用运行时缓存：查看/删除单个业务 key、清空指定环境缓存 | `+cache-get`/`+cache-delete`/`+cache-clear` | [`lark-apps-cache.md`](references/lark-apps-cache.md) |
+| **部署/上线应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史 | 本地开发链路先按 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) 确认本次改动已 git commit + git push，再用 `+release-create` / `+release-get`；查历史用 `+release-list` | [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md), [`lark-apps-release-create.md`](references/lark-apps-release-create.md), [`lark-apps-release-get.md`](references/lark-apps-release-get.md), [`lark-apps-release-list.md`](references/lark-apps-release-list.md) |
 | 设置或查看运行时可见范围 | `+access-scope-set`, `+access-scope-get` | 对应 access-scope reference |
+| 把妙搭应用所有者转交给另一个人 | `apps +get` 取 `meta_token` / `meta_doc_type` -> `drive permission.members transfer_owner` | [`lark-apps-owner-transfer.md`](references/lark-apps-owner-transfer.md) |
+| 管理应用协作者（列出/添加/改权限/移除）或协作权限设置 | `+member-list`, `+member-add`, `+member-update`, `+member-remove`, `+member-settings-get`, `+member-settings-set` | 本文「应用协作者与协作权限设置」 |
+| 创意模式（html）应用的评论相关操作 | 创意模式应用评论走 lark-drive 文档评论体系，读取 [`../lark-drive/SKILL.md`](../lark-drive/SKILL.md) 了解评论能力 | [`../lark-drive/SKILL.md`](../lark-drive/SKILL.md) |
+| 管理 `app_...` 应用内角色、角色成员，或查询用户匹配角色 | `+role-list/get/create/update/delete`, `+role-member-list/add/remove`, `+role-match-list` | [`lark-apps-role.md`](references/lark-apps-role.md) |
 | 云端 Agent 生成/迭代应用（开发方式已定为云端后） | `+session-create` -> `+chat` -> `+session-get` | [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md) |
 | 管理妙搭应用开放 API Key（创建/查看/启停/重置/删除凭证；密钥仅 create/reset 一次性返回） | `+openapi-key-list/get/create/update/enable/disable/delete/reset` | [`lark-apps-openapi-key.md`](references/lark-apps-openapi-key.md) |
+| 管理妙搭应用自动化触发器（定时/记录变更/Webhook/飞书审批四类触发器的查询/创建/更新/启停；Webhook URL·Token 一次性回显、不落盘） | `+automation-list/get/create/update/enable/disable` | [`lark-apps-automation.md`](references/lark-apps-automation.md) |
 | 查看某次会话某一轮（turn）的回复消息（含仍在生成中的本轮）/ 导出上一轮模型回复（"这一轮回复了什么""上一轮的回复""导出某轮消息"） | 先 `+session-get`（取 `latest_turn.turn_id`）-> `+session-messages-list --turn-id <id>`（仅 user 身份；分页用 `--page-token`） | [`lark-apps-session-messages-list.md`](references/lark-apps-session-messages-list.md) |
 | 外部能力(AI模型能力和飞书平台能力)集成/插件/Plugin/Capability | `+plugin-install`, `+plugin-list`, `+plugin-uninstall` | [`lark-apps-plugin-install.md`](references/lark-apps-plugin-install.md), [`lark-apps-plugin-uninstall.md`](references/lark-apps-plugin-uninstall.md), [`lark-apps-plugin-list.md`](references/lark-apps-plugin-list.md) |
+| 把一批 ID 在妙搭 user_id ↔ 飞书 open_id / union_id / 飞书 user_id 之间互转（例如拿到 open_id 但下游要 user_id） | `+user-id-convert --convert-type <方向> --ids <id1,id2,...>` | [`lark-apps-user-id-convert.md`](references/lark-apps-user-id-convert.md) |
 
 ## 高频路径
 
+- **Base 到应用数据库同步**：用户说“Base 同步到数据库 / 整库同步 / 多张表同步 / 批量任务重新启用 / operation-not-allowed”时，先读 [`lark-apps-db.md`](references/lark-apps-db.md) 的 Base 数据同步段落，再查 app_id 或处理授权。先形成计划再动手：`+db-sync-create` 一次只处理一张 Base 表，整库/多表必须拆成多份单表配置和多次 preview/create；batch/import 任务是一次性任务，不能重新 enable，遇 operation-not-allowed 先解释生命周期边界，再用 `+db-sync-get` 查状态/结果，持续同步要新建 streaming 任务。
 - **性能/监控/观测指标**：用户问“接口请求量、错误量、错误率、接口慢、延迟、CPU、内存、最近一小时/七天趋势”时，不要去当前工作区搜索监控文件，也不要询问“监控数据在哪”。先按「app_id 获取」解析应用：`lark-cli apps +list --keyword "<应用名>" --as user`；拿到 `app_id` 后读 [`lark-apps-observability.md`](references/lark-apps-observability.md)，用 `+metric-list`。
 - **请求量 + 错误量 + 延迟**：请求量/错误量用 `lark-cli apps +metric-list --app-id <app_id> --metric requests --since <range> --as user`（不传 `--series` 会同时返回 total/error）；延迟用 `--metric latency`（不传 `--series` 会返回 p50/p99）。如果用户给了具体接口，再加 `--api <path-or-name>`；不要臆造 group-by 参数。
 - **PV/UV/访问量/活跃用户**：先解析 `app_id`，再用 `+analytics-list`，不要误用 `+metric-list`。
 - **设置环境变量**：如果用户只给应用名，仍先 `+list --keyword` 解析 app_id；设置 online 环境且用户已经明确说“确认/直接执行”时，调用 `+env-set --environment online ... --yes`，不要再次要求确认。回复和日志摘要里只提 key / env / app，不回显真实 value；需要传复杂值时优先用 `@file` 或 stdin。
 - **删除环境变量**：`+env-delete` 是破坏性操作。除非用户在同一轮已经明确确认删除这个 app/env/key，否则先向用户确认应用、环境、key 和删除后果；确认后再加 `--yes`。不要因为认证失败/重登完成就自动继续删除，必须保留确认门槛。
 
+## 应用所有者转交
+
+应用所有者转交是 Drive 资源操作，属于高风险写入，不等同于添加或修改开发协作者。按 [`lark-apps-owner-transfer.md`](references/lark-apps-owner-transfer.md) 核对当前应用、新所有者、原所有者保留权限、通知和资源位置选项，建议先用 `--dry-run` 预览；只有用户明确确认这些影响后才可带 `--yes` 真正转交，不要在未获用户明确同意时静默追加 `--yes`。
+## 应用协作者与协作权限设置
+
+这组命令管理妙搭应用的开发协作者和协作策略，不等同于 `+access-scope-*` 的运行时访问范围，也不等同于 `+role-*` 的应用内业务角色。所有命令使用 `app_...` 应用 ID 和 `--as user`。不要读取或判断 `app_type` 来预判支持范围，直接调用对应的协作者命令。
+
+- `+member-list`、`+member-settings-get` 是只读命令，需要 `spark:app:read`。
+- `+member-add`、`+member-update`、`+member-remove`、`+member-settings-set` 是高风险写命令，需要 `spark:app:write`。先用 `--dry-run` 核对目标、URL 和请求体；dry-run 不需要 `--yes`。用户已确认具体应用、成员/设置及影响，或已按下方「高影响动作：确认与预授权」对整条流程明确预授权时，真实执行加 `--yes`；否则在 dry-run 后停下请求确认。批量移除成员仍执行「禁止预授权判定底线」，不能从泛化的“直接做”推导出 `--yes`。
+- 添加、更新、移除成员时必须显式提供匹配的外部 ID 类型，禁止传内部数字 ID、猜测类型或做隐式转换：用户 `--member-type openid --member-id ou_...`；群组 `--member-type openchat --member-id oc_...`；部门 `--member-type opendepartmentid --member-id od-...`。
+- `+member-list --member-type` 的筛选枚举是响应对象类型 `user` / `department` / `chat`，与写命令的 ID 类型枚举不同。可再用 `--role view|edit|full_access` 筛选。
+- `+member-list` 一次返回应用的全部直接协作者，不提供分页参数；可用 `--member-type` 和 `--role` 缩小结果范围。
+- 成员响应不包含应用详情。需要名称、类型或发布状态时单独调用 `+get --app-id <app_id>`，不要期待成员分页重复返回 `app`。
+- 收到 subtype `feature_not_available`（OpenAPI code `3340005`；直连服务可能为 `40005`）时，立即停止 CLI 自动化，不切换 `app_type`，也不尝试用 access scope、应用角色或其它成员命令绕过。向用户说明该应用暂不支持通过 lark-cli 设置协作者，并引导其在妙搭后台的权限设置中操作。
+- `external_invite` 只在 `+member-settings-get` 的响应中读取，不能独立设置；它会跟随 `external_access`。CLI 不注册 `--external-invite`，需要改变外部协作能力时只设置 `--external-access`。
+- `copy_download_by` 也只在 `+member-settings-get` 的响应中读取。CCM 当前明确不支持为妙搭对象写入复制、打印和下载权限，因此 CLI 不注册 `--copy-download-by`。保留读取结果，不要尝试写入，也不要改用其它权限字段模拟。
+
+```bash
+# 读取协作者和当前协作策略
+lark-cli apps +member-list --app-id <app_id> --as user
+lark-cli apps +member-settings-get --app-id <app_id> --as user
+
+# 写操作先预览精确的 typed-ID 字段；确认后把 --dry-run 换成 --yes
+lark-cli apps +member-add --app-id <app_id> --member-type openid --member-id ou_xxx --perm view --dry-run --as user
+lark-cli apps +member-update --app-id <app_id> --member-type openchat --member-id oc_xxx --perm edit --dry-run --as user
+lark-cli apps +member-remove --app-id <app_id> --member-type opendepartmentid --member-id od-xxx --dry-run --as user
+lark-cli apps +member-settings-set --app-id <app_id> --external-access disabled --comment-by viewer --dry-run --as user
+```
+
 ## 选择开发路径（进意图路由前先判这步）
 
 新建必先定 **app_type** 和**开发方式**两件正交的事；修改已有先按「app_id 获取」指认到 app，指认不到就问用户，不擅自 `+create`。开发方式（本地 vs 云端）只看用户对"谁来写代码"的偏好，与应用复杂度、要不要数据库无关。
 
+**app_type 三类边界**（先判"要不要把数据存到服务端"，再判"纯展示还是有交互"）：
+
 | 信号 | 判定 |
 |---|---|
-| 静态展示 / 单页 / PPT/demo / 无后端状态 | `app_type=html`，跳过本地/云端轴，开发完按 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)（含"未提部署→先问是否发布"） |
-| 登录 / 数据库 / 持久化 / 多人协作 / 增删改查 / 报名 / 投票 / 站会 / OKR / 泛称"系统·工具" | `app_type=full_stack` |
-| 用户要自己写 / 本地 IDE·code agent / 拉源码到本地 / 交研发 | 本地全栈，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) |
+| 含数据库 / 后端持久化：登录 / 增删改查 / 报名·投票·站会存记录 / 多人协作 / 泛称"系统·工具"且明确要存数据 | `app_type=full_stack`；创建后用 `+features` 看 `database` 的 `enabled`，为 `false` 时按 [`lark-apps-features.md`](references/lark-apps-features.md) 用 `+feature-enable --feature database` 开数据库 |
+| 纯静态展示（给人"看"的物料，无 JS 交互）：PPT/deck / demo / 落地页 / 海报 / UI mockup / 线框图 / 静态仪表盘 / 视觉探索 | `app_type=html`，加载 [`creative-design/creative-design.md`](creative-design/creative-design.md)（含完整开发与发布流程） |
+| 有 JS 交互但无数据库（给人"用"的前端应用）：可交互原型 / SPA / 表单校验 / 动态计算 / 调用外部 API / 泛称"工具·系统"但未明确要存数据 | `app_type=frontend`（**默认倾向**：用户未明确提出数据库需求时默认引导 frontend，不默认 full_stack） |
+| 类型模糊（尤其"要不要存数据"不清） | **追问**，话术偏向 frontend，例："看起来是个前端应用，需要保存数据吗？"；确认要存数据再转 full_stack，确认纯展示再转 html |
+| 用户要自己写 / 本地 IDE·code agent / 拉源码到本地 / 交研发 | 本地开发，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) |
 | 让妙搭 AI 云端生成 / 对话式 / 自己不碰代码 | 云端会话，读 [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md) |
 | 未表达"谁来写"偏好 | **必须先问**（本地代码开发 vs 云端 AI 生成）；选定前不擅自选边、不暗示默认，不得以"需求不模糊"为由跳过提问直接 `+init` / `git clone` / `+session-create` / 首轮 `+chat` |
 | 修改已有 + 当前目录是 `.spark/meta.json` 项目 | 直接继续本地按意图路由，不必问也不必判云端 |
 | 修改已有 + 有云端偏好 | 云端会话；未表达偏好且非本地项目 → 默认本地；判不准先问 |
 
+**后续加数据库 / 类型升级**：应用后续需要数据库时，先 `+features --app-id <app_id>`：列出 `database` 且 `enabled=false` 时经用户确认后 `+feature-enable --feature database`，再 `+env-pull` 并重启本地开发进程（见 [`lark-apps-features.md`](references/lark-apps-features.md)）；没列出 `database`、`+features` 报错或服务端拒绝启用时，本地 CLI 不提供类型升级，引导用户到云端会话（打开 `https://miaoda.feishu.cn/app/{app_id}`），用自然语言描述后端需求（如"给这个应用加登录和数据存储"）即可触发升级，无需特殊指令。
+
 ## 发布态护栏
 
 - **发布意图判定**：用户要"可访问 / 线上 / 分享 / 新链接 / 上线" = 发布意图，先走发布链路、确认完成再给链接。
+- `+release-create` 的发布理由按应用类型处理：创意模式 `html` 不需要发布理由，命令不得传 `--apply-reason`；`frontend` / `full_stack` 先加载 [`lark-apps-release-create.md`](references/lark-apps-release-create.md)，生成理由并纳入现有发布确认，命令传入已确认的同一理由。
+- `+release-get` 尚未返回 `finished` / `failed`，且返回 `current_node_info.current_status=PENDING` 时（顶层可能是 `publishing` 或 `pending`）立即加载 [`lark-apps-release-get.md`](references/lark-apps-release-get.md)，停止轮询并告知当前用户正在等待审批负责人处理；不得假定当前用户或 `submitted_by` 是审批人。终态优先于可能残留的 PENDING 节点。
+- `+release-create` 或 `+release-get` 仅当服务端错误明确说明客户端版本过旧或要求升级时，才建议执行 `lark-cli update` 后重试原命令（查询仍使用同一个 `release_id`）。不要硬编码或猜测最低版本，不要用 `--help` 做能力预检；`X-Cli-Version` 由 CLI 请求统一携带且不是认证信息，本工作流不增加 CLI 版本门禁。
 - 完成 ≠ 发布：云端会话完成 / `+list is_published=true` 都不代表最新内容已部署。
-- 开发态链接 `https://miaoda.feishu.cn/app/{app_id}`：进应用编辑/开发态、管理与继续开发应用的入口。发布成功后，连同发布态链接一并提供给用户（说明"管理 / 继续开发去这里"）；但它仅进编辑态，**不能**顶替发布态链接当分享链接。
-- 发布态链接来源：html → `+html-publish` 的 `data.url`；全栈 → `+release-get` 轮询 `finished` 给 `online_url` / `failed` 给 `error_logs`。
-- **可见范围**：发布态链接（html 的 `data.url`、全栈的 `online_url`）默认仅**创建者可见**，发给他人对方会无权限打不开。当可分享链接交付给用户前，先告知当前仅本人可见，再询问是否用 `+access-scope-set`（`tenant`/`public`/`specific`）放开（可先 `+access-scope-get` 查当前范围）。
+- 开发态链接 `https://miaoda.feishu.cn/app/{app_id}`（full_stack / frontend 应用）：进应用编辑/开发态、管理与继续开发应用的入口，也是 frontend 升级为 full_stack 的入口（云端会话）。创意模式（html）应用开发态和发布态是同一个链接，无需额外提供开发态链接。
+- 发布态链接来源：`+release-get` 轮询 `finished` 给 `online_url` / `failed` 给 `error_logs`（html / frontend / full_stack 统一走 `+release-get`）。
+- html 应用的主链路是创意模式开发方式：按 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) 初始化仓库、在仓库内产出 HTML 及关联文件，并通过 git commit / git push / `+release-create` / `+release-get` 发布部署。任何 git 操作（clone / pull / push）报错时，先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令。如果刷新凭证也失败，**停止并向用户报告**：原始 git 错误、凭证刷新失败原因，以及是否可能是当前环境（操作系统、沙箱）限制导致（如 macOS Keychain 在沙箱中不可用、Linux 加密文件目录不可写等）。不要改走 `+html-publish`，也不要把 `+html-publish` 当作本地开发链路的 fallback。
+- 创意模式（html）应用的链接格式为 `https://{租户域名}/page/{meta_token}`，**开发态和发布态是同一个链接**（区别于 full_stack 应用两者分开）。此链接形似飞书文档链接。`+get --app-id <meta_token>` 可获取应用信息（含 `app_id`），`+get --app-id <app_id>` 可获取 `meta_token`。看到 `/page/xxx` 链接时，它是妙搭创意模式应用，不要当成飞书文档跳过；用户要看懂 / 总结这个应用的内容时，git 源码形态先用 `+page-source-list` 浏览目录，再用 `+page-source-get --meta-token <token> --path <path>` 读取相关文件。只有用户明确要导出 / 下载 / 归档整份源码快照时，才主动选择 `+export`。
 
-## 能力边界
+## 平台资源与应用源码边界
 
-- lark-cli **不支持**配置应用的权限（应用内 RBAC、成员角色、协作者权限）/ 自动化。`+access-scope-*` 只管运行时可见范围（谁能打开应用），不是角色权限。
-- 用户要配置权限 / 自动化时，引导其使用开发态连接前往云端开发（妙搭 web）处理。
+- `apps` 命令的 `--path`、`--file`、`--output` 等路径参数只接受当前工作目录（cwd）下的相对路径，传绝对路径会报错。如果目标文件不在 cwd 下，先 `cd` 到目标目录再执行命令。
+- 图片、字体、音视频等资源型文件属于平台资源，不应提交到 git 仓库、引用本地路径或以 base64 内联到源码中。先通过 `lark-cli apps +file-upload --app-id <app_id> --file <local_path>` 上传到应用文件存储，拿到返回的远端 URL 后在代码中引用。上传返回的链接按 app 隔离，不同应用必须各自重新上传，不能跨应用复用同一链接。详情读 [`lark-apps-file.md`](references/lark-apps-file.md)。
+- `apps +role-*` 只管理平台角色资源；修改已初始化应用的源码（包括当前目录已经是应用项目）时，先查看工作区 `.agents/skills/`，完整读取与任务匹配的领域 skill，再按其路由读取所需 reference。角色鉴权或运行态角色管理读应用内 `authz-guide`，不能用本 skill 的平台命令参考推断运行时合同。
+- `lark-cli` 只用于开发过程中的平台资源核验或变更。应用运行时代码必须使用工程内领域 skill 规定的 SDK，禁止通过 `exec` 或子进程调用 `lark-cli`。
+- 平台回读出的当前资源 ID、名称和成员只用于事实核验，不自动构成业务策略；除非需求或应用内领域 skill 明确定义，禁止把当前样本硬编码成 allowlist、denylist、只读集合或权限规则。
+- 实现领域 SDK 时，以实际包导出的类型和应用内领域 reference 记录的入参、响应路径为准；禁止修改 ambient `.d.ts`、补造宽松类型或强制断言，让猜测的 SDK 结构仅在本地"编译通过"。
+- typecheck/build 成功不等于合同正确。交付前逐项核对每个 SDK 调用的入参、响应取值路径和策略分支；涉及更新、删除等不同动作时，分别验证各自动作所需的完整状态，不能复用更弱的前置判断。
+- 源码任务交付前确认新增页面、Controller、Module 已接入真实 router/bootstrap，并运行项目现有 typecheck/build；只创建未接线文件不算完成。
+- `+access-scope-*` 只管运行时可见范围（谁能打开应用），不是角色权限；应用协作者/开发权限使用 `+member-*` 和 `+member-settings-*`，应用内业务角色使用 `+role-*`。自动化触发器请用 `+automation-*`（见「意图路由」）。
 
 ## app_id 获取
 
 `app_id` 必须是妙搭应用 ID（`app_` 开头）。`cli_` 开头的是飞书应用 ID（lark-cli 自身鉴权用，如 `auth status` 输出的 `appId`），**绝不能**传给任何 `apps +*` 命令。
+
+如果你拿到的是 `https://{租户域名}/page/<meta_token>` 这类链接里的 meta_token — 这是创意模式应用的 **meta_token**（链接形似飞书文档）。只为查看内容时不需要 `app_id`，git 源码形态优先用 `+page-source-list` / `+page-source-get --meta-token <meta_token>`（只需查看权限）。只有明确要导出 / 下载 / 归档整份源码时，才主动选择 `+export --meta-token <meta_token>`（需要下载权限）。其余命令需要 `app_id` 时，先用 `+get` 解析出 `app_id`。如果拿到的不是链接、也不是 `app_` 开头，可能是裸 meta_token，同样先用 `+get --app-id <token>` 尝试获取应用信息，能正常返回则说明是 meta_token：
+
+```bash
+lark-cli apps +get --app-id <meta_token> -q '.data.app.app_id'
+```
 
 按顺序尝试，不要一上来要求用户手填：
 
@@ -100,4 +168,4 @@ lark-cli auth login --domain apps
 ## 高影响动作：确认与预授权
 
 - **预授权判定**：判断用户是否表达了"放手做完、不用中途逐步问我"的意图——明确免确认（如"别问 / 直接做 / 自己定"），或要求一气呵成做到完成（如"做完部署上线给我"）。是 → 整个流程按合理默认往下走、不再逐步确认（含 clone 到派生目录、发布等）；否 → 缺失参数（如目录）该问就问、高影响动作先确认。
-- **禁止预授权判定底线**（即便已预授权也不豁免）：① 会删/丢数据或不可逆的 DB 操作（判据见 [`lark-apps-db-execute.md`](references/lark-apps-db-execute.md)）先 `--dry-run` 确认；② `+html-publish` 体积超限时（判据见 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)），立即停止并转述超限项。
+- **禁止预授权判定底线**（即便已预授权也不豁免）：① 会删/丢数据或不可逆的 DB 操作（判据见 [`lark-apps-db-execute.md`](references/lark-apps-db-execute.md)）先 `--dry-run` 确认；② `+delete`（删除应用）、`+role-delete`、`+role-member-remove --all`、批量移除成员必须先确认 app、role、成员范围和后果，不能从泛化"直接做"推导出 `--yes`；命令式"删除/移除某对象"只确定操作目标，不等于用户已确认不可逆后果，未明确确认时应在说明影响后停下请求确认；`+delete` 即使可从回收站恢复也不豁免：用户只说“帮我删掉 X / X 不用了删了吧”时，先展示应用名称与 app_id、说明后果，然后结束本轮，等用户下一条消息明确确认这个应用后才带 `--yes` 执行，不得在展示后同一轮紧接着执行；只有用户原话已明确表示确认删除这个应用（如“确认删除 X，我已经确认过了”）才可直接执行；`+list` / `+get` 查到唯一且名称完全一致的应用只说明目标找对了，不算用户确认；用户给的应用名与查到的实际名称不完全一致（如只匹配到近似名）时，不得把查到的名称填进 `--confirm-name`，先停下展示候选名称与 app_id 请用户确认；③ `+html-publish` 体积超限时（判据见 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)），立即停止并转述超限项；④ `+cache-clear` 会清空整个环境的缓存，「用户让我清缓存」只确定了操作目标、不等于确认了这次清空——未拿到对「清空该环境」的明确确认表述时，只出 `--dry-run` 预览或停下请求确认，不得首次调用即自带 `--yes`（判据表见 [`lark-apps-cache.md`](references/lark-apps-cache.md)）。

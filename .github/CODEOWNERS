@@ -1,11 +1,14 @@
+/go.mod @liangshuo-1
+/go.sum @liangshuo-1
 /internal/ @liangshuo-1
+/shortcuts/common/ @liangshuo-1
 
 # Last match wins: existing domains below are exempt, only new skills/ entries need review.
 /skills/ @liangshuo-1
 /skills/lark-approval/
 /skills/lark-apps/
 /skills/lark-attendance/
-/skills/lark-base/
+/skills/lark-base/ @zgz2048 @kongenpei
 /skills/lark-calendar/
 /skills/lark-contact/
 /skills/lark-doc/
@@ -14,6 +17,7 @@
 /skills/lark-im/
 /skills/lark-mail/
 /skills/lark-markdown/
+/skills/lark-meeting/
 /skills/lark-minutes/
 /skills/lark-okr/
 /skills/lark-openapi-explorer/

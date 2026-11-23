@@ -30,13 +30,7 @@ func TestAppsDBEnvDiff_DryRunBody(t *testing.T) {
 		[]string{"+db-env-diff", "--app-id", "app_x", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	a := env.API[0]
 	if a.Method != "POST" || a.URL != dbEnvMigrateURL || a.Body["dry_run"] != true {
@@ -91,11 +85,7 @@ func TestAppsDBEnvMigrate_DryRunBody(t *testing.T) {
 		[]string{"+db-env-migrate", "--app-id", "app_x", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Body map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	if env.API[0].Body["dry_run"] != false {
 		t.Fatalf("dry-run body=%v (want dry_run:false)", env.API[0].Body)
@@ -180,13 +170,7 @@ func TestAppsDBRecoveryDiff_DryRunNormalizesTarget(t *testing.T) {
 		[]string{"+db-recovery-diff", "--app-id", "app_x", "--target", "2026-04-15", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	a := env.API[0]
 	if a.Method != "POST" || a.URL != dbRecoveryURL || a.Body["dry_run"] != true {
@@ -331,14 +315,11 @@ func TestAppsDBQuotaGet_DryRunOmitsEnvWhenUnset(t *testing.T) {
 		[]string{"+db-quota-get", "--app-id", "app_x", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
+	if len(env.API) != 1 {
+		t.Fatalf("dry-run API calls = %d, want 1; stdout=%s", len(env.API), stdout.String())
+	}
 	a := env.API[0]
 	if a.Method != "GET" || a.URL != dbQuotaURL {
 		t.Fatalf("dry-run = %s %s", a.Method, a.URL)

@@ -45,6 +45,18 @@ Adding a new row requires approval from the matching CODEOWNERS or quality gate 
 
 `legacy-commands.txt` only covers hand-authored legacy commands. Generated OpenAPI service commands are intentionally excluded from `command-manifest.json`; they are included in `command-index.json` only so command references can be checked against the real CLI surface.
 
+## Public Domain Allowlists
+
+`internal/qualitygate/config/allowlists/public-domains.txt` contains supported public hostnames approved for Go source. `fixture-domains.txt` contains test-only hostnames used by `*_test.go`, the repository-root `tests/` directory, or any `testdata/` directory; fixture entries do not apply to production Go files or `skills/`.
+
+Keep one lowercase exact hostname per line, sorted alphabetically. Wildcards, suffix rules, duplicates, schemes, ports, and paths are rejected; approving `larkoffice.com` does not approve its subdomains.
+
+RFC 2606 reserves the `.test`, `.example`, `.invalid`, and `.localhost` namespaces plus the exact names `example.com`, `example.net`, and `example.org`. These names are accepted without an allowlist entry and must not be listed.
+
+Every public entry needs a current non-fixture Go use, evidence that it is a supported public endpoint, and CODEOWNER approval. Other test-only hostnames belong in the fixture list. Tenant-specific, private-control-plane, and internal API hostnames are not eligible.
+
+`lint/domaincontract` validates both lists and scans complete Go files. In CI, unapproved-host findings are limited to values whose expressions intersect added lines; list validation and unused-entry checks remain repository-wide. See `lint/README.md` for scanner semantics.
+
 ## Semantic Blocker Policy
 
 The semantic reviewer can propose findings, but the local gatekeeper recomputes whether each finding is reproducible from `facts.json`. A finding blocks only when all of these are true:

@@ -38,7 +38,7 @@ var AppsFileDownload = common.Shortcut{
 		{Name: "output", Desc: "local output path (default: remote file basename in cwd)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+		if _, err := requireFileAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
 		if err := rejectOutputTraversal(rctx.Str("output")); err != nil {

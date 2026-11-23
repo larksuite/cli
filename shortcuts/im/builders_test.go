@@ -6,14 +6,75 @@ package im
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
+
+func TestValidateMessageContentJSONDoesNotEchoContent(t *testing.T) {
+	t.Parallel()
+
+	const sensitiveContent = `{"text":"QA_SYNTHETIC_PRIVATE_MARKER_93827",bad}`
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		flags    map[string]string
+	}{
+		{name: "send", shortcut: ImMessagesSend, flags: map[string]string{"chat-id": "oc_123", "content": sensitiveContent}},
+		{name: "reply", shortcut: ImMessagesReply, flags: map[string]string{"message-id": "om_123", "content": sensitiveContent}},
+		{name: "edit", shortcut: ImMessagesEdit, flags: map[string]string{"message-id": "om_123", "content": sensitiveContent}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := tt.shortcut.Validate(context.Background(), newTestRuntimeContext(t, tt.flags, nil))
+			if err == nil {
+				t.Fatal("Validate() error = nil, want validation error")
+			}
+
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("Validate() error = %T, want typed error", err)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("Validate() error = %T, want *errs.ValidationError", err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--content" {
+				t.Fatalf("problem = %#v, want validation/invalid_argument attributed to --content", problem)
+			}
+			if strings.Contains(problem.Message, sensitiveContent) || strings.Contains(problem.Message, "QA_SYNTHETIC_PRIVATE_MARKER_93827") {
+				t.Fatalf("error message leaked content: %q", problem.Message)
+			}
+			var syntaxErr *json.SyntaxError
+			if !errors.As(err, &syntaxErr) {
+				t.Fatalf("error = %v, want preserved *json.SyntaxError cause", err)
+			}
+			wantMessage := fmt.Sprintf(
+				"--content is not valid JSON near byte %d\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'",
+				syntaxErr.Offset,
+			)
+			if problem.Message != wantMessage {
+				t.Fatalf("problem.Message = %q, want %q", problem.Message, wantMessage)
+			}
+		})
+	}
+}
+
+func TestValidateMessageContentJSONAcceptsLargeNumber(t *testing.T) {
+	t.Parallel()
+
+	if err := validateMessageContentJSON(`{"value":1e400}`); err != nil {
+		t.Fatalf("validateMessageContentJSON() error = %v, want nil", err)
+	}
+}
 
 // mustMarshalDryRun marshals v to a JSON string, calling t.Fatalf on error.
 func mustMarshalDryRun(t *testing.T, v interface{}) string {
@@ -32,6 +93,7 @@ func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlag
 
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-limit", 20, "")
+	cmd.Flags().Int("page-delay", 200, "")
 	for name := range stringFlags {
 		if name == "page-limit" {
 			continue
@@ -63,14 +125,26 @@ func newChatSearchTestRuntimeContext(t *testing.T, stringFlags map[string]string
 
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 20, "")
-	for name := range stringFlags {
-		if name == "page-size" {
-			continue
-		}
+	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Int("page-delay", 200, "")
+	for _, name := range []string{"query", "search-types", "chat-modes", "member-ids", "sort", "sort-by", "page-token"} {
 		cmd.Flags().String(name, "", "")
 	}
-	for name := range boolFlags {
+	for name := range stringFlags {
+		if name == "page-size" || name == "page-limit" {
+			continue
+		}
+		if cmd.Flags().Lookup(name) == nil {
+			cmd.Flags().String(name, "", "")
+		}
+	}
+	for _, name := range []string{"is-manager", "disable-search-by-user", "exclude-muted", "page-all", "dry-run"} {
 		cmd.Flags().Bool(name, false, "")
+	}
+	for name := range boolFlags {
+		if cmd.Flags().Lookup(name) == nil {
+			cmd.Flags().Bool(name, false, "")
+		}
 	}
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
@@ -330,7 +404,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 			"page-size": "0",
 		}, nil)
 		err := ImChatSearch.Validate(context.Background(), runtime)
-		if err == nil || !strings.Contains(err.Error(), "--page-size must be an integer between 1 and 100") {
+		if err == nil || !strings.Contains(err.Error(), "invalid --page-size 0: must be between 1 and 100") {
 			t.Fatalf("ImChatSearch.Validate() error = %v", err)
 		}
 	})
@@ -504,6 +578,84 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("validateIdempotencyKey empty string passes", func(t *testing.T) {
+		if err := validateIdempotencyKey(""); err != nil {
+			t.Fatalf("validateIdempotencyKey() unexpected error = %v", err)
+		}
+	})
+
+	t.Run("validateIdempotencyKey 50 chars passes", func(t *testing.T) {
+		if err := validateIdempotencyKey(strings.Repeat("a", 50)); err != nil {
+			t.Fatalf("validateIdempotencyKey() unexpected error = %v", err)
+		}
+	})
+
+	t.Run("validateIdempotencyKey 51 chars fails", func(t *testing.T) {
+		err := validateIdempotencyKey(strings.Repeat("a", 51))
+		if err == nil || !strings.Contains(err.Error(), "--idempotency-key exceeds the maximum of 50 characters") {
+			t.Fatalf("validateIdempotencyKey() error = %v", err)
+		}
+	})
+
+	t.Run("validateIdempotencyKey 50 Chinese chars passes", func(t *testing.T) {
+		if err := validateIdempotencyKey(strings.Repeat("中", 50)); err != nil {
+			t.Fatalf("validateIdempotencyKey() unexpected error = %v", err)
+		}
+	})
+
+	t.Run("validateIdempotencyKey 51 Chinese chars fails", func(t *testing.T) {
+		err := validateIdempotencyKey(strings.Repeat("中", 51))
+		if err == nil || !strings.Contains(err.Error(), "--idempotency-key exceeds the maximum of 50 characters") {
+			t.Fatalf("validateIdempotencyKey() error = %v", err)
+		}
+	})
+
+	t.Run("ImMessagesSend idempotency key too long", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id":         "oc_123",
+			"text":            "hello",
+			"idempotency-key": strings.Repeat("a", 51),
+		}, nil)
+		err := ImMessagesSend.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "--idempotency-key exceeds the maximum of 50 characters") {
+			t.Fatalf("ImMessagesSend.Validate() error = %v", err)
+		}
+	})
+
+	t.Run("ImMessagesSend idempotency key valid", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id":         "oc_123",
+			"text":            "hello",
+			"idempotency-key": "my-key-001",
+		}, nil)
+		if err := ImMessagesSend.Validate(context.Background(), runtime); err != nil {
+			t.Fatalf("ImMessagesSend.Validate() unexpected error = %v", err)
+		}
+	})
+
+	t.Run("ImMessagesReply idempotency key too long", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"message-id":      "om_123",
+			"text":            "hello",
+			"idempotency-key": strings.Repeat("b", 51),
+		}, nil)
+		err := ImMessagesReply.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "--idempotency-key exceeds the maximum of 50 characters") {
+			t.Fatalf("ImMessagesReply.Validate() error = %v", err)
+		}
+	})
+
+	t.Run("ImMessagesReply idempotency key valid", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"message-id":      "om_123",
+			"text":            "hello",
+			"idempotency-key": "reply-key-001",
+		}, nil)
+		if err := ImMessagesReply.Validate(context.Background(), runtime); err != nil {
+			t.Fatalf("ImMessagesReply.Validate() unexpected error = %v", err)
+		}
+	})
+
 	t.Run("ImMessagesReply invalid message id", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"message-id": "bad_id",
@@ -547,7 +699,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	t.Run("ImChatMessageList valid user target", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"user-id": "ou_123",
-		}, nil)
+		}, map[string]bool{"page-all": false})
 		if err := ImChatMessageList.Validate(context.Background(), runtime); err != nil {
 			t.Fatalf("ImChatMessageList.Validate() unexpected error = %v", err)
 		}
@@ -610,7 +762,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	t.Run("ImThreadsMessagesList valid omt thread", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"thread": "omt_123",
-		}, nil)
+		}, map[string]bool{"page-all": false})
 		if err := ImThreadsMessagesList.Validate(context.Background(), runtime); err != nil {
 			t.Fatalf("ImThreadsMessagesList.Validate() unexpected error = %v", err)
 		}
@@ -622,7 +774,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 			"page-size": "0",
 		}, nil)
 		err := ImMessagesSearch.Validate(context.Background(), runtime)
-		if err == nil || !strings.Contains(err.Error(), "--page-size must be an integer between 1 and 50") {
+		if err == nil || !strings.Contains(err.Error(), "invalid --page-size 0: must be between 1 and 50") {
 			t.Fatalf("ImMessagesSearch.Validate() error = %v", err)
 		}
 	})
@@ -803,7 +955,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 	t.Run("ImMessagesSearch dry run uses messages search endpoint", func(t *testing.T) {
 		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"query":      "incident",
-			"page-size":  "51",
+			"page-size":  "50",
 			"page-token": "next_page",
 		}, nil)
 		got := mustMarshalDryRun(t, ImMessagesSearch.DryRun(context.Background(), runtime))
@@ -879,7 +1031,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			"message-ids": "om_1,om_2",
 		}, nil)
 		got := mustMarshalDryRun(t, ImMessagesMGet.DryRun(context.Background(), runtime))
-		if !strings.Contains(got, `"/open-apis/im/v1/messages/mget?card_msg_content_type=raw_card_content\u0026message_ids=om_1\u0026message_ids=om_2"`) {
+		if !strings.Contains(got, `"/open-apis/im/v1/messages/mget?card_msg_content_type=raw_card_content\u0026with_sender_name=true\u0026message_ids=om_1\u0026message_ids=om_2"`) {
 			t.Fatalf("ImMessagesMGet.DryRun() = %s", got)
 		}
 	})
@@ -900,7 +1052,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 	t.Run("ImThreadsMessagesList dry run keeps requested thread params", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"thread":    "omt_123",
-			"sort":      "desc",
+			"order":     "desc",
 			"page-size": "10",
 		}, nil)
 		got := mustMarshalDryRun(t, ImThreadsMessagesList.DryRun(context.Background(), runtime))

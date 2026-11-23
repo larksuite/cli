@@ -94,6 +94,15 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			subInput: `{"sheet-id":"sh1","dimension":"row","count":2}`,
 		},
 		{
+			// The both-axes form has to hold inside a batch too: it is the only
+			// way to freeze rows AND columns there, since +styles-put (the other
+			// carrier of a combined freeze) is not a batchable sub-op.
+			shortcut: "+dim-freeze",
+			sc:       DimFreeze,
+			args:     []string{"--sheet-id", "sh1", "--rows", "1", "--cols", "2"},
+			subInput: `{"sheet-id":"sh1","rows":1,"cols":2}`,
+		},
+		{
 			shortcut: "+dim-group",
 			sc:       DimGroup,
 			args:     []string{"--sheet-id", "sh1", "--range", "2:5", "--group-state", "fold"},
@@ -102,8 +111,8 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 		{
 			shortcut: "+rows-resize",
 			sc:       RowsResize,
-			args:     []string{"--sheet-id", "sh1", "--range", "1", "--type", "pixel", "--size", "30"},
-			subInput: `{"sheet-id":"sh1","range":"1","type":"pixel","size":30}`,
+			args:     []string{"--sheet-id", "sh1", "--range", "1", "--height", "30"},
+			subInput: `{"sheet-id":"sh1","range":"1","height":30}`,
 		},
 		{
 			shortcut: "+cols-resize",
@@ -206,24 +215,6 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			subInput: `{"sheet-id":"sh1","range":"A2:A4","options":["x","y"],"highlight":false}`,
 		},
 		{
-			shortcut: "+chart-create",
-			sc:       ChartCreate,
-			args:     []string{"--sheet-id", "sh1", "--properties", `{"position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}`},
-			subInput: `{"sheet-id":"sh1","properties":{"position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}}`,
-		},
-		{
-			shortcut: "+chart-update",
-			sc:       ChartUpdate,
-			args:     []string{"--sheet-id", "sh1", "--chart-id", "c1", "--properties", `{"position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}`},
-			subInput: `{"sheet-id":"sh1","chart-id":"c1","properties":{"position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}}`,
-		},
-		{
-			shortcut: "+chart-delete",
-			sc:       ChartDelete,
-			args:     []string{"--sheet-id", "sh1", "--chart-id", "c1"},
-			subInput: `{"sheet-id":"sh1","chart-id":"c1"}`,
-		},
-		{
 			shortcut: "+pivot-create",
 			sc:       PivotCreate,
 			// +pivot-create renamed --sheet-id / --sheet-name → --target-sheet-id /
@@ -274,6 +265,48 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			sc:       SparklineDelete,
 			args:     []string{"--sheet-id", "sh1", "--group-id", "g1"},
 			subInput: `{"sheet-id":"sh1","group-id":"g1"}`,
+		},
+		{
+			shortcut: "+chart-create",
+			sc:       ChartCreate,
+			args:     []string{"--sheet-id", "sh1", "--properties", `{"type":"line","position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}`},
+			subInput: `{"sheet-id":"sh1","properties":{"type":"line","position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}}`,
+		},
+		{
+			shortcut: "+chart-update",
+			sc:       ChartUpdate,
+			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--properties", `{"title":{"text":"Revenue"}}`},
+			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","properties":{"title":{"text":"Revenue"}}}`,
+		},
+		{
+			shortcut: "+chart-delete",
+			sc:       ChartDelete,
+			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1"},
+			subInput: `{"sheet-id":"sh1","chart-id":"chart-1"}`,
+		},
+		{
+			shortcut: "+chart-create-basic",
+			sc:       ChartCreateBasic,
+			args:     []string{"--sheet-id", "sh1", "--chart-type", "line", "--data-range", "A1:C10", "--title", "Revenue"},
+			subInput: `{"sheet-id":"sh1","chart-type":"line","data-range":"A1:C10","title":"Revenue"}`,
+		},
+		{
+			shortcut: "+chart-config-update",
+			sc:       ChartConfigUpdate,
+			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--title", "Revenue"},
+			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","title":"Revenue"}`,
+		},
+		{
+			shortcut: "+chart-config-update",
+			sc:       ChartConfigUpdate,
+			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--last-point-label=true"},
+			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","last_point_label":true}`,
+		},
+		{
+			shortcut: "+chart-data-update",
+			sc:       ChartDataUpdate,
+			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--data-range", "A1:C10", "--data-direction", "column"},
+			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","data-range":"A1:C10","data-direction":"column"}`,
 		},
 		{
 			shortcut: "+float-image-create",
@@ -409,12 +442,12 @@ func TestBatchOp_ErrorEquivalence(t *testing.T) {
 			wantContains: "--count must be > 0",
 		},
 		{
-			name:         "+rows-resize --type pixel without --size",
+			name:         "+rows-resize --height with --type standard",
 			shortcut:     RowsResize,
-			args:         []string{"--sheet-id", "sh1", "--range", "1:2", "--type", "pixel"},
+			args:         []string{"--sheet-id", "sh1", "--range", "1:2", "--height", "30", "--type", "standard"},
 			subShortcut:  "+rows-resize",
-			subInput:     `{"sheet-id":"sh1","range":"1:2","type":"pixel"}`,
-			wantContains: "--type pixel requires --size",
+			subInput:     `{"sheet-id":"sh1","range":"1:2","height":30,"type":"standard"}`,
+			wantContains: "--height cannot be combined with --type standard",
 		},
 		{
 			name:         "+sheet-delete missing sheet selector",
@@ -465,6 +498,34 @@ func TestBatchOp_ErrorEquivalence(t *testing.T) {
 			if !strings.Contains(batchVE.Message, wrapHint) {
 				t.Errorf("batch error %q missing context prefix %q", batchVE.Message, wrapHint)
 			}
+		})
+	}
+}
+
+// TestBatchOp_RejectsResizeMapForm locks the nesting guard: the map form
+// (--widths/--heights) expands into its own batch_update, and batch_update
+// cannot nest, so a +batch-update sub-op carrying `widths`/`heights` must be
+// rejected with a pointer to the standalone form — it is standalone-valid,
+// so this case cannot live in the standalone-vs-batch equivalence table.
+func TestBatchOp_RejectsResizeMapForm(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		shortcut string
+		input    string
+	}{
+		{"+cols-resize", `{"sheet-id":"sh1","widths":{"A":100}}`},
+		{"+rows-resize", `{"sheet-id":"sh1","heights":{"1":50}}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.shortcut, func(t *testing.T) {
+			t.Parallel()
+			var subInput map[string]interface{}
+			if err := json.Unmarshal([]byte(tc.input), &subInput); err != nil {
+				t.Fatalf("bad input JSON: %v", err)
+			}
+			rawOp := map[string]interface{}{"shortcut": tc.shortcut, "input": subInput}
+			_, err := translateBatchOp(rawOp, testToken, 0)
+			requireValidation(t, err, "not supported inside +batch-update")
 		})
 	}
 }
@@ -611,10 +672,10 @@ func TestBatchOp_RejectsBadSubOpInput(t *testing.T) {
 			"--position is required",
 		},
 		{
-			"+rows-resize missing --type",
+			"+rows-resize missing both --height and --type",
 			"+rows-resize",
 			`{"sheet-id":"sh1","range":"1:1"}`,
-			"--type is required",
+			"give --height <px> for a pixel size, or --type standard / auto",
 		},
 		{
 			"+range-copy missing --target-range",
@@ -627,12 +688,6 @@ func TestBatchOp_RejectsBadSubOpInput(t *testing.T) {
 			"+sheet-rename",
 			`{"sheet-id":"sh1"}`,
 			"--title is required",
-		},
-		{
-			"+chart-update missing --chart-id",
-			"+chart-update",
-			`{"sheet-id":"sh1","properties":{"title":"T"}}`,
-			"--chart-id is required",
 		},
 		{
 			"+filter-create missing --range",
@@ -735,16 +790,8 @@ func TestBatchOp_SchemaValidatesSubOps(t *testing.T) {
 		{
 			"+pivot-create summarize_by out of enum",
 			"+pivot-create",
-			`{"sheet-id":"sh1","source":"Sheet1!A1:D100","properties":{"values":[{"field":"A","summarize_by":"BOGUS"}]}}`,
+			`{"target_sheet_id":"sh1","source":"Sheet1!A1:D100","properties":{"values":[{"field":"A","summarize_by":"BOGUS"}]}}`,
 			"summarize_by",
-		},
-		// +chart-create properties.position.row has minimum:0 — P0
-		// addition; validator must catch -1 even in the batch path.
-		{
-			"+chart-create position.row below minimum",
-			"+chart-create",
-			`{"sheet-id":"sh1","properties":{"position":{"row":-1,"col":"A"},"size":{"width":400,"height":300}}}`,
-			"below minimum",
 		},
 		// +cells-set --cells is a 2D array of objects per the
 		// upstream-fixed schema; sub-op passing an object must be
@@ -802,7 +849,7 @@ func TestBatchOp_DispatchCoversReportedBugs(t *testing.T) {
 	// bare single-element ranges.
 	body = parseDryRunBody(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--operations", `[{"shortcut":"+rows-resize","input":{"sheet-id":"sh1","range":"23","type":"pixel","size":40}}]`,
+		"--operations", `[{"shortcut":"+rows-resize","input":{"sheet-id":"sh1","range":"23","height":40}}]`,
 		"--yes",
 	})
 	ops = decodeToolInput(t, body, "batch_update")["operations"].([]interface{})
@@ -883,6 +930,102 @@ func TestBatchOp_RequiredFlagParity(t *testing.T) {
 			// actually ran — reject that shape so the parity check stays honest.
 			if strings.Contains(err.Error(), "specify at least one of") {
 				t.Errorf("%s: got a missing-locator error, not a business-required one (fixture bug): %v", cmd, err)
+			}
+		})
+	}
+}
+
+func TestBatchOp_EnumParity(t *testing.T) {
+	t.Parallel()
+
+	t.Run("canonical casing is normalized before translation", func(t *testing.T) {
+		t.Parallel()
+		got, err := translateBatchOp(map[string]interface{}{
+			"shortcut": "+cells-clear",
+			"input": map[string]interface{}{
+				"sheet-id": "sh1",
+				"range":    "A1:B2",
+				"scope":    "FORMATS",
+			},
+		}, testToken, 0)
+		if err != nil {
+			t.Fatalf("translateBatchOp: %v", err)
+		}
+		input, _ := got["input"].(map[string]interface{})
+		if input["clear_type"] != "formats" {
+			t.Fatalf("clear_type = %v, want formats", input["clear_type"])
+		}
+	})
+
+	t.Run("cross-vocabulary alias is normalized", func(t *testing.T) {
+		t.Parallel()
+		got, err := translateBatchOp(map[string]interface{}{
+			"shortcut": "+cells-set-style",
+			"input": map[string]interface{}{
+				"sheet-id": "sh1", "range": "A1", "vertical-alignment": "center",
+			},
+		}, testToken, 0)
+		if err != nil {
+			t.Fatalf("translateBatchOp: %v", err)
+		}
+		input := got["input"].(map[string]interface{})
+		cells := input["cells"].([][]interface{})
+		style := cells[0][0].(map[string]interface{})["cell_styles"].(map[string]interface{})
+		if style["vertical_alignment"] != "middle" {
+			t.Fatalf("vertical_alignment = %v, want middle", style["vertical_alignment"])
+		}
+	})
+
+	t.Run("underscore input keys are accepted", func(t *testing.T) {
+		t.Parallel()
+		got, err := translateBatchOp(map[string]interface{}{
+			"shortcut": "+range-copy",
+			"input": map[string]interface{}{
+				"sheet_id": "sh1", "source_range": "A1:B2", "target_range": "D1", "paste_type": "values",
+			},
+		}, testToken, 0)
+		if err != nil {
+			t.Fatalf("translateBatchOp: %v", err)
+		}
+		input := got["input"].(map[string]interface{})
+		if input["range"] != "A1:B2" || input["destination_range"] != "D1" || input["paste_type"] != "value_only" {
+			t.Fatalf("translated underscore-key input = %#v", input)
+		}
+	})
+
+	tests := []struct {
+		name     string
+		shortcut string
+		input    map[string]interface{}
+		want     string
+	}{
+		{
+			name:     "invalid clear scope",
+			shortcut: "+cells-clear",
+			input: map[string]interface{}{
+				"sheet-id": "sh1", "range": "A1:B2", "scope": "formtas",
+			},
+			want: "invalid value \"formtas\" for --scope",
+		},
+		{
+			name:     "invalid copy paste type",
+			shortcut: "+range-copy",
+			input: map[string]interface{}{
+				"sheet-id": "sh1", "source-range": "A1:B2", "target-range": "D1", "paste-type": "valuez",
+			},
+			want: "invalid value \"valuez\" for --paste-type",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := translateBatchOp(map[string]interface{}{
+				"shortcut": tt.shortcut,
+				"input":    tt.input,
+			}, testToken, 0)
+			validationErr := requireValidation(t, err, tt.want)
+			if validationErr.Param != "--operations" {
+				t.Errorf("param = %q, want --operations", validationErr.Param)
 			}
 		})
 	}

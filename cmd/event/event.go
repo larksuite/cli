@@ -18,12 +18,13 @@ func NewCmdEvents(f *cmdutil.Factory) *cobra.Command {
 		SilenceUsage: true,
 	}
 
-	cmd.AddCommand(NewCmdConsume(f))
-	cmd.AddCommand(NewCmdList(f))
-	cmd.AddCommand(NewCmdSchema(f))
+	snap := compileCatalog()
+	cmd.AddCommand(NewCmdConsume(f, snap))
+	cmd.AddCommand(NewCmdList(f, snap))
+	cmd.AddCommand(NewCmdSchema(f, snap))
 	cmd.AddCommand(NewCmdStatus(f))
 	cmd.AddCommand(NewCmdStop(f))
-	cmd.AddCommand(NewCmdBus(f))
+	cmd.AddCommand(NewCmdBus(f, snap))
 
 	return cmd
 }

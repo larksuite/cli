@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestEventSubscribeDryRun(t *testing.T) {
@@ -37,10 +36,10 @@ func TestEventSubscribeDryRun(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	require.Equal(t, "event +subscribe", gjson.Get(out, "command").String(), "stdout:\n%s", out)
-	require.Equal(t, "app", gjson.Get(out, "app_id").String(), "stdout:\n%s", out)
-	require.Equal(t, "im.message.receive_v1,contact.user.created_v3", gjson.Get(out, "event_types").String(), "stdout:\n%s", out)
-	require.Equal(t, "^im\\.", gjson.Get(out, "filter").String(), "stdout:\n%s", out)
-	require.Equal(t, "events_out", gjson.Get(out, "output_dir").String(), "stdout:\n%s", out)
-	require.Equal(t, "^im\\.message=dir:./messages", gjson.Get(out, "route").String(), "stdout:\n%s", out)
+	require.Equal(t, "event +subscribe", clie2e.DryRunGet(out, "command").String(), "stdout:\n%s", out)
+	require.Equal(t, "app", clie2e.DryRunGet(out, "app_id").String(), "stdout:\n%s", out)
+	require.Equal(t, "im.message.receive_v1,contact.user.created_v3", clie2e.DryRunGet(out, "event_types").String(), "stdout:\n%s", out)
+	require.Equal(t, "^im\\.", clie2e.DryRunGet(out, "filter").String(), "stdout:\n%s", out)
+	require.Equal(t, "events_out", clie2e.DryRunGet(out, "output_dir").String(), "stdout:\n%s", out)
+	require.Equal(t, "^im\\.message=dir:./messages", clie2e.DryRunGet(out, "route").String(), "stdout:\n%s", out)
 }

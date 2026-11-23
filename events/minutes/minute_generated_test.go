@@ -7,12 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -35,17 +35,10 @@ func assertSubscriptionRequest(t *testing.T, gotBody any, wantEventType string) 
 	}
 }
 
-func TestMain(m *testing.M) {
-	for _, k := range Keys() {
-		event.RegisterKey(k)
-	}
-	os.Exit(m.Run())
-}
-
 func TestMinutesKeys_ProcessedMinuteGeneratedRegistered(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup(eventTypeMinuteGenerated)
+	def, ok := lookupCompiledDef(t, eventTypeMinuteGenerated)
 	if !ok {
 		t.Fatalf("%s should be registered via Keys()", eventTypeMinuteGenerated)
 	}
@@ -274,7 +267,7 @@ func TestProcessMinutesMinuteGenerated_EmptyTitleExhaustsRetries(t *testing.T) {
 func TestMinutesMinuteGenerated_PreConsumeSubscriptionLifecycle(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup(eventTypeMinuteGenerated)
+	def, ok := lookupCompiledDef(t, eventTypeMinuteGenerated)
 	if !ok {
 		t.Fatalf("%s should be registered via Keys()", eventTypeMinuteGenerated)
 	}
@@ -326,12 +319,36 @@ func TestProcessMinutesMinuteGenerated_MalformedPayload(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 	got, err := processMinutesMinuteGenerated(context.Background(), nil, raw, nil)
-	if err != nil {
-		t.Fatalf("Process should swallow parse errors, got %v", err)
+	if !processing.IsDropMalformed(err) {
+		t.Fatalf("malformed payload must be dropped with a malformed marker, got err=%v", err)
 	}
-	if string(got) != "not json" {
-		t.Errorf("malformed fallback output = %q, want original bytes", string(got))
+	if got != nil {
+		t.Errorf("malformed payload must be dropped without output, got %q", string(got))
 	}
+}
+
+// fillCanonicalFromHeader copies the payload envelope header metadata onto
+// the RawEvent canonical fields. Process handlers read event_id and
+// create_time from the RawEvent, which the consume pipeline fills from the
+// envelope header before dispatch; tests that hand-build a RawEvent must
+// mirror that so both views agree.
+func fillCanonicalFromHeader(t *testing.T, raw *event.RawEvent) {
+	t.Helper()
+	var envelope struct {
+		Header struct {
+			EventID    string `json:"event_id"`
+			EventType  string `json:"event_type"`
+			CreateTime string `json:"create_time"`
+		} `json:"header"`
+	}
+	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
+		t.Fatalf("parse envelope header: %v", err)
+	}
+	raw.EventID = envelope.Header.EventID
+	if envelope.Header.EventType != "" {
+		raw.EventType = envelope.Header.EventType
+	}
+	raw.SourceTime = envelope.Header.CreateTime
 }
 
 func runMinuteGenerated(t *testing.T, rt event.APIClient, payload string) MinutesMinuteGeneratedOutput {
@@ -341,6 +358,7 @@ func runMinuteGenerated(t *testing.T, rt event.APIClient, payload string) Minute
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processMinutesMinuteGenerated(context.Background(), rt, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

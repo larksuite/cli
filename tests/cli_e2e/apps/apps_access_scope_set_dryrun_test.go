@@ -11,7 +11,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestAppsAccessScopeSetDryRun pins the user-facing scope-string -> server-enum
@@ -37,14 +36,14 @@ func TestAppsAccessScopeSetDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "PUT", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/access-scope", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "Range", gjson.Get(result.Stdout, "api.0.body.scope").String())
-		assert.Equal(t, "ou_x", gjson.Get(result.Stdout, "api.0.body.users.0").String())
-		assert.Equal(t, "oc_x", gjson.Get(result.Stdout, "api.0.body.chats.0").String())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.departments").Exists(),
+		assert.Equal(t, "PUT", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/access-scope", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "Range", clie2e.DryRunGet(result.Stdout, "api.0.body.scope").String())
+		assert.Equal(t, "ou_x", clie2e.DryRunGet(result.Stdout, "api.0.body.users.0").String())
+		assert.Equal(t, "oc_x", clie2e.DryRunGet(result.Stdout, "api.0.body.chats.0").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.departments").Exists(),
 			"empty department list must be omitted")
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.apply_config").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.apply_config").Exists())
 	})
 
 	t.Run("SpecificWithApplyConfig", func(t *testing.T) {
@@ -66,8 +65,8 @@ func TestAppsAccessScopeSetDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.True(t, gjson.Get(result.Stdout, "api.0.body.apply_config.enabled").Bool())
-		assert.Equal(t, "ou_y", gjson.Get(result.Stdout, "api.0.body.apply_config.approvers.0").String())
+		assert.True(t, clie2e.DryRunGet(result.Stdout, "api.0.body.apply_config.enabled").Bool())
+		assert.Equal(t, "ou_y", clie2e.DryRunGet(result.Stdout, "api.0.body.apply_config.approvers.0").String())
 	})
 
 	t.Run("PublicMapsToAll", func(t *testing.T) {
@@ -87,10 +86,10 @@ func TestAppsAccessScopeSetDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "All", gjson.Get(result.Stdout, "api.0.body.scope").String())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.require_login").Bool())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.users").Exists())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.apply_config").Exists())
+		assert.Equal(t, "All", clie2e.DryRunGet(result.Stdout, "api.0.body.scope").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.require_login").Bool())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.users").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.apply_config").Exists())
 	})
 
 	t.Run("TenantMapsToTenant", func(t *testing.T) {
@@ -109,10 +108,10 @@ func TestAppsAccessScopeSetDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "Tenant", gjson.Get(result.Stdout, "api.0.body.scope").String())
+		assert.Equal(t, "Tenant", clie2e.DryRunGet(result.Stdout, "api.0.body.scope").String())
 		// scope is the only body field in tenant mode.
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.require_login").Exists())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.users").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.require_login").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.users").Exists())
 	})
 
 	t.Run("RejectsSpecificMissingTargets", func(t *testing.T) {

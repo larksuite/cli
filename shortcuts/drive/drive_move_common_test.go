@@ -7,10 +7,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -88,6 +90,8 @@ func TestDriveMoveDryRunFolderIncludesTaskCheckParams(t *testing.T) {
 
 	var got struct {
 		API []struct {
+			Method string                 `json:"method"`
+			URL    string                 `json:"url"`
 			Params map[string]interface{} `json:"params"`
 		} `json:"api"`
 	}
@@ -95,20 +99,34 @@ func TestDriveMoveDryRunFolderIncludesTaskCheckParams(t *testing.T) {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
 	if len(got.API) != 2 {
-		t.Fatalf("expected 2 API calls, got %d", len(got.API))
+		t.Fatalf("expected 2 conditional API steps, got %d", len(got.API))
 	}
 	if got.API[1].Params["task_id"] != "<task_id>" {
 		t.Fatalf("task check params = %#v", got.API[1].Params)
+	}
+	if got.API[1].Method != "GET" || got.API[1].URL != "/open-apis/drive/v1/files/task_check" {
+		t.Fatalf("unexpected task check step: %+v", got.API[1])
 	}
 }
 
 func TestDriveMoveFolderTaskCheckOutcomes(t *testing.T) {
 	tests := []struct {
 		name            string
+		taskID          string
 		taskCheckBody   map[string]interface{}
 		wantErrContains string
+		wantHint        []string
 		wantStdout      []string
 	}{
+		{
+			name:   "zero task id is polled",
+			taskID: "0",
+			taskCheckBody: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"status": "success"},
+			},
+			wantStdout: []string{`"task_id": "0"`, `"ready": true`},
+		},
 		{
 			name: "success",
 			taskCheckBody: map[string]interface{}{
@@ -129,7 +147,7 @@ func TestDriveMoveFolderTaskCheckOutcomes(t *testing.T) {
 			wantStdout: []string{
 				`"ready": false`,
 				`"timed_out": true`,
-				`"next_command": "lark-cli drive +task_result --scenario task_check --task-id task_123 --as bot"`,
+				`"next_command": "lark-cli --profile secondary drive +task_result --scenario task_check --task-id task_123 --as bot"`,
 			},
 		},
 		{
@@ -139,23 +157,34 @@ func TestDriveMoveFolderTaskCheckOutcomes(t *testing.T) {
 				"msg":  "internal error",
 			},
 			wantErrContains: "internal error",
+			wantHint: []string{
+				"task_id=task_123",
+				"lark-cli --profile secondary drive +task_result --scenario task_check --task-id task_123 --as bot",
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			taskID := tt.taskID
+			if taskID == "" {
+				taskID = "task_123"
+			}
+			config := driveTestConfig()
+			config.ProfileName = "secondary"
+			f, stdout, _, reg := cmdutil.TestFactory(t, config)
 			reg.Register(&httpmock.Stub{
 				Method: "POST",
 				URL:    "/open-apis/drive/v1/files/fld_src/move",
 				Body: map[string]interface{}{
 					"code": 0,
-					"data": map[string]interface{}{"task_id": "task_123"},
+					"data": map[string]interface{}{"task_id": taskID},
 				},
 			})
 			reg.Register(&httpmock.Stub{
 				Method: "GET",
-				URL:    "/open-apis/drive/v1/files/task_check",
+				URL:    "/open-apis/drive/v1/files/task_check?task_id=" + taskID,
 				Body:   tt.taskCheckBody,
 			})
 
@@ -175,6 +204,17 @@ func TestDriveMoveFolderTaskCheckOutcomes(t *testing.T) {
 				}
 				if !bytes.Contains([]byte(err.Error()), []byte(tt.wantErrContains)) {
 					t.Fatalf("unexpected error: %v", err)
+				}
+				if len(tt.wantHint) > 0 {
+					problem, ok := errs.ProblemOf(err)
+					if !ok {
+						t.Fatalf("expected typed error, got %T: %v", err, err)
+					}
+					for _, want := range tt.wantHint {
+						if !strings.Contains(problem.Hint, want) {
+							t.Fatalf("hint = %q, want %q", problem.Hint, want)
+						}
+					}
 				}
 				return
 			}

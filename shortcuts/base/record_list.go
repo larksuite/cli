@@ -20,18 +20,24 @@ var BaseRecordList = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		recordListFieldRefFlag(),
+		recordProjectionFieldFlag("field ID or name to include; repeat to project only needed fields"),
+		recordProjectionAliasFlag("fields"),
+		recordProjectionAliasFlag("field-names"),
 		recordListViewRefFlag(),
 		recordFilterFlag(),
 		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
-		pageSizeLimitAliasFlag(),
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "2000", Desc: "maximum records to return; ndjson defaults to 2000 (range 1-2000); json defaults to 100 (range 1-200)"},
 		recordReadFormatFlag(),
+		recordOutputFlag(),
+		recordMinimalStdoutFlag(),
+		recordJQRecordsFlag(),
+		recordOverwriteFlag(),
 	},
 	Tips: []string{
 		"Example: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
 		"Example with projection: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --limit 50",
+		"Example for analysis: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --format ndjson --output ./records.ndjson",
 		`Text equality filter: --filter-json '{"logic":"and","conditions":[["Title","==","Launch plan"]]}'`,
 		`Text contains/like filter: --filter-json '{"logic":"and","conditions":[["Title","intersects","urgent"]]}'`,
 		`Number equality filter: --filter-json '{"logic":"and","conditions":[["Score","==",95]]}'`,
@@ -39,23 +45,22 @@ var BaseRecordList = common.Shortcut{
 		`Option intersection filter: --filter-json '{"logic":"and","conditions":[["Tags","intersects",["P0","Blocked"]]]}'`,
 		`Sort priority follows --sort-json array order: --sort-json '[{"field":"Updated","desc":true},{"field":"Title","desc":false}]'`,
 		formatRecordQueryPriorityTip(),
-		"Default output is markdown; pass --format json to get the raw JSON envelope.",
+		recordAnalysisOutputTip,
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
 	},
+	Normalize: common.ChainNormalizers(normalizeRecordReadOutput, normalizeRecordListLimit),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateRecordReadFormat(runtime); err != nil {
+		if err := validateRecordReadFormat(runtime.Str("format")); err != nil {
 			return err
 		}
-		if err := validateLimitPageSizeAlias(runtime); err != nil {
+		if err := validateRecordExportFlags(runtime); err != nil {
 			return err
 		}
-		if _, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200); err != nil {
+		if err := validateRecordReadLimit(runtime, 100); err != nil {
 			return err
 		}
-		if runtime.Changed("page-size") {
-			if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 200); err != nil {
-				return err
-			}
+		if _, err := recordProjectionFields(runtime); err != nil {
+			return err
 		}
 		return validateRecordQueryOptions(runtime)
 	},
@@ -68,13 +73,6 @@ var BaseRecordList = common.Shortcut{
 	},
 }
 
-func recordListFieldRefFlag() common.Flag {
-	flag := fieldRefFlag(false)
-	flag.Type = "string_array"
-	flag.Desc = "field ID or name to include; repeat to project only needed fields"
-	return flag
-}
-
 func recordListViewRefFlag() common.Flag {
 	flag := viewRefFlag(false)
 	flag.Desc = "view ID or name; omit for reading all table records, or set to read a user-specified or temporary filtered/sorted view"
@@ -84,8 +82,8 @@ func recordListViewRefFlag() common.Flag {
 func recordReadFormatFlag() common.Flag {
 	return common.Flag{
 		Name:    "format",
-		Default: "markdown",
-		Enum:    []string{"markdown", "json"},
-		Desc:    "output format: markdown (default) | json",
+		Default: "ndjson",
+		Enum:    []string{"ndjson", "json"},
+		Desc:    "output format: ndjson (default; records file plus manifest summary and column schema/stats) | json (inline raw matrix)",
 	}
 }

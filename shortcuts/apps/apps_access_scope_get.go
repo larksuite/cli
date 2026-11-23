@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -46,7 +47,7 @@ var AppsAccessScopeGet = common.Shortcut{
 		path := fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(appID))
 		data, err := rctx.CallAPITyped("GET", path, nil, nil)
 		if err != nil {
-			return withAppsHint(err, "verify --app-id is correct and you have access to the app; list your apps with `lark-cli apps +list`")
+			return withAppsHint(err, accessScopeFailureHint(err, appIDListHint))
 		}
 		// 原样透传 — 保留服务端字符串枚举 (All/Tenant/Range)，不合并 users/departments/chats。
 		rctx.OutFormat(data, nil, func(w io.Writer) {
@@ -54,4 +55,37 @@ var AppsAccessScopeGet = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+// accessScopeUnpublishedMessage is the server's whole message for an access-scope
+// call on an app that has never been published (code 3340002, HTTP 409),
+// normalized by normalizedExactMessage.
+const accessScopeUnpublishedMessage = "application has not been published yet. access scope operations require the app to be published first"
+
+// accessScopeFailureHint picks the hint for an access-scope failure shared by
+// +access-scope-get and +access-scope-set, and returns fallback for failures the
+// two state codes below do not cover.
+//
+// 40002 and 3340002 are read together with their message: 3340002 is 40002 plus
+// the gateway's 3300000 offset, and the same numbers mean "unsupported app type"
+// on other endpoints (see annotateAppLookupErr). Only the two wordings observed
+// here — not published yet, creative-mode app — get a specific hint; any other
+// message under these codes stops without guessing a cause, so an unknown state
+// is never read as permission to publish.
+func accessScopeFailureHint(err error, fallback string) string {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeUnknown {
+		return fallback
+	}
+	if p.Code != 40002 && p.Code != 3340002 {
+		return fallback
+	}
+	switch message := normalizedExactMessage(p.Message); {
+	case p.Code == 3340002 && message == accessScopeUnpublishedMessage:
+		return "this access-scope operation requires a published app. Publishing takes the whole app live, so get explicit user confirmation first; only then read `lark-cli apps +release-create --help`. Do not publish automatically"
+	case message == "创意模式应用不支持查询可用范围，请前往妙搭后台操作", message == "创意模式应用不支持设置可用范围，请前往妙搭后台操作":
+		return "creative-mode apps do not support reading or changing access scope through the CLI; use the Miaoda web console and do not retry this command"
+	default:
+		return "the access-scope operation failed, and the CLI cannot determine a safe recovery step from this response; keep the original error, stop, and review it in the web console or report the request identifier"
+	}
 }

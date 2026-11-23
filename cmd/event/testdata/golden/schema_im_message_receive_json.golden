@@ -1,0 +1,130 @@
+{
+  "key": "im.message.receive_v1",
+  "display_name": "Receive message",
+  "description": "Receive IM messages",
+  "event_type": "im.message.receive_v1",
+  "subscription_type": "event",
+  "schema": {
+    "custom": {}
+  },
+  "scopes": [
+    "im:message.p2p_msg:readonly"
+  ],
+  "auth_types": [
+    "bot"
+  ],
+  "required_console_events": [
+    "im.message.receive_v1"
+  ],
+  "buffer_size": 100,
+  "workers": 1,
+  "resolved_output_schema": {
+    "type": "object",
+    "properties": {
+      "chat_id": {
+        "type": "string",
+        "description": "Chat/conversation ID; prefixed with oc_",
+        "format": "chat_id"
+      },
+      "chat_type": {
+        "type": "string",
+        "description": "Conversation type",
+        "enum": [
+          "p2p",
+          "group"
+        ]
+      },
+      "content": {
+        "type": "string",
+        "description": "Message content. For most types (text/post/image/file/audio, etc.) this is pre-rendered human-readable text."
+      },
+      "create_time": {
+        "type": "string",
+        "description": "Message creation time (ms timestamp string)",
+        "format": "timestamp_ms"
+      },
+      "event_id": {
+        "type": "string",
+        "description": "Event delivery ID. Do not use as the message deduplication key; use message_id instead."
+      },
+      "id": {
+        "type": "string",
+        "description": "Message ID (legacy alias of message_id, kept for compatibility)",
+        "format": "message_id"
+      },
+      "mentions": {
+        "type": "array",
+        "description": "Compact mentions aligned with im +messages-mget",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Mentioned user open_id; prefixed with ou_",
+              "format": "open_id"
+            },
+            "key": {
+              "type": "string",
+              "description": "Mention placeholder key, for example @_user_1"
+            },
+            "name": {
+              "type": "string",
+              "description": "Mentioned display name"
+            }
+          }
+        }
+      },
+      "message_id": {
+        "type": "string",
+        "description": "Message ID; prefixed with om_. Recommended idempotency key for im.message.receive_v1 consumers.",
+        "format": "message_id"
+      },
+      "message_type": {
+        "type": "string",
+        "description": "Message type"
+      },
+      "reply_to": {
+        "type": "string",
+        "description": "Parent message ID of the direct reply context, when present",
+        "format": "message_id"
+      },
+      "root_id": {
+        "type": "string",
+        "description": "Root message ID of the reply/thread context, when present",
+        "format": "message_id"
+      },
+      "sender_id": {
+        "type": "string",
+        "description": "Sender open_id; prefixed with ou_",
+        "format": "open_id"
+      },
+      "sender_type": {
+        "type": "string",
+        "description": "Sender type",
+        "enum": [
+          "user",
+          "bot"
+        ]
+      },
+      "thread_id": {
+        "type": "string",
+        "description": "Thread ID, when present"
+      },
+      "timestamp": {
+        "type": "string",
+        "description": "Event delivery time (ms timestamp string); prefers header.create_time",
+        "format": "timestamp_ms"
+      },
+      "type": {
+        "type": "string",
+        "description": "Event type; always im.message.receive_v1"
+      },
+      "update_time": {
+        "type": "string",
+        "description": "Message update time (ms timestamp string); emitted only when different from create_time",
+        "format": "timestamp_ms"
+      }
+    }
+  },
+  "jq_root_path": "."
+}

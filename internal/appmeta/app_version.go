@@ -72,7 +72,9 @@ func FetchCurrentPublished(ctx context.Context, client APIClient, appID string) 
 			}
 		}
 		for _, s := range it.Scopes {
-			if s.Scope != "" && containsString(s.TokenTypes, "tenant") {
+			// Missing or null token_types carries no identity restriction.
+			// An explicit list, including an empty one, remains authoritative.
+			if s.Scope != "" && (s.TokenTypes == nil || containsString(s.TokenTypes, "tenant")) {
 				v.TenantScopes = append(v.TenantScopes, s.Scope)
 			}
 		}

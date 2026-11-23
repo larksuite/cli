@@ -23,6 +23,20 @@ func createDriveFolder(t *testing.T, parentT *testing.T, ctx context.Context, na
 }
 
 func TestDeleteDriveResourceAndVerify(t *testing.T) {
+	t.Run("retries retryable delete contention", func(t *testing.T) {
+		fake := mustWriteDriveCleanupFakeCLI(t)
+		t.Setenv(clie2e.EnvBinaryPath, fake)
+		t.Setenv("FAKE_DRIVE_DELETE_RETRYABLE_ATTEMPTS", "2")
+		t.Setenv("FAKE_DRIVE_DELETE_STATE", filepath.Join(t.TempDir(), "delete-attempts"))
+		t.Setenv("FAKE_DRIVE_META_EMPTY", "1")
+		withFastDriveDeleteRetry(t)
+
+		result, err := DeleteDriveResourceAndVerify(context.Background(), "fld_retry", "folder", "bot")
+		require.NotNil(t, result)
+		require.NoError(t, err)
+		assert.Equal(t, 0, result.ExitCode)
+	})
+
 	t.Run("successful delete with stale meta returns cleanup warning", func(t *testing.T) {
 		fake := mustWriteDriveCleanupFakeCLI(t)
 		t.Setenv(clie2e.EnvBinaryPath, fake)
@@ -51,11 +65,41 @@ func TestDeleteDriveResourceAndVerify(t *testing.T) {
 	})
 }
 
+func withFastDriveDeleteRetry(t *testing.T) {
+	t.Helper()
+
+	original := driveDeleteRetry
+	driveDeleteRetry = clie2e.RetryOptions{
+		Attempts:        3,
+		InitialDelay:    time.Millisecond,
+		MaxDelay:        time.Millisecond,
+		BackoffMultiple: 2,
+		ShouldRetry:     clie2e.ResultHasRetryableError,
+	}
+	t.Cleanup(func() {
+		driveDeleteRetry = original
+	})
+}
+
 func mustWriteDriveCleanupFakeCLI(t *testing.T) string {
 	t.Helper()
 
 	script := `#!/bin/sh
 if [ "$1" = "drive" ] && [ "$2" = "+delete" ]; then
+  if [ -n "$FAKE_DRIVE_DELETE_RETRYABLE_ATTEMPTS" ]; then
+    state="$FAKE_DRIVE_DELETE_STATE"
+    count=0
+    if [ -f "$state" ]; then
+      count="$(cat "$state")"
+    fi
+    next=$((count + 1))
+    echo "$next" > "$state"
+    if [ "$count" -lt "$FAKE_DRIVE_DELETE_RETRYABLE_ATTEMPTS" ]; then
+      echo "Deleting folder fake..." >&2
+      echo '{"ok":false,"error":{"type":"api","code":1061045,"message":"resource contention occurred, please retry.","retryable":true}}' >&2
+      exit 1
+    fi
+  fi
   if [ "${FAKE_DRIVE_DELETE_EXIT:-0}" != "0" ]; then
     echo '{"ok":false,"error":{"type":"api","message":"delete failed"}}' >&2
     exit "$FAKE_DRIVE_DELETE_EXIT"
@@ -65,6 +109,10 @@ if [ "$1" = "drive" ] && [ "$2" = "+delete" ]; then
 fi
 
 if [ "$1" = "api" ] && [ "$2" = "post" ] && [ "$3" = "/open-apis/drive/v1/metas/batch_query" ]; then
+  if [ "${FAKE_DRIVE_META_EMPTY:-0}" = "1" ]; then
+    echo '{"ok":true,"data":{"metas":[]}}'
+    exit 0
+  fi
   echo '{"ok":true,"data":{"metas":[{"url":"https://example.com/still-visible"}]}}'
   exit 0
 fi

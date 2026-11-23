@@ -26,7 +26,7 @@ lark-cli apps +get --app-id app_xxx -q '.data.app.app_type'
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `app_id` | string | 应用唯一标识 |
-| `app_type` | string | 应用类型（如 HTML、FULL_STACK、MODERN_HTML） |
+| `app_type` | string | 应用类型（如 HTML、FRONTEND、FULL_STACK、MODERN_HTML） |
 | `name` | string | 应用显示名称 |
 | `description` | string | 应用功能说明 |
 | `icon_url` | string | 应用图标 URL |

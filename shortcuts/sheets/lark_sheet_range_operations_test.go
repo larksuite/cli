@@ -113,9 +113,9 @@ func TestRangeOperationsShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
-			name:     "+rows-resize --range 1:5 pixel 200",
+			name:     "+rows-resize --range 1:5 --height 200",
 			sc:       RowsResize,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "1:5", "--type", "pixel", "--size", "200"},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "1:5", "--height", "200"},
 			toolName: "resize_range",
 			wantInput: map[string]interface{}{
 				"excel_id": testToken,
@@ -138,7 +138,7 @@ func TestRangeOperationsShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
-			name:     "+cols-resize --range B:D standard",
+			name:     "+cols-resize --range B:D --type standard",
 			sc:       ColsResize,
 			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "B:D", "--type", "standard"},
 			toolName: "resize_range",
@@ -152,9 +152,22 @@ func TestRangeOperationsShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
-			name:     "+cols-resize --range A:C pixel 120",
+			name:     "+cols-resize --range A:C --width 120",
 			sc:       ColsResize,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A:C", "--type", "pixel", "--size", "120"},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A:C", "--width", "120"},
+			toolName: "resize_range",
+			wantInput: map[string]interface{}{
+				"range": "A:C",
+				"resize_width": map[string]interface{}{
+					"type":  "pixel",
+					"value": float64(120),
+				},
+			},
+		},
+		{
+			name:     "+cols-resize --type pixel with --width 120 (explicit == implicit)",
+			sc:       ColsResize,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A:C", "--type", "pixel", "--width", "120"},
 			toolName: "resize_range",
 			wantInput: map[string]interface{}{
 				"range": "A:C",
@@ -296,6 +309,194 @@ func TestRangeSort_RejectsMalformedKeys(t *testing.T) {
 	}
 }
 
+// TestResize_MapForm covers the --widths/--heights map form: entries fan out
+// into one atomic batch_update of resize_range ops, sorted by start position
+// regardless of JSON key order.
+func TestResize_MapForm(t *testing.T) {
+	t.Parallel()
+
+	t.Run("+cols-resize --widths mixes pixels, ranges and standard", func(t *testing.T) {
+		t.Parallel()
+		body := parseDryRunBody(t, ColsResize, []string{
+			"--url", testURL, "--sheet-id", testSheetID,
+			"--widths", `{"G": "standard", "A": 100, "C:E": 120}`,
+		})
+		input := decodeToolInput(t, body, "batch_update")
+		wantOps := []interface{}{
+			map[string]interface{}{"tool_name": "resize_range", "input": map[string]interface{}{
+				"excel_id": testToken, "sheet_id": testSheetID, "range": "A:A",
+				"resize_width": map[string]interface{}{"type": "pixel", "value": float64(100)},
+			}},
+			map[string]interface{}{"tool_name": "resize_range", "input": map[string]interface{}{
+				"excel_id": testToken, "sheet_id": testSheetID, "range": "C:E",
+				"resize_width": map[string]interface{}{"type": "pixel", "value": float64(120)},
+			}},
+			map[string]interface{}{"tool_name": "resize_range", "input": map[string]interface{}{
+				"excel_id": testToken, "sheet_id": testSheetID, "range": "G:G",
+				"resize_width": map[string]interface{}{"type": "standard"},
+			}},
+		}
+		assertInputEquals(t, input, map[string]interface{}{
+			"excel_id":   testToken,
+			"operations": wantOps,
+		})
+	})
+
+	t.Run("+rows-resize --heights mixes pixels, auto and standard", func(t *testing.T) {
+		t.Parallel()
+		body := parseDryRunBody(t, RowsResize, []string{
+			"--url", testURL, "--sheet-id", testSheetID,
+			"--heights", `{"21": "auto", "1": 50, "2:20": 30}`,
+		})
+		input := decodeToolInput(t, body, "batch_update")
+		wantOps := []interface{}{
+			map[string]interface{}{"tool_name": "resize_range", "input": map[string]interface{}{
+				"excel_id": testToken, "sheet_id": testSheetID, "range": "1:1",
+				"resize_height": map[string]interface{}{"type": "pixel", "value": float64(50)},
+			}},
+			map[string]interface{}{"tool_name": "resize_range", "input": map[string]interface{}{
+				"excel_id": testToken, "sheet_id": testSheetID, "range": "2:20",
+				"resize_height": map[string]interface{}{"type": "pixel", "value": float64(30)},
+			}},
+			map[string]interface{}{"tool_name": "resize_range", "input": map[string]interface{}{
+				"excel_id": testToken, "sheet_id": testSheetID, "range": "21:21",
+				"resize_height": map[string]interface{}{"type": "auto"},
+			}},
+		}
+		assertInputEquals(t, input, map[string]interface{}{
+			"excel_id":   testToken,
+			"operations": wantOps,
+		})
+	})
+}
+
+// TestResize_MapFormGuards covers map-form validation: exclusivity with the
+// uniform flags, key/value shape errors, the char-unit width floor, and the
+// +batch-update nesting rejection.
+func TestResize_MapFormGuards(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		sc   common.Shortcut
+		args []string
+		want string
+	}{
+		{
+			name: "--widths rejects --range",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--widths", `{"A": 100}`, "--range", "A:C"},
+			want: "--widths is a self-contained map; do not combine it with --range",
+		},
+		{
+			name: "--widths rejects --width",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--widths", `{"A": 100}`, "--width", "120"},
+			want: "--widths is a self-contained map; do not combine it with --width",
+		},
+		{
+			name: "--heights rejects --type",
+			sc:   RowsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--heights", `{"1": 50}`, "--type", "auto"},
+			want: "--heights is a self-contained map; do not combine it with --type",
+		},
+		{
+			name: "--widths empty object",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--widths", `{}`},
+			want: "must contain at least one entry",
+		},
+		{
+			name: "--widths row key on cols command",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--widths", `{"2:8": 100}`},
+			want: "+cols-resize expects column letters",
+		},
+		{
+			name: "--heights column key on rows command",
+			sc:   RowsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--heights", `{"A": 50}`},
+			want: "+rows-resize expects row numbers",
+		},
+		{
+			name: "--widths duplicate keys A and A:A",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--widths", `{"A": 100, "A:A": 120}`},
+			want: "target the same range A:A",
+		},
+		{
+			name: "--widths rejects overlapping ranges with the same start",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--widths", `{"A:C": 100, "A:F": 120}`},
+			want: `ranges "A:C" and "A:F" overlap`,
+		},
+		{
+			name: "--heights rejects overlapping ranges with different starts",
+			sc:   RowsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--heights", `{"2:10": 30, "5:20": 40}`},
+			want: `ranges "2:10" and "5:20" overlap`,
+		},
+		{
+			name: "--widths char-unit width rejected with conversion hint",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--widths", `{"A": 10}`},
+			want: "looks like an Excel character-unit width",
+		},
+		{
+			// The embedded schema (enum ["standard"]) rejects "auto" before the
+			// Go-level rows-only hint; the error steers to --print-schema whose
+			// description explains columns don't support auto.
+			name: "--widths rejects auto (rows-only) via schema",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--widths", `{"A": "auto"}`},
+			want: "does not match any of oneOf alternatives",
+		},
+		{
+			name: "--heights rejects unknown mode string via schema",
+			sc:   RowsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--heights", `{"1": "fit"}`},
+			want: "does not match any of oneOf alternatives",
+		},
+		{
+			name: "--heights rejects boolean value via schema",
+			sc:   RowsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--heights", `{"1": true}`},
+			want: "does not match any of oneOf alternatives",
+		},
+		{
+			name: "--widths bad key syntax",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--widths", `{"A1:B2": 100}`},
+			want: "expected pure digits (row number) or letters",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := runShortcutCapturingErr(t, tt.sc, append(tt.args, "--dry-run"))
+			requireValidation(t, err, tt.want)
+		})
+	}
+}
+
+func TestResize_MapFormEntryCap(t *testing.T) {
+	var widths strings.Builder
+	widths.WriteByte('{')
+	for i := 0; i <= maxBatchOperations; i++ {
+		if i > 0 {
+			widths.WriteByte(',')
+		}
+		widths.WriteByte('"')
+		widths.WriteString(columnIndexToLetter(i))
+		widths.WriteString(`":100`)
+	}
+	widths.WriteByte('}')
+	_, _, err := runShortcutCapturingErr(t, ColsResize, []string{
+		"--url", testURL, "--sheet-id", testSheetID,
+		"--widths", widths.String(), "--dry-run",
+	})
+	requireValidation(t, err, "accepts at most 100 entries; got 101")
+}
+
 func TestResize_TypeAndSizeGuards(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -305,22 +506,58 @@ func TestResize_TypeAndSizeGuards(t *testing.T) {
 		want string
 	}{
 		{
-			name: "+rows-resize --type pixel without --size",
+			name: "+rows-resize missing both --height and --type",
 			sc:   RowsResize,
-			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "1:5", "--type", "pixel"},
-			want: "--type pixel requires --size",
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "1:5"},
+			want: "give --height <px> for a pixel size, or --type standard / auto",
 		},
 		{
-			name: "+rows-resize --type standard with --size",
+			name: "+cols-resize missing both --width and --type",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A:C"},
+			want: "give --width <px> for a pixel size, or --type standard",
+		},
+		{
+			name: "+rows-resize --height rejects --type standard",
 			sc:   RowsResize,
-			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "1:5", "--type", "standard", "--size", "30"},
-			want: "--size is only valid with --type pixel",
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "1:5", "--height", "30", "--type", "standard"},
+			want: "--height cannot be combined with --type standard",
+		},
+		{
+			name: "+cols-resize --width rejects --type standard",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A:C", "--width", "120", "--type", "standard"},
+			want: "--width cannot be combined with --type standard",
+		},
+		{
+			name: "+rows-resize --type pixel without --height",
+			sc:   RowsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "1:5", "--type", "pixel"},
+			want: "--type pixel requires --height",
+		},
+		{
+			name: "+cols-resize --type pixel without --width",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A:C", "--type", "pixel"},
+			want: "--type pixel requires --width",
+		},
+		{
+			name: "+rows-resize --height must be positive",
+			sc:   RowsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "1:5", "--height", "0"},
+			want: "--height must be > 0",
+		},
+		{
+			name: "+cols-resize --width below 20px rejected with char-unit hint",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A:C", "--width", "12"},
+			want: "looks like an Excel character-unit width",
 		},
 		{
 			name: "+cols-resize rejects --type auto",
 			sc:   ColsResize,
 			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A:C", "--type", "auto"},
-			want: "auto", // cobra Enum gate kicks first with "valid values are: pixel, standard"
+			want: "auto", // cobra Enum gate kicks first with "valid values are: standard"
 		},
 		{
 			name: "+rows-resize given column range",

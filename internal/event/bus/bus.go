@@ -19,10 +19,10 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/busdiscover"
-	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/source"
-	"github.com/larksuite/cli/internal/event/transport"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/busdiscover"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/lockfile"
 )
 
@@ -49,10 +49,19 @@ type Bus struct {
 
 	// pidHandle pins the alive.lock fd to the bus lifetime; OS releases on exit.
 	pidHandle *busdiscover.Handle
+
+	// snapshot is the compiled catalog this daemon serves: it decides which
+	// upstream event types to subscribe and which keys are single-consumer.
+	snapshot *catalog.Snapshot
+
+	// sources are injected by the composition root; the daemon runs whatever
+	// it was handed and never constructs an ingress itself.
+	sources []Source
 }
 
-func NewBus(appID, appSecret, domain string, tr transport.IPC, logger *log.Logger) *Bus {
+func NewBus(appID, appSecret, domain string, tr transport.IPC, logger *log.Logger, snap *catalog.Snapshot, sources ...Source) *Bus {
 	return &Bus{
+		sources:   sources,
 		appID:     appID,
 		appSecret: appSecret,
 		domain:    domain,
@@ -60,6 +69,7 @@ func NewBus(appID, appSecret, domain string, tr transport.IPC, logger *log.Logge
 		hub:       NewHub(),
 		dedup:     event.NewDedupFilter(),
 		logger:    logger,
+		snapshot:  snap,
 		startTime: time.Now(),
 		conns:     make(map[*Conn]struct{}),
 		// Buffered so shutdown and source-exit paths never drop the signal.
@@ -155,21 +165,15 @@ func shutdownConns(b *Bus) {
 	}
 }
 
-// startSources launches registered sources (or a default FeishuSource); any source exit triggers full bus shutdown.
+// startSources launches the injected sources; any source exit triggers full bus shutdown.
 func (b *Bus) startSources(ctx context.Context) {
-	sources := source.All()
-	if len(sources) == 0 {
-		sources = []source.Source{&source.FeishuSource{
-			AppID:     b.appID,
-			AppSecret: b.appSecret,
-			Domain:    b.domain,
-			Logger:    b.logger,
-		}}
+	if len(b.sources) == 0 {
+		b.logger.Printf("WARN: no event sources injected; the bus will idle until shutdown")
 	}
-	eventTypes := subscribedEventTypes()
+	eventTypes := b.snapshot.EventTypes()
 	b.hub.SetLogger(b.logger)
-	for _, src := range sources {
-		go func(s source.Source) {
+	for _, src := range b.sources {
+		go func(s Source) {
 			b.logger.Printf("Starting source: %s", s.Name())
 			err := s.Start(ctx, eventTypes, func(raw *event.RawEvent) {
 				b.logger.Printf("Event received: type=%s id=%s", raw.EventType, raw.EventID)
@@ -195,20 +199,6 @@ func (b *Bus) startSources(ctx context.Context) {
 			}
 		}(src)
 	}
-}
-
-// subscribedEventTypes returns the deduplicated union of EventTypes from every registered EventKey.
-func subscribedEventTypes() []string {
-	seen := make(map[string]struct{})
-	var types []string
-	for _, def := range event.ListAll() {
-		if _, ok := seen[def.EventType]; ok {
-			continue
-		}
-		seen[def.EventType] = struct{}{}
-		types = append(types, def.EventType)
-	}
-	return types
 }
 
 // acceptLoop accepts IPC connections until the listener is closed.
@@ -271,8 +261,8 @@ func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.H
 
 	// SingleConsumer EventKeys allow only one consumer per SubscriptionID: reject extras at handshake.
 	exclusive := false
-	if def, ok := event.Lookup(hello.EventKey); ok {
-		exclusive = def.SingleConsumer
+	if entry, ok := b.snapshot.Resolve(hello.EventKey); ok {
+		exclusive = entry.Capability().SingleConsumer
 	}
 	var firstForKey bool
 	if exclusive {
@@ -325,7 +315,7 @@ func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.H
 	}
 	b.mu.Unlock()
 
-	ack := protocol.NewHelloAck("v1", firstForKey)
+	ack := protocol.NewHelloAck("v1", firstForKey, protocol.CapabilityCanonicalMetadataV1)
 	// writeFrame shares writeMu with every other write; bc.Close on failure unwinds hub+bus registration via onClose.
 	if err := bc.writeFrame(ack); err != nil {
 		b.logger.Printf("WARN: hello_ack write to pid=%d key=%q failed: %v (rejecting connection)",

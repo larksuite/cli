@@ -234,6 +234,14 @@ func deleteWikiNodeAndVerify(ctx context.Context, spaceID, nodeToken, objType st
 		return getResult, fmt.Errorf("get wiki node %s before delete failed: exit=%d stdout=%s stderr=%s", nodeToken, getResult.ExitCode, getResult.Stdout, getResult.Stderr)
 	}
 
+	if wikiGetNodeIdentity(getResult.Stdout, nodeToken) == wikiNodeIdentityDifferent {
+		// get_node resolved the token to a different entity (e.g. after
+		// wiki +move-to-drive); the original wiki node is already gone.
+		// An indeterminate identity (missing node payload) falls through so
+		// cleanup still attempts the delete instead of leaking a real node.
+		return getResult, nil
+	}
+
 	node := gjson.Get(getResult.Stdout, "data.node")
 	originalNodeToken := nodeToken
 	if resolvedSpaceID := node.Get("space_id").String(); resolvedSpaceID != "" {
@@ -257,12 +265,7 @@ func deleteWikiNodeAndVerify(ctx context.Context, spaceID, nodeToken, objType st
 		}
 	}
 
-	deleteToken := originalNodeToken
-	if node.Get("node_type").String() == "origin" {
-		if objToken := node.Get("obj_token").String(); objToken != "" {
-			deleteToken = objToken
-		}
-	}
+	deleteToken, objType := wikiDeleteTarget(node, originalNodeToken, objType)
 
 	deleteResult, deleteErr := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 		Args:      []string{"api", "delete", "/open-apis/wiki/v2/spaces/" + spaceID + "/nodes/" + deleteToken},
@@ -287,6 +290,58 @@ func deleteWikiNodeAndVerify(ctx context.Context, spaceID, nodeToken, objType st
 		return deleteResult, err
 	}
 	return deleteResult, nil
+}
+
+// wikiDeleteTarget returns the token kind expected by the delete-node API.
+// Origin nodes are addressed by their backing object token and object type;
+// shortcut nodes are addressed by their Wiki node token and obj_type=wiki.
+func wikiDeleteTarget(node gjson.Result, nodeToken, fallbackObjType string) (string, string) {
+	if node.Get("node_type").String() == "shortcut" {
+		return nodeToken, "wiki"
+	}
+	if objToken := node.Get("obj_token").String(); objToken != "" {
+		nodeToken = objToken
+	}
+	if objType := node.Get("obj_type").String(); objType != "" {
+		fallbackObjType = objType
+	}
+	return nodeToken, fallbackObjType
+}
+
+func TestWikiDeleteTarget(t *testing.T) {
+	tests := []struct {
+		name        string
+		nodeJSON    string
+		nodeToken   string
+		objType     string
+		wantToken   string
+		wantObjType string
+	}{
+		{
+			name:        "origin uses backing object",
+			nodeJSON:    `{"node_type":"origin","node_token":"wikcnOrigin","obj_token":"docxOrigin","obj_type":"docx"}`,
+			nodeToken:   "wikcnOrigin",
+			objType:     "docx",
+			wantToken:   "docxOrigin",
+			wantObjType: "docx",
+		},
+		{
+			name:        "shortcut uses wiki node",
+			nodeJSON:    `{"node_type":"shortcut","node_token":"wikcnShortcut","obj_token":"boxcnFile","obj_type":"file"}`,
+			nodeToken:   "wikcnShortcut",
+			objType:     "file",
+			wantToken:   "wikcnShortcut",
+			wantObjType: "wiki",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotToken, gotObjType := wikiDeleteTarget(gjson.Parse(tt.nodeJSON), tt.nodeToken, tt.objType)
+			require.Equal(t, tt.wantToken, gotToken)
+			require.Equal(t, tt.wantObjType, gotObjType)
+		})
+	}
 }
 
 func listWikiNodeChildren(ctx context.Context, spaceID, parentNodeToken string) ([]wikiNodeInfo, *clie2e.Result, error) {
@@ -382,7 +437,12 @@ func isWikiNodeDeleted(ctx context.Context, nodeToken string) (bool, error) {
 		return false, fmt.Errorf("verify wiki node %s after delete returned nil result", nodeToken)
 	}
 	if result.ExitCode == 0 && wikiAPISuccess(result.Stdout) {
-		return false, nil
+		// After wiki +move-to-drive, get_node on the old token can still
+		// answer code=0 but resolve to a different entity. Only a response
+		// that resolved to a different non-empty node_token proves the
+		// original node is gone; a missing node payload is indeterminate
+		// and must not be read as deleted.
+		return wikiGetNodeIdentity(result.Stdout, nodeToken) == wikiNodeIdentityDifferent, nil
 	}
 	if isWikiNodeDeletedResult(result) {
 		return true, nil
@@ -422,20 +482,59 @@ func wikiAPISuccess(stdout string) bool {
 	return false
 }
 
+type wikiNodeIdentity int
+
+const (
+	// wikiNodeIdentityUnknown: the response does not carry a node_token
+	// (data.node is optional in the get_node response), so the identity of
+	// the resolved entity cannot be judged either way.
+	wikiNodeIdentityUnknown wikiNodeIdentity = iota
+	// wikiNodeIdentitySame: the response still carries the queried
+	// node_token, proving the original node exists.
+	wikiNodeIdentitySame
+	// wikiNodeIdentityDifferent: the response resolved to a different,
+	// non-empty node_token (e.g. after wiki +move-to-drive), proving the
+	// original wiki node is gone.
+	wikiNodeIdentityDifferent
+)
+
+// wikiGetNodeIdentity classifies whether a successful get_node response still
+// refers to the queried node token. After wiki +move-to-drive, the old token
+// may keep resolving with code=0 to a node whose node_token (and parent) are
+// no longer the original, so a success response alone does not prove the
+// original node still exists — but only a different non-empty token proves it
+// is gone; a missing token is indeterminate.
+func wikiGetNodeIdentity(stdout, nodeToken string) wikiNodeIdentity {
+	returned := gjson.Get(stdout, "data.node.node_token").String()
+	if nodeToken == "" || returned == "" {
+		return wikiNodeIdentityUnknown
+	}
+	if returned == nodeToken {
+		return wikiNodeIdentitySame
+	}
+	return wikiNodeIdentityDifferent
+}
+
 func isWikiNodeDeletedResult(result *clie2e.Result) bool {
 	if result == nil {
 		return false
 	}
-	if code := gjson.Get(result.Stdout, "error.code"); code.Exists() && code.Int() == 131005 {
-		return true
-	}
-	if code := gjson.Get(result.Stdout, "code"); code.Exists() && code.Int() == 131005 {
-		return true
+	for _, payload := range []string{result.Stdout, result.Stderr} {
+		for _, path := range []string{"error.code", "code"} {
+			if code := gjson.Get(payload, path); code.Exists() && isWikiNodeDeletedCode(code.Int()) {
+				return true
+			}
+		}
 	}
 	combined := strings.ToLower(result.Stdout + "\n" + result.Stderr)
 	return strings.Contains(combined, "131005") ||
 		strings.Contains(combined, "node not found") ||
+		strings.Contains(combined, "node has been deleted") ||
 		strings.Contains(combined, "not found")
+}
+
+func isWikiNodeDeletedCode(code int64) bool {
+	return code == 131005 || code == 93012 || code == 131012
 }
 
 func isWikiVerifyTransientResult(result *clie2e.Result) bool {
@@ -456,6 +555,33 @@ func isWikiVerifyTransientResult(result *clie2e.Result) bool {
 		strings.Contains(message, "http 502") ||
 		strings.Contains(message, "http 503") ||
 		strings.Contains(message, "http 504")
+}
+
+func TestWikiGetNodeIdentity(t *testing.T) {
+	const nodeToken = "wikcnOriginalNode"
+	successPayload := func(returnedToken string) string {
+		return `{"code":0,"msg":"success","data":{"node":{"node_token":"` + returnedToken + `","obj_token":"doccnMovedDoc","obj_type":"docx","parent_node_token":"wikcnOtherParent","space_id":"7000000000000000001"}}}`
+	}
+
+	t.Run("same node token proves the node still exists", func(t *testing.T) {
+		require.Equal(t, wikiNodeIdentitySame, wikiGetNodeIdentity(successPayload(nodeToken), nodeToken))
+	})
+
+	t.Run("code 0 with a different node token after move-to-drive means the original node is gone", func(t *testing.T) {
+		require.Equal(t, wikiNodeIdentityDifferent, wikiGetNodeIdentity(successPayload("wikcnResolvedElsewhere"), nodeToken))
+	})
+
+	t.Run("success response without a node payload is indeterminate, not proof of deletion", func(t *testing.T) {
+		require.Equal(t, wikiNodeIdentityUnknown, wikiGetNodeIdentity(`{"code":0,"msg":"success","data":{}}`, nodeToken))
+	})
+
+	t.Run("empty returned node token is indeterminate", func(t *testing.T) {
+		require.Equal(t, wikiNodeIdentityUnknown, wikiGetNodeIdentity(`{"code":0,"msg":"success","data":{"node":{"node_token":""}}}`, nodeToken))
+	})
+
+	t.Run("empty queried token is indeterminate", func(t *testing.T) {
+		require.Equal(t, wikiNodeIdentityUnknown, wikiGetNodeIdentity(successPayload(nodeToken), ""))
+	})
 }
 
 func TestWikiVerifyTransientResult(t *testing.T) {
@@ -485,6 +611,41 @@ func TestWikiVerifyTransientResult(t *testing.T) {
 
 		require.False(t, isWikiVerifyTransientResult(result))
 	})
+}
+
+func TestIsWikiNodeDeletedResult(t *testing.T) {
+	tests := []struct {
+		name   string
+		result *clie2e.Result
+		want   bool
+	}{
+		{
+			name:   "raw get-node deleted code on stderr",
+			result: &clie2e.Result{ExitCode: 1, Stderr: `{"ok":false,"error":{"type":"api","code":93012,"message":"node has been deleted"}}`},
+			want:   true,
+		},
+		{
+			name:   "CLI terminal deleted code on stderr",
+			result: &clie2e.Result{ExitCode: 1, Stderr: `{"ok":false,"error":{"type":"api","code":131012,"message":"node has been deleted"}}`},
+			want:   true,
+		},
+		{
+			name:   "legacy node not found code on stdout",
+			result: &clie2e.Result{ExitCode: 1, Stdout: `{"code":131005,"msg":"node not found"}`},
+			want:   true,
+		},
+		{
+			name:   "unrelated API error",
+			result: &clie2e.Result{ExitCode: 1, Stderr: `{"ok":false,"error":{"type":"api","code":131004,"message":"permission denied"}}`},
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isWikiNodeDeletedResult(tt.result))
+		})
+	}
 }
 
 func findWikiNodeByToken(t *testing.T, ctx context.Context, spaceID string, nodeToken string, parentNodeTokens ...string) gjson.Result {

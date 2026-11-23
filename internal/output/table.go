@@ -16,50 +16,69 @@ const maxColWidth = 100
 //   - map[string]interface{} (single object) → key-value two-column table
 //   - empty array → "(empty)"
 func FormatAsTable(w io.Writer, data interface{}) {
-	FormatAsTablePaginated(w, data, true)
+	if err := WriteTable(w, data); isOutputMarshalError(err) {
+		legacyStderrf("json marshal error: %v\n", err)
+	}
+}
+
+// WriteTable formats data as a table and returns marshal or write errors.
+func WriteTable(w io.Writer, data interface{}) error {
+	return WriteTablePaginated(w, data, true)
 }
 
 // FormatAsTablePaginated formats data as a table with pagination awareness.
 // When isFirstPage is true, outputs the header; otherwise only data rows.
 func FormatAsTablePaginated(w io.Writer, data interface{}, isFirstPage bool) {
+	if err := WriteTablePaginated(w, data, isFirstPage); isOutputMarshalError(err) {
+		legacyStderrf("json marshal error: %v\n", err)
+	}
+}
+
+// WriteTablePaginated formats data as a table and returns marshal or write errors.
+func WriteTablePaginated(w io.Writer, data interface{}, isFirstPage bool) error {
 	rows, cols, isList := prepareRows(data)
 	if cols == nil {
 		if isList {
-			fmt.Fprintln(w, "(empty)")
+			_, err := fmt.Fprintln(w, "(empty)")
+			return err
 		} else {
 			// Not a list and not an object — print as JSON fallback
-			PrintJson(w, data)
+			return WriteJSON(w, data)
 		}
-		return
 	}
 
 	if len(rows) == 0 {
 		if isFirstPage {
-			fmt.Fprintln(w, "(empty)")
+			_, err := fmt.Fprintln(w, "(empty)")
+			return err
 		}
-		return
+		return nil
 	}
 
 	if !isList {
 		// Single object: key-value two-column format
-		formatKeyValueTable(w, rows[0], cols)
-		return
+		return formatKeyValueTable(w, rows[0], cols)
 	}
 
 	// Calculate column widths (clamped to maxColWidth)
 	widths := computeColumnWidths(rows, cols)
 
 	if isFirstPage {
-		writeHeader(w, cols, widths)
+		if err := writeHeader(w, cols, widths); err != nil {
+			return err
+		}
 	}
 
 	for _, row := range rows {
-		writeRow(w, row, cols, widths)
+		if err := writeRow(w, row, cols, widths); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // formatKeyValueTable renders a single object as a two-column key-value table.
-func formatKeyValueTable(w io.Writer, row map[string]string, cols []string) {
+func formatKeyValueTable(w io.Writer, row map[string]string, cols []string) error {
 	maxKeyWidth := 0
 	for _, col := range cols {
 		kw := stringWidth(col)
@@ -71,8 +90,11 @@ func formatKeyValueTable(w io.Writer, row map[string]string, cols []string) {
 	for _, col := range cols {
 		val := row[col]
 		val = truncateToWidth(val, maxColWidth)
-		fmt.Fprintf(w, "%s  %s\n", padToWidth(col, maxKeyWidth), val)
+		if _, err := fmt.Fprintf(w, "%s  %s\n", padToWidth(col, maxKeyWidth), val); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // computeColumnWidths returns display widths for each column, clamped to maxColWidth.
@@ -99,25 +121,29 @@ func computeColumnWidths(rows []map[string]string, cols []string) []int {
 }
 
 // writeHeader writes the header row and separator line.
-func writeHeader(w io.Writer, cols []string, widths []int) {
+func writeHeader(w io.Writer, cols []string, widths []int) error {
 	var header []string
 	var sep []string
 	for i, col := range cols {
 		header = append(header, padToWidth(col, widths[i]))
 		sep = append(sep, strings.Repeat("─", widths[i]))
 	}
-	fmt.Fprintln(w, strings.Join(header, "  "))
-	fmt.Fprintln(w, strings.Join(sep, "  "))
+	if _, err := fmt.Fprintln(w, strings.Join(header, "  ")); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(w, strings.Join(sep, "  "))
+	return err
 }
 
 // writeRow writes a single data row.
-func writeRow(w io.Writer, row map[string]string, cols []string, widths []int) {
+func writeRow(w io.Writer, row map[string]string, cols []string, widths []int) error {
 	var cells []string
 	for i, col := range cols {
 		val := truncateToWidth(row[col], widths[i])
 		cells = append(cells, padToWidth(val, widths[i]))
 	}
-	fmt.Fprintln(w, strings.Join(cells, "  "))
+	_, err := fmt.Fprintln(w, strings.Join(cells, "  "))
+	return err
 }
 
 // padToWidth pads a string with spaces to reach the target display width.

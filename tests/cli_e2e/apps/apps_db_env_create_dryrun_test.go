@@ -11,7 +11,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestAppsDBEnvCreateDryRun pins +db-env-create URL `/apps/{app_id}/db_dev_init` 和 sync_data body 透传。
@@ -30,9 +29,9 @@ func TestAppsDBEnvCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/db_dev_init", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "false", gjson.Get(result.Stdout, "api.0.body.sync_data").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/db_dev_init", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "false", clie2e.DryRunGet(result.Stdout, "api.0.body.sync_data").String())
 	})
 
 	t.Run("SyncDataTrue", func(t *testing.T) {
@@ -45,6 +44,6 @@ func TestAppsDBEnvCreateDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, "true", gjson.Get(result.Stdout, "api.0.body.sync_data").String())
+		assert.Equal(t, "true", clie2e.DryRunGet(result.Stdout, "api.0.body.sync_data").String())
 	})
 }

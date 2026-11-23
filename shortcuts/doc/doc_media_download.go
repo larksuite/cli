@@ -12,17 +12,34 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+func docMediaDownloadIsPermissionAuthScopeError(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryAuthorization {
+		return false
+	}
+	switch problem.Code {
+	case output.LarkErrAppScopeNotEnabled,
+		output.LarkErrTokenNoPermission,
+		output.LarkErrUserScopeInsufficient:
+		return true
+	default:
+		return false
+	}
+}
+
 var DocMediaDownload = common.Shortcut{
-	Service:     "docs",
-	Command:     "+media-download",
-	Description: "Download document media or whiteboard thumbnail (auto-detects extension)",
-	Risk:        "read",
-	Scopes:      []string{"docs:document.media:download"},
-	AuthTypes:   []string{"user", "bot"},
+	Service:           "docs",
+	Command:           "+media-download",
+	Description:       "Download document media or whiteboard thumbnail (auto-detects extension)",
+	Risk:              "read",
+	Scopes:            []string{"docs:document.media:download"},
+	ConditionalScopes: []string{common.DrivePermissionMemberAuthScope},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "token", Desc: "resource token (file_token or whiteboard_id)", Required: true},
 		{Name: "output", Desc: "local save path", Required: true},
@@ -39,9 +56,14 @@ var DocMediaDownload = common.Shortcut{
 				Desc("(when --type=whiteboard) Download whiteboard as image").
 				Set("token", token).Set("output", outputPath)
 		}
-		return common.NewDryRunAPI().
+		plan := common.AddDriveFileExportPermissionDryRun(
+			common.NewDryRunAPI(),
+			token,
+			"[1] Check whether the current identity can export the document media",
+		)
+		return plan.
 			GET("/open-apis/drive/v1/medias/:token/download").
-			Desc("(when --type=media) Download document media file").
+			Desc("[2] (when --type=media) Download document media file").
 			Set("token", token).Set("output", outputPath)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -56,8 +78,18 @@ var DocMediaDownload = common.Shortcut{
 		if _, err := runtime.ResolveSavePath(outputPath); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output").WithCause(err)
 		}
-
-		fmt.Fprintf(runtime.IO().ErrOut, "Downloading: %s %s\n", mediaType, common.MaskToken(token))
+		if mediaType != "whiteboard" {
+			allowed, err := common.CheckDriveFileExportPermission(runtime, token)
+			if err != nil {
+				if docMediaDownloadIsPermissionAuthScopeError(err) {
+					fmt.Fprintf(runtime.IO().ErrOut, "warning: export permission check failed; continuing with download: %v\n", err)
+				} else {
+					return withDocMediaDownloadRecoveryHint(err, mediaType)
+				}
+			} else if !allowed {
+				return docMediaDownloadPermissionDeniedError()
+			}
+		}
 
 		// Build API URL
 		encodedToken := validate.EncodePathSegment(token)
@@ -73,7 +105,7 @@ var DocMediaDownload = common.Shortcut{
 			ApiPath:    apiPath,
 		})
 		if err != nil {
-			return wrapDocNetworkErr(err, "download failed: %v", err)
+			return withDocMediaDownloadRecoveryHint(wrapDocNetworkErr(err, "download failed: %v", err), mediaType)
 		}
 		defer resp.Body.Close()
 

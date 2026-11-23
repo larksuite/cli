@@ -71,13 +71,7 @@ func TestAppsDBDataExport_DryRunFormatFromOutput(t *testing.T) {
 		if err := runAppsShortcut(t, AppsDBDataExport, args, factory, stdout); err != nil {
 			t.Fatalf("dry-run err=%v", err)
 		}
-		var env struct {
-			API []struct {
-				Method string                 `json:"method"`
-				URL    string                 `json:"url"`
-				Params map[string]interface{} `json:"params"`
-			} `json:"api"`
-		}
+		var env dryRunAPIEnvelope
 		_ = json.Unmarshal([]byte(stdout.String()), &env)
 		a := env.API[0]
 		if a.Method != "GET" || a.URL != dbDataExportURL {

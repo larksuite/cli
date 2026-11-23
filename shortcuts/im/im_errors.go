@@ -4,7 +4,6 @@
 package im
 
 import (
-	"context"
 	"errors"
 	"strings"
 
@@ -19,17 +18,6 @@ func wrapIMNetworkErr(err error, format string, args ...any) error {
 		return err
 	}
 	return errs.NewNetworkError(errs.SubtypeNetworkTransport, format, args...).WithCause(err)
-}
-
-func imContextError(err error) error {
-	if err == nil {
-		return nil
-	}
-	subtype := errs.SubtypeNetworkTransport
-	if errors.Is(err, context.DeadlineExceeded) {
-		subtype = errs.SubtypeNetworkTimeout
-	}
-	return errs.NewNetworkError(subtype, "%s", err.Error()).WithCause(err)
 }
 
 func withIMValidationParam(err error, param string) error {

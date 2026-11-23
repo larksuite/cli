@@ -18,6 +18,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func TestMinutesSearchSupportsUserAndBotIdentity(t *testing.T) {
+	if !minutesStringSliceContains(MinutesSearch.AuthTypes, "user") {
+		t.Fatalf("MinutesSearch.AuthTypes = %v, want user support", MinutesSearch.AuthTypes)
+	}
+	if !minutesStringSliceContains(MinutesSearch.AuthTypes, "bot") {
+		t.Fatalf("MinutesSearch.AuthTypes = %v, want bot support for tenant access token", MinutesSearch.AuthTypes)
+	}
+}
+
 // newMinutesSearchTestCommand builds a command with the flags used by minutes search tests.
 func newMinutesSearchTestCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "test"}
@@ -29,6 +38,15 @@ func newMinutesSearchTestCommand() *cobra.Command {
 	cmd.Flags().String("page-token", "", "")
 	cmd.Flags().String("page-size", "15", "")
 	return cmd
+}
+
+func minutesStringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 // configWithoutUserOpenID returns a test config without a resolvable user open_id.
@@ -131,6 +149,9 @@ func TestBuildMinutesSearchParams(t *testing.T) {
 	}
 	if body["query"] != "budget" {
 		t.Fatalf("body.query = %v, want budget", body["query"])
+	}
+	if got, _ := body["sorter"].(string); got != "create_time_desc" {
+		t.Fatalf("body.sorter = %q, want create_time_desc", got)
 	}
 	filter, _ := body["filter"].(map[string]interface{})
 	if filter == nil {
@@ -471,6 +492,20 @@ func TestMinutesSearchDryRun(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "\"owner_ids\": [") || !strings.Contains(stdout.String(), "\"ou_owner\"") {
 		t.Fatalf("dry-run should show owner_ids in filter, got: %s", stdout.String())
+	}
+}
+
+// TestMinutesSearchKeywordAliasMapsToQuery verifies --keyword is a parse-time
+// synonym of --query; agents that habitually spell it --keyword still reach the
+// same body field.
+func TestMinutesSearchKeywordAliasMapsToQuery(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, MinutesSearch, []string{"+search", "--keyword", "budget", "--dry-run", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "\"query\": \"budget\"") {
+		t.Fatalf("--keyword should map to canonical --query in body, got: %s", stdout.String())
 	}
 }
 

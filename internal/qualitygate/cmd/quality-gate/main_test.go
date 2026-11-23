@@ -13,15 +13,11 @@ import (
 	"github.com/larksuite/cli/internal/qualitygate/manifest"
 )
 
-func TestConfigureQualityGateEnvironmentForcesDeterministicRegistry(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
+func TestConfigureQualityGateEnvironmentIsolatesConfig(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", "")
 
 	configureQualityGateEnvironment()
 
-	if got := os.Getenv("LARKSUITE_CLI_REMOTE_META"); got != "off" {
-		t.Fatalf("LARKSUITE_CLI_REMOTE_META = %q, want off", got)
-	}
 	if got := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); got == "" {
 		t.Fatal("LARKSUITE_CLI_CONFIG_DIR was not set")
 	}
@@ -58,7 +54,7 @@ func TestCheckRejectsUnsafePublicContentMetadataPath(t *testing.T) {
 	code, stderr := runCheckCaptureStderr(t, []string{
 		"--repo", t.TempDir(),
 		"--cli-bin", "./lark-cli",
-		"--public-content-metadata", filepath.Join(t.TempDir(), "pr.json"),
+		"--public-content-metadata", filepath.Join(string(filepath.Separator), "not-an-allowed-root", "pr.json"),
 	})
 	if code != 2 {
 		t.Fatalf("exit code = %d, stderr=%s", code, stderr)

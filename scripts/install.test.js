@@ -9,7 +9,36 @@ const os = require("os");
 
 const crypto = require("crypto");
 
-const { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls, isCurlVersionSupported } = require("./install.js");
+const {
+  getExpectedChecksum,
+  verifyChecksum,
+  assertAllowedHost,
+  resolveMirrorUrls,
+  resolveReleaseAsset,
+  isCurlVersionSupported,
+} = require("./install.js");
+
+describe("resolveReleaseAsset", () => {
+  it("preserves a beta package version in tag and archive paths", () => {
+    const asset = resolveReleaseAsset(
+      "1.2.0-beta.1",
+      "linux",
+      "amd64"
+    );
+
+    assert.deepEqual(asset, {
+      archiveName: "lark-cli-1.2.0-beta.1-linux-amd64.tar.gz",
+      githubUrl:
+        "https://github.com/larksuite/cli/releases/download/v1.2.0-beta.1/lark-cli-1.2.0-beta.1-linux-amd64.tar.gz",
+    });
+    assert.deepEqual(
+      resolveMirrorUrls({}, asset.archiveName, "1.2.0-beta.1"),
+      [
+        "https://registry.npmmirror.com/-/binary/lark-cli/v1.2.0-beta.1/lark-cli-1.2.0-beta.1-linux-amd64.tar.gz",
+      ]
+    );
+  });
+});
 
 describe("getExpectedChecksum", () => {
   function makeTmpChecksums(content) {
@@ -52,11 +81,12 @@ describe("getExpectedChecksum", () => {
     );
   });
 
-  it("returns null when checksums.txt does not exist", () => {
+  it("throws [SECURITY]-prefixed Error when checksums.txt does not exist", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "checksum-test-"));
-    // No checksums.txt in dir
-    const result = getExpectedChecksum("anything.tar.gz", dir);
-    assert.equal(result, null);
+    assert.throws(
+      () => getExpectedChecksum("anything.tar.gz", dir),
+      { message: /^\[SECURITY\] checksums\.txt not found/ }
+    );
   });
 
   it("skips malformed lines and still finds valid entry", () => {
@@ -106,12 +136,46 @@ describe("verifyChecksum", () => {
     verifyChecksum(filePath, hash);
   });
 
-  it("matches case-insensitively", () => {
+  it("accepts a valid uppercase 64-character hex hash", () => {
     const content = "case test";
     const filePath = makeTmpFile(content);
     const hash = sha256(content).toUpperCase();
     // Should not throw
     verifyChecksum(filePath, hash);
+  });
+
+  for (const [name, expectedHash] of [
+    ["null", null],
+    ["empty", ""],
+    ["non-string", 123],
+  ]) {
+    it(`throws [SECURITY]-prefixed Error for ${name} expected hash`, () => {
+      const filePath = makeTmpFile("real content");
+      assert.throws(
+        () => verifyChecksum(filePath, expectedHash),
+        (err) => {
+          assert.match(err.message, /^\[SECURITY\]/);
+          assert.match(err.message, /Expected checksum is missing or invalid/);
+          return true;
+        }
+      );
+    });
+  }
+
+  it("throws [SECURITY] format Error for an incorrectly sized hash", () => {
+    const filePath = makeTmpFile("real content");
+    assert.throws(
+      () => verifyChecksum(filePath, "abc123"),
+      { message: /^\[SECURITY\] Expected checksum must be a 64-character hexadecimal SHA-256 digest$/ }
+    );
+  });
+
+  it("throws [SECURITY] format Error for a non-hex hash", () => {
+    const filePath = makeTmpFile("real content");
+    assert.throws(
+      () => verifyChecksum(filePath, "g".repeat(64)),
+      { message: /^\[SECURITY\] Expected checksum must be a 64-character hexadecimal SHA-256 digest$/ }
+    );
   });
 
   it("throws [SECURITY]-prefixed Error on mismatch", () => {

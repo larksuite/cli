@@ -4,8 +4,12 @@
 package schema
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
+	"reflect"
 
 	"github.com/larksuite/cli/internal/core"
 )
@@ -122,12 +126,26 @@ func walkForL2(props *OrderedProps, errs *[]error) {
 		if p.Format == "binary" && p.Type != "string" {
 			*errs = append(*errs, fmt.Errorf("L2: field %q has format: binary but type = %q (want string)", k, p.Type))
 		}
-		if p.Minimum != nil && p.Maximum != nil && *p.Minimum >= *p.Maximum {
-			*errs = append(*errs, fmt.Errorf("L2: field %q minimum (%v) >= maximum (%v)", k, *p.Minimum, *p.Maximum))
+		if p.Minimum != nil && p.Maximum != nil {
+			min, minOK := exactJSONNumber(*p.Minimum)
+			max, maxOK := exactJSONNumber(*p.Maximum)
+			switch {
+			case !minOK || !maxOK:
+				*errs = append(*errs, fmt.Errorf("L2: field %q has an invalid minimum or maximum", k))
+			case min.Cmp(max) >= 0:
+				*errs = append(*errs, fmt.Errorf(
+					"L2: field %q minimum (%s) >= maximum (%s)",
+					k,
+					p.Minimum.String(),
+					p.Maximum.String(),
+				))
+			}
 		}
 		if n := len(p.EnumDescriptions); n > 0 && n != len(p.Enum) {
 			*errs = append(*errs, fmt.Errorf("L2: field %q enumDescriptions length (%d) != enum length (%d)", k, n, len(p.Enum)))
 		}
+		validateLiteralConstraints(k, "example", p.Example, p, errs)
+		validateLiteralConstraints(k, "default", p.Default, p, errs)
 		if len(p.Required) > 0 && p.Properties != nil {
 			for _, r := range p.Required {
 				if _, ok := p.Properties.Map[r]; !ok {
@@ -139,6 +157,98 @@ func walkForL2(props *OrderedProps, errs *[]error) {
 			walkForL2(p.Properties, errs)
 		}
 	}
+}
+
+// validateLiteralConstraints keeps schema guidance self-consistent: a concrete
+// example/default must be one of the declared enum values and a numeric literal
+// must fall inside the advertised bounds. Empty strings are metadata's legacy
+// spelling for "unspecified", so they are ignored here rather than treated as
+// a concrete value.
+func validateLiteralConstraints(field, label string, value any, p Property, errs *[]error) {
+	if value == nil {
+		return
+	}
+	if text, ok := value.(string); ok && text == "" {
+		return
+	}
+	if len(p.Enum) > 0 && !literalInEnum(value, p.Enum) {
+		*errs = append(*errs, fmt.Errorf("L2: field %q %s (%v) is not in enum", field, label, value))
+	}
+	if p.Type != "integer" && p.Type != "number" {
+		return
+	}
+
+	number, ok := exactLiteralNumber(value)
+	if !ok {
+		*errs = append(*errs, fmt.Errorf("L2: field %q %s (%v) is not a valid number", field, label, value))
+		return
+	}
+	if p.Minimum != nil {
+		minimum, valid := exactJSONNumber(*p.Minimum)
+		if valid && number.Cmp(minimum) < 0 {
+			*errs = append(*errs, fmt.Errorf(
+				"L2: field %q %s (%v) is below minimum (%s)",
+				field, label, value, p.Minimum.String(),
+			))
+		}
+	}
+	if p.Maximum != nil {
+		maximum, valid := exactJSONNumber(*p.Maximum)
+		if valid && number.Cmp(maximum) > 0 {
+			*errs = append(*errs, fmt.Errorf(
+				"L2: field %q %s (%v) is above maximum (%s)",
+				field, label, value, p.Maximum.String(),
+			))
+		}
+	}
+}
+
+func literalInEnum(value any, enum []interface{}) bool {
+	for _, candidate := range enum {
+		if reflect.DeepEqual(value, candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func exactLiteralNumber(value any) (*big.Rat, bool) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, false
+	}
+	number, ok := decoded.(json.Number)
+	if !ok {
+		return nil, false
+	}
+	return exactJSONNumber(number)
+}
+
+// exactJSONNumber validates n as a JSON number and converts it to an exact
+// rational for comparisons. This preserves large integers, decimals, and
+// scientific notation without routing them through float64.
+func exactJSONNumber(n json.Number) (*big.Rat, bool) {
+	var raw json.RawMessage
+	if err := json.Unmarshal([]byte(n.String()), &raw); err != nil {
+		return nil, false
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var value any
+	if err := dec.Decode(&value); err != nil {
+		return nil, false
+	}
+	validated, ok := value.(json.Number)
+	if !ok {
+		return nil, false
+	}
+	return new(big.Rat).SetString(validated.String())
 }
 
 // validatePropertyTypes walks an OrderedProps tree and asserts:

@@ -5,7 +5,6 @@ package im
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
@@ -29,15 +28,16 @@ var ImMessagesSend = common.Shortcut{
 		{Name: "chat-id", Desc: "(required, mutually exclusive with --user-id) chat ID (oc_xxx)"},
 		{Name: "user-id", Desc: "(required, mutually exclusive with --chat-id) user open_id (ou_xxx)"},
 		{Name: "msg-type", Default: "text", Desc: "message type for --content JSON; when using --text/--markdown/--image/--file/--video/--audio, the effective type is inferred automatically", Enum: []string{"text", "post", "image", "file", "audio", "media", "interactive", "share_chat", "share_user"}},
-		{Name: "content", Desc: "(one of --content/--text/--markdown/--image/--file/--video/--audio required) message content JSON"},
-		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)"},
-		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)"},
-		{Name: "idempotency-key", Desc: "idempotency key (prevents duplicate sends)"},
+		{Name: "content", Desc: "(one of --content/--text/--markdown/--image/--file/--video/--audio required) message content JSON", Input: []string{common.File, common.Stdin}},
+		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)", Input: []string{common.File, common.Stdin}},
+		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)", Input: []string{common.File, common.Stdin}},
+		{Name: "idempotency-key", Desc: "idempotency key, max 50 characters (prevents duplicate sends)"},
 		{Name: "image", Desc: "image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
 		{Name: "file", Desc: "file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
 		{Name: "video", Desc: "video file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); must be used together with --video-cover"},
 		{Name: "video-cover", Desc: "video cover image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); required when using --video"},
 		{Name: "audio", Desc: audioMessageInputDesc},
+		{Name: "attachment", Type: "string_slice", Desc: "file/folder key (file_xxx), repeatable; attaches to the post message's attachment zone (requires --markdown or --msg-type post)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		chatFlag := runtime.Str("chat-id")
@@ -59,6 +59,23 @@ var ImMessagesSend = common.Shortcut{
 			content, desc = wrapMarkdownAsPostForDryRun(markdown)
 		} else if mt, c, d := buildMediaContentFromKey(text, imageKey, fileKey, videoKey, videoCoverKey, audioKey); mt != "" {
 			msgType, content, desc = mt, c, d
+		}
+
+		// Attachment zone: merge --attachment files into the post content.
+		if attachments := runtime.StrSlice("attachment"); len(attachments) > 0 {
+			msgType = "post"
+			if items, err := parseAttachments(attachments, "--attachment"); err == nil {
+				if content == "" {
+					content = `{"zh_cn":{"content":[]}}`
+				}
+				if merged, err := mergeAttachmentsIntoPostContent(content, items); err == nil {
+					content = merged
+				}
+			}
+			if desc != "" {
+				desc += "; "
+			}
+			desc += "--attachment adds files to the post attachment zone"
 		}
 
 		receiveIdType := "chat_id"
@@ -97,6 +114,7 @@ var ImMessagesSend = common.Shortcut{
 		content := runtime.Str("content")
 		text := runtime.Str("text")
 		markdown := runtime.Str("markdown")
+		idempotencyKey := runtime.Str("idempotency-key")
 		imageKey := runtime.Str("image")
 		fileKey := runtime.Str("file")
 		videoKey := runtime.Str("video")
@@ -132,11 +150,33 @@ var ImMessagesSend = common.Shortcut{
 			}
 		}
 
-		if msg := validateContentFlags(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey); msg != "" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, msg)
+		attachments, err := validateAttachmentFlags(runtime.StrSlice("attachment"), msgType, markdown, "--attachment", runtime.Cmd != nil && runtime.Cmd.Flags().Changed("msg-type"), text)
+		if err != nil {
+			return err
 		}
-		if content != "" && !json.Valid([]byte(content)) {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'", content).WithParam("--content")
+
+		if hasContentFiles(content) && len(attachments) > 0 {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--attachment cannot be used with --content that already contains a files array; either declare files via --content or via --attachment, not both").WithParam("--attachment")
+		}
+		if hasAnyContentSource(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey) {
+			// When another content source is present, every mutual-exclusion and
+			// media-integrity error from validateContentFlags must still fail —
+			// --attachment must not silently swallow a conflicting --text/
+			// --markdown/--image etc. (P1: attachments bypass content validation).
+			if msg := validateContentFlags(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey); msg != "" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, msg)
+			}
+		} else if len(attachments) == 0 {
+			// No content source at all (and no attachment) — nothing to send.
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --content <json>, --text <plain text>, --markdown <markdown text>, a media flag (--image/--file/--video/--audio), or --attachment <file_key>")
+		}
+		if err := validateIdempotencyKey(idempotencyKey); err != nil {
+			return err
+		}
+		if content != "" {
+			if err := validateMessageContentJSON(content); err != nil {
+				return err
+			}
 		}
 		if msg := validateExplicitMsgType(runtime.Cmd, msgType, text, markdown, imageKey, fileKey, videoKey, audioKey); msg != "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, msg).WithParam("--msg-type")
@@ -175,6 +215,20 @@ var ImMessagesSend = common.Shortcut{
 			msgType, content = mt, c
 		}
 
+		// Attachment zone: merge --attachment files into the post content.
+		// Validate has already enforced the post-only constraint.
+		if items, err := parseAttachments(runtime.StrSlice("attachment"), "--attachment"); err == nil && len(items) > 0 {
+			msgType = "post"
+			if content == "" {
+				content = `{"zh_cn":{"content":[]}}`
+			}
+			merged, err := mergeAttachmentsIntoPostContent(content, items)
+			if err != nil {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--attachment: %v", err).WithParam("--attachment")
+			}
+			content = merged
+		}
+
 		receiveIdType := "chat_id"
 		receiveId := chatFlag
 		if userFlag != "" {
@@ -209,6 +263,15 @@ var ImMessagesSend = common.Shortcut{
 		}, nil)
 		return nil
 	},
+}
+
+const maxIdempotencyKeyChars = 50
+
+func validateIdempotencyKey(value string) error {
+	if chars := len([]rune(value)); chars > maxIdempotencyKeyChars {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--idempotency-key exceeds the maximum of %d characters (got %d)", maxIdempotencyKeyChars, chars).WithParam("--idempotency-key")
+	}
+	return nil
 }
 
 // isMediaKey returns true if the value looks like an existing API key rather than a local file path.

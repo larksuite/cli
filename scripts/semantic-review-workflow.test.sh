@@ -176,7 +176,15 @@ if ! grep -Fq "if: always() && github.event.workflow_run.conclusion == 'success'
   exit 1
 fi
 
-require_in_step "$summary_verify_step" 'workflowPath !== ".github/workflows/ci.yml"' "PR quality summary must verify the triggering workflow path"
+if grep -Fq 'run.name !== "CI"' "$workflow"; then
+  echo "semantic-review must not use the dynamic workflow run name as workflow identity" >&2
+  exit 1
+fi
+
+require_in_step "$summary_verify_step" 'github.rest.actions.getWorkflow' "PR quality summary must resolve static workflow metadata"
+require_in_step "$summary_verify_step" 'workflow.name !== "CI"' "PR quality summary must verify the static workflow name"
+require_in_step "$summary_verify_step" 'workflow.path !== ".github/workflows/ci.yml"' "PR quality summary must verify the static workflow path"
+require_in_step "$summary_verify_step" 'run.path && run.path !== workflow.path' "PR quality summary must reject workflow path metadata mismatches"
 require_in_step "$summary_verify_step" 'run.event !== "pull_request"' "PR quality summary must only handle pull_request workflow_run events"
 require_in_step "$summary_verify_step" 'run.repository.id !== context.payload.repository.id' "PR quality summary must verify workflow_run repository id"
 require_in_step "$summary_verify_step" 'const targetHeadSha = run.head_sha' "PR quality summary must use the CI run head SHA as the verified PR head"
@@ -201,7 +209,10 @@ require_in_step "$summary_publish_step" 'CI_QUALITY_SUMMARY_BASE_SHA' "PR qualit
 require_in_step "$summary_publish_step" 'CI_QUALITY_SUMMARY_RUN_ID' "PR quality summary publisher must receive verified workflow run id"
 require_in_step "$summary_publish_step" 'require("./scripts/ci-quality-summary-publish.js")' "PR quality summary publisher must use the shared CI publisher script"
 
-require_in_step "$verify_step" 'workflowPath !== ".github/workflows/ci.yml"' "semantic-review must verify the triggering workflow path"
+require_in_step "$verify_step" 'github.rest.actions.getWorkflow' "semantic-review must resolve static workflow metadata"
+require_in_step "$verify_step" 'workflow.name !== "CI"' "semantic-review must verify the static workflow name"
+require_in_step "$verify_step" 'workflow.path !== ".github/workflows/ci.yml"' "semantic-review must verify the static workflow path"
+require_in_step "$verify_step" 'run.path && run.path !== workflow.path' "semantic-review must reject workflow path metadata mismatches"
 require_in_step "$verify_step" 'run.repository.id !== context.payload.repository.id' "semantic-review must verify workflow_run repository id"
 require_in_step "$verify_step" 'run.event !== "pull_request"' "semantic-review must only handle pull_request workflow_run events"
 require_in_step "$verify_step" 'run.conclusion !== "success"' "semantic-review must only consume successful CI runs"

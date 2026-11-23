@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // Convert renders a meta.Field as a JSON-Schema Property. meta owns the value
@@ -209,18 +210,19 @@ func buildMeta(m meta.Method) *Meta {
 		out.Risk = core.RiskRead
 	}
 	if m.DocURL != "" {
-		out.DocURL = m.DocURL
+		out.DocURL = urlrewrite.Rewrite(m.DocURL)
 	}
 	return out
 }
 
 // EnvelopeOf renders the MCP envelope for one method ref — the ref-based entry
 // callers use, since apicatalog.MethodRef is the metadata navigation currency.
-func EnvelopeOf(ref apicatalog.MethodRef) Envelope {
+// guidance is the build's affordance resolver (nil renders no CLI overlay).
+func EnvelopeOf(guidance *affordance.Resolver, ref apicatalog.MethodRef) Envelope {
 	m := ref.Method
 	// The affordance overlay lives in the CLI, not the metadata; look it up
 	// lazily here (it takes precedence over any affordance the metadata carries).
-	if raw, ok := affordance.For(ref.Service.Name, m.ID); ok {
+	if raw, ok := guidance.For(ref.Service.Name, m.ID); ok {
 		m.Affordance = raw
 	}
 	return assemble(ref.Service.Name, ref.ResourcePath, m)
@@ -229,10 +231,10 @@ func EnvelopeOf(ref apicatalog.MethodRef) Envelope {
 // Envelopes renders the given method refs into envelopes, sorted by name. The
 // caller supplies the refs (from apicatalog navigation), so this package owns
 // only rendering — never metadata source selection or traversal.
-func Envelopes(refs []apicatalog.MethodRef) []Envelope {
+func Envelopes(guidance *affordance.Resolver, refs []apicatalog.MethodRef) []Envelope {
 	var out []Envelope
 	for _, ref := range refs {
-		out = append(out, EnvelopeOf(ref))
+		out = append(out, EnvelopeOf(guidance, ref))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

@@ -17,11 +17,12 @@ const (
 
 // Flag describes a CLI flag for a shortcut.
 type Flag struct {
-	Name     string // flag name (e.g. "calendar-id")
-	Type     string // "string" (default) | "bool" | "int" | "float64" | "int_array" | "string_array" | "string_slice"
-	Default  string // default value as string
-	Desc     string // help text
-	Hidden   bool   // hidden from --help, still readable at runtime
+	Name     string   // canonical flag name (e.g. "calendar-id")
+	Aliases  []string // exact semantic synonyms accepted at parse time; hidden from human help, exported in machine metadata
+	Type     string   // "string" (default) | "bool" | "int" | "float64" | "int_array" | "string_array" | "string_slice"
+	Default  string   // default value as string
+	Desc     string   // help text
+	Hidden   bool     // hidden from --help, still readable at runtime
 	Required bool
 	Enum     []string // allowed values (e.g. ["asc", "desc"]); empty means no constraint
 	Input    []string // extra input sources: File (@path), Stdin (-); empty = flag value only
@@ -54,16 +55,25 @@ type Shortcut struct {
 	Hidden    bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
 
 	// Business logic hooks.
-	DryRun   func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
-	Validate func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
-	Execute  func(ctx context.Context, runtime *RuntimeContext) error      // main logic
+	// Normalize is the business-owned compatibility stage inside shortcut
+	// execution. It runs after Cobra's structural flag checks and framework input
+	// resolution, but before canonical validation.
+	// Use it only when an accepted legacy input has a different value grammar or
+	// meaning. Exact name synonyms belong in Flag.Aliases. Normalize cannot be
+	// used to satisfy a Cobra Required flag; alternatives such as "A or legacy B"
+	// are a business constraint and must be validated as such.
+	Normalize FlagNormalizer
+	DryRun    func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
+	Validate  func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
+	Execute   func(ctx context.Context, runtime *RuntimeContext) error      // main logic
 
 	// OnInvoke, when non-nil, runs from the command's cobra PreRunE — before
 	// cobra validates required flags — so its side effect fires even when the
 	// call later fails on a missing required flag (which short-circuits before
-	// Validate/Execute). The backward-compat aliases use it to record a
-	// deprecation notice that must surface regardless of whether the call
-	// validates. Fire-and-forget: no args, no return (e.g. deprecation.SetPending).
+	// Validate/Execute). It exists for side effects that must surface
+	// regardless of whether the call validates — recording a deprecation
+	// notice was the original case. No shortcut sets it at present.
+	// Fire-and-forget: no args, no return (e.g. deprecation.SetPending).
 	OnInvoke func()
 
 	// PrintFlagSchema, when non-nil, opts this shortcut into the
@@ -86,6 +96,10 @@ type Shortcut struct {
 	// has attached it to the parent. Use it to install custom help functions or
 	// tweak the command; cmd.Parent() is available at this point.
 	PostMount func(cmd *cobra.Command)
+
+	// typed is the private executable contract produced by the internal command
+	// host from extension/command. It never forms a second authoring surface.
+	typed *compiledCommand
 }
 
 // ScopesForIdentity returns the scopes applicable for the given identity.

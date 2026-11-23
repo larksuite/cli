@@ -20,7 +20,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
-		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow-guide.md and lark-base-workflow-schema.md before replacing steps", Required: true},
+		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow.md and lark-base-workflow-schema.md before replacing steps", Required: true},
 	},
 	Tips: []string{
 		"lark-cli base +workflow-update --base-token <base_token> --workflow-id <workflow_id> --json @workflow.json",
@@ -29,7 +29,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 		"workflow-id must start with wkf; do not pass a tbl table ID.",
 		"Step ids must be unique, and every next/children link must reference an existing step id.",
 		"Updating does not enable or disable a workflow; call +workflow-enable or +workflow-disable separately.",
-		"Use lark-base-workflow-guide.md as the entry guide and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
+		"Use lark-base-workflow.md as the module entry and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
@@ -38,16 +38,14 @@ var BaseWorkflowUpdate = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("workflow-id")) == "" {
 			return baseFlagErrorf("--workflow-id must not be blank")
 		}
-		pc := newParseCtx(runtime)
-		if _, err := parseJSONObject(pc, runtime.Str("json"), "json"); err != nil {
+		if _, err := parseWorkflowBodyJSON(runtime); err != nil {
 			return err
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		pc := newParseCtx(runtime)
 		var body map[string]interface{}
-		body, _ = parseJSONObject(pc, runtime.Str("json"), "json")
+		body, _ = parseWorkflowBodyJSON(runtime)
 		return common.NewDryRunAPI().
 			PUT("/open-apis/base/v3/bases/:base_token/workflows/:workflow_id").
 			Body(body).
@@ -55,8 +53,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 			Set("workflow_id", runtime.Str("workflow-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		pc := newParseCtx(runtime)
-		body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+		body, err := parseWorkflowBodyJSON(runtime)
 		if err != nil {
 			return err
 		}

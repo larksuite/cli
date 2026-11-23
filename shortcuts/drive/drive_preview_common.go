@@ -27,6 +27,8 @@ const (
 	drivePreviewIfExistsError     = "error"
 	drivePreviewIfExistsOverwrite = "overwrite"
 	drivePreviewIfExistsRename    = "rename"
+	drivePreviewTypeSourceFile    = "16"
+	drivePreviewSourceFileHint    = "Preview candidates are unavailable for this file. To fetch the source file artifact, rerun with --type source_file --output <path>."
 )
 
 type drivePreviewCandidate struct {
@@ -88,7 +90,9 @@ var drivePreviewMimeToExt = map[string]string{
 	"image/webp":               ".webp",
 	"text/csv":                 ".csv",
 	"text/html":                ".html",
+	"text/markdown":            ".md",
 	"text/plain":               ".txt",
+	"text/x-markdown":          ".md",
 	"text/xml":                 ".xml",
 	"video/mp4":                ".mp4",
 	"application/octet-stream": "",
@@ -464,7 +468,7 @@ func downloadDrivePreviewArtifactWithParams(ctx context.Context, runtime *common
 	}
 	defer resp.Body.Close()
 
-	finalPath, _, err := resolveDrivePreviewOutputPath(runtime, outputPath, resp.Header, fallbackExt, ifExists)
+	finalPath, _, err := resolveDrivePreviewOutputPath(runtime, outputPath, resp.Header, fallbackExt, ifExists, fileToken)
 	if err != nil {
 		return nil, err
 	}
@@ -492,8 +496,8 @@ func downloadDrivePreviewArtifactWithParams(ctx context.Context, runtime *common
 
 // resolveDrivePreviewOutputPath finalizes the save path, applying extension
 // inference and the selected collision policy.
-func resolveDrivePreviewOutputPath(runtime *common.RuntimeContext, outputPath string, header http.Header, fallbackExt, ifExists string) (string, *driveExtensionResolution, error) {
-	finalPath, resolution := autoAppendDrivePreviewExtension(outputPath, header, fallbackExt)
+func resolveDrivePreviewOutputPath(runtime *common.RuntimeContext, outputPath string, header http.Header, fallbackExt, ifExists, fallbackName string) (string, *driveExtensionResolution, error) {
+	finalPath, resolution := resolveDrivePreviewOutputPathName(runtime, outputPath, header, fallbackExt, fallbackName)
 	if _, err := runtime.ResolveSavePath(finalPath); err != nil {
 		return "", nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output")
 	}
@@ -520,6 +524,32 @@ func resolveDrivePreviewOutputPath(runtime *common.RuntimeContext, outputPath st
 	default:
 		return "", nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --if-exists %q: allowed values are error, overwrite, rename", ifExists).WithParam("--if-exists")
 	}
+}
+
+func resolveDrivePreviewOutputPathName(runtime *common.RuntimeContext, outputPath string, header http.Header, fallbackExt, fallbackName string) (string, *driveExtensionResolution) {
+	if drivePreviewOutputIsDirectory(runtime, outputPath) {
+		fileName, resolution := drivePreviewDefaultFileName(header, fallbackExt, fallbackName)
+		return filepath.Join(outputPath, fileName), resolution
+	}
+	return autoAppendDrivePreviewExtension(outputPath, header, fallbackExt)
+}
+
+func drivePreviewOutputIsDirectory(runtime *common.RuntimeContext, outputPath string) bool {
+	if strings.HasSuffix(outputPath, "/") || strings.HasSuffix(outputPath, "\\") {
+		return true
+	}
+	info, err := runtime.FileIO().Stat(outputPath)
+	return err == nil && info.IsDir()
+}
+
+func drivePreviewDefaultFileName(header http.Header, fallbackExt, fallbackName string) (string, *driveExtensionResolution) {
+	name := driveDownloadNormalizeFileName(larkcore.FileNameByHeader(header))
+	if name == "" {
+		name = driveDownloadNormalizeFileName(fallbackName)
+	}
+	name = sanitizeExportFileName(name, "preview")
+	name, resolution := autoAppendDrivePreviewExtension(name, header, fallbackExt)
+	return name, resolution
 }
 
 // nextAvailableDrivePreviewPath finds the first unused "name (n)" variant for a
@@ -555,6 +585,15 @@ func autoAppendDrivePreviewExtension(outputPath string, header http.Header, fall
 	normalizedPath := outputPath
 	if filepath.Ext(outputPath) == "." {
 		normalizedPath = strings.TrimSuffix(outputPath, ".")
+	}
+	if fallbackExt == "" {
+		if resolution := drivePreviewExtensionByContentDisposition(header); resolution != nil {
+			return normalizedPath + resolution.Ext, resolution
+		}
+		if resolution := drivePreviewExtensionByContentType(header.Get("Content-Type")); resolution != nil {
+			return normalizedPath + resolution.Ext, resolution
+		}
+		return normalizedPath, nil
 	}
 	if resolution := drivePreviewExtensionByContentType(header.Get("Content-Type")); resolution != nil {
 		return normalizedPath + resolution.Ext, resolution
@@ -802,6 +841,36 @@ func wrapDrivePreviewNotReady(fileToken, requested string, candidate drivePrevie
 	}
 	hint := fmt.Sprintf("rerun `lark-cli drive +preview --file-token %s --list-only` to inspect current candidate status", fileToken)
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition, reason).WithHint(hint).WithParam("--type")
+}
+
+// withDrivePreviewSourceFileHint adds source_file guidance to preview candidate
+// API failures without changing their classification or server diagnostics.
+func withDrivePreviewSourceFileHint(err error) error {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryAPI {
+		return err
+	}
+	if problem.Retryable || problem.Subtype == errs.SubtypeRateLimit {
+		return err
+	}
+	if strings.Contains(problem.Hint, "--type source_file") {
+		return err
+	}
+	if !isDrivePreviewCandidatesUnavailableProblem(problem) {
+		return err
+	}
+	if strings.TrimSpace(problem.Hint) == "" {
+		problem.Hint = drivePreviewSourceFileHint
+		return err
+	}
+	problem.Hint = strings.TrimSpace(problem.Hint) + " " + drivePreviewSourceFileHint
+	return err
+}
+
+func isDrivePreviewCandidatesUnavailableProblem(problem *errs.Problem) bool {
+	return problem != nil &&
+		problem.Code == 1 &&
+		strings.Contains(problem.Message, "mGetFilePreviewCore failed")
 }
 
 // wrapDriveCoverUnavailable builds a validation error for an unknown cover

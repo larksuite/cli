@@ -85,8 +85,11 @@ func TestMarkdownPatchDryRunLiteral(t *testing.T) {
 	if got := len(dry.API); got != 6 {
 		t.Fatalf("api steps = %d, want 6", got)
 	}
-	if got := dry.API[0].URL; got != "/open-apis/drive/v1/files/box_md_patch/download" {
+	if got := dry.API[0].URL; got != "/open-apis/drive/v1/medias/box_md_patch/preview_download" {
 		t.Fatalf("download url = %q", got)
+	}
+	if got := dry.API[0].Params["preview_type"]; got != markdownSourceFilePreviewType {
+		t.Fatalf("download preview_type = %#v", got)
 	}
 	if got := dry.API[1].URL; got != "/open-apis/drive/v1/metas/batch_query" {
 		t.Fatalf("metas url = %q", got)
@@ -120,7 +123,7 @@ func TestMarkdownPatchDryRunRegex(t *testing.T) {
 	if got := dry.Mode; got != markdownPatchModeRegex {
 		t.Fatalf("mode = %q, want %q", got, markdownPatchModeRegex)
 	}
-	if got := dry.API[0].Desc; !strings.Contains(got, "Download the current Markdown content") {
+	if got := dry.API[0].Desc; !strings.Contains(got, "Download the current Markdown source file preview artifact") {
 		t.Fatalf("download desc = %q", got)
 	}
 	if got := dry.API[3].Desc; !strings.Contains(got, "multipart overwrite upload") {
@@ -144,7 +147,7 @@ func TestMarkdownPatchReturnsSuccessWhenNothingMatches(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_patch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_patch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 	})
@@ -187,7 +190,7 @@ func TestMarkdownPatchPrettyOutputWhenNothingMatches(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_patch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_patch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 	})
@@ -224,7 +227,7 @@ func TestMarkdownPatchLiteralOverwrite(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_patch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_patch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# TODO\nTODO\n"),
 		Headers: map[string][]string{
@@ -299,7 +302,7 @@ func TestMarkdownPatchPrettyOutputWhenUpdated(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_patch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_patch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# TODO\n"),
 		Headers: map[string][]string{
@@ -360,7 +363,7 @@ func TestMarkdownPatchRegexOverwrite(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_patch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_patch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("Version: 12\nVersion: 34\n"),
 	})
@@ -429,7 +432,7 @@ func TestMarkdownPatchAllowsEmptyReplacement(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_patch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_patch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("hello world\n"),
 	})
@@ -478,7 +481,7 @@ func TestMarkdownPatchRejectsEmptyPatchedContent(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_patch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_patch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("hello\n"),
 	})
@@ -509,9 +512,10 @@ func decodeMarkdownEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]inter
 type markdownPatchDryRunOutput struct {
 	Mode string `json:"mode"`
 	API  []struct {
-		Desc string                 `json:"desc"`
-		URL  string                 `json:"url"`
-		Body map[string]interface{} `json:"body"`
+		Desc   string                 `json:"desc"`
+		URL    string                 `json:"url"`
+		Params map[string]interface{} `json:"params"`
+		Body   map[string]interface{} `json:"body"`
 	} `json:"api"`
 }
 

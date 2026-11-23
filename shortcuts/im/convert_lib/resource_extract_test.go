@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestExtractResourceRefs covers resource extraction across message types including post attachment zones.
 func TestExtractResourceRefs(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -32,6 +33,36 @@ func TestExtractResourceRefs(t *testing.T) {
 			raw:       `{"zh_cn":{"content":[[{"tag":"img","image_key":"post_img"},{"tag":"text","text":"x"}],[{"tag":"media","file_key":"post_media"}]]}}`,
 			messageID: "om_11",
 			want:      []ResourceRef{{MessageID: "om_11", Key: "post_img", Type: "image"}, {MessageID: "om_11", Key: "post_media", Type: "file"}},
+		},
+		{
+			name:      "post attachment zone files extracted (response format), folders skipped",
+			msgType:   "post",
+			raw:       `{"zh_cn":{"content":[[{"tag":"text","text":"hi"}]]},"files":[{"file_key":"file_a","file_name":"a.txt"},{"file_key":"file_b","file_name":"folder","is_folder":true}]}`,
+			messageID: "om_12",
+			want: []ResourceRef{
+				{MessageID: "om_12", Key: "file_a", Type: "file"},
+			},
+		},
+		{
+			name:      "post attachment zone folder-only not extracted",
+			msgType:   "post",
+			raw:       `{"zh_cn":{"content":[[{"tag":"text","text":"hi"}]]},"files":[{"file_key":"file_c","file_name":"assets","is_folder":true}]}`,
+			messageID: "om_14",
+			want:      nil,
+		},
+		{
+			name:      "post attachment with empty key skipped",
+			msgType:   "post",
+			raw:       `{"zh_cn":{"content":[]},"files":[{"file_name":"no key"}]}`,
+			messageID: "om_13",
+			want:      nil,
+		},
+		{
+			name:      "post attachment zone extracted without a post body (files only)",
+			msgType:   "post",
+			raw:       `{"files":[{"file_key":"file_d"}]}`,
+			messageID: "om_15",
+			want:      []ResourceRef{{MessageID: "om_15", Key: "file_d", Type: "file"}},
 		},
 	}
 

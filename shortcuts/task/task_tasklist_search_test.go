@@ -33,8 +33,8 @@ func TestBuildTasklistSearchBody(t *testing.T) {
 			check: func(t *testing.T, body map[string]interface{}) {
 				filter := body["filter"].(map[string]interface{})
 				createTime := filter["create_time"].(map[string]interface{})
-				if body["page_token"] != "pt_tl" {
-					t.Fatalf("unexpected body: %#v", body)
+				if _, present := body["page_token"]; present {
+					t.Fatalf("body unexpectedly contains page_token: %#v", body)
 				}
 				if filter["user_id"].([]string)[0] != "ou_creator" {
 					t.Fatalf("unexpected filter: %#v", filter)
@@ -80,9 +80,10 @@ func TestBuildTasklistSearchBody(t *testing.T) {
 
 func TestSearchTasklist_DryRun(t *testing.T) {
 	tests := []struct {
-		name      string
-		setup     func(*cobra.Command)
-		wantParts []string
+		name          string
+		setup         func(*cobra.Command)
+		wantPageToken string
+		wantParts     []string
 	}{
 		{
 			name: "valid dry run",
@@ -90,7 +91,8 @@ func TestSearchTasklist_DryRun(t *testing.T) {
 				_ = cmd.Flags().Set("query", "Q2")
 				_ = cmd.Flags().Set("page-token", "pt_tl")
 			},
-			wantParts: []string{"POST /open-apis/task/v2/tasklists/search", `"query":"Q2"`},
+			wantPageToken: "pt_tl",
+			wantParts:     []string{`"query":"Q2"`},
 		},
 		{
 			name: "dry run error on invalid create time",
@@ -116,7 +118,11 @@ func TestSearchTasklist_DryRun(t *testing.T) {
 					t.Fatalf("Validate() error = %v", err)
 				}
 			}
-			out := SearchTasklist.DryRun(nil, runtime).Format()
+			preview := SearchTasklist.DryRun(nil, runtime)
+			if tt.wantPageToken != "" {
+				assertSearchDryRunPageToken(t, preview, tt.wantPageToken)
+			}
+			out := preview.Format()
 			for _, want := range tt.wantParts {
 				if !strings.Contains(out, want) {
 					t.Fatalf("dry run output missing %q: %s", want, out)

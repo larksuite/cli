@@ -41,12 +41,7 @@ func TestAppsFileDownload_DryRunSignsFirst(t *testing.T) {
 		[]string{"+file-download", "--app-id", "app_x", "--path", "/x.png", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string `json:"method"`
-			URL    string `json:"url"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	if env.API[0].Method != "POST" || env.API[0].URL != fileSignURLForDownload {
 		t.Fatalf("dry-run = %s %s (want POST sign)", env.API[0].Method, env.API[0].URL)

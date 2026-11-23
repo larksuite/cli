@@ -19,7 +19,7 @@ var BaseWorkflowCreate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
-		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow-guide.md and lark-base-workflow-schema.md before constructing steps", Required: true},
+		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow.md and lark-base-workflow-schema.md before constructing steps", Required: true},
 	},
 	Tips: []string{
 		"lark-cli base +workflow-create --base-token <base_token> --json @workflow.json",
@@ -27,27 +27,21 @@ var BaseWorkflowCreate = common.Shortcut{
 		"New workflows are created disabled; call +workflow-enable after creation when the user wants it active.",
 		"Before constructing steps, use +table-list and +field-list to confirm real table and field names.",
 		"Step ids must be unique, and every next/children link must reference an existing step id.",
-		"Use lark-base-workflow-guide.md as the entry guide and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
+		"Use lark-base-workflow.md as the module entry and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
-		pc := newParseCtx(runtime)
-		raw, err := loadJSONInput(pc, runtime.Str("json"), "json")
-		if err != nil {
-			return err
-		}
-		if _, err := parseJSONObject(pc, raw, "json"); err != nil {
+		if _, err := parseWorkflowBodyJSON(runtime); err != nil {
 			return err
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		pc := newParseCtx(runtime)
 		var body map[string]interface{}
-		if raw, err := loadJSONInput(pc, runtime.Str("json"), "json"); err == nil {
-			body, _ = parseJSONObject(pc, raw, "json")
+		if parsed, err := parseWorkflowBodyJSON(runtime); err == nil {
+			body = parsed
 		}
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/workflows").
@@ -55,12 +49,7 @@ var BaseWorkflowCreate = common.Shortcut{
 			Set("base_token", runtime.Str("base-token"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		pc := newParseCtx(runtime)
-		raw, err := loadJSONInput(pc, runtime.Str("json"), "json")
-		if err != nil {
-			return err
-		}
-		body, err := parseJSONObject(pc, raw, "json")
+		body, err := parseWorkflowBodyJSON(runtime)
 		if err != nil {
 			return err
 		}

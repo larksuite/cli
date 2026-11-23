@@ -1,12 +1,10 @@
 # lark-doc 画板处理指南
 
-> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
-
 ## 两个 Skill 的职责边界
 
 | Skill             | 核心职责                                                      | 约束                              |
 |-------------------|-----------------------------------------------------------|---------------------------------|
-| `lark-doc`        | 识别画板机会、使用 Mermaid/SVG 创建图表、调度 SubAgent、插入简单 SVG 画板或复杂空白画板 | 主 Agent 不直接创作画板内容；              |
+| `lark-doc`        | 识别画板机会、使用 Mermaid/SVG 创建图表、调度 SubAgent、插入简单图表或复杂空白画板 | 简单图可由主 Agent 直接写入；复杂图再隔离到 SubAgent |
 | `lark-whiteboard` | 查询/导出已有画板；复杂图表生成（Mermaid/DSL/SVG 路由、场景选型、渲染验证）；写入已有/空白画板  | 仅特别复杂的图表或已有画板更新时由独立 SubAgent 读取 |
 
 ## 画板适用规则
@@ -29,11 +27,9 @@
 > [!IMPORTANT]
 > ⚠️ **分别对每个图表进行决策**
 
-如果有多个位置需要插入图表，你需要根据每个图表的内容**分别决定**采用步骤 2A 还是 2B
-中的方式插入这个图表。在需要插入思维导图、时序图、类图、饼图、甘特图的时候可以插入 mermaid 块，在需要插入其他类型图表时启动
-SubAgent 插入 SVG。
+如果有多个位置需要插入图表，你需要根据每个图表的内容**分别决定**采用步骤 2A 还是 2B。思维导图、时序图、类图、饼图、甘特图可插入 mermaid 块；其他类型图表使用 SVG，简单图由主 Agent 直接写入，复杂图再启动 SubAgent。
 
-建议优先使用 SVG 插入图表，除非其属于思维导图、时序图、类图、饼图、甘特图这类可以直接使用 mermaid 语法描述，且不适宜用 SVG 绘制的图表
+简单 Mermaid / SVG 图可由主 Agent 直接写入本地 XML；需要专门视觉设计、信息密度较高或容易布局翻车的 SVG，再启动 SubAgent 产出完整片段。
 
 ### 步骤 2A: 使用 mermaid 插入图表
 
@@ -44,7 +40,7 @@ SubAgent 插入 SVG。
 </whiteboard>
 ```
 
-如果 Mermaid 已在本地文件中，可写成 `<whiteboard type="mermaid" path="@diagram.mmd"></whiteboard>`；CLI 会在写入前读取文件并展开为内联内容。
+如果 Mermaid 已在本地文件中，可写成 `<whiteboard type="mermaid" path="@./diagram.mmd"></whiteboard>`；CLI 会在写入前读取文件并展开为内联内容。
 
 ### 步骤 2B: SubAgent 使用 SVG 插入图表
 
@@ -58,7 +54,7 @@ SubAgent 插入 SVG。
 </whiteboard>
 ```
 
-如果 SVG 已在本地文件中，可写成 `<whiteboard type="svg" path="@diagram.svg"></whiteboard>`；PlantUML 文件同理使用 `<whiteboard type="plantuml" path="@sequence.puml"></whiteboard>`。
+如果 SVG 已在本地文件中，可写成 `<whiteboard type="svg" path="@./diagram.svg"></whiteboard>`；PlantUML 文件同理使用 `<whiteboard type="plantuml" path="@./sequence.puml"></whiteboard>`。
 
 Sub Agent 需要携带以下的最小上下文，以及后续的 [SVG 设计 Workflow] 章节指南：
 
@@ -98,8 +94,8 @@ Sub Agent 需要携带以下的最小上下文，以及后续的 [SVG 设计 Wor
 
 ###### 画板怎么处理 SVG
 
-画板的 svg-parser 把可识别元素转成可编辑节点, 其余降级为内嵌图片(渲染没问题, 虽然不可编辑, 但是可以正常显示)；但
-`<radialGradient>` / `<filter>` / `<clipPath>` 等装饰特性画板完全不支持，会导致渲染问题（见下方⚠️）
+画板的 svg-parser 把可识别元素转成可编辑节点, 其余降级为内嵌图片(渲染没问题, 虽然不可编辑, 但是可以正常显示)；但非阴影用途的
+`<filter>` / `<pattern>` / `<clipPath>` / `<mask>` 等装饰特性画板不支持（见下方⚠️）
 **不需要所有元素都可编辑, 但必须避免使用不支持的装饰特性, 且要兼顾可编辑和美观漂亮**
 
 **可识别的元素**
@@ -109,12 +105,14 @@ Sub Agent 需要携带以下的最小上下文，以及后续的 [SVG 设计 Wor
 - 文本：`<text>` / `<tspan>` 画板硬编码 Noto Sans SC **文字必须用 `<text>`**
 - 分组：`<g>` / `<a>` / `<use>` 引用 `<symbol>`
 - 变换：`translate` / `rotate` / `scale` 正常；`skewX` / `skewY` / `matrix(...)` 降级
+- 阴影：`<filter>` 里放 `<feDropShadow>` 或标准 drop/inner primitive 链 (`<feGaussianBlur in="SourceAlpha">` + `<feOffset>` + `<feFlood>` + `<feComposite>` + `<feMerge>`), 会被识别成节点阴影, drop 至多 1 个, inner 至多 1 个; 其余 filter 效果不识别
+- 渐变：`<linearGradient>` / `<radialGradient>` 在 `<defs>` 中定义, 通过 `fill="url(#id)"` 引用 (载体限 `<rect>` / `<circle>` / `<ellipse>` / `<polygon>` / `<path>`), 需要至少 2 个 `<stop>`, `gradientUnits` 只支持默认的 `objectBoundingBox` (不写即可)
 
 > [!IMPORTANT]
-> ⚠️ ** 不支持的装饰特性**
+> ⚠️ **不支持的装饰特性**
 
-- `<radialGradient>` / `<filter>` / `<pattern>` / `<clipPath>` / `<mask>` → 画板都不支持，**请避免使用，否则会导致画板渲染问题
-  **
+- `<pattern>` / `<clipPath>` / `<mask>` / 非阴影用途的 `<filter>` (blur / hue-rotate / 复合合成 / `flood-color=url(...)` / 多个 `<feDropShadow>` 等) → 画板不支持，**请避免使用，否则会导致画板渲染问题**
+- 渐变边界：`gradientUnits="userSpaceOnUse"` / `spreadMethod="reflect|repeat"` / stops 少于 2 个 / 复杂 `gradientTransform` 会变成不可编辑图片, 视觉正确但失去可编辑性, 若无必要请沿用默认 `objectBoundingBox`
 
 ###### 3.插入后审查
 
@@ -123,9 +121,9 @@ Sub Agent 需要携带以下的最小上下文，以及后续的 [SVG 设计 Wor
 `../../lark-whiteboard/SKILL.md`](../../lark-whiteboard/SKILL.md) 编辑。
 
 ```bash
-lark-cli whiteboard +query \
+lark-cli whiteboard +export \
   --whiteboard-token "wbcnxxxxxxxx" \
-  --output_as image \
+  --output-type preview \
   --output ./preview.png
 ```
 
@@ -149,7 +147,6 @@ lark-cli whiteboard +query \
 - 不保留空白占位画板；复杂路径只有空白画板而无内容视为任务未完成
 
 ---
-
 
 ---
 

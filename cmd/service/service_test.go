@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -52,6 +53,30 @@ func driveMethod(httpMethod string, params map[string]interface{}) meta.Method {
 		}
 	}
 	return meta.FromMap(m)
+}
+
+func TestNewPreflightMissingScopeErrorUsesCanonicalFieldGate(t *testing.T) {
+	err := newPreflightMissingScopeError(
+		"feishu",
+		"cli_test",
+		"user",
+		[]string{"docx:document"},
+	)
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) {
+		t.Fatalf("error = %T, want *errs.PermissionError", err)
+	}
+	if permissionErr.Subtype != errs.SubtypeMissingScope {
+		t.Fatalf("subtype = %q, want %q", permissionErr.Subtype, errs.SubtypeMissingScope)
+	}
+	if permissionErr.ConsoleURL != "" {
+		t.Fatalf("missing_scope console_url = %q, want empty", permissionErr.ConsoleURL)
+	}
+	if len(permissionErr.MissingScopes) != 1 ||
+		permissionErr.MissingScopes[0] != "docx:document" ||
+		permissionErr.Identity != "user" {
+		t.Fatalf("permission facts = %+v", permissionErr)
+	}
 }
 
 // ── registerService ──
@@ -91,6 +116,25 @@ func TestRegisterService(t *testing.T) {
 	meth, _, err := parent.Find([]string{"base", "tables", "list"})
 	if err != nil || meth.Name() != "list" {
 		t.Fatalf("expected 'list' command, got err=%v", err)
+	}
+}
+
+func TestRegisterServiceCommands_ForNames(t *testing.T) {
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := snapshot.Catalog()
+	parent := &cobra.Command{Use: "root"}
+	f := &cmdutil.Factory{APICatalog: catalog}
+
+	RegisterServiceCommandsForNames(context.Background(), parent, f, catalog, []string{"drive", "not-a-service"})
+
+	if cmd, _, err := parent.Find([]string{"drive"}); err != nil || cmd == parent {
+		t.Fatalf("drive command not registered: cmd=%v err=%v", cmd, err)
+	}
+	if cmd, _, err := parent.Find([]string{"calendar"}); err == nil && cmd != parent {
+		t.Fatalf("calendar command unexpectedly registered from drive-only catalog")
 	}
 }
 
@@ -224,10 +268,71 @@ func TestServiceMethod_DryRun_PathParam(t *testing.T) {
 			if err := cmd.Execute(); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if !strings.Contains(stdout.String(), tt.wantInURL) {
-				t.Errorf("expected URL containing %q, got:\n%s", tt.wantInURL, stdout.String())
+			var got map[string]interface{}
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+			}
+			if got["ok"] != true || got["dry_run"] != true {
+				t.Fatalf("unexpected dry-run envelope: %#v", got)
+			}
+			data := got["data"].(map[string]interface{})
+			api := data["api"].([]interface{})
+			call := api[0].(map[string]interface{})
+			if call["url"] != tt.wantInURL {
+				t.Errorf("url = %q, want %q\nstdout:\n%s", call["url"], tt.wantInURL, stdout.String())
 			}
 		})
+	}
+}
+
+func TestServiceMethod_DryRunWithJq(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, driveSpec(), driveMethod("GET", nil), "get", "files", nil)
+	cmd.SetArgs([]string{
+		"--params", `{"file_token":"boxcn123abc"}`,
+		"--dry-run",
+		"--jq", ".data.api[0].url",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "/open-apis/drive/v1/files/boxcn123abc/copy"; got != want {
+		t.Fatalf("jq output = %q, want %q", got, want)
+	}
+}
+
+// TestServiceMethod_DryRunRendersPlainDecimals pins the previewed URL to the
+// same plain-decimal rendering the wire uses, so a previewed request is the
+// request that gets sent. The pretty form is the one that builds a URL out of
+// the params; Go's %v would print "start_time=1.7e+09" in it.
+func TestServiceMethod_DryRunRendersPlainDecimals(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	spec := meta.ServiceFromMap(map[string]interface{}{
+		"name": "svc", "servicePath": "/open-apis/svc/v1",
+	})
+	method := meta.FromMap(map[string]interface{}{
+		"path": "items", "httpMethod": "POST",
+	})
+	cmd := NewCmdServiceMethod(f, spec, method, "create", "items", nil)
+	cmd.SetArgs([]string{
+		"--params", `{"start_time":1700000000}`,
+		"--data", `{"size":1185356}`,
+		"--dry-run",
+		"--format", "pretty",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{"1700000000", "1185356"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dry-run output missing plain decimal %s:\n%s", want, out)
+		}
+	}
+	for _, bad := range []string{"1.7e+09", "1.185356e+06"} {
+		if strings.Contains(out, bad) {
+			t.Fatalf("dry-run output contains scientific notation %s:\n%s", bad, out)
+		}
 	}
 }
 
@@ -318,8 +423,12 @@ func TestServiceMethod_PaginationParamSkippedWithPageAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error with --page-all skipping page_size, got: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "Dry Run") {
-		t.Error("expected dry-run output")
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	if got["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", got["dry_run"])
 	}
 }
 
@@ -1081,11 +1190,23 @@ func TestServiceMethod_FileUpload_DryRun(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "image") {
-		t.Errorf("expected dry-run output to mention file field, got: %s", out)
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "Dry Run") {
-		t.Errorf("expected dry-run header, got: %s", out)
+	if env["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", env["dry_run"])
+	}
+	data := env["data"].(map[string]interface{})
+	api := data["api"].([]interface{})
+	call := api[0].(map[string]interface{})
+	body := call["body"].(map[string]interface{})
+	file := body["file"].(map[string]interface{})
+	if file["field"] != "image" || file["path"] != tmpFile {
+		t.Fatalf("unexpected file dry-run body: %#v", body)
+	}
+	if strings.Contains(out, "=== Dry Run ===") {
+		t.Fatalf("stdout should not contain dry-run banner: %s", out)
 	}
 }
 

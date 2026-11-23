@@ -5,7 +5,6 @@ package drive
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -59,18 +58,12 @@ var DriveCreateFolder = common.Shortcut{
 			Desc("[1] Create folder").
 			Body(spec.RequestBody())
 		if runtime.IsBot() {
-			dry.Desc("After folder creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new folder.")
+			dry.Desc("After folder creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new folder.")
 		}
 		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := newDriveCreateFolderSpec(runtime)
-
-		target := "root folder"
-		if spec.FolderToken != "" {
-			target = "folder " + common.MaskToken(spec.FolderToken)
-		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Creating folder %q in %s...\n", spec.Name, target)
 
 		data, err := runtime.CallAPITyped(
 			"POST",

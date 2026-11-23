@@ -6,9 +6,12 @@ package doc
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -16,6 +19,141 @@ import (
 )
 
 // ── V2 (OpenAPI) tests ──
+
+func TestDocsCreateV2RemoteImageDryRunDownloadsAfterDocumentCreation(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--content", `<title>Remote image</title><img href="https://93.184.216.34/photo.png"/>`,
+		"--dry-run",
+		"--as", "bot",
+	})
+	if err != nil {
+		t.Fatalf("execute docs +create dry-run: %v", err)
+	}
+	var envelope struct {
+		Data struct {
+			API []common.DryRunAPICall `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode dry-run output: %v\n%s", err, stdout)
+	}
+	if len(envelope.Data.API) < 4 {
+		t.Fatalf("dry-run API calls = %d, want create, async poll, download, and upload: %#v", len(envelope.Data.API), envelope.Data.API)
+	}
+	if got := envelope.Data.API[0].URL; got != "/open-apis/docs_ai/v1/documents" {
+		t.Fatalf("first API URL = %q, want document creation", got)
+	}
+	createBody, ok := envelope.Data.API[0].Body.(map[string]interface{})
+	if !ok {
+		t.Fatalf("create dry-run body = %#v, want object", envelope.Data.API[0].Body)
+	}
+	if got := createBody["extra_param"]; got != docsCreateAsyncExtraParam {
+		t.Fatalf("create dry-run extra_param = %#v, want %q", got, docsCreateAsyncExtraParam)
+	}
+	if got := envelope.Data.API[1].URL; got != "/open-apis/docs_ai/v1/async_tasks/<task_id>" {
+		t.Fatalf("second API URL = %q, want conditional async task poll", got)
+	}
+	if got := envelope.Data.API[2].URL; got != "https://93.184.216.34/photo.png" {
+		t.Fatalf("third API URL = %q, want remote image download", got)
+	}
+	if got := envelope.Data.API[3].URL; got != "/open-apis/drive/v1/medias/upload_all" {
+		t.Fatalf("fourth API URL = %q, want image upload", got)
+	}
+}
+
+func TestDocsCreateV2AsyncSuccessRestoresSynchronousResult(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"task": map[string]interface{}{
+			"task_id":       "task_create_1",
+			"type":          "create_document",
+			"status":        "processing",
+			"stage":         "writing_content",
+			"poll_after_ms": 3000,
+		},
+	})
+	resultJSON, err := json.Marshal(map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_async_doc",
+			"revision_id": 7,
+			"url":         "https://example.feishu.cn/docx/doxcn_async_doc",
+		},
+		"warnings": []string{"one block was normalized"},
+	})
+	if err != nil {
+		t.Fatalf("marshal task result: %v", err)
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docs_ai/v1/async_tasks/task_create_1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"task": map[string]interface{}{
+					"task_id": "task_create_1",
+					"type":    "create_document",
+					"status":  "succeeded",
+					"stage":   "finalizing",
+					"result": map[string]interface{}{
+						"create_document": string(resultJSON),
+					},
+				},
+			},
+		},
+	})
+
+	err = runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--content", "<title>异步文档</title><p>正文</p>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDocsCreateEnvelope(t, stdout)
+	doc, _ := data["document"].(map[string]interface{})
+	if got := common.GetString(doc, "document_id"); got != "doxcn_async_doc" {
+		t.Fatalf("document_id = %q, want doxcn_async_doc; data=%#v", got, data)
+	}
+	if _, ok := data["task"]; ok {
+		t.Fatalf("async success should preserve the synchronous output shape: %#v", data)
+	}
+	warnings, _ := data["warnings"].([]interface{})
+	if len(warnings) != 1 || warnings[0] != "one block was normalized" {
+		t.Fatalf("warnings = %#v", data["warnings"])
+	}
+}
+
+func TestDocsCreateV2RejectsBlockedRemoteImageBeforeDocumentCreation(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	createStub := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/docs_ai/v1/documents",
+		Optional: true,
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(createStub)
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--content", `<title>Blocked image</title><img href="http://127.0.0.1/image.png"/>`,
+		"--as", "bot",
+	})
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "href")
+	if len(createStub.CapturedBodies) != 0 {
+		t.Fatalf("document creation was called before remote image validation: %s", createStub.CapturedBody)
+	}
+}
 
 func TestDocsCreateV2BotAutoGrantSuccess(t *testing.T) {
 	t.Parallel()
@@ -63,7 +201,7 @@ func TestDocsCreateV2BotAutoGrantSuccess(t *testing.T) {
 	if grant["user_open_id"] != "ou_current_user" {
 		t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_current_user")
 	}
-	if grant["message"] != "Granted the current CLI user full_access (可管理权限) on the new document." {
+	if grant["message"] != "Granted the current CLI user full_access on the new document." {
 		t.Fatalf("permission_grant.message = %#v", grant["message"])
 	}
 
@@ -173,11 +311,9 @@ func TestDocsCreateV2BotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	if grant["status"] != common.PermissionGrantFailed {
 		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
 	}
-	if !strings.Contains(grant["message"].(string), "full_access (可管理权限)") {
-		t.Fatalf("permission_grant.message = %q, want permission hint", grant["message"])
-	}
-	if !strings.Contains(grant["message"].(string), "retry later") {
-		t.Fatalf("permission_grant.message = %q, want retry guidance", grant["message"])
+	wantMessage := "Resource was created, but granting current user full_access failed: no permission. You can retry later or continue using bot identity."
+	if grant["message"] != wantMessage {
+		t.Fatalf("permission_grant.message = %q, want %q", grant["message"], wantMessage)
 	}
 	if !strings.Contains(stderr.String(), "auto-grant failed") {
 		t.Fatalf("stderr missing auto-grant failed warning; got:\n%s", stderr.String())
@@ -283,21 +419,58 @@ func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected legacy v1 flags to be rejected")
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T, want typed problem", err)
+	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem = %s/%s, want validation/invalid_argument", problem.Category, problem.Subtype)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T, want *errs.ValidationError", err)
+	}
+	if got, want := validationErr.Param, "--markdown"; got != want {
+		t.Fatalf("param = %q, want %q", got, want)
+	}
+	presented := problem.Message + "\n" + problem.Hint
 	for _, want := range []string{
 		"docs +create is v2-only",
 		"the old v1 interface has been shut down",
 		"legacy v1 flag(s) --markdown are no longer supported",
 		"--markdown -> use --content with --doc-format markdown",
-		"lark-cli skills read lark-doc references/lark-doc-create.md",
-		"lark-cli skills read lark-doc references/lark-doc-xml.md",
-		"lark-cli skills read lark-doc references/lark-doc-md.md",
-		"follow the latest format rules",
-		"MUST NOT grep/open local SKILL.md files",
 		"lark-cli docs +create --help",
 	} {
-		if !strings.Contains(err.Error(), want) {
+		if !strings.Contains(presented, want) {
 			t.Fatalf("error missing %q: %v", want, err)
 		}
+	}
+}
+
+func TestDocsCreateV2EmptyContentFileReportsPathAndRecovery(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile("draft.xml", nil, 0o600); err != nil {
+		t.Fatalf("write empty draft: %v", err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--doc-format", "xml",
+		"--content", "@draft.xml",
+		"--as", "user",
+	})
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--content")
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error does not expose a typed problem: %v", err)
+	}
+	if got, want := problem.Message, `--content file "draft.xml" is empty`; got != want {
+		t.Fatalf("message = %q, want %q", got, want)
+	}
+	if got, want := problem.Hint, `write non-empty XML or Markdown to this file; if the path was reserved by init-draft, use the exact data.draft_path returned by that command, then retry with --content "@./<data.draft_path>"`; got != want {
+		t.Fatalf("hint = %q, want %q", got, want)
 	}
 }
 

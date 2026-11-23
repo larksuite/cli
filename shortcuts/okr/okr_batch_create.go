@@ -24,9 +24,12 @@ type batchCreateKR struct {
 
 // batchCreateObjective represents an objective in the batch create input.
 type batchCreateObjective struct {
-	Text    string          `json:"text"`
-	Mention []string        `json:"mention,omitempty"`
-	KRs     []batchCreateKR `json:"krs,omitempty"`
+	Text         string          `json:"text"`
+	Mention      []string        `json:"mention,omitempty"`
+	Notes        string          `json:"notes,omitempty"`
+	NotesMention []string        `json:"notes_mention,omitempty"`
+	CategoryID   string          `json:"category_id,omitempty"`
+	KRs          []batchCreateKR `json:"krs,omitempty"`
 }
 
 // createdObjective tracks a created objective and its KR IDs for output.
@@ -49,6 +52,25 @@ func parseBatchCreateInput(input string) ([]batchCreateObjective, error) {
 		if strings.TrimSpace(obj.Text) == "" {
 			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].text is required and cannot be empty", i).WithParam("--input")
 		}
+		if obj.Notes != "" && strings.TrimSpace(obj.Notes) == "" {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].notes cannot be blank when provided", i).WithParam("--input")
+		}
+		if obj.Notes == "" && len(obj.NotesMention) > 0 {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].notes is required when notes_mention is provided", i).WithParam("--input")
+		}
+		for j, mention := range obj.NotesMention {
+			if strings.TrimSpace(mention) == "" {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].notes_mention[%d] cannot be empty", i, j).WithParam("--input")
+			}
+		}
+		if obj.CategoryID != "" {
+			if strings.TrimSpace(obj.CategoryID) == "" {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].category_id cannot be blank when provided", i).WithParam("--input")
+			}
+			if id, err := strconv.ParseInt(obj.CategoryID, 10, 64); err != nil || id <= 0 {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].category_id must be a positive int64", i).WithParam("--input")
+			}
+		}
 		for j, kr := range obj.KRs {
 			if strings.TrimSpace(kr.Text) == "" {
 				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].krs[%d].text is required and cannot be empty", i, j).WithParam("--input")
@@ -59,10 +81,24 @@ func parseBatchCreateInput(input string) ([]batchCreateObjective, error) {
 }
 
 // createObjective calls the API to create an objective.
-func createObjective(ctx context.Context, runtime *common.RuntimeContext, cycleID, userIDType string, obj batchCreateObjective) (string, error) {
+func effectiveBatchObjectiveCategoryID(defaultCategoryID string, obj batchCreateObjective) string {
+	if obj.CategoryID != "" {
+		return obj.CategoryID
+	}
+	return defaultCategoryID
+}
+
+func createObjective(ctx context.Context, runtime *common.RuntimeContext, cycleID, userIDType, defaultCategoryID string, applyToDraft bool, obj batchCreateObjective) (string, error) {
 	content := BuildContentBlock(obj.Text, obj.Mention)
 	body := map[string]interface{}{
-		"content": content,
+		"content":        content,
+		"apply_to_draft": applyToDraft,
+	}
+	if obj.Notes != "" {
+		body["notes"] = BuildContentBlock(obj.Notes, obj.NotesMention)
+	}
+	if categoryID := effectiveBatchObjectiveCategoryID(defaultCategoryID, obj); categoryID != "" {
+		body["category_id"] = categoryID
 	}
 	queryParams := map[string]interface{}{
 		"cycle_id":     cycleID,
@@ -83,10 +119,11 @@ func createObjective(ctx context.Context, runtime *common.RuntimeContext, cycleI
 }
 
 // createKR calls the API to create a key result.
-func createKR(ctx context.Context, runtime *common.RuntimeContext, objectiveID, userIDType string, kr batchCreateKR) (string, error) {
+func createKR(ctx context.Context, runtime *common.RuntimeContext, objectiveID, userIDType string, applyToDraft bool, kr batchCreateKR) (string, error) {
 	content := BuildContentBlock(kr.Text, kr.Mention)
 	body := map[string]interface{}{
-		"content": content,
+		"content":        content,
+		"apply_to_draft": applyToDraft,
 	}
 	queryParams := map[string]interface{}{
 		"objective_id": objectiveID,
@@ -120,17 +157,31 @@ func deleteObjective(ctx context.Context, runtime *common.RuntimeContext, object
 	return nil
 }
 
-// rollback deletes created objectives in reverse order.
-// KRs are automatically deleted by the backend when the objective is deleted.
-func rollback(ctx context.Context, runtime *common.RuntimeContext, created []createdObjective) []error {
+func dropObjectiveDraft(ctx context.Context, runtime *common.RuntimeContext, objectiveID string) error {
+	path := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/draft_drop", objectiveID)
+	_, err := runtime.CallAPITyped("POST", path, nil, nil)
+	if err != nil {
+		return wrapOkrNetworkErr(err, "failed to drop objective draft %s during rollback", objectiveID)
+	}
+	return nil
+}
+
+// rollback removes created objectives in reverse order. Draft creation is rolled
+// back by dropping the draft; direct published creation uses permanent deletion.
+func rollback(ctx context.Context, runtime *common.RuntimeContext, created []createdObjective, applyToDraft bool) []error {
 	var errsList []error
 
 	// Iterate in reverse order
 	for i := len(created) - 1; i >= 0; i-- {
 		obj := created[i]
 
-		// Delete the objective (backend automatically deletes its KRs)
-		if err := deleteObjective(ctx, runtime, obj.ObjectiveID); err != nil {
+		var err error
+		if applyToDraft {
+			err = dropObjectiveDraft(ctx, runtime, obj.ObjectiveID)
+		} else {
+			err = deleteObjective(ctx, runtime, obj.ObjectiveID)
+		}
+		if err != nil {
 			//nolint:forbidigo // intermediate wrap for rollback error collection; final error is typed via buildRollbackError
 			errsList = append(errsList, fmt.Errorf("objective %s: %w", obj.ObjectiveID, err))
 		}
@@ -156,7 +207,9 @@ var OKRBatchCreate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "cycle-id", Desc: "OKR cycle ID (int64)", Required: true},
 		{Name: "input", Desc: "JSON array of objectives: [{\"text\":\"...\",\"mention\":[\"...\"],\"krs\":[{\"text\":\"...\",\"mention\":[\"...\"]}]}]", Input: []string{common.File, common.Stdin}, Required: true},
+		{Name: "category-id", Desc: "default objective category ID for objectives that do not set category_id"},
 		{Name: "user-id-type", Default: "open_id", Desc: "user ID type: open_id | union_id | user_id"},
+		{Name: "apply-to-draft", Type: "bool", Default: "true", Desc: "create content in objective drafts"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		cycleID := runtime.Str("cycle-id")
@@ -171,6 +224,15 @@ var OKRBatchCreate = common.Shortcut{
 		if _, err := parseBatchCreateInput(input); err != nil {
 			return err
 		}
+		categoryID := runtime.Str("category-id")
+		if categoryID != "" {
+			if err := common.RejectDangerousCharsTyped("--category-id", categoryID); err != nil {
+				return err
+			}
+			if id, err := strconv.ParseInt(categoryID, 10, 64); err != nil || id <= 0 {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--category-id must be a positive int64").WithParam("--category-id")
+			}
+		}
 
 		idType := runtime.Str("user-id-type")
 		if idType != "open_id" && idType != "union_id" && idType != "user_id" {
@@ -182,6 +244,8 @@ var OKRBatchCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		cycleID := runtime.Str("cycle-id")
 		userIDType := runtime.Str("user-id-type")
+		defaultCategoryID := runtime.Str("category-id")
+		applyToDraft := runtime.Bool("apply-to-draft")
 		objectives, _ := parseBatchCreateInput(runtime.Str("input"))
 
 		apis := common.NewDryRunAPI()
@@ -190,7 +254,14 @@ var OKRBatchCreate = common.Shortcut{
 			// Objective creation
 			objContent := BuildContentBlock(obj.Text, obj.Mention)
 			objBody := map[string]interface{}{
-				"content": objContent,
+				"content":        objContent,
+				"apply_to_draft": applyToDraft,
+			}
+			if obj.Notes != "" {
+				objBody["notes"] = BuildContentBlock(obj.Notes, obj.NotesMention)
+			}
+			if categoryID := effectiveBatchObjectiveCategoryID(defaultCategoryID, obj); categoryID != "" {
+				objBody["category_id"] = categoryID
 			}
 			objParams := map[string]interface{}{
 				"cycle_id":     cycleID,
@@ -207,7 +278,8 @@ var OKRBatchCreate = common.Shortcut{
 			for j, kr := range obj.KRs {
 				krContent := BuildContentBlock(kr.Text, kr.Mention)
 				krBody := map[string]interface{}{
-					"content": krContent,
+					"content":        krContent,
+					"apply_to_draft": applyToDraft,
 				}
 				krParams := map[string]interface{}{
 					"objective_id": "<objective_id_from_previous_call>",
@@ -227,6 +299,8 @@ var OKRBatchCreate = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		cycleID := runtime.Str("cycle-id")
 		userIDType := runtime.Str("user-id-type")
+		defaultCategoryID := runtime.Str("category-id")
+		applyToDraft := runtime.Bool("apply-to-draft")
 		objectives, err := parseBatchCreateInput(runtime.Str("input"))
 		if err != nil {
 			return err
@@ -241,12 +315,12 @@ var OKRBatchCreate = common.Shortcut{
 			}
 
 			// Create objective
-			objectiveID, err := createObjective(ctx, runtime, cycleID, userIDType, obj)
+			objectiveID, err := createObjective(ctx, runtime, cycleID, userIDType, defaultCategoryID, applyToDraft, obj)
 			if err != nil {
 				if len(created) == 0 {
 					return err
 				}
-				rollbackErrs := rollback(ctx, runtime, created)
+				rollbackErrs := rollback(ctx, runtime, created, applyToDraft)
 				return buildRollbackError(err, rollbackErrs, created)
 			}
 
@@ -261,10 +335,10 @@ var OKRBatchCreate = common.Shortcut{
 					time.Sleep(500 * time.Millisecond)
 				}
 
-				krID, err := createKR(ctx, runtime, objectiveID, userIDType, kr)
+				krID, err := createKR(ctx, runtime, objectiveID, userIDType, applyToDraft, kr)
 				if err != nil {
 					created = append(created, createdObj)
-					rollbackErrs := rollback(ctx, runtime, created)
+					rollbackErrs := rollback(ctx, runtime, created, applyToDraft)
 					return buildRollbackError(err, rollbackErrs, created)
 				}
 

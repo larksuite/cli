@@ -22,8 +22,10 @@ var BaseViewCreate = common.Shortcut{
 		{Name: "json", Desc: "view JSON object/array; type defaults to grid; type range: grid, kanban, gallery, calendar, gantt", Required: true},
 	},
 	Tips: []string{
-		`Example: lark-cli base +view-create --base-token <base_token> --table-id <table_id> --json '{"name":"Main","type":"grid"}'`,
+		`Example: lark-cli base +view-create --base-token <base_token> --table-id <table_id> --json '{"name":"Main","type":"grid"}' --as user`,
+		"Set the view name and type in --json; --name, --view-name, and --view-type are not supported.",
 		`Minimal: --json '{"name":"Main"}' creates a grid view.`,
+		"Read lark-base-view.md for view selection, supported configurations, and lifecycle examples.",
 		"Do not pass form as a view type; form views are managed through form commands.",
 		`Use +view-set-visible-fields after creation when the user needs a specific field order or visibility.`,
 	},

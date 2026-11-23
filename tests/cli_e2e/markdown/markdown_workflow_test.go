@@ -183,6 +183,7 @@ func TestMarkdownLifecycleWorkflow(t *testing.T) {
 }
 
 func TestMarkdownCreateWorkflow_WikiParent(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	if os.Getenv("LARK_MARKDOWN_E2E") == "" {
 		t.Skip("set LARK_MARKDOWN_E2E=1 to run markdown live workflow after backend version support is deployed")
 	}

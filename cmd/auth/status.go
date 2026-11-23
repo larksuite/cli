@@ -8,30 +8,43 @@ import (
 
 	"github.com/spf13/cobra"
 
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // StatusOptions holds all inputs for auth status.
 type StatusOptions struct {
 	Factory *cmdutil.Factory
+	Ctx     context.Context
 	Verify  bool
 	JSON    bool
 }
 
 // NewCmdAuthStatus creates the auth status subcommand.
 func NewCmdAuthStatus(f *cmdutil.Factory, runF func(*StatusOptions) error) *cobra.Command {
+	return newCmdAuthStatus(f, runF, nil)
+}
+
+func newCmdAuthStatus(
+	f *cmdutil.Factory,
+	runF func(*StatusOptions) error,
+	projector *recovery.Projector,
+) *cobra.Command {
 	opts := &StatusOptions{Factory: f}
 
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "View current auth status",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Ctx = cmd.Context()
 			if runF != nil {
 				return runF(opts)
 			}
-			return authStatusRun(opts)
+			return authStatusRun(opts, projector)
 		},
 	}
 
@@ -42,8 +55,12 @@ func NewCmdAuthStatus(f *cmdutil.Factory, runF func(*StatusOptions) error) *cobr
 	return cmd
 }
 
-func authStatusRun(opts *StatusOptions) error {
+func authStatusRun(opts *StatusOptions, projector *recovery.Projector) error {
 	f := opts.Factory
+	ctx := opts.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	config, err := f.Config()
 	if err != nil {
@@ -55,16 +72,30 @@ func authStatusRun(opts *StatusOptions) error {
 		defaultAs = "auto"
 	}
 	result := map[string]interface{}{
-		"appId":     config.AppID,
-		"brand":     config.Brand,
-		"defaultAs": defaultAs,
+		"appId":            config.AppID,
+		"brand":            config.Brand,
+		"defaultAs":        defaultAs,
+		"dpopMode":         core.EffectiveDPoPMode(config.DPoPMode),
+		"credentialSource": config.CredentialSource,
 	}
-
-	diagnostics := identitydiag.Diagnose(context.Background(), f, config, opts.Verify)
+	diagnostics := identitydiag.FilterRecovery(
+		identitydiag.Diagnose(ctx, f, config, opts.Verify),
+		projector,
+	)
+	if user := diagnostics.User; config.CredentialSource == core.CredentialSourceLocal && user.TokenType != "" {
+		result["tokenType"] = user.TokenType
+		if user.TokenType == larkauth.StoredTokenTypeDPoP {
+			result["dpopKeyStatus"] = user.DPoPKeyStatus
+			if user.DPoPKeyStatus == "available" {
+				result["dpopKeyProvider"] = user.DPoPKeyProvider
+				result["dpopKeySecurityLevel"] = user.DPoPKeySecurityLevel
+			}
+		}
+	}
 	result["identities"] = diagnostics
 	result["identity"] = effectiveIdentity(diagnostics)
 	addEffectiveVerification(result, diagnostics)
-	addStatusNote(result, diagnostics)
+	addStatusNote(result, diagnostics, projector.CanReference(recovery.TargetAuthLogin))
 
 	output.PrintJson(f.IOStreams.Out, result)
 	return nil
@@ -106,13 +137,27 @@ func addEffectiveVerification(result map[string]interface{}, d identitydiag.Resu
 	}
 }
 
-func addStatusNote(result map[string]interface{}, d identitydiag.Result) {
+func addStatusNote(result map[string]interface{}, d identitydiag.Result, canAuthLogin bool) {
 	switch {
+	case d.User.Status == identitydiag.StatusError:
+		note := d.User.Message
+		if d.User.Hint != "" {
+			note += " " + d.User.Hint
+		}
+		result["note"] = note
 	case !d.User.Available && d.Bot.Available:
-		result["note"] = "User identity is " + identitydiag.StatusMessage(d.User.Status) + "; bot identity is ready for bot/tenant API calls. Run `lark-cli auth login` to enable user identity."
+		note := "User identity is " + identitydiag.StatusMessage(d.User.Status) + "; bot identity is ready for bot/tenant API calls."
+		if canAuthLogin {
+			note += " Run `lark-cli auth login` to enable user identity."
+		}
+		result["note"] = note
 	case d.User.Status == identitydiag.StatusNeedsRefresh:
 		result["note"] = "User identity needs refresh and will be refreshed automatically on the next user API call."
 	case !d.User.Available && !d.Bot.Available:
-		result["note"] = "No usable identity is available. Configure bot credentials or run `lark-cli auth login`."
+		note := "No usable identity is available. Configure bot credentials"
+		if canAuthLogin {
+			note += " or run `lark-cli auth login`"
+		}
+		result["note"] = note + "."
 	}
 }

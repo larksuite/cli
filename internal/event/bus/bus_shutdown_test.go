@@ -74,7 +74,7 @@ func TestRunShutdownWithMultipleConns(t *testing.T) {
 
 // shutdownCh must be buffered so a signal sent before Run's select loop is still delivered.
 func TestShutdownSignalNotDroppedBeforeRunSelects(t *testing.T) {
-	b := NewBus("test-app", "test-secret", "", nil, log.New(io.Discard, "", 0))
+	b := NewBus("test-app", "test-secret", "", nil, log.New(io.Discard, "", 0), nil)
 
 	select {
 	case b.shutdownCh <- struct{}{}:

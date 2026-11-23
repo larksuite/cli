@@ -20,6 +20,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -91,13 +92,13 @@ var VCRecording = common.Shortcut{
 	Description: "Query minute_token from meeting-ids or calendar-event-ids",
 	Risk:        "read",
 	Scopes:      []string{"vc:record:readonly"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "meeting-ids", Desc: "meeting IDs, comma-separated for batch"},
 		{Name: "calendar-event-ids", Desc: "calendar event instance IDs, comma-separated for batch"},
 	},
-	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := common.ExactlyOneTyped(runtime, "meeting-ids", "calendar-event-ids"); err != nil {
 			return err
 		}
@@ -116,18 +117,13 @@ var VCRecording = common.Shortcut{
 		case runtime.Str("calendar-event-ids") != "":
 			required = scopesRecordingCalendarEventIDs
 		}
-		appID := runtime.Config.AppID
-		userOpenID := runtime.UserOpenId()
-		if appID != "" && userOpenID != "" {
-			stored := auth.GetStoredToken(appID, userOpenID)
-			if stored != nil {
-				if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
-					return errs.NewPermissionError(errs.SubtypeMissingScope,
-						"missing required scope(s): %s", strings.Join(missing, ", ")).
-						WithHint("run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")).
-						WithMissingScopes(missing...).
-						WithIdentity(string(runtime.As()))
-				}
+		result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
+		if err == nil && result != nil && result.Scopes != "" {
+			if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
+				return errs.NewPermissionError(errs.SubtypeMissingScope,
+					"missing required scope(s): %s", strings.Join(missing, ", ")).
+					WithMissingScopes(missing...).
+					WithIdentity(string(runtime.As()))
 			}
 		}
 		return nil
@@ -184,7 +180,7 @@ var VCRecording = common.Shortcut{
 				fmt.Fprintf(errOut, "%s resolving calendar_event_id=%s ...\n", recordingLogPrefix, sanitizeLogValue(instanceID))
 				relInfo, resolveErr := resolveMeetingIDsFromCalendarEvent(runtime, instanceID, calendarID, false)
 				if resolveErr != nil {
-					results = append(results, map[string]any{"calendar_event_id": instanceID, "error": resolveErr.Error()})
+					results = append(results, calendarEventResolutionFailure(runtime, instanceID, resolveErr))
 					continue
 				}
 				found := false

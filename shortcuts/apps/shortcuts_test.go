@@ -10,21 +10,66 @@ import (
 )
 
 // 钉死域内 shortcut 数量。少一条（漏挂）或多一条（误加）都会被这个测试拦截。
-// 6 基础 + 1 init + 3 publish + 1 env-pull
+// 7 基础（create/get/update/delete/list/access-scope-set/access-scope-get） + 1 init + 1 export + 3 publish + 1 env-pull + 2 features（features/feature-enable）
 //   - 6 observability（log-list/log-get/trace-list/trace-get/metric-list/analytics-list）
 //   - 3 env（list/set/delete）
-//   - 16 db（table-list/table-schema/sql/dev-init/data-import/data-export/changelog-list/
+//   - 23 db（table-list/table-schema/sql/dev-init/data-import/data-export/sync create/list/get/enable/disable/update/delete/changelog-list/
 //     audit-status/audit-enable/audit-disable/audit-list/
 //     env-diff/env-migrate/recovery-diff/recovery-apply/quota-get）
 //   - 7 file（list/get/sign/download/upload/delete/quota-get）
 //   - 3 git-credential
 //   - 5 session（create/list/get/stop/chat）+ 1 session-messages-list
 //   - 8 openapi-key（list/get/create/update/enable/disable/delete/reset）
-//   - 3 plugin（install/uninstall/list）= 63。
-func TestAppsShortcuts_Returns64(t *testing.T) {
+//   - 3 cache（get/delete/clear）
+//   - 3 plugin（install/uninstall/list）
+//   - 6 automation（list/get/create/update/enable/disable）
+//   - 9 role（role CRUD + role-member list/add/remove + role-match-list）
+//   - 6 creative app member/permission settings
+//   - 7 db-sync（create/list/get/enable/disable/update/delete）
+//   - 2 source（list/get）
+//   - 1 user-id-convert = 102。
+func TestAppsShortcuts_Returns102(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 64 {
-		t.Fatalf("Shortcuts() returned %d entries, want 64", len(got))
+	if len(got) != 102 {
+		t.Fatalf("Shortcuts() returned %d entries, want 102", len(got))
+	}
+}
+
+func TestAppsShortcuts_IncludesMemberCommandsWithExactSecurityMetadata(t *testing.T) {
+	want := map[string]struct {
+		risk  string
+		scope string
+	}{
+		"+member-list":         {risk: "read", scope: "spark:app:read"},
+		"+member-add":          {risk: "high-risk-write", scope: "spark:app:write"},
+		"+member-update":       {risk: "high-risk-write", scope: "spark:app:write"},
+		"+member-remove":       {risk: "high-risk-write", scope: "spark:app:write"},
+		"+member-settings-get": {risk: "read", scope: "spark:app:read"},
+		"+member-settings-set": {risk: "high-risk-write", scope: "spark:app:write"},
+	}
+
+	for _, sc := range Shortcuts() {
+		expected, ok := want[sc.Command]
+		if !ok {
+			continue
+		}
+		delete(want, sc.Command)
+		if sc.Hidden {
+			t.Errorf("%s must be visible", sc.Command)
+		}
+		if sc.Risk != expected.risk {
+			t.Errorf("%s risk = %q, want %q", sc.Command, sc.Risk, expected.risk)
+		}
+		if len(sc.Scopes) != 1 || sc.Scopes[0] != expected.scope {
+			t.Errorf("%s scopes = %#v, want [%q]", sc.Command, sc.Scopes, expected.scope)
+		}
+		if len(sc.AuthTypes) != 1 || sc.AuthTypes[0] != "user" {
+			t.Errorf("%s auth types = %#v, want [user]", sc.Command, sc.AuthTypes)
+		}
+	}
+
+	for command := range want {
+		t.Errorf("Shortcuts() missing %s", command)
 	}
 }
 
@@ -79,6 +124,34 @@ func TestAppsShortcuts_IncludesSessionCommands(t *testing.T) {
 	for _, sc := range Shortcuts() {
 		if _, ok := want[sc.Command]; ok {
 			want[sc.Command] = true
+		}
+	}
+	for cmd, found := range want {
+		if !found {
+			t.Errorf("Shortcuts() missing %s", cmd)
+		}
+	}
+}
+
+// 确认 role 管理命令都已挂载，避免实现存在但 shortcut 漏注册。
+func TestAppsShortcuts_IncludesRoleCommands(t *testing.T) {
+	want := map[string]bool{
+		"+role-list":          false,
+		"+role-get":           false,
+		"+role-create":        false,
+		"+role-update":        false,
+		"+role-delete":        false,
+		"+role-member-list":   false,
+		"+role-member-add":    false,
+		"+role-member-remove": false,
+		"+role-match-list":    false,
+	}
+	for _, sc := range Shortcuts() {
+		if _, ok := want[sc.Command]; ok {
+			want[sc.Command] = true
+			if sc.Hidden {
+				t.Errorf("%s must be visible", sc.Command)
+			}
 		}
 	}
 	for cmd, found := range want {

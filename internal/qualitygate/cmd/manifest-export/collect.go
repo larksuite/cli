@@ -12,6 +12,7 @@ import (
 	rootcmd "github.com/larksuite/cli/cmd"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/flagalias"
 	"github.com/larksuite/cli/internal/qualitygate/manifest"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/spf13/cobra"
@@ -30,11 +31,19 @@ func collectHandAuthored(ctx context.Context) (manifest.Manifest, error) {
 }
 
 func collectCommandIndex(ctx context.Context) (manifest.Manifest, error) {
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		return manifest.Manifest{}, err
+	}
+	catalog := snapshot.Catalog()
+	if err := catalog.Preload(catalog.Names()...); err != nil {
+		return manifest.Manifest{}, err
+	}
 	root := rootcmd.Build(ctx, cmdutil.InvocationContext{},
 		rootcmd.WithIO(strings.NewReader(""), io.Discard, io.Discard),
 		rootcmd.WithoutPlugins(),
 		rootcmd.WithoutStrictMode(),
-		rootcmd.WithServiceCatalog(registry.EmbeddedCatalog()),
+		rootcmd.WithServiceCatalog(catalog),
 	)
 
 	idx := collectFromRoot(root)
@@ -134,6 +143,7 @@ func commandDomain(c *cobra.Command, path string, source manifest.Source) string
 func flagFromPFlag(f *pflag.Flag) manifest.Flag {
 	return manifest.Flag{
 		Name:        f.Name,
+		Aliases:     flagalias.Aliases(f),
 		Shorthand:   f.Shorthand,
 		Usage:       f.Usage,
 		Hidden:      f.Hidden,
@@ -141,7 +151,7 @@ func flagFromPFlag(f *pflag.Flag) manifest.Flag {
 		TakesValue:  f.NoOptDefVal == "",
 		DefValue:    f.DefValue,
 		NoOptValue:  f.NoOptDefVal,
-		Annotations: cloneAnnotations(f.Annotations),
+		Annotations: cloneAnnotations(f.Annotations, flagalias.AnnotationAliases),
 	}
 }
 
@@ -162,13 +172,23 @@ func hasAnnotation(f *pflag.Flag, key string) bool {
 	return ok && len(values) > 0
 }
 
-func cloneAnnotations(in map[string][]string) map[string][]string {
+func cloneAnnotations(in map[string][]string, excluded ...string) map[string][]string {
 	if len(in) == 0 {
 		return nil
 	}
+	skip := make(map[string]struct{}, len(excluded))
+	for _, key := range excluded {
+		skip[key] = struct{}{}
+	}
 	out := make(map[string][]string, len(in))
 	for key, values := range in {
+		if _, ok := skip[key]; ok {
+			continue
+		}
 		out[key] = append([]string(nil), values...)
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

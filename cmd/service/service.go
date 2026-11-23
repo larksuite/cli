@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -28,23 +29,38 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// RegisterServiceCommands registers all service commands from from_meta specs.
+// RegisterServiceCommands registers every service of f.APICatalog under parent.
+// A zero (unset) Catalog has no services and registers nothing; the root
+// builder is responsible for wiring the Catalog before calling this.
 func RegisterServiceCommands(parent *cobra.Command, f *cmdutil.Factory) {
 	RegisterServiceCommandsWithContext(context.Background(), parent, f)
 }
 
+// RegisterServiceCommandsWithContext is RegisterServiceCommands with the
+// request context that method commands capture.
 func RegisterServiceCommandsWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
-	RegisterServiceCommandsFromCatalog(ctx, parent, f, registry.RuntimeCatalog())
+	RegisterServiceCommandsFromCatalog(ctx, parent, f, f.APICatalog)
 }
 
+// RegisterServiceCommandsFromCatalog registers every service of catalog,
+// parsing all of its shards.
 func RegisterServiceCommandsFromCatalog(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory, catalog apicatalog.Catalog) {
+	RegisterServiceCommandsForNames(ctx, parent, f, catalog, catalog.Names())
+}
+
+// RegisterServiceCommandsForNames registers only the named services from
+// catalog, parsing exactly those shards. Unknown names are skipped; the root
+// builder preloads its selection first so a corrupt shard fails typed before
+// dispatch instead of vanishing here.
+func RegisterServiceCommandsForNames(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory, catalog apicatalog.Catalog, names []string) {
 	// Drive the service list from the same navigation catalog the method walk
 	// uses, so registration is catalog-sourced end to end. Kept as a per-service
 	// loop rather than a flat WalkMethods(nil) drive precisely so a service with
 	// no methods still gets its bare command (WalkMethods yields one ref per
 	// method, so empty services would vanish).
-	for _, svc := range catalog.Services() {
-		if svc.Name == "" || svc.ServicePath == "" {
+	for _, name := range names {
+		svc, ok := catalog.Service(name)
+		if !ok || svc.Name == "" || svc.ServicePath == "" {
 			continue
 		}
 		registerServiceWithContext(ctx, parent, svc, f)
@@ -108,10 +124,14 @@ func serviceShort(svc meta.Service) string {
 
 // ensureChildCommand returns the child of parent named name, creating it (with
 // short) when absent — so re-registration merges into an existing command tree
-// instead of duplicating a level.
+// instead of duplicating a level. An existing child without a description (a
+// routing stub mounted before expansion) takes short as well.
 func ensureChildCommand(parent *cobra.Command, name, short string) *cobra.Command {
 	for _, c := range parent.Commands() {
 		if c.Name() == name {
+			if c.Short == "" {
+				c.Short = short
+			}
 			cmdmeta.SetSource(c, cmdmeta.SourceService, true)
 			return c
 		}
@@ -403,9 +423,9 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 
 	if opts.DryRun {
 		if fileMeta != nil {
-			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+			return cmdutil.PrintDryRunWithFile(request, config, serviceDryRunOutputOptions(f, opts), *fileMeta)
 		}
-		return serviceDryRun(f, request, config, opts.Format)
+		return serviceDryRun(f, request, config, opts)
 	}
 
 	if opts.Method.Risk == cmdutil.RiskHighRiskWrite {
@@ -490,19 +510,15 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 
 // newPreflightMissingScopeError constructs a PermissionError for the local
 // pre-flight scope check that converges byte-for-byte with the dispatcher's
-// BuildAPIError path. Uses the canonical helpers in internal/errclass so
-// Hint and Message stay in lock-step with the server-response classifier.
+// BuildAPIError path. It records the same typed facts and canonical message;
+// the root presenter supplies identity-appropriate recovery at the final
+// command boundary.
 // ConsoleURL is deliberately omitted: the dispatcher only sets it for
 // SubtypeAppScopeNotApplied (bot-perspective dev-action recovery), and this
 // pre-flight path is user-perspective SubtypeMissingScope whose recovery is
 // `lark-cli auth login --scope ...`, not a console deep-link.
-func newPreflightMissingScopeError(brand, appID, identity string, missing []string) *errs.PermissionError {
-	consoleURL := errclass.ConsoleURL(brand, appID, missing)
-	return errs.NewPermissionError(errs.SubtypeMissingScope,
-		"%s", errclass.CanonicalPermissionMessage(errs.SubtypeMissingScope, appID, missing, "")).
-		WithHint("%s", errclass.PermissionHint(missing, identity, errs.SubtypeMissingScope, consoleURL)).
-		WithMissingScopes(missing...).
-		WithIdentity(identity)
+func newPreflightMissingScopeError(brand, appID, identity string, missing []string) error {
+	return errclass.NewMissingScopeError(brand, appID, identity, missing)
 }
 
 // unusableParamValue reports whether a provided path/query parameter value
@@ -529,12 +545,28 @@ func unusableParamValue(v interface{}) bool {
 // only the --params form: a flag with its kebab name exists but belongs to
 // something else (e.g. the output --format), and the hint must not steer
 // there. Asking the binder, not cmd.Flags(), is what tells those apart.
-func missingParamHint(opts *ServiceMethodOptions, f meta.Field) string {
+func missingParamHint(opts *ServiceMethodOptions, f meta.Field) recovery.Hint {
 	paramsForm := fmt.Sprintf("--params '{%q: \"<value>\"}'", f.Name)
+	var input string
 	if opts.binder.hasTypedFlag(f.Name) {
-		return fmt.Sprintf("set --%s <value> (or %s); see: lark-cli schema %s", f.FlagName(), paramsForm, opts.SchemaPath)
+		input = fmt.Sprintf("set --%s <value> (or %s)", f.FlagName(), paramsForm)
+	} else {
+		input = fmt.Sprintf("set %s", paramsForm)
 	}
-	return fmt.Sprintf("set %s; see: lark-cli schema %s", paramsForm, opts.SchemaPath)
+	return recovery.Join("; ",
+		recovery.Text(input),
+		recovery.Command(recovery.TargetSchema, "see: lark-cli schema "+opts.SchemaPath),
+	)
+}
+
+func missingRequiredParamError(opts *ServiceMethodOptions, f meta.Field, location string) error {
+	hint := missingParamHint(opts, f)
+	return recovery.Attach(
+		errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"missing required %s parameter: %s", location, f.Name).
+			WithParam(f.Name),
+		hint,
+	)
 }
 
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
@@ -571,10 +603,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		}
 		val, ok := params[s.Name]
 		if !ok || unusableParamValue(val) {
-			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"missing required path parameter: %s", s.Name).
-				WithHint("%s", missingParamHint(opts, s)).
-				WithParam(s.Name)
+			return client.RawApiRequest{}, nil, missingRequiredParamError(opts, s, "path")
 		}
 		valStr := fmt.Sprintf("%v", val)
 		if err := validate.ResourceName(valStr, s.Name); err != nil {
@@ -592,10 +621,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		value, exists := params[s.Name]
 		isPaginationParam := opts.PageAll && (s.Name == "page_token" || s.Name == "page_size")
 		if s.Required && !isPaginationParam && (!exists || unusableParamValue(value)) {
-			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"missing required query parameter: %s", s.Name).
-				WithHint("%s", missingParamHint(opts, s)).
-				WithParam(s.Name)
+			return client.RawApiRequest{}, nil, missingRequiredParamError(opts, s, "query")
 		}
 		if exists && !unusableParamValue(value) {
 			queryParams[s.Name] = value
@@ -667,8 +693,19 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	return request, nil, nil
 }
 
-func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, format string) error {
-	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
+func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, opts *ServiceMethodOptions) error {
+	return cmdutil.PrintDryRun(request, config, serviceDryRunOutputOptions(f, opts))
+}
+
+func serviceDryRunOutputOptions(f *cmdutil.Factory, opts *ServiceMethodOptions) cmdutil.DryRunOutputOptions {
+	return cmdutil.DryRunOutputOptions{
+		Format:      opts.Format,
+		JqExpr:      opts.JqExpr,
+		CommandPath: opts.Cmd.CommandPath(),
+		Identity:    opts.As,
+		Out:         f.IOStreams.Out,
+		ErrOut:      f.IOStreams.ErrOut,
+	}
 }
 
 func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath string, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
@@ -696,20 +733,18 @@ func servicePaginate(ctx context.Context, ac *client.APIClient, request client.R
 
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
-		pf := output.NewPaginatedFormatter(out, format)
+		emitter := output.NewEmitter(output.EmitterConfig{
+			Out:            out,
+			ErrOut:         errOut,
+			CommandPath:    commandPath,
+			Identity:       string(pagOpts.Identity),
+			NoticeProvider: output.GetNotice,
+		})
 		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) error {
 			// Streaming formats intentionally emit each page after that page has
 			// passed safety scanning. A later page may still fail, so callers
 			// must use the exit code to distinguish complete vs partial output.
-			scanResult := output.ScanForSafety(commandPath, items, errOut)
-			if scanResult.Blocked {
-				return scanResult.BlockErr
-			}
-			if scanResult.Alert != nil {
-				output.WriteAlertWarning(errOut, scanResult.Alert)
-			}
-			pf.FormatPage(items)
-			return nil
+			return emitter.StreamPage(items, output.StreamOptions{Format: format.String()})
 		}, pagOpts)
 		if err != nil {
 			return err

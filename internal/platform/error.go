@@ -44,7 +44,8 @@ const (
 	ReasonCapabilitiesPanic   = "capabilities_panic"
 	// ReasonInvalidCapability flags a plugin authoring error in
 	// Capabilities() output -- e.g. a syntactically malformed
-	// RequiredCLIVersion string. This is distinct from
+	// RequiredCLIVersion string, or FailOpen paired with an actual
+	// EmbeddedSkills contribution. This is distinct from
 	// ReasonCapabilityUnmet (legitimate version mismatch): an authoring
 	// bug must NOT be hidden by FailurePolicy=FailOpen, so this code is
 	// classified as untrusted-config and aborts unconditionally.
@@ -53,4 +54,12 @@ const (
 	ReasonInstallPanic        = "install_panic"
 	ReasonDuplicatePluginName = "duplicate_plugin_name"
 	ReasonMultipleRestricts   = "multiple_restrict_plugins"
+	// ReasonInvalidSkillsOverlay flags a plugin's SkillsOverlay that cannot
+	// compose -- EmbeddedSkills() called twice, a Remove naming a skill absent
+	// from the base, or an Overlay entry missing SKILL.md.
+	ReasonInvalidSkillsOverlay = "invalid_skills_overlay"
+	// ReasonMultipleSkillsOverlays flags two or more plugins each contributing
+	// a SkillsOverlay; only one may own skill content (mirrors
+	// ReasonMultipleRestricts).
+	ReasonMultipleSkillsOverlays = "multiple_skills_overlay_plugins"
 )

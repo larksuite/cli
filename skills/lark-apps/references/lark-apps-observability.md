@@ -1,6 +1,6 @@
 # apps observability
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)（认证 / 全局参数 / 安全）。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)（认证 / 全局参数 / 安全）。
 
 查询妙搭应用的线上运行观测和产品访问分析。所有 observability 命令只支持 `--environment online`；省略 `--environment` 时默认就是 online，传 dev 或其他环境是不支持的。不要使用旧的 `--env`，也不要使用短选项。
 

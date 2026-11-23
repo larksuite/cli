@@ -13,6 +13,13 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const slidesWikiNodeByTokenPath = "/open-apis/wiki/v2/spaces/node_by_token"
+
+type slidesWikiNode struct {
+	ObjType  string
+	ObjToken string
+}
+
 // presentationRef holds a parsed --presentation input.
 //
 // Slides shortcuts accept three input shapes:
@@ -75,7 +82,7 @@ func tokenAfterPathPrefix(path, prefix string) (string, bool) {
 }
 
 // resolvePresentationID resolves a parsed ref into an xml_presentation_id.
-// Slides refs pass through; wiki refs are looked up via wiki.spaces.get_node and
+// Slides refs pass through; wiki refs are looked up via wiki.spaces.node_by_token and
 // must resolve to obj_type=slides.
 func resolvePresentationID(runtime *common.RuntimeContext, ref presentationRef) (string, error) {
 	switch ref.Kind {
@@ -84,23 +91,25 @@ func resolvePresentationID(runtime *common.RuntimeContext, ref presentationRef) 
 	case "wiki":
 		data, err := runtime.CallAPITyped(
 			"GET",
-			"/open-apis/wiki/v2/spaces/get_node",
+			slidesWikiNodeByTokenPath,
 			map[string]interface{}{"token": ref.Token},
 			nil,
 		)
 		if err != nil {
-			return "", err
+			return "", slidesWikiNodeLookupProblem(err)
 		}
-		node := common.GetMap(data, "node")
-		objType := common.GetString(node, "obj_type")
-		objToken := common.GetString(node, "obj_token")
-		if objType == "" || objToken == "" {
-			return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data")
+		nodeData := common.GetMap(data, "node")
+		node := slidesWikiNode{
+			ObjType:  common.GetString(nodeData, "obj_type"),
+			ObjToken: common.GetString(nodeData, "obj_token"),
 		}
-		if objType != "slides" {
-			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but slides shortcuts require a slides presentation", objType).WithParam("--presentation")
+		if node.ObjType == "" || node.ObjToken == "" {
+			return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node_by_token returned incomplete node data")
 		}
-		return objToken, nil
+		if node.ObjType != "slides" {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but slides shortcuts require a slides presentation", node.ObjType).WithParam("--presentation")
+		}
+		return node.ObjToken, nil
 	default:
 		// Unreachable: ref.Kind is set only by parsePresentationRef, which
 		// emits exclusively "slides" or "wiki". A hit here means an internal
@@ -108,6 +117,20 @@ func resolvePresentationID(runtime *common.RuntimeContext, ref presentationRef) 
 		// not bad user input — classify as internal, not validation.
 		return "", errs.NewInternalError(errs.SubtypeUnknown, "unsupported presentation ref kind %q", ref.Kind)
 	}
+}
+
+func slidesWikiNodeLookupProblem(err error) error {
+	if problem, ok := errs.ProblemOf(err); ok {
+		switch problem.Code {
+		case 131012:
+			problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+		case 131013, 131016:
+			problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+		case 131014:
+			problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+		}
+	}
+	return err
 }
 
 // imgSrcPlaceholderRegex matches `src="@<path>"` or `src='@<path>'` inside <img> tags.
@@ -150,6 +173,35 @@ func extractImagePlaceholderPaths(slideXMLs []string) []string {
 		}
 	}
 	return paths
+}
+
+// validateImagePlaceholderFiles checks every @-placeholder path up front:
+// exists, is a regular file, and fits the 20 MB single-part upload ceiling.
+// Callers run this during Validate so a bad path fails before any API call,
+// rather than half-way through an upload sequence.
+//
+// param names the flag the paths came from (e.g. "--slides", "--slide") so the
+// typed Param points at what the caller actually typed. The message quotes the
+// <img> element instead of writing "--slide @path", which reads as if the flag
+// argument itself were the missing image; the paths come from placeholders
+// nested inside the XML, and they resolve against the process CWD rather than
+// the directory of an @file passed to the flag.
+func validateImagePlaceholderFiles(runtime *common.RuntimeContext, param string, paths []string) error {
+	for _, path := range paths {
+		placeholder := fmt.Sprintf(`%s: <img src="@%s"> resolved from the current directory`, param, path)
+		stat, err := runtime.FileIO().Stat(path)
+		if err != nil {
+			return slidesInputStatError(err, param, placeholder)
+		}
+		if !stat.Mode().IsRegular() {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: must be a regular file", placeholder).WithParam(param)
+		}
+		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: file size %s exceeds 20 MB limit for slides image upload",
+				placeholder, common.FormatSize(stat.Size())).WithParam(param)
+		}
+	}
+	return nil
 }
 
 // xmlRootOpenTagRegex matches the first opening tag of an XML fragment:

@@ -6,6 +6,8 @@ package common
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -13,6 +15,7 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -100,6 +103,72 @@ func TestRuntimeContext_Out_WithJq_InvalidExpr_WritesStderr(t *testing.T) {
 
 	if !strings.Contains(stderr.String(), "error") {
 		t.Errorf("expected error on stderr for runtime jq error, got: %s", stderr.String())
+	}
+	problem, ok := errs.ProblemOf(rctx.outputErr)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("output error problem = %#v, %v; want validation/invalid_argument", problem, ok)
+	}
+	if got := output.ExitCodeOf(rctx.outputErr); got != output.ExitValidation {
+		t.Fatalf("output error exit code = %d, want %d", got, output.ExitValidation)
+	}
+}
+
+type failingRuntimeOutputWriter struct {
+	err error
+}
+
+func (w failingRuntimeOutputWriter) Write([]byte) (int, error) {
+	return 0, w.err
+}
+
+func TestRuntimeContext_OutRaw_PropagatesWriteError(t *testing.T) {
+	rctx, _, stderr := newJqTestContext("", "")
+	sentinel := errors.New("write failed")
+	rctx.Factory.IOStreams.Out = failingRuntimeOutputWriter{err: sentinel}
+
+	rctx.OutRaw(map[string]interface{}{"id": "1"}, nil)
+
+	if !errors.Is(rctx.outputErr, sentinel) {
+		t.Fatalf("OutRaw() output error = %v, want preserved writer cause", rctx.outputErr)
+	}
+	problem, ok := errs.ProblemOf(rctx.outputErr)
+	if !ok || problem.Category != errs.CategoryInternal {
+		t.Fatalf("OutRaw() problem = %#v, %v; want internal typed error", problem, ok)
+	}
+	if got := output.ExitCodeOf(rctx.outputErr); got != output.ExitInternal {
+		t.Fatalf("OutRaw() exit code = %d, want %d", got, output.ExitInternal)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("OutRaw() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunShortcut_OutRawWriteErrorPropagates(t *testing.T) {
+	sentinel := errors.New("write failed")
+	f := newTestFactory()
+	f.IOStreams.Out = failingRuntimeOutputWriter{err: sentinel}
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		Execute: func(_ context.Context, rctx *RuntimeContext) error {
+			rctx.OutRaw(map[string]interface{}{"id": "1"}, nil)
+			return nil
+		},
+	}
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("as", "bot")
+
+	err := runShortcut(cmd, f, s, true)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("runShortcut() error = %v, want preserved writer cause", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal {
+		t.Fatalf("runShortcut() problem = %#v, %v; want internal typed error", problem, ok)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Fatalf("runShortcut() exit code = %d, want %d", got, output.ExitInternal)
 	}
 }
 
@@ -226,6 +295,75 @@ func TestRunShortcut_JqRuntimeError_PropagatesError(t *testing.T) {
 	err := runShortcut(cmd, newTestFactory(), s, true)
 	if err == nil {
 		t.Fatal("expected error from jq runtime failure to propagate")
+	}
+}
+
+func TestRunShortcut_DryRunJSONUsesEnvelope(t *testing.T) {
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		DryRun: func(ctx context.Context, rctx *RuntimeContext) *cmdutil.DryRunAPI {
+			return cmdutil.NewDryRunAPI().GET("/open-apis/test")
+		},
+		Execute: func(ctx context.Context, rctx *RuntimeContext) error {
+			t.Fatal("Execute should not run in dry-run")
+			return nil
+		},
+	}
+	f := newTestFactory()
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("dry-run", "true")
+	cmd.Flags().Set("as", "bot")
+
+	if err := runShortcut(cmd, f, s, false); err != nil {
+		t.Fatalf("runShortcut() error = %v", err)
+	}
+	stdout := f.IOStreams.Out.(*bytes.Buffer)
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	if env["ok"] != true || env["identity"] != "bot" || env["dry_run"] != true {
+		t.Fatalf("unexpected dry-run envelope: %#v", env)
+	}
+	data := env["data"].(map[string]interface{})
+	api := data["api"].([]interface{})
+	call := api[0].(map[string]interface{})
+	if call["url"] != "/open-apis/test" {
+		t.Fatalf("api[0] = %#v", call)
+	}
+	dctx, ok := data["context"].(map[string]interface{})
+	if !ok || dctx["app_id"] != "test" {
+		t.Fatalf("runner must inject data.context like the service/api paths, got: %#v", data["context"])
+	}
+}
+
+func TestRunShortcut_DryRunWithJq(t *testing.T) {
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		DryRun: func(ctx context.Context, rctx *RuntimeContext) *cmdutil.DryRunAPI {
+			return cmdutil.NewDryRunAPI().GET("/open-apis/test")
+		},
+		Execute: func(ctx context.Context, rctx *RuntimeContext) error {
+			t.Fatal("Execute should not run in dry-run")
+			return nil
+		},
+	}
+	f := newTestFactory()
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("dry-run", "true")
+	cmd.Flags().Set("jq", ".dry_run")
+	cmd.Flags().Set("as", "bot")
+
+	if err := runShortcut(cmd, f, s, false); err != nil {
+		t.Fatalf("runShortcut() error = %v", err)
+	}
+	stdout := f.IOStreams.Out.(*bytes.Buffer)
+	if got := strings.TrimSpace(stdout.String()); got != "true" {
+		t.Fatalf("jq output = %q, want true", got)
 	}
 }
 

@@ -4,8 +4,11 @@
 package localfileio
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -35,9 +38,9 @@ func TestSafeOutputPath_RejectsPathTraversalAndDangerousInput(t *testing.T) {
 		{"dot-dot mid path", "subdir/../../etc/passwd", true},
 		{"triple dot-dot", "../../../etc/shadow", true},
 
-		// ── GIVEN: absolute paths → THEN: rejected ──
-		{"absolute path unix", "/etc/passwd", true},
-		{"absolute path root", "/tmp/evil", true},
+		// ── GIVEN: absolute paths outside the built-in allowlist → THEN: rejected ──
+		{"absolute path denylist", "/etc/passwd", true},
+		{"allow prefix boundary", "/tmpfoo/x", true},
 		{"absolute path windows drive", `C:\Users\agent\secret.txt`, true},
 		{"absolute path windows drive slash", "C:/Users/agent/secret.txt", true},
 		{"absolute path windows rooted", `\Users\agent\secret.txt`, true},
@@ -57,7 +60,10 @@ func TestSafeOutputPath_RejectsPathTraversalAndDangerousInput(t *testing.T) {
 
 		// ── GIVEN: looks dangerous but is actually safe → THEN: allowed ──
 		{"literal percent 2e", "%2e%2e/etc/passwd", false},
-		{"tilde path", "~/file.txt", false},
+
+		// ── GIVEN: ~ expands to the home directory, which is not an allow
+		// root by itself (only ~/files is) → THEN: rejected ──
+		{"tilde path outside allowlist", "~/file.txt", true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			// WHEN: SafeOutputPath validates the path
@@ -66,6 +72,72 @@ func TestSafeOutputPath_RejectsPathTraversalAndDangerousInput(t *testing.T) {
 			// THEN: error matches expectation
 			if (err != nil) != tt.wantErr {
 				t.Errorf("SafeOutputPath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLocalInputPath_AllowsLocalNamespaceWithoutRewriting(t *testing.T) {
+	for _, input := range []string{
+		"/tmp/report.pdf",
+		"../outside/report.pdf",
+		"./report.pdf",
+		"nested/../report.pdf",
+		`C:\Users\agent\report.pdf`,
+		"报告.pdf",
+	} {
+		t.Run(input, func(t *testing.T) {
+			got, err := LocalInputPath(input)
+			if err != nil {
+				t.Fatalf("LocalInputPath(%q) error = %v", input, err)
+			}
+			if got != input {
+				t.Fatalf("LocalInputPath(%q) = %q, want path preserved verbatim", input, got)
+			}
+		})
+	}
+}
+
+func TestWindowsNonLocalNamespace(t *testing.T) {
+	for _, input := range []string{
+		`\\server\share\report.pdf`,
+		`//server/share/report.pdf`,
+		`\\.\pipe\upload`,
+		`\\?\C:\Users\agent\report.pdf`,
+		`\\?\UNC\server\share\report.pdf`,
+		`\??\C:\Users\agent\report.pdf`,
+	} {
+		if !isWindowsNonLocalNamespace(input) {
+			t.Errorf("isWindowsNonLocalNamespace(%q) = false, want true", input)
+		}
+	}
+
+	for _, input := range []string{
+		`C:\Users\agent\report.pdf`,
+		`C:/Users/agent/report.pdf`,
+		`..\outside\report.pdf`,
+		`.\report.pdf`,
+	} {
+		if isWindowsNonLocalNamespace(input) {
+			t.Errorf("isWindowsNonLocalNamespace(%q) = true, want false", input)
+		}
+	}
+}
+
+func TestLocalInputPath_RejectsEmptyControlAndDangerousUnicode(t *testing.T) {
+	for _, input := range []string{
+		"",
+		"   ",
+		"file\x00.txt",
+		"file\tname.txt",
+		"file\nname.txt",
+		"file\rname.txt",
+		"file\u202Ename.txt",
+		"file\u200Bname.txt",
+	} {
+		t.Run(fmt.Sprintf("%q", input), func(t *testing.T) {
+			if _, err := LocalInputPath(input); err == nil {
+				t.Fatalf("LocalInputPath(%q) unexpectedly succeeded", input)
 			}
 		})
 	}
@@ -175,40 +247,49 @@ func TestSafeOutputPath_DeepNonExistentPathStaysInCWD(t *testing.T) {
 	}
 }
 
-func TestSafeEnvFilePath_AllowsAbsoluteFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "credential")
+func TestOpenEnvFile_AllowsAbsoluteFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "credential")
 	if err := os.WriteFile(path, []byte("secret"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := SafeEnvFilePath(path, "TEST_CREDENTIAL_FILE")
+	file, err := OpenEnvFile(path, "TEST_CREDENTIAL_FILE")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want, _ := filepath.EvalSymlinks(path)
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+	defer file.Close()
+	got, err := io.ReadAll(file)
+	if err != nil || string(got) != "secret" {
+		t.Fatalf("read = (%q, %v), want fixture contents", got, err)
 	}
 }
 
-func TestSafeEnvFilePath_RejectsRelativePath(t *testing.T) {
-	_, err := SafeEnvFilePath("credential", "TEST_CREDENTIAL_FILE")
-	if err == nil {
-		t.Fatal("expected error for relative path, got nil")
+func TestOpenEnvFile_RejectsInvalidPathsWithoutEchoingThem(t *testing.T) {
+	dir := t.TempDir()
+	const marker = "private-path-marker"
+	for _, tc := range []struct{ name, path, reason string }{
+		{"relative", marker, "absolute path"},
+		{"control character", filepath.Join(dir, marker+"\n"), "control characters"},
+		{"missing", filepath.Join(dir, marker), "existing file"},
+		{"directory", dir, "regular file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := OpenEnvFile(tc.path, "TEST_CREDENTIAL_FILE")
+			if file != nil {
+				file.Close()
+			}
+			if err == nil || !strings.Contains(err.Error(), "TEST_CREDENTIAL_FILE") ||
+				!strings.Contains(err.Error(), tc.reason) || strings.Contains(err.Error(), marker) {
+				t.Fatalf("error = %v, want %q without path", err, tc.reason)
+			}
+		})
 	}
 }
 
-func TestSafeEnvFilePath_RejectsDirectory(t *testing.T) {
-	_, err := SafeEnvFilePath(t.TempDir(), "TEST_CREDENTIAL_FILE")
-	if err == nil {
-		t.Fatal("expected error for directory, got nil")
-	}
-}
-
-func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
-	// GIVEN: a real temp file (absolute path under os.TempDir())
-	f, err := os.CreateTemp("", "upload-test-*.bin")
+func TestSafeInputPath_AllowsBuiltinTmpAbsolutePath(t *testing.T) {
+	// GIVEN: a real file under the built-in /tmp allow root (the system temp
+	// dir on Windows)
+	f, err := os.CreateTemp(tmpRoot(), "upload-test-*.bin")
 	if err != nil {
 		t.Fatalf("CreateTemp: %v", err)
 	}
@@ -216,12 +297,74 @@ func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 	f.Close()
 	t.Cleanup(func() { os.Remove(tmpPath) })
 
-	// WHEN: SafeUploadPath validates the absolute temp path
-	_, err = SafeInputPath(tmpPath)
+	// WHEN: SafeInputPath validates the absolute temp path
+	got, err := SafeInputPath(tmpPath)
 
-	// THEN: absolute paths are rejected even in temp dir
+	// THEN: accepted — /tmp is on the built-in allowlist
+	if err != nil {
+		t.Fatalf("SafeInputPath(%q) error = %v, want nil", tmpPath, err)
+	}
+	want, _ := filepath.EvalSymlinks(tmpPath)
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestSafeOutputPath_AllowsHomeFilesWithoutTouchingDisk(t *testing.T) {
+	// GIVEN: a target under ~/files that does not exist (validation must not
+	// require the directory to exist, and must not create it)
+	// trustedHome, not $HOME: the policy derives ~/files from the account
+	// record, and on a host where the two disagree (sudo, a container) the
+	// $HOME-based target would not be the allow root under test.
+	home, err := trustedHome()
+	if err != nil {
+		t.Skipf("no trusted home: %v", err)
+	}
+	target := filepath.Join(home, "files", "safeoutput-test-nonexistent", "out.xlsx")
+
+	// WHEN: SafeOutputPath validates the path
+	_, err = SafeOutputPath(target)
+
+	// THEN: accepted — ~/files is on the built-in allowlist
+	if err != nil {
+		t.Fatalf("SafeOutputPath(%q) error = %v, want nil", target, err)
+	}
+	// The validation must not have created the directory it approved.
+	if _, statErr := os.Stat(filepath.Dir(target)); !os.IsNotExist(statErr) {
+		t.Errorf("validation created the target directory, stat err = %v", statErr)
+	}
+}
+
+func TestSafePath_DenyBeatsCwd(t *testing.T) {
+	// GIVEN: the process works inside a denylisted directory
+	if runtime.GOOS == "windows" {
+		t.Skip("/etc does not exist on Windows")
+	}
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	if err := os.Chdir("/etc"); err != nil {
+		t.Skipf("cannot chdir into /etc: %v", err)
+	}
+
+	// WHEN: a cwd-relative path is validated
+	_, err := SafeInputPath("./passwd")
+
+	// THEN: rejected — the denylist wins over the cwd allow root
 	if err == nil {
-		t.Fatal("expected error for absolute temp path, got nil")
+		t.Fatal("expected denylist rejection inside /etc, got nil")
+	}
+	if !strings.Contains(err.Error(), "denylist") {
+		t.Errorf("error should mention the denylist, got: %v", err)
+	}
+}
+
+func TestLocalInputPath_DeniesProtectedDirs(t *testing.T) {
+	// GIVEN/WHEN: the relaxed tier validates a denylisted absolute path
+	_, err := LocalInputPath(denylistedAbsolutePath(t))
+
+	// THEN: rejected — the denylist applies even without allowlist containment
+	if err == nil {
+		t.Fatal("expected denylist rejection, got nil")
 	}
 }
 

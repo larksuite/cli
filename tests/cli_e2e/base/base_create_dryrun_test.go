@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestBaseCreateDryRun(t *testing.T) {
@@ -34,24 +33,24 @@ func TestBaseCreateDryRun(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	require.Equal(t, "/open-apis/base/v3/bases", gjson.Get(out, "api.0.url").String(), out)
-	require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), out)
-	require.Equal(t, "Project Tracker", gjson.Get(out, "api.0.body.name").String(), out)
-	require.Equal(t, "Asia/Shanghai", gjson.Get(out, "api.0.body.time_zone").String(), out)
+	require.Equal(t, "/open-apis/base/v3/bases", clie2e.DryRunGet(out, "api.0.url").String(), out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), out)
+	require.Equal(t, "Project Tracker", clie2e.DryRunGet(out, "api.0.body.name").String(), out)
+	require.Equal(t, "Asia/Shanghai", clie2e.DryRunGet(out, "api.0.body.time_zone").String(), out)
 
-	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables", gjson.Get(out, "api.1.url").String(), out)
-	require.Equal(t, "GET", gjson.Get(out, "api.1.method").String(), out)
-	require.Equal(t, int64(0), gjson.Get(out, "api.1.params.offset").Int(), out)
-	require.Equal(t, int64(100), gjson.Get(out, "api.1.params.limit").Int(), out)
+	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables", clie2e.DryRunGet(out, "api.1.url").String(), out)
+	require.Equal(t, "GET", clie2e.DryRunGet(out, "api.1.method").String(), out)
+	require.Equal(t, int64(0), clie2e.DryRunGet(out, "api.1.params.offset").Int(), out)
+	require.Equal(t, int64(100), clie2e.DryRunGet(out, "api.1.params.limit").Int(), out)
 
-	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables", gjson.Get(out, "api.2.url").String(), out)
-	require.Equal(t, "POST", gjson.Get(out, "api.2.method").String(), out)
-	require.Equal(t, "Tasks", gjson.Get(out, "api.2.body.name").String(), out)
-	require.Equal(t, "Title", gjson.Get(out, "api.2.body.fields.0.name").String(), out)
-	require.Equal(t, "Status", gjson.Get(out, "api.2.body.fields.1.name").String(), out)
+	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables", clie2e.DryRunGet(out, "api.2.url").String(), out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.2.method").String(), out)
+	require.Equal(t, "Tasks", clie2e.DryRunGet(out, "api.2.body.name").String(), out)
+	require.Equal(t, "Title", clie2e.DryRunGet(out, "api.2.body.fields.0.name").String(), out)
+	require.Equal(t, "Status", clie2e.DryRunGet(out, "api.2.body.fields.1.name").String(), out)
 
-	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E", gjson.Get(out, "api.3.url").String(), out)
-	require.Equal(t, "DELETE", gjson.Get(out, "api.3.method").String(), out)
+	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E", clie2e.DryRunGet(out, "api.3.url").String(), out)
+	require.Equal(t, "DELETE", clie2e.DryRunGet(out, "api.3.method").String(), out)
 }
 
 func TestBaseCreateDryRunTableNameOnlyRenamesDefaultTable(t *testing.T) {
@@ -73,17 +72,17 @@ func TestBaseCreateDryRunTableNameOnlyRenamesDefaultTable(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	require.Equal(t, "/open-apis/base/v3/bases", gjson.Get(out, "api.0.url").String(), out)
-	require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), out)
-	require.Equal(t, "Project Tracker", gjson.Get(out, "api.0.body.name").String(), out)
+	require.Equal(t, "/open-apis/base/v3/bases", clie2e.DryRunGet(out, "api.0.url").String(), out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), out)
+	require.Equal(t, "Project Tracker", clie2e.DryRunGet(out, "api.0.body.name").String(), out)
 
-	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables", gjson.Get(out, "api.1.url").String(), out)
-	require.Equal(t, "GET", gjson.Get(out, "api.1.method").String(), out)
+	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables", clie2e.DryRunGet(out, "api.1.url").String(), out)
+	require.Equal(t, "GET", clie2e.DryRunGet(out, "api.1.method").String(), out)
 
-	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E", gjson.Get(out, "api.2.url").String(), out)
-	require.Equal(t, "PATCH", gjson.Get(out, "api.2.method").String(), out)
-	require.Equal(t, "Tasks", gjson.Get(out, "api.2.body.name").String(), out)
-	require.False(t, gjson.Get(out, "api.3").Exists(), out)
+	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E", clie2e.DryRunGet(out, "api.2.url").String(), out)
+	require.Equal(t, "PATCH", clie2e.DryRunGet(out, "api.2.method").String(), out)
+	require.Equal(t, "Tasks", clie2e.DryRunGet(out, "api.2.body.name").String(), out)
+	require.False(t, clie2e.DryRunGet(out, "api.3").Exists(), out)
 }
 
 func TestBaseCreateDryRunFieldsOnlyUsesDefaultTableName(t *testing.T) {
@@ -105,8 +104,8 @@ func TestBaseCreateDryRunFieldsOnlyUsesDefaultTableName(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables", gjson.Get(out, "api.2.url").String(), out)
-	require.Equal(t, "POST", gjson.Get(out, "api.2.method").String(), out)
-	require.Equal(t, "Table 1", gjson.Get(out, "api.2.body.name").String(), out)
-	require.Equal(t, "Title", gjson.Get(out, "api.2.body.fields.0.name").String(), out)
+	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables", clie2e.DryRunGet(out, "api.2.url").String(), out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.2.method").String(), out)
+	require.Equal(t, "Table 1", clie2e.DryRunGet(out, "api.2.body.name").String(), out)
+	require.Equal(t, "Title", clie2e.DryRunGet(out, "api.2.body.fields.0.name").String(), out)
 }

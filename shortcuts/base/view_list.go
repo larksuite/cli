@@ -20,22 +20,11 @@ var BaseViewList = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
-		pageSizeLimitAliasFlag(),
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateLimitPageSizeAlias(runtime); err != nil {
-			return err
-		}
-		if _, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200); err != nil {
-			return err
-		}
-		if runtime.Changed("page-size") {
-			if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 200); err != nil {
-				return err
-			}
-		}
-		return nil
+		_, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200)
+		return err
 	},
 	DryRun: dryRunViewList,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

@@ -14,18 +14,25 @@ const (
 const (
 	SubtypeInvalidArgument    Subtype = "invalid_argument"    // user-supplied flag / arg failed validation (gRPC INVALID_ARGUMENT alignment)
 	SubtypeFailedPrecondition Subtype = "failed_precondition" // request is valid but the system/resource state is not in the state required to execute; caller must change state (not retry) — e.g. ambiguous remote mapping (gRPC FAILED_PRECONDITION alignment)
+	SubtypeCommandUnavailable Subtype = "command_unavailable" // command not included in this build (integrator-restricted distribution); absent, not gated
 )
 
 // CategoryAuthentication subtypes
 const (
-	SubtypeTokenMissing        Subtype = "token_missing"         // no token in request (Authorization header absent / no local token cache)
-	SubtypeTokenInvalid        Subtype = "token_invalid"         // token present but content/format wrong
-	SubtypeTokenExpired        Subtype = "token_expired"         // token explicitly expired
-	SubtypeRefreshTokenInvalid Subtype = "refresh_token_invalid" // refresh_token is v1 legacy format, unusable
-	SubtypeRefreshTokenExpired Subtype = "refresh_token_expired" // refresh_token expired
-	SubtypeRefreshTokenRevoked Subtype = "refresh_token_revoked" // refresh_token revoked (user logout / admin action)
-	SubtypeRefreshTokenReused  Subtype = "refresh_token_reused"  // refresh_token already used (single-use rotation triggered)
-	SubtypeRefreshServerError  Subtype = "refresh_server_error"  // refresh endpoint transient error (retryable)
+	SubtypeTokenMissing        Subtype = "token_missing"          // no token in request (Authorization header absent / no local token cache)
+	SubtypeTokenInvalid        Subtype = "token_invalid"          // token present but content/format wrong
+	SubtypeTokenExpired        Subtype = "token_expired"          // token explicitly expired
+	SubtypeRefreshTokenInvalid Subtype = "refresh_token_invalid"  // refresh_token is v1 legacy format, unusable
+	SubtypeRefreshTokenExpired Subtype = "refresh_token_expired"  // refresh_token expired
+	SubtypeRefreshTokenRevoked Subtype = "refresh_token_revoked"  // refresh_token revoked (user logout / admin action)
+	SubtypeRefreshTokenReused  Subtype = "refresh_token_reused"   // refresh_token already used (single-use rotation triggered)
+	SubtypeRefreshServerError  Subtype = "refresh_server_error"   // refresh endpoint transient error (retryable)
+	SubtypeDPoPKeyMissing      Subtype = "dpop_key_missing"       // DPoP-bound token has no accessible matching private key
+	SubtypeDPoPProofFailed     Subtype = "dpop_proof_failed"      // client could not construct a valid per-request proof
+	SubtypeDPoPTokenRejected   Subtype = "dpop_token_rejected"    // Token Endpoint rejected the supplied DPoP proof
+	SubtypeDPoPRequired        Subtype = "dpop_required"          // local policy/proof request requires DPoP but the credential is Bearer
+	SubtypeDPoPClockSyncFailed Subtype = "dpop_clock_sync_failed" // server requested iat recovery but clock synchronization failed
+	SubtypeDPoPBindingMismatch Subtype = "dpop_binding_mismatch"  // access token and local key binding are inconsistent
 )
 
 // CategoryAuthorization subtypes
@@ -53,20 +60,26 @@ const (
 	SubtypeNetworkTLS       Subtype = "tls"          // TLS handshake / cert failure
 	SubtypeNetworkDNS       Subtype = "dns"          // DNS resolution failure
 	SubtypeNetworkServer    Subtype = "server_error" // upstream HTTP 5xx
+	SubtypeNetworkProtocol  Subtype = "protocol"     // peer answered but broke the HTTP contract (e.g. a 206 whose Content-Range is not the range we resumed from); retrying the same request cannot help
+	// SubtypeNetworkRepresentationChanged marks a transfer abandoned because the
+	// resource changed while it was being read. The peer behaved correctly, so
+	// this is retryable: starting the transfer over reads the current version.
+	SubtypeNetworkRepresentationChanged Subtype = "representation_changed"
 )
 
 // CategoryAPI subtypes
 const (
-	SubtypeRateLimit         Subtype = "rate_limit"         // request rate limit exceeded
-	SubtypeConflict          Subtype = "conflict"           // resource state conflict (e.g. concurrent modification)
-	SubtypeCrossTenant       Subtype = "cross_tenant"       // operation crosses tenant boundary (not supported)
-	SubtypeCrossBrand        Subtype = "cross_brand"        // operation crosses brand boundary (feishu vs lark, not supported)
-	SubtypeInvalidParameters Subtype = "invalid_parameters" // API-side parameter validation rejected the request
-	SubtypeOwnershipMismatch Subtype = "ownership_mismatch" // caller is not the resource owner
-	SubtypeNotFound          Subtype = "not_found"          // referenced resource does not exist (HTTP 404 alignment)
-	SubtypeServerError       Subtype = "server_error"       // upstream server-side transient error (HTTP 5xx alignment, retryable)
-	SubtypeQuotaExceeded     Subtype = "quota_exceeded"     // resource quota / collection size limit reached (assignees, followers, members, etc.)
-	SubtypeAlreadyExists     Subtype = "already_exists"     // idempotency violation: resource already exists in target state
+	SubtypeRateLimit           Subtype = "rate_limit"            // request rate limit exceeded
+	SubtypeConflict            Subtype = "conflict"              // resource state conflict (e.g. concurrent modification)
+	SubtypeCrossTenant         Subtype = "cross_tenant"          // operation crosses tenant boundary (not supported)
+	SubtypeCrossBrand          Subtype = "cross_brand"           // operation crosses brand boundary (feishu vs lark, not supported)
+	SubtypeInvalidParameters   Subtype = "invalid_parameters"    // API-side parameter validation rejected the request
+	SubtypeOwnershipMismatch   Subtype = "ownership_mismatch"    // caller is not the resource owner
+	SubtypeNotFound            Subtype = "not_found"             // referenced resource does not exist (HTTP 404 alignment)
+	SubtypeServerError         Subtype = "server_error"          // upstream server-side transient error (HTTP 5xx alignment, retryable)
+	SubtypeQuotaExceeded       Subtype = "quota_exceeded"        // resource quota / collection size limit reached (assignees, followers, members, etc.)
+	SubtypeAlreadyExists       Subtype = "already_exists"        // idempotency violation: resource already exists in target state
+	SubtypeFeatureNotAvailable Subtype = "feature_not_available" // the resource exists, but this integration cannot manage the requested feature
 )
 
 // CategoryPolicy subtypes (security-policy envelope shape)
@@ -78,11 +91,12 @@ const (
 
 // CategoryInternal subtypes
 const (
-	SubtypeSDKError        Subtype = "sdk_error"        // lark SDK Do() returned an unexpected error
-	SubtypeInvalidResponse Subtype = "invalid_response" // SDK response body not parsable as JSON
-	SubtypeFileIO          Subtype = "file_io"          // local file I/O failure (mkdir / write / read)
-	SubtypeExternalTool    Subtype = "external_tool"    // an external tool the CLI shells out to (git, npx) failed at runtime; the tool output is in the message
-	SubtypeStorage         Subtype = "storage"          // local persistence failure (e.g. config file save)
+	SubtypeSDKError         Subtype = "sdk_error"         // lark SDK Do() returned an unexpected error
+	SubtypeInvalidResponse  Subtype = "invalid_response"  // SDK response body not parsable as JSON
+	SubtypeFileIO           Subtype = "file_io"           // local file I/O failure (mkdir / write / read)
+	SubtypeExternalTool     Subtype = "external_tool"     // an external tool the CLI shells out to (git, npx) failed at runtime; the tool output is in the message
+	SubtypeStorage          Subtype = "storage"           // local persistence failure (e.g. config file save)
+	SubtypeCatalogIntegrity Subtype = "catalog_integrity" // embedded API catalog manifest or service shard failed integrity validation
 	// Generic untyped error lifted to InternalError uses SubtypeUnknown.
 )
 

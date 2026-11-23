@@ -17,6 +17,7 @@ import (
 )
 
 func TestDrive_DuplicateRemoteWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)

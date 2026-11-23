@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -28,6 +29,7 @@ type flagView interface {
 	StrArray(name string) []string
 	StrSlice(name string) []string
 	Changed(name string) bool
+	InputResolvedFromSource(name string) bool
 	// Command returns the shortcut command this view feeds (e.g.
 	// "+pivot-create"). Used to look up the schema entry for
 	// schema-driven flag validation; both standalone and batch sub-op
@@ -118,20 +120,36 @@ func (m mapFlagView) lookup(name string) (interface{}, bool) {
 // lookupRaw resolves a flag name against the user-supplied input only, trying
 // the exact key then the hyphen↔underscore variants.
 func (m mapFlagView) lookupRaw(name string) (interface{}, bool) {
-	if v, ok := m.raw[name]; ok {
-		return v, true
-	}
-	if alt := strings.ReplaceAll(name, "-", "_"); alt != name {
-		if v, ok := m.raw[alt]; ok {
-			return v, true
+	_, v, ok := m.lookupRawWithKey(name)
+	return v, ok
+}
+
+func (m mapFlagView) lookupRawWithKey(name string) (string, interface{}, bool) {
+	for _, key := range []string{
+		name,
+		strings.ReplaceAll(name, "-", "_"),
+		strings.ReplaceAll(name, "_", "-"),
+	} {
+		if v, ok := m.raw[key]; ok {
+			return key, v, true
 		}
 	}
-	if alt := strings.ReplaceAll(name, "_", "-"); alt != name {
-		if v, ok := m.raw[alt]; ok {
-			return v, true
+	canonicalName := strings.ReplaceAll(name, "_", "-")
+	aliases := make([]string, 0, len(commandFlagAliases[m.command]))
+	for alias, target := range commandFlagAliases[m.command] {
+		if strings.ReplaceAll(target, "_", "-") == canonicalName {
+			aliases = append(aliases, alias)
 		}
 	}
-	return nil, false
+	slices.Sort(aliases)
+	for _, alias := range aliases {
+		for _, key := range []string{alias, strings.ReplaceAll(alias, "-", "_")} {
+			if v, ok := m.raw[key]; ok {
+				return key, v, true
+			}
+		}
+	}
+	return "", nil, false
 }
 
 func (m mapFlagView) Str(name string) string {
@@ -236,6 +254,8 @@ func (m mapFlagView) Changed(name string) bool {
 	return ok
 }
 
+func (m mapFlagView) InputResolvedFromSource(name string) bool { return false }
+
 // validateRawTypes rejects sub-op input fields whose JSON type contradicts the
 // flag's declared type in flag-defs. +batch-update skips parse-time schema
 // validation for `operations`, and Int/Float64/Bool silently fall back to
@@ -281,22 +301,107 @@ func (m mapFlagView) validateRawTypes() error {
 			// parse time; reject here too to keep batch/standalone parity.
 			f, isNum := val.(float64)
 			if !isNum {
-				return fmt.Errorf("--%s must be a number, got %s", name, jsonTypeName(val))
+				return fmt.Errorf("--%s must be a number, got %s", name, jsonTypeName(val)) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
 			}
 			if math.Trunc(f) != f {
-				return fmt.Errorf("--%s must be an integer, got %s", name, strconv.FormatFloat(f, 'g', -1, 64))
+				return fmt.Errorf("--%s must be an integer, got %s", name, strconv.FormatFloat(f, 'g', -1, 64)) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
 			}
 		case "float64":
 			if _, isNum := val.(float64); !isNum {
-				return fmt.Errorf("--%s must be a number, got %s", name, jsonTypeName(val))
+				return fmt.Errorf("--%s must be a number, got %s", name, jsonTypeName(val)) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
 			}
 		case "bool":
 			if _, isBool := val.(bool); !isBool {
-				return fmt.Errorf("--%s must be a boolean, got %s", name, jsonTypeName(val))
+				return fmt.Errorf("--%s must be a boolean, got %s", name, jsonTypeName(val)) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
 			}
 		}
 	}
 	return nil
+}
+
+// normalizeAndValidateEnums applies the same flat string-enum contract as the
+// standalone cobra path. Canonical casing and known aliases are rewritten in
+// place; unknown values are rejected before a translator can silently fall
+// back to a different operation.
+func (m *mapFlagView) normalizeAndValidateEnums() error {
+	defs, err := loadFlagDefs()
+	if err != nil {
+		return nil //nolint:nilerr // match validateRawTypes: missing embedded metadata must not block the batch
+	}
+	spec, ok := defs[m.command]
+	if !ok {
+		return nil
+	}
+	for _, df := range spec.Flags {
+		if df.Kind == "system" || df.Type != "string" || len(df.Enum) == 0 {
+			continue
+		}
+		rawKey, raw, changed := m.lookupRawWithKey(df.Name)
+		if !changed {
+			continue
+		}
+		value, ok := raw.(string)
+		if !ok {
+			return fmt.Errorf("--%s must be a string, got %s", df.Name, jsonTypeName(raw)) //nolint:forbidigo // intermediate error; batch dispatcher adds typed operations context
+		}
+		if value == "" || slices.Contains(df.Enum, value) {
+			continue
+		}
+		if canonical := canonicalEnumValue(value, df.Enum); canonical != "" {
+			m.raw[rawKey] = canonical
+			continue
+		}
+		// A retired value means "as if omitted" — delete the key so Changed()
+		// also reports it as absent, matching the standalone path.
+		if isRetiredEnumValue(m.command, df.Name, value) {
+			delete(m.raw, rawKey)
+			continue
+		}
+		message := fmt.Sprintf("invalid value %q for --%s, allowed: %s", value, df.Name, strings.Join(df.Enum, ", "))
+		if match := closestEnumValue(value, df.Enum); match != "" {
+			message += fmt.Sprintf("; did you mean %q?", match)
+		}
+		return fmt.Errorf("%s", message) //nolint:forbidigo // intermediate error; batch dispatcher adds typed operations context
+	}
+	return nil
+}
+
+// normalizeRangeSheetPrefix mirrors the standalone chainRangeSheetPrefix
+// rewrite (range_sheet_prefix.go) for the map-backed paths, +batch-update
+// sub-ops and +cells-set --writes items: one that named its sheet only inside
+// "range" ("Sheet1!A1:D20") gets sheet_name filled in and the bare range left
+// behind, so every form accepts the same input.
+//
+// The derived selector is written under the underscore key the sub-op input
+// vocabulary uses, and left as the only spelling of it; lookupRaw is
+// separator-tolerant, so a translator asking for "sheet-name" finds it anyway.
+func (m *mapFlagView) normalizeRangeSheetPrefix() {
+	if !rangeSheetPrefixApplies(m.command) {
+		return
+	}
+	if strings.TrimSpace(m.Str("sheet-id")) != "" || strings.TrimSpace(m.Str("sheet-name")) != "" {
+		return
+	}
+	rangeKey, raw, ok := m.lookupRawWithKey(rangeSheetPrefixFlag)
+	if !ok {
+		return
+	}
+	value, isString := raw.(string)
+	if !isString {
+		return
+	}
+	sheet, rest, ok := splitRangeSheetPrefix(value)
+	if !ok {
+		return
+	}
+	m.raw[rangeKey] = rest
+	// Drop the hyphen spelling before writing the underscore one. An item may
+	// carry both when their values agree (normalizeSubOpInputKeys keeps a
+	// harmless duplicate rather than erroring), and lookupRaw answers with the
+	// first spelling it finds — so an empty "sheet-name" left in place would
+	// shadow the selector just derived and fail as "no sheet selector".
+	delete(m.raw, "sheet-name")
+	m.raw["sheet_name"] = sheet
 }
 
 // jsonTypeName names the JSON kind of a value decoded by encoding/json, for

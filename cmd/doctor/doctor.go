@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -18,10 +19,13 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/update"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // DoctorOptions holds inputs for the doctor command.
@@ -33,6 +37,17 @@ type DoctorOptions struct {
 
 // NewCmdDoctor creates the doctor command.
 func NewCmdDoctor(f *cmdutil.Factory) *cobra.Command {
+	return newCmdDoctor(f, nil)
+}
+
+// NewCmdDoctorWithRecovery creates the doctor command with a build-local
+// recovery presenter. Distribution assembly uses this boundary; ordinary
+// callers keep NewCmdDoctor's original function signature and default output.
+func NewCmdDoctorWithRecovery(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
+	return newCmdDoctor(f, projector)
+}
+
+func newCmdDoctor(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
 	opts := &DoctorOptions{Factory: f}
 
 	cmd := &cobra.Command{
@@ -40,7 +55,7 @@ func NewCmdDoctor(f *cmdutil.Factory) *cobra.Command {
 		Short: "CLI health check: config, auth, and connectivity",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Ctx = cmd.Context()
-			return doctorRun(opts)
+			return doctorRun(opts, projector)
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
@@ -74,14 +89,14 @@ func skip(name, msg string) checkResult {
 	return checkResult{Name: name, Status: "skip", Message: msg}
 }
 
-func doctorRun(opts *DoctorOptions) error {
+func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 	f := opts.Factory
 	var checks []checkResult
 
 	// ── 0. CLI version & update check ──
 	checks = append(checks, pass("cli_version", build.Version))
-	if !opts.Offline {
-		checks = append(checks, checkCLIUpdate()...)
+	if !opts.Offline && projector.CanReference(recovery.TargetUpdate) {
+		checks = append(checks, checkCLIUpdate(opts.Ctx)...)
 	}
 
 	// ── 1. Config file ──
@@ -96,7 +111,7 @@ func doctorRun(opts *DoctorOptions) error {
 		msg, hint := err.Error(), ""
 		if errors.Is(err, os.ErrNotExist) {
 			var cfgErr *errs.ConfigError
-			if errors.As(core.NotConfiguredError(), &cfgErr) {
+			if errors.As(projector.Render(core.NotConfiguredError()), &cfgErr) {
 				msg, hint = cfgErr.Message, cfgErr.Hint
 			}
 		}
@@ -110,7 +125,7 @@ func doctorRun(opts *DoctorOptions) error {
 	if err != nil {
 		hint := ""
 		var cfgErr *errs.ConfigError
-		if errors.As(err, &cfgErr) {
+		if errors.As(projector.Render(err), &cfgErr) {
 			hint = cfgErr.Hint
 		}
 		checks = append(checks, fail("app_resolved", err.Error(), hint))
@@ -118,10 +133,27 @@ func doctorRun(opts *DoctorOptions) error {
 	}
 	checks = append(checks, pass("app_resolved", fmt.Sprintf("app: %s (%s)", cfg.AppID, cfg.Brand)))
 
+	// An external credential provider resolves the account without consulting
+	// profiles at all, so an explicit selector is silently inert. Say so:
+	// nothing else in the session will. ProfileName is only populated by the
+	// built-in config-backed provider, which makes it the provider telltale.
+	if f.Invocation.Profile != "" && cfg.ProfileName == "" {
+		selector := "--profile"
+		if f.Invocation.ProfileSource == core.ProfileFromEnvironment {
+			selector = envvars.CliProfile
+		}
+		checks = append(checks, warn("profile_selector",
+			fmt.Sprintf("%s=%q is ignored: credentials are provided externally", selector, f.Invocation.Profile),
+			fmt.Sprintf("unset %s, or remove the external credential variables to select accounts by profile", selector)))
+	}
+
 	ep := core.ResolveEndpoints(cfg.Brand)
 
 	// ── 3. Identity readiness ──
-	diagnostics := identitydiag.Diagnose(opts.Ctx, f, cfg, !opts.Offline)
+	diagnostics := identitydiag.FilterRecovery(
+		identitydiag.Diagnose(opts.Ctx, f, cfg, !opts.Offline),
+		projector,
+	)
 	checks = append(checks,
 		identityCheck("bot_identity", diagnostics.Bot),
 		identityCheck("user_identity", diagnostics.User),
@@ -157,8 +189,8 @@ func networkChecks(ctx context.Context, opts *DoctorOptions, ep core.Endpoints) 
 		}
 	}
 
-	// Use the shared proxy-plugin-aware transport so connectivity checks reflect
-	// the real egress path (and are blocked when proxy plugin fails closed).
+	// Connectivity checks are platform traffic and must exercise the same
+	// provider-aware route as real platform requests.
 	httpClient := transport.NewHTTPClient(0)
 	mcpURL := ep.MCP + "/mcp"
 
@@ -169,18 +201,18 @@ func networkChecks(ctx context.Context, opts *DoctorOptions, ep core.Endpoints) 
 	}
 
 	var wg sync.WaitGroup
-	results := make([]probeResult, 2)
+	results := []probeResult{{name: "endpoint_open"}, {name: "endpoint_mcp"}}
 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		defer func() { recover() }()
-		results[0] = probeResult{"endpoint_open", ep.Open, probeEndpoint(ctx, httpClient, ep.Open)}
+		results[0].url, results[0].err = probeEndpoint(ctx, httpClient, ep.Open)
 	}()
 	go func() {
 		defer wg.Done()
 		defer func() { recover() }()
-		results[1] = probeResult{"endpoint_mcp", mcpURL, probeEndpoint(ctx, httpClient, mcpURL)}
+		results[1].url, results[1].err = probeEndpoint(ctx, httpClient, mcpURL)
 	}()
 	wg.Wait()
 
@@ -196,37 +228,52 @@ func networkChecks(ctx context.Context, opts *DoctorOptions, ep core.Endpoints) 
 }
 
 // probeEndpoint sends a HEAD request to check reachability.
-func probeEndpoint(ctx context.Context, client *http.Client, url string) error {
+func probeEndpoint(ctx context.Context, client *http.Client, rawURL string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
 	if err != nil {
-		return err
+		return rawURL, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		var effective urlrewrite.RequestError
+		var requestErr *url.Error
+		if errors.As(err, &effective) && errors.As(err, &requestErr) {
+			cloned := *requestErr
+			cloned.URL = effective.EffectiveRequestURL()
+			return cloned.URL, &cloned
+		}
+		return rawURL, err
 	}
 	resp.Body.Close()
-	return nil
+	if resp.Request != nil && resp.Request.URL != nil {
+		actual := *resp.Request.URL
+		actual.User, actual.RawQuery, actual.Fragment = nil, "", ""
+		actual.ForceQuery = false
+		return actual.String(), nil
+	}
+	return rawURL, nil
 }
 
-// checkCLIUpdate actively queries the npm registry for the latest version.
+// checkCLIUpdate actively queries the configured source for its target version.
 // Unlike the root-level async check, this does a synchronous fetch with timeout
 // and works regardless of build version (dev builds included).
-func checkCLIUpdate() []checkResult {
-	latest, err := update.FetchLatest()
+func checkCLIUpdate(ctx context.Context) []checkResult {
+	target, err := fetchLatestForDoctor(ctx)
 	if err != nil {
 		return []checkResult{warn("cli_update", "check failed: "+err.Error(), "")}
 	}
 	current := build.Version
-	if update.IsNewer(latest, current) {
+	if target.Available(current) {
 		return []checkResult{warn("cli_update",
-			fmt.Sprintf("%s → %s available", current, latest),
+			fmt.Sprintf("%s → %s available", current, target.Version),
 			"run: lark-cli update")}
 	}
-	return []checkResult{pass("cli_update", latest+" (up to date)")}
+	return []checkResult{pass("cli_update", target.Version+" (up to date)")}
 }
+
+var fetchLatestForDoctor = update.FetchTarget
 
 func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
 	allOK := true

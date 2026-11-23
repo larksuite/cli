@@ -6,14 +6,11 @@ package convertlib
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 // ParseJSONObject parses a raw JSON string into a map.
@@ -72,161 +69,66 @@ func formatTimestamp(ts string) string {
 	return time.Unix(n, 0).Local().Format("2006-01-02 15:04:05")
 }
 
-// ResolveSenderNames batch-resolves sender open_ids to display names.
-// The cache map is used to share already-resolved IDs across calls; newly resolved
-// names are written back into it. Pass an empty map if no prior cache exists.
-//
-// Step 1: extract names from message mentions (free, no API call).
-// Step 2: for remaining unresolved IDs, call contact batch API (requires contact:user.base:readonly).
-// Silently returns partial results on API error.
-//
-// [#22] Changed from variadic `cache ...map[string]string` to a required parameter.
-// The variadic form was misleading: every caller passed exactly one map, and the function
-// body both modified it and returned it, making the dual semantics confusing.
-func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]interface{}, cache map[string]string) map[string]string {
+// pickSenderName returns the server-provided display name from a message sender:
+// the plain `sender_name` (the server's default-locale name). Callers wanting a
+// specific locale should read the full `sender_i18n_names` map, which is preserved
+// on the sender. Returns "" when the server supplied no name, so the caller can
+// fall back to the raw id.
+func pickSenderName(sender map[string]interface{}) string {
+	name, _ := sender["sender_name"].(string)
+	return name
+}
+
+// ResolveSenderNames harvests the server-provided sender_name for each message
+// sender into the shared cache (keyed by sender id), so a sender appearing across
+// the render tree (e.g. merge_forward sub-items, thread replies) resolves once.
+// The message read API is the single source of truth for names (opt in via
+// with_sender_name=true); there is NO contact/mention fallback — a sender the
+// server did not name resolves to its id downstream. Pass an empty map if none exists.
+func ResolveSenderNames(_ *common.RuntimeContext, messages []map[string]interface{}, cache map[string]string) map[string]string {
 	nameMap := cache
 	if nameMap == nil {
 		nameMap = make(map[string]string)
 	}
-
-	// Step 1: extract names from mentions (free)
-	for _, msg := range messages {
-		switch mentions := msg["mentions"].(type) {
-		case []interface{}:
-			for _, raw := range mentions {
-				m, _ := raw.(map[string]interface{})
-				id, _ := m["id"].(string)
-				name, _ := m["name"].(string)
-				if id != "" && name != "" && strings.HasPrefix(id, "ou_") {
-					nameMap[id] = name
-				}
-			}
-		case []map[string]interface{}:
-			// Backward-compatible path for tests/callers that construct typed slices.
-			for _, m := range mentions {
-				id, _ := m["id"].(string)
-				name, _ := m["name"].(string)
-				if id != "" && name != "" && strings.HasPrefix(id, "ou_") {
-					nameMap[id] = name
-				}
-			}
-		}
-	}
-
-	// Collect sender IDs still missing a name
-	seen := make(map[string]bool)
-	var missingIDs []string
 	for _, msg := range messages {
 		sender, ok := msg["sender"].(map[string]interface{})
 		if !ok {
 			continue
 		}
-		senderType, _ := sender["sender_type"].(string)
-		if senderType != "user" {
-			continue
-		}
 		id, _ := sender["id"].(string)
-		if id == "" || !strings.HasPrefix(id, "ou_") || seen[id] || nameMap[id] != "" {
+		if id == "" {
 			continue
 		}
-		seen[id] = true
-		missingIDs = append(missingIDs, id)
+		if name := pickSenderName(sender); name != "" {
+			nameMap[id] = name
+		}
 	}
-	if len(missingIDs) == 0 {
-		return nameMap
-	}
-
-	// Step 2: batch resolve remaining via contact API.
-	// Use basic_batch for user identity (lighter permission requirement),
-	// full batch for bot identity.
-	if runtime.As().IsBot() {
-		batchResolveUsers(runtime, missingIDs, nameMap)
-	} else {
-		batchResolveByBasicContact(runtime, missingIDs, nameMap)
-	}
-
 	return nameMap
 }
 
-// batchResolveByBasicContact resolves user names via POST /contact/v3/users/basic_batch.
-// This API has lighter permission requirements and works with user identity
-// even when the target user is not in the app's visible range.
-// Response uses "users" (not "items") and "user_id" (not "open_id").
-// The basic_batch endpoint caps user_ids at 10 per request.
-func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []string, nameMap map[string]string) {
-	const batchSize = 10
-	for i := 0; i < len(missingIDs); i += batchSize {
-		end := i + batchSize
-		if end > len(missingIDs) {
-			end = len(missingIDs)
-		}
-		batch := missingIDs[i:end]
-
-		data, err := runtime.DoAPIJSONTyped(http.MethodPost,
-			"/open-apis/contact/v3/users/basic_batch",
-			larkcore.QueryParams{"user_id_type": []string{"open_id"}},
-			map[string]interface{}{"user_ids": batch},
-		)
-		if err != nil {
-			break
-		}
-
-		users, _ := data["users"].([]interface{})
-		for _, item := range users {
-			user, _ := item.(map[string]interface{})
-			userID, _ := user["user_id"].(string)
-			name, _ := user["name"].(string)
-			if userID != "" && name != "" {
-				nameMap[userID] = name
-			}
-		}
-	}
-}
-
-func batchResolveUsers(runtime *common.RuntimeContext, missingIDs []string, nameMap map[string]string) {
-	const batchSize = 50
-	for i := 0; i < len(missingIDs); i += batchSize {
-		end := i + batchSize
-		if end > len(missingIDs) {
-			end = len(missingIDs)
-		}
-		batch := missingIDs[i:end]
-
-		parts := []string{"user_id_type=open_id"}
-		for _, uid := range batch {
-			parts = append(parts, "user_ids="+url.QueryEscape(uid))
-		}
-		apiURL := "/open-apis/contact/v3/users/batch?" + strings.Join(parts, "&")
-
-		data, err := runtime.DoAPIJSONTyped(http.MethodGet, apiURL, nil, nil)
-		if err != nil {
-			break
-		}
-
-		items, _ := data["items"].([]interface{})
-		for _, item := range items {
-			user, _ := item.(map[string]interface{})
-			openID, _ := user["open_id"].(string)
-			name, _ := user["name"].(string)
-			if openID != "" && name != "" {
-				nameMap[openID] = name
-			}
-		}
-	}
-}
-
-// AttachSenderNames enriches message sender objects with resolved display names.
-// Senders whose name could not be resolved are left unchanged (id is preserved).
+// AttachSenderNames enriches message sender objects with a single resolved display
+// name in `name`, taken from the server-provided sender_name (via the sender itself
+// or the shared cache). Senders the server did not name keep no `name` (id is
+// preserved for downstream id fallback) — there is no contact/mention lookup.
+//
+// The raw `sender_name` is stripped from the output because it exactly duplicates
+// `name`; `sender_i18n_names` (the full i18n set, all locales) and `open_bot_id`
+// are preserved for consumers that need a specific locale or the id alignment.
 func AttachSenderNames(messages []map[string]interface{}, nameMap map[string]string) {
 	for _, msg := range messages {
 		sender, ok := msg["sender"].(map[string]interface{})
 		if !ok {
 			continue
 		}
-		id, _ := sender["id"].(string)
-		if name, ok := nameMap[id]; ok {
+		if name := pickSenderName(sender); name != "" {
 			sender["name"] = name
+		} else if id, _ := sender["id"].(string); id != "" {
+			if name, ok := nameMap[id]; ok {
+				sender["name"] = name
+			}
 		}
+		// sender_name exactly duplicates `name`; drop it. Keep sender_i18n_names + open_bot_id.
+		delete(sender, "sender_name")
 	}
 }
 

@@ -59,9 +59,13 @@ var AppsDBAuditEnable = common.Shortcut{
 		retention := rctx.Str("retention")
 		stop := rctx.StartSpinner("Enabling audit logging for " + table)
 		defer stop()
-		data, err := rctx.CallAPITyped("POST", appAuditSetPath(appID),
-			dbEnvParams(rctx, map[string]interface{}{}),
-			map[string]interface{}{"table": table, "enabled": true, "retention": retention})
+		// Retried on DTS init lock contention only; see db_dts_retry.go for why that
+		// is safe to repeat and why the wait is deliberately short.
+		data, err := callWithDTSLockRetry(rctx.Ctx(), func() (map[string]interface{}, error) {
+			return rctx.CallAPITyped("POST", appAuditSetPath(appID),
+				dbEnvParams(rctx, map[string]interface{}{}),
+				map[string]interface{}{"table": table, "enabled": true, "retention": retention})
+		})
 		stop()
 		if err != nil {
 			return withAppsHint(err, dbAuditSetHint)
@@ -117,9 +121,13 @@ var AppsDBAuditDisable = common.Shortcut{
 			return err
 		}
 		table := strings.TrimSpace(rctx.Str("table"))
-		data, err := rctx.CallAPITyped("POST", appAuditSetPath(appID),
-			dbEnvParams(rctx, map[string]interface{}{}),
-			map[string]interface{}{"table": table, "enabled": false})
+		// The disable path also initializes the DTS task (to narrow the subscription),
+		// so it contends on the same lock and is retried the same way.
+		data, err := callWithDTSLockRetry(rctx.Ctx(), func() (map[string]interface{}, error) {
+			return rctx.CallAPITyped("POST", appAuditSetPath(appID),
+				dbEnvParams(rctx, map[string]interface{}{}),
+				map[string]interface{}{"table": table, "enabled": false})
+		})
 		if err != nil {
 			return withAppsHint(err, dbAuditSetHint)
 		}

@@ -50,7 +50,7 @@ _公共四件套 · 系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--properties` | string + File + Stdin（复合 JSON） | required | 筛选视图规则 JSON，含 `rules?`（列级筛选规则数组）和 `filtered_columns?`。`range` 和 `view_name` 是独立 flag |
 | `--range` | string | required | 筛选视图作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--properties` 中同名字段；create 必填，必须覆盖表头行 |
-| `--view-name` | string | optional | 筛选视图名称；create 不传时系统自动分配，update 不传时保留原名；优先级高于 `--properties` 中同名字段 |
+| `--view-name` | string | optional | 筛选视图名称；不传时系统自动分配；优先级高于 `--properties` 中同名字段 |
 
 ### `+filter-view-update`
 
@@ -134,4 +134,4 @@ lark-cli sheets +filter-view-create --url "..." --sheet-id "$SID" \
 
 - `Validate`：XOR 公共四件套；`+filter-view-create` 校验 `--range` 起始行为表头（第一行）；`+filter-view-update` 必须先 `+filter-view-list` 确认 view 存在，`--properties` 必传（整组覆盖式）；`+filter-view-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：输出"将要 POST/PATCH/DELETE 的 view 请求模板"，零网络副作用；`--sheet-name` 在 dry-run 输出里生成为 `<resolve:Sheet1>` 占位符。
-- `Execute`：写后不自动回读；如需确认，自行调用 `+filter-view-list --view-id <new>` 比对当前 range + rules。
+- `Execute`：写后不自动回读；create/update 后必须调用 `+filter-view-list --view-id <id>` 比对 range + rules；delete 后 list 确认目标 view 不存在。

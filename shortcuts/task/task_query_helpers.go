@@ -24,6 +24,14 @@ func splitAndTrimCSV(input string) []string {
 	return out
 }
 
+func buildSearchPageParams(pageToken string) map[string]interface{} {
+	params := map[string]interface{}{}
+	if pageToken != "" {
+		params["page_token"] = pageToken
+	}
+	return params
+}
+
 func parseTimeRangeMillis(input string) (string, string, error) {
 	if strings.TrimSpace(input) == "" {
 		return "", "", nil
@@ -156,6 +164,7 @@ func outputTaskSummary(task map[string]interface{}) map[string]interface{} {
 			}
 		}
 	}
+	projectTaskFields(out, task, taskOutputMembers, taskOutputStart, taskOutputStatus)
 	return out
 }
 
@@ -190,6 +199,7 @@ func outputRelatedTask(task map[string]interface{}) map[string]interface{} {
 			out["completed_at"] = completed
 		}
 	}
+	projectTaskFields(out, task, taskOutputStart, taskOutputDue)
 	return out
 }
 

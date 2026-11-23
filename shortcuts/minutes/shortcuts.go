@@ -5,6 +5,8 @@ package minutes
 
 import "github.com/larksuite/cli/shortcuts/common"
 
+const minutesASRQuotaNotEnoughHint = "The ASR/AI quota was exhausted while generating this minute; check the minute's detail page for details."
+
 // Shortcuts returns all minutes shortcuts.
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
@@ -12,6 +14,7 @@ func Shortcuts() []common.Shortcut {
 		MinutesDownload,
 		MinutesUpload,
 		MinutesUpdate,
+		MinutesApplyPermission,
 		MinutesSummary,
 		MinutesTodo,
 		MinutesSpeakerReplace,

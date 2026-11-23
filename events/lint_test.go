@@ -9,11 +9,19 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/schemas"
 )
 
 func TestAllKeys_FieldOverridePointersResolve(t *testing.T) {
-	for _, def := range event.ListAll() {
+	snap, err := catalog.Compile(All(), catalog.StrategyRefs{
+		catalog.StrategyNone,
+		catalog.StrategyLegacyPreConsume,
+	})
+	if err != nil {
+		t.Fatalf("compile catalog: %v", err)
+	}
+	for _, def := range snap.Definitions() {
 		if len(def.Schema.FieldOverrides) == 0 {
 			continue
 		}

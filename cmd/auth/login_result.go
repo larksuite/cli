@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -20,6 +22,42 @@ type loginScopeSummary struct {
 	AlreadyGranted []string
 	Granted        []string
 	Missing        []string
+	StatusMessage  string
+	Refresh        *loginRefreshInfo
+}
+
+// loginRefreshInfo records whether the issued token can be renewed, so a
+// login that received no refresh_token is reported before its 2-hour access
+// token runs out instead of surfacing later as an unexplained re-login.
+type loginRefreshInfo struct {
+	Issued      bool
+	ExpiresAt   time.Time
+	Fix         string
+	SettingsURL string
+}
+
+func newLoginRefreshInfo(brand core.LarkBrand, appID string, token *larkauth.StoredUAToken) *loginRefreshInfo {
+	return &loginRefreshInfo{
+		Issued:      token.RefreshToken != "",
+		ExpiresAt:   time.UnixMilli(token.ExpiresAt),
+		Fix:         larkauth.NoRefreshTokenFix(brand, appID),
+		SettingsURL: larkauth.NoRefreshTokenSettingsURL(brand, appID),
+	}
+}
+
+// writeNoRefreshTokenWarning prints the human-readable warning for a login
+// that cannot be renewed automatically.
+func writeNoRefreshTokenWarning(streams *cmdutil.IOStreams, msg *loginMsg, refresh *loginRefreshInfo) {
+	if refresh == nil || refresh.Issued {
+		return
+	}
+	fmt.Fprintln(streams.ErrOut)
+	fmt.Fprintf(streams.ErrOut, "WARN: "+msg.NoRefreshToken+"\n", refresh.ExpiresAt.Local().Format("2006-01-02 15:04:05"))
+	fmt.Fprintln(streams.ErrOut, msg.NoRefreshTokenCause)
+	fmt.Fprintln(streams.ErrOut, msg.NoRefreshTokenFix)
+	if refresh.SettingsURL != "" {
+		fmt.Fprintf(streams.ErrOut, msg.NoRefreshTokenSettings+"\n", refresh.SettingsURL)
+	}
 }
 
 type loginScopeIssue struct {
@@ -59,7 +97,8 @@ func ensureRequestedScopesGranted(requestedScope, grantedScope string, msg *logi
 // previously stored scopes, and the newly granted scopes from the current login.
 func loadLoginScopeSummary(appID, openId, requestedScope, grantedScope string) *loginScopeSummary {
 	previousScope := ""
-	if previous := larkauth.GetStoredToken(appID, openId); previous != nil {
+	previous, _ := larkauth.GetStoredToken(appID, openId)
+	if previous != nil {
 		previousScope = previous.Scope
 	}
 	return buildLoginScopeSummary(requestedScope, previousScope, grantedScope)
@@ -114,11 +153,27 @@ func uniqueScopeList(scope string) []string {
 
 // formatScopeList joins scopes for display and falls back to the provided empty
 // label when the input slice is empty.
-func formatScopeList(scopes []string, empty string) string {
+func formatScopeList(scopes []string, empty, separator string) string {
 	if len(scopes) == 0 {
 		return empty
 	}
-	return strings.Join(scopes, " ")
+	return strings.Join(scopes, separator)
+}
+
+// grantedRequestedScopes returns requested scopes that are not in the missing
+// set, preserving the order of the authorization request.
+func grantedRequestedScopes(summary *loginScopeSummary) []string {
+	missing := make(map[string]bool, len(summary.Missing))
+	for _, scope := range summary.Missing {
+		missing[scope] = true
+	}
+	granted := make([]string, 0, len(summary.Requested))
+	for _, scope := range summary.Requested {
+		if !missing[scope] {
+			granted = append(granted, scope)
+		}
+	}
+	return granted
 }
 
 // emptyIfNil normalizes nil slices to empty slices for stable JSON output.
@@ -129,14 +184,47 @@ func emptyIfNil(s []string) []string {
 	return s
 }
 
-// writeLoginScopeBreakdown renders the requested/newly granted scope
-// breakdown to stderr.
+// writeLoginScopeBreakdown renders the compact granted/not-granted result.
 func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary *loginScopeSummary) {
 	if summary == nil {
 		summary = &loginScopeSummary{}
 	}
-	fmt.Fprintf(errOut.ErrOut, msg.RequestedScopes, formatScopeList(summary.Requested, msg.NoScopes))
-	fmt.Fprintf(errOut.ErrOut, msg.NewlyGrantedScopes, formatScopeList(summary.NewlyGranted, msg.NoScopes))
+	fmt.Fprintln(errOut.ErrOut)
+	fmt.Fprintln(errOut.ErrOut, msg.GrantedScopes)
+	fmt.Fprintf(errOut.ErrOut, "  %s\n", formatScopeList(grantedRequestedScopes(summary), msg.NoScopes, msg.ScopeSeparator))
+	if summary.StatusMessage != "" {
+		fmt.Fprintln(errOut.ErrOut)
+		heading := msg.NotGrantedScopes
+		if len(summary.Missing) == 0 {
+			heading = msg.AuthDetails
+		}
+		fmt.Fprintln(errOut.ErrOut, heading)
+		writeLoginStatusMessage(errOut, summary.StatusMessage)
+		return
+	}
+	if len(summary.Missing) == 0 {
+		return
+	}
+	fmt.Fprintln(errOut.ErrOut)
+	fmt.Fprintln(errOut.ErrOut, msg.NotGrantedScopes)
+	fmt.Fprintf(errOut.ErrOut, "  %s\n", formatScopeList(summary.Missing, msg.NoScopes, msg.ScopeSeparator))
+}
+
+// writeLoginStatusMessage appends the server-rendered authorization result
+// without interpreting or rewriting its contents.
+func writeLoginStatusMessage(errOut *cmdutil.IOStreams, statusMessage string) {
+	if statusMessage == "" {
+		return
+	}
+	for _, line := range strings.SplitAfter(statusMessage, "\n") {
+		if line == "" {
+			continue
+		}
+		fmt.Fprint(errOut.ErrOut, "  ", line)
+	}
+	if !strings.HasSuffix(statusMessage, "\n") {
+		fmt.Fprintln(errOut.ErrOut)
+	}
 }
 
 // writeLoginSuccess emits the successful login payload in either JSON or text
@@ -154,9 +242,7 @@ func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, op
 	fmt.Fprintln(f.IOStreams.ErrOut)
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
 	writeLoginScopeBreakdown(f.IOStreams, msg, summary)
-	if len(summary.Missing) == 0 && msg.StatusHint != "" {
-		fmt.Fprintln(f.IOStreams.ErrOut, msg.StatusHint)
-	}
+	writeNoRefreshTokenWarning(f.IOStreams, msg, summary.Refresh)
 }
 
 // handleLoginScopeIssue prints or returns a structured missing-scope result
@@ -182,15 +268,15 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 
 	fmt.Fprintln(f.IOStreams.ErrOut)
 	if loginSucceeded {
-		fmt.Fprintln(f.IOStreams.ErrOut, issue.Message)
-		if msg.AuthorizedUser != "" {
-			fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", fmt.Sprintf(msg.AuthorizedUser, userName, openId))
-		}
+		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
 	} else {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Message)
 	}
 	writeLoginScopeBreakdown(f.IOStreams, msg, issue.Summary)
-	if issue.Hint != "" {
+	if loginSucceeded && issue.Summary != nil {
+		writeNoRefreshTokenWarning(f.IOStreams, msg, issue.Summary.Refresh)
+	}
+	if !loginSucceeded && issue.Hint != "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Hint)
 	}
 	return output.ErrBare(output.ExitAuth)
@@ -213,11 +299,26 @@ func authorizationCompletePayload(openId, userName string, summary *loginScopeSu
 		"missing":         emptyIfNil(summary.Missing),
 		"granted":         emptyIfNil(summary.Granted),
 	}
+	if r := summary.Refresh; r != nil {
+		payload["refresh_token_issued"] = r.Issued
+		payload["expires_at"] = r.ExpiresAt.Format(time.RFC3339)
+		if !r.Issued {
+			payload["no_refresh_token"] = map[string]interface{}{
+				"message":      fmt.Sprintf("this login received no refresh_token: the user identity expires at %s and cannot be renewed automatically, so the user will have to authorize again", r.ExpiresAt.Format(time.RFC3339)),
+				"cause":        larkauth.NoRefreshTokenCause,
+				"fix":          r.Fix,
+				"settings_url": r.SettingsURL,
+			}
+		}
+	}
 	if issue != nil {
+		hint := summary.StatusMessage
+		if hint == "" {
+			hint = issue.Message
+		}
 		payload["warning"] = map[string]interface{}{
-			"type":    "missing_scope",
-			"message": issue.Message,
-			"hint":    issue.Hint,
+			"type": "missing_scope",
+			"hint": hint,
 		}
 	}
 	return payload

@@ -35,10 +35,12 @@ func TestResolveDriveMemberAddTarget_URLAndBareToken(t *testing.T) {
 		{"folder URL", "https://example.feishu.cn/drive/folder/fldTok", "", "fldTok", "folder"},
 		{"wiki URL", "https://example.feishu.cn/wiki/wikTok", "", "wikTok", "wiki"},
 		{"mindnotes URL", "https://example.feishu.cn/mindnotes/mndTok", "", "mndTok", "mindnote"},
+		{"apps page URL", "https://example.feishu.cn/page/appMetaTok/?from=share", "", "appMetaTok", "apps"},
 		{"larkoffice URL", "https://tenant.larkoffice.com/docx/doxTok", "", "doxTok", "docx"},
 		{"explicit type overrides URL", "https://example.feishu.cn/docx/doxTok", "wiki", "doxTok", "wiki"},
 		{"bare token with explicit docx type", "N83ZduEnHooFswxnVWGcazlLnFf", "docx", "N83ZduEnHooFswxnVWGcazlLnFf", "docx"},
 		{"bare token with explicit folder type", "fldToken123", "folder", "fldToken123", "folder"},
+		{"bare token with explicit apps type", "appMetaTok", "apps", "appMetaTok", "apps"},
 	}
 	for _, temp := range tests {
 		tt := temp
@@ -518,15 +520,17 @@ func TestDriveMemberAdd_PermDefaultsToView(t *testing.T) {
 	}
 
 	var got struct {
-		API []struct {
-			Body map[string]interface{} `json:"body"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Body map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
 	}
-	if got.API[0].Body["perm"] != "view" {
-		t.Fatalf("perm = %v, want view", got.API[0].Body["perm"])
+	if got.Data.API[0].Body["perm"] != "view" {
+		t.Fatalf("perm = %v, want view", got.Data.API[0].Body["perm"])
 	}
 }
 
@@ -625,18 +629,20 @@ func TestDriveMemberAdd_DryRunAcceptsAppID(t *testing.T) {
 	}
 
 	var got struct {
-		API []struct {
-			Body map[string]interface{} `json:"body"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Body map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
 	}
-	if got.API[0].Body["member_type"] != "appid" {
-		t.Fatalf("member_type = %v, want appid", got.API[0].Body["member_type"])
+	if got.Data.API[0].Body["member_type"] != "appid" {
+		t.Fatalf("member_type = %v, want appid", got.Data.API[0].Body["member_type"])
 	}
-	if _, ok := got.API[0].Body["type"]; ok {
-		t.Fatalf("type = %v, want omitted for appid", got.API[0].Body["type"])
+	if _, ok := got.Data.API[0].Body["type"]; ok {
+		t.Fatalf("type = %v, want omitted for appid", got.Data.API[0].Body["type"])
 	}
 }
 
@@ -660,15 +666,17 @@ func TestDriveMemberAdd_DryRunAcceptsWikiSpaceID(t *testing.T) {
 	}
 
 	var got struct {
-		API []struct {
-			Body map[string]interface{} `json:"body"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Body map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
 	}
-	if got.API[0].Body["member_type"] != "wikispaceid" || got.API[0].Body["type"] != "wiki_space_viewer" {
-		t.Fatalf("body = %#v, want wikispaceid + wiki_space_viewer", got.API[0].Body)
+	if got.Data.API[0].Body["member_type"] != "wikispaceid" || got.Data.API[0].Body["type"] != "wiki_space_viewer" {
+		t.Fatalf("body = %#v, want wikispaceid + wiki_space_viewer", got.Data.API[0].Body)
 	}
 }
 
@@ -792,20 +800,22 @@ func TestDriveMemberAdd_DryRunInfersTypeAndDefaultsWikiPermType(t *testing.T) {
 	}
 
 	var got struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Params map[string]interface{} `json:"params"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Method string                 `json:"method"`
+				URL    string                 `json:"url"`
+				Params map[string]interface{} `json:"params"`
+				Body   map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
 	}
-	if len(got.API) != 1 {
-		t.Fatalf("api count = %d, want 1; stdout=%s", len(got.API), stdout.String())
+	if len(got.Data.API) != 1 {
+		t.Fatalf("api count = %d, want 1; stdout=%s", len(got.Data.API), stdout.String())
 	}
-	api := got.API[0]
+	api := got.Data.API[0]
 	if api.Method != "POST" || api.URL != "/open-apis/drive/v1/permissions/wikTok/members" {
 		t.Fatalf("api = %#v", api)
 	}
@@ -836,19 +846,21 @@ func TestDriveMemberAdd_DryRunAcceptsUppercaseEnumsForDocx(t *testing.T) {
 	}
 
 	var got struct {
-		API []struct {
-			Params map[string]interface{} `json:"params"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Params map[string]interface{} `json:"params"`
+				Body   map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
 	}
-	if got.API[0].Params["type"] != "docx" {
-		t.Fatalf("params.type = %v, want docx", got.API[0].Params["type"])
+	if got.Data.API[0].Params["type"] != "docx" {
+		t.Fatalf("params.type = %v, want docx", got.Data.API[0].Params["type"])
 	}
-	if got.API[0].Body["member_type"] != "openid" || got.API[0].Body["perm"] != "edit" {
-		t.Fatalf("body = %#v, want canonical lowercase enum values", got.API[0].Body)
+	if got.Data.API[0].Body["member_type"] != "openid" || got.Data.API[0].Body["perm"] != "edit" {
+		t.Fatalf("body = %#v, want canonical lowercase enum values", got.Data.API[0].Body)
 	}
 }
 
@@ -872,19 +884,21 @@ func TestDriveMemberAdd_DryRunAcceptsUppercaseWikiPermType(t *testing.T) {
 	}
 
 	var got struct {
-		API []struct {
-			Params map[string]interface{} `json:"params"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Params map[string]interface{} `json:"params"`
+				Body   map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
 	}
-	if got.API[0].Params["type"] != "wiki" {
-		t.Fatalf("params.type = %v, want wiki", got.API[0].Params["type"])
+	if got.Data.API[0].Params["type"] != "wiki" {
+		t.Fatalf("params.type = %v, want wiki", got.Data.API[0].Params["type"])
 	}
-	if got.API[0].Body["member_type"] != "openid" || got.API[0].Body["perm"] != "edit" || got.API[0].Body["perm_type"] != "container" {
-		t.Fatalf("body = %#v, want canonical lowercase enum values", got.API[0].Body)
+	if got.Data.API[0].Body["member_type"] != "openid" || got.Data.API[0].Body["perm"] != "edit" || got.Data.API[0].Body["perm_type"] != "container" {
+		t.Fatalf("body = %#v, want canonical lowercase enum values", got.Data.API[0].Body)
 	}
 }
 
@@ -949,19 +963,21 @@ func TestDriveMemberAdd_DryRunBatch(t *testing.T) {
 	}
 
 	var got struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Method string                 `json:"method"`
+				URL    string                 `json:"url"`
+				Body   map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
 	}
-	if len(got.API) != 1 {
-		t.Fatalf("api count = %d, want 1", len(got.API))
+	if len(got.Data.API) != 1 {
+		t.Fatalf("api count = %d, want 1", len(got.Data.API))
 	}
-	api := got.API[0]
+	api := got.Data.API[0]
 	if api.Method != "POST" || api.URL != "/open-apis/drive/v1/permissions/shtcnTok/members/batch_create" {
 		t.Fatalf("api = %#v", api)
 	}
@@ -1031,8 +1047,8 @@ func TestDriveMemberAdd_ExecuteSuccessFlattensMember(t *testing.T) {
 		data["perm"] != "view" || data["member_kind"] != "user" {
 		t.Fatalf("flattened output = %#v", data)
 	}
-	if !strings.Contains(stderr.String(), "Added Drive member") {
-		t.Fatalf("stderr = %q, want success log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no success log", stderr.String())
 	}
 }
 
@@ -1092,8 +1108,8 @@ func TestDriveMemberAdd_ExecuteBatchSuccess(t *testing.T) {
 	if first["member_id"] != "ou_a" || second["member_id"] != "ou_b" {
 		t.Fatalf("members = %#v, want request-order fallback IDs", members)
 	}
-	if !strings.Contains(stderr.String(), "Added 2 Drive member(s)") {
-		t.Fatalf("stderr = %q, want success log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no success log", stderr.String())
 	}
 	if !strings.Contains(capturedQuery, "type=bitable") {
 		t.Fatalf("captured query = %q, want type=bitable for bascn token", capturedQuery)

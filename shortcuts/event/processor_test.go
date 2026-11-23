@@ -198,7 +198,7 @@ func TestRegexFilter_Invalid(t *testing.T) {
 
 func TestEventSubscribeExecuteRejectsUnsafeOutputDir(t *testing.T) {
 	rt := newSubscribeTestRuntime(t)
-	if err := rt.Cmd.Flags().Set("output-dir", "/tmp/events"); err != nil {
+	if err := rt.Cmd.Flags().Set("output-dir", "/etc/events"); err != nil {
 		t.Fatal(err)
 	}
 	err := EventSubscribe.Execute(context.Background(), rt)
@@ -792,7 +792,6 @@ func TestImMessageProcessor_CompactInteractiveFallsBackToRaw(t *testing.T) {
 		t.Fatalf("stderr hint = %q, want interactive fallback message", string(hint))
 	}
 }
-
 func TestGenericProcessor_CompactUnmarshalError(t *testing.T) {
 	p := &GenericProcessor{}
 	raw := makeRawEvent("some.type", `not valid json`)
@@ -880,7 +879,7 @@ func TestParseRoutes_EmptyPath(t *testing.T) {
 }
 
 func TestParseRoutes_RejectsAbsolutePath(t *testing.T) {
-	_, err := ParseRoutes([]string{`^test=dir:/tmp/evil`})
+	_, err := ParseRoutes([]string{`^test=dir:/etc/evil`})
 	if err == nil {
 		t.Error("expected error for absolute path in route")
 	}

@@ -44,8 +44,10 @@ var SearchTask = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
+		params := buildSearchPageParams(runtime.Str("page-token"))
 		return common.NewDryRunAPI().
 			POST("/open-apis/task/v2/tasks/search").
+			Params(params).
 			Body(body).
 			Desc("Then GET /open-apis/task/v2/tasks/:guid for each search hit to render standard output")
 	},
@@ -74,9 +76,9 @@ var SearchTask = common.Shortcut{
 		var lastPageToken string
 		var lastHasMore bool
 		var notice string
-		currentBody := body
+		params := buildSearchPageParams(runtime.Str("page-token"))
 		for page := 0; page < pageLimit; page++ {
-			data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/search", nil, currentBody)
+			data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/search", params, body)
 			if err != nil {
 				return err
 			}
@@ -90,7 +92,7 @@ var SearchTask = common.Shortcut{
 			if !lastHasMore || lastPageToken == "" {
 				break
 			}
-			currentBody["page_token"] = lastPageToken
+			params["page_token"] = lastPageToken
 		}
 
 		enriched := make([]map[string]interface{}, 0, len(rawItems))
@@ -182,9 +184,6 @@ func buildTaskSearchBody(runtime *common.RuntimeContext) (map[string]interface{}
 	}
 	if len(filter) > 0 {
 		body["filter"] = filter
-	}
-	if pageToken := runtime.Str("page-token"); pageToken != "" {
-		body["page_token"] = pageToken
 	}
 	return body, nil
 }

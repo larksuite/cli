@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // whoamiResult is the structured output of `lark-cli whoami`.
@@ -31,6 +32,7 @@ type whoamiResult struct {
 	IdentitySource string         `json:"identitySource"`
 	Available      bool           `json:"available"`
 	TokenStatus    string         `json:"tokenStatus"`
+	Message        string         `json:"message,omitempty"`
 	OnBehalfOf     *delegatedUser `json:"onBehalfOf,omitempty"`
 	Hint           string         `json:"hint,omitempty"`
 }
@@ -54,12 +56,22 @@ type Options struct {
 // local-only; when an external credential provider manages tokens, resolving
 // the identity may contact that provider.
 func NewCmdWhoami(f *cmdutil.Factory) *cobra.Command {
+	return newCmdWhoami(f, nil)
+}
+
+// NewCmdWhoamiWithRecovery creates whoami with a build-local recovery
+// presenter while preserving NewCmdWhoami's established function signature.
+func NewCmdWhoamiWithRecovery(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
+	return newCmdWhoami(f, projector)
+}
+
+func newCmdWhoami(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
 	opts := &Options{Factory: f}
 	cmd := &cobra.Command{
 		Use:   "whoami",
 		Short: "Show the current effective identity, app, profile, and token status (JSON)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return whoamiRun(cmd, opts)
+			return whoamiRun(cmd, opts, projector)
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
@@ -73,7 +85,7 @@ func NewCmdWhoami(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func whoamiRun(cmd *cobra.Command, opts *Options) error {
+func whoamiRun(cmd *cobra.Command, opts *Options, projector *recovery.Projector) error {
 	f := opts.Factory
 	cfg, err := f.Config()
 	if err != nil {
@@ -96,7 +108,10 @@ func whoamiRun(cmd *cobra.Command, opts *Options) error {
 		f.IdentityAutoDetected,
 		f.ResolveStrictMode(ctx).ForcedIdentity(),
 	)
-	diag := identitydiag.Diagnose(ctx, f, cfg, false)
+	diag := identitydiag.FilterRecovery(
+		identitydiag.Diagnose(ctx, f, cfg, false),
+		projector,
+	)
 	res := buildResult(cfg, as, source, diag)
 	output.PrintJson(f.IOStreams.Out, res)
 	return nil
@@ -141,6 +156,7 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 	case core.AsBot:
 		res.Available = diag.Bot.Available
 		res.TokenStatus = diag.Bot.Status
+		res.Message = diag.Bot.Message
 		if !diag.Bot.Available {
 			res.Hint = diag.Bot.Hint
 		}
@@ -150,14 +166,15 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 		// branch: "ready" means usable for both. available stays the canonical
 		// usable signal; tokenStatus is the readable state behind it.
 		res.TokenStatus = diag.User.Status
+		res.Message = diag.User.Message
 		// Set onBehalfOf only when a user is actually resolved; an unresolved
 		// user identity (not signed in) has no one to act on behalf of yet.
 		if diag.User.UserName != "" || diag.User.OpenID != "" {
 			res.OnBehalfOf = &delegatedUser{UserName: diag.User.UserName, OpenID: diag.User.OpenID}
 		}
-		if !diag.User.Available {
-			res.Hint = diag.User.Hint
-		}
+		// An available user identity can still carry guidance, e.g. a login
+		// that received no refresh_token and must be renewed by hand.
+		res.Hint = diag.User.Hint
 	}
 	return res
 }

@@ -338,8 +338,11 @@ func TestDriveStatusExactRejectsMissingDownloadScope(t *testing.T) {
 	if !strings.Contains(err.Error(), "missing required scope(s): drive:file:download") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(permErr.Hint, "auth login --scope") {
-		t.Fatalf("missing scope hint not found: %q", permErr.Hint)
+	if permErr.Hint != "" {
+		t.Fatalf("shortcut preflight populated presentation hint %q; want typed facts only", permErr.Hint)
+	}
+	if permErr.Identity != "bot" {
+		t.Fatalf("Identity = %q, want bot", permErr.Identity)
 	}
 	foundScope := false
 	for _, s := range permErr.MissingScopes {

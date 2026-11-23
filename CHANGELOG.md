@@ -2,6 +2,822 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.100] - 2026-11-10
+
+### Bug Fixes
+
+- **apps**: name export's real gate and reject unusable ids and paths (#2899)
+- scope apps recovery hints to failure causes (#2897)
+- **apps**: classify database precondition subcodes (#2900)
+- **apps**: recognize feishuapp runtime domains (#2906)
+
+### Misc
+
+- remove unused skills (#2908)
+
+## [v1.0.99] - 2026-11-04
+
+### Features
+
+- **task**: register comment API metadata (#2864)
+- **apps**: add +features and +feature-enable for app business features (#2816)
+- **apps**: support changing app icon via +update --icon-url/--icon-file (#2857)
+- **apps**: add --owner-id filter to apps +list (#2884)
+- **apps**: add +delete shortcut (#2883)
+
+### Bug Fixes
+
+- **auth**: explain logins that receive no refresh_token (#2853)
+- **apps**: tell git to quit when the credential helper cannot answer (#2854)
+- **apps**: answer rate-limited calls with backoff instead of request hints (#2882)
+- fill missing agent names for legacy callers (#2889)
+
+### Documentation
+
+- **apps**: align cloud-dev polling guidance with session-get response (#2851)
+
+### Refactoring
+
+- **docs**: remove genre routing and ignore unknown fields (#2859)
+
+### Misc
+
+- **slides**: sync XML schema (2026-10-13) (#2806)
+
+## [v1.0.98] - 2026-10-13
+
+### Features
+
+- **base**: default record reads to ndjson (#2782)
+- **auth**: add DPoP support (#2679)
+- support URL rewriting extensions (#2595)
+- support manifest-based distribution updates (#2596)
+
+### Documentation
+
+- **task**: clarify section routing and workflows (#2795)
+- **base**: add text cell mention example (#2802)
+- **apps**: restrict creative-mode wording in skill guidance (#2801)
+
+## [v1.0.97] - 2026-09-28
+
+### Features
+
+- optimize the transfer event (#2750)
+- propagate policy status_message to agents (#2384)
+- support release approval handoff (#2639)
+
+### Bug Fixes
+
+- **drive**: accept successful folder moves without a task ID (#2751)
+- **apps**: stop the db/file commands from misdirecting the caller on failure (#2719)
+- **errors**: prefer rendered OpenAPI messages (#2629)
+- support unified input for IM messages (#2760)
+- **im**: expose open IDs for calendar messages (#2752)
+
+### Documentation
+
+- remove post-meeting event grace guidance (#2749)
+
+## [v1.0.96] - 2026-09-16
+
+### Features
+
+- **base**: support dashboard NPS config (#2562)
+- **apps**: add +export to download an app's source code as a zip (#2594)
+- **sheets**: accept the parameter spellings two reflow windows say callers write (#2710)
+- **slides**: consolidate xml-get skill docs (#2662)
+
+### Bug Fixes
+
+- 优化工作流记录相关触发器的 Skill，消除歧义和语义错误 (#2670)
+- **minutes**: enforce deterministic search ordering (#2714)
+- **base**: repair skill references and clarify view creation (#2725)
+- restrict chat creation to tenant token (#2728)
+- **skills**: use GUIDE.md for nested suite guides (#2634)
+- **vc**: restrict meeting join and leave to bot (#2570)
+- **apps**: only treat a JSON body as export's error envelope, stream any other type (#2731)
+
+### Documentation
+
+- **base**: add view selection and lifecycle reference (#2729)
+
+### Tests
+
+- **base**: fix NPS workflow rating fixture (#2730)
+
+## [v1.0.95] - 2026-09-10
+
+### Features
+
+- **sheets**: accept the payload spellings the 08-29..31 reflow rejected (#2611)
+- **sheets**: add chart sizing and quality checks (#2504)
+- **docs**: await asynchronous document creation (#2641)
+- **im**: add concise message output (#2567)
+- Supports sorting of questions in the Base form (#2598)
+- add lazy API catalog routing (#2232)
+
+### Bug Fixes
+
+- list workspace entity 上限调整为 30 (#2646)
+- **apps**: classify db failures by their k_dl subcode (#2650)
+- handle credential and config read failures (#2583)
+- **wiki**: resolve node-get through node_by_token (#2665)
+- **docs**: resolve draft resources and validate explicit constraints (#2675)
+- **wiki**: migrate mutation lookups to node_by_token (#2676)
+- **base**: validate dashboard update filters (#2631)
+- **base**: make table and field lists fetch all items (#2674)
+- **drive**: migrate wiki lookups to node_by_token (#2682)
+- **drive**: improve token recognition for download and preview (#2680)
+- **sheets,slides**: migrate wiki lookups to node_by_token (#2696)
+- **base**: migrate wiki lookup to node_by_token (#2699)
+- **docs**: migrate wiki lookups to node_by_token (#2689)
+- **base**: preserve unsupported record values in NDJSON exports (#2701)
+- reduce vulnerable dependencies while retaining Go 1.23 (#2659)
+
+### Documentation
+
+- **im**: document folder expansion and download guidance (#2633)
+- **skills**: use wiki node shortcut in guidance (#2702)
+
+## [v1.0.94] - 2026-09-07
+
+### Features
+
+- 支持会议搜索使用机器人身份 (#2445)
+- **vc**: distinguish detected meeting share starts (#2541)
+- **slides**: lint slide writes server-side, add --no-lint to opt out (#2607)
+- validate generated API parameter constraints (#2514)
+- **base**: support AI classification and AI Analysis Action (#2590)
+- add mail rule shortcuts (#2327)
+- **calendar**: remove app_link from event outputs, emphasize share link (#2618)
+- expand folder children one level in IM message output (#2606)
+- use remote scopes.json for login scope recommendations (#1799)
+
+### Bug Fixes
+
+- **base**: repair field schema template reference (#2575)
+- **base**: improve search recovery and form deletion safety (#2422)
+- honor requiredScopes conjunction in CollectScopesForProjects (#1878)
+- **output**: preserve non-data payloads in the api success envelope (#2601)
+- **suggest**: surface both halves of a welded compound flag name (#2604)
+- optimize calendar and vc (#2616)
+
+### Documentation
+
+- **skills**: fix broken reference links (#2485)
+
+### Misc
+
+- Add mail thread management shortcuts (#2370)
+- **slides**: sync XML schema (2026-09-01) (#2589)
+
+## [v1.0.93] - 2026-09-01
+
+### Features
+
+- **docs**: route local Word media uploads to office mount point (#2568)
+- **base**: support ranking dashboard blocks (#2528)
+- **sheets**: cut the top command-error clusters from the 08-18..24 eval batch (#2559)
+- add shortcut for +list-attendees (#2591)
+- **vfs**: allow absolute paths under a built-in path policy (#2580)
+
+### Bug Fixes
+
+- **event**: preserve UTF-8 in truncated diagnostics (#2535)
+- **base**: correct reminder trigger offset direction (#2584)
+- **shortcuts**: remove non-actionable stderr progress (#2532)
+
+### Documentation
+
+- **lark-doc**: retain draft workspaces after creation (#2574)
+- **sheets**: clarify dropdown values and default colors (#2582)
+
+### Refactoring
+
+- **sheets**: remove legacy sheets command surface (#2572)
+
+### Misc
+
+- Feat/okr comment (#2558)
+
+## [v1.0.92] - 2026-08-28
+
+### Features
+
+- **sheets**: add +cond-format-result-get and --include conditional_format (#2502)
+- **im**: support rich-text message attachment zone in send/reply/mge… (#2515)
+
+### Bug Fixes
+
+- **slides**: relax office token length check from 28 to >=25 (#2531)
+- **sheets**: make image-upload previews match what Execute sends (#2537)
+- **sheets**: suppress multipart stderr noise and tighten e2e boundary test (#2550)
+
+### Refactoring
+
+- **sheets**: keep the success path off stderr (#2533)
+
+## [v1.0.91] - 2026-08-27
+
+### Features
+
+- **im**: add chat AppLink output (#2491)
+- **sheets**: relax local-office token length check from 28 to >=25 (#2509)
+- **calendar**: add +join-event shortcut and share token support (#2508)
+- **base**: streamline record workflows (#2529)
+- **base**: add field extension shortcuts (#2463)
+- add im message patch meta api (#2407)
+
+### Bug Fixes
+
+- **docs**: recover PowerShell-dequoted presentation JSON (#2501)
+
+### Documentation
+
+- **approval**: document keyword search and add-sign flow (#2388)
+
+## [v1.0.90] - 2026-08-25
+
+### Features
+
+- event organizer transfer bot to user (#2448)
+- **base**: document app default page reuse (#2436)
+- **slides**: un-deprecate +replace-pages shortcut (#2470)
+- **slides**: add media download shortcut (#2446)
+- **vc**: add agent meeting control shortcuts (#2466)
+- **slides**: add marginRight attribute to <p> element schema (#2493)
+- words replace and minutes fix (#2490)
+- **sheets**: combine chart workflows and special chart types (#2374)
+- **extension**: add business command extension v1 (#2308)
+- **drive**: support appid in member-remove (#2499)
+- **config**: support keychain-backed tenant access tokens (#2488)
+
+### Bug Fixes
+
+- **apps**: classify the online DDL ban and the file storage quota failure (#2460)
+- **base**: hide dashboard auto analysis setting (#2465)
+- **slides**: strip stale <note> id in +update-slide to avoid backend crash (#2475)
+- **drive**: continue downloads on permission scope errors (#2494)
+- **wiki**: keep node-get stderr machine-readable (#2449)
+- **slides**: avoid PID variable in examples (#2496)
+- **docs**: continue media downloads on permission scope errors (#2498)
+- **skills**: scope markdown routing to Lark resources (#2497)
+- **auth**: exclude im:message.send_as_user from batch scope sets (#2471)
+
+### Refactoring
+
+- **slides**: assert dry-run parent_type instead of deriving it from a placeholder (#2461)
+
+### Misc
+
+- Support repeated mail compose flags (#2271)
+
+## [v1.0.89] - 2026-08-21
+
+### Features
+
+- add minutes transcript degradation logic (#2404)
+- **base**: add --position and statistics number_format to dashboard-block create/update (#2118)
+- **base**: add dashboard and form share shortcuts (#2282)
+- **skills**: unify meeting related skills (#2387)
+- **base**: support button workflow bindings (#2437)
+- **base**: add template discovery and form question field reuse (#2340)
+- **skills**: extend slides XML schema (#2442)
+- **slides**: use office_slide_file parent_type for imported office presentations (#2441)
+- add IM read status shortcuts (#2318)
+
+### Bug Fixes
+
+- honor recovered E2E retries (#2400)
+- **apps**: make cache-clear ask first, and make apps failures classifiable (#2415)
+
+### Tests
+
+- **drive**: retry transient async cleanup contention (#2397)
+
+### Refactoring
+
+- **shortcuts**: remove MCP text location paths (#2439)
+
+## [v1.0.88] - 2026-08-18
+
+### Features
+
+- fix doc skill about identity coutinue (#2334)
+- **base**: clarify skill routing and references (#2347)
+- **sheets**: accept the --range / --cells / border shapes callers actually send (#2338)
+- **slides**: auto-upload @path images in +update-slide (#2346)
+- **docs**: support comments and block mutation ranges (#2341)
+- **slides**: add kickoff reminder for empty presentations (#2367)
+- support separate and suite skill layouts (#2211)
+
+### Bug Fixes
+
+- **base**: improve record history output and validation (#2298)
+- **api**: reject query strings and fragments in paths (#2375)
+
+### Documentation
+
+- **base**: restructure skill routing and analysis guidance (#2320)
+- **lark-shared**: split SKILL.md into a slim core plus references (#2226)
+
+### Tests
+
+- **docs**: align fetch help comment expectations (#2363)
+
+## [v1.0.87] - 2026-08-13
+
+### Features
+
+- **base**: add typed NDJSON workflows for professional data analysis (#2196)
+- propagate credential metadata (#2305)
+- **calendar**: support setting VC meeting owner in +create (#2328)
+- **base**: support BaseApp application mode (#2231)
+
+### Bug Fixes
+
+- **apps**: reject non-HTML apps in +html-publish with actionable error (#2300)
+- **apps**: friendly-ize "Container not exists" for observability commands (#2302)
+- **drive**: guide wiki permission recovery (#2311)
+- **wiki**: guide recovery from node structural limits (#2290)
+- **wiki**: bound node retries (#2292)
+
+### Documentation
+
+- make enterprise/embedded integration discoverable from the repo (#2066)
+- **base**: add common filter condition examples (#2310)
+- **lark-im**: support user and bot identities for resource uploads (#2319)
+- **calendar**: clarify +create-first strategy for advanced fields (#2336)
+
+### Misc
+
+- add Base skill code owner (#2303)
+
+## [v1.0.86] - 2026-08-11
+
+### Features
+
+- **drive**: add wiki url/token support to +download and +preview (#2220)
+- report upload file events (#2093)
+- **slides**: normalize replace-slide part aliases (#2225)
+- **drive**: add +member-remove shortcut (#1994)
+- support shared vc live references and document context (#2249)
+- **wiki**: improve node creation and terminal errors (#2266)
+- **base**: require --fields on +table-create (#2221)
+- support bot identity (#2288)
+- **affordance**: support domain skill lists (#2291)
+- expose compact task fields (#2109)
+- **drive**: document copy workflow guidance (#2184)
+- add apps database sync shortcuts for Base-to-database import (#2251)
+- **apps**: add +user-id-convert shortcut for Miaoda↔Feishu ID conversion (#2270)
+- **slides**: inline slides reference docs into help output (#2181)
+
+### Bug Fixes
+
+- **wiki**: correct copy semantics and rename routing (#2238)
+- **slides**: move add-slide and delete-slide reference docs to cli/ directory (#2272)
+- **drive**: harden export and push failure recovery (#2279)
+- **wiki**: clarify resource permission recovery (#2281)
+
+### Documentation
+
+- improve agent contribution guidance (#2259)
+- document supported image formats in lark-slides media-upload (#2269)
+- **calendar**: clarify identity selection for scheduling (#2280)
+- **slides**: use built-in --jq in cli examples and fix workflow link labels (#2286)
+
+### Refactoring
+
+- reorganize lark slides skill references (#2207)
+
+### Misc
+
+- prune unsupported iconpark index entries (#2252)
+- verify release Go toolchain (#2256)
+
+## [v1.0.85] - 2026-08-07
+
+### Features
+
+- **event**: compile the catalog and harden the consume pipeline (#2142)
+- support bot identity for search shortcuts (#2194)
+- **drive**: add +update-title shortcut (#2172)
+- **sheets**: add ai formula verify (#1959)
+- **drive**: add +copy shortcut (#2129)
+- add frontend as third app type for apps domain (#2072)
+- **sheets**: harden error prescriptions, batch updates, and read workflows
+- **slides**: accept slide XML files in +create (#2197)
+- **docs**: add local authoring and resource workflows (#1921)
+- preflight export permission for downloads (#2218)
+
+### Bug Fixes
+
+- **base**: guide complete dashboard data recovery (#2144)
+- **apps**: isolate git credential helper chain for scoped repos (#2188)
+- **im**: unpin search identity after bot support landed (#2208)
+- **auth**: harden token refresh and concurrency handling (#2135)
+- **registry**: describe the attendance and mindnotes domains (#2210)
+- reject truncated wiki node tokens (#2203)
+- **apps**: detect the no-database failure by code or message (#2217)
+- **base**: improve field creation and query guidance (#2114)
+- **slides**: restore update-slide skill guidance (#2227)
+- align slides xml-get skill flags (#2237)
+- **im**: harden resource downloads with validated ranged streams (#2223)
+
+### Documentation
+
+- **skills**: sync lark whiteboard skill (#2215)
+- **doc**: clarify history edit time format (#1962)
+
+### Misc
+
+- feat (apps): add miaoda app collaborator management (#2230)
+
+## [v1.0.84] - 2026-08-05
+
+### Features
+
+- **calendar**: allow bot auth for search-event (#2186)
+- **extension**: present restricted commands as absent and trim skills (#1837)
+- add Base table copy shortcuts (#2019)
+- **slides**: support explicit screenshot output paths (#2180)
+- profile selection from environment with source-aware errors (#2198)
+- migrate application and IM guidance to affordance (#2199)
+
+### Bug Fixes
+
+- **slides**: bind lint issues to source XML nodes (#2179)
+- **drive**: stop export polling on rate limits (#2192)
+- make agent recovery and concealment reliable (#2189)
+- surface retry metadata for TAT rate limits (#2200)
+
+### Documentation
+
+- **slides**: temporarily route skill guidance back to +replace-pages (#2187)
+- **calendar**: clarify attendee resolution to avoid type guessing (#2195)
+- **wiki**: route node resolution through shortcut (#2132)
+
+## [v1.0.83] - 2026-08-04
+
+### Features
+
+- **slides**: add +update-slide for whole-page updates (#2143)
+- **apps**: friendly error for db commands on an app with no database (#2162)
+- **slides**: support embedded SVG content (#2154)
+
+### Bug Fixes
+
+- **slides**: add agent-friendly aliases for screenshot flags (#2156)
+- **slides**: migrate SML namespace from HTTP to HTTPS (#2169)
+- **slides**: improve missing screenshot selector guidance (#2177)
+- **slides**: name the wrong --parts field instead of "non-empty replacement" (#2174)
+
+### Documentation
+
+- **base**: clarify unsupported capability boundaries (#2133)
+- **slides**: correct +xml-get flag requirements (#2171)
+
+### Misc
+
+- notarize macOS release candidates (#2073)
+- allow concurrent live e2e jobs (#2182)
+
+## [v1.0.82] - 2026-08-03
+
+### Features
+
+- **enhancement**: centralize HTTP transport policies (#2021)
+- add framework flag aliases and unified IM pagination (#2146)
+- **slides**: add +add-slide and +delete-slide shortcuts (#2120)
+
+### Bug Fixes
+
+- normalize mail triage filters (#2068)
+- **slides**: restore presentation aliases (#2164)
+
+### Documentation
+
+- remove broken Star History chart (#2141)
+- **base**: harden dashboard multi-block read guidance (#2122)
+
+### Tests
+
+- pass contact list params explicitly (#2150)
+
+## [v1.0.81] - 2026-07-31
+
+### Features
+
+- support visible_rule for form questions (#1891)
+- **contact**: add bot search shortcut (#2083)
+- add SXSD schema validation to Slides lint (#2103)
+- **drive**: add comment-operation shortcuts (#1898)
+- **drive**: extend permission shortcuts for Miaoda (#2070)
+- **apps**: add cache debug commands (+cache-get/-delete/-clear) (#1896)
+- support source file preview artifacts (#2085)
+
+### Bug Fixes
+
+- **contact**: stop bot match segments carrying tags or empty entries (#2115)
+- **base**: resolve Base URL block types accurately (#2099)
+- **drive**: use title for default download filename (#2089)
+- drop stale target version from root upgrade prompt (#2100)
+
+### Documentation
+
+- **calendar**: warn against container-default timezone in time conversion (#2104)
+- **calendar**: confirm scope before editing recurring events (#2119)
+- **base**: clarify form and file operation routing (#2110)
+
+### Misc
+
+- add protected public domain allowlists (#2111)
+
+## [v1.0.80] - 2026-07-29
+
+### Features
+
+- **drive**: add +member-list shortcut (#1795)
+- **drive**: add +permission-get-setting shortcut (#1738)
+- propagate invocation metadata (#2097)
+
+### Documentation
+
+- **slides**: 补齐 shortcut 参数说明，修正 +xml-get --output 必填标注 (#2088)
+- **slides**: +create 的参数下沉到 create.md，主 skill 只留路由 (#2096)
+
+### Tests
+
+- **e2e**: wait for base role update visibility (#2087)
+
+### Misc
+
+- Feat/detect line text overlap (#2069)
+
+## [v1.0.79] - 2026-07-28
+
+### Features
+
+- **slides**: update xsd (#2067)
+
+### Bug Fixes
+
+- **ci**: validate static workflow identity (#2015)
+- **sheets**: recognize OFL0X local office tokens (#2063)
+
+### Documentation
+
+- **calendar**: clarify identity selection by event ownership (#2071)
+- **slides**: add formula inline element syntax to quick-ref (#2077)
+
+## [v1.0.78] - 2026-07-27
+
+### Features
+
+- event description support rich text (#1975)
+
+### Bug Fixes
+
+- **slides**: restrict canvas overflow checks
+- **slides**: upgrade text overflow to error above 10px threshold
+- **slides**: detect letterSpacing-driven text overflow
+- **slides**: downgrade background-decoration text overflow to info
+- **slides**: allow chartParsedValues roundtrip tag
+- refine character width estimation for lark-slides text lint
+- **slides**: preserve info lint severity
+- **slides**: text may over flow shape
+- exempt ghost text from slides lint
+
+## [v1.0.77] - 2026-07-24
+
+### Features
+
+- introducing official card icon (#1973)
+- **apps**: validate +file-list --page-size against server (0, 200] range (#2007)
+- **apps**: support absolute and relative upload paths (#2005)
+- **slides**: fill xml-schema-quick-ref gaps that forced XSD fallback (#2026)
+- **slides**: add layout density lint for sparse/empty containers (#2022)
+- add risk-control protection (#1910)
+
+### Bug Fixes
+
+- **slides**: normalize presentation flag aliases (#2032)
+- **base**: classify +form-submit as high-risk-write (#1969)
+- **slides**: declare screenshot scope
+- **slides**: support CSV multi-value for --slide-id in screenshot (#2047)
+
+### Documentation
+
+- **skill**: clarify scope handling for query expansion (#2030)
+- **base**: clarify complete and partial updates (#1993)
+- **skills**: clarify callout child rules (#2048)
+
+### Misc
+
+- fix/task id handling (#2023)
+- fix/task search pagination (#2041)
+
+## [v1.0.75] - 2026-07-22
+
+### Features
+
+- add okr single create shortcut & skill text opti (#1941)
+- **calendar**: auto-add bot self as attendee and note user-only search (#1991)
+
+### Bug Fixes
+
+- **base**: improve table shortcut behavior & guidance (#1803)
+- issue#1935 & whiteboard shortcut reformat (#1980)
+- remove legacy shortcut (#1997)
+- **e2e**: inject shared credentials by identity (#1995)
+
+### Documentation
+
+- **skill**: describe html5 block xml usage (#1380)
+- clarify fetch metadata and user cites (#1981)
+- add topic move collector workflow (#1473)
+- update lark doc HTML size limit (#2001)
+- **base**: align record write schema guidance (#2000)
+
+### Tests
+
+- **e2e**: declare request identities explicitly (#2004)
+
+### Misc
+
+- harden npm release publishing (#1918)
+
+## [v1.0.74] - 2026-07-21
+
+### Features
+
+- **slides**: add history rollback shortcuts (#1714)
+- **base**: support per-record batch updates (#1889)
+
+### Bug Fixes
+
+- preserve slides schema issues
+- allow jq examples in quality gate dry-runs
+- **im**: warn when flag pagination is truncated (#1906)
+- **slides**: warn on text shape overflow
+- **slides**: exempt chart roundtrip attributes from lint
+- **slides**: detect image text occlusion
+- **slides**: clarify xml-text-overlap-lint error for positional argument (#1986)
+
+### Documentation
+
+- clarify drive upload overwrite guidance (#1982)
+
+### Tests
+
+- isolate unit tests from user state (#1883)
+
+### Refactoring
+
+- converge success output through a single Emitter that owns the write (#1899)
+
+## [v1.0.73] - 2026-07-20
+
+### Features
+
+- **apps**: design_html support, creative-design skill, unified TOS publish (#1901)
+
+### Bug Fixes
+
+- **slides**: detect visual elements outside canvas
+- reduce public content credential fixture false positives
+- standardize CLI shortcut text in English (#1942)
+
+### Documentation
+
+- **base**: reduce filter and update retry loops (#1879)
+- **vc**: default transcript routing to smart notes over minutes (#1961)
+- clarify local trigger automation (#1958)
+
+### Tests
+
+- synchronize temporary Git maintenance (#1946)
+
+### Misc
+
+- **slides**: update lark-slides skill to 0715 snapshot (#1933)
+- [codex] support bot menu events (#1765)
+
+## [v1.0.72] - 2026-07-17
+
+### Features
+
+- **slides**: lint table out of canvas
+- **slides**: report resolved table size mismatches
+- **approval**: support approval event consumption (#1924)
+
+### Bug Fixes
+
+- **vc**: don't fail +detail for in-progress meetings (#1930)
+- stabilize drive delete E2E terminal-state checks (#1939)
+
+### Documentation
+
+- **slides**: document table dimensions
+- document base field default values (#1500)
+- **sheets**: use English placeholder in table-get guidance (#1936)
+
+### Tests
+
+- stabilize live e2e auth retries (#1904)
+- use tri-state wiki node identity in delete verification (#1931)
+- fix drive cover download retries (#1934)
+
+## [v1.0.71] - 2026-07-16
+
+### Features
+
+- add wiki move-to-drive shortcut (#1869)
+- **apps**: add role management shortcuts (#1881)
+- **drive**: add secure label support and clarify comment location API (#1913)
+
+### Bug Fixes
+
+- **base**: improve dashboard shortcut guidance (#1787)
+
+### Documentation
+
+- **apps**: add platform SQL authoring guide to the db-execute skill (#1912)
+
+### Misc
+
+- add L4 plugin-integration and sidecar-integration CI jobs (#1840)
+- **drive**: optimize drive +delete workflow (#1909)
+
+## [v1.0.70] - 2026-07-15
+
+### Features
+
+- add minutes permission application shortcut (#1876)
+- **drive**: support apps in list comments (#1877)
+- slide style
+- edit ppt template
+- **slides**: add sxsd validation to slides lint
+- **slides**: validate iconpark icon types in slides lint
+- **slides**: lint before create
+- **apps**: add automation trigger commands for Miaoda (#1886)
+
+### Bug Fixes
+
+- unify dry-run output contract (#1870)
+- **skills**: align skill guidance with the typed error contract (#1786)
+- **slides**: limit slides screenshot page requests
+- **slides**: detect lark slides text overflow overlap
+- **vc**: align meeting query scopes by identity (#1850)
+
+### Documentation
+
+- clarify task search relevance filters (#1884)
+- surface minutes permission application in skill description (#1890)
+- clarify okr progress children (#1861)
+- **slides**: prefer slides xml-get shortcut
+- **calendar**: document setting meeting owner via full API (#1903)
+
+### Refactoring
+
+- **slides**: streamline create workflow and validate SML namespaces
+
+### Misc
+
+- **slides**: address PR review feedback
+
+## [v1.0.69] - 2026-07-13
+
+### Features
+
+- support docs fetch selection anchors (#1815)
+- **apps**: support modern_html app type with TOS publish path and app type querying
+- **im**: show bot sender display names when reading messages (#1829)
+- add drive list comments shortcut (#1845)
+- support wiki sources in drive export (#1802)
+- add application domain with slash command management shortcuts (#1806)
+- validate IM idempotency key length (#1797)
+- surface reply context and mentions in im.message.receive_v1 (#1798)
+
+### Bug Fixes
+
+- route brand-sensitive endpoints through the resolver (#1836)
+
+### Documentation
+
+- document OKR block XML guidance (#1648)
+- refine doubao whiteboard workflow routing (#1841)
+- clarify Mindnote token handling (#1827)
+
+### Tests
+
+- isolate semantic waiver fixtures from wall clock
+
+### Misc
+
+- Merge lark sheets development branch (#1833)
+
 ## [v1.0.68] - 2026-07-09
 
 ### Features
@@ -1438,6 +2254,37 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.100]: https://github.com/larksuite/cli/releases/tag/v1.0.100
+[v1.0.99]: https://github.com/larksuite/cli/releases/tag/v1.0.99
+[v1.0.98]: https://github.com/larksuite/cli/releases/tag/v1.0.98
+[v1.0.97]: https://github.com/larksuite/cli/releases/tag/v1.0.97
+[v1.0.96]: https://github.com/larksuite/cli/releases/tag/v1.0.96
+[v1.0.95]: https://github.com/larksuite/cli/releases/tag/v1.0.95
+[v1.0.94]: https://github.com/larksuite/cli/releases/tag/v1.0.94
+[v1.0.93]: https://github.com/larksuite/cli/releases/tag/v1.0.93
+[v1.0.92]: https://github.com/larksuite/cli/releases/tag/v1.0.92
+[v1.0.91]: https://github.com/larksuite/cli/releases/tag/v1.0.91
+[v1.0.90]: https://github.com/larksuite/cli/releases/tag/v1.0.90
+[v1.0.89]: https://github.com/larksuite/cli/releases/tag/v1.0.89
+[v1.0.88]: https://github.com/larksuite/cli/releases/tag/v1.0.88
+[v1.0.87]: https://github.com/larksuite/cli/releases/tag/v1.0.87
+[v1.0.86]: https://github.com/larksuite/cli/releases/tag/v1.0.86
+[v1.0.85]: https://github.com/larksuite/cli/releases/tag/v1.0.85
+[v1.0.84]: https://github.com/larksuite/cli/releases/tag/v1.0.84
+[v1.0.83]: https://github.com/larksuite/cli/releases/tag/v1.0.83
+[v1.0.82]: https://github.com/larksuite/cli/releases/tag/v1.0.82
+[v1.0.81]: https://github.com/larksuite/cli/releases/tag/v1.0.81
+[v1.0.80]: https://github.com/larksuite/cli/releases/tag/v1.0.80
+[v1.0.79]: https://github.com/larksuite/cli/releases/tag/v1.0.79
+[v1.0.78]: https://github.com/larksuite/cli/releases/tag/v1.0.78
+[v1.0.77]: https://github.com/larksuite/cli/releases/tag/v1.0.77
+[v1.0.75]: https://github.com/larksuite/cli/releases/tag/v1.0.75
+[v1.0.74]: https://github.com/larksuite/cli/releases/tag/v1.0.74
+[v1.0.73]: https://github.com/larksuite/cli/releases/tag/v1.0.73
+[v1.0.72]: https://github.com/larksuite/cli/releases/tag/v1.0.72
+[v1.0.71]: https://github.com/larksuite/cli/releases/tag/v1.0.71
+[v1.0.70]: https://github.com/larksuite/cli/releases/tag/v1.0.70
+[v1.0.69]: https://github.com/larksuite/cli/releases/tag/v1.0.69
 [v1.0.68]: https://github.com/larksuite/cli/releases/tag/v1.0.68
 [v1.0.67]: https://github.com/larksuite/cli/releases/tag/v1.0.67
 [v1.0.66]: https://github.com/larksuite/cli/releases/tag/v1.0.66

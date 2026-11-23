@@ -14,19 +14,22 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const docsFetchExtraParam = `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`
+const (
+	docsFetchExtraParam         = `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`
+	docsFetchCommentsExtraParam = `{"enable_user_cite_reference_map":true,"include_comments":true,"return_html5_block_data":true}`
+)
 
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.
 func v2FetchFlags() []common.Flag {
 	return []common.Flag{
-		{Name: "doc-format", Desc: "output content format; xml keeps DocxXML structure and optional block ids, markdown is plain export, im-markdown downgrades residual DocxXML fragments for IM messages", Default: "xml", Enum: []string{"xml", "markdown", "im-markdown"}},
+		{Name: "doc-format", Desc: "output content format; xml keeps DocxXML structure and local comment anchors, markdown returns plain content plus the comments sidecar, im-markdown also downgrades residual DocxXML fragments for IM messages", Default: "xml", Enum: []string{"xml", "markdown", "im-markdown"}},
 		{Name: "detail", Desc: "detail level; simple for reading, with-ids for block references, full for styles and edit metadata", Default: "simple", Enum: []string{"simple", "with-ids", "full"}},
 		{Name: "lang", Desc: "user cite display language, e.g. en-US, zh-CN, ja-JP"},
 		{Name: "revision-id", Desc: "document revision id; -1 means latest", Type: "int", Default: "-1"},
 		{Name: "scope", Desc: "read scope; full reads whole doc, outline lists headings, section expands from heading anchor, range uses block ids, keyword searches text", Default: "full", Enum: []string{"full", "outline", "range", "keyword", "section"}},
 		{Name: "start-block-id", Desc: "range/section anchor block id; required for section and optional start for range"},
 		{Name: "end-block-id", Desc: "range end block id; -1 means through document end"},
-		{Name: "keyword", Desc: "keyword scope query; supports case-insensitive substring/regex fallback and '|' OR branches, e.g. foo|bar or bug|缺陷"},
+		{Name: "keyword", Desc: "keyword scope query; supports case-insensitive substring/regex fallback and '|' OR branches, e.g. foo|bar or bug|error"},
 		{Name: "context-before", Desc: "range/keyword/section context: sibling blocks before selected top-level blocks", Type: "int", Default: "0"},
 		{Name: "context-after", Desc: "range/keyword/section context: sibling blocks after selected top-level blocks", Type: "int", Default: "0"},
 		{Name: "max-depth", Desc: "outline heading level cap; other scopes subtree depth where -1 is unlimited and 0 is block only", Type: "int", Default: "-1"},
@@ -94,7 +97,7 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{
 		"format":      effectiveFetchFormat(runtime),
-		"extra_param": docsFetchExtraParam,
+		"extra_param": docsFetchCommentsExtraParam,
 	}
 	if v := runtime.Int("revision-id"); v > 0 {
 		body["revision_id"] = v

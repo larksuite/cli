@@ -245,6 +245,27 @@ func TestInstallOnMail_InstallsHook(t *testing.T) {
 	assert.Equal(t, "--tos", validationErr.Param)
 }
 
+func TestInstallOnMail_ComposesInheritedHook(t *testing.T) {
+	root := &cobra.Command{Use: "root"}
+	mail := newFakeMailCmd()
+	root.AddCommand(mail)
+	in := errors.New(`invalid argument "bad" for "--max" flag`)
+	want := errors.New("classified by root")
+	called := false
+	root.SetFlagErrorFunc(func(gotCmd *cobra.Command, gotErr error) error {
+		called = true
+		assert.Same(t, mail, gotCmd)
+		assert.Same(t, in, gotErr)
+		return want
+	})
+
+	InstallOnMail(mail)
+	got := mail.FlagErrorFunc()(mail, in)
+
+	assert.True(t, called, "non-unknown flag errors must reach the inherited hook")
+	assert.Same(t, want, got)
+}
+
 func TestFlagSuggestErrorFunc_NilError(t *testing.T) {
 	cmd := newFakeMailCmd()
 	assert.NoError(t, flagSuggestErrorFunc(cmd, nil))

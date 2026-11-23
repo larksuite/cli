@@ -51,6 +51,7 @@ func TestMergeForwardHelpers(t *testing.T) {
 	}
 }
 
+// TestMergeForwardConverterFallback covers merge-forward conversion fallbacks.
 func TestMergeForwardConverterFallback(t *testing.T) {
 	if got := (mergeForwardConverter{}).Convert(&ConvertContext{RawContent: `{"create_message_ids":["om_1","om_2"]}`}); got != "[Merged forward: 2 messages]" {
 		t.Fatalf("mergeForwardConverter.Convert(ids) = %q", got)
@@ -60,11 +61,49 @@ func TestMergeForwardConverterFallback(t *testing.T) {
 	}
 }
 
+// TestFormatMergeForwardSubTreePostAttachmentZone verifies that a post
+// sub-message inside a merge_forward renders its attachment zone (<file> /
+// <folder> lines) through ConvertBodyContent's postConverter.
+func TestFormatMergeForwardSubTreePostAttachmentZone(t *testing.T) {
+	items := []map[string]interface{}{
+		{"message_id": "root", "create_time": "1710500000000"},
+		{
+			"message_id":       "child1",
+			"upper_message_id": "",
+			"create_time":      "1710500100000",
+			"msg_type":         "post",
+			"sender":           map[string]interface{}{"name": "Alice"},
+			"body":             map[string]interface{}{"content": `{"zh_cn":{"title":"Docs","content":[[{"tag":"text","text":"see below"}]]},"files":[{"file_key":"file_a","file_name":"report.pdf"},{"file_key":"file_b","file_name":"assets","is_folder":true}]}`},
+		},
+	}
+	children := BuildMergeForwardChildrenMap(items, "root")
+	got := FormatMergeForwardSubTree("root", children)
+	for _, want := range []string{
+		"<forwarded_messages>",
+		"Alice:",
+		"see below",
+		`<file key="file_a" name="report.pdf"/>`,
+		`<folder key="file_b" name="assets"/>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("FormatMergeForwardSubTree() missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestFetchMergeForwardSubMessages covers fetching merge-forward sub-messages.
+
 func TestFetchMergeForwardSubMessages(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
 			case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_root"):
+				// Sub-item senders that appear only inside the merge_forward
+				// have no name unless we opt into server-side sender names;
+				// there is no contact/mention fallback anymore.
+				if got := req.URL.Query().Get("with_sender_name"); got != "true" {
+					t.Fatalf("with_sender_name = %q, want %q", got, "true")
+				}
 				return convertlibJSONResponse(200, map[string]interface{}{
 					"code": 0,
 					"data": map[string]interface{}{

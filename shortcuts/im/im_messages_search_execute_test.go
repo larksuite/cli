@@ -18,6 +18,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func TestImMessagesSearchSupportsUserAndBotIdentity(t *testing.T) {
+	if !stringSliceContains(ImMessagesSearch.AuthTypes, "user") {
+		t.Fatalf("ImMessagesSearch.AuthTypes = %v, want user support", ImMessagesSearch.AuthTypes)
+	}
+	if !stringSliceContains(ImMessagesSearch.AuthTypes, "bot") {
+		t.Fatalf("ImMessagesSearch.AuthTypes = %v, want bot support for tenant access token", ImMessagesSearch.AuthTypes)
+	}
+}
+
 func newMessagesSearchRuntime(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool, rt http.RoundTripper) *common.RuntimeContext {
 	t.Helper()
 
@@ -267,4 +276,13 @@ func buildChatContexts(chatIDs []string) []interface{} {
 		})
 	}
 	return items
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

@@ -100,9 +100,29 @@ func TestBuildArgs(t *testing.T) {
 	})
 }
 
+func TestDryRunGet(t *testing.T) {
+	stdout := `{"ok":true,"identity":"bot","data":{"api":[{"method":"POST"}]}}`
+
+	assert.Equal(t, "POST", DryRunGet(stdout, "api.0.method").String())
+	assert.Equal(t, "bot", DryRunGet(stdout, "identity").String())
+}
+
 func TestSkipWithoutUserToken(t *testing.T) {
 	t.Run("returns immediately when env user access token exists", func(t *testing.T) {
 		t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "uat-from-env")
+
+		ran := false
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutUserToken(t)
+			ran = true
+		})
+		require.True(t, ok)
+		assert.True(t, ran)
+	})
+
+	t.Run("returns immediately when test user access token exists", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "")
+		t.Setenv("TEST_USER_ACCESS_TOKEN", "uat-from-test-env")
 
 		ran := false
 		ok := t.Run("inner", func(t *testing.T) {
@@ -143,6 +163,115 @@ func TestSkipWithoutUserToken(t *testing.T) {
 		})
 		require.True(t, ok)
 		assert.False(t, ran)
+	})
+}
+
+func TestSkipWithoutTenantAccessToken(t *testing.T) {
+	t.Run("skips when env tenant access token is missing", func(t *testing.T) {
+		fake := newFakeCLI(t)
+		t.Setenv("TEST_BOT1_APP_ID", "")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+		t.Setenv(EnvBinaryPath, fake.BinaryPath)
+		t.Setenv("FAKE_AUTH_STATUS_STDOUT", `{"identities":{"bot":{"status":"missing","verified":false}}}`)
+		t.Setenv("FAKE_AUTH_STATUS_EXIT_CODE", "0")
+
+		ran := false
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutTenantAccessToken(t)
+			ran = true
+		})
+		require.True(t, ok)
+		assert.False(t, ran)
+	})
+
+	t.Run("accepts verified local bot config", func(t *testing.T) {
+		fake := newFakeCLI(t)
+		t.Setenv("TEST_BOT1_APP_ID", "")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+		t.Setenv(EnvBinaryPath, fake.BinaryPath)
+		t.Setenv("FAKE_AUTH_STATUS_STDOUT", `{"identity":"user","verified":true,"identities":{"bot":{"status":"ready","verified":true}}}`)
+		t.Setenv("FAKE_AUTH_STATUS_EXIT_CODE", "0")
+
+		ran := false
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutTenantAccessToken(t)
+			ran = true
+		})
+		require.True(t, ok)
+		assert.True(t, ran)
+	})
+
+	t.Run("skips when local bot config verification fails", func(t *testing.T) {
+		fake := newFakeCLI(t)
+		t.Setenv("TEST_BOT1_APP_ID", "")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+		t.Setenv(EnvBinaryPath, fake.BinaryPath)
+		t.Setenv("FAKE_AUTH_STATUS_STDOUT", `{"identity":"user","verified":true,"identities":{"bot":{"status":"ready","verified":false}}}`)
+		t.Setenv("FAKE_AUTH_STATUS_EXIT_CODE", "0")
+
+		ran := false
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutTenantAccessToken(t)
+			ran = true
+		})
+		require.True(t, ok)
+		assert.False(t, ran)
+	})
+
+	t.Run("skips when local bot verification result is missing", func(t *testing.T) {
+		fake := newFakeCLI(t)
+		t.Setenv("TEST_BOT1_APP_ID", "")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+		t.Setenv(EnvBinaryPath, fake.BinaryPath)
+		t.Setenv("FAKE_AUTH_STATUS_STDOUT", `{"identity":"user","verified":true,"identities":{"bot":{"status":"ready"}}}`)
+		t.Setenv("FAKE_AUTH_STATUS_EXIT_CODE", "0")
+
+		ran := false
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutTenantAccessToken(t)
+			ran = true
+		})
+		require.True(t, ok)
+		assert.False(t, ran)
+	})
+
+	t.Run("accepts standard tenant credentials", func(t *testing.T) {
+		t.Setenv("TEST_BOT1_APP_ID", "")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("LARKSUITE_CLI_APP_ID", "app-from-env")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "test-token")
+
+		ran := false
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutTenantAccessToken(t)
+			ran = true
+		})
+		require.True(t, ok)
+		assert.True(t, ran)
+	})
+
+	t.Run("accepts shared tenant credentials without mutating standard env", func(t *testing.T) {
+		t.Setenv("TEST_BOT1_APP_ID", "shared-test-app")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "shared-test-token")
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutTenantAccessToken(t)
+			assert.Empty(t, os.Getenv("LARKSUITE_CLI_APP_ID"))
+			assert.Empty(t, os.Getenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN"))
+		})
+		require.True(t, ok)
+		assert.Empty(t, os.Getenv("LARKSUITE_CLI_APP_ID"))
+		assert.Empty(t, os.Getenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN"))
 	})
 }
 
@@ -213,17 +342,63 @@ func TestRunCmd(t *testing.T) {
 		assert.Equal(t, "hello from stdin\n", result.Stdout)
 	})
 
-	t.Run("injects user token env only for user commands", func(t *testing.T) {
+	t.Run("injects shared credentials by requested identity", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
+		t.Setenv("LARKSUITE_CLI_APP_SECRET", "")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "")
 		t.Setenv("TEST_BOT1_APP_ID", "cli_app_test")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "tat_test")
 		t.Setenv("TEST_USER_ACCESS_TOKEN", "uat_test")
 
-		env := buildCommandEnv(Request{DefaultAs: "user"})
+		env := buildCommandEnv(Request{DefaultAs: "bot"})
+		assert.Contains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
+		assert.Contains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=tat_test")
+		assert.NotContains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
+
+		env = buildCommandEnv(Request{DefaultAs: "user"})
 		assert.Contains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
 		assert.Contains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
+		assert.NotContains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=tat_test")
 
-		env = buildCommandEnv(Request{DefaultAs: "bot"})
+		env = buildCommandEnv(Request{})
 		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
+		assert.NotContains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=tat_test")
 		assert.NotContains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
+	})
+
+	t.Run("preserves standard dry-run bot credentials", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_APP_ID", "dry-run-app")
+		t.Setenv("LARKSUITE_CLI_APP_SECRET", "dry-run-secret")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("TEST_BOT1_APP_ID", "shared-test-app")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "shared-test-token")
+
+		env := buildCommandEnv(Request{DefaultAs: "bot"})
+		assert.Contains(t, env, "LARKSUITE_CLI_APP_ID=dry-run-app")
+		assert.Contains(t, env, "LARKSUITE_CLI_APP_SECRET=dry-run-secret")
+		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=shared-test-app")
+		assert.NotContains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=shared-test-token")
+	})
+
+	t.Run("request env overrides shared bot credentials", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
+		t.Setenv("LARKSUITE_CLI_APP_SECRET", "")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("TEST_BOT1_APP_ID", "shared-test-app")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "shared-test-token")
+
+		env := buildCommandEnv(Request{
+			DefaultAs: "bot",
+			Env: map[string]string{
+				"LARKSUITE_CLI_APP_ID":              "request-app",
+				"LARKSUITE_CLI_TENANT_ACCESS_TOKEN": "",
+			},
+		})
+		assert.Contains(t, env, "LARKSUITE_CLI_APP_ID=request-app")
+		assert.Contains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=")
+		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=shared-test-app")
+		assert.NotContains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=shared-test-token")
 	})
 
 	t.Run("retries structured retryable service errors by default", func(t *testing.T) {

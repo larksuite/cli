@@ -6,6 +6,7 @@ package rules
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -170,7 +171,11 @@ func consumeFlags(args []string, cmd *manifest.Command) ([]string, []string, err
 				hasInlineValue = true
 			}
 			flag := findManifestFlag(cmd, name)
-			flags = append(flags, name)
+			acceptedName := name
+			if flag != nil {
+				acceptedName = flag.Name
+			}
+			flags = append(flags, acceptedName)
 			if flag != nil && !hasInlineValue && flag.TakesValue && i+1 < len(args) {
 				i++
 			}
@@ -201,7 +206,7 @@ func isShellOperator(arg string) bool {
 
 func findManifestFlag(cmd *manifest.Command, name string) *manifest.Flag {
 	for i := range cmd.Flags {
-		if cmd.Flags[i].Name == name || cmd.Flags[i].Shorthand == name {
+		if cmd.Flags[i].Name == name || cmd.Flags[i].Shorthand == name || slices.Contains(cmd.Flags[i].Aliases, name) {
 			return &cmd.Flags[i]
 		}
 	}
@@ -241,6 +246,9 @@ func indexManifest(m manifest.Manifest) manifestIndex {
 		flagSet := make(map[string]bool, len(cmd.Flags))
 		for _, fl := range cmd.Flags {
 			flagSet[fl.Name] = true
+			for _, alias := range fl.Aliases {
+				flagSet[alias] = true
+			}
 		}
 		index.flags[cmd.Path] = flagSet
 	}

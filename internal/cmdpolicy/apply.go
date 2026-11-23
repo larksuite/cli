@@ -4,6 +4,8 @@
 package cmdpolicy
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
@@ -122,6 +124,13 @@ func BuildDenialError(path string, d Denial) *errs.ValidationError {
 		WithHint("denied by %s policy (source %s, rule %q, reason_code %s); adjust the policy configuration to allow this command",
 			cd.Layer, cd.PolicySource, cd.RuleName, cd.ReasonCode).
 		WithCause(cd)
+}
+
+// IsPluginPolicySource reports whether a policy source names a plugin.
+// The cmd-layer presentation projection uses this to distinguish embedded
+// distribution restrictions from a user-owned yaml policy.
+func IsPluginPolicySource(source string) bool {
+	return strings.HasPrefix(source, "plugin:")
 }
 
 // installDenyStub mutates a cobra.Command in place. Unlike cmd/prune.go

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -22,6 +23,8 @@ var (
 	reTsRelative      = regexp.MustCompile(`^([0-9]+)([smhdw])$`)
 	reTsDate          = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 	reTsLocalDateTime = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$`)
+	// reWindowsDrivePath matches an absolute Windows path such as C:/x or C:\x.
+	reWindowsDrivePath = regexp.MustCompile(`^[A-Za-z]:[/\\]`)
 )
 
 // normalizeTimestamp 实现设计原则三的 <timestamp> 多格式输入，统一归一化为 RFC3339 UTC：
@@ -74,11 +77,9 @@ func normalizeTimestamp(raw string) (string, error) {
 	return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid timestamp %q (want relative 7d/2h/30s, date 2026-04-15, datetime 2026-04-15T10:00:00, or ISO 8601 with TZ)", s)
 }
 
-// newFileTransferClient 直传 / 直下对象存储 presigned URL 用（绕开 Lark 网关，无需 auth、无超时以容纳大文件）。
-//
-//nolint:forbidigo // presigned object-storage transfer bypasses the Lark gateway — raw http.Client is required (no Lark auth, no gateway routing); not a Lark API call, so RuntimeContext.DoAPI does not apply.
+//nolint:forbidigo // Presigned transfers use the external HTTP policy.
 func newFileTransferClient() *http.Client {
-	return &http.Client{Transport: http.DefaultTransport}
+	return transport.NewExternalHTTPClient(0)
 }
 
 // URL helpers for the file (storage) CLI commands.
@@ -121,13 +122,74 @@ func appFileQuotaPath(appID string) string {
 	return fmt.Sprintf("%s/apps/%s/storage/file_quota", apiBasePath, validate.EncodePathSegment(appID))
 }
 
+// requireFileAppID resolves --app-id for the file commands, which address an app
+// by its real id only.
+//
+// The prefix check is here rather than in requireAppID because the two are not
+// interchangeable across the domain: +export and +get accept an app id or a meta
+// token in the same argument and let the server tell them apart, so a blanket
+// prefix rule would break them (see the note in validateExportFlags). Storage has
+// no such dual form, so rejecting the shape up front loses nothing.
+//
+// This is the only layer that can name the mistake. Storage reports a malformed
+// app id as "app not found" — true, but it points at verifying an id the caller
+// never had, when what they are holding is a meta token or a page token.
+// validateRealAppID says which argument is wrong and its hint carries the command
+// that converts the token into an app id, so the fix is in front of them rather
+// than a round trip away.
+func requireFileAppID(raw string) (string, error) {
+	appID, err := requireAppID(raw)
+	if err != nil {
+		return "", err
+	}
+	if err := validateRealAppID(appID); err != nil {
+		return "", err
+	}
+	return appID, nil
+}
+
 // requireFilePath trims --path and rejects blank, returning a uniform validation error.
 func requireFilePath(raw string) (string, error) {
 	p := strings.TrimSpace(raw)
 	if p == "" {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--path is required").WithParam("--path")
 	}
+	if err := rejectLocalWindowsPath(p); err != nil {
+		return "", err
+	}
 	return p, nil
+}
+
+// msysRewrittenPathHint explains the usual source of a drive path in --path and
+// how to keep the shell from producing it. A doubled leading slash only survives
+// the rewrite for a single-segment path (MSYS treats //a/b as a network path), so
+// that form is offered for paths like the ones +file-upload returns.
+const msysRewrittenPathHint = "remote paths are app storage paths such as /1858537546760216.png. " +
+	"Git Bash (MSYS) on Windows rewrites an argument that starts with / into a local Windows path before lark-cli receives it; " +
+	"re-run the command with MSYS_NO_PATHCONV=1 in front of it, or, for a single-segment path, double the leading slash (//1858537546760216.png)"
+
+// rejectLocalWindowsPath rejects a --path value that is an absolute Windows path.
+//
+// Remote storage paths are object keys ("/1858537546760216.png",
+// "chunks/<id>/part_0") and never start with a drive letter. A drive path almost
+// always comes from Git Bash / MSYS: before a native program runs, MSYS rewrites
+// every argument that starts with "/" into a path under its install root, so
+// "/1858537546760216.png" arrives as "C:/Program Files/Git/1858537546760216.png".
+// Sent as is, storage answers "file not found or no access", which reads as a
+// missing file rather than a shell rewrite.
+//
+// The original path is not reconstructed. The install root differs per machine
+// (the Git for Windows directory, a portable copy bundled with another app) and
+// MSYS maps some prefixes elsewhere (/tmp, /c/...), so nothing here can undo the
+// rewrite with certainty; the error says how to stop it instead.
+func rejectLocalWindowsPath(p string) error {
+	if !reWindowsDrivePath.MatchString(p) {
+		return nil
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"--path %q is a local Windows path, not a remote file path", p).
+		WithParam("--path").
+		WithHint("%s", msysRewrittenPathHint)
 }
 
 // fileUser 是 uploaded_by 的 {id,name}。OpenAPI 以 created_by 的 JSON 字符串透传，CLI parse。

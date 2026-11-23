@@ -5,27 +5,38 @@ package cmdutil
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
+	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/riskcontrol"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
 	"github.com/larksuite/cli/internal/transport"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
 )
+
+func init() {
+	// Stable package wiring: assign once during initialization rather than on
+	// every Build/NewDefault call.
+	keychain.RuntimeDirFunc = core.GetRuntimeDir
+}
 
 // NewDefault creates a production Factory with cached closures.
 // Initialization follows a credential-first order:
@@ -33,7 +44,7 @@ import (
 //	Phase 1: HttpClient (no credential dependency)
 //	Phase 2: Credential (sole data source for account info)
 //	Phase 3: Config derived from Credential
-//	Phase 4: LarkClient derived from Credential
+//	Phase 4: LarkClient derived from Credential and workspace policy
 func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	streams = normalizeStreams(streams)
 	f := &Factory{
@@ -47,57 +58,153 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	// workspace-scoped. Default is WorkspaceLocal — existing behavior unchanged.
 	ws := core.DetectWorkspaceFromEnv(os.Getenv)
 	core.SetCurrentWorkspace(ws)
-
-	// Inject workspace-aware dir into keychain's log system.
-	// This breaks the core↔keychain import cycle by using a function variable.
-	keychain.RuntimeDirFunc = core.GetRuntimeDir
+	workspaceConfig := core.NewConfigSnapshot()
+	bootstrapHostSignalSource := sync.OnceValue(func() riskcontrol.Source {
+		return resolveSDKHostSignalSource(workspaceConfig)
+	})
+	// Install after workspace selection so the dependency bootstrap bridge uses
+	// the correct shared proxy configuration. NewDefault is also used by cmd.Build
+	// consumers, so this keeps their request routing identical to cmd.Execute.
+	transport.InstallSDKTransportBridge(func(base http.RoundTripper) http.RoundTripper {
+		return buildSDKPlatformTransportWithBase(
+			base,
+			bootstrapHostSignalSource(),
+		)
+	})
 
 	// Phase 0: FileIO provider (no dependency)
 	f.FileIOProvider = fileio.GetProvider()
 
 	// Phase 1: HttpClient (no credential dependency)
-	f.HttpClient = cachedHttpClientFunc(f)
+	f.HttpClient = cachedHttpClientFunc(f, workspaceConfig)
 
 	// Phase 2: Credential (sole data source)
 	// Keychain is read via closure so callers can replace f.Keychain after construction.
 	f.Credential = buildCredentialProvider(credentialDeps{
-		Keychain:   func() keychain.KeychainAccess { return f.Keychain },
-		Profile:    inv.Profile,
-		HttpClient: f.HttpClient,
-		ErrOut:     f.IOStreams.ErrOut,
+		Keychain:      func() keychain.KeychainAccess { return f.Keychain },
+		Profile:       inv.Profile,
+		ProfileSource: inv.ProfileSource,
+		HttpClient:    f.HttpClient,
+		ErrOut:        f.IOStreams.ErrOut,
 	})
 
-	// Phase 3: Config derived from Credential via an explicit conversion boundary.
+	// Phase 3: Runtime config contains resolved account data only.
 	f.Config = sync.OnceValues(func() (*core.CliConfig, error) {
 		acct, err := f.Credential.ResolveAccount(context.Background())
 		if err != nil {
 			return nil, err
 		}
 		cfg := acct.ToCliConfig()
-		registry.InitWithBrand(cfg.Brand)
 		return cfg, nil
 	})
 
-	// Phase 4: LarkClient from Credential (placeholder AppSecret)
-	f.LarkClient = cachedLarkClientFunc(f)
+	// Phase 4: LarkClient composes account data and workspace policy at the SDK
+	// transport boundary.
+	f.LarkClient = cachedLarkClientFunc(f, workspaceConfig)
 
 	return f
 }
 
-// safeRedirectPolicy prevents credential headers from being forwarded
-// when a response redirects to a different host (e.g. Lark API 302 → CDN).
-// Strips Authorization, X-Lark-MCP-UAT, and X-Lark-MCP-TAT on cross-host
-// redirects; other headers like X-Cli-* pass through.
+// safeRedirectPolicy permits cross-origin redirects only for bodyless GET and
+// HEAD requests. This allows API download redirects while preventing OAuth or
+// other credential-bearing request bodies from being replayed to another
+// origin. HTTPS requests can never be downgraded to HTTP.
 func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
-		return fmt.Errorf("too many redirects")
+		return errs.NewNetworkError(errs.SubtypeNetworkTransport, "too many redirects")
 	}
-	if len(via) > 0 && req.URL.Host != via[0].URL.Host {
+	if len(via) == 0 {
+		return nil
+	}
+	original := via[0]
+	previous := via[len(via)-1]
+	originalURL, previousURL, targetURL := original.URL, previous.URL, req.URL
+	platformRedirect := core.IsPlatformEndpointURL(originalURL)
+	if platformRedirect {
+		originalURL = effectiveRedirectURL(originalURL)
+		previousURL = effectiveRedirectURL(previousURL)
+		targetURL = effectiveRedirectURL(targetURL)
+	}
+	if previousURL != nil && targetURL != nil && strings.EqualFold(previousURL.Scheme, "https") && !strings.EqualFold(targetURL.Scheme, "https") {
+		return errs.NewSecurityPolicyError(
+			errs.SubtypeAccessDenied,
+			"redirect from HTTPS to %s is not allowed",
+			targetURL.Scheme,
+		)
+	}
+	if !sameRedirectOrigin(previousURL, targetURL) {
+		if req.Method != http.MethodGet && req.Method != http.MethodHead {
+			return errs.NewSecurityPolicyError(
+				errs.SubtypeAccessDenied,
+				"cross-origin redirect for HTTP method %s is not allowed",
+				req.Method,
+			)
+		}
+		if req.Body != nil || req.GetBody != nil {
+			return errs.NewSecurityPolicyError(
+				errs.SubtypeAccessDenied,
+				"cross-origin redirect with a request body is not allowed",
+			)
+		}
+	}
+	// net/http copies initial headers onto every redirect request. Continue
+	// stripping credentials for every hop outside the initial origin, even when
+	// two consecutive redirect targets share an origin.
+	if !sameRedirectOrigin(originalURL, targetURL) {
 		req.Header.Del("Authorization")
+		req.Header.Del(dpop.ProofHeader)
+		ctx := dpop.WithBinding(req.Context(), nil)
+		ctx = dpop.WithTokenEndpointKey(ctx, nil)
+		*req = *req.WithContext(ctx)
 		req.Header.Del("X-Lark-MCP-UAT")
 		req.Header.Del("X-Lark-MCP-TAT")
+	} else if platformRedirect {
+		// net/http sees the logical platform host and the rewritten host as
+		// different origins and removes Authorization before CheckRedirect.
+		// Restore it only after the effective origins have matched.
+		if values := original.Header.Values("Authorization"); len(values) > 0 {
+			req.Header.Del("Authorization")
+			for _, value := range values {
+				req.Header.Add("Authorization", value)
+			}
+		}
+		*req = *transport.WithRequestClass(req, exttransport.RequestClassPlatform)
 	}
 	return nil
+}
+
+func effectiveRedirectURL(candidate *url.URL) *url.URL {
+	if candidate == nil || !core.IsPlatformEndpointURL(candidate) {
+		return candidate
+	}
+	rewritten, err := url.Parse(urlrewrite.Rewrite(candidate.String()))
+	if err != nil || rewritten.Scheme == "" || rewritten.Host == "" {
+		return candidate
+	}
+	return rewritten
+}
+
+func sameRedirectOrigin(left, right *url.URL) bool {
+	if left == nil || right == nil {
+		return false
+	}
+	return strings.EqualFold(left.Scheme, right.Scheme) &&
+		strings.EqualFold(left.Hostname(), right.Hostname()) &&
+		effectivePort(left) == effectivePort(right)
+}
+
+func effectivePort(candidate *url.URL) string {
+	if port := candidate.Port(); port != "" {
+		return port
+	}
+	switch strings.ToLower(candidate.Scheme) {
+	case "http":
+		return "80"
+	case "https":
+		return "443"
+	default:
+		return ""
+	}
 }
 
 // warnIfProxied is a test seam for the proxy-warning gate. Production wires it
@@ -108,19 +215,19 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 // .StderrIsTerminal field, which tests set directly.
 var warnIfProxied = transport.WarnIfProxied
 
-func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
+func cachedHttpClientFunc(f *Factory, workspaceConfig workspaceConfigSource) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
 		if f.IOStreams.StderrIsTerminal {
 			warnIfProxied(f.IOStreams.ErrOut)
 		}
 
-		var rt http.RoundTripper = transport.Shared()
-		rt = &RetryTransport{Base: rt}
-		rt = &SecurityHeaderTransport{Base: rt}
-		rt = &auth.SecurityPolicyTransport{Base: rt} // Add our global response interceptor
-		rt = wrapWithExtension(rt)
+		hostSignalSource := resolveSDKHostSignalSource(workspaceConfig)
+		shared := transport.Shared()
+		outbound := riskcontrol.NewTransport(shared, hostSignalSource)
+		platform := buildDirectHTTPTransport(outbound, true)
+		external := buildDirectHTTPTransport(outbound, false)
 		client := &http.Client{
-			Transport:     rt,
+			Transport:     transport.NewHTTPPolicyRouter(platform, external),
 			Timeout:       30 * time.Second,
 			CheckRedirect: safeRedirectPolicy,
 		}
@@ -128,7 +235,17 @@ func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
 	})
 }
 
-func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
+func buildDirectHTTPTransport(base http.RoundTripper, platform bool) http.RoundTripper {
+	var builtIn http.RoundTripper = &dpop.Transport{Base: base}
+	builtIn = &RetryTransport{Base: builtIn}
+	builtIn = &SecurityHeaderTransport{Base: builtIn}
+	if platform {
+		builtIn = &auth.SecurityPolicyTransport{Base: builtIn}
+	}
+	return builtIn
+}
+
+func cachedLarkClientFunc(f *Factory, workspaceConfig workspaceConfigSource) func() (*lark.Client, error) {
 	return sync.OnceValues(func() (*lark.Client, error) {
 		acct, err := f.Credential.ResolveAccount(context.Background())
 		if err != nil {
@@ -142,8 +259,9 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 		if f.IOStreams.StderrIsTerminal {
 			warnIfProxied(f.IOStreams.ErrOut)
 		}
+		hostSignalSource := resolveSDKHostSignalSource(workspaceConfig)
 		opts = append(opts, lark.WithHttpClient(&http.Client{
-			Transport:     buildSDKTransport(),
+			Transport:     buildSDKTransport(hostSignalSource),
 			CheckRedirect: safeRedirectPolicy,
 		}))
 		ep := core.ResolveEndpoints(acct.Brand)
@@ -152,25 +270,62 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 	})
 }
 
-func buildSDKTransport() http.RoundTripper {
-	var sdkTransport http.RoundTripper = transport.Shared()
-	sdkTransport = &RetryTransport{Base: sdkTransport}
-	sdkTransport = &UserAgentTransport{Base: sdkTransport}
-	sdkTransport = &BuildHeaderTransport{Base: sdkTransport}
-	sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
-	return wrapWithExtension(sdkTransport)
+func buildSDKTransport(hostSignalSource riskcontrol.Source) http.RoundTripper {
+	return buildSDKTransportWithBase(transport.Shared(), hostSignalSource)
+}
+
+func buildSDKPlatformTransportWithBase(
+	base http.RoundTripper,
+	hostSignalSource riskcontrol.Source,
+) http.RoundTripper {
+	outbound := riskcontrol.NewTransport(base, hostSignalSource)
+	return buildSDKHTTPTransport(outbound, true)
+}
+
+func buildSDKTransportWithBase(
+	base http.RoundTripper,
+	hostSignalSource riskcontrol.Source,
+) http.RoundTripper {
+	// Risk control is the innermost trusted boundary for both request classes.
+	// It therefore observes the final URL and strips extension-supplied reserved
+	// headers immediately before the network transport.
+	outbound := riskcontrol.NewTransport(base, hostSignalSource)
+	return transport.NewHTTPPolicyRouter(
+		buildSDKHTTPTransport(outbound, true),
+		buildSDKHTTPTransport(outbound, false),
+	)
+}
+
+func buildSDKHTTPTransport(base http.RoundTripper, platform bool) http.RoundTripper {
+	var builtIn http.RoundTripper = &dpop.Transport{Base: base}
+	builtIn = &RetryTransport{Base: builtIn}
+	builtIn = &UserAgentTransport{Base: builtIn}
+	builtIn = &BuildHeaderTransport{Base: builtIn}
+	builtIn = &SecurityHeaderTransport{Base: builtIn}
+	if platform {
+		builtIn = &auth.SecurityPolicyTransport{Base: builtIn}
+	}
+	return builtIn
 }
 
 type credentialDeps struct {
-	Keychain   func() keychain.KeychainAccess
-	Profile    string
-	HttpClient func() (*http.Client, error)
-	ErrOut     io.Writer
+	Keychain      func() keychain.KeychainAccess
+	Profile       string
+	ProfileSource core.ProfileSource
+	HttpClient    func() (*http.Client, error)
+	ErrOut        io.Writer
 }
 
 func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
-	providers := extcred.Providers()
-	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile)
+	store := credential.NewTenantTokenStore(deps.Keychain)
+	providers := withTenantAccessTokenLookup(extcred.Providers(), func(_ context.Context, appID string) (*extcred.Token, error) {
+		value, found, err := store.Get(appID)
+		if err != nil || !found {
+			return nil, err
+		}
+		return &extcred.Token{Value: value, Source: "keychain:tenant-access-token"}, nil
+	})
+	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile, deps.ProfileSource)
 	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
 	// NOTE: Do not pass deps.ErrOut as warnOut. Credential resolution
 	// happens before the command runs, so any plain-text warning written
@@ -179,4 +334,19 @@ func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider
 	// provider clears unverified identity fields), so silencing the
 	// warning is safe.
 	return credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
+}
+
+func withTenantAccessTokenLookup(
+	providers []extcred.Provider,
+	lookup func(context.Context, string) (*extcred.Token, error),
+) []extcred.Provider {
+	for i, provider := range providers {
+		configurer, ok := provider.(interface {
+			WithTenantAccessTokenLookup(func(context.Context, string) (*extcred.Token, error)) extcred.Provider
+		})
+		if ok {
+			providers[i] = configurer.WithTenantAccessTokenLookup(lookup)
+		}
+	}
+	return providers
 }

@@ -4,8 +4,6 @@
 package wiki
 
 import (
-	"fmt"
-
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -46,7 +44,6 @@ func resolveWikiMemberSpaceID(runtime *common.RuntimeContext, spaceID string) (s
 	if err != nil {
 		return "", err
 	}
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolved my_library to space %s\n", common.MaskToken(resolved))
 	return resolved, nil
 }
 

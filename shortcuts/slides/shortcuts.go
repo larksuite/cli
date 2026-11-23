@@ -9,10 +9,18 @@ import "github.com/larksuite/cli/shortcuts/common"
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		SlidesCreate,
+		SlidesAddSlide,
+		SlidesDeleteSlide,
 		SlidesMediaUpload,
+		SlidesMediaDownload,
 		SlidesReplaceSlide,
 		SlidesReplacePages,
+		SlidesUpdateSlide,
+		SlidesUpdate,
 		SlidesScreenshot,
 		SlidesXMLGet,
+		SlidesHistoryList,
+		SlidesHistoryRevert,
+		SlidesHistoryRevertStatus,
 	}
 }

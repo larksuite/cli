@@ -4,8 +4,15 @@
 package publiccontent
 
 func ScanComment(kind, body string) []Finding {
+	return ScanCommentAtPath(kind, "", body)
+}
+
+func ScanCommentAtPath(kind, path, body string) []Finding {
 	if kind == "" {
 		kind = "comment"
 	}
-	return scanText(kind, "comment", body, false)
+	if path == "" {
+		path = kind
+	}
+	return scanText(path, "comment", body, isDetectorRuleFile(path))
 }

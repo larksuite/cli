@@ -30,12 +30,12 @@ var MailReply = common.Shortcut{
 		bodyFileFlag,
 		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
 		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
-		{Name: "to", Desc: "Additional To address(es), comma-separated (appended to original sender's address)"},
-		{Name: "cc", Desc: "Additional CC email address(es), comma-separated"},
-		{Name: "bcc", Desc: "BCC email address(es), comma-separated"},
+		{Name: "to", Type: "string_array", Desc: "Additional To address. Repeat --to once per recipient; quote each value; appended to the original sender's address."},
+		{Name: "cc", Type: "string_array", Desc: "Additional CC email address. Repeat --cc once per recipient; quote each value."},
+		{Name: "bcc", Type: "string_array", Desc: "BCC email address. Repeat --bcc once per recipient; quote each value."},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring all HTML auto-detection. Cannot be used with --inline."},
-		{Name: "attach", Desc: "Attachment file path(s), comma-separated (relative path only)"},
-		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
+		{Name: "attach", Type: "string_array", Desc: "Attachment file path, relative path only. Repeat --attach once per file; quote each value."},
+		{Name: "inline", Type: "string_array", Desc: "Inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string. Cannot be used with --plain-text."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the reply immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
 		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
@@ -69,6 +69,11 @@ var MailReply = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		attach := normalizeCommaFlagValues(runtime.StrArray("attach"))
+		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
+		if err != nil {
+			return err
+		}
 		if err := validateTemplateID(runtime.Str("template-id")); err != nil {
 			return err
 		}
@@ -100,7 +105,7 @@ var MailReply = common.Shortcut{
 		if err := validateEventFlags(runtime); err != nil {
 			return err
 		}
-		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), ""); err != nil {
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), attach, inline, runtime.Bool("plain-text"), ""); err != nil {
 			return err
 		}
 		return validatePriorityFlag(runtime)
@@ -111,12 +116,15 @@ var MailReply = common.Shortcut{
 		if bErr != nil {
 			return bErr
 		}
-		toFlag := runtime.Str("to")
-		ccFlag := runtime.Str("cc")
-		bccFlag := runtime.Str("bcc")
+		toFlag := normalizeRecipientFlagValues(runtime.StrArray("to"))
+		ccFlag := normalizeRecipientFlagValues(runtime.StrArray("cc"))
+		bccFlag := normalizeRecipientFlagValues(runtime.StrArray("bcc"))
 		plainText := runtime.Bool("plain-text")
-		attachFlag := runtime.Str("attach")
-		inlineFlag := runtime.Str("inline")
+		attachFlag := normalizeCommaFlagValues(runtime.StrArray("attach"))
+		inlineFlag, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
+		if err != nil {
+			return err
+		}
 		confirmSend := runtime.Bool("confirm-send")
 		sendTime := runtime.Str("send-time")
 

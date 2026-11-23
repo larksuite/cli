@@ -796,6 +796,7 @@ func TestPatchValidate_Valid_Objective_SimpleStyle(t *testing.T) {
 		"--content", validSemiPlainJSON,
 		"--notes", validSemiPlainJSON,
 		"--score", "0.5",
+		"--apply-to-draft=false",
 		"--deadline", "1735776000000",
 	})
 	if err != nil {
@@ -845,6 +846,7 @@ func TestPatchValidate_Valid_KeyResult_SimpleStyle(t *testing.T) {
 		"--style", "simple",
 		"--content", validSemiPlainJSON,
 		"--score", "1.0",
+		"--apply-to-draft=false",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -895,6 +897,7 @@ func TestPatchValidate_Valid_ScoreBoundaryValues(t *testing.T) {
 				"--level", "objective",
 				"--target-id", "123",
 				"--score", score,
+				"--apply-to-draft=false",
 			})
 			if err != nil {
 				t.Fatalf("unexpected error for score %q: %v", score, err)
@@ -942,9 +945,21 @@ func TestPatchValidate_Valid_OnlyScore(t *testing.T) {
 		"--level", "objective",
 		"--target-id", "123",
 		"--score", "0.0",
+		"--apply-to-draft=false",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPatchValidate_ScoreNotSupportedForDraft(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, patchTestConfig(t))
+	err := runPatchShortcut(t, f, stdout, []string{
+		"+patch", "--level", "objective", "--target-id", "123", "--score", "0.5",
+	})
+	if err == nil || !strings.Contains(err.Error(), "--score is not supported when --apply-to-draft=true") {
+		t.Fatalf("expected draft score validation error, got: %v", err)
 	}
 }
 
@@ -996,6 +1011,9 @@ func TestPatchDryRun_Objective_Content(t *testing.T) {
 	if !strings.Contains(output, "content=true") {
 		t.Fatalf("expected content=true in dry-run output, got: %s", output)
 	}
+	if !strings.Contains(output, `"apply_to_draft": true`) {
+		t.Fatalf("patch should default apply_to_draft=true, got: %s", output)
+	}
 }
 
 func TestPatchDryRun_KeyResult_Score(t *testing.T) {
@@ -1006,6 +1024,7 @@ func TestPatchDryRun_KeyResult_Score(t *testing.T) {
 		"--level", "key-result",
 		"--target-id", "456",
 		"--score", "0.7",
+		"--apply-to-draft=false",
 		"--dry-run",
 	})
 	if err != nil {
@@ -1021,6 +1040,9 @@ func TestPatchDryRun_KeyResult_Score(t *testing.T) {
 	if !strings.Contains(output, "score=true") {
 		t.Fatalf("expected score=true in dry-run output, got: %s", output)
 	}
+	if !strings.Contains(output, `"apply_to_draft": false`) {
+		t.Fatalf("score patch should explicitly target published state, got: %s", output)
+	}
 }
 
 func TestPatchDryRun_Objective_MultipleFields(t *testing.T) {
@@ -1034,6 +1056,7 @@ func TestPatchDryRun_Objective_MultipleFields(t *testing.T) {
 		"--content", validSemiPlainJSON,
 		"--notes", validSemiPlainJSON,
 		"--score", "0.5",
+		"--apply-to-draft=false",
 		"--deadline", "1735776000000",
 		"--dry-run",
 	})
@@ -1060,6 +1083,7 @@ func TestPatchDryRun_KeyResult_WithUserIDType(t *testing.T) {
 		"--level", "key-result",
 		"--target-id", "456",
 		"--score", "0.7",
+		"--apply-to-draft=false",
 		"--user-id-type", "user_id",
 		"--dry-run",
 	})
@@ -1128,6 +1152,7 @@ func TestPatchExecute_Objective_Success(t *testing.T) {
 		"--content", validSemiPlainJSON,
 		"--notes", validSemiPlainJSON,
 		"--score", "0.5",
+		"--apply-to-draft=false",
 		"--deadline", "1735776000000",
 	})
 	if err != nil {
@@ -1191,6 +1216,7 @@ func TestPatchExecute_KeyResult_Success(t *testing.T) {
 		"--style", "richtext",
 		"--content", validContentBlockJSON,
 		"--score", "1.0",
+		"--apply-to-draft=false",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1245,6 +1271,7 @@ func TestPatchExecute_OnlyScore(t *testing.T) {
 		"--level", "objective",
 		"--target-id", "123",
 		"--score", "0.3",
+		"--apply-to-draft=false",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1276,6 +1303,7 @@ func TestPatchExecute_APIError(t *testing.T) {
 		"--level", "objective",
 		"--target-id", "123",
 		"--score", "0.5",
+		"--apply-to-draft=false",
 	})
 	if err == nil {
 		t.Fatal("expected error for API failure")
@@ -1312,6 +1340,7 @@ func TestPatchExecute_WithUserIDType(t *testing.T) {
 		"--level", "key-result",
 		"--target-id", "789",
 		"--score", "0.8",
+		"--apply-to-draft=false",
 		"--user-id-type", "union_id",
 	})
 	if err != nil {
@@ -1347,6 +1376,7 @@ func TestParsePatchParams_ScoreRounding(t *testing.T) {
 		"--level", "objective",
 		"--target-id", "123",
 		"--score", "0.3",
+		"--apply-to-draft=false",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

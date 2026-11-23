@@ -5,13 +5,14 @@ package apps
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestAppsUpdateDryRun pins partial-update semantics: PATCH with only the
@@ -35,10 +36,10 @@ func TestAppsUpdateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "PATCH", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "v2", gjson.Get(result.Stdout, "api.0.body.name").String())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.description").Exists(),
+		assert.Equal(t, "PATCH", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "v2", clie2e.DryRunGet(result.Stdout, "api.0.body.name").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.description").Exists(),
 			"description must be omitted when not provided")
 	})
 
@@ -59,8 +60,8 @@ func TestAppsUpdateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "v2", gjson.Get(result.Stdout, "api.0.body.name").String())
-		assert.Equal(t, "updated", gjson.Get(result.Stdout, "api.0.body.description").String())
+		assert.Equal(t, "v2", clie2e.DryRunGet(result.Stdout, "api.0.body.name").String())
+		assert.Equal(t, "updated", clie2e.DryRunGet(result.Stdout, "api.0.body.description").String())
 	})
 
 	t.Run("RejectsMissingAppID", func(t *testing.T) {
@@ -96,5 +97,71 @@ func TestAppsUpdateDryRun(t *testing.T) {
 		result.AssertExitCode(t, 2)
 		msg := validateErrorMessage(result)
 		assert.Contains(t, msg, "at least one")
+	})
+}
+
+// TestAppsUpdateIconDryRun pins the icon flows: both icon flags preview the
+// app-type GET precheck; --icon-url is PATCHed as-is, --icon-file previews the
+// multipart upload followed by the PATCH, and bad
+// icon input is rejected locally before any request.
+func TestAppsUpdateIconDryRun(t *testing.T) {
+	setAppsDryRunEnv(t)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ok.png"), []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "fake.png"), []byte("plain text"), 0o600))
+
+	run := func(t *testing.T, args ...string) *clie2e.Result {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      append([]string{"apps", "+update", "--app-id", "app_x", "--dry-run"}, args...),
+			DefaultAs: "user",
+			WorkDir:   dir,
+		})
+		require.NoError(t, err)
+		return result
+	}
+
+	t.Run("IconURL", func(t *testing.T) {
+		result := run(t, "--icon-url", "https://example.com/i.png")
+		result.AssertExitCode(t, 0)
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "PATCH", clie2e.DryRunGet(result.Stdout, "api.1.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.1.url").String())
+		assert.Equal(t, "https://example.com/i.png", clie2e.DryRunGet(result.Stdout, "api.1.body.icon_url").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.2").Exists())
+	})
+
+	t.Run("IconFileUploadThenPatch", func(t *testing.T) {
+		result := run(t, "--icon-file", "ok.png")
+		result.AssertExitCode(t, 0)
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.1.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/icon", clie2e.DryRunGet(result.Stdout, "api.1.url").String())
+		assert.True(t, clie2e.DryRunGet(result.Stdout, "api.1.body.file").Exists())
+		assert.Equal(t, "PATCH", clie2e.DryRunGet(result.Stdout, "api.2.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.2.url").String())
+		assert.Equal(t, "<icon_url from upload response>", clie2e.DryRunGet(result.Stdout, "api.2.body.icon_url").String())
+	})
+
+	t.Run("RejectsBothIconFlags", func(t *testing.T) {
+		result := run(t, "--icon-url", "https://example.com/i.png", "--icon-file", "ok.png")
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), "mutually exclusive")
+	})
+
+	t.Run("RejectsNonHTTPIconURL", func(t *testing.T) {
+		result := run(t, "--icon-url", "ftp://example.com/i.png")
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), "http(s)")
+	})
+
+	t.Run("RejectsFakePNG", func(t *testing.T) {
+		result := run(t, "--icon-file", "fake.png")
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), "png or jpeg")
 	})
 }

@@ -1,6 +1,6 @@
 # task +upload-attachment
 
-> **Prerequisites:** Please read `../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
+> **Prerequisites:** Please read `../../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 
 Upload a single local file as an attachment to a task (or any resource type accepted by the Task attachment endpoint). Max file size per upload is **50 MB**. For task agents, use `--resource-type=task_delivery`.
 

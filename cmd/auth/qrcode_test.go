@@ -160,7 +160,7 @@ func TestNewCmdAuthQRCode_HelpText(t *testing.T) {
 		"QR code",
 		"--output",
 		"--ascii",
-		"relative path",
+		"allowed roots",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("help missing %q", want)
@@ -288,6 +288,49 @@ func TestGenerateImageQRCode_Success(t *testing.T) {
 	}
 	if string(data[:4]) != "\x89PNG" {
 		t.Errorf("output does not start with PNG magic bytes, got %x", data[:4])
+	}
+}
+
+// TestGenerateImageQRCode_KeepsExistingFileMode pins the mode of a target that
+// already exists. The write commits by rename, which installs the temp file's
+// mode along with its contents, so a fixed mode here would publish a file the
+// caller had restricted.
+func TestGenerateImageQRCode_KeepsExistingFileMode(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, "restricted.png")
+	if err := os.WriteFile(outputPath, []byte("placeholder"), 0600); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+
+	if err := generateImageQRCode("https://example.com", 256, outputPath); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("stat output file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Errorf("mode = %04o, want 0600 (the write must not widen an existing file)", got)
+	}
+}
+
+// TestGenerateImageQRCode_CreatesWithDefaultMode covers the other half: a path
+// with nothing at it takes the default rather than inheriting from nowhere.
+func TestGenerateImageQRCode_CreatesWithDefaultMode(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, "fresh.png")
+
+	if err := generateImageQRCode("https://example.com", 256, outputPath); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("stat output file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0644 {
+		t.Errorf("mode = %04o, want 0644", got)
 	}
 }
 

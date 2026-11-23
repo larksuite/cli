@@ -508,7 +508,8 @@ func TestUploadAttachmentTask_DryRun(t *testing.T) {
 			if err := json.Unmarshal([]byte(out), &dry); err != nil {
 				t.Fatalf("dry-run output is not JSON: %v\n%s", err, out)
 			}
-			calls, _ := dry["api"].([]interface{})
+			data, _ := dry["data"].(map[string]interface{})
+			calls, _ := data["api"].([]interface{})
 			if len(calls) != 1 {
 				t.Fatalf("expected 1 api call in dry-run, got %d: %v", len(calls), calls)
 			}

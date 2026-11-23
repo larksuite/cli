@@ -4,12 +4,9 @@
 package convertlib
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 )
@@ -129,114 +126,172 @@ func TestExtractPostBlocksText(t *testing.T) {
 }
 
 func TestResolveSenderNames(t *testing.T) {
-	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch {
-		case strings.Contains(req.URL.Path, "/open-apis/contact/v3/users/batch"):
-			if got := req.URL.Query()["user_ids"]; !reflect.DeepEqual(got, []string{"ou_api", "ou_missing"}) {
-				t.Fatalf("contact batch user_ids = %#v, want %#v", got, []string{"ou_api", "ou_missing"})
-			}
-			return convertlibJSONResponse(200, map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"items": []interface{}{
-						map[string]interface{}{"open_id": "ou_api", "name": "API User"},
-					},
-				},
-			}), nil
-		default:
-			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
-		}
+	// Server-provided sender_name is harvested into the cache for both user and bot;
+	// senders the server did not name are absent (id fallback downstream). There is no
+	// contact/mention lookup, so no API call is ever made.
+	rt := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("no API call expected: %s", req.URL.String())
 	}))
 
 	messages := []map[string]interface{}{
+		{"sender": map[string]interface{}{"sender_type": "user", "id": "ou_named", "sender_name": "Named User"}},
+		{"sender": map[string]interface{}{"sender_type": "app", "id": "cli_bot", "sender_name": "Bot Alpha"}},
+		{"sender": map[string]interface{}{"sender_type": "user", "id": "ou_unnamed"}},
+	}
+
+	got := ResolveSenderNames(rt, messages, nil)
+	if got["ou_named"] != "Named User" {
+		t.Fatalf("named user = %#v, want %#v", got["ou_named"], "Named User")
+	}
+	if got["cli_bot"] != "Bot Alpha" {
+		t.Fatalf("named bot = %#v, want %#v", got["cli_bot"], "Bot Alpha")
+	}
+	if _, has := got["ou_unnamed"]; has {
+		t.Fatalf("unnamed sender must not be resolved (no contact fallback), got %#v", got["ou_unnamed"])
+	}
+}
+
+// TestResolveSenderNamesServerNameBeatsMention locks the priority: when a sender's id
+// also appears as a mention, the server-provided sender_name must win over the mention
+// name (which can be a remark/nickname), and no contact call is made.
+func TestResolveSenderNamesServerNameBeatsMention(t *testing.T) {
+	rt := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("no contact call expected: %s", req.URL.String())
+	}))
+	messages := []map[string]interface{}{
 		{
-			"sender": map[string]interface{}{"sender_type": "user", "id": "ou_mention"},
+			"sender": map[string]interface{}{"sender_type": "user", "id": "ou_dual", "sender_name": "Server Name"},
 			"mentions": []interface{}{
-				map[string]interface{}{"id": "ou_mention", "name": "Mention User"},
+				map[string]interface{}{"id": "ou_dual", "name": "Mention Remark"},
 			},
 		},
-		{"sender": map[string]interface{}{"sender_type": "user", "id": "ou_api"}},
-		{"sender": map[string]interface{}{"sender_type": "user", "id": "ou_missing"}},
-		{"sender": map[string]interface{}{"sender_type": "bot", "id": "cli_1"}},
 	}
-
-	got := ResolveSenderNames(runtime, messages, nil)
-	if got["ou_mention"] != "Mention User" {
-		t.Fatalf("mention-resolved sender = %#v, want %#v", got["ou_mention"], "Mention User")
-	}
-	if got["ou_api"] != "API User" {
-		t.Fatalf("api-resolved sender = %#v, want %#v", got["ou_api"], "API User")
-	}
-	if got["ou_missing"] != "" {
-		t.Fatalf("missing sender = %#v, want empty", got["ou_missing"])
+	got := ResolveSenderNames(rt, messages, nil)
+	if got["ou_dual"] != "Server Name" {
+		t.Fatalf("server sender_name must beat mention name: got %#v, want %#v", got["ou_dual"], "Server Name")
 	}
 }
 
-func TestBatchResolveByBasicContactRespectsAPILimit(t *testing.T) {
-	// basic_batch allows at most 10 user_ids per request. Given 25 missing IDs,
-	// expect three requests with sizes 10 / 10 / 5.
-	var batchSizes []int
+// TestFormatMessageItemSenderPassthrough covers AC5: the formatted message must
+// carry the sender object through verbatim — retaining open_bot_id and leaving
+// id / id_type unchanged after enrichment.
+func TestFormatMessageItemSenderPassthrough(t *testing.T) {
 	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if !strings.Contains(req.URL.Path, "/open-apis/contact/v3/users/basic_batch") {
-			return nil, fmt.Errorf("unexpected path: %s", req.URL.Path)
-		}
-		body, err := io.ReadAll(req.Body)
-		if err != nil {
-			return nil, err
-		}
-		var payload map[string]interface{}
-		if err := json.Unmarshal(body, &payload); err != nil {
-			return nil, err
-		}
-		userIDs, _ := payload["user_ids"].([]interface{})
-		if len(userIDs) > 10 {
-			t.Fatalf("batch exceeded API limit: size = %d", len(userIDs))
-		}
-		batchSizes = append(batchSizes, len(userIDs))
-
-		users := make([]interface{}, 0, len(userIDs))
-		for _, raw := range userIDs {
-			id, _ := raw.(string)
-			users = append(users, map[string]interface{}{
-				"user_id": id,
-				"name":    "name-" + id,
-			})
-		}
-		return convertlibJSONResponse(200, map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{"users": users},
-		}), nil
+		return convertlibJSONResponse(200, map[string]interface{}{"code": 0, "data": map[string]interface{}{}}), nil
 	}))
-
-	missingIDs := make([]string, 25)
-	for i := range missingIDs {
-		missingIDs[i] = fmt.Sprintf("ou_%02d", i)
+	m := map[string]interface{}{
+		"message_id": "om_1",
+		"msg_type":   "text",
+		"body":       map[string]interface{}{"content": `{"text":"hi"}`},
+		"sender": map[string]interface{}{
+			"id":          "cli_bot",
+			"id_type":     "app_id",
+			"sender_type": "app",
+			"sender_name": "Bot Alpha",
+			"open_bot_id": "ou_bot",
+		},
 	}
-	nameMap := map[string]string{}
-	batchResolveByBasicContact(runtime, missingIDs, nameMap)
 
-	if want := []int{10, 10, 5}; !reflect.DeepEqual(batchSizes, want) {
-		t.Fatalf("batch sizes = %v, want %v", batchSizes, want)
+	out := FormatMessageItem(m, runtime)
+	sender, ok := out["sender"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("formatted sender missing/mistyped: %#v", out["sender"])
 	}
-	if len(nameMap) != 25 {
-		t.Fatalf("resolved name count = %d, want 25", len(nameMap))
+	if sender["open_bot_id"] != "ou_bot" {
+		t.Fatalf("open_bot_id passthrough = %#v, want %#v", sender["open_bot_id"], "ou_bot")
+	}
+	if sender["id"] != "cli_bot" || sender["id_type"] != "app_id" {
+		t.Fatalf("id/id_type must be unchanged, got id=%#v id_type=%#v", sender["id"], sender["id_type"])
 	}
 }
 
-func TestResolveSenderNamesAPIFailure(t *testing.T) {
-	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch {
-		case strings.Contains(req.URL.Path, "/open-apis/contact/v3/users/batch"):
-			return nil, fmt.Errorf("contact api failed")
-		default:
-			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
-		}
+func TestPickSenderName(t *testing.T) {
+	// Uses the server-provided sender_name.
+	if got := pickSenderName(map[string]interface{}{"sender_name": "Bot Alpha"}); got != "Bot Alpha" {
+		t.Fatalf("pickSenderName(sender_name) = %q, want %q", got, "Bot Alpha")
+	}
+	// sender_i18n_names is NOT consulted for the display name (it stays in output for
+	// consumers that want a specific locale); no sender_name -> empty (caller uses id).
+	i18nOnly := map[string]interface{}{
+		"sender_i18n_names": map[string]interface{}{"en_us": "Bot Beta", "zh_cn": "机器人乙", "ja_jp": "ロボット"},
+	}
+	if got := pickSenderName(i18nOnly); got != "" {
+		t.Fatalf("pickSenderName(i18n only, no sender_name) = %q, want empty", got)
+	}
+	// Empty sender_name -> empty (no i18n fallthrough).
+	if got := pickSenderName(map[string]interface{}{"sender_name": ""}); got != "" {
+		t.Fatalf("pickSenderName(empty sender_name) = %q, want empty", got)
+	}
+	// Nothing available -> empty (caller falls back to id).
+	if got := pickSenderName(map[string]interface{}{"id": "cli_x"}); got != "" {
+		t.Fatalf("pickSenderName(no name) = %q, want empty", got)
+	}
+}
+
+// TestAttachSenderNamesPrefersProducerName covers AC1 (bot display name), AC2
+// (user producer name), AC5 (open_bot_id passthrough) and AC3 (id fallback).
+func TestAttachSenderNamesPrefersProducerName(t *testing.T) {
+	i18n := map[string]interface{}{"en_us": "Bot Alpha", "zh_cn": "机器人甲"}
+	messages := []map[string]interface{}{
+		// bot sender with producer-filled sender_name (AC1) + sender_i18n_names + open_bot_id (AC5)
+		{"sender": map[string]interface{}{"sender_type": "app", "id": "cli_bot", "sender_name": "机器人甲", "sender_i18n_names": i18n, "open_bot_id": "ou_bot"}},
+		// user sender with producer-filled sender_name (AC2, unified read)
+		{"sender": map[string]interface{}{"sender_type": "user", "id": "ou_user1", "sender_name": "Producer User"}},
+		// user sender without producer name -> resolved from the shared name cache (nameMap)
+		{"sender": map[string]interface{}{"sender_type": "user", "id": "ou_user2"}},
+		// bot sender without any name -> stays id (AC3)
+		{"sender": map[string]interface{}{"sender_type": "app", "id": "cli_unknown"}},
+	}
+	nameMap := map[string]string{"ou_user2": "Contact User"}
+
+	AttachSenderNames(messages, nameMap)
+
+	s0 := messages[0]["sender"].(map[string]interface{})
+	if s0["name"] != "机器人甲" {
+		t.Fatalf("bot sender name = %#v, want %#v", s0["name"], "机器人甲")
+	}
+	if s0["open_bot_id"] != "ou_bot" {
+		t.Fatalf("bot open_bot_id passthrough = %#v, want %#v", s0["open_bot_id"], "ou_bot")
+	}
+	// sender_name is dropped (duplicate of name); sender_i18n_names is kept.
+	if _, has := s0["sender_name"]; has {
+		t.Fatalf("sender_name should be stripped from output, got %#v", s0["sender_name"])
+	}
+	if _, has := s0["sender_i18n_names"]; !has {
+		t.Fatalf("sender_i18n_names should be preserved in output")
+	}
+	if s := messages[1]["sender"].(map[string]interface{}); s["name"] != "Producer User" {
+		t.Fatalf("user producer name = %#v, want %#v", s["name"], "Producer User")
+	}
+	if s := messages[2]["sender"].(map[string]interface{}); s["name"] != "Contact User" {
+		t.Fatalf("user contact-fallback name = %#v, want %#v", s["name"], "Contact User")
+	}
+	if s := messages[3]["sender"].(map[string]interface{}); s["name"] != nil {
+		t.Fatalf("unresolved bot sender should keep no name (id fallback), got %#v", s["name"])
+	}
+}
+
+// TestSystemMessageNeedsNoName documents that system messages — identified by
+// msg_type=="system", not by any sender id — need no display name: the producer
+// fills none and their sender carries no ou_ id, so they never hit the contact API
+// and are left without a name (no error). An empty sender name is normal here.
+func TestSystemMessageNeedsNoName(t *testing.T) {
+	failIfContactCalled := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("system message must not trigger any API call: %s", req.URL.String())
 	}))
 
-	got := ResolveSenderNames(runtime, []map[string]interface{}{
-		{"sender": map[string]interface{}{"sender_type": "user", "id": "ou_fail"}},
-	}, map[string]string{})
-	if got["ou_fail"] != "" {
-		t.Fatalf("failed sender resolution = %#v, want empty", got["ou_fail"])
+	messages := []map[string]interface{}{
+		{"msg_type": "system", "sender": map[string]interface{}{"sender_type": "system"}},
+		{"msg_type": "system"}, // system message without a sender object at all
+	}
+
+	got := ResolveSenderNames(failIfContactCalled, messages, nil)
+	if len(got) != 0 {
+		t.Fatalf("system messages resolved names = %#v, want empty", got)
+	}
+
+	AttachSenderNames(messages, got)
+	if s := messages[0]["sender"].(map[string]interface{}); s["name"] != nil {
+		t.Fatalf("system message sender should keep no name, got %#v", s["name"])
 	}
 }

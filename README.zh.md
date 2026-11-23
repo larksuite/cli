@@ -8,7 +8,7 @@
 
 飞书官方 CLI 工具，由 [larksuite](https://github.com/larksuite) 团队维护 — 让人类和 AI Agent 都能在终端中操作飞书。覆盖消息、文档、多维表格、电子表格、幻灯片、日历、邮箱、任务、会议、Markdown 等核心业务域，提供 200+ 命令及 26 个 AI Agent [Skills](./skills/)。
 
-[安装](#安装与快速开始) · [AI Agent Skills](#agent-skills) · [认证](#认证) · [命令](#三层命令调用) · [进阶用法](#进阶用法) · [安全](#安全与风险提示使用前必读) · [贡献](#贡献)
+[安装](#安装与快速开始) · [AI Agent Skills](#agent-skills) · [认证](#认证) · [命令](#三层命令调用) · [进阶用法](#进阶用法) · [企业接入](#个人使用还是企业集成) · [安全](#安全与风险提示使用前必读) · [贡献](#贡献)
 
 ## 为什么选 lark-cli？
 
@@ -19,6 +19,15 @@
 - **三分钟上手** — 一键创建应用、交互式登录授权，从安装到第一次 API 调用只需三步
 - **安全可控** — 输入防注入、终端输出净化、OS 原生密钥链存储凭证
 - **三层调用架构** — 快捷命令（人机友好）→ API 命令（平台同步）→ 通用调用（全 API 覆盖），按需选择粒度
+
+## 个人使用还是企业集成？
+
+| 你是... | 推荐路径 |
+| ------- | -------- |
+| **个人开发者** — 在终端里直接使用，或搭配自己的 AI Agent | 按下方[快速开始](#安装与快速开始)操作 |
+| **企业 IT / ISV** — 把 lark-cli 内嵌到自研 Agent 或平台中，需要中心化凭证管理（数据库 / Vault / 配置中心）、统一审计日志、命令能力裁剪 | 阅读[《自研 Agent 接入飞书 CLI》](https://open.larkoffice.com/document/mcp_open_tools/feishu-cli/embed-feishu-cli-in-agent)与 [`extension/`](./extension/) 扩展包 — 通过 wrapper `main` 扩展，无需修改 CLI 源码 |
+
+> 💡 **给 AI Agent：** 任意开放平台文档 URL 加 `.md` 后缀即可直接获取原始 Markdown，例如 [`embed-feishu-cli-in-agent.md`](https://open.larkoffice.com/document/mcp_open_tools/feishu-cli/embed-feishu-cli-in-agent.md)。
 
 ## 功能
 
@@ -36,7 +45,7 @@
 | 📚 知识库   | 创建和管理知识空间、节点和文档                            |
 | 👤 通讯录   | 按姓名/邮箱/手机号搜索用户、获取用户信息                      |
 | 📧 邮箱     | 浏览、搜索、阅读邮件，发送、回复、转发邮件，管理草稿，监听新邮件           |
-| 🎥 视频会议 | 搜索会议记录、查询会议纪要产物与会议录制                        |
+| 🎥 视频会议 | 查询进行中或历史会议、参会人和会议产物，分析逐字稿，管理妙记并提供会中协助 |
 | 🕐 考勤打卡 | 查询个人考勤打卡记录                                |
 | ✍️ 审批     | 查询审批任务、同意/拒绝/转交审批任务、撤回与抄送审批实例              |
 | 🎯 OKR  | 查询、创建、更新 OKR，管理目标、关键结果、对齐、指标和进展记录        |
@@ -143,9 +152,8 @@ lark-cli auth status
 | `lark-contact`                  | 按姓名/邮箱/手机号搜索用户，获取用户信息                     |
 | `lark-wiki`                     | 知识空间、节点、文档                                |
 | `lark-event`                    | 实时事件订阅（WebSocket），支持正则路由与 Agent 友好格式      |
-| `lark-vc`                       | 搜索会议记录、查询会议纪要产物（总结、待办、逐字稿）                |
+| `lark-meeting`                  | 查询进行中或历史会议、参会人和会议产物，分析逐字稿，管理妙记并提供会中协助 |
 | `lark-whiteboard`               | 画板/图表 DSL 渲染                              |
-| `lark-minutes`                  | 妙记元数据与 AI 产物（总结、待办、章节），上传音视频生成妙记，下载音视频文件 |
 | `lark-openapi-explorer`         | 从官方文档探索底层 API                             |
 | `lark-skill-maker`              | 自定义 skill 创建框架                            |
 | `lark-attendance`               | 查询个人考勤打卡记录                                |
@@ -183,10 +191,26 @@ lark-cli auth login --domain calendar --no-wait
 # 稍后恢复轮询
 lark-cli auth login --device-code <DEVICE_CODE>
 
+# 新签发的本地凭证默认以 preferred 模式启用 DPoP（Demonstrating Proof of Possession）
+lark-cli config set dpop preferred
+# 或关闭 DPoP
+lark-cli config set dpop disabled
+# 或强制使用 DPoP，禁止回退到 Bearer
+lark-cli config set dpop required
+# 选择其他策略后重新登录授权
+lark-cli auth login
+
 # 身份切换：以用户或机器人身份执行命令
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
+
+通过环境变量选择账号时，可将 `LARKSUITE_CLI_APP_ID_FILE`、
+`LARKSUITE_CLI_USER_ACCESS_TOKEN_FILE` 或 `LARKSUITE_CLI_TENANT_ACCESS_TOKEN_FILE`
+设为普通文件的绝对路径。每个文件最多 64 KiB，只包含一个值。
+每项凭据只设置直接变量与文件变量中的一项。设置
+`LARKSUITE_CLI_TENANT_ACCESS_TOKEN_SOURCE=credential-store` 后，机器人请求使用当前
+App ID 对应的已存储令牌，并忽略两个租户令牌变量。用户请求仍可使用用户令牌变量或文件。
 
 ## 三层命令调用
 
@@ -286,11 +310,30 @@ lark-cli schema im.messages.delete
 
 我们建议您将对接本工具的飞书机器人作为私人对话助手使用，请勿将其拉入群聊或允许其他用户与其交互，以避免权限被滥用或数据泄露。
 
+为降低访问令牌被盗用后的安全风险，CLI 在向飞书/Lark 官方 HTTPS 精确域名发起 OpenAPI 请求时，会随请求发送一组最小化的风控信号，用于辅助识别异常调用行为。该保护默认开启，发送的信息仅包括：
+
+- 操作系统类型：macOS、Windows 或 Linux
+- 设备的硬件产品型号：例如 Mac17,9
+
+如需让当前 workspace 退出该保护，可执行以下命令：
+
+```bash
+lark-cli config risk-control off
+```
+
+如需开启当前 workspace 的保护，可执行以下命令：
+
+```bash
+lark-cli config risk-control on
+```
+
+恢复当前 workspace 默认策略可执行：
+
+```bash
+lark-cli config risk-control default
+```
+
 请您充分知悉全部使用风险，使用本工具即视为您自愿承担相关所有责任。
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=larksuite/cli&type=Date)](https://star-history.com/#larksuite/cli&Date)
 
 ## 贡献
 

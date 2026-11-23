@@ -269,11 +269,58 @@ func TestFetchMeetingDetail_RecordingAPIErrorButNoteOK(t *testing.T) {
 		if result.MinuteToken != "" {
 			t.Errorf("minute_token = %q, want empty", result.MinuteToken)
 		}
-		if !strings.Contains(result.Error, "failed to query minutes") || !strings.Contains(result.Error, "weird API error") {
-			t.Errorf("error = %q, want contains 'failed to query minutes' and 'weird API error'", result.Error)
+		if result.Error != "" {
+			t.Errorf("error = %q, want empty: a recording lookup failure must not fail the command", result.Error)
 		}
-		if strings.Contains(result.Hint, "minute_token") {
-			t.Errorf("hint = %q, should not mention minute_token when there is an error", result.Hint)
+		if !strings.Contains(result.Hint, "failed to query minutes") || !strings.Contains(result.Hint, "weird API error") {
+			t.Errorf("hint = %q, want contains 'failed to query minutes' and 'weird API error'", result.Hint)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestFetchMeetingDetail_MeetingInProgress pins the in-progress behavior: when a
+// meeting is still ongoing (end_time not after start_time), +detail must not
+// call the recording API at all — it returns meeting metadata with an
+// informational hint and no error. Deliberately register NO recording stub so
+// that any recording call would fail on an unmatched request.
+func TestFetchMeetingDetail_MeetingInProgress(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m_live",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"meeting": map[string]interface{}{
+				"id":         "m_live",
+				"topic":      "Live Meeting",
+				"meeting_no": "912052453",
+				// end_time == start_time signals an ongoing meeting.
+				"start_time": "1752000000",
+				"end_time":   "1752000000",
+			}},
+		},
+	})
+
+	if err := botExec(t, "detail-live", f, func(_ context.Context, rctx *common.RuntimeContext) error {
+		result := fetchMeetingDetail(context.Background(), rctx, "m_live")
+		if result.Topic != "Live Meeting" {
+			t.Errorf("topic = %q, want 'Live Meeting'", result.Topic)
+		}
+		if result.Error != "" {
+			t.Errorf("error = %q, want empty for an in-progress meeting", result.Error)
+		}
+		if result.MinuteToken != "" {
+			t.Errorf("minute_token = %q, want empty for an in-progress meeting", result.MinuteToken)
+		}
+		if !strings.Contains(result.Hint, "in progress") {
+			t.Errorf("hint = %q, want to mention the meeting is in progress", result.Hint)
+		}
+		if strings.Contains(result.Hint, "not found for this meeting") {
+			t.Errorf("hint = %q, should not emit not-found noise for an in-progress meeting", result.Hint)
 		}
 		return nil
 	}); err != nil {

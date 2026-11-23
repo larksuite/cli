@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 type imMarkdownContext struct {
@@ -73,10 +75,10 @@ func init() {
 	registerIMMarkdownHandler("time", handleIMMarkdownDiscard)
 	registerIMMarkdownHandler("whiteboard", handleIMMarkdownInlineCode)
 	registerIMMarkdownHandler("sheet", handleIMMarkdownSheet)
-	registerIMMarkdownHandler("task", handleIMMarkdownConditionalResourceLabel("任务", "task-id", "guid", "token", "id"))
-	registerIMMarkdownHandler("chat_card", handleIMMarkdownConditionalResourceLabel("群聊卡片", "chat-id", "chat_id", "id"))
-	registerIMMarkdownHandler("bitable", handleIMMarkdownResourceLabel("多维表格"))
-	registerIMMarkdownHandler("base_refer", handleIMMarkdownResourceLabel("多维表格"))
+	registerIMMarkdownHandler("task", handleIMMarkdownConditionalResourceLabel("Task", "task-id", "guid", "token", "id"))
+	registerIMMarkdownHandler("chat_card", handleIMMarkdownConditionalResourceLabel("Chat card", "chat-id", "chat_id", "id"))
+	registerIMMarkdownHandler("bitable", handleIMMarkdownResourceLabel("Base"))
+	registerIMMarkdownHandler("base_refer", handleIMMarkdownResourceLabel("Base"))
 	registerIMMarkdownHandler("okr", handleIMMarkdownResourceLabel("OKR"))
 	registerIMMarkdownHandler("poll", handleIMMarkdownDiscard)
 	registerIMMarkdownHandler("agenda", handleIMMarkdownDiscard)
@@ -117,7 +119,10 @@ func newIMMarkdownContext(docInput string) imMarkdownContext {
 	base := "https://larkoffice.com"
 	raw := strings.TrimSpace(docInput)
 	if extracted, ok := imMarkdownBaseURLFromInput(raw); ok {
+		// The tenant host comes from user input and stays verbatim.
 		base = extracted
+	} else {
+		base = urlrewrite.Rewrite(base)
 	}
 	return imMarkdownContext{baseURL: base}
 }

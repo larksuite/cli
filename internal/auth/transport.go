@@ -17,6 +17,8 @@ import (
 	"github.com/larksuite/cli/internal/transport"
 )
 
+var _ transport.RoundTripperDecorator = (*SecurityPolicyTransport)(nil)
+
 // SecurityPolicyTransport is an http.RoundTripper that intercepts all responses
 // and checks for security policy errors.
 type SecurityPolicyTransport struct {
@@ -29,6 +31,16 @@ func (t *SecurityPolicyTransport) base() http.RoundTripper {
 		return t.Base
 	}
 	return transport.Fallback()
+}
+
+func (t *SecurityPolicyTransport) BaseRoundTripper() http.RoundTripper {
+	return t.base()
+}
+
+func (t *SecurityPolicyTransport) WithBaseRoundTripper(base http.RoundTripper) http.RoundTripper {
+	cloned := *t
+	cloned.Base = base
+	return &cloned
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -180,13 +192,14 @@ func (t *SecurityPolicyTransport) tryHandleOAPIResponse(result map[string]interf
 		return nil
 	}
 
-	// 3. Extract details
-	var challengeUrl, cliHint, msg string
+	// 3. Extract details. Some token endpoints omit data but still return the
+	// standard top-level msg.
+	var challengeUrl, cliHint string
+	msg := getStr(result, "msg")
 	if dataMap, ok := result["data"].(map[string]interface{}); ok {
 		// Standard OAPI format
 		challengeUrl = getStr(dataMap, "challenge_url")
 		cliHint = getStr(dataMap, "cli_hint")
-		msg = getStr(result, "msg")
 	} else if errMap, ok := result["error"].(map[string]interface{}); ok {
 		// Already formatted error format (e.g. from internal API or CLI output)
 		challengeUrl = getStr(errMap, "challenge_url")

@@ -16,6 +16,7 @@ import (
 
 // TestCalendar_CreateEvent tests the workflow of creating a calendar event.
 func TestCalendar_CreateEvent(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

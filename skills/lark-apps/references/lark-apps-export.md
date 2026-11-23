@@ -1,0 +1,66 @@
+# apps +export
+
+`+export` 把妙搭应用的源码打成 zip 下载到本地。运行时命令事实以 `lark-cli apps +export --help` 为准。
+
+## 何时用
+
+用户明确要**导出 / 下载 / 归档**整份源码快照，或要离线分析、全文检索、把整包喂给别的工具时使用。它产出 zip，适合一次拿全量源码，不适合只查看 git 源码形态应用的某个文件内容。
+
+只为阅读 / 总结创意应用内容时，git 源码形态先用 `+page-source-list` / `+page-source-get`。
+
+**跨应用是它相对 `+init` 的核心价值**：创意应用的分享链接（`/page/<token>`）指向别人的应用，你对那个仓库没有权限，`git clone` 走不通；`+export` 不走 Git，但要求你是该应用的协作者，且权限为可编辑（`edit`）或可管理（`full_access`）；应用的 `copy_download_by` 为 `full-access` 时只有可管理（`full_access`）能导出——只持有分享链接或只读（`view`）权限不够。
+
+## 不要用它的时候
+
+用户只是想看懂 / 分析 / 总结创意应用（`/page/<token>`）的内容，或只需要查看目录和单个文件时，git 源码形态先用 `+page-source-list` / `+page-source-get`；只有明确要下载整包时，才使用 `+export`。
+
+要继续开发就用 `+init`，不要用 `+export` 再手动 `git init`。两者产出不同：
+
+| | `+export` | `+init` |
+|---|---|---|
+| 产出 | 一个 zip | 完整 git 工作区 |
+| Git 凭证 | 不配 | 配好，可 push |
+| 本地环境变量 | 不拉 | 拉 `.env.local` |
+| 前提 | 是应用的 `edit` / `full_access` 协作者（`copy_download_by` 为 `full-access` 时只有 `full_access`） | 对**仓库**有权限 |
+
+用 `+export` 拿到的目录没有 git 历史、没有远端、没有凭证，改完发不回去。
+
+## 导出的是「最后一次提交」，不是沙箱当前状态
+
+服务端对远端仓库跑 `git archive`，从不读沙箱文件系统。用户在沙箱里改了文件但没提交或发布，**那些改动不在归档里**。
+
+这是设计如此，不是缺陷。若导出结果看起来"少了刚写的代码"，先确认改动是否已提交，而不是重试导出。
+
+## 命令骨架
+
+- `--app-id` 与 `--meta-token` **恰传其一**：前者是自己的应用，后者是分享链接里的 token。
+  两者作为独立字段走 `POST /apps/export` 的请求体（`app_id` / `meta_token`），服务端按传入的
+  字段区分，不再共用 path 段——调用方只有 token、没有 app_id 时也不用在路径里凑一个占位值。
+  - 两者都只收**裸标识符**。拿到的是整条链接（`.../app/<app_id>` 或 `.../page/<token>`）时，
+    只传最后一段——整条 URL 传进来会被本地拦下并提示，不会变成一个看起来像"应用不存在"的 404。
+- `--output` 可选，相对当前目录；省略时用服务端给的文件名（通常是 `<app_id>.zip`）。
+
+## 示例
+
+```bash
+lark-cli apps +export --app-id app_xxx --output ./src.zip
+lark-cli apps +export --app-id app_xxx                      # 存成 ./app_xxx.zip
+lark-cli apps +export --meta-token <share-token>            # 别人分享给你的应用
+lark-cli apps +export --app-id app_xxx --dry-run
+```
+
+## 输出契约
+
+- 成功时 stdout 是 JSON envelope，含 `output`（落盘的绝对路径）与 `size_bytes`；传了 `--app-id` 时还会回显 `app_id`。
+- 归档以流式写盘，不会整包驻留内存，大仓库也安全。
+- 失败时不会留下半个文件。
+
+## 错误处理
+
+| 情况 | 怎么办 |
+|---|---|
+| 应用尚未发布（`code 40901 app not published`） | 该应用是产物托管形态（如静态 HTML 应用），导出的是「最新已发布产物」，而它还没有成功发布过版本，此刻没有可导的东西。**先发布应用再重试**——不是 app_id 写错，重试也没用 |
+| 权限不足（HTTP 403，或 HTTP 200 + `code 40300`；两者都表现为 `permission_denied`） | 导出要求你是该应用的可编辑（`edit`）或可管理（`full_access`）协作者；应用的 `copy_download_by` 为 `full-access` 时只有 `full_access` 能导出。**持有分享 token、能打开页面、只读（`view`）协作者都不够**。重试和换参数都没用：向用户说明要请应用所有者把他加为对应角色的协作者——若应用的 `copy_download_by` 为 `full-access`，需授予 `full_access`（所有者可用 `+member-add` / `+member-update --perm full_access`）；否则授予 `edit`（`+member-add` / `+member-update --perm edit`）。不要让用户去申请“下载权限” |
+| 应用不存在（404） | 用 `+list --keyword <name>` 核对 app_id |
+| 归档过大（413） | 超出导出体积上限，改用 `+git-credential-init` + 原生 git clone |
+| 参数报错 | `--app-id` 与 `--meta-token` 只能给一个，且必须给一个；两者都要裸标识符（不是整条链接） |

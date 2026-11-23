@@ -13,11 +13,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/dpop"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 const (
@@ -26,6 +29,7 @@ const (
 	StatusMissing       = "missing"
 	StatusNeedsRefresh  = "needs_refresh"
 	StatusVerifyFailed  = "verify_failed"
+	StatusError         = "error"
 )
 
 // verifyTimeout bounds each network call made during --verify so that a
@@ -41,19 +45,74 @@ type Result struct {
 
 // Identity is a single identity diagnostic result.
 type Identity struct {
-	Status           string `json:"status"`
-	Available        bool   `json:"available"`
-	Verified         *bool  `json:"verified,omitempty"`
-	Message          string `json:"message,omitempty"`
-	Hint             string `json:"hint,omitempty"`
-	OpenID           string `json:"openId,omitempty"`
-	AppName          string `json:"appName,omitempty"`
-	UserName         string `json:"userName,omitempty"`
-	TokenStatus      string `json:"tokenStatus,omitempty"`
-	Scope            string `json:"scope,omitempty"`
-	ExpiresAt        string `json:"expiresAt,omitempty"`
-	RefreshExpiresAt string `json:"refreshExpiresAt,omitempty"`
-	GrantedAt        string `json:"grantedAt,omitempty"`
+	Status           string          `json:"status"`
+	Available        bool            `json:"available"`
+	Verified         *bool           `json:"verified,omitempty"`
+	Message          string          `json:"message,omitempty"`
+	Hint             string          `json:"hint,omitempty"`
+	Error            errs.TypedError `json:"error,omitempty"`
+	OpenID           string          `json:"openId,omitempty"`
+	AppName          string          `json:"appName,omitempty"`
+	UserName         string          `json:"userName,omitempty"`
+	TokenStatus      string          `json:"tokenStatus,omitempty"`
+	Scope            string          `json:"scope,omitempty"`
+	ExpiresAt        string          `json:"expiresAt,omitempty"`
+	RefreshExpiresAt string          `json:"refreshExpiresAt,omitempty"`
+	GrantedAt        string          `json:"grantedAt,omitempty"`
+	// Local token metadata is projected by auth status without loading the key
+	// a second time and potentially disagreeing with this readiness result.
+	TokenType            string `json:"-"`
+	DPoPKeyStatus        string `json:"-"`
+	DPoPKeyProvider      string `json:"-"`
+	DPoPKeySecurityLevel string `json:"-"`
+	recoveryTarget       recovery.Target
+	recoveryError        error
+}
+
+// withCommandRecovery binds user-facing recovery text to the command it
+// requires. Keeping the pair behind one constructor prevents a new diagnostic
+// from emitting a command hint without the build-local filtering metadata.
+func withCommandRecovery(identity Identity, target recovery.Target, hint string) Identity {
+	identity.Hint = hint
+	identity.recoveryTarget = target
+	return identity
+}
+
+// FilterRecovery projects both diagnostic hint fields onto the command surface.
+func FilterRecovery(result Result, projector *recovery.Projector) Result {
+	filter := func(identity Identity) Identity {
+		if identity.recoveryError != nil {
+			rendered := projector.Render(identity.recoveryError)
+			if errors.As(rendered, &identity.Error) {
+				identity.Hint = identity.Error.ProblemDetail().Hint
+			}
+		}
+		if identity.recoveryTarget != "" && !projector.CanReference(identity.recoveryTarget) {
+			identity.Hint = ""
+			if cloned, ok := recovery.CloneTyped(identity.Error); ok && errors.As(cloned, &identity.Error) {
+				identity.Error.ProblemDetail().Hint = ""
+			}
+		}
+		return identity
+	}
+	result.Bot = filter(result.Bot)
+	result.User = filter(result.User)
+	return result
+}
+
+func withPolicyError(identity Identity, err error) Identity {
+	var typed errs.TypedError
+	if !errors.As(err, &typed) {
+		return identity
+	}
+	problem := typed.ProblemDetail()
+	if problem == nil || problem.Category != errs.CategoryPolicy {
+		return identity
+	}
+	// Keep the concrete typed value: reducing it to Problem would discard
+	// policy-specific wire fields such as challenge_url or rules.
+	identity.Error = typed
+	return identity
 }
 
 // Diagnose checks bot and user identities separately. When verify is false,
@@ -177,7 +236,7 @@ func externalVerifyFailed(id Identity, label, provider string, err error) Identi
 	id.TokenStatus = ""
 	id.Message = label + " identity: verify failed: " + err.Error()
 	id.Hint = externalCredentialHint(provider)
-	return id
+	return withPolicyError(id, err)
 }
 
 // externalCredentialHint reports the constraint, not a remediation: the
@@ -189,11 +248,10 @@ func externalCredentialHint(provider string) string {
 
 func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, verify bool) Identity {
 	if cfg == nil || cfg.AppID == "" {
-		return Identity{
+		return withCommandRecovery(Identity{
 			Status:  StatusNotConfigured,
 			Message: "Bot identity: not configured (missing app config)",
-			Hint:    "run: lark-cli config --help",
-		}
+		}, recovery.TargetConfig, "run: lark-cli config --help")
 	}
 	if !cfg.CanBot() {
 		return Identity{
@@ -203,11 +261,10 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 		}
 	}
 	if cfg.SupportedIdentities == 0 && !credential.HasRealAppSecret(cfg.AppSecret) {
-		return Identity{
+		return withCommandRecovery(Identity{
 			Status:  StatusNotConfigured,
 			Message: "Bot identity: not configured (missing app secret or bot token)",
-			Hint:    "run: lark-cli config --help",
-		}
+		}, recovery.TargetConfig, "run: lark-cli config --help")
 	}
 
 	id := Identity{
@@ -226,22 +283,22 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 		if errors.As(err, &unavailable) {
 			status = StatusNotConfigured
 		}
-		return Identity{
+		return withPolicyError(Identity{
 			Status:   status,
 			Verified: boolPtr(false),
 			Message:  "Bot identity: " + StatusMessage(status) + ": " + err.Error(),
 			Hint:     "check app credentials or the active credential provider",
-		}
+		}, err)
 	}
 
 	info, err := fetchBotInfo(ctx, f, cfg, token)
 	if err != nil {
-		return Identity{
+		return withPolicyError(Identity{
 			Status:   StatusVerifyFailed,
 			Verified: boolPtr(false),
 			Message:  "Bot identity: verify failed: " + err.Error(),
 			Hint:     "check app credentials, scopes, network, or tenant access token configuration",
-		}
+		}, err)
 	}
 
 	id.Verified = boolPtr(true)
@@ -252,103 +309,147 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 
 func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, verify bool) Identity {
 	if cfg == nil || cfg.AppID == "" {
-		return Identity{
+		return withCommandRecovery(Identity{
 			Status:  StatusNotConfigured,
 			Message: "User identity: not configured (missing app config)",
-			Hint:    "run: lark-cli config --help",
-		}
+		}, recovery.TargetConfig, "run: lark-cli config --help")
 	}
 	if cfg.UserOpenId == "" {
-		return Identity{
+		return withCommandRecovery(Identity{
 			Status:  StatusMissing,
 			Message: "User identity: missing (no user logged in)",
-			Hint:    "run: lark-cli auth login --help",
-		}
+		}, recovery.TargetAuthLogin, "run: lark-cli auth login --help")
 	}
 
 	id := Identity{
 		UserName: cfg.UserName,
 		OpenID:   cfg.UserOpenId,
 	}
-	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
+	stored, err := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
+	if err != nil {
+		id.Status = StatusError
+		id.Message = "User identity: error (" + err.Error() + ")"
+		if problem, ok := errs.ProblemOf(err); ok {
+			id.Hint = problem.Hint
+			id.Error = problem
+			id.recoveryError = err
+		}
+		return id
+	}
 	if stored == nil {
 		id.Status = StatusMissing
 		id.Message = "User identity: missing (no token in keychain for " + cfg.UserOpenId + ")"
-		id.Hint = "run: lark-cli auth login --help"
-		return id
+		return withCommandRecovery(id, recovery.TargetAuthLogin, "run: lark-cli auth login --help")
 	}
 
 	fillTokenFields(&id, stored)
+	id.TokenType = stored.TokenType
+	binding, bindingErr := larkauth.ResolveDPoPBindingContext(ctx, stored, nil)
+	if bindingErr != nil {
+		id.Status = StatusMissing
+		id.DPoPKeyStatus = "missing"
+		id.Message = "User identity: missing (DPoP key unavailable or inconsistent)"
+		problem, _ := errs.ProblemOf(bindingErr)
+		return withCommandRecovery(id, recovery.TargetAuthLogin, problem.Hint)
+	}
+	if binding != nil {
+		id.DPoPKeyStatus = "available"
+		id.DPoPKeyProvider = binding.Key().Provider()
+		id.DPoPKeySecurityLevel = string(binding.KeyStoreSecureLevel)
+	}
 	switch larkauth.TokenStatus(stored) {
 	case "valid":
 		id.Status = StatusReady
 		id.Available = true
 		id.Message = "User identity: ready"
+		if stored.RefreshToken == "" {
+			id.Message = fmt.Sprintf("User identity: ready until %s, then a new login is required (this login received no refresh token, so it cannot be renewed automatically)", id.ExpiresAt)
+			id = withCommandRecovery(id, recovery.TargetAuthLogin, fmt.Sprintf(
+				"no refresh token because %s; to stop re-authorizing every 2 hours, %s",
+				larkauth.NoRefreshTokenCause, larkauth.NoRefreshTokenFix(cfg.Brand, cfg.AppID)))
+		}
 	case "needs_refresh":
 		id.Status = StatusNeedsRefresh
 		id.Available = true
 		id.Message = "User identity: needs refresh (will auto-refresh on next user API call)"
 	default:
 		id.Status = StatusMissing
+		if stored.RefreshToken == "" {
+			id.Message = "User identity: missing (access token expired; this login received no refresh token, so it could not be renewed)"
+			return withCommandRecovery(id, recovery.TargetAuthLogin, fmt.Sprintf(
+				"no refresh token because %s; to stop re-authorizing every 2 hours, %s; run: lark-cli auth login --help",
+				larkauth.NoRefreshTokenCause, larkauth.NoRefreshTokenFix(cfg.Brand, cfg.AppID)))
+		}
 		id.Message = "User identity: missing (refresh token expired)"
-		id.Hint = "run: lark-cli auth login --help"
-		return id
+		return withCommandRecovery(id, recovery.TargetAuthLogin, "run: lark-cli auth login --help")
 	}
 
 	if !verify {
 		return id
 	}
 
-	markVerifyFailed := func(reason, hint string) Identity {
+	markVerifyFailed := func(reason, hint string, target recovery.Target) Identity {
 		id.Status = StatusVerifyFailed
 		id.Available = false
 		id.Verified = boolPtr(false)
 		id.Message = "User identity: verify failed: " + reason
 		if hint != "" {
-			id.Hint = hint
+			id = withCommandRecovery(id, target, hint)
 		}
 		return id
 	}
 
 	httpClient, err := f.HttpClient()
 	if err != nil {
-		return markVerifyFailed("create HTTP client: "+err.Error(), "")
+		return markVerifyFailed("create HTTP client: "+err.Error(), "", "")
 	}
-	token, err := larkauth.GetValidAccessToken(httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
+	token, err := larkauth.GetValidAccessToken(ctx, httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
 	if err != nil {
-		return markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help")
+		return withPolicyError(
+			markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin),
+			err,
+		)
 	}
 	sdk, err := f.LarkClient()
 	if err != nil {
-		return markVerifyFailed("SDK init failed: "+err.Error(), "")
+		return markVerifyFailed("SDK init failed: "+err.Error(), "", "")
 	}
 	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
-	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token); err != nil {
-		return markVerifyFailed("server rejected token: "+err.Error(), "run: lark-cli auth login --help")
+	verifyCtx = core.WithCredentialSource(verifyCtx, core.CredentialSourceLocal)
+	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token.AccessToken, token.DPoP); err != nil {
+		return withPolicyError(
+			markVerifyFailed("server rejected token: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin),
+			err,
+		)
 	}
 
 	id.Verified = boolPtr(true)
-	if id.Status == StatusReady {
-		id.Message = "User identity: ready"
-	} else {
+	// A ready identity keeps the message set above, which may carry the
+	// no-refresh-token expiry warning.
+	if id.Status != StatusReady {
 		id.Message = "User identity: needs refresh (server verification succeeded after refresh)"
 	}
 	return id
 }
 
-func resolveBotToken(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) (string, error) {
+func resolveBotToken(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) (*credential.TokenResult, error) {
 	if f == nil || f.Credential == nil {
-		return "", &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
+		return nil, &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
 	}
 	result, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(core.AsBot, cfg.AppID))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if result == nil || result.Token == "" {
-		return "", &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
+		return nil, &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
 	}
-	return result.Token, nil
+	if cfg != nil && cfg.DPoPMode.Required() &&
+		result.Source == core.CredentialSourceLocal && result.DPoP == nil {
+		return nil, errs.NewAuthenticationError(errs.SubtypeDPoPRequired,
+			"this profile requires DPoP but the local bot credential is Bearer")
+	}
+	return result, nil
 }
 
 type botInfo struct {
@@ -356,10 +457,14 @@ type botInfo struct {
 	AppName string
 }
 
-func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, token string) (*botInfo, error) {
+func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, token *credential.TokenResult) (*botInfo, error) {
 	httpClient, err := f.HttpClient()
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
+	}
+	ctx = core.WithCredentialSource(ctx, token.Source)
+	if token.DPoP != nil {
+		ctx = dpop.WithBinding(ctx, token.DPoP)
 	}
 	ctx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
@@ -368,7 +473,7 @@ func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+token.Token)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -414,7 +519,11 @@ func fillTokenFields(id *Identity, token *larkauth.StoredUAToken) {
 	id.TokenStatus = larkauth.TokenStatus(token)
 	id.Scope = token.Scope
 	id.ExpiresAt = formatMillis(token.ExpiresAt)
-	id.RefreshExpiresAt = formatMillis(token.RefreshExpiresAt)
+	// A login without a refresh_token still stores a refresh expiry (the
+	// device flow copies the access-token expiry); do not report it as one.
+	if token.RefreshToken != "" {
+		id.RefreshExpiresAt = formatMillis(token.RefreshExpiresAt)
+	}
 	id.GrantedAt = formatMillis(token.GrantedAt)
 }
 
@@ -431,6 +540,8 @@ func StatusMessage(status string) string {
 		return "not configured"
 	case StatusVerifyFailed:
 		return "verify failed"
+	case StatusError:
+		return "error"
 	case StatusNeedsRefresh:
 		return "needs refresh"
 	case StatusMissing:

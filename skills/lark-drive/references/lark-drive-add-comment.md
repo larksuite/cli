@@ -1,7 +1,7 @@
 
 # drive +add-comment
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 给文档、受支持的 Drive 普通文件、电子表格、飞书幻灯片或 Base 添加评论。未指定位置时创建全文评论，但仅适用于 doc/docx、白名单 Drive file，以及解析为这些类型的 wiki；sheet、slides、Base(bitable) 必须指定 `--block-id`。不同类型的 `--block-id` 格式见下文。支持直接传 docx URL/token、旧版 doc URL（仅全文评论）、Drive file URL/token（**仅支持白名单扩展名，且只支持全文评论**）、sheet URL、slides URL、base/bitable URL，也支持传最终可解析为 doc/docx/file/sheet/slides/base(bitable) 的 wiki URL。
 
@@ -159,25 +159,23 @@ lark-cli drive +add-comment \
 
 ## 行为说明
 
+- **不支持妙搭 apps**：妙搭不支持新增评论，`--doc` 传 `/page/<token>` URL 或 `--type apps` 都不可用。其余评论管理命令（列表、批量查询、回复、解决/恢复、reaction）都支持 apps。
 - **局部评论需要先获取 block ID**：先调用 `docs +fetch --doc <TOKEN> --detail with-ids` 获取带有 block ID 的文档内容，然后使用 `--block-id` 指定目标块。
 - **Review 场景优先局部评论**：审阅、校对、逐条指出问题时，必须先尝试定位到具体 block / 单元格 / slide 元素，并逐问题创建局部评论；不要把所有问题合并成一条全文评论。
 - 未传 `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。全文评论支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终可解析为 `doc`/`docx`/`file` 的 wiki URL。
 - **Drive file 评论**：仅支持白名单扩展名的普通文件。当前支持：`.md`、`.txt`、`.json`、`.csv`、`.go`、`.js`、`.py`、`.pptx`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.mp4`。
 - **Drive file 暂不支持**：`.pdf`、`.docx`、`.xlsx` 等未在白名单内的普通文件会被 CLI 拒绝，并提示“当前还不支持这种类型的评论”。这些类型虽然可能接受 OpenAPI 请求，但在页面评论展示上存在问题。
-- **Drive file 只支持全文评论**：file 目标不支持局部评论，不允许传 `--block-id` 或 `--selection-with-ellipsis`。
+- **Drive file 只支持全文评论**：file 目标不支持局部评论，不允许传 `--block-id`。
 - 传 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`sheet`、`slides`、Base / bitable，以及最终可解析为这些类型的 wiki URL。
 - **Sheet 评论**：当 `--doc` 为 sheet URL 或 wiki 解析为 sheet 时，使用 `--block-id "<sheetId>!<cell>"` 指定单元格（如 `a281f9!D6`）；sheet 没有全文评论，`--full-comment` 不可用。
-- **Slide 评论**：当 `--doc` 为 slides URL、`--type slides`，或 wiki 解析为 slides 时，必须传 `--block-id "<SLIDE_BLOCK_TYPE>!<XML_ELEMENT_ID>"`。此时 `--full-comment` 和 `--selection-with-ellipsis` 不可用。
+- **Slide 评论**：当 `--doc` 为 slides URL、`--type slides`，或 wiki 解析为 slides 时，必须传 `--block-id "<SLIDE_BLOCK_TYPE>!<XML_ELEMENT_ID>"`。此时 `--full-comment` 不可用。
 - **Base 记录局部评论**：Base 不支持全局评论，所有评论都挂在记录上；裸 token 可传 `--type bitable` 或 `--type base`，推荐 `bitable`。定位信息必须是 file token（base token）+ `--block-id "<table-id>!<record-id>!<view-id>"`，其中 table/record/view ID 通常分别以 `tbl`/`rec`/`vew` 开头；view_id 只决定被提及时点击通知打开哪个视图，不影响评论挂载点，但必须传。ID 获取参考 [`lark-base`](../../lark-base/SKILL.md)。
 - **Slide 参数映射示例**：`--block-id` 由 PPT XML 元素类型和元素 `id` 组成。例如：
     - `<slide id="pkk">` 对应 `--block-id slide!pkk`，表示给整页评论。
     - `<img id="bPk" ... />` 对应 `--block-id img!bPk`，表示给图片元素评论。
     - `<shape type="text" id="bPq">...</shape>` 对应 `--block-id shape!bPq`，表示给文本 shape 评论。
 
-- `--content` 接收结构化评论元素数组；`type` 支持 `text`、`mention_user`、`link`。为便于书写，`mention_user` / `link` 元素可以直接把用户 ID 或链接地址放在 `text` 字段中，shortcut 会转换成 OpenAPI 所需字段。
-- `type=text` 的评论文本不能直接包含 `<`、`>`；应优先传 `&lt;`、`&gt;`。shortcut 在发送前也会自动将 `<`、`>` 转义为 `&lt;`、`&gt;` 作为兜底。
-- **所有 `type=text` 元素的字符总和 ≤ 10000**（按字符算，中英文 / 符号一视同仁）。超过会被 shortcut 在发送前拒绝，并指出累计超长的元素。**拆成多个 text element 不能绕过这个上限**——上限是总额，不是每元素。需要更长内容就缩短或拆成多条评论。
-- 长度限制只对 `type=text` 生效，`mention_user` / `link` 不计入。
+- `--content` 是结构化评论元素数组（`text` / `mention_user` / `link`），完整格式见 [`lark-drive-comment-content.md`](lark-drive-comment-content.md)；上方示例已覆盖常见写法。
 - 写入评论前会自动生成符合 OpenAPI 定义的请求体；shortcut 用户只需要传 `--doc`、`--content`，局部评论再传对应格式的 `--block-id`。
 - `--dry-run` 仅预览调用链和请求体，不会实际写入。
 - 如果需要更底层的控制，仍可改用 `lark-cli schema drive.file.comments.create_v2` + `lark-cli drive file.comments create_v2`。

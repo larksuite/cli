@@ -4,18 +4,35 @@
 package schema
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/registry"
 )
 
+func schemaTestFactory(t *testing.T, config *core.CliConfig) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
+	t.Helper()
+	f, out, errOut, in := cmdutil.TestFactory(t, config)
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.APICatalog = snapshot.Catalog()
+	return f, out, errOut, in
+}
+
 func TestSchemaCmd_FlagParsing(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f, _, _, _ := schemaTestFactory(t, nil)
 
 	var gotOpts *SchemaOptions
 	cmd := NewCmdSchema(f, func(opts *SchemaOptions) error {
@@ -29,6 +46,31 @@ func TestSchemaCmd_FlagParsing(t *testing.T) {
 	}
 	if len(gotOpts.Args) != 1 || gotOpts.Args[0] != "calendar.events.list" {
 		t.Errorf("expected args [calendar.events.list], got %v", gotOpts.Args)
+	}
+}
+
+func TestSchemaCmd_APICatalogCompletionAndRun(t *testing.T) {
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := apicatalog.Filter(snapshot.Catalog(), func(svc meta.Service) (meta.Service, bool) {
+		return svc, svc.Name == "drive"
+	})
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f.APICatalog = catalog
+	cmd := NewCmdSchema(f, nil)
+
+	completions, _ := cmd.ValidArgsFunction(cmd, nil, "")
+	if len(completions) != 1 || completions[0] != "drive." {
+		t.Fatalf("completion = %v, want only drive.", completions)
+	}
+	cmd.SetArgs([]string{"drive"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"name": "drive `) {
+		t.Fatalf("drive schema output missing drive methods: %s", stdout.String())
 	}
 }
 
@@ -49,7 +91,7 @@ func TestSchemaCmd_OutputFlagsAcceptedForCompat(t *testing.T) {
 		{"--as", "user", "--json"},
 	}
 	for _, extra := range argSets {
-		f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+		f, stdout, _, _ := schemaTestFactory(t, nil)
 		cmd := NewCmdSchema(f, nil)
 		cmd.SetArgs(append([]string{"im.images.create"}, extra...))
 		if err := cmd.Execute(); err != nil {
@@ -66,7 +108,7 @@ func TestSchemaCmd_OutputFlagsAcceptedForCompat(t *testing.T) {
 }
 
 func TestSchemaCmd_NoArgs_JSON_IsArray(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
 	cmd.SetArgs([]string{})
@@ -91,7 +133,7 @@ func TestSchemaCmd_NoArgs_JSON_IsArray(t *testing.T) {
 }
 
 func TestSchemaCmd_JSONIsEnvelope(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
 	cmd.SetArgs([]string{"im.images.create"})
@@ -116,15 +158,69 @@ func TestSchemaCmd_JSONIsEnvelope(t *testing.T) {
 	}
 }
 
+func TestSchemaCmd_LargeIntegerBoundStaysExact(t *testing.T) {
+	f, stdout, _, _ := schemaTestFactory(t, nil)
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"slides.xml_presentations.create", "--format", "json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"maximum": 9223372036854775807`) {
+		t.Fatalf("schema output does not preserve MaxInt64 bound:\n%s", out)
+	}
+	if strings.Contains(out, "9223372036854776000") {
+		t.Fatalf("schema output contains float64-rounded bound:\n%s", out)
+	}
+}
+
+func TestSchemaCmd_LargeIntegerExampleStaysExact(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f.APICatalog = apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{{
+		Name: "fixture",
+		Resources: map[string]meta.Resource{
+			"items": {
+				Methods: map[string]meta.Method{
+					"get": {
+						ID:         "items.get",
+						HTTPMethod: "GET",
+						Parameters: map[string]meta.Field{
+							"cursor": {
+								Type:     "integer",
+								Location: "query",
+								Example:  json.Number("7342342398472398471"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}})
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"fixture.items.get", "--format", "json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"example": 7342342398472398471`) {
+		t.Fatalf("schema output does not preserve exact large integer example:\n%s", out)
+	}
+	if strings.Contains(out, "7342342398472398848") {
+		t.Fatalf("schema output contains float64-rounded large integer example:\n%s", out)
+	}
+}
+
 func TestSchemaCmd_SpaceSeparatedPath_EqualsDotted(t *testing.T) {
-	f1, out1, _, _ := cmdutil.TestFactory(t, nil)
+	f1, out1, _, _ := schemaTestFactory(t, nil)
 	cmd1 := NewCmdSchema(f1, nil)
 	cmd1.SetArgs([]string{"im", "images", "create"})
 	if err := cmd1.Execute(); err != nil {
 		t.Fatalf("space form failed: %v", err)
 	}
 
-	f2, out2, _, _ := cmdutil.TestFactory(t, nil)
+	f2, out2, _, _ := schemaTestFactory(t, nil)
 	cmd2 := NewCmdSchema(f2, nil)
 	cmd2.SetArgs([]string{"im.images.create"})
 	if err := cmd2.Execute(); err != nil {
@@ -137,7 +233,7 @@ func TestSchemaCmd_SpaceSeparatedPath_EqualsDotted(t *testing.T) {
 }
 
 func TestSchemaCmd_ServiceListIsArray(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
 	cmd.SetArgs([]string{"im"})
@@ -160,7 +256,7 @@ func TestSchemaCmd_ServiceListIsArray(t *testing.T) {
 }
 
 func TestSchemaCmd_HighRiskYesInjection(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
 	cmd.SetArgs([]string{"im.messages.delete"})
@@ -179,7 +275,7 @@ func TestSchemaCmd_HighRiskYesInjection(t *testing.T) {
 }
 
 func TestSchemaCmd_NoYesForReadRisk(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
 	cmd.SetArgs([]string{"im.reactions.list"})
@@ -198,7 +294,7 @@ func TestSchemaCmd_NoYesForReadRisk(t *testing.T) {
 }
 
 func TestSchemaCmd_UnknownService(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, _, _ := schemaTestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
@@ -227,7 +323,7 @@ func TestSchemaCmd_UnknownService(t *testing.T) {
 // JSON-mode unknown-method path: *errs.ValidationError with
 // subtype invalid_argument and a hint listing the available methods.
 func TestSchemaCmd_UnknownMethod_TypedValidation(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, _, _ := schemaTestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
@@ -252,6 +348,158 @@ func TestSchemaCmd_UnknownMethod_TypedValidation(t *testing.T) {
 	}
 }
 
-// Completion candidate generation (dotted + space forms, strict-mode filtering,
-// dotted-resource handling) now lives in internal/apicatalog and is covered by
-// apicatalog's TestComplete. cmd/schema only adapts catalog.Complete to cobra.
+// Base completion navigation (dotted + space forms, strict-mode filtering,
+// dotted-resource handling) lives in internal/apicatalog. The tests below pin
+// cmd/schema's build-local surface projection around that navigator.
+
+func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.T) {
+	catalog := schemaSurfaceCatalog()
+	visible := func(path []string) bool {
+		return strings.Join(path, "/") != "mail/user_mailbox.messages/list"
+	}
+
+	var out bytes.Buffer
+	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, nil, visible); err != nil {
+		t.Fatalf("broad schema failed: %v", err)
+	}
+	var envelopes []map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &envelopes); err != nil {
+		t.Fatalf("broad schema output is not JSON: %v\n%s", err, out.String())
+	}
+	names := make(map[string]bool, len(envelopes))
+	for _, envelope := range envelopes {
+		name, _ := envelope["name"].(string)
+		names[name] = true
+	}
+	if names["mail user_mailbox.messages list"] {
+		t.Error("broad schema retained concealed mail messages list")
+	}
+	for _, want := range []string{"mail user_mailbox.messages get", "im messages list"} {
+		if !names[want] {
+			t.Errorf("broad schema lost visible method %q: %v", want, names)
+		}
+	}
+
+	out.Reset()
+	err := runSchemaCatalog(
+		&out,
+		[]string{"mail", "user_mailbox", "messages", "list"},
+		core.StrictModeOff,
+		catalog,
+		nil,
+		visible,
+	)
+	if err == nil {
+		t.Fatal("concealed exact method unexpectedly resolved")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("concealed exact method error = %T %v, want validation/invalid_argument", err, err)
+	}
+	if strings.Contains(validationErr.Hint, "list") || !strings.Contains(validationErr.Hint, "get") {
+		t.Errorf("resolve candidates were not surface-projected: %q", validationErr.Hint)
+	}
+	if out.Len() != 0 {
+		t.Errorf("concealed exact method wrote schema output: %s", out.String())
+	}
+
+	projected := projectSchemaCatalog(catalog, visible)
+	if got, _ := projected.Complete(nil, "mail.user_mailbox.messages.l", nil); len(got) != 0 {
+		t.Errorf("dotted completion exposed concealed method: %v", got)
+	}
+	if got, _ := projected.Complete(nil, "mail.user_mailbox.messages.g", nil); !reflect.DeepEqual(got, []string{"mail.user_mailbox.messages.get"}) {
+		t.Errorf("dotted completion lost visible sibling: %v", got)
+	}
+	if got, _ := projected.Complete([]string{"mail", "user_mailbox", "messages"}, "l", nil); len(got) != 0 {
+		t.Errorf("space completion exposed concealed method: %v", got)
+	}
+	if got, _ := projected.Complete([]string{"mail", "user_mailbox", "messages"}, "g", nil); !reflect.DeepEqual(got, []string{"get"}) {
+		t.Errorf("space completion lost visible sibling: %v", got)
+	}
+}
+
+func TestSchemaSurfaceProjectionDropsServiceWhenGlobConcealsAllDescendants(t *testing.T) {
+	catalog := schemaSurfaceCatalog()
+	// Mirrors a policy that retains the top-level schema command and mail group
+	// but conceals mail/**.
+	visible := func(path []string) bool {
+		return !strings.HasPrefix(strings.Join(path, "/"), "mail/")
+	}
+	projected := projectSchemaCatalog(catalog, visible)
+
+	if _, ok := projected.Service("mail"); ok {
+		t.Fatal("mail survived as an empty schema namespace after mail/** was concealed")
+	}
+	if _, ok := projected.Service("im"); !ok {
+		t.Fatal("unrelated visible service im was removed")
+	}
+	if got, _ := projected.Complete(nil, "ma", nil); len(got) != 0 {
+		t.Errorf("root dotted completion exposed concealed mail service: %v", got)
+	}
+	if got, _ := projected.Complete(nil, "im.m", nil); !reflect.DeepEqual(got, []string{"im.messages."}) {
+		t.Errorf("root dotted completion lost visible im service: %v", got)
+	}
+
+	_, err := projected.Resolve([]string{"mail", "messages", "get"})
+	var resolveErr *apicatalog.ResolveError
+	if !errors.As(err, &resolveErr) || resolveErr.Kind != apicatalog.ErrService {
+		t.Fatalf("concealed mail resolve error = %T %v, want unknown service", err, err)
+	}
+	if strings.Contains(strings.Join(resolveErr.Candidates, ","), "mail") {
+		t.Errorf("unknown-service candidates exposed concealed mail: %v", resolveErr.Candidates)
+	}
+}
+
+func TestSchemaSurfaceProjectionPreservesDefaultAndDeniedVisibleCatalog(t *testing.T) {
+	catalog := schemaSurfaceCatalog()
+	allVisible := func([]string) bool { return true }
+
+	var defaultOut, projectedOut bytes.Buffer
+	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil, nil); err != nil {
+		t.Fatalf("default schema failed: %v", err)
+	}
+	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, nil, allVisible); err != nil {
+		t.Fatalf("all-visible schema failed: %v", err)
+	}
+	if defaultOut.String() != projectedOut.String() {
+		t.Errorf("all-referenceable surface changed default schema output\ndefault: %s\nprojected: %s", defaultOut.String(), projectedOut.String())
+	}
+}
+
+func schemaSurfaceCatalog() apicatalog.Catalog {
+	service := func(name string, methods map[string]interface{}) meta.Service {
+		resourceName := "messages"
+		if name == "mail" {
+			resourceName = "user_mailbox.messages"
+		}
+		return meta.ServiceFromMap(map[string]interface{}{
+			"name":        name,
+			"version":     "v1",
+			"servicePath": "/open-apis/" + name + "/v1",
+			"resources": map[string]interface{}{
+				resourceName: map[string]interface{}{
+					"methods": methods,
+				},
+			},
+		})
+	}
+	method := func(id, description string) map[string]interface{} {
+		return map[string]interface{}{
+			"id":           id,
+			"path":         "/open-apis/fixture/v1/messages",
+			"httpMethod":   "GET",
+			"description":  description,
+			"risk":         "read",
+			"accessTokens": []interface{}{"tenant"},
+		}
+	}
+	return apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{
+		service("mail", map[string]interface{}{
+			"get":  method("mail.user_mailbox.messages.get", "visible mail method"),
+			"list": method("mail.user_mailbox.messages.list", "concealable mail method"),
+		}),
+		service("im", map[string]interface{}{
+			"list": method("im.messages.list", "visible im method"),
+		}),
+	})
+}

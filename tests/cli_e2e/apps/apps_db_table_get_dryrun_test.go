@@ -11,7 +11,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestAppsDBTableGetDryRun pins +db-table-get 复用存量 URL。
@@ -33,9 +32,9 @@ func TestAppsDBTableGetDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "GET", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/tables/orders", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.params.format").Exists(),
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/tables/orders", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.format").Exists(),
 			"default (json) should omit format query")
 	})
 
@@ -65,7 +64,7 @@ func TestAppsDBTableGetDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.False(t, gjson.Get(result.Stdout, "api.0.params.format").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.format").Exists())
 	})
 
 	t.Run("RequiresTableFlag", func(t *testing.T) {

@@ -35,8 +35,8 @@ func TestPollWikiAsyncTaskSuccessFirstPoll(t *testing.T) {
 	if !ready || !status.Ready() {
 		t.Fatalf("ready = %v, status = %+v, want ready", ready, status)
 	}
-	if !strings.Contains(stderr.String(), "delete-node task completed successfully") {
-		t.Fatalf("stderr = %q", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no progress output", stderr.String())
 	}
 }
 
@@ -113,8 +113,8 @@ func TestPollWikiAsyncTaskAllPollsFailWrapsWithResumeHint(t *testing.T) {
 		!strings.Contains(p.Hint, "lark-cli drive +task_result --task-id task_lost") {
 		t.Fatalf("hint = %q, want resume guidance naming the task", p.Hint)
 	}
-	if !strings.Contains(stderr.String(), "attempt 2/2 failed") {
-		t.Fatalf("stderr = %q, want per-attempt progress", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no per-attempt progress", stderr.String())
 	}
 }
 

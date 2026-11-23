@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -45,11 +48,72 @@ func TestTablePut_IsoDateToSerial(t *testing.T) {
 				t.Errorf("isoDateToSerial(%q) unexpected error: %v", tt.in, err)
 				continue
 			}
-			if got != tt.want {
-				t.Errorf("isoDateToSerial(%q) = %d, want %d", tt.in, got, tt.want)
+			if got != float64(tt.want) && !(strings.Contains(tt.in, "T") && math.Abs(got-float64(tt.want)) < 1) {
+				t.Errorf("isoDateToSerial(%q) = %v, want %d", tt.in, got, tt.want)
 			}
 		} else if err == nil {
-			t.Errorf("isoDateToSerial(%q) = %d, want error", tt.in, got)
+			t.Errorf("isoDateToSerial(%q) = %v, want error", tt.in, got)
+		}
+	}
+}
+
+// TestTablePut_EmptyDatePrescription pins the empty-cell branch: the error
+// must name the three ways out (drop rows / fill dates / object dtype)
+// instead of the generic "must be ISO" parse failure.
+func TestTablePut_EmptyDatePrescription(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{"", "   "} {
+		_, err := isoDateToSerial(in)
+		if err == nil {
+			t.Fatalf("isoDateToSerial(%q) should fail", in)
+		}
+		for _, want := range []string{"empty cell", "object (text)"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("isoDateToSerial(%q) error should contain %q, got %q", in, want, err.Error())
+			}
+		}
+	}
+}
+
+// TestTablePut_ColumnKeyHint pins the dtypes/formats unknown-column hint:
+// A1-style letter keys get the Excel-habit callout, and the declared column
+// names ride inline either way.
+func TestTablePut_ColumnKeyHint(t *testing.T) {
+	t.Parallel()
+	cols := []string{"姓名", "出生日期"}
+	got := columnKeyHint("dtypes", "A", cols)
+	for _, want := range []string{"not A1-style column letters", `"姓名", "出生日期"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("letter-key hint should contain %q, got %q", want, got)
+		}
+	}
+	got = columnKeyHint("formats", "出生 日期", cols)
+	if strings.Contains(got, "A1-style") {
+		t.Errorf("non-letter key must not get the letter callout, got %q", got)
+	}
+	if !strings.Contains(got, `"姓名", "出生日期"`) {
+		t.Errorf("hint should inline column names, got %q", got)
+	}
+
+	many := make([]string, 20)
+	for i := range many {
+		many[i] = fmt.Sprintf("col%02d", i)
+	}
+	got = columnKeyHint("dtypes", "X", many)
+	if !strings.Contains(got, ", …") || strings.Contains(got, "col19") {
+		t.Errorf("hint should truncate long column lists, got %q", got)
+	}
+}
+
+func TestIsColumnLetterKey(t *testing.T) {
+	t.Parallel()
+	cases := map[string]bool{
+		"A": true, "Z": true, "AA": true, "ABC": true,
+		"": false, "ABCD": false, "a": false, "A1": false, "姓名": false,
+	}
+	for in, want := range cases {
+		if got := isColumnLetterKey(in); got != want {
+			t.Errorf("isColumnLetterKey(%q) = %v, want %v", in, got, want)
 		}
 	}
 }
@@ -99,7 +163,7 @@ func TestTablePut_BuildTypedCell(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cell["value"] != 45306 {
+		if cell["value"] != float64(45306) && cell["value"] != 45306 {
 			t.Errorf("value = %#v, want serial 45306", cell["value"])
 		}
 		if nf := numberFormatOf(cell); nf != "yyyy-mm-dd" {
@@ -224,9 +288,9 @@ func TestNormalize_DefaultsAndFormatOverride(t *testing.T) {
 	t.Parallel()
 	in := &tableSheetIn{
 		Name:    "S",
-		Columns: []string{"id", "amt", "d", "raw"},
-		Dtypes:  map[string]string{"amt": "float64", "d": "datetime64[ns]"}, // id, raw left unspecified
-		Formats: map[string]string{"amt": "#,##0.00"},                       // override float default ("")
+		Columns: headingNames("id", "amt", "d", "raw"),
+		Dtypes:  labelsByName(map[string]string{"amt": "float64", "d": "datetime64[ns]"}), // id, raw left unspecified
+		Formats: labelsByName(map[string]string{"amt": "#,##0.00"}),                       // override float default ("")
 		Data:    [][]interface{}{},
 	}
 	spec, err := in.normalize(0)
@@ -270,12 +334,9 @@ func TestTablePut_PayloadValidation(t *testing.T) {
 		{"empty sheets", `{"sheets":[]}`, "at least one sheet"},
 		{"missing name", `{"sheets":[{"columns":["a"],"data":[]}]}`, "name is required"},
 		{"duplicate name", `{"sheets":[{"name":"S","columns":["a"],"data":[]},{"name":"S","columns":["a"],"data":[]}]}`, "duplicate sheet name"},
-		{"no columns", `{"sheets":[{"name":"S","columns":[],"data":[]}]}`, "columns must be non-empty"},
-		{"column missing name", `{"sheets":[{"name":"S","columns":[""],"data":[]}]}`, "columns[0] name is required"},
-		{"duplicate column", `{"sheets":[{"name":"S","columns":["a","a"],"data":[]}]}`, "duplicate column name"},
+		{"dtypes key on a blank column", `{"sheets":[{"name":"S","columns":["a",""],"dtypes":{"":"int64"},"data":[]}]}`, `dtypes references unknown column ""`},
 		{"dtypes refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"dtypes":{"b":"int64"}}]}`, "dtypes references unknown column"},
 		{"formats refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"formats":{"b":"0.0"}}]}`, "formats references unknown column"},
-		{"row width mismatch", `{"sheets":[{"name":"S","columns":["a","b"],"data":[["x"]]}]}`, "column count"},
 		{"bad start_cell", `{"sheets":[{"name":"S","start_cell":"A","columns":["a"],"data":[]}]}`, "start_cell"},
 		{"bad date value", `{"sheets":[{"name":"S","columns":["d"],"dtypes":{"d":"datetime64[ns]"},"data":[["2025/03/31"]]}]}`, "must be ISO"},
 		{"number expects numeric", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"int64"},"data":[["abc"]]}]}`, "number expects"},
@@ -294,14 +355,15 @@ func TestTablePut_PayloadValidation(t *testing.T) {
 // payload parser without a cobra command.
 type stubFlagView map[string]string
 
-func (s stubFlagView) Str(name string) string        { return s[name] }
-func (s stubFlagView) Bool(name string) bool         { return s[name] == "true" }
-func (s stubFlagView) Int(name string) int           { return 0 }
-func (s stubFlagView) Float64(name string) float64   { return 0 }
-func (s stubFlagView) Changed(name string) bool      { _, ok := s[name]; return ok }
-func (s stubFlagView) StrArray(name string) []string { return nil }
-func (s stubFlagView) StrSlice(name string) []string { return nil }
-func (s stubFlagView) Command() string               { return "+table-put" }
+func (s stubFlagView) Str(name string) string                   { return s[name] }
+func (s stubFlagView) Bool(name string) bool                    { return s[name] == "true" }
+func (s stubFlagView) Int(name string) int                      { return 0 }
+func (s stubFlagView) Float64(name string) float64              { return 0 }
+func (s stubFlagView) Changed(name string) bool                 { _, ok := s[name]; return ok }
+func (s stubFlagView) StrArray(name string) []string            { return nil }
+func (s stubFlagView) StrSlice(name string) []string            { return nil }
+func (s stubFlagView) InputResolvedFromSource(name string) bool { return false }
+func (s stubFlagView) Command() string                          { return "+table-put" }
 
 // ─── dry-run: create + write rendering ────────────────────────────────
 
@@ -399,6 +461,16 @@ func TestTablePut_StylesNameMismatchRejected(t *testing.T) {
 	requireValidation(t, err, "must match")
 }
 
+func TestTablePut_StylePaddingBudgetRejectedBeforeDryRun(t *testing.T) {
+	_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+		"--url", testURL,
+		"--sheets", `{"sheets":[{"name":"数据","columns":["a"],"data":[["x"]]}]}`,
+		"--styles", `{"styles":[{"name":"数据","cell_styles":[{"range":"A1:AX25000","font_weight":"bold"}]}]}`,
+		"--dry-run",
+	})
+	requireValidation(t, err, "over the 1000000-cell safety cap")
+}
+
 // TestTablePut_ExecuteWithStyles drives the full write + visual-ops path: the
 // set_cell_range write carries the merged cell_styles, then merge_cells /
 // resize_range tool calls apply the structural styles in the same call.
@@ -442,16 +514,6 @@ func TestTablePut_Validation(t *testing.T) {
 			name: "url and token are mutually exclusive",
 			args: []string{"--url", testURL, "--spreadsheet-token", testToken, "--sheets", tablePutSheetsJSON},
 			want: "mutually exclusive",
-		},
-		{
-			name: "duplicate column name rejected",
-			args: []string{"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":["a","a"],"data":[]}]}`},
-			want: "duplicate column name",
-		},
-		{
-			name: "row width mismatch rejected",
-			args: []string{"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":["a","b"],"data":[["only-one"]]}]}`},
-			want: "column count",
 		},
 		{
 			name: "trailing JSON data after --sheets value rejected",
@@ -537,14 +599,15 @@ func TestTablePut_SheetCreateDims(t *testing.T) {
 	cases := []struct {
 		name               string
 		spec               tableSheetSpec
+		styles             *workbookCreateStylePayload
 		wantRows, wantCols int
 	}{
-		{"small table keeps 20x200 floor", tableSheetSpec{Columns: cols(3), Rows: rows(5)}, 200, 20},
-		{"wide table grows columns", tableSheetSpec{Columns: cols(37), Rows: rows(22)}, 200, 37},
-		{"long table grows rows", tableSheetSpec{Columns: cols(3), Rows: rows(500)}, 501, 20},
-		{"start_cell offset adds to both", tableSheetSpec{StartCell: "C5", Columns: cols(40), Rows: rows(5)}, 200, 42},
-		{"header:false drops the header row", tableSheetSpec{Header: bp(false), Columns: cols(3), Rows: rows(500)}, 500, 20},
-		{"columns clamp at backend max 200", tableSheetSpec{Columns: cols(250), Rows: rows(5)}, 200, 200},
+		{"small table keeps 20x200 floor", tableSheetSpec{Columns: cols(3), Rows: rows(5)}, nil, 200, 20},
+		{"wide table grows columns", tableSheetSpec{Columns: cols(37), Rows: rows(22)}, nil, 200, 37},
+		{"long table grows rows", tableSheetSpec{Columns: cols(3), Rows: rows(500)}, nil, 501, 20},
+		{"start_cell offset adds to both", tableSheetSpec{StartCell: "C5", Columns: cols(40), Rows: rows(5)}, nil, 200, 42},
+		{"header:false drops the header row", tableSheetSpec{Header: bp(false), Columns: cols(3), Rows: rows(500)}, nil, 500, 20},
+		{"columns clamp at backend max 200", tableSheetSpec{Columns: cols(250), Rows: rows(5)}, nil, 200, 200},
 		// Default headerOn() is false for append mode, but writeSheetData forces
 		// a header when append hits an empty sheet with no explicit Header
 		// choice (so column names aren't lost). sheetCreateDims runs only on
@@ -552,14 +615,22 @@ func TestTablePut_SheetCreateDims(t *testing.T) {
 		// match: append + Header=nil ⇒ +1 row. Otherwise an append-near-50000
 		// payload would be created one row short.
 		{"append on new sheet sizes for the forced header row (49999 data rows + 1 header = 50000)",
-			tableSheetSpec{Mode: "append", Columns: cols(3), Rows: rows(49999)}, 50000, 20},
+			tableSheetSpec{Mode: "append", Columns: cols(3), Rows: rows(49999)}, nil, 50000, 20},
 		{"append + Header=false (explicit) does NOT add the forced header row",
-			tableSheetSpec{Mode: "append", Header: bp(false), Columns: cols(3), Rows: rows(50)}, 200, 20},
+			tableSheetSpec{Mode: "append", Header: bp(false), Columns: cols(3), Rows: rows(50)}, nil, 200, 20},
+		// --styles reaching past the data grows the grid so a cell_styles op on a
+		// blank cell (or a merge / resize) still fits after the create.
+		{"styles past the data grow the grid",
+			tableSheetSpec{Columns: cols(3), Rows: rows(5)},
+			&workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{{Range: "A1:Z400"}}}, 400, 26},
+		{"styles inside the data don't shrink the grid",
+			tableSheetSpec{Columns: cols(3), Rows: rows(5)},
+			&workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{{Range: "A1:B2"}}}, 200, 20},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotRows, gotCols := sheetCreateDims(&tt.spec)
+			gotRows, gotCols := sheetCreateDims(&tt.spec, tt.styles)
 			if gotRows != tt.wantRows || gotCols != tt.wantCols {
 				t.Errorf("sheetCreateDims = (%d rows, %d cols), want (%d, %d)", gotRows, gotCols, tt.wantRows, tt.wantCols)
 			}
@@ -612,6 +683,177 @@ func TestTablePut_ExecuteCreatesWideSheetWithDims(t *testing.T) {
 	}
 }
 
+// TestWorkbookCreate_StylesAnchorFailsBeforeCreate pins that a cell_styles
+// range left of / above the write anchor fails in Validate — with NO API call.
+// The check used to live only in the write phase, after the workbook-create
+// call, stranding an orphan workbook (live-verified 2026-08-06: the envelope
+// read "spreadsheet … created but initial fill failed"). No stubs are
+// registered, so reaching Execute would fail with "no stub" instead of the
+// validation message this test requires.
+func TestWorkbookCreate_StylesAnchorFailsBeforeCreate(t *testing.T) {
+	t.Parallel()
+	// Only the typed --sheets path can move the anchor (per-sheet start_cell);
+	// --values always writes from A1, where no range can be left of / above.
+	_, _, err := runShortcutCapturingErr(t, WorkbookCreate, []string{
+		"--title", "T",
+		"--sheets", `{"sheets":[{"name":"S","start_cell":"B2","columns":["a"],"data":[["x"]]}]}`,
+		"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`,
+	})
+	requireValidation(t, err, "starts left of the write range")
+}
+
+// TestTablePut_StylesAnchorFailsBeforeWrite pins that +table-put rejects an
+// out-of-anchor cell_styles range in Validate, with NO API call: a payload
+// targeting a missing sheet used to CREATE that sheet before the write phase
+// rejected the range — leaving a stray empty sheet behind while reporting
+// "no sheets were written". No stubs are registered, so reaching Execute
+// would fail with "no stub" instead of the required validation message.
+func TestTablePut_StylesAnchorFailsBeforeWrite(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+		"--url", testURL,
+		"--sheets", `{"sheets":[{"name":"S","start_cell":"B2","columns":["a"],"data":[["x"]]}]}`,
+		"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`,
+	})
+	requireValidation(t, err, "starts left of the write range")
+}
+
+// TestTablePut_AppendStylesAnchorSkipsRowCheck pins the append-mode carve-out:
+// the contract ignores start_cell's row (the base row comes from the sheet's
+// existing data at execute time), so Validate must not compare style rows
+// against the ignored static row — data ending at row 5 with start_cell B10
+// appends at row 6, making a B6 style legal. The COLUMN is still static and
+// still enforced. (dry-run-reproduced regression: B6 was rejected as "must be
+// at or after B10".)
+func TestTablePut_AppendStylesAnchorSkipsRowCheck(t *testing.T) {
+	t.Parallel()
+	t.Run("row above the ignored static anchor row passes Validate", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, TablePut, []string{"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"B6","font_weight":"bold"}]}]}`,
+		})
+		if len(calls) == 0 {
+			t.Fatal("append payload with a legal style range must produce a dry-run plan, not a validation error")
+		}
+	})
+	t.Run("column left of the anchor still rejected", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A6","font_weight":"bold"}]}]}`,
+		})
+		requireValidation(t, err, "starts left of the write range")
+	})
+
+	t.Run("missing append target fails before the sheet is created", func(t *testing.T) {
+		// Execute path (not just dry-run): the missing target would be created
+		// EMPTY, so append resolves its base row to the static anchor and the
+		// B6 style is genuinely unreachable — but the failure must land BEFORE
+		// the create. Only the structure-read stub is registered: reaching the
+		// modify_workbook_structure create would fail with "no stub" instead
+		// of the anchor message this test requires.
+		t.Parallel()
+		structure := toolOutputStub(testToken, "read", `{"sheets":[{"sheet_id":"`+testSheetID+`","sheet_name":"Other","index":0}]}`)
+		out, err := runShortcutWithStubs(t, TablePut,
+			[]string{"--url", testURL,
+				"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
+				"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"B6","font_weight":"bold"}]}]}`},
+			structure)
+		if err == nil {
+			t.Fatalf("expected the pre-create anchor failure, got success: %s", out)
+		}
+		if !strings.Contains(err.Error(), "starts outside the write range") && !strings.Contains(out, "starts outside the write range") {
+			t.Fatalf("want the anchor message before any mutation; err=%v out=%s", err, out)
+		}
+	})
+}
+
+// TestTableGet_StructureErrorSurfaces pins that a failed get_workbook_structure
+// read is a typed error, not a silent degradation: the dimensionless fallback
+// anchored the used-range probe at A1, whose current_region stops at the first
+// fully-empty row — the read then silently returned a truncated sheet with no
+// incomplete marker (live-verified 2026-08-06).
+func TestTableGet_StructureErrorSurfaces(t *testing.T) {
+	t.Parallel()
+	structureErr := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+		Body:   map[string]interface{}{"code": 99991400, "msg": "rate limited"},
+	}
+	out, err := runShortcutWithStubs(t, TableGet,
+		[]string{"--url", testURL, "--sheet-name", "数据"},
+		structureErr)
+	if err == nil {
+		t.Fatalf("structure failure must surface, got success: %s", out)
+	}
+	p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeRateLimit, "get_workbook_structure")
+	if !p.Retryable {
+		t.Errorf("rate-limited structure read should stay retryable, got %+v", p)
+	}
+}
+
+// TestWorkbookCreate_AdoptPurgesStaleDefaultMapping is the regression test for
+// the adopt double-write bug: after the default "Sheet1" is renamed to the
+// first payload sheet, a later payload sheet literally named "Sheet1" must get
+// its OWN freshly created sheet — the stale byName["Sheet1"] entry used to
+// route it into the adopted (renamed) sheet, silently destroying the first
+// sheet's data while reporting both as written (live-verified 2026-08-06).
+func TestWorkbookCreate_AdoptPurgesStaleDefaultMapping(t *testing.T) {
+	t.Parallel()
+	createWorkbook := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheets/v3/spreadsheets",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"spreadsheet": map[string]interface{}{"spreadsheet_token": testToken}},
+		},
+	}
+	defaultOnly := `{"sheets":[{"sheet_id":"` + testSheetID + `","sheet_name":"Sheet1","index":0,"row_count":200,"column_count":20}]}`
+	afterCreate := `{"sheets":[{"sheet_id":"` + testSheetID + `","sheet_name":"Sales","index":0,"row_count":200,"column_count":20},{"sheet_id":"` + testSheetID2 + `","sheet_name":"Sheet1","index":1,"row_count":200,"column_count":20}]}`
+	firstLookup := toolOutputStub(testToken, "read", defaultOnly)    // lookupFirstSheetID
+	listByName := toolOutputStub(testToken, "read", defaultOnly)     // writeTypedSheets' listSheetIDsByName
+	renameStub := toolOutputStub(testToken, "write", `{"ok":true}`)  // rename Sheet1 → Sales
+	salesWrite := toolOutputStub(testToken, "write", `{"ok":true}`)  // set_cell_range for Sales
+	createStub := toolOutputStub(testToken, "write", `{"ok":true}`)  // modify_workbook_structure create for Sheet1
+	postCreate := toolOutputStub(testToken, "read", afterCreate)     // createSheet's id read-back
+	sheet1Write := toolOutputStub(testToken, "write", `{"ok":true}`) // set_cell_range for Sheet1
+
+	out, err := runShortcutWithStubs(t, WorkbookCreate,
+		[]string{"--title", "T", "--sheets",
+			`{"sheets":[{"name":"Sales","columns":["a"],"data":[["s"]]},{"name":"Sheet1","columns":["b"],"data":[["x"]]}]}`},
+		createWorkbook, firstLookup, listByName, renameStub, salesWrite, createStub, postCreate, sheet1Write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	// The 5th tool call must be a CREATE for "Sheet1" — with the stale mapping
+	// it was a set_cell_range into the adopted sheet instead.
+	var wire map[string]interface{}
+	if err := json.Unmarshal(createStub.CapturedBody, &wire); err != nil {
+		t.Fatalf("decode create body: %v", err)
+	}
+	var input map[string]interface{}
+	if err := json.Unmarshal([]byte(wire["input"].(string)), &input); err != nil {
+		t.Fatalf("decode create tool input: %v", err)
+	}
+	if input["operation"] != "create" || input["sheet_name"] != "Sheet1" {
+		t.Fatalf("expected a create op for Sheet1, got %#v", input)
+	}
+
+	data := decodeEnvelopeData(t, out)
+	sheets, _ := data["sheets"].([]interface{})
+	if len(sheets) != 2 {
+		t.Fatalf("want 2 written sheets, got %d: %s", len(sheets), out)
+	}
+	id0 := sheets[0].(map[string]interface{})["sheet_id"]
+	id1 := sheets[1].(map[string]interface{})["sheet_id"]
+	if id0 == id1 {
+		t.Fatalf("both payload sheets landed on the same sheet_id %v — stale adopt mapping", id0)
+	}
+}
+
 // TestTablePut_ExecutePartialFailure covers the partial-success error path:
 // a set_cell_range write fails mid-import and the structured error surfaces.
 // TestTablePut_ExecuteTotalFailure: a single sheet whose write fails landed
@@ -636,6 +878,20 @@ func TestTablePut_ExecuteTotalFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed") && !strings.Contains(out, "no sheets were written") {
 		t.Errorf("expected plain-failure message; got err=%v out=%s", err, out)
+	}
+	// The typed error passes through (mutated in place), so classifier
+	// metadata survives — rebuilding from err.Error() erased code and log_id
+	// (live-verified: the same failure carried code 40400 + log_id through
+	// +workbook-info but neither through +table-put).
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("total failure must stay a typed error, got %T: %v", err, err)
+	}
+	if p.Code != 1254000 {
+		t.Errorf("Code = %d, want 1254000 preserved through tablePutPartial", p.Code)
+	}
+	if !strings.Contains(p.Message, "table-put failed on") || !strings.Contains(p.Message, "boom") {
+		t.Errorf("message should carry the table-put context and the cause, got %q", p.Message)
 	}
 }
 
@@ -992,16 +1248,28 @@ func TestTableGet_SerialRoundTrip(t *testing.T) {
 			t.Fatalf("isoDateToSerial(%s): %v", iso, err)
 		}
 		if back := serialToISO(float64(s)); back != iso {
-			t.Errorf("roundtrip %s → %d → %s", iso, s, back)
+			t.Errorf("roundtrip %s → %v → %s", iso, s, back)
 		}
 	}
 }
 
 func TestTableGet_IsDateNumberFormat(t *testing.T) {
 	t.Parallel()
-	for _, nf := range []string{"yyyy-mm-dd", "yyyy-mm", "yyyy/m/d", "YYYY/MM/DD", "yy-mm-dd", "[Red]yyyy-mm-dd", `"At "yyyy`} {
+	for _, nf := range []string{
+		"yyyy-mm-dd", "yyyy-mm", "yyyy/m/d", "YYYY/MM/DD", "yy-mm-dd", "[Red]yyyy-mm-dd", `"At "yyyy`,
+		// Year-less date/time presets carry no 'yy' and were previously
+		// inferred as number — the column then read back raw serials
+		// (live-verified 2026-08-06: m/d → float64, same serial with
+		// yyyy-mm-dd → datetime64).
+		"m/d", "mm-dd", "d-m", "mm/dd hh:mm",
+	} {
 		if !isDateNumberFormat(nf) {
 			t.Errorf("%q should be a date format", nf)
+		}
+	}
+	for _, nf := range []string{"h:mm", "hh:mm:ss", "h:mm am/pm"} {
+		if isDateNumberFormat(nf) {
+			t.Errorf("time-only format %q must not be inferred as a calendar date", nf)
 		}
 	}
 	// JPY (and other currency / unit prefixes that happen to contain a lone Y)
@@ -1012,7 +1280,10 @@ func TestTableGet_IsDateNumberFormat(t *testing.T) {
 	for _, nf := range []string{
 		"#,##0", "0.00", "0.00%", "@", "",
 		"JPY #,##0", "JPY 0", `"YEN "#,##0`, "[$JPY-411] #,##0",
-		`\y\y`, // escaped letters, not a year token
+		`\y\y`,     // escaped letters, not a year token
+		"General",  // letters outside the date-token set
+		"0.00E+00", // scientific: 'e' is not a date token
+		"USD #,##0",
 	} {
 		if isDateNumberFormat(nf) {
 			t.Errorf("%q should NOT be a date format", nf)
@@ -1060,7 +1331,7 @@ func TestTableGet_InferColumnType(t *testing.T) {
 	// Mixed number+text degrades to string (self-consistent: every value is then
 	// a string), so the column round-trips and pandas doesn't choke. Numeric
 	// coercion of the dirty cells is left to the caller (pandas to_numeric).
-	if typ, _ := inferColumnType(col(mk(100.0, ""), mk("暂无", ""), mk(200.0, "")), 0); typ != "string" {
+	if typ, _ := inferColumnType(col(mk(100.0, ""), mk("N/A", ""), mk(200.0, "")), 0); typ != "string" {
 		t.Errorf("mixed number+text col → %s, want string", typ)
 	}
 	// A bare number mixed into a date column must NOT stay date (would serial-
@@ -1220,20 +1491,13 @@ func TestTableGet_DuplicateHeaderRejected(t *testing.T) {
 // sheet name. The target should fall back to using the id as the name.
 func TestTableGet_SheetIDFallbackBackfillsName(t *testing.T) {
 	t.Parallel()
-	// Structure has a different sheet — selector mismatch triggers the fallback.
+	// A successful structure read that does not contain the requested selector
+	// is a real locator error; do not fabricate a sheet name from the id and
+	// continue with a dimensionless A1 probe.
 	structure := toolOutputStub(testToken, "read", `{"sheets":[{"sheet_id":"shtOther","sheet_name":"另一张","row_count":200,"column_count":20,"index":0}]}`)
-	region := toolOutputStub(testToken, "read", `{"current_region":"A1:A2"}`)
-	cells := toolOutputStub(testToken, "read", `{"ranges":[{"cells":[[{"value":"h"}],[{"value":"x"}]]}]}`)
-	out, err := runShortcutWithStubs(t, TableGet,
-		[]string{"--url", testURL, "--sheet-id", testSheetID}, structure, region, cells)
-	if err != nil {
-		t.Fatalf("execute failed: %v\nout=%s", err, out)
-	}
-	data := decodeEnvelopeData(t, out)
-	s0, _ := data["sheets"].([]interface{})[0].(map[string]interface{})
-	if s0["name"] != testSheetID {
-		t.Errorf("fallback name = %v, want %q (id used as name)", s0["name"], testSheetID)
-	}
+	_, err := runShortcutWithStubs(t, TableGet,
+		[]string{"--url", testURL, "--sheet-id", testSheetID}, structure)
+	requireValidation(t, err, "was not found in workbook")
 }
 
 // TestTablePutFullRange_EmptyMatrix covers the dry-run report for the
@@ -1606,4 +1870,327 @@ func TestValidColumnType_AcceptsEmpty(t *testing.T) {
 	if validColumnType("float") {
 		t.Error(`validColumnType("float") = true, want false`)
 	}
+}
+
+// TestTableGet_CharBudgetSpansTheWholeWorkbook pins that --max-chars bounds the
+// WHOLE multi-sheet read, not each sheet independently.
+//
+// The cap is a memory guard on a non-streaming path, so letting every sheet
+// spend it in full would let a 30-sheet workbook pull 30x what the caller
+// allowed — quietly, since each individual request looks compliant. The clamp
+// that prevents it (charBudget in readSheetAsSpec) was unpinned: removing it
+// passed the entire suite, because the outer loop's exhaustion check is a
+// separate mechanism and keeps working.
+//
+// Asserted on the wire: sheet 2's request must ask for less than sheet 1's.
+func TestTableGet_CharBudgetSpansTheWholeWorkbook(t *testing.T) {
+	t.Parallel()
+
+	const budget = 40000
+	structure := toolOutputStub(testToken, "read", `{"sheets":[`+
+		`{"sheet_id":"sh1","sheet_name":"S1","row_count":50,"column_count":3,"index":0},`+
+		`{"sheet_id":"sh2","sheet_name":"S2","row_count":50,"column_count":3,"index":1}`+
+		`]}`)
+
+	// One reusable stub answers both the current-region probes and the cell
+	// reads; every captured body is inspected below.
+	payload := `{"current_region":"A1:B2","ranges":[{"cells":[` +
+		`[{"value":"col1"},{"value":"col2"}],` +
+		`[{"value":"a"},{"value":"b"}]` +
+		`]}]}`
+	reads := toolOutputStub(testToken, "read", payload)
+	reads.Reusable = true
+
+	out, err := runShortcutWithStubs(t, TableGet,
+		[]string{"--url", testURL, "--max-chars", strconv.Itoa(budget)}, structure, reads)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	var caps []int
+	for _, body := range reads.CapturedBodies {
+		var wire struct {
+			ToolName string `json:"tool_name"`
+			Input    string `json:"input"`
+		}
+		if json.Unmarshal(body, &wire) != nil || wire.ToolName != "get_cell_ranges" {
+			continue
+		}
+		var input struct {
+			MaxChars int `json:"max_chars"`
+		}
+		if json.Unmarshal([]byte(wire.Input), &input) != nil || input.MaxChars == 0 {
+			continue
+		}
+		caps = append(caps, input.MaxChars)
+	}
+	if len(caps) < 2 {
+		t.Fatalf("want a cell read per sheet, captured caps = %v", caps)
+	}
+	if caps[0] > budget {
+		t.Errorf("first sheet asked for max_chars=%d, over the %d budget", caps[0], budget)
+	}
+	if caps[1] >= caps[0] {
+		t.Errorf("second sheet asked for max_chars=%d, not reduced by what the first consumed (%d) — the budget is per-workbook, not per-sheet", caps[1], caps[0])
+	}
+}
+
+// TestPositionalColumnLabels covers the dtypes / formats array form: the same
+// pandas habit that produces `columns` and `data` also produces a positional
+// `df.dtypes.tolist()`, and rejecting it cost a full retry on payloads that
+// were otherwise correct (08-18..24 eval, the largest --sheets decode failure).
+// Accepting it is only unambiguous when the array lines up 1:1 with columns.
+func TestPositionalColumnLabels(t *testing.T) {
+	t.Parallel()
+
+	t.Run("positional dtypes and formats zip onto columns", func(t *testing.T) {
+		t.Parallel()
+		p, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id","amt"],"data":[["001",1.5]],` +
+				`"dtypes":["object","float64"],"formats":[null,"#,##0.00"]}]}`,
+		}))
+		if err != nil {
+			t.Fatalf("positional labels rejected: %v", err)
+		}
+		want := []tableColumnSpec{
+			{Name: "id", Type: "string", Format: "@"},         // object → text, leading zero survives
+			{Name: "amt", Type: "number", Format: "#,##0.00"}, // float64 + its positional format
+		}
+		for i, w := range want {
+			if got := p.Sheets[0].Columns[i]; got != w {
+				t.Errorf("columns[%d] = %+v, want %+v", i, got, w)
+			}
+		}
+	})
+
+	t.Run("a mismatched length is rejected, not guessed", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id","amt"],"data":[["001",1.5]],"dtypes":["object"]}]}`,
+		}))
+		ve := requireValidation(t, err, "positional array of 1 entries but the sheet has 2 columns")
+		if !strings.Contains(ve.Hint, "line up 1:1") {
+			t.Errorf("hint should explain the alignment rule, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("the map form is unchanged", func(t *testing.T) {
+		t.Parallel()
+		p, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id","amt"],"data":[["001",1.5]],"dtypes":{"amt":"float64"}}]}`,
+		}))
+		if err != nil {
+			t.Fatalf("map form rejected: %v", err)
+		}
+		if got := p.Sheets[0].Columns[1].Type; got != "number" {
+			t.Errorf("columns[1].Type = %q, want number", got)
+		}
+	})
+
+	t.Run("an unknown key in the map form still errors", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id"],"data":[["001"]],"dtypes":{"nope":"float64"}}]}`,
+		}))
+		requireValidation(t, err, `dtypes references unknown column "nope"`)
+	})
+}
+
+// TestTablePut_ReflowLeniency pins the --sheets acceptances added after the
+// 08-29..31 reflow report, where the payload was otherwise correct and every
+// retry rewrote the same data in a different spelling. Each case states the
+// rejection count it removes; the rejections that remain are the ones where
+// the caller's intent is genuinely unclear.
+func TestTablePut_ReflowLeniency(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		sheets string
+		want   []string // substrings the planned write body must carry
+	}{
+		{
+			name:   "numeric column written as strings (155 rejections)",
+			sheets: `{"sheets":[{"name":"S","columns":["n","t"],"dtypes":{"n":"Int64"},"data":[["1","a"],["2.5","b"],["","c"]]}]}`,
+			want:   []string{`"value":1`, `"value":2.5`},
+		},
+		{
+			name:   "short rows padded to the column count (25)",
+			sheets: `{"sheets":[{"name":"S","columns":["a","b","c"],"data":[["title"]]}]}`,
+			want:   []string{`"value":"title"`},
+		},
+		{
+			name:   "object-per-column entries (35)",
+			sheets: `{"sheets":[{"name":"S","columns":[{"name":"n","dtype":"float64"},{"name":"t"}],"data":[[1.5,"a"]]}]}`,
+			want:   []string{`"value":1.5`, `"value":"n"`},
+		},
+		{
+			name:   "the writer's own type vocabulary as a dtype",
+			sheets: `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"number"},"data":[[1.5]]}]}`,
+			want:   []string{`"value":1.5`},
+		},
+		{
+			// A spacer column, or the empty cells under a merged title (13).
+			name:   "a blank column heading writes a blank header cell",
+			sheets: `{"sheets":[{"name":"S","columns":["a","","c"],"data":[["1","2","3"]]}]}`,
+			want:   []string{`"value":""`, `"value":"c"`},
+		},
+		{
+			// A total row or a trailing blank inside a date column (7).
+			name:   "blank text in a date column is a blank cell",
+			sheets: `{"sheets":[{"name":"S","columns":["d"],"dtypes":{"d":"datetime64[ns]"},"data":[["2026-01-01"],[""]]}]}`,
+			want:   []string{`"number_format":"yyyy-mm-dd"`},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+				"--url", testURL, "--sheets", tc.sheets, "--dry-run",
+			})
+			if err != nil {
+				t.Fatalf("payload should be accepted, got: %v", err)
+			}
+			// The tool body is a JSON string inside the dry-run envelope, so
+			// its own quotes arrive escaped.
+			plain := strings.ReplaceAll(stdout, `\"`, `"`)
+			for _, want := range tc.want {
+				if !strings.Contains(plain, want) {
+					t.Errorf("write body should carry %s, got %q", want, stdout)
+				}
+			}
+		})
+	}
+
+	t.Run("a column-less sheet plans no write", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":[],"data":[]}]}`, "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("an empty sheet should be accepted, got: %v", err)
+		}
+		if strings.Contains(stdout, "set_cell_range") {
+			t.Errorf("nothing to write, so no set_cell_range should be planned, got %q", stdout)
+		}
+	})
+
+	t.Run("a repeated heading writes both columns", func(t *testing.T) {
+		t.Parallel()
+		// A sheet is not a database: two columns can share a heading, and the
+		// source data often did. A dtypes entry for the repeated name applies
+		// to each of its columns, which is the only reading available.
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["a","a"],"dtypes":{"a":"int64"},"data":[[1,2]]}]}`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("a repeated heading should write, got: %v", err)
+		}
+		if strings.Count(stdout, `\"a\"`) < 2 {
+			t.Errorf("both columns should carry the heading, got %q", stdout)
+		}
+	})
+
+	t.Run("a dtypes key that differs only in spacing folds onto its column", func(t *testing.T) {
+		t.Parallel()
+		for _, key := range []string{"营 收", "营收 ", "营\u3000收"} {
+			if _, _, err := runShortcutCapturingErr(t, TablePut, []string{
+				"--url", testURL,
+				"--sheets", `{"sheets":[{"name":"S","columns":["营收"],"dtypes":{"` + key + `":"float64"},"data":[[1]]}]}`,
+				"--dry-run",
+			}); err != nil {
+				t.Errorf("dtypes key %q should fold onto 营收, got: %v", key, err)
+			}
+		}
+	})
+
+	t.Run("a dtypes key naming nothing still fails", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["营收"],"dtypes":{"利润":"float64"},"data":[[1]]}]}`,
+			"--dry-run",
+		})
+		requireValidation(t, err, "dtypes references unknown column")
+	})
+
+	t.Run("+workbook-create names the sub-sheets the caller left unnamed", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+workbook-create")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--title", "T", "--dry-run",
+			"--sheets", `{"sheets":[{"columns":["a"],"data":[["x"]]},{"name":"Sheet1","columns":["b"],"data":[["y"]]},{"columns":["c"],"data":[["z"]]}]}`,
+		})
+		if err != nil {
+			t.Fatalf("a new workbook may name its own sheets, got: %v", err)
+		}
+		// The caller's own Sheet1 is skipped, so the filled names continue the
+		// series instead of colliding with it.
+		for _, want := range []string{"Sheet2", "Sheet3"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("unnamed sub-sheet should become %s, got %q", want, stdout)
+			}
+		}
+	})
+
+	t.Run("+table-put still requires the name that selects the sheet", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL, "--sheets", `{"sheets":[{"columns":["a"],"data":[["x"]]}]}`, "--dry-run",
+		})
+		ve := requireValidation(t, err, "name is required")
+		if !strings.Contains(ve.Hint, "+workbook-info") {
+			t.Errorf("hint should point at the sheet list, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("a non-numeric string in a numeric column still fails", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"Int64"},"data":[["1,234"]]}]}`,
+			"--dry-run",
+		})
+		// A thousands separator is either one number or two cells that lost
+		// their split — stripping it would guess at a locale.
+		requireValidation(t, err, "non-numeric string")
+	})
+
+	t.Run(`the literal "null" is not a number`, func(t *testing.T) {
+		t.Parallel()
+		// "null" decodes into a json.Number without an error and leaves it
+		// empty, which then marshals back out as 0 — a zero written into the
+		// cell under a success exit code. A blank cell is JSON null, not the
+		// four-letter word.
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"Int64"},"data":[["null"]]}]}`,
+			"--dry-run",
+		})
+		requireValidation(t, err, "non-numeric string")
+	})
+
+	t.Run("append with cell_styles plans the style-only write", func(t *testing.T) {
+		t.Parallel()
+		// header:false with no data rows leaves an empty matrix, but Execute
+		// expands it through the styles before deciding whether to write. The
+		// plan has to model that expansion or it shows no write where one
+		// happens; the range stays dynamic because the base row is resolved
+		// against the live sheet.
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","mode":"append","header":false,"columns":["a"],"data":[]}]}`,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1:B2","background_color":"#FFE6E6"}]}]}`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("the styled append should be planned, got: %v", err)
+		}
+		if !strings.Contains(stdout, "set_cell_range") {
+			t.Errorf("a style-only append still writes, so the plan must show it, got %q", stdout)
+		}
+		if !strings.Contains(stdout, "append below existing data") {
+			t.Errorf("the append range must stay dynamic in the plan, got %q", stdout)
+		}
+	})
 }

@@ -23,6 +23,41 @@ lark-cli contact +search-user --query "alice" --as user
 lark-cli contact +search-user --user-ids "ou_3a8b****6a7b,me" --as user
 ```
 
+## +search-bot
+Search bots (apps) by keyword. Pass `--query` or `--queries`; use `--chat-ids` to search within specific chats.
+
+### Skills
+- lark-contact/references/lark-contact-search-bot.md
+
+### Avoid when
+- Looking for a person rather than a bot → use [[+search-user]]
+- Running as a bot — this shortcut is user-only
+
+### Tips
+- `has_more=true` means the search is incomplete; refine the keyword or search scope instead of paginating
+
+### Examples
+
+**Find bots by keyword**
+```bash
+lark-cli contact +search-bot --query "会议助手" --as user
+```
+
+**Search inside one chat**
+```bash
+lark-cli contact +search-bot --query "助手" --chat-ids "oc_3a8b****6a7b" --as user
+```
+
+**Find bots you've chatted with**
+```bash
+lark-cli contact +search-bot --query "助手" --has-chatted --as user
+```
+
+**Search several bot keywords in one call**
+```bash
+lark-cli contact +search-bot --queries "会议助手,日报助手,审批助手" --as user
+```
+
 ## +get-user
 Fetch one user's profile by id, or your own with --user-id omitted. Use it under bot identity — `+search-user` is user-only.
 

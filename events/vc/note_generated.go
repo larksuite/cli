@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -42,27 +43,19 @@ type VCNoteGeneratedOutput struct {
 
 func processVCNoteGenerated(ctx context.Context, rt event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
 	var envelope struct {
-		Header struct {
-			EventID    string `json:"event_id"`
-			EventType  string `json:"event_type"`
-			CreateTime string `json:"create_time"`
-		} `json:"header"`
 		Event struct {
 			NoteID string `json:"note_id"`
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 
 	out := &VCNoteGeneratedOutput{
-		Type:      envelope.Header.EventType,
-		EventID:   envelope.Header.EventID,
-		Timestamp: envelope.Header.CreateTime,
+		Type:      raw.EventType,
+		EventID:   raw.EventID,
+		Timestamp: raw.SourceTime,
 		NoteID:    envelope.Event.NoteID,
-	}
-	if out.Type == "" {
-		out.Type = raw.EventType
 	}
 
 	if rt != nil && out.NoteID != "" {

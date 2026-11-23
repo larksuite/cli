@@ -1,0 +1,7 @@
+# Current HEAD uses sanitized low-entropy examples; CI scans historical commits.
+# Reviewed synthetic/public examples are verified false positives.
+9319004abdc3cdb31552abb6ee23ee973a2698eb:internal/registry/catalog/services/im.json:generic-api-key:1189
+f8cd2a7cd3ab6e7deade9e0fc47178eaaed3d9f9:internal/qualitygate/publiccontent/catalog_test.go:generic-api-key:82
+f8cd2a7cd3ab6e7deade9e0fc47178eaaed3d9f9:internal/qualitygate/publiccontent/catalog_test.go:generic-api-key:90
+9319004abdc3cdb31552abb6ee23ee973a2698eb:internal/registry/catalog/services/task.json:lark-bot-app-id:6667
+9319004abdc3cdb31552abb6ee23ee973a2698eb:internal/registry/catalog/services/task.json:lark-bot-app-id:6673

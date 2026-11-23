@@ -22,6 +22,7 @@ import (
 // mapping, envelope shape ({spaces|nodes, has_more, page_token} + meta.count),
 // auto-pagination, my_library alias resolution, or required-flag validation.
 func TestWiki_ShortcutWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

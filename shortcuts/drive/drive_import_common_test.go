@@ -5,15 +5,21 @@ package drive
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestValidateDriveImportSpec(t *testing.T) {
@@ -94,61 +100,61 @@ func TestValidateDriveImportFileSize(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		filePath string
+		ext      string
 		docType  string
 		fileSize int64
 		wantText string
 	}{
 		{
 			name:     "docx exceeds 600mb limit",
-			filePath: "./report.docx",
+			ext:      "docx",
 			docType:  "docx",
 			fileSize: driveImport600MBFileSizeLimit + 1,
 			wantText: "exceeds 600.0 MB import limit for .docx",
 		},
 		{
 			name:     "csv sheet exceeds 20mb limit",
-			filePath: "./data.csv",
+			ext:      "csv",
 			docType:  "sheet",
 			fileSize: driveImport20MBFileSizeLimit + 1,
 			wantText: "exceeds 20.0 MB import limit for .csv when importing as sheet",
 		},
 		{
 			name:     "csv bitable exceeds 100mb limit",
-			filePath: "./data.csv",
+			ext:      "csv",
 			docType:  "bitable",
 			fileSize: driveImport100MBFileSizeLimit + 1,
 			wantText: "exceeds 100.0 MB import limit for .csv when importing as bitable",
 		},
 		{
 			name:     "xlsx within 800mb limit",
-			filePath: "./data.xlsx",
+			ext:      "xlsx",
 			docType:  "sheet",
 			fileSize: driveImport800MBFileSizeLimit,
 		},
 		{
 			name:     "pptx exceeds 500mb limit",
-			filePath: "./deck.pptx",
+			ext:      "pptx",
 			docType:  "slides",
 			fileSize: driveImport500MBFileSizeLimit + 1,
 			wantText: "exceeds 500.0 MB import limit for .pptx",
 		},
 		{
 			name:     "pptx within 500mb limit",
-			filePath: "./deck.pptx",
+			ext:      "pptx",
 			docType:  "slides",
 			fileSize: driveImport500MBFileSizeLimit,
 		},
 		{
 			name:     "base exceeds 20mb limit",
-			filePath: "./snapshot.base",
+			ext:      "base",
 			docType:  "bitable",
 			fileSize: driveImport20MBFileSizeLimit + 1,
 			wantText: "exceeds 20.0 MB import limit for .base",
 		},
 		{
 			name:     "base within 20mb limit",
-			filePath: "./snapshot.base",
+			ext:      "base",
 			docType:  "bitable",
 			fileSize: driveImport20MBFileSizeLimit,
 		},
@@ -158,7 +164,7 @@ func TestValidateDriveImportFileSize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validateDriveImportFileSize(tt.filePath, tt.docType, tt.fileSize)
+			err := validateDriveImportFileSize(tt.ext, tt.docType, tt.fileSize)
 			if tt.wantText == "" {
 				if err != nil {
 					t.Fatalf("expected no error, got %v", err)
@@ -289,7 +295,9 @@ func TestDriveImportFailureErrorLeavesOtherFailuresUnchanged(t *testing.T) {
 }
 
 func TestDriveImportTimeoutReturnsFollowUpCommand(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	config := driveTestConfig()
+	config.ProfileName = "secondary"
+	f, stdout, _, reg := cmdutil.TestFactory(t, config)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/medias/upload_all",
@@ -347,7 +355,7 @@ func TestDriveImportTimeoutReturnsFollowUpCommand(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte(`"timed_out": true`)) {
 		t.Fatalf("stdout missing timed_out=true: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"next_command": "lark-cli drive +task_result --scenario import --ticket tk_import"`)) {
+	if !bytes.Contains(stdout.Bytes(), []byte(`"next_command": "lark-cli --profile secondary drive +task_result --scenario import --ticket tk_import --as bot"`)) {
 		t.Fatalf("stdout missing follow-up command: %s", stdout.String())
 	}
 	if bytes.Contains(stdout.Bytes(), []byte(`"permission_grant"`)) {
@@ -355,11 +363,83 @@ func TestDriveImportTimeoutReturnsFollowUpCommand(t *testing.T) {
 	}
 }
 
+func TestDriveImportAllPollsFailPreservesTicketAndRecoveryCommand(t *testing.T) {
+	config := driveTestConfig()
+	config.ProfileName = "secondary"
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, config)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_poll_failure"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/import_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_poll_failure"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/import_tasks/tk_poll_failure",
+		Body:   map[string]interface{}{"code": 1061001, "msg": "temporary status failure"},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.WriteFile("data.xlsx", []byte("fake-xlsx"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	prevAttempts, prevInterval := driveImportPollAttempts, driveImportPollInterval
+	driveImportPollAttempts, driveImportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveImportPollAttempts, driveImportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveImport, []string{
+		"+import",
+		"--file", "data.xlsx",
+		"--type", "sheet",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected persistent poll error, got nil")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty on persistent poll error", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want recovery in typed error only", stderr.String())
+	}
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Code != 1061001 {
+		t.Fatalf("code = %d, want preserved upstream code 1061001", problem.Code)
+	}
+	for _, want := range []string{
+		"ticket=tk_poll_failure",
+		"lark-cli --profile secondary drive +task_result --scenario import --ticket tk_poll_failure --as bot",
+	} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint = %q, want %q", problem.Hint, want)
+		}
+	}
+}
+
 func TestDriveImportRejectsWikiFolderToken(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -417,7 +497,7 @@ func TestDriveImportContinuesWhenFolderTokenDoesNotResolveAsWiki(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 1310001,
 			"msg":  "node not found",
@@ -483,6 +563,55 @@ func TestDriveImportContinuesWhenFolderTokenDoesNotResolveAsWiki(t *testing.T) {
 	}
 }
 
+func TestDriveImportWikiProbePermissionFailureRemainsNonBlocking(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
+		Body: map[string]interface{}{
+			"code": 131006,
+			"msg":  "permission denied: node permission denied, user needs read permission.",
+		},
+	})
+	runtime := common.TestNewRuntimeContextForAPI(
+		context.Background(),
+		&cobra.Command{Use: "drive +import"},
+		driveTestConfig(),
+		f,
+		core.AsUser,
+	)
+
+	if err := rejectDriveImportWikiFolderToken(runtime, "fldcnImportTarget"); err != nil {
+		t.Fatalf("wiki probe permission failure must not block a valid Drive folder token: %v", err)
+	}
+}
+
+func TestDriveImportWikiProbeErrorsRemainNonBlocking(t *testing.T) {
+	for _, code := range []int{131006, 131012, 131013, 131014, 131016} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			lookup := &httpmock.Stub{
+				Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
+				Body: map[string]interface{}{"code": code, "msg": "not a readable Wiki node"},
+				OnMatch: func(req *http.Request) {
+					if req.URL.RawQuery != "token=folderTarget" {
+						t.Errorf("lookup query = %q", req.URL.RawQuery)
+					}
+				},
+			}
+			reg.Register(lookup)
+			runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "drive +import"}, driveTestConfig(), f, core.AsUser)
+			if err := rejectDriveImportWikiFolderToken(runtime, "folderTarget"); err != nil {
+				t.Fatalf("Wiki probe must remain non-blocking: %v", err)
+			}
+			if len(lookup.CapturedBodies) != 1 {
+				t.Fatalf("lookup calls = %d, want 1", len(lookup.CapturedBodies))
+			}
+		})
+	}
+}
+
 func TestDriveImportRejectsOversizedFileByImportLimit(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -537,5 +666,69 @@ func writeSizedDriveImportFile(t *testing.T, name string, size int64) {
 	}
 	if err := fh.Close(); err != nil {
 		t.Fatalf("Close(%q) error: %v", name, err)
+	}
+}
+
+// TestDriveImportPollFailureKeepsTicket pins the recovery contract on the
+// all-polls-fail path: once createDriveImportTask succeeds the import is
+// already running server-side, so the ticket is the only handle back to it.
+// It used to be visible because polling narrated itself on stderr; now it has
+// to ride on the typed error, which is all a caller gets on this path.
+func TestDriveImportPollFailureKeepsTicket(t *testing.T) {
+	dir := t.TempDir()
+	withDriveWorkingDir(t, dir)
+	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "media_tok"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/import_tasks",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"ticket": "tk_orphan"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:   http.MethodGet,
+		URL:      "/open-apis/drive/v1/import_tasks/tk_orphan",
+		Status:   http.StatusInternalServerError,
+		Reusable: true,
+		Body:     map[string]interface{}{"code": 1, "msg": "backend down"},
+	})
+
+	prevAttempts, prevInterval := driveImportPollAttempts, driveImportPollInterval
+	driveImportPollAttempts, driveImportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveImportPollAttempts, driveImportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveImport, []string{
+		"+import",
+		"--file", "data.csv",
+		"--type", "sheet",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected the poll failure to surface")
+	}
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed error, got %T: %v", err, err)
+	}
+	for _, want := range []string{"ticket=tk_orphan", "drive +task_result --scenario import --ticket tk_orphan"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Errorf("recovery hint should contain %q, got: %q", want, problem.Hint)
+		}
 	}
 }

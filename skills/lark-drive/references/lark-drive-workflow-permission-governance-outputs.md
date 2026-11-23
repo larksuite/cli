@@ -27,7 +27,7 @@
 - 多目标明确列表默认输出逐目标诊断摘要；不要因为目标数大于 1 就套用容器递归发现报告。
 - 用户可见结论默认跟随用户当前语言。用户用中文提问时输出中文，用户用英文提问时输出英文；混合语言时跟随主要语言。
 - 单目标公开性判断默认输出业务表达，不直接展示 `link_share_entity`、`external_access_entity`、`external_access` 等底层字段名；只有用户要求 raw evidence、排障，或完整清单 / artifact 场景才展示底层字段。
-- 中文用户可见输出中，`permission_public` / `public permission` 默认译为“文档公共访问和协作权限设置”；可在摘要里简称“公共访问与协作设置”。它在官方语义中包含链接分享、对外分享、协作者管理、复制内容、创建副本、打印、下载和评论；具体可判断字段以当前 CLI schema 和实际响应为准。只有命令名、schema 字段、raw evidence、排障信息和完整 artifact 字段名保留英文原文。
+- 中文用户可见输出中，`permission_public` / `public permission` 默认译为“目标公共访问和协作权限设置”；可在摘要里简称“公共访问与协作设置”。优先按实际返回字段解释公开访问、分享、协作者管理、安全与评论设置；复制内容、创建副本、打印、下载等字段只有在当前 CLI schema 和实际响应返回时才可判断。只有命令名、schema 字段、raw evidence、排障信息和完整 artifact 字段名保留英文原文。
 - 容器目标默认输出安全诊断报告摘要：一句话结论、覆盖情况、风险分级、优先处理对象、建议下一步和剩余限制。
 - 容器目标不要把风险按数量机械排序；外部公开、允许对外分享、缺失密级标签优先于复制 / 下载 / 评论这类依赖策略的候选项。
 - 用户没有提供明确 policy 时，使用“候选风险 / 待复核 / 待策略确认”，不要写“违规 / 已泄露 / 已外部访问”。
@@ -36,7 +36,7 @@
 - 当摘要未展示全部风险对象时，必须明确“完整清单包含 <count> 条”，并提供生成 Markdown / CSV / 飞书文档风险清单或整改 dry-run 的下一步。
 - 只要发现需要处理的对象，最终回复必须给出可执行下一步 CTA。不能因为默认只读，就只报告风险后结束。
 - 完整风险清单是后续治理选择的输入；Markdown / CSV / 飞书文档报告必须使用同一套字段和稳定 `risk_id`。
-- 写入前必须使用确认模板；权限申请、文档公共访问和协作权限设置修改、owner 转移、密级标签更新分别确认。
+- 写入前必须使用确认模板；权限申请、目标公共访问和协作权限设置修改、owner 转移、密级标签更新分别确认。
 - 最终回复必须包含已完成事项、验证结果和剩余限制；异步权限申请审批不能表述为已完成授权。
 
 ## Semantic Rendering
@@ -75,7 +75,7 @@
 | `lock_switch=true` | `lock_state=locked_not_inheriting` | 已限制权限，不再继承父级页面权限 | The node is locked and no longer inherits parent-page permissions |
 | `lock_switch=false` | `lock_state=not_locked_or_inheriting` | 未限制权限，可能继承父级页面权限 | The node is not locked and may inherit parent-page permissions |
 | field absent / unsupported | `<state>=unknown` | 当前 schema 未返回，无法判断 | The current schema did not return this field, so it is unknown |
-| `check_scope=current_public_permission_only` | `check_scope=current_public_permission_only` | 本次判断的是当前文档公共访问和协作权限设置，不是协作者名单或历史权限变更审计 | This check covers current public access and collaboration settings, not collaborator-list or historical permission-change auditing |
+| `check_scope=current_public_permission_only` | `check_scope=current_public_permission_only` | 本次判断的是当前目标公共访问和协作权限设置，不是协作者名单或历史权限变更审计 | This check covers the target's current public access and collaboration settings, not collaborator-list or historical permission-change auditing |
 | `sec_label_name` missing | `sec_label=missing` | 缺少密级标签 | Security label is missing |
 
 ## 定位与治理动作
@@ -165,7 +165,7 @@ Evidence fields:
 
 覆盖情况：
 - 用户提供目标：<input_target_count>；成功解析：<resolved_count>
-- 成功读取文档公共访问和协作权限设置：<permission_checked_count>；读取失败 / 不支持 / 无权限：<failed_or_unsupported_count>
+- 成功读取目标公共访问和协作权限设置：<permission_checked_count>；读取失败 / 不支持 / 无权限：<failed_or_unsupported_count>
 
 逐目标结果（1-10 个目标默认全部展示；超过 10 个时按 `摘要清单展开规则` 展示，并提示生成完整风险清单）：
 
@@ -233,7 +233,7 @@ URL：<url-or-token-if-url-unavailable>
 
 覆盖情况：
 - 当前身份可见目标：<visible_count>
-- 已成功检查文档公共访问和协作权限设置：<permission_checked_count>
+- 已成功检查目标公共访问和协作权限设置：<permission_checked_count>
 - 读取失败 / 已删除 / 无权限：<failed_count>
 - 未覆盖能力：<collaborator_list / inheritance / audit_log / view_records / none>
 
@@ -355,8 +355,8 @@ Agent 必须回复：
 - 字段变更：
   - <risk_id> <path> (<url-or-token>): <field> <old> -> <new>
 - 跳过项：<unsupported / no manage_public / unsupported type / missing policy>
-- 验证方式：执行后重新读取 <元数据 / 文档公共访问和协作权限设置>
-- 有限回滚范围：<文档公共访问和协作权限设置快照字段 / 不适用>
+- 验证方式：执行后重新读取 <元数据 / 目标公共访问和协作权限设置>
+- 有限回滚范围：<目标公共访问和协作权限设置快照字段 / 不适用>
 
 请确认是否进入写入确认。
 ```
@@ -407,8 +407,8 @@ Agent 必须回复：
 - 风险：<risk_level>
 - 字段变更：
   - <field>: <old> -> <new>
-- 验证方式：执行后重新读取 <元数据 / 文档公共访问和协作权限设置>
-- 有限回滚材料：<文档公共访问和协作权限设置快照 / 不适用>
+- 验证方式：执行后重新读取 <元数据 / 目标公共访问和协作权限设置>
+- 有限回滚材料：<目标公共访问和协作权限设置快照 / 不适用>
 
 请确认是否执行。
 ```
@@ -419,6 +419,6 @@ Agent 必须回复：
 已完成：<read checks / writes>
 验证：<fresh read result or async permission-request approval note>
 清单状态：<risk_id status updates / not applicable>
-回滚材料：<文档公共访问和协作权限设置快照 / 不适用>
+回滚材料：<目标公共访问和协作权限设置快照 / 不适用>
 剩余限制：<unsupported_checks / partial facts / approvals>
 ```

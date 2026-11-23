@@ -37,13 +37,7 @@ func TestAppsDBChangelogList_DryRunFiltersAndTimeNormalize(t *testing.T) {
 			"--change-id", "01J", "--since", "2026-01-01", "--page-size", "5", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	a := env.API[0]
 	if a.Method != "GET" || a.URL != dbChangelogURL {

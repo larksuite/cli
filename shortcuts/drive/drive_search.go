@@ -16,6 +16,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -239,10 +240,10 @@ func buildDriveSearchRequest(spec driveSearchSpec, userOpenID string, now time.T
 		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot combine --folder-tokens and --space-ids; doc and wiki scoped search cannot be combined")
 	}
 	if spec.Mine && userOpenID == "" {
-		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--mine requires a logged-in user open_id, but none is configured; run `lark-cli auth login` or set user open_id in config").WithParam("--mine")
+		return nil, nil, missingDriveSearchUserError("--mine")
 	}
 	if spec.CreatedByMe && userOpenID == "" {
-		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--created-by-me requires a logged-in user open_id, but none is configured; run `lark-cli auth login` or set user open_id in config").WithParam("--created-by-me")
+		return nil, nil, missingDriveSearchUserError("--created-by-me")
 	}
 
 	if err := validateDocTypes(spec.DocTypes); err != nil {
@@ -353,6 +354,17 @@ func buildDriveSearchRequest(spec driveSearchSpec, userOpenID string, now time.T
 	}
 
 	return request, notices, nil
+}
+
+func missingDriveSearchUserError(param string) error {
+	message := recovery.Join("",
+		recovery.Text(param+" requires a logged-in user open_id, but none is configured; "),
+		recovery.Command(recovery.TargetAuthLogin, "run `lark-cli auth login` or "),
+		recovery.Text("set user open_id in config"),
+	)
+	err := errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", message.String()).
+		WithParam(param)
+	return recovery.AnnotateMessage(err, message)
 }
 
 func parseDriveSearchPageSize(raw string) (int, error) {

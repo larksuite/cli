@@ -25,19 +25,16 @@ jobs:
         with:
           script: |
             const run = context.payload.workflow_run;
-            if (run.name !== "CI") throw new Error(`unexpected workflow name: ${run.name}`);
-            let workflowPath = run.path || "";
-            if (!workflowPath) {
-              const workflowId = Number(run.workflow_id || 0);
-              if (!Number.isInteger(workflowId) || workflowId <= 0) throw new Error("missing workflow id");
-              const { data: workflow } = await github.rest.actions.getWorkflow({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: workflowId,
-              });
-              workflowPath = workflow.path || "";
-            }
-            if (workflowPath !== ".github/workflows/ci.yml") throw new Error(`unexpected workflow path: ${workflowPath}`);
+            const workflowId = Number(run.workflow_id || 0);
+            if (!Number.isInteger(workflowId) || workflowId <= 0) throw new Error("missing workflow id");
+            const { data: workflow } = await github.rest.actions.getWorkflow({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflowId,
+            });
+            if (workflow.name !== "CI") throw new Error(`unexpected workflow name: ${workflow.name}`);
+            if (workflow.path !== ".github/workflows/ci.yml") throw new Error(`unexpected workflow path: ${workflow.path}`);
+            if (run.path && run.path !== workflow.path) throw new Error(`workflow path mismatch: ${run.path}`);
             if (run.event !== "pull_request") throw new Error(`unexpected event: ${run.event}`);
             if (run.repository.id !== context.payload.repository.id) throw new Error("repository id mismatch");
             if (run.repository.full_name !== context.payload.repository.full_name) throw new Error("repository name mismatch");
@@ -253,19 +250,16 @@ jobs:
         with:
           script: |
             const run = context.payload.workflow_run;
-            if (run.name !== "CI") throw new Error(`unexpected workflow name: ${run.name}`);
-            let workflowPath = run.path || "";
-            if (!workflowPath) {
-              const workflowId = Number(run.workflow_id || 0);
-              if (!Number.isInteger(workflowId) || workflowId <= 0) throw new Error("missing workflow id");
-              const { data: workflow } = await github.rest.actions.getWorkflow({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: workflowId,
-              });
-              workflowPath = workflow.path || "";
-            }
-            if (workflowPath !== ".github/workflows/ci.yml") throw new Error(`unexpected workflow path: ${workflowPath}`);
+            const workflowId = Number(run.workflow_id || 0);
+            if (!Number.isInteger(workflowId) || workflowId <= 0) throw new Error("missing workflow id");
+            const { data: workflow } = await github.rest.actions.getWorkflow({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflowId,
+            });
+            if (workflow.name !== "CI") throw new Error(`unexpected workflow name: ${workflow.name}`);
+            if (workflow.path !== ".github/workflows/ci.yml") throw new Error(`unexpected workflow path: ${workflow.path}`);
+            if (run.path && run.path !== workflow.path) throw new Error(`workflow path mismatch: ${run.path}`);
             if (run.event !== "pull_request") throw new Error(`unexpected event: ${run.event}`);
             if (run.conclusion !== "success") throw new Error(`unexpected conclusion: ${run.conclusion}`);
             if (run.repository.id !== context.payload.repository.id) throw new Error("repository id mismatch");

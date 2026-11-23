@@ -11,7 +11,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestAppsAccessScopeGetDryRun pins URL shape and --app-id requirement for the
@@ -35,11 +34,11 @@ func TestAppsAccessScopeGetDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "GET", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/access-scope", gjson.Get(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/access-scope", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
 		// GET request: no body and no query params.
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body").Exists())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.params").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params").Exists())
 	})
 
 	t.Run("RejectsMissingAppID", func(t *testing.T) {

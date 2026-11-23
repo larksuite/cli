@@ -69,19 +69,17 @@ lark-cli approval approvals get \
 |---|---|---|
 | `--data '{...}'` | 是 | 请求体，使用 JSON 传入 |
 | `approval_code` | 是 | 审批定义 Code；必须先通过 `approvals search` / `approvals get` 确认 |
-| `form` | 是 | 表单值，**JSON 数组字符串**，不是普通对象 |
+| `form` | 否 | 表单值，**JSON 数组字符串**，不是普通对象；API 层非必填，但审批定义存在必填控件或用户需要提交表单值时必须传 |
 | `node_approver_list` | 否 | 节点审批人列表；仅在定义要求补充审批人时传 |
 | `node_cc_list` | 否 | 节点抄送人列表；仅在用户明确需要补充节点抄送人时传 |
 | `uuid` | 否 | 幂等标识；重复重试同一请求时建议显式传入 |
-| `--params '{...}'` | 否 | 查询参数，使用 JSON 传入 |
-| `user_id_type` | 否 | 用户 ID 类型：`user_id`、`union_id`、`open_id`；涉及人员类 ID 时建议显式传 `open_id` |
 | `--as user` | 否 | 建议显式指定用户身份；审批发起通常应使用用户身份 |
 | `--yes` | 是 | 写操作确认；真实执行时必须显式传入 |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
 ### 4. 组装 `form`
 
-`instances create --data.form` 是一个 JSON 数组字符串。组装原则：
+`instances create --data.form` 是可选字段；传入时必须是一个 JSON 数组字符串。无表单或无需填写表单值的审批可省略 `form`，但只要审批定义包含需要提交的控件，就必须按控件结构组装后传入。组装原则：
 
 - 先用 `approvals.get.form` 识别有哪些控件、每个控件的 `id` / `type` / 可选值范围，再按本文中的创建参数规则与 [`lark-approval-instance-form-control-parameters.md`](./lark-approval-instance-form-control-parameters.md) 重新组装创建 payload。
 - 提交时必须至少保证每个控件的 `id`、`type` 与 `value` 符合当前接口要求；不要假设定义快照里出现的其他字段都能直接照搬。
@@ -173,7 +171,6 @@ lark-cli approval instances create \
       }
     ]
   }' \
-  --params '{"user_id_type":"open_id"}' \
   --as user \
   --yes
 ```

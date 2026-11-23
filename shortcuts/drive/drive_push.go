@@ -205,13 +205,11 @@ var DrivePush = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "could not resolve cwd: %s", err)
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Walking local: %s\n", localDir)
 		localFiles, localDirs, err := drivePushWalkLocal(safeRoot, cwdCanonical)
 		if err != nil {
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
 		entries, err := listRemoteFolderEntries(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
@@ -270,7 +268,6 @@ var DrivePush = common.Shortcut{
 				uploadFailed = true
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
 				continue
@@ -306,7 +303,6 @@ var DrivePush = common.Shortcut{
 					uploadFailed = true
 					if terminal {
 						aborted = true
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, parentErr)
 						break
 					}
 					continue
@@ -338,7 +334,6 @@ var DrivePush = common.Shortcut{
 					uploadFailed = true
 					if terminal {
 						aborted = true
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, upErr)
 						break
 					}
 					continue
@@ -357,7 +352,6 @@ var DrivePush = common.Shortcut{
 				uploadFailed = true
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
 				continue
@@ -370,7 +364,6 @@ var DrivePush = common.Shortcut{
 				uploadFailed = true
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, upErr)
 					break
 				}
 				continue
@@ -424,7 +417,6 @@ var DrivePush = common.Shortcut{
 						failed++
 						if terminal {
 							aborted = true
-							fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, err)
 							abortDelete = true
 							break
 						}
@@ -573,7 +565,7 @@ func drivePushShouldSkipSmart(localFile drivePushLocalFile, remoteFile driveRemo
 }
 
 func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int64, err error) (drivePushItem, bool) {
-	decision := driveClassifyBatchFailure(err)
+	decision := driveClassifyPushFailure(err)
 	item := drivePushItem{
 		RelPath:    relPath,
 		FileToken:  fileToken,
@@ -588,6 +580,22 @@ func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int
 		Retryable:  driveBoolPtr(decision.Retryable),
 	}
 	return item, decision.Terminal
+}
+
+// driveClassifyPushFailure applies +push's batch-wide stop policy without
+// changing the item-level behavior shared by +pull and +sync. In particular,
+// streaming HTTP errors are represented as network errors; responses such as a
+// stale file's 404 can be item-specific and must not make those commands abort.
+func driveClassifyPushFailure(err error) driveBatchFailureDecision {
+	decision := driveClassifyBatchFailure(err)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return decision
+	}
+	if decision.Class == "conflict" || decision.Class == "quota_exceeded" || problem.Category == errs.CategoryNetwork {
+		decision.Terminal = true
+	}
+	return decision
 }
 
 func driveBoolPtr(v bool) *bool {
@@ -617,31 +625,56 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	case problem.Category == errs.CategoryNetwork && problem.Code == http.StatusForbidden:
 		decision.Class = "permission_denied"
 		decision.Terminal = true
+	case problem.Code == 1062009:
+		decision.Class = "upload_size_mismatch"
+		decision.Hint = "Rescan the local file before retrying; its contents or size may have changed during upload."
 	case problem.Subtype == errs.SubtypeInvalidParameters || problem.Code == 1061002:
 		decision.Class = "invalid_api_parameters"
 		decision.Terminal = true
+		if decision.Hint == "" {
+			decision.Hint = "Check --folder-token, overwrite mode, file_token, file name, and upload parameters before retrying; do not repeat the same parameter set."
+		}
 	case problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400:
 		decision.Class = "rate_limited"
 		decision.Terminal = true
+		decision.Hint = "Stop immediate retries and retry later with exponential backoff and jitter."
+	case problem.Code == 1061045:
+		decision.Class = "conflict"
+		decision.Hint = "Stop this push and retry later with backoff; avoid concurrent folder creation or push operations against the same destination."
 	case problem.Code == 1062507:
 		decision.Class = "parent_sibling_limit"
 		decision.Terminal = true
 		decision.Hint = "The destination parent folder has reached its child-count limit. Clean up that folder, choose another --folder-token, or split the upload across subfolders before retrying."
-	case problem.Subtype == errs.SubtypeQuotaExceeded || problem.Code == 1061043:
+	case problem.Code == 1061043:
 		decision.Class = "file_size_limit"
-	case problem.Code == 1062009:
-		decision.Class = "upload_size_mismatch"
+		decision.Hint = "Do not retry the same file unchanged; split it into smaller files or use another storage method."
+	case problem.Subtype == errs.SubtypeQuotaExceeded:
+		decision.Class = "quota_exceeded"
+		if decision.Hint == "" {
+			decision.Hint = "Free the relevant Drive quota or choose another destination before retrying."
+		}
 	case problem.Code == 1061044:
 		decision.Class = "parent_node_missing"
 		decision.Terminal = true
 		decision.Hint = "The destination parent folder no longer exists or is not visible. Verify --folder-token, folder permissions, and whether a parent directory was deleted during push before retrying."
 	case problem.Subtype == errs.SubtypeNotFound || problem.Code == 1061007:
 		decision.Class = "remote_not_found"
+	case problem.Category == errs.CategoryNetwork:
+		decision.Class = string(problem.Subtype)
+		if decision.Hint == "" {
+			decision.Hint = "Stop the current push; check connectivity and retry later with bounded exponential backoff."
+		}
 	case problem.Subtype == errs.SubtypeServerError || problem.Code == 1061001 || problem.Code == 2200:
 		decision.Class = "server_error"
 		decision.Terminal = true
+		if decision.Hint == "" {
+			decision.Hint = "Stop the current push and retry later with bounded exponential backoff."
+		}
 	case problem.Subtype == errs.SubtypeFailedPrecondition:
 		decision.Class = "local_file_changed"
+		if decision.Hint == "" {
+			decision.Hint = "Rescan the local file before retrying this item."
+		}
 	default:
 		decision.Class = string(problem.Subtype)
 	}
@@ -887,10 +920,6 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 			"upload_prepare returned invalid data: upload_id=%q, block_size=%d, block_num=%d",
 			uploadID, blockSize, blockNum)
 	}
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload: %s, block size %s, %d block(s)\n",
-		common.FormatSize(file.Size), common.FormatSize(blockSize), blockNum)
-
 	// Open the local file ONCE for the whole multipart loop. fileio.File
 	// implements io.ReaderAt, so each block is a fresh
 	// io.NewSectionReader over a shared fd — no need to reopen N times
@@ -931,7 +960,6 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 		if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
 			return "", err
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, blockNum, common.FormatSize(partSize))
 	}
 
 	finishResult, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/files/upload_finish", nil, map[string]interface{}{

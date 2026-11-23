@@ -59,14 +59,39 @@ type driveImportSpec struct {
 	FolderToken string
 	Name        string
 	TargetToken string // existing bitable token to import data into (only for type=bitable)
+
+	// EffectiveExt is a caller-supplied override for the extension otherwise
+	// derived from FilePath (see ImportParams.FileExtension). It lets a caller
+	// that has detected the file's real container correct a mislabeled name
+	// (e.g. an OOXML workbook saved as .xls). Empty means "trust the filename".
+	EffectiveExt string
 }
 
-func (s driveImportSpec) FileExtension() string {
+// rawExtension is the lowercased extension taken verbatim from the file name.
+func (s driveImportSpec) rawExtension() string {
 	return strings.TrimPrefix(strings.ToLower(filepath.Ext(s.FilePath)), ".")
 }
 
+// FileExtension is the extension the import pipeline treats as authoritative:
+// the content-sniffed override when set, otherwise the file name's extension.
+func (s driveImportSpec) FileExtension() string {
+	if s.EffectiveExt != "" {
+		return s.EffectiveExt
+	}
+	return s.rawExtension()
+}
+
+// SourceFileName is the name used when staging the upload media. When content
+// sniffing corrected the extension, the staged name must carry the corrected
+// suffix too: the import backend cross-checks the media file name's extension
+// against the file_extension in the import task and rejects a mismatch with
+// "import file extension not match" (code 1069910).
 func (s driveImportSpec) SourceFileName() string {
-	return filepath.Base(s.FilePath)
+	base := filepath.Base(s.FilePath)
+	if s.EffectiveExt != "" && s.EffectiveExt != s.rawExtension() {
+		base = strings.TrimSuffix(base, filepath.Ext(base)) + "." + s.EffectiveExt
+	}
+	return base
 }
 
 func (s driveImportSpec) TargetFileName() string {
@@ -97,24 +122,28 @@ func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{}
 
 // uploadMediaForImport uploads the source file to the temporary import media
 // endpoint and returns the file token consumed by import_tasks.
-func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, docType string) (string, error) {
+func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, spec driveImportSpec) (string, error) {
+	filePath := spec.FilePath
+	fileName := spec.SourceFileName()
 	importInfo, err := runtime.FileIO().Stat(filePath)
 	if err != nil {
 		return "", driveInputStatError(err)
 	}
 
 	fileSize := importInfo.Size()
-	if err = validateDriveImportFileSize(filePath, docType, fileSize); err != nil {
+	if err = validateDriveImportFileSize(spec.FileExtension(), spec.DocType, fileSize); err != nil {
 		return "", err
 	}
 
-	extra, err := buildImportMediaExtra(filePath, docType)
+	extra, err := buildImportMediaExtra(spec.FileExtension(), spec.DocType)
 	if err != nil {
 		return "", err
 	}
 
+	// TTY-only liveness; see pollDriveImportTask.
+	defer runtime.StartSpinner(fmt.Sprintf("Uploading %s", fileName))()
+
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import: %s (%s)\n", fileName, common.FormatSize(fileSize))
 		// upload_all for import works without parent_node; omitting it preserves
 		// the existing root-level import staging behavior.
 		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
@@ -126,7 +155,6 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 		})
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import via multipart upload: %s (%s)\n", fileName, common.FormatSize(fileSize))
 	// upload_prepare is stricter than upload_all here and expects parent_node to
 	// be sent explicitly, even when import uses the implicit root staging area.
 	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
@@ -139,12 +167,12 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 	})
 }
 
-func buildImportMediaExtra(filePath, docType string) (string, error) {
+func buildImportMediaExtra(ext, docType string) (string, error) {
 	// The import media endpoint uses extra to decide both the target native type
 	// and how to interpret the uploaded source file.
 	extraBytes, err := json.Marshal(map[string]string{
 		"obj_type":       docType,
-		"file_extension": strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), "."),
+		"file_extension": ext,
 	})
 	if err != nil {
 		return "", errs.NewInternalError(errs.SubtypeUnknown, "build upload extra failed: %v", err).WithCause(err)
@@ -152,10 +180,10 @@ func buildImportMediaExtra(filePath, docType string) (string, error) {
 	return string(extraBytes), nil
 }
 
-func driveImportFileSizeLimit(filePath, docType string) (int64, bool) {
+func driveImportFileSizeLimit(ext, docType string) (int64, bool) {
 	// Keep the limit mapping local to import flows so we do not widen behavior
 	// changes beyond drive +import.
-	switch strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), ".") {
+	switch ext {
 	case "docx", "doc":
 		return driveImport600MBFileSizeLimit, true
 	case "pptx":
@@ -174,13 +202,12 @@ func driveImportFileSizeLimit(filePath, docType string) (int64, bool) {
 	}
 }
 
-func validateDriveImportFileSize(filePath, docType string, fileSize int64) error {
-	limit, ok := driveImportFileSizeLimit(filePath, docType)
+func validateDriveImportFileSize(ext, docType string, fileSize int64) error {
+	limit, ok := driveImportFileSizeLimit(ext, docType)
 	if !ok || fileSize <= limit {
 		return nil
 	}
 
-	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), ".")
 	if ext == "csv" {
 		// CSV is the only source format whose limit depends on the target type.
 		return errs.NewValidationError(errs.SubtypeInvalidArgument,
@@ -268,7 +295,7 @@ func appendDriveImportFolderTokenWikiCheckDryRun(dry *common.DryRunAPI, spec dri
 		return
 	}
 
-	dry.GET("/open-apis/wiki/v2/spaces/get_node").
+	dry.GET("/open-apis/wiki/v2/spaces/node_by_token").
 		Desc("[0] Validate whether --folder-token is a wiki node").
 		Params(map[string]interface{}{"token": folderToken})
 }
@@ -281,7 +308,7 @@ func rejectDriveImportWikiFolderToken(runtime *common.RuntimeContext, folderToke
 
 	data, err := runtime.CallAPITyped(
 		"GET",
-		"/open-apis/wiki/v2/spaces/get_node",
+		"/open-apis/wiki/v2/spaces/node_by_token",
 		map[string]interface{}{"token": folderToken},
 		nil,
 	)
@@ -346,8 +373,9 @@ func (s driveImportStatus) StatusLabel() string {
 
 // driveImportTaskResultCommand prints the resume command returned after bounded
 // polling times out locally.
-func driveImportTaskResultCommand(ticket string) string {
-	return fmt.Sprintf("lark-cli drive +task_result --scenario import --ticket %s", ticket)
+func driveImportTaskResultCommand(runtime *common.RuntimeContext, ticket string) string {
+	prefix, identity := driveTaskResultCommandContext(runtime)
+	return fmt.Sprintf("%s drive +task_result --scenario import --ticket %s --as %s", prefix, ticket, identity)
 }
 
 // createDriveImportTask creates the server-side import task after the media
@@ -404,22 +432,58 @@ func parseDriveImportStatus(ticket string, data map[string]interface{}) driveImp
 	}
 }
 
+// driveImportPollSummary reports a poll run that needed retries. Transient
+// status failures are swallowed and retried, so without this a caller cannot
+// tell a clean import from one that limped to the finish line — which is the
+// only decision-relevant part of what the per-attempt stderr lines used to say.
+type driveImportPollSummary struct {
+	Attempts          int
+	TransientFailures int
+	LastError         error
+}
+
+// attach adds the summary to a result payload, but only when retries actually
+// happened, so clean runs keep their existing output shape.
+func (s driveImportPollSummary) attach(out map[string]interface{}) {
+	if s.TransientFailures == 0 {
+		return
+	}
+	summary := map[string]interface{}{
+		"attempts":           s.Attempts,
+		"transient_failures": s.TransientFailures,
+	}
+	if s.LastError != nil {
+		summary["last_error"] = s.LastError.Error()
+	}
+	out["poll"] = summary
+}
+
 // pollDriveImportTask waits for the import to finish within a bounded window
 // and returns the last observed status for resume-on-timeout flows.
-func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveImportStatus, bool, error) {
+func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveImportStatus, bool, driveImportPollSummary, error) {
+	// Interactive liveness only: StartSpinner is gated on StderrIsTerminal and
+	// is a strict no-op for pipes, CI and captured output, so a bounded poll
+	// stops looking like a hang at a human terminal without putting a byte on
+	// a machine caller's stderr.
+	defer runtime.StartSpinner("Importing")()
+
 	lastStatus := driveImportStatus{Ticket: ticket}
 	var lastErr error
 	hadSuccessfulPoll := false
+	summary := driveImportPollSummary{}
 	for attempt := 1; attempt <= driveImportPollAttempts; attempt++ {
 		if attempt > 1 {
 			time.Sleep(driveImportPollInterval)
 		}
 
+		summary.Attempts = attempt
 		status, err := getDriveImportStatus(runtime, ticket)
 		if err != nil {
 			lastErr = err
-			// Log the error but continue polling.
-			fmt.Fprintf(runtime.IO().ErrOut, "Import status attempt %d/%d failed: %v\n", attempt, driveImportPollAttempts, err)
+			// Keep polling through transient failures; the count rides out on
+			// the result instead of on stderr.
+			summary.TransientFailures++
+			summary.LastError = err
 			continue
 		}
 		lastStatus = status
@@ -428,18 +492,17 @@ func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveIm
 		// Stop immediately on terminal states and otherwise return the last known
 		// status so the caller can expose a follow-up command on timeout.
 		if status.Ready() {
-			fmt.Fprintf(runtime.IO().ErrOut, "Import completed successfully.\n")
-			return status, true, nil
+			return status, true, summary, nil
 		}
 		if status.Failed() {
-			return status, false, driveImportFailureError(status)
+			return status, false, summary, driveImportFailureError(status)
 		}
 	}
 	if !hadSuccessfulPoll && lastErr != nil {
-		return lastStatus, false, lastErr
+		return lastStatus, false, summary, lastErr
 	}
 
-	return lastStatus, false, nil
+	return lastStatus, false, summary, nil
 }
 
 func driveImportFailureError(status driveImportStatus) *errs.APIError {

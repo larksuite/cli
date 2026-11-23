@@ -28,6 +28,8 @@ var OKRListProgress = common.Shortcut{
 		{Name: "target-type", Desc: "target type: objective | key_result", Required: true, Enum: []string{"objective", "key_result"}},
 		{Name: "user-id-type", Default: "open_id", Desc: "user ID type: open_id | union_id | user_id"},
 		{Name: "department-id-type", Default: "open_department_id", Desc: "department ID type: department_id | open_department_id"},
+		{Name: "page-size", Type: "int", Default: "100", Desc: "page size, range 1-100"},
+		{Name: "page-token", Desc: "pagination token from previous response"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		targetID := runtime.Str("target-id")
@@ -55,6 +57,14 @@ var OKRListProgress = common.Shortcut{
 		if deptIDType != "department_id" && deptIDType != "open_department_id" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--department-id-type must be one of: department_id | open_department_id").WithParam("--department-id-type")
 		}
+		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 100); err != nil {
+			return err
+		}
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
+			if err := common.RejectDangerousCharsTyped("--page-token", pageToken); err != nil {
+				return err
+			}
+		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -63,7 +73,10 @@ var OKRListProgress = common.Shortcut{
 		params := map[string]interface{}{
 			"user_id_type":       runtime.Str("user-id-type"),
 			"department_id_type": runtime.Str("department-id-type"),
-			"page_size":          100,
+			"page_size":          runtime.Int("page-size"),
+		}
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
+			params["page_token"] = pageToken
 		}
 
 		switch targetType {
@@ -91,7 +104,10 @@ var OKRListProgress = common.Shortcut{
 		queryParams := map[string]interface{}{
 			"user_id_type":       userIDType,
 			"department_id_type": deptIDType,
-			"page_size":          "100",
+			"page_size":          runtime.Int("page-size"),
+		}
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
+			queryParams["page_token"] = pageToken
 		}
 
 		var apiPath string
@@ -103,35 +119,28 @@ var OKRListProgress = common.Shortcut{
 		}
 
 		var allProgress []*Progress
-		for {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-
-			data, err := runtime.CallAPITyped("GET", apiPath, queryParams, nil)
-			if err != nil {
-				return err
-			}
-
-			itemsRaw, _ := data["items"].([]interface{})
-			for _, item := range itemsRaw {
-				raw, err := json.Marshal(item)
-				if err != nil {
-					continue
-				}
-				var progress Progress
-				if err := json.Unmarshal(raw, &progress); err != nil {
-					continue
-				}
-				allProgress = append(allProgress, &progress)
-			}
-
-			hasMore, pageToken := common.PaginationMeta(data)
-			if !hasMore || pageToken == "" {
-				break
-			}
-			queryParams["page_token"] = pageToken
+		if err := ctx.Err(); err != nil {
+			return err
 		}
+
+		data, err := runtime.CallAPITyped("GET", apiPath, queryParams, nil)
+		if err != nil {
+			return err
+		}
+
+		itemsRaw, _ := data["items"].([]interface{})
+		for _, item := range itemsRaw {
+			raw, err := json.Marshal(item)
+			if err != nil {
+				continue
+			}
+			var progress Progress
+			if err := json.Unmarshal(raw, &progress); err != nil {
+				continue
+			}
+			allProgress = append(allProgress, &progress)
+		}
+		hasMore, pageToken := common.PaginationMeta(data)
 
 		// Convert to response format
 		respProgress := make([]*RespProgress, 0, len(allProgress))
@@ -141,7 +150,8 @@ var OKRListProgress = common.Shortcut{
 
 		runtime.OutFormat(map[string]interface{}{
 			"progress_list": respProgress,
-			"total":         len(respProgress),
+			"has_more":      hasMore,
+			"page_token":    pageToken,
 		}, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "Found %d progress(es)\n", len(respProgress))
 			for _, p := range respProgress {

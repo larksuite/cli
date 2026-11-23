@@ -1,6 +1,6 @@
 # base +field-update
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 更新一个已有字段。
 
@@ -11,15 +11,9 @@ lark-cli base +field-update \
   --base-token <base_token> \
   --table-id <table_id> \
   --field-id <field_id> \
-  --json '{"name":"状态","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Doing","hue":"Orange","lightness":"Light"},{"name":"Done","hue":"Green","lightness":"Light"}]}' \
+  --json '{"name":"状态","type":"select","multiple":false,"default_value":["Doing"],"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Doing","hue":"Orange","lightness":"Light"},{"name":"Done","hue":"Green","lightness":"Light"}]}' \
   --yes
 
-lark-cli base +field-update \
-  --base-token <base_token> \
-  --table-id <table_id> \
-  --field-id <field_id> \
-  --json '{"name":"负责人","type":"user","multiple":false,"description":"用于标记记录的直接负责人"}' \
-  --yes
 ```
 
 ## 参数
@@ -45,12 +39,14 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## JSON 值规范
 
 - `--json` 必须是 **JSON 对象**，顶层直接传字段定义。
-- 更新语义是 `PUT`（全量字段配置更新），不要只传零散片段；至少显式包含 `name`、`type`，并补齐该类型所需关键配置。
+- 更新语义是 override 式的完整覆盖 `PUT`，不是 partial update；先读取当前定义，再提交整个字段需要保留的可写配置，不要只传零散片段。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
+- 需要字段默认值时传 `default_value`，直接使用字段对应 CellValue；传 `null` 清空。完整规则见 [Field Schema](lark-base-field-schema.md)。
 - `select` 更新时：`options` 仍按对象数组传，避免混入无效字段。
 - `link` 更新限制：
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
+- 更新 `auto_number.style.rules` 会按新规则更新已有记录的编号；规则结构见 [Field Schema](lark-base-field-schema.md)。
 
 **推荐更新示例**
 
@@ -59,6 +55,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
   "name": "状态",
   "type": "select",
   "multiple": false,
+  "default_value": ["Doing"],
   "options": [
     { "name": "Todo", "hue": "Blue", "lightness": "Lighter" },
     { "name": "Doing", "hue": "Orange", "lightness": "Light" },
@@ -67,27 +64,17 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 }
 ```
 
-**字段说明示例**
-
-```json
-{
-  "name": "负责人",
-  "type": "user",
-  "multiple": false,
-  "description": "用于标记记录的直接负责人"
-}
-```
-
 ## 返回重点
 
 - 返回 `field` 和 `updated: true`。
+- 按返回的 `next_step` 和 `verification_hint` 继续；类型转换涉及已有值时抽样读取记录。
 
 ## 工作流
 
 
-1. 建议先用 `+field-get` 拉现状，再做最小化修改。
+1. 先用 `+field-get` 读取当前定义，只改变目标属性，并把需要保留的其他可写配置完整写回。
 2. `formula/lookup` 类型更新前先阅读对应指南。
-3. 如果这次更新会改变字段 `type` 先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
+3. 如果这次更新会改变字段 `type`，先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
 
 ## 字段类型变更规则
 
@@ -132,10 +119,10 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 只有在**整列数据丢失可接受**时，才允许对黑名单场景例外执行。
 
-- `EmptyColumn`: 该列为空
-- `FreshTableInit`: 新建空表初始化
-- `PrimaryFieldBootstrap`: 主列不能删，只能更新完成初始化
-- `ExplicitLossAccepted`: 用户明确接受整列数据丢失
+1. 该列为空。
+2. 正在初始化新建的空表。
+3. 主字段不能删除，需要通过更新完成初始化。
+4. 用户明确接受整列数据丢失。
 
 不满足以上条件时，不要转换。
 
@@ -150,13 +137,6 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
   - 可能影响视图 / 筛选 / 排序 / 公式 / lookup / 写入引用
 - 如果用户不接受风险：不要执行转换。
 
-### 完成态验证
-
-- `FieldReadback`: 读回字段结构，确认 `type` / `multiple` / `style` / `options`
-- `ValueReadback`: 抽样读回转换后的单元格值
-- `DownstreamReadback`: 若涉及看板 / 分组 / 排序 / lookup / 公式，继续读回结果
-- `CompletionRule`: 结构、值、下游能力都正确，才能回复“已完成”
-
 ## 坑点
 
 - ⚠️ 这是全量字段属性更新语义，不是 patch。
@@ -166,6 +146,6 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## 参考
 
 - 更新前读取当前字段，确认现有 `type` 和具体配置细节，再决定是原地更新还是新建字段迁移。
-- [lark-base-field-json.md](lark-base-field-json.md) — 字段 JSON 规范（推荐）
-- [formula-field-guide.md](formula-field-guide.md) — formula 指南（更新公式前必读）
-- [lookup-field-guide.md](lookup-field-guide.md) — lookup 指南（更新查找引用前必读）
+- [Field Schema](lark-base-field-schema.md) — 字段 JSON 规范（推荐）
+- [Formula Field](lark-base-field-formula.md) — 更新公式前必读
+- [Lookup Field](lark-base-field-lookup.md) — 更新查找引用前必读

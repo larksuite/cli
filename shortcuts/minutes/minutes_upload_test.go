@@ -148,6 +148,42 @@ func TestMinutesUpload_Execute(t *testing.T) {
 	}
 }
 
+func TestMinutesUpload_ASRQuotaNotEnough(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	warmTokenCache(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/minutes/v1/minutes/upload",
+		Body: map[string]interface{}{
+			// Literal wire code, never the constant: feeding a constant back
+			// into the stub would pass no matter which value it holds, which is
+			// how the internal 4xxxx codes went unnoticed.
+			"code": 2091008,
+			"msg":  "asr/ai quota not enough",
+		},
+	})
+
+	err := mountAndRun(t, MinutesUpload, []string{"+upload", "--file-token", "boxcn123456", "--format", "json", "--as", "user"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected ASR/AI quota error, got nil")
+	}
+
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want typed errs.*, got %T: %v", err, err)
+	}
+	if p.Subtype != errs.SubtypeQuotaExceeded {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeQuotaExceeded)
+	}
+	if !strings.Contains(p.Message, "quota") {
+		t.Errorf("message should explain the quota is exhausted, got: %s", p.Message)
+	}
+	if !strings.Contains(p.Hint, "detail page") {
+		t.Errorf("hint should point to the minute detail page, got: %s", p.Hint)
+	}
+}
+
 func TestExtractUploadedMinuteToken(t *testing.T) {
 	tests := []struct {
 		name string

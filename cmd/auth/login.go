@@ -6,7 +6,10 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -15,11 +18,14 @@ import (
 
 	"github.com/larksuite/cli/errs"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -42,12 +48,24 @@ var pollDeviceToken = larkauth.PollDeviceToken
 
 // NewCmdAuthLogin creates the auth login subcommand.
 func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.Command {
+	return newCmdAuthLogin(f, runF, shortcuts.AllShortcuts())
+}
+
+// newCmdAuthLogin resolves domains from one build's shortcut snapshot. The
+// snapshot stays a closure capture rather than a LoginOptions field: LoginOptions
+// is part of the exported runF signature, and an unexported field on it would
+// end positional literals for every caller outside this module.
+func newCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error, registered []common.Shortcut) *cobra.Command {
 	opts := &LoginOptions{Factory: f}
+	resolver := newDomainResolver(f.APICatalog, registered)
 
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Device Flow authorization login",
 		Long: `Device Flow authorization login.
+
+With no --scope/--domain/--recommend flag, this requests scopes for all known
+business domains (equivalent to --domain all); pass --domain or --scope to narrow it.
 
 For AI agents: this command blocks until the user completes authorization in the
 browser. If your harness or agent tool only delivers final turn messages, use --no-wait --json,
@@ -64,21 +82,21 @@ to generate QR codes (supports ASCII and PNG formats).`,
 			if runF != nil {
 				return runF(opts)
 			}
-			return authLoginRun(opts)
+			return authLoginRun(opts, resolver)
 		},
 	}
 	cmdutil.SetSupportedIdentities(cmd, []string{"user"})
 	cmdutil.SetRisk(cmd, "write")
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated). Combines additively with --domain/--recommend")
-	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")
+	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request scopes for all known domains (equivalent to --domain all)")
 	var helpBrand core.LarkBrand
 	if f != nil && f.Config != nil {
 		if cfg, err := f.Config(); err == nil && cfg != nil {
 			helpBrand = cfg.Brand
 		}
 	}
-	available := sortedKnownDomains(helpBrand)
+	available := resolver.sorted(helpBrand)
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
 		fmt.Sprintf("domain (repeatable or comma-separated, e.g. --domain calendar,task)\navailable: %s, all", strings.Join(available, ", ")))
 	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", nil,
@@ -88,15 +106,15 @@ to generate QR codes (supports ASCII and PNG formats).`,
 	cmd.Flags().StringVar(&opts.DeviceCode, "device-code", "", "poll and complete authorization with a device code from a previous --no-wait call")
 
 	cmdutil.RegisterFlagCompletion(cmd, "domain", func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return completeDomain(toComplete), cobra.ShellCompDirectiveNoFileComp
+		return resolver.complete(toComplete, helpBrand), cobra.ShellCompDirectiveNoFileComp
 	})
 
 	return cmd
 }
 
-// completeDomain returns completions for comma-separated domain values.
-func completeDomain(toComplete string) []string {
-	allDomains := registry.ListFromMetaProjects()
+// complete returns completions for comma-separated domain values.
+func (r domainResolver) complete(toComplete string, brand core.LarkBrand) []string {
+	allDomains := r.sorted(brand)
 	parts := strings.Split(toComplete, ",")
 	prefix := parts[len(parts)-1]
 	base := strings.Join(parts[:len(parts)-1], ",")
@@ -114,9 +132,17 @@ func completeDomain(toComplete string) []string {
 	return completions
 }
 
+// fetchRemoteScopes is the remote scopes.json fetch, indirected through a
+// package var so tests can supply a deterministic result instead of reaching
+// the live endpoint.
+var fetchRemoteScopes = larkauth.FetchRemoteScopes
+
 // authLoginRun executes the login command logic.
-func authLoginRun(opts *LoginOptions) error {
+func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	f := opts.Factory
+	// Policy is installed after auth commands are constructed. Read this build's
+	// completed snapshot at execution time, never the process-global policy.
+	resolver.commandAllowed = f.LoginCommandAllowed
 
 	config, err := f.Config()
 	if err != nil {
@@ -131,6 +157,7 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 	}
 	msg := getLoginMsg(lang)
+	renderContext := recovery.RenderContext{Profile: f.Invocation.Profile}
 
 	log := func(format string, a ...interface{}) {
 		if !opts.JSON {
@@ -144,33 +171,6 @@ func authLoginRun(opts *LoginOptions) error {
 	}
 
 	selectedDomains := opts.Domains
-	scopeLevel := "" // "common" or "all" (from interactive mode)
-
-	// Expand --domain all to all available domains (from_meta projects + shortcut services)
-	for _, d := range selectedDomains {
-		if strings.EqualFold(d, "all") {
-			selectedDomains = sortedKnownDomains(config.Brand)
-			break
-		}
-	}
-
-	// Validate domain names and suggest corrections for unknown ones
-	if len(selectedDomains) > 0 {
-		knownDomains := allKnownDomains(config.Brand)
-		for _, d := range selectedDomains {
-			if !knownDomains[d] {
-				if suggestion := suggestDomain(d, knownDomains); suggestion != "" {
-					return errs.NewValidationError(errs.SubtypeInvalidArgument, "unknown domain %q, did you mean %q?", d, suggestion).WithParam("--domain")
-				}
-				available := make([]string, 0, len(knownDomains))
-				for k := range knownDomains {
-					available = append(available, k)
-				}
-				sort.Strings(available)
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "unknown domain %q, available domains: %s", d, strings.Join(available, ", ")).WithParam("--domain")
-			}
-		}
-	}
 
 	hasAnyOption := opts.Scope != "" || opts.Recommend || len(selectedDomains) > 0
 
@@ -178,30 +178,61 @@ func authLoginRun(opts *LoginOptions) error {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--exclude requires --scope, --domain, or --recommend to be specified").WithParam("--exclude")
 	}
 
-	if !hasAnyOption {
-		if !opts.JSON && f.IOStreams.IsTerminal {
-			result, err := runInteractiveLogin(f.IOStreams, lang.Base(), msg, config.Brand)
-			if err != nil {
-				return err
+	// scopeOnly is the one path that must never touch the domain catalog
+	// (remote or local): --scope given alone, with neither --domain nor
+	// --recommend. Every other path — including bare `auth login`, now that
+	// the interactive picker is gone — needs the legal domain set to resolve
+	// scopes.
+	scopeOnly := opts.Scope != "" && !opts.Recommend && len(selectedDomains) == 0
+
+	var remote map[string][]string
+	var remoteOK bool
+
+	if !scopeOnly {
+		// A build that injected external business commands (WithCommandSets) has
+		// a scope universe the remote scopes.json — generated from the standard
+		// CLI — does not cover, so it resolves locally instead of remote-first:
+		// trusting the remote would silently drop the custom scopes such a build
+		// added to existing domains (WithCommandSets can only extend existing
+		// domains, never add new ones). A command-policy snapshot also requires
+		// local collection: remote domain lists cannot remove denied commands.
+		// Standard builds keep remote-first.
+		if !resolver.hasExternal && resolver.commandAllowed == nil {
+			// Pull the remote scopes.json once for this login (not cached); any
+			// read failure (network/timeout/non-2xx/malformed) silently falls
+			// back to the local full computation — no warning, no telemetry.
+			remote, remoteOK = fetchRemoteScopes(config.Brand)
+		}
+		legalDomains, allLegalDomains := legalDomainsFor(remote, remoteOK, resolver, config.Brand)
+
+		// Expand --domain all against the resolved legal domain set.
+		for _, d := range selectedDomains {
+			if strings.EqualFold(d, "all") {
+				selectedDomains = allLegalDomains
+				break
 			}
-			if result == nil {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "no login options selected")
+		}
+
+		if len(selectedDomains) > 0 {
+			// Validate explicitly-supplied domain names and suggest corrections.
+			for _, d := range selectedDomains {
+				if !legalDomains[d] {
+					if suggestion := suggestDomain(d, legalDomains); suggestion != "" {
+						return errs.NewValidationError(errs.SubtypeInvalidArgument, "unknown domain %q, did you mean %q?", d, suggestion).WithParam("--domain")
+					}
+					available := make([]string, 0, len(legalDomains))
+					for k := range legalDomains {
+						available = append(available, k)
+					}
+					sort.Strings(available)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "unknown domain %q, available domains: %s", d, strings.Join(available, ", ")).WithParam("--domain")
+				}
 			}
-			selectedDomains = result.Domains
-			scopeLevel = result.ScopeLevel
 		} else {
-			log(msg.HintHeader)
-			log("Common options:")
-			log(msg.HintCommon1)
-			log(msg.HintCommon2)
-			log(msg.HintCommon3)
-			log(msg.HintCommon4)
-			log("")
-			log("View all options:")
-			log(msg.HintFooter)
-			log("")
-			log("Note: this command blocks until authorization is complete. For non-streaming agent harnesses, use --no-wait --json, send the verification URL as the final message of the turn, then run --device-code in a later step after the user confirms authorization.")
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "please specify the scopes to authorize").WithParam("--scope")
+			// Bare `auth login` and `--recommend` without `--domain` both span
+			// the full legal domain set now that the interactive picker and
+			// the local auto-approve filter are gone (--recommend ≡ --domain all).
+			selectedDomains = allLegalDomains
 		}
 	}
 
@@ -211,23 +242,53 @@ func authLoginRun(opts *LoginOptions) error {
 	// endpoint rejects raw "a,b" strings as a single malformed scope.
 	finalScope := normalizeScopeInput(opts.Scope)
 
+	// excludeUniverse is the set --exclude is validated against: every scope the
+	// caller's selection legitimately covers. It deliberately keeps scopes that
+	// the batch-exclusion policy later withholds from the wire request (e.g.
+	// im:message.send_as_user), so `--domain im --exclude im:message.send_as_user`
+	// stays a valid no-op instead of erroring on a scope we silently removed.
+	// Seed it with --scope; domain/recommend scopes are added below, pre batch
+	// exclusion.
+	excludeUniverse := make(map[string]bool)
+	for _, s := range strings.Fields(finalScope) {
+		excludeUniverse[s] = true
+	}
+
 	// Resolve scopes from domain/permission filters and merge with --scope.
 	// --scope, --domain, and --recommend combine additively so callers can,
 	// for example, request all `docs` scopes plus a few specific `drive`
 	// scopes in a single command.
-	if len(selectedDomains) > 0 || opts.Recommend {
-		var candidateScopes []string
-		if len(selectedDomains) > 0 {
-			candidateScopes = collectScopesForDomains(selectedDomains, "user", config.Brand)
-		} else {
-			// --recommend without --domain: all domains
-			candidateScopes = collectScopesForDomains(sortedKnownDomains(config.Brand), "user", config.Brand)
+	if len(selectedDomains) > 0 {
+		// A corrupt Catalog shard fails the login typed, exactly as it fails a
+		// command build, instead of silently dropping that domain's API scopes
+		// from the authorization request that is about to be persisted.
+		if err := resolver.catalog.Preload(selectedDomains...); err != nil {
+			return err
+		}
+		candidateScopes := resolveScopesForDomains(selectedDomains, remote, remoteOK, resolver, config.Brand)
+
+		// Record the selected universe (after recommend/common filtering, before
+		// batch exclusion) so --exclude may legitimately name a batch-withheld
+		// scope like im:message.send_as_user.
+		for _, s := range candidateScopes {
+			excludeUniverse[s] = true
 		}
 
-		// Filter to auto-approve scopes if --recommend or interactive "common"
-		if opts.Recommend || scopeLevel == "common" {
-			candidateScopes = registry.FilterAutoApproveScopes(candidateScopes)
+		// Whether --exclude names a legitimate scope is a question about what the
+		// selected domains cover — a stable local fact, not "what the published
+		// remote scopes.json happens to list today". Fold in the local resolution
+		// too: once the server drops a batch-withheld scope (im:message.send_as_user)
+		// from the remote list, the remote candidateScopes above no longer carries
+		// it, but --domain im --exclude im:message.send_as_user must stay a valid
+		// no-op. The local set still declares it under im; a domain that never had
+		// it (e.g. calendar) still rejects it as unknown.
+		for _, s := range resolver.scopesFor(selectedDomains, "user", config.Brand) {
+			excludeUniverse[s] = true
 		}
+
+		// Withhold batch-excluded scopes (e.g. im:message.send_as_user) from the
+		// effective set; an explicit --scope re-adds them below.
+		candidateScopes = filterBatchExcludedScopes(candidateScopes)
 
 		if len(candidateScopes) == 0 && opts.Scope == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "no matching scopes found, check domain/scope options")
@@ -246,9 +307,11 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// Apply --exclude on top of the resolved scope set. We honour exclude
 	// regardless of whether scopes came from --scope, --domain, --recommend,
-	// or any combination thereof.
+	// or any combination thereof. Validation uses excludeUniverse (a superset of
+	// the effective finalScope) so excluding a batch-withheld scope is a no-op,
+	// not an error.
 	if len(opts.Exclude) > 0 {
-		excluded, unknown := applyExcludeScopes(finalScope, opts.Exclude)
+		excluded, unknown := applyExcludeScopes(finalScope, opts.Exclude, excludeUniverse)
 		if len(unknown) > 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"these --exclude scopes are not present in the requested set: %s",
@@ -265,8 +328,11 @@ func authLoginRun(opts *LoginOptions) error {
 	if err != nil {
 		return err
 	}
-	authResp, err := larkauth.RequestDeviceAuthorization(httpClient, config.AppID, config.AppSecret, config.Brand, finalScope, f.IOStreams.ErrOut)
+	authResp, err := larkauth.RequestDeviceAuthorization(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand, finalScope, f.IOStreams.ErrOut)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "device authorization failed: %v", err).WithCause(err)
 	}
 
@@ -279,13 +345,7 @@ func authLoginRun(opts *LoginOptions) error {
 			"verification_url": authResp.VerificationUriComplete,
 			"device_code":      authResp.DeviceCode,
 			"expires_in":       authResp.ExpiresIn,
-			"hint": "**MUST generate QR code AND display it:** You MUST call lark-cli auth qrcode to convert verification_url into a QR code. This is a required step, do NOT skip it. Prefer PNG QR code (--output); use ASCII (--ascii) only when the user explicitly requests it." +
-				"**CRITICAL: You MUST include the QR image in your response.** Generating the file alone is NOT enough—use image tags, inline images, or file attachments to display it." +
-				"**Display order:** Output the URL first, then place the QR code image below the URL." +
-				"**URL Output Rules:** Treat verification_url as an opaque string that cannot be modified. Do NOT URL-encode/decode or add spaces/punctuation." +
-				"For agent harnesses that only deliver final turn messages, make the QR code image (or URL) the final message of the turn and return control to the user; do not block on --device-code in the same turn. **Before ending the turn, tell the user to come back and notify you after completing authorization.**" +
-				"**After the user confirms authorization:** YOU must execute `lark-cli auth login --device-code <device_code>` yourself." +
-				"**Do NOT cache verification_url or device_code for future use.** Always run `lark-cli auth login --no-wait --json` fresh when authorization is needed.",
+			"hint":             noWaitAgentHint(renderContext),
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
@@ -308,7 +368,7 @@ func authLoginRun(opts *LoginOptions) error {
 			"verification_uri_complete": authResp.VerificationUriComplete,
 			"user_code":                 authResp.UserCode,
 			"expires_in":                authResp.ExpiresIn,
-			"agent_hint":                msg.AgentTimeoutHint,
+			"agent_hint":                msg.AgentTimeoutHint(renderContext),
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
@@ -319,16 +379,22 @@ func authLoginRun(opts *LoginOptions) error {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
 		fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", authResp.VerificationUriComplete)
 		if f.IOStreams != nil && !f.IOStreams.IsTerminal {
-			fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint)
+			fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(renderContext))
 		}
 	}
 
 	// Step 3: Poll for token
 	log(msg.WaitingAuth)
-	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
-		authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
+	result, err := pollLoginDeviceToken(opts.Ctx, httpClient, config, authResp.DeviceCode,
+		authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
+	if err != nil {
+		return err
+	}
 
 	if !result.OK {
+		if result.Err != nil {
+			return result.Err
+		}
 		if opts.JSON {
 			encoder := json.NewEncoder(f.IOStreams.Out)
 			encoder.SetEscapeHTML(false)
@@ -345,22 +411,38 @@ func authLoginRun(opts *LoginOptions) error {
 	if result.Token == nil {
 		return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "authorization succeeded but no token returned")
 	}
+	keyStore := dpop.NewKeyStore(nil)
+	cleanupPendingKey := func(cause error) error {
+		if result.Token.DPoP == nil {
+			return cause
+		}
+		return cleanupUncommittedLoginDPoPKey(opts.Ctx, keyStore, result.Token.DPoP.Key(), cause)
+	}
 
 	// Step 6: Get user info
 	log(msg.AuthSuccess)
 	sdk, err := f.LarkClient()
 	if err != nil {
-		return errs.NewInternalError(errs.SubtypeSDKError, "failed to get SDK: %v", err).WithCause(err)
+		return cleanupPendingKey(errs.NewInternalError(errs.SubtypeSDKError,
+			"failed to get SDK: %v", err).WithCause(err))
 	}
-	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
+	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken, result.Token.DPoP)
 	if err != nil {
-		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return cleanupPendingKey(err)
+		}
+		return cleanupPendingKey(errs.NewAuthenticationError(errs.SubtypeUnknown,
+			"failed to get user info: %v", err).WithCause(err))
 	}
 
 	scopeSummary := loadLoginScopeSummary(config.AppID, openId, finalScope, result.Token.Scope)
+	scopeSummary.StatusMessage = result.Token.StatusMessage
 
 	// Step 7: Store token
 	now := time.Now().UnixMilli()
+	if result.Token.DPoP != nil {
+		now = result.Token.DPoP.Key().Clock().Now().UnixMilli()
+	}
 	storedToken := &larkauth.StoredUAToken{
 		UserOpenId:       openId,
 		AppId:            config.AppID,
@@ -370,15 +452,30 @@ func authLoginRun(opts *LoginOptions) error {
 		RefreshExpiresAt: now + int64(result.Token.RefreshExpiresIn)*1000,
 		Scope:            result.Token.Scope,
 		GrantedAt:        now,
+		TokenType:        larkauth.StoredTokenTypeBearer,
 	}
+	if result.Token.DPoP != nil {
+		if err := keyStore.SaveContext(opts.Ctx, result.Token.DPoP.Key()); err != nil {
+			return cleanupPendingKey(errs.NewInternalError(errs.SubtypeStorage,
+				"failed to save DPoP key: %v", err).WithCause(err))
+		}
+		storedToken.TokenType = larkauth.StoredTokenTypeDPoP
+		storedToken.DPoPKeyID = result.Token.DPoP.KeyID
+		storedToken.DPoPJKT = result.Token.DPoP.JKT
+		storedToken.DPoPKeySecurityLevel = string(result.Token.DPoP.KeyStoreSecureLevel)
+		clockState := result.Token.DPoP.Key().Clock().State()
+		storedToken.ClockOffsetMs = clockState.OffsetMillis
+		storedToken.ClockSyncedAtMs = clockState.SyncedAtMillis
+	}
+	scopeSummary.Refresh = newLoginRefreshInfo(config.Brand, config.AppID, storedToken)
 	if err := larkauth.SetStoredToken(storedToken); err != nil {
-		return errs.NewInternalError(errs.SubtypeStorage, "failed to save token: %v", err).WithCause(err)
+		return cleanupPendingKey(errs.NewInternalError(errs.SubtypeStorage,
+			"failed to save token: %v", err).WithCause(err))
 	}
 
 	// Step 8: Update config — overwrite Users to single user, clean old tokens
-	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
-		_ = larkauth.RemoveStoredToken(config.AppID, openId)
-		return err
+	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName, f.IOStreams.ErrOut); err != nil {
+		return rollbackCommittedLoginToken(config.AppID, openId, err)
 	}
 
 	if issue := ensureRequestedScopesGranted(finalScope, result.Token.Scope, msg, scopeSummary); issue != nil {
@@ -412,13 +509,22 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	// when running on an interactive terminal — the agent-oriented
 	// instructions only matter for piped / harness environments.
 	if !opts.JSON && f.IOStreams != nil && !f.IOStreams.IsTerminal {
-		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint)
+		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(recovery.RenderContext{Profile: f.Invocation.Profile}))
 	}
 	log(msg.WaitingAuth)
-	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
-		opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
+	result, err := pollLoginDeviceToken(opts.Ctx, httpClient, config, opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
+	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok &&
+			problem.Category == errs.CategoryPolicy && problem.Subtype == errs.SubtypeAccessDenied {
+			cleanupRequestedScope()
+		}
+		return err
+	}
 
 	if !result.OK {
+		if result.Err != nil {
+			return result.Err
+		}
 		if shouldRemoveLoginRequestedScope(result) {
 			cleanupRequestedScope()
 		}
@@ -428,22 +534,38 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	if result.Token == nil {
 		return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "authorization succeeded but no token returned")
 	}
+	keyStore := dpop.NewKeyStore(nil)
+	cleanupPendingKey := func(cause error) error {
+		if result.Token.DPoP == nil {
+			return cause
+		}
+		return cleanupUncommittedLoginDPoPKey(opts.Ctx, keyStore, result.Token.DPoP.Key(), cause)
+	}
 
 	// Get user info
 	log(msg.AuthSuccess)
 	sdk, err := f.LarkClient()
 	if err != nil {
-		return errs.NewInternalError(errs.SubtypeSDKError, "failed to get SDK: %v", err).WithCause(err)
+		return cleanupPendingKey(errs.NewInternalError(errs.SubtypeSDKError,
+			"failed to get SDK: %v", err).WithCause(err))
 	}
-	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
+	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken, result.Token.DPoP)
 	if err != nil {
-		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return cleanupPendingKey(err)
+		}
+		return cleanupPendingKey(errs.NewAuthenticationError(errs.SubtypeUnknown,
+			"failed to get user info: %v", err).WithCause(err))
 	}
 
 	scopeSummary := loadLoginScopeSummary(config.AppID, openId, requestedScope, result.Token.Scope)
+	scopeSummary.StatusMessage = result.Token.StatusMessage
 
 	// Store token
 	now := time.Now().UnixMilli()
+	if result.Token.DPoP != nil {
+		now = result.Token.DPoP.Key().Clock().Now().UnixMilli()
+	}
 	storedToken := &larkauth.StoredUAToken{
 		UserOpenId:       openId,
 		AppId:            config.AppID,
@@ -453,15 +575,30 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		RefreshExpiresAt: now + int64(result.Token.RefreshExpiresIn)*1000,
 		Scope:            result.Token.Scope,
 		GrantedAt:        now,
+		TokenType:        larkauth.StoredTokenTypeBearer,
 	}
+	if result.Token.DPoP != nil {
+		if err := keyStore.SaveContext(opts.Ctx, result.Token.DPoP.Key()); err != nil {
+			return cleanupPendingKey(errs.NewInternalError(errs.SubtypeStorage,
+				"failed to save DPoP key: %v", err).WithCause(err))
+		}
+		storedToken.TokenType = larkauth.StoredTokenTypeDPoP
+		storedToken.DPoPKeyID = result.Token.DPoP.KeyID
+		storedToken.DPoPJKT = result.Token.DPoP.JKT
+		storedToken.DPoPKeySecurityLevel = string(result.Token.DPoP.KeyStoreSecureLevel)
+		clockState := result.Token.DPoP.Key().Clock().State()
+		storedToken.ClockOffsetMs = clockState.OffsetMillis
+		storedToken.ClockSyncedAtMs = clockState.SyncedAtMillis
+	}
+	scopeSummary.Refresh = newLoginRefreshInfo(config.Brand, config.AppID, storedToken)
 	if err := larkauth.SetStoredToken(storedToken); err != nil {
-		return errs.NewInternalError(errs.SubtypeSDKError, "failed to save token: %v", err).WithCause(err)
+		return cleanupPendingKey(errs.NewInternalError(errs.SubtypeStorage,
+			"failed to save token: %v", err).WithCause(err))
 	}
 
 	// Update config — overwrite Users to single user, clean old tokens
-	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
-		_ = larkauth.RemoveStoredToken(config.AppID, openId)
-		return errs.NewInternalError(errs.SubtypeSDKError, "failed to update login profile: %v", err).WithCause(err)
+	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName, f.IOStreams.ErrOut); err != nil {
+		return rollbackCommittedLoginToken(config.AppID, openId, err)
 	}
 
 	if issue := ensureRequestedScopesGranted(requestedScope, result.Token.Scope, msg, scopeSummary); issue != nil {
@@ -472,8 +609,41 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	return nil
 }
 
+func cleanupUncommittedLoginDPoPKey(ctx context.Context, store *dpop.KeyStore, key *dpop.Key, cause error) error {
+	cleanupCtx := context.Background()
+	if ctx != nil {
+		cleanupCtx = context.WithoutCancel(ctx)
+	}
+	if cleanupErr := store.DeleteKeyContext(cleanupCtx, key); cleanupErr != nil {
+		return errs.NewAuthenticationError(errs.SubtypeDPoPKeyMissing,
+			"failed to clean up an uncommitted DPoP key: %v", cleanupErr).
+			WithCause(errors.Join(cause, cleanupErr)).
+			WithHint("%s", dpop.KeyStoreUnavailableHint)
+	}
+	return cause
+}
+
+func rollbackCommittedLoginToken(appID, openID string, cause error) error {
+	if cleanupErr := larkauth.RemoveStoredToken(appID, openID); cleanupErr != nil {
+		return errs.NewInternalError(errs.SubtypeStorage,
+			"failed to roll back stored login token: %v", cleanupErr).
+			WithCause(errors.Join(cause, cleanupErr)).
+			WithHint("restore access to local credential storage and remove the incomplete login before retrying")
+	}
+	return cause
+}
+
+func pollLoginDeviceToken(ctx context.Context, httpClient *http.Client, config *core.CliConfig, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
+	if config != nil && config.CredentialSource == core.CredentialSourceLocal {
+		return larkauth.PollDeviceTokenWithMode(ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+			deviceCode, interval, expiresIn, errOut, core.EffectiveDPoPMode(config.DPoPMode))
+	}
+	return pollDeviceToken(ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+		deviceCode, interval, expiresIn, errOut)
+}
+
 // syncLoginUserToProfile persists the logged-in user info into the named profile.
-func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
+func syncLoginUserToProfile(profileName, appID, openID, userName string, errOut io.Writer) error {
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "load config: %v", err).WithCause(err)
@@ -492,7 +662,9 @@ func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
 
 	for _, oldUser := range oldUsers {
 		if oldUser.UserOpenId != openID {
-			_ = larkauth.RemoveStoredToken(appID, oldUser.UserOpenId)
+			if err := larkauth.RemoveStoredToken(appID, oldUser.UserOpenId); err != nil && errOut != nil {
+				fmt.Fprintf(errOut, "[lark-cli] [WARN] auth login: failed to remove credentials for a replaced user: %v\n", err)
+			}
 		}
 	}
 	return nil
@@ -508,15 +680,91 @@ func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.App
 	return nil
 }
 
-// collectScopesForDomains collects API scopes (from from_meta projects) and
-// shortcut scopes for the given domain names.
+// batchExcludedScopes lists scopes deliberately withheld from the aggregate
+// batch sets that --domain / --recommend / bare `auth login` compute. In some
+// tenants im:message.send_as_user requires admin review even for a personal
+// assistant, so requesting it in bulk blocks users on approval. It stays
+// available through an explicit --scope and through the on-demand grant flow
+// when a command actually needs it.
+var batchExcludedScopes = map[string]bool{
+	"im:message.send_as_user": true,
+}
+
+// filterBatchExcludedScopes drops batchExcludedScopes entries from a
+// domain-derived scope slice, preserving order.
+func filterBatchExcludedScopes(scopes []string) []string {
+	out := scopes[:0:0]
+	for _, s := range scopes {
+		if !batchExcludedScopes[s] {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// domainResolver answers auth domain and scope questions against one build's
+// shortcut snapshot. The snapshot is a build-local input rather than a constant:
+// a distribution assembled with cmd.WithCommandSets contributes business
+// commands whose declared scopes must participate in --domain resolution, so
+// every method here reads the snapshot it was constructed with instead of the
+// built-in set.
+type domainResolver struct {
+	catalog        apicatalog.Catalog
+	registered     []common.Shortcut
+	commandAllowed func([]string) bool
+	// hasExternal is true when this build carries business commands injected via
+	// WithCommandSets beyond the built-in set. Such a build's domain/scope
+	// universe is not reflected in the remote scopes.json (generated from the
+	// standard CLI), so auth login must resolve locally instead of remote-first.
+	hasExternal bool
+}
+
+func newDomainResolver(catalog apicatalog.Catalog, registered []common.Shortcut) domainResolver {
+	return domainResolver{
+		catalog:     catalog,
+		registered:  registered,
+		hasExternal: hasExternalCommands(registered),
+	}
+}
+
+// hasExternalCommands reports whether registered carries any command beyond the
+// built-in set — the mark of a build that injected business commands via
+// WithCommandSets. Such a build's scope universe reaches past what the remote
+// scopes.json (generated from the standard CLI) covers, so auth login must
+// resolve locally rather than remote-first.
+//
+// It compares command paths rather than counts: a business command mounts onto
+// an existing domain (WithCommandSets cannot create new domains) and only ever
+// adds to the built-in set, so any registered path absent from the built-in
+// snapshot came from an injected command. A build that instead forks the
+// registry to change scopes without adding commands is not detected here — no
+// supported build option does that, and every current custom build extends via
+// WithCommandSets. Activating a build-tag feature that swaps only the credential
+// provider or transport (e.g. the auth sidecar) registers no commands, so it is
+// correctly treated as standard.
+func hasExternalCommands(registered []common.Shortcut) bool {
+	builtin := shortcuts.AllShortcuts()
+	paths := make(map[string]struct{}, len(builtin))
+	for _, sc := range builtin {
+		paths[sc.Service+" "+sc.Command] = struct{}{}
+	}
+	for _, sc := range registered {
+		if _, ok := paths[sc.Service+" "+sc.Command]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
+// scopesFor collects API scopes (from from_meta projects) and shortcut scopes
+// for the given domain names.
 // Domains with auth_domain children are automatically expanded to include
 // their children's scopes.
-func collectScopesForDomains(domains []string, identity string, brand core.LarkBrand) []string {
+func (r domainResolver) scopesFor(domains []string, identity string, brand core.LarkBrand) []string {
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
-	for _, s := range registry.CollectScopesForProjects(domains, identity) {
+	for _, s := range registry.CollectAllowedScopesForProjects(r.catalog, domains, identity, r.commandAllowed) {
 		scopeSet[s] = true
 	}
 
@@ -530,7 +778,10 @@ func collectScopesForDomains(domains []string, identity string, brand core.LarkB
 	}
 
 	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
-	for _, sc := range shortcuts.AllShortcuts() {
+	for _, sc := range r.registered {
+		if r.commandAllowed != nil && !r.commandAllowed(append([]string{sc.Service}, strings.Fields(sc.Command)...)) {
+			continue
+		}
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}
@@ -550,20 +801,50 @@ func collectScopesForDomains(domains []string, identity string, brand core.LarkB
 	return result
 }
 
+// resolveScopesForDomains resolves the scope set for the given domains. When
+// the remote scopes.json is available it takes the union of each domain's
+// user_scopes from the remote result (remote is authoritative, including
+// domains this CLI build doesn't know about locally); otherwise it falls back
+// to the local synthesis via resolver.scopesFor. Always returns a
+// deduplicated, alphabetically sorted slice.
+func resolveScopesForDomains(domains []string, remote map[string][]string, remoteOK bool, resolver domainResolver, brand core.LarkBrand) []string {
+	if remoteOK {
+		set := make(map[string]bool)
+		for _, d := range domains {
+			for _, s := range remote[d] {
+				set[s] = true
+			}
+		}
+		out := make([]string, 0, len(set))
+		for s := range set {
+			out = append(out, s)
+		}
+		sort.Strings(out)
+		return out
+	}
+	return resolver.scopesFor(domains, "user", brand)
+}
+
 // allKnownDomains returns all valid auth domain names (from_meta projects +
 // shortcut services), excluding domains that have auth_domain set (they are
 // folded into their parent domain).
-func allKnownDomains(brand core.LarkBrand) map[string]bool {
+func (r domainResolver) allKnown(brand core.LarkBrand) map[string]bool {
 	domains := make(map[string]bool)
-	for _, p := range registry.ListFromMetaProjects() {
+	// The manifest name list is the --domain vocabulary: it is cheap (no shard
+	// is parsed) and a corrupt shard stays addressable so that selecting it
+	// fails typed in Preload instead of being reported as an unknown domain.
+	for _, p := range r.catalog.Names() {
 		if !registry.HasAuthDomain(p) {
 			domains[p] = true
 		}
 	}
-	for _, sc := range shortcuts.AllShortcuts() {
+	for _, sc := range r.registered {
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}
+		// No scope filter here: matching main, a scope-less domain (e.g.
+		// event) stays addressable via --domain and the --help list, and
+		// fails later with "no matching scopes found".
 		if !registry.HasAuthDomain(sc.Service) {
 			domains[sc.Service] = true
 		}
@@ -572,14 +853,33 @@ func allKnownDomains(brand core.LarkBrand) map[string]bool {
 }
 
 // sortedKnownDomains returns all valid domain names sorted alphabetically.
-func sortedKnownDomains(brand core.LarkBrand) []string {
-	m := allKnownDomains(brand)
+func (r domainResolver) sorted(brand core.LarkBrand) []string {
+	m := r.allKnown(brand)
 	domains := make([]string, 0, len(m))
 	for d := range m {
 		domains = append(domains, d)
 	}
 	sort.Strings(domains)
 	return domains
+}
+
+// legalDomainsFor returns the authoritative domain set for this login: the
+// remote scopes.json keys when available (a remote-listed domain unknown to
+// this CLI build is still legal), otherwise the local known-domain set.
+// Returns both a membership set (for --domain validation) and a sorted slice
+// (for `all` expansion and the bare-login/--recommend-without-domain default).
+func legalDomainsFor(remote map[string][]string, remoteOK bool, resolver domainResolver, brand core.LarkBrand) (map[string]bool, []string) {
+	if remoteOK {
+		set := make(map[string]bool, len(remote))
+		sorted := make([]string, 0, len(remote))
+		for d := range remote {
+			set[d] = true
+			sorted = append(sorted, d)
+		}
+		sort.Strings(sorted)
+		return set, sorted
+	}
+	return resolver.allKnown(brand), resolver.sorted(brand)
 }
 
 // shortcutSupportsIdentity checks if a shortcut supports the given identity ("user" or "bot").
@@ -656,16 +956,26 @@ func joinSortedScopeSet(set map[string]bool) string {
 	return strings.Join(out, " ")
 }
 
-// applyExcludeScopes removes the provided exclude entries from the requested
-// scope string. Each --exclude flag value may itself contain comma- or
-// whitespace-separated scopes. Returns the filtered scope string and any
-// exclude entries that were not present in the requested set (callers can
-// surface those as a validation error to catch typos like
-// `--exclude drive:file:downlod`).
-func applyExcludeScopes(requested string, excludes []string) (string, []string) {
+// applyExcludeScopes removes the provided exclude entries from requested (the
+// effective scope string that goes on the wire). Each --exclude flag value may
+// itself contain comma- or whitespace-separated scopes. It returns the filtered
+// scope string and any exclude entries that are "unknown".
+//
+// An exclude is unknown only when it is absent from validUniverse — the set of
+// scopes the caller's selection legitimately covers. validUniverse is a superset
+// of requested: it also carries scopes that the batch-exclusion policy withheld
+// from requested, so excluding such a scope (e.g. im:message.send_as_user under
+// --domain im) is a valid no-op rather than an error, while a genuine typo like
+// `--exclude drive:file:downlod` still surfaces as unknown. Pass validUniverse ==
+// nil to validate against requested itself (pure --scope path, where the two are
+// identical).
+func applyExcludeScopes(requested string, excludes []string, validUniverse map[string]bool) (string, []string) {
 	requestedSet := make(map[string]bool)
 	for _, s := range strings.Fields(requested) {
 		requestedSet[s] = true
+	}
+	if validUniverse == nil {
+		validUniverse = requestedSet
 	}
 
 	excludeSet := make(map[string]bool)
@@ -679,7 +989,7 @@ func applyExcludeScopes(requested string, excludes []string) (string, []string) 
 
 	var unknown []string
 	for s := range excludeSet {
-		if !requestedSet[s] {
+		if !validUniverse[s] {
 			unknown = append(unknown, s)
 		}
 	}

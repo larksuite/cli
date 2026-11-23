@@ -42,17 +42,17 @@ var MailDraftCreate = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "to", Desc: "Optional. Full To recipient list. Separate multiple addresses with commas. Display-name format is supported. When omitted, the draft is created without recipients (they can be added later via +draft-edit)."},
+		{Name: "to", Type: "string_array", Desc: "Optional. To recipient email address. Repeat --to once per recipient; quote each value. Display-name format is supported. When omitted, the draft is created without recipients (they can be added later via +draft-edit)."},
 		{Name: "subject", Desc: "Final draft subject. Pass the full subject you want to appear in the draft. Required unless --template-id supplies a non-empty subject."},
 		{Name: "body", Desc: "Full email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file. Required unless --template-id supplies a non-empty body."},
 		bodyFileFlag,
 		{Name: "from", Desc: "Optional. Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. If omitted, the mailbox's primary address is used."},
 		{Name: "mailbox", Desc: "Optional. Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
-		{Name: "cc", Desc: "Optional. Full Cc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
-		{Name: "bcc", Desc: "Optional. Full Bcc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
+		{Name: "cc", Type: "string_array", Desc: "Optional. Cc recipient email address. Repeat --cc once per recipient; quote each value. Display-name format is supported."},
+		{Name: "bcc", Type: "string_array", Desc: "Optional. Bcc recipient email address. Repeat --bcc once per recipient; quote each value. Display-name format is supported."},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
-		{Name: "attach", Desc: "Optional. Regular attachment file paths (relative path only). Separate multiple paths with commas. Each path must point to a readable local file."},
-		{Name: "inline", Desc: "Optional. Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
+		{Name: "attach", Type: "string_array", Desc: "Optional. Regular attachment file path, relative path only. Repeat --attach once per file; quote each value. Each path must point to a readable local file."},
+		{Name: "inline", Type: "string_array", Desc: "Optional. Inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string. Cannot be used with --plain-text."},
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's subject/body/to/cc/bcc/attachments are merged with user-supplied flags (user flags win). Requires --as user."},
 		signatureFlag,
@@ -74,13 +74,18 @@ var MailDraftCreate = common.Shortcut{
 			Body(map[string]interface{}{
 				"raw": "<base64url-EML>",
 				"_preview": map[string]interface{}{
-					"to":      runtime.Str("to"),
+					"to":      normalizeRecipientFlagValues(runtime.StrArray("to")),
 					"subject": runtime.Str("subject"),
 				},
 			})
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		attach := normalizeCommaFlagValues(runtime.StrArray("attach"))
+		inline, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
+		if err != nil {
+			return err
+		}
 		if err := validateTemplateID(runtime.Str("template-id")); err != nil {
 			return err
 		}
@@ -108,7 +113,7 @@ var MailDraftCreate = common.Shortcut{
 		if err := validateRequiredResolvedBody(body, hasTemplate, "--body or --body-file is required; pass the full email body (or use --template-id)"); err != nil {
 			return err
 		}
-		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), body); err != nil {
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), attach, inline, runtime.Bool("plain-text"), body); err != nil {
 			return err
 		}
 		return validatePriorityFlag(runtime)
@@ -124,15 +129,18 @@ var MailDraftCreate = common.Shortcut{
 			return bErr
 		}
 		input := draftCreateInput{
-			To:        runtime.Str("to"),
+			To:        normalizeRecipientFlagValues(runtime.StrArray("to")),
 			Subject:   runtime.Str("subject"),
 			Body:      body,
 			From:      runtime.Str("from"),
-			CC:        runtime.Str("cc"),
-			BCC:       runtime.Str("bcc"),
-			Attach:    runtime.Str("attach"),
-			Inline:    runtime.Str("inline"),
+			CC:        normalizeRecipientFlagValues(runtime.StrArray("cc")),
+			BCC:       normalizeRecipientFlagValues(runtime.StrArray("bcc")),
+			Attach:    normalizeCommaFlagValues(runtime.StrArray("attach")),
 			PlainText: runtime.Bool("plain-text"),
+		}
+		input.Inline, err = normalizeInlineFlagValues(runtime.StrArray("inline"))
+		if err != nil {
+			return err
 		}
 		var templateLargeAttachmentIDs []string
 		var templateInlineAttachments []templateInlineRef

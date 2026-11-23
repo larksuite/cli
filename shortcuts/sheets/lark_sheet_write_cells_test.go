@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -113,6 +115,18 @@ func TestWriteCellsShortcuts_DryRun(t *testing.T) {
 			got := decodeToolInput(t, body, tt.toolName)
 			assertInputEquals(t, got, tt.wantInput)
 		})
+	}
+}
+
+func TestCsvPut_MissingCSVFailsRequiredGate(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, CsvPut, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--start-cell", "A1",
+	})
+	if err == nil || !strings.Contains(err.Error(), "required flag(s) \"csv\" not set") {
+		t.Fatalf("missing --csv error = %v, want cobra required-flag error", err)
 	}
 }
 
@@ -542,7 +556,7 @@ func TestCellsSetImage_DryRunRejectsUnsafePath(t *testing.T) {
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A1", "--image", "/etc/hosts", "--dry-run",
 	})
-	ve := requireValidation(t, err, "must be a relative path")
+	ve := requireValidation(t, err, "denylist")
 	if ve.Param != "--image" {
 		t.Errorf("param = %q, want --image", ve.Param)
 	}
@@ -550,6 +564,334 @@ func TestCellsSetImage_DryRunRejectsUnsafePath(t *testing.T) {
 
 // TestRangeDimensions exercises the A1 parser's corner cases used by
 // cells-set-style / dropdown-set / rows-resize / cols-resize.
+// TestExpandAnchorRange pins which --range values take anchor semantics: a
+// bare top-left with a multi-cell payload, and nothing else.
+func TestExpandAnchorRange(t *testing.T) {
+	t.Parallel()
+	cell := func(v string) interface{} { return map[string]interface{}{"value": v} }
+	row := func(n int) interface{} {
+		out := make([]interface{}, n)
+		for i := range out {
+			out[i] = cell("x")
+		}
+		return out
+	}
+	cases := []struct {
+		name  string
+		in    string
+		cells []interface{}
+		want  string
+	}{
+		{"bare anchor sizes to the payload", "B2", []interface{}{row(3), row(3), row(3)}, "B2:D4"},
+		// A qualified anchor survives to here only beside an explicit selector
+		// it disagrees with, so sizing it would ship a range naming one sheet
+		// and a sheet_name naming another. It stays a mismatch instead.
+		{"qualified anchor is not expanded", "甘特图!F5", []interface{}{row(53)}, "甘特图!F5"},
+		{"1x1 payload leaves the anchor alone", "A1", []interface{}{row(1)}, "A1"},
+		{"explicit extent is never inferred over", "A1:A1", []interface{}{row(2)}, "A1:A1"},
+		{"explicit range stays", "A1:C10", []interface{}{row(3), row(3)}, "A1:C10"},
+		{"ragged payload has no extent", "A1", []interface{}{row(3), row(2)}, "A1"},
+		{"non-array row has no extent", "A1", []interface{}{cell("a")}, "A1"},
+		{"empty payload stays", "A1", []interface{}{}, "A1"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := expandAnchorRange(c.in, c.cells); got != c.want {
+				t.Errorf("expandAnchorRange(%q, %d rows) = %q, want %q", c.in, len(c.cells), got, c.want)
+			}
+		})
+	}
+}
+
+// TestCellsSetInput_AnchorRangeExpands runs the anchor through the mounted
+// path: the resolved range is what ships, so the server keeps seeing the
+// strict row/column match it enforces.
+func TestCellsSetInput_AnchorRangeExpands(t *testing.T) {
+	t.Parallel()
+	body := parseDryRunBody(t, CellsSet, []string{
+		"--url", testURL, "--sheet-id", testSheetID,
+		"--range", "B2",
+		"--cells", `[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}],[{"value":"e"},{"value":"f"}]]`,
+	})
+	input := decodeToolInput(t, body, "set_cell_range")
+	if input["range"] != "B2:C4" {
+		t.Errorf("shipped range = %v, want B2:C4 (3×2 anchored at B2)", input["range"])
+	}
+}
+
+// TestCellsSet_BareAnchorRaisesNoNarrowingWarning pins the other half of the
+// anchor expansion: a bare --range is not a stated extent the write fell short
+// of, so filling it in must stay silent. Reconstructing the stated range
+// without the payload made every anchored write report itself as narrowed.
+func TestCellsSet_BareAnchorRaisesNoNarrowingWarning(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a bare anchor with a 2x2 payload is silent", func(t *testing.T) {
+		t.Parallel()
+		stdout, err := runShortcutWithStubs(t, CellsSet, []string{
+			"--url", testURL, "--sheet-id", testSheetID, "--range", "A1",
+			"--cells", `[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]`,
+		}, toolOutputStub(testToken, "write", `{"success":true}`))
+		if err != nil {
+			t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+		}
+		if _, present := decodeEnvelopeData(t, stdout)["warnings"]; present {
+			t.Errorf("an expanded anchor is not a narrowed range: %s", stdout)
+		}
+	})
+
+	t.Run("a genuinely oversized range still warns", func(t *testing.T) {
+		t.Parallel()
+		stdout, err := runShortcutWithStubs(t, CellsSet, []string{
+			"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:D10",
+			"--cells", `[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]`,
+		}, toolOutputStub(testToken, "write", `{"success":true}`))
+		if err != nil {
+			t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+		}
+		warnings, _ := decodeEnvelopeData(t, stdout)["warnings"].([]interface{})
+		if len(warnings) != 1 {
+			t.Fatalf("a stated extent the payload did not fill must be reported, got %#v", warnings)
+		}
+		if w, _ := warnings[0].(string); !strings.Contains(w, `"A1:B2"`) {
+			t.Errorf("warning should name the range actually written, got %q", warnings[0])
+		}
+	})
+
+	t.Run("a narrowed --writes item is reported too", func(t *testing.T) {
+		t.Parallel()
+		// The narrowing happens in the shared input builder, so a nested item
+		// ships A1:B2 exactly as the standalone call does. Reconstructing the
+		// warning from the top-level flags could never see this.
+		stdout, err := runShortcutWithStubs(t, CellsSet, []string{
+			"--url", testURL,
+			"--writes", `[{"sheet_name":"S1","range":"A1:D4","cells":[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]}]`,
+		}, toolOutputStub(testToken, "write", `{"success":true}`))
+		if err != nil {
+			t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+		}
+		warnings, _ := decodeEnvelopeData(t, stdout)["warnings"].([]interface{})
+		if len(warnings) != 1 {
+			t.Fatalf("the nested narrowing must be reported, got %#v", warnings)
+		}
+		w, _ := warnings[0].(string)
+		if !strings.Contains(w, "--writes[0]") || !strings.Contains(w, `"A1:B2"`) {
+			t.Errorf("warning should name the item and the range written, got %q", w)
+		}
+	})
+
+	t.Run("a failed write still carries the narrowing note", func(t *testing.T) {
+		t.Parallel()
+		// The write is not transactional and a transport failure leaves the
+		// outcome unknown, so a narrowed write may well be on the sheet. If
+		// the footprint only rides the success envelope, the caller reconciles
+		// against the range they stated rather than the one written.
+		_, _, err := runShortcutCapturingErrWithStubs(t, CellsSet, []string{
+			"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:D10",
+			"--cells", `[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]`,
+		}, &httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+			Body: map[string]interface{}{
+				"code": 900015206, "msg": "set_cell_range: merged region conflict", "data": map[string]interface{}{},
+			},
+		})
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "")
+		if !strings.Contains(p.Hint, `"A1:B2"`) {
+			t.Errorf("hint = %q, want the narrowed footprint to travel with the failure", p.Hint)
+		}
+	})
+
+	t.Run("a narrowed +batch-update sub-op is reported too", func(t *testing.T) {
+		t.Parallel()
+		stdout, err := runShortcutWithStubs(t, BatchUpdate, []string{
+			"--url", testURL, "--yes",
+			"--operations", `[{"shortcut":"+cells-set","input":{"sheet_name":"S1","range":"A1:D4","cells":[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]}}]`,
+		}, toolOutputStub(testToken, "write", `{"success":true}`))
+		if err != nil {
+			t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+		}
+		warnings, _ := decodeEnvelopeData(t, stdout)["warnings"].([]interface{})
+		var found string
+		for _, raw := range warnings {
+			if w, _ := raw.(string); strings.Contains(w, "operations[0]") {
+				found = w
+			}
+		}
+		if found == "" || !strings.Contains(found, `"A1:B2"`) {
+			t.Errorf("the sub-op narrowing must be reported, got %#v", warnings)
+		}
+	})
+}
+
+// TestCellRange_Sized pins the range handed back by the dimension mismatch
+// prescription and by the anchor expansion: same top-left as what the caller
+// passed, sized to the payload, sheet prefix preserved so it pastes back in.
+func TestCellRange_Sized(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in         string
+		rows, cols int
+		want       string // "" = the range itself must not parse
+	}{
+		{"A1:C10", 12, 3, "A1:C12"},           // range under-counted the rows
+		{"A1", 13, 3, "A1:C13"},               // single-cell anchor habit
+		{"B2:C3", 3, 3, "B2:D4"},              // both axes off, non-A1 origin
+		{"甘特图!F5:BF5", 1, 53, "甘特图!F5:BF5"},   // qualifier kept, multi-letter column
+		{"C3:D4", 2, 26, "C3:AB4"},            // column carry past Z
+		{" sheet1!B2 ", 2, 2, "sheet1!B2:C3"}, // surrounding space trimmed
+		{"A:C", 2, 2, ""},                     // whole-column: no top-left to anchor
+		{"3:6", 2, 2, ""},                     // whole-row: same
+
+		// The separator spellings the front-end ref lexer treats as one.
+		// Splitting on the first "!" used to leave these unparsable, which
+		// silently disabled BOTH the anchor expansion and the dimension
+		// prescription for every range that named its sheet this way.
+		{"甘特图！B3", 3, 2, "甘特图！B3:C5"},                 // full-width separator
+		{`Sheet1\!B3`, 2, 2, `Sheet1\!B3:C4`},         // shell-escaped separator
+		{"'Q1!Actual'!B3", 2, 2, "'Q1!Actual'!B3:C4"}, // quoted name owning a "!"
+		{"'My Sheet'！B3", 2, 2, "'My Sheet'！B3:C4"},   // quoted name, full-width separator
+	}
+	for _, c := range cases {
+		r, err := parseCellRange(c.in)
+		if c.want == "" {
+			if err == nil {
+				t.Errorf("parseCellRange(%q): want error, got %+v", c.in, r)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("parseCellRange(%q) unexpected error: %v", c.in, err)
+			continue
+		}
+		if got := r.sized(c.rows, c.cols); got != c.want {
+			t.Errorf("parseCellRange(%q).sized(%d, %d) = %q, want %q", c.in, c.rows, c.cols, got, c.want)
+		}
+	}
+}
+
+// TestParseCellRange_SheetQualifier pins that the sheet part kept for
+// re-rendering is the caller's own spelling, byte for byte — quotes, escapes
+// and separator width included. (What the name unquotes TO is
+// TestSplitRangeSheetPrefix's job; nothing re-quotes it from here.)
+func TestParseCellRange_SheetQualifier(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in            string
+		wantQualifier string
+	}{
+		{"A1:B2", ""},
+		{"Sheet1!A1:B2", "Sheet1!"},
+		{"甘特图！A1", "甘特图！"},
+		{"'My Sheet'!A1", "'My Sheet'!"},
+		{"'Q1!Actual'!A1", "'Q1!Actual'!"},
+		{"'It''s'!A1", "'It''s'!"},
+		{`Sheet1\!A1`, `Sheet1\!`},
+	}
+	for _, c := range cases {
+		r, err := parseCellRange(c.in)
+		if err != nil {
+			t.Errorf("parseCellRange(%q): %v", c.in, err)
+			continue
+		}
+		if r.sheetQualifier != c.wantQualifier {
+			t.Errorf("parseCellRange(%q) qualifier = %q, want %q", c.in, r.sheetQualifier, c.wantQualifier)
+		}
+	}
+}
+
+// TestParseCellRange_Anchored separates "states a top-left only" from "states
+// an extent" — the distinction expandAnchorRange turns on.
+func TestParseCellRange_Anchored(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in           string
+		wantAnchored bool
+	}{
+		{"A1", true},
+		{"sheet1!B2", true},
+		{"A1:A1", false}, // a 1×1 extent, stated
+		{"A1:C10", false},
+	}
+	for _, c := range cases {
+		r, err := parseCellRange(c.in)
+		if err != nil {
+			t.Errorf("parseCellRange(%q): %v", c.in, err)
+			continue
+		}
+		if r.anchored != c.wantAnchored {
+			t.Errorf("parseCellRange(%q).anchored = %v, want %v", c.in, r.anchored, c.wantAnchored)
+		}
+	}
+}
+
+// TestCellsExtent pins the single authority both the anchor expansion and
+// the dimension check consult, so neither can call a payload rectangular
+// while the other doesn't — and pins that whatever it refuses comes back
+// with a message naming the offender, never a silent nil.
+func TestCellsExtent(t *testing.T) {
+	t.Parallel()
+	cell := map[string]interface{}{"value": "x"}
+	cases := []struct {
+		name            string
+		cells           []interface{}
+		wantRows        int
+		wantCols        int
+		wantOK          bool
+		wantErrContains string // checked only when !wantOK and non-empty
+	}{
+		{
+			name:  "rectangular",
+			cells: []interface{}{[]interface{}{cell, cell}, []interface{}{cell, cell}},
+			// 2×2
+			wantRows: 2, wantCols: 2, wantOK: true,
+		},
+		{
+			name:            "ragged",
+			cells:           []interface{}{[]interface{}{cell, cell}, []interface{}{cell}},
+			wantErrContains: "--cells[1] has 1 columns but --cells[0] has 2",
+		},
+		{
+			name:            "row is not an array",
+			cells:           []interface{}{cell},
+			wantErrContains: "--cells[0] must be an array",
+		},
+		{
+			name:            "rows carry no cells",
+			cells:           []interface{}{[]interface{}{}, []interface{}{}},
+			wantErrContains: "every row is empty",
+		},
+		{
+			name:  "no rows at all",
+			cells: []interface{}{},
+			// The empty payload is caught earlier by its own +cells-clear
+			// prescription, so raggedCellsError is never asked about it.
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			rows, cols, ok := cellsExtent(c.cells)
+			if ok != c.wantOK {
+				t.Fatalf("cellsExtent ok = %v, want %v", ok, c.wantOK)
+			}
+			if ok && (rows != c.wantRows || cols != c.wantCols) {
+				t.Fatalf("cellsExtent = (%d,%d), want (%d,%d)", rows, cols, c.wantRows, c.wantCols)
+			}
+			if c.wantErrContains == "" {
+				return
+			}
+			err := raggedCellsError(c.cells)
+			if err == nil {
+				t.Fatalf("raggedCellsError = nil, want a prescription")
+			}
+			if !strings.Contains(err.Error(), c.wantErrContains) {
+				t.Errorf("raggedCellsError = %q, want it to contain %q", err.Error(), c.wantErrContains)
+			}
+		})
+	}
+}
+
 func TestRangeDimensions(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -583,4 +925,89 @@ func TestRangeDimensions(t *testing.T) {
 			t.Errorf("rangeDimensions(%q) = (%d,%d), want (%d,%d)", c.in, rows, cols, c.wantRows, c.wantCols)
 		}
 	}
+}
+
+// TestCellsSet_ReflowSecondPass pins the acceptances the 08-29..31 reflow's
+// full breakdown added: the two object spellings of --writes, and style
+// vocabulary written directly on a cell.
+func TestCellsSet_ReflowSecondPass(t *testing.T) {
+	t.Parallel()
+
+	t.Run("writes object spellings", func(t *testing.T) {
+		t.Parallel()
+		write := `{"sheet_name":"s","range":"A1:A1","cells":[[{"value":"x"}]]}`
+		for name, payload := range map[string]string{
+			"envelope":    `{"writes":[` + write + `]}`,
+			"lone write":  write,
+			"lone values": `{"sheet_name":"s","range":"A1:A1","values":[["x"]]}`,
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+					"--url", testURL, "--writes", payload, "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("%s should be accepted, got: %v", name, err)
+				}
+				if !strings.Contains(stdout, "set_cell_range") {
+					t.Errorf("dry-run should plan the write, got %q", stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("an object that is not a write still fails on type", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+			"--url", testURL, "--writes", `{"foo":1}`, "--dry-run",
+		})
+		requireValidation(t, err, `expected type "array", got "object"`)
+	})
+
+	// A cell carrying style fields at its top level passed every client check
+	// and reached the backend verbatim, which answered `[cells[0][0].border]
+	// unexpected property "border" is not defined` — 33 rejections, on a
+	// payload the --styles path accepts.
+	t.Run("cell-level style vocabulary folds into its carrier", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name, cell, want string
+		}{
+			{"border folds to the four sides", `{"value":"x","border":{"style":"solid"}}`, `"border_styles":{"bottom":{"style":"solid"}`},
+			{"scalars move into cell_styles", `{"value":"x","font_weight":"bold"}`, `"cell_styles":{"font_weight":"bold"}`},
+			{"an alias lands canonical", `{"value":"x","valign":"center"}`, `"cell_styles":{"vertical_alignment":"middle"}`},
+			{"a boolean wrap becomes the enum", `{"value":"x","wrap_text":true}`, `"cell_styles":{"word_wrap":"auto-wrap"}`},
+			{"a quoted size becomes the number", `{"value":"x","font_size":"14"}`, `"cell_styles":{"font_size":14}`},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+					"--url", testURL, "--sheet-name", "s", "--range", "A1:A1",
+					"--cells", `[[` + tc.cell + `]]`, "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("cell should be accepted, got: %v", err)
+				}
+				if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), tc.want) {
+					t.Errorf("body should carry %s, got %q", tc.want, stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("a key this domain does not know is left alone", func(t *testing.T) {
+		t.Parallel()
+		// The tool contract may gain fields between builds; guessing at one
+		// is what the acceptance contract forbids.
+		stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:A1",
+			"--cells", `[[{"value":"x","some_future_field":1}]]`, "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("unknown keys must pass through, got: %v", err)
+		}
+		if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), `"some_future_field":1`) {
+			t.Errorf("the key should reach the body untouched, got %q", stdout)
+		}
+	})
 }

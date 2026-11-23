@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -66,7 +67,10 @@ func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithParam("--app-id").WithCause(err)
 	}
 	if profile.UserOpenID == "" {
-		return nil, errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in").WithHint("run `lark-cli auth login --scope \"spark:app:read\"`")
+		return nil, recovery.Attach(
+			errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in"),
+			recovery.UserAuthorization("spark:app:read"),
+		)
 	}
 	unlockApp, err := lockApp(appID)
 	if err != nil {
@@ -129,12 +133,18 @@ func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string
 	if previous != nil && previous.PATRef != "" && previous.PATRef != ref {
 		_ = m.Secrets.Remove(previous.PATRef)
 	}
-	result := &InitResult{AppID: appID, GitHTTPURL: url, Refreshed: previous != nil}
+	result := &InitResult{
+		AppID:             appID,
+		GitHTTPURL:        url,
+		Refreshed:         previous != nil,
+		CommitAuthorName:  issued.CommitAuthorName,
+		CommitAuthorEmail: issued.CommitAuthorEmail,
+	}
 	if m.GitConfig != nil {
 		if err := m.GitConfig.SetHelper(ctx, url, appID); err != nil {
 			result.ConfigWarning = err.Error()
 		} else if previous != nil && previous.GitHTTPURL != "" && previous.GitHTTPURL != url {
-			if err := m.GitConfig.UnsetHelper(ctx, previous.GitHTTPURL); err != nil {
+			if err := m.GitConfig.UnsetHelper(ctx, previous.GitHTTPURL, previous.AppID); err != nil {
 				result.ConfigWarning = err.Error()
 			}
 		}
@@ -165,7 +175,7 @@ func (m *Manager) Remove(ctx context.Context, profile ProfileContext, appID stri
 			return nil, err
 		}
 		if m.GitConfig != nil {
-			if err := m.GitConfig.UnsetHelper(ctx, record.GitHTTPURL); err != nil {
+			if err := m.GitConfig.UnsetHelper(ctx, record.GitHTTPURL, record.AppID); err != nil {
 				result.ConfigWarning = err.Error()
 			}
 		}
@@ -189,18 +199,40 @@ func (m *Manager) List() (*ListResult, error) {
 	return &ListResult{Records: out}, nil
 }
 
+// Get answers a git credential "get" request. When the URL has a lark-cli
+// record but no credential can be supplied it tells git to quit instead of
+// falling through to an interactive username/password prompt, which never
+// returns in a non-interactive agent session and leaves `git push` hanging.
+// Requests lark-cli does not manage (no record, or not an HTTP(S) URL) stay
+// silent so other helpers can still answer them.
 func (m *Manager) Get(ctx context.Context, input CredentialInput, current ProfileContext, out, errOut io.Writer) error {
+	tracked := &credentialWriter{w: out}
+	if err := m.get(ctx, input, current, tracked, errOut); err != nil {
+		return err
+	}
+	if !tracked.wrote && !tracked.unmanaged {
+		return writeGitQuit(out)
+	}
+	return nil
+}
+
+func (m *Manager) get(ctx context.Context, input CredentialInput, current ProfileContext, out *credentialWriter, errOut io.Writer) error {
 	url, err := NormalizeCredentialInput(input)
 	if err != nil {
 		writeCredentialError(errOut, "Git credential unavailable", err)
+		out.unmanaged = true
 		return nil
 	}
 	record, pat, ok, err := m.readConfirmed(url, current)
 	if err != nil {
 		writeCredentialError(errOut, "Git credential unavailable", err)
+		// Only a found record (login mismatch) shows that lark-cli manages
+		// the URL; a failed store read leaves the request to other helpers.
+		out.unmanaged = record.AppID == ""
 		return nil
 	}
 	if !ok {
+		out.unmanaged = true
 		return nil
 	}
 	if m.usable(record, pat) {
@@ -432,13 +464,16 @@ func (m *Manager) Erase(r io.Reader) error {
 	return m.Secrets.Remove(record.PATRef)
 }
 
+// readConfirmed returns the record for url and its PAT. On a login mismatch
+// the found record is returned along with the error, so callers can tell it
+// apart from a failed store read, which returns an empty record.
 func (m *Manager) readConfirmed(url string, current ProfileContext) (CredentialRecord, string, bool, error) {
 	record, err := m.Store.FindByURL(url)
 	if err != nil || record == nil {
 		return CredentialRecord{}, "", false, err
 	}
 	if record.ProfileAppID != current.ProfileAppID || record.UserOpenID != current.UserOpenID {
-		return CredentialRecord{}, "", false, errs.NewValidationError(errs.SubtypeFailedPrecondition, "current login does not match initialized credential").
+		return *record, "", false, errs.NewValidationError(errs.SubtypeFailedPrecondition, "current login does not match initialized credential").
 			WithHint(fmt.Sprintf("run `lark-cli apps +git-credential-init --app-id %s` with the current login or switch back to the original account", record.AppID))
 	}
 	pat, err := m.Secrets.Get(record.PATRef)
@@ -510,6 +545,26 @@ func parseNormalizedForInput(raw string) (CredentialInput, error) {
 		return CredentialInput{Protocol: parts[0], Host: hostPath, Path: "/"}, nil
 	}
 	return CredentialInput{Protocol: parts[0], Host: hostPath[:idx], Path: hostPath[idx:]}, nil
+}
+
+// credentialWriter records whether a credential reached git and whether the
+// request is outside what lark-cli manages.
+type credentialWriter struct {
+	w         io.Writer
+	wrote     bool
+	unmanaged bool
+}
+
+func (c *credentialWriter) Write(p []byte) (int, error) {
+	c.wrote = true
+	return c.w.Write(p)
+}
+
+// writeGitQuit tells git to stop consulting helpers and not to prompt, so a
+// missing credential fails the git command instead of blocking on stdin.
+func writeGitQuit(w io.Writer) error {
+	_, err := fmt.Fprint(w, "quit=1\n\n")
+	return err
 }
 
 func writeGitCredential(w io.Writer, username, pat string) error {

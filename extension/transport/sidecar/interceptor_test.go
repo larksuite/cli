@@ -12,8 +12,17 @@ import (
 	"net/http"
 	"testing"
 
+	exttransport "github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/envvars"
+	internaltransport "github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/sidecar"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 // failingBody is a ReadCloser that errors on Read and tracks Close calls.
 type failingBody struct {
@@ -261,5 +270,57 @@ func TestInterceptor_EmptyBody(t *testing.T) {
 	expectedEmpty := sidecar.BodySHA256(nil)
 	if sha != expectedEmpty {
 		t.Errorf("body SHA256 = %q, want empty-string SHA256 %q", sha, expectedEmpty)
+	}
+}
+
+func TestLegacySidecarProviderStillHandlesForcedExternalRequests(t *testing.T) {
+	t.Setenv(envvars.CliAuthProxy, "http://127.0.0.1:16384")
+	t.Setenv(envvars.CliProxyKey, "test-key")
+	previousProvider := exttransport.GetProvider()
+	exttransport.Register(&Provider{})
+	t.Cleanup(func() { exttransport.Register(previousProvider) })
+
+	seen := make(chan *http.Request, 2)
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		seen <- req.Clone(req.Context())
+		return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody, Request: req}, nil
+	})
+	client := internaltransport.ClientForRequestClass(
+		&http.Client{Transport: internaltransport.NewHTTPPolicyRouter(base, base)},
+		exttransport.RequestClassExternal,
+	)
+
+	withSentinel, err := http.NewRequest(http.MethodGet, "https://external.example/protected", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withSentinel.Header.Set("Authorization", "Bearer "+sidecar.SentinelUAT)
+	resp, err := client.Do(withSentinel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	withoutSentinel, err := http.NewRequest(http.MethodGet, "https://external.example/public", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err = client.Do(withoutSentinel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	proxied := <-seen
+	if proxied.URL.Scheme != "http" || proxied.URL.Host != "127.0.0.1:16384" {
+		t.Fatalf("sentinel request URL = %s, want sidecar route", proxied.URL)
+	}
+	if got := proxied.Header.Get(sidecar.HeaderProxyTarget); got != "https://external.example" {
+		t.Fatalf("sentinel request proxy target = %q", got)
+	}
+
+	passthrough := <-seen
+	if got := passthrough.URL.String(); got != "https://external.example/public" {
+		t.Fatalf("non-sentinel request URL = %q, want unchanged", got)
 	}
 }

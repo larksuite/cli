@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	extcred "github.com/larksuite/cli/extension/credential"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/sidecar"
@@ -585,11 +586,15 @@ func TestProxyHandler_StripsClientSuppliedAuthHeaders(t *testing.T) {
 }
 
 func TestBuildAllowedHosts(t *testing.T) {
-	feishu := struct{ Open, Accounts, MCP string }{
-		"https://open.feishu.cn", "https://accounts.feishu.cn", "https://mcp.feishu.cn",
+	feishu := core.Endpoints{
+		Open:     "https://open.feishu.cn",
+		Accounts: "https://accounts.feishu.cn",
+		MCP:      "https://mcp.feishu.cn",
 	}
-	lark := struct{ Open, Accounts, MCP string }{
-		"https://open.larksuite.com", "https://accounts.larksuite.com", "https://mcp.larksuite.com",
+	lark := core.Endpoints{
+		Open:     "https://open.larksuite.com",
+		Accounts: "https://accounts.larksuite.com",
+		MCP:      "https://mcp.larksuite.com",
 	}
 	hosts := buildAllowedHosts(feishu, lark)
 	// feishu hosts

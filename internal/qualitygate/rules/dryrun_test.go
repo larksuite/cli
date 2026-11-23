@@ -33,6 +33,17 @@ func TestExtractDryRunJSONSkipsBanner(t *testing.T) {
 	}
 }
 
+func TestExtractDryRunJSONReadsSuccessEnvelope(t *testing.T) {
+	raw := `{"ok":true,"dry_run":true,"data":{"api":[{"method":"GET","url":"/open-apis/test"}]}}`
+	got, apiCallCount, err := extractDryRunJSON([]byte(raw))
+	if err != nil {
+		t.Fatalf("extractDryRunJSON() error = %v", err)
+	}
+	if got.Method != "GET" || got.URL != "/open-apis/test" || apiCallCount != 1 {
+		t.Fatalf("got request=%#v apiCallCount=%d, want enveloped GET and count 1", got, apiCallCount)
+	}
+}
+
 func TestExtractDryRunJSONSkipsBannerWithBraces(t *testing.T) {
 	raw := "banner {not json}\n{\"api\":[{\"method\":\"GET\",\"url\":\"/open-apis/test\"}]}\n"
 	got, apiCallCount, err := extractDryRunJSON([]byte(raw))
@@ -41,17 +52,6 @@ func TestExtractDryRunJSONSkipsBannerWithBraces(t *testing.T) {
 	}
 	if got.Method != "GET" || apiCallCount != 1 {
 		t.Fatalf("got request=%#v apiCallCount=%d, want GET and count 1", got, apiCallCount)
-	}
-}
-
-func TestRunCommandDisablesRemoteMetadata(t *testing.T) {
-	result := runCommand(context.Background(), "env", nil)
-	if result.Err != nil {
-		t.Fatalf("runCommand(env) error = %v, stderr=%s", result.Err, result.Stderr)
-	}
-	stdout := string(result.Stdout)
-	if !strings.Contains(stdout, "LARKSUITE_CLI_REMOTE_META=off") {
-		t.Fatalf("dry-run child env missing remote meta off in %q", stdout)
 	}
 }
 
@@ -154,6 +154,36 @@ func TestRunDryRunsMaterializesTypedPlaceholderFlagValues(t *testing.T) {
 	}
 }
 
+func TestRunDryRunsMaterializesValidMinuteTokenPlaceholder(t *testing.T) {
+	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/minutes/v1/minutes/obcntest123"}]}`)
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:     "minutes +detail",
+		Runnable: true,
+		Flags: []manifest.Flag{
+			{Name: "minute-tokens", TakesValue: true},
+			{Name: "dry-run"},
+		},
+	}}}
+	ex := skillscan.Example{
+		Raw:            "lark-cli minutes +detail --minute-tokens <minute_token>",
+		SourceFile:     "skills/lark-meeting/scenes/create-and-edit-minutes.md",
+		Line:           28,
+		HasPlaceholder: true,
+	}
+
+	diags, facts := RunDryRuns(context.Background(), cliBin, m, []skillscan.Example{ex})
+	if len(diags) != 0 {
+		t.Fatalf("RunDryRuns() diagnostics = %#v", diags)
+	}
+	if len(facts) != 1 || !facts[0].Executable || facts[0].SkipReason != "" {
+		t.Fatalf("placeholder example should be executable after materialization: %#v", facts)
+	}
+	wantArgs := []string{"minutes", "+detail", "--minute-tokens", "obcntest123", "--dry-run"}
+	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
 func TestRunDryRunsIgnoresTrailingShellComment(t *testing.T) {
 	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/docx/v1/documents/doccnxxxx"}]}`)
 	m := manifest.Manifest{Commands: []manifest.Command{{
@@ -178,6 +208,38 @@ func TestRunDryRunsIgnoresTrailingShellComment(t *testing.T) {
 		t.Fatalf("commented example should be executable: %#v", facts)
 	}
 	wantArgs := []string{"docs", "+fetch", "--doc", "doccnxxxx", "--dry-run"}
+	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
+func TestRunDryRunsIgnoresJQFilterWhenValidatingRequestPreview(t *testing.T) {
+	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/im/v1/flags"}]}`)
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:       "im +flag-list",
+		Runnable:   true,
+		Identities: []string{"user"},
+		Flags: []manifest.Flag{
+			{Name: "as", TakesValue: true},
+			{Name: "page-all"},
+			{Name: "jq", Shorthand: "q", TakesValue: true},
+			{Name: "dry-run"},
+		},
+	}}}
+	ex := skillscan.Example{
+		Raw:        `lark-cli im +flag-list --as user --page-all -q '.data.flag_items[-1]'`,
+		SourceFile: "skills/lark-im/references/lark-im-flag-list.md",
+		Line:       26,
+	}
+
+	diags, facts := RunDryRuns(context.Background(), cliBin, m, []skillscan.Example{ex})
+	if len(diags) != 0 {
+		t.Fatalf("RunDryRuns() diagnostics = %#v", diags)
+	}
+	if len(facts) != 1 || !facts[0].Executable || facts[0].SkipReason != "" {
+		t.Fatalf("jq example should remain executable: %#v", facts)
+	}
+	wantArgs := []string{"im", "+flag-list", "--as", "user", "--page-all", "--dry-run"}
 	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
 		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
 	}
@@ -305,6 +367,13 @@ func TestRunDryRunsMaterializesInlinePlaceholderFlagValues(t *testing.T) {
 	}
 }
 
+func TestFakeValueFromPlaceholderNameUsesOpenDepartmentPrefix(t *testing.T) {
+	got, ok := fakeValueFromPlaceholderName("open_department_id")
+	if !ok || got != "od-test123" {
+		t.Fatalf("open_department_id placeholder = %q, %v; want od-test123, true", got, ok)
+	}
+}
+
 func TestRunDryRunsMaterializesNumericPlaceholderFlagValues(t *testing.T) {
 	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/vc/v1/bots/events","params":{"meeting_id":"400000000001","page_size":50}}]}`)
 	m := manifest.Manifest{Commands: []manifest.Command{{
@@ -318,7 +387,7 @@ func TestRunDryRunsMaterializesNumericPlaceholderFlagValues(t *testing.T) {
 	}}}
 	ex := skillscan.Example{
 		Raw:            "lark-cli vc +meeting-events --meeting-id <meeting_id> --page-size <page_size>",
-		SourceFile:     "skills/lark-vc-agent/SKILL.md",
+		SourceFile:     "skills/lark-meeting/SKILL.md",
 		Line:           120,
 		HasPlaceholder: true,
 	}
@@ -774,6 +843,72 @@ func TestAppendDryRunArgForcesInlineJSONFormat(t *testing.T) {
 	want := []string{"vc", "+meeting-events", "--meeting-id", "400000000001", "--format=json", "--dry-run"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("appendDryRunArg() = %#v, want %#v", got, want)
+	}
+}
+
+func TestAppendDryRunArgRemovesJQFilter(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{
+			name: "short split",
+			raw:  `lark-cli im +flag-list --page-all -q '.data.flag_items[-1]'`,
+			want: []string{"im", "+flag-list", "--page-all", "--dry-run"},
+		},
+		{
+			name: "long split",
+			raw:  `lark-cli im +flag-list --jq '.data.flag_items[].item_id' --page-all`,
+			want: []string{"im", "+flag-list", "--page-all", "--dry-run"},
+		},
+		{
+			name: "short inline",
+			raw:  `lark-cli im +flag-list -q='.data.flag_items[-1]' --page-all`,
+			want: []string{"im", "+flag-list", "--page-all", "--dry-run"},
+		},
+		{
+			name: "long inline",
+			raw:  `lark-cli im +flag-list --jq='.data.flag_items[-1]' --page-all`,
+			want: []string{"im", "+flag-list", "--page-all", "--dry-run"},
+		},
+		{
+			name: "missing value remains invalid",
+			raw:  `lark-cli im +flag-list --page-all --jq`,
+			want: []string{"im", "+flag-list", "--page-all", "--jq", "--dry-run"},
+		},
+		{
+			name: "next flag is not accepted as jq expression",
+			raw:  `lark-cli im +flag-list --jq --page-all`,
+			want: []string{"im", "+flag-list", "--jq", "--page-all", "--dry-run"},
+		},
+		{
+			name: "invalid expression remains invalid",
+			raw:  `lark-cli im +flag-list --jq 'invalid[' --page-all`,
+			want: []string{"im", "+flag-list", "--jq", "invalid[", "--page-all", "--dry-run"},
+		},
+		{
+			name: "incompatible pretty format remains invalid",
+			raw:  `lark-cli im +flag-list --jq '.data' --format pretty`,
+			want: []string{"im", "+flag-list", "--jq", ".data", "--format", "pretty", "--dry-run"},
+		},
+		{
+			name: "compatible json format preserves request preview",
+			raw:  `lark-cli im +flag-list --jq '.data' --format json`,
+			want: []string{"im", "+flag-list", "--format", "json", "--dry-run"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := appendDryRunArg(tt.raw)
+			if err != nil {
+				t.Fatalf("appendDryRunArg() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("appendDryRunArg() = %#v, want %#v", got, tt.want)
+			}
+		})
 	}
 }
 

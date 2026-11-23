@@ -32,6 +32,7 @@ import (
 // The true used range is A1:F10. The default +table-get must return all 9 data
 // rows and 6 columns and report a range covering row 10 / column F.
 func TestSheets_TableGetUsedRangeWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -40,12 +41,12 @@ func TestSheets_TableGetUsedRangeWorkflow(t *testing.T) {
 	spreadsheetToken := createSpreadsheet(t, parentT, ctx, "lark-cli-e2e-tableget-"+suffix, "bot")
 
 	infoRes, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args:      []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+		Args:      []string{"sheets", "+workbook-info", "--spreadsheet-token", spreadsheetToken},
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
 	infoRes.AssertExitCode(t, 0)
-	sheetID := gjson.Get(infoRes.Stdout, "data.sheets.sheets.0.sheet_id").String()
+	sheetID := gjson.Get(infoRes.Stdout, "data.sheets.0.sheet_id").String()
 	require.NotEmpty(t, sheetID, "sheet_id should not be empty, stdout: %s", infoRes.Stdout)
 
 	// Write the full A1:F10 block in one shot. Column D and row 6 are left blank
@@ -67,11 +68,11 @@ func TestSheets_TableGetUsedRangeWorkflow(t *testing.T) {
 
 	writeRes, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
-			"sheets", "+write",
+			"sheets", "+cells-set",
 			"--spreadsheet-token", spreadsheetToken,
 			"--sheet-id", sheetID,
 			"--range", "A1:F10",
-			"--values", string(valuesJSON),
+			"--cells", string(valuesJSON),
 		},
 		DefaultAs: "bot",
 	})

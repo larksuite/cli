@@ -13,11 +13,13 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const docsCreateAsyncExtraParam = `{"open_create_async":true}`
+
 // v2CreateFlags returns the flag definitions for the v2 (OpenAPI) create path.
 func v2CreateFlags() []common.Flag {
 	return []common.Flag{
 		{Name: "title", Desc: "document title; when provided, the CLI prepends it to --content as <title>...</title> so the title wins over later content titles"},
-		{Name: "content", Desc: "document body; XML by default or Markdown when --doc-format markdown. " + docsContentSkillHelp + "; use --help for the latest command flags", Input: []string{common.File, common.Stdin}},
+		{Name: "content", Desc: docsCreateContentFlagBase, Input: []string{common.File, common.Stdin}},
 		{Name: "reference-map", Desc: docsReferenceMapFlagDesc, Input: []string{common.File, common.Stdin}},
 		{Name: "doc-format", Desc: "content format; xml is default and supports richer DocxXML blocks, markdown imports plain Markdown", Default: "xml", Enum: []string{"xml", "markdown"}},
 		{Name: "parent-token", Desc: "parent folder token or wiki node token; mutually exclusive with --parent-position"},
@@ -42,52 +44,105 @@ func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 			errs.InvalidParam{Name: "--parent-position", Reason: "mutually exclusive with --parent-token"},
 		)
 	}
-	if runtime.Str("content") == "" && title == "" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is required unless --title is provided").WithParam("--content")
+	content := runtime.Str("content")
+	if strings.TrimSpace(content) == "" && title == "" {
+		if path, ok := runtime.Cmd.Annotations[docsContentPathAnnotation]; ok {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--content file %q is empty", path).
+				WithParam("--content").
+				WithHint("write non-empty XML or Markdown to this file; if the path was reserved by init-draft, use the exact data.draft_path returned by that command, then retry with --content \"@./<data.draft_path>\"")
+		}
+		if runtime.Changed("content") {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--content was provided but is empty; an @file input may point to an empty draft").
+				WithParam("--content").
+				WithHint("write non-empty XML or Markdown to the draft and retry with --content \"@./<data.draft_path>\", or omit --content and pass --title to create a title-only document")
+		}
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--content is required unless --title is provided").
+			WithParam("--content").
+			WithHint("provide XML or Markdown directly, use --content \"@relative/path\", or pass --title to create a title-only document")
 	}
-	if runtime.Str("content") != "" {
-		_, err := resolveDocsV2ContentReferenceMap(runtime)
-		return err
+	if content != "" {
+		input, err := resolveDocsV2ContentReferenceMap(runtime)
+		if err != nil {
+			return err
+		}
+		if len(input.LocalResources) > 0 {
+			return runtime.EnsureScopes(docsCreateLocalResourceScopes)
+		}
 	}
 	return nil
 }
 
 func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, err := buildCreateBodyWithHTML5ReferenceMap(runtime)
+	body, resources, err := buildCreateBodyWithPreparedInput(runtime)
 	if err != nil {
 		return common.NewDryRunAPI().Set("error", err.Error())
 	}
 	desc := "OpenAPI: create document"
 	if runtime.IsBot() {
-		desc += ". After document creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new document."
+		desc += ". After document creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new document."
 	}
-	return common.NewDryRunAPI().
+	dry := common.NewDryRunAPI().
 		POST("/open-apis/docs_ai/v1/documents").
 		Desc(desc).
 		Body(body)
+	dry.GET("/open-apis/docs_ai/v1/async_tasks/<task_id>").
+		Desc("Conditional: poll the generic async-task endpoint when document creation returns a task_id.")
+	dry = appendRemoteDocImageDownloadsDryRun(dry, resources)
+	return appendLocalDocResourcesDryRun(dry, "<created_document_id>", resources)
 }
 
-func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
-	body, err := buildCreateBodyWithHTML5ReferenceMap(runtime)
+func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) (err error) {
+	trace := newDocsCreateTrace(runtime)
+	defer func() { trace.finish(err) }()
+	trace.step("prepare_input")
+	body, resources, err := buildCreateBodyWithPreparedInput(runtime)
 	if err != nil {
 		return err
 	}
-
-	data, err := doDocAPI(runtime, "POST", "/open-apis/docs_ai/v1/documents", body)
-	if err != nil {
+	trace.event("input_prepared", docsCreateDebugDetails{Resources: len(resources)})
+	trace.step("validate_remote_sources")
+	if err := validateRemoteDocImageSources(runtime.Ctx(), resources); err != nil {
 		return err
 	}
 
+	trace.step("create_request")
+	data, createLogID, err := createDocsDocumentWithLogID(runtime, body)
+	trace.event("create_response", docsCreateDebugDetails{LogID: createLogID})
+	if err != nil {
+		return err
+	}
+	if docsAPIOperationFailed(data) {
+		return runtime.OutPartialFailure(data, nil)
+	}
+	trace.step("wait_task")
+	data, err = waitForDocsCreateAsyncTask(runtime, data, createLogID, trace)
+	if err != nil {
+		return err
+	}
+	trace.step("permission")
 	augmentDocsCreatePermission(runtime, data)
+	trace.step("document_url")
 	fallbackDocsCreateURLV2(runtime, data)
+	trace.step("resources")
+	if len(resources) > 0 {
+		doc, _ := data["document"].(map[string]interface{})
+		if err := finalizeLocalDocResourcesWithTrace(runtime, strings.TrimSpace(common.GetString(doc, "document_id")), data, resources, trace); err != nil {
+			return err
+		}
+	}
+	trace.step("output")
 	runtime.OutRaw(data, nil)
 	return nil
 }
 
 func buildCreateBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{
-		"format":  runtime.Str("doc-format"),
-		"content": buildCreateContent(runtime),
+		"format":      runtime.Str("doc-format"),
+		"content":     buildCreateContent(runtime),
+		"extra_param": docsCreateAsyncExtraParam,
 	}
 	if v := runtime.Str("parent-token"); v != "" {
 		body["parent_token"] = v

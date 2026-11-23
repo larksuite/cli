@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: MIT
 set -euo pipefail
 cd "$(dirname "$0")"
-python3 scripts/fetch_meta.py
 VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
 go build -ldflags "-s -w -X github.com/larksuite/cli/internal/build.Version=${VERSION} -X github.com/larksuite/cli/internal/build.Date=$(date +%Y-%m-%d)" -o lark-cli .
 echo "OK: ./lark-cli (${VERSION})"

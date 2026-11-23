@@ -8,13 +8,13 @@
 
 ```bash
 # 列出指定周期的目标和关键结果（默认 simple 风格，半纯文本格式，推荐使用，更简洁）
-lark-cli okr +cycle-detail --cycle-id 1234567890123456789
+lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --prefer-draft=true
 
 # 列出指定周期的目标和关键结果（richtext 风格，原始 ContentBlock JSON）
-lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --style richtext
+lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --prefer-draft=true --style richtext
 
 # 预览 API 调用而不实际执行
-lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --dry-run
+lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --prefer-draft=false --dry-run
 ```
 
 ## 参数
@@ -23,13 +23,16 @@ lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --dry-run
 |--------------|----|----------|-----------------------------------------------------------------------------------------------------------------------------|
 | `--cycle-id` | 是  | —        | OKR 周期 ID（int64 类型）。从 `+cycle-list` 获取。                                                                                     |
 | `--style`    | 否  | `simple` | 输出风格：`simple`（半纯文本格式，不涉及字体/颜色等信息时推荐使用） \| `richtext`（原始 ContentBlock JSON）。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。 |
+| `--prefer-draft` | 否 | `true` | 有草稿时返回草稿内容；`false` 只返回发布态内容。命令中应显式传值。 |
 | `--dry-run`  | 否  | —        | 预览 API 调用而不实际执行。                                                                                                            |
 | `--format`   | 否  | `json`   | 输出格式。                                                                                                                       |
 
 ## 工作流程
 
 1. 使用 `lark-cli okr +cycle-list` 获取 OKR 周期 ID。
-2. 执行 `lark-cli okr +cycle-detail --cycle-id "123456"`。
+2. 执行 `lark-cli okr +cycle-detail --cycle-id "123456"`
+   - 查看登陆用户自己的 OKR 时，携带 `--prefer-draft=true`, 除非用户明确要求查看发布态 OKR 内容
+   - 查看他人的 OKR 时，携带 `--prefer-draft=false`
 3. 报告结果：找到的目标数量、每个目标的 ID、分数、权重及其关键结果。
 
 ## 输出
@@ -54,6 +57,7 @@ lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --dry-run
       "weight": 1.0,
       "deadline": "2025-06-30 23:59:59",
       "category_id": "cat_456",
+      "is_draft": true,
       "content": "{...}",
       "notes": "{...}",
       "key_results": [
@@ -70,7 +74,8 @@ lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --dry-run
           "score": 0.8,
           "weight": 0.5,
           "deadline": "2025-06-30 23:59:59",
-          "content": "{...}"
+          "content": "{...}",
+          "is_draft": true
         }
       ]
     }
@@ -84,6 +89,8 @@ lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --dry-run
 - `--style richtext`：JSON 字符串，为 OKR ContentBlock 富文本格式
 
 请参考 [lark-okr-contentblock.md](lark-okr-contentblock.md) 了解两种格式的详细信息。
+
+`is_draft=true` 表示对应实体返回的是草稿态内容。草稿态不支持的字段（例如 score）可能不返回。写操作前请按 [OKR 草稿工作流](lark-okr-drafts.md) 决定 `--apply-to-draft`。
 
 ## 参考
 

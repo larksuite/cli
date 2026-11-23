@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/flagalias"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -100,5 +101,61 @@ func TestFlagDidYouMean_OtherErrorStaysGeneric(t *testing.T) {
 	}
 	if strings.Contains(verr.Hint, "did you mean") {
 		t.Errorf("generic flag error must not produce a did-you-mean hint, got %q", verr.Hint)
+	}
+}
+
+func TestFlagDidYouMean_InvalidAliasValueUsesCallerSpelling(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantParam string
+		wantMap   bool
+	}{
+		{name: "alias equals value", args: []string{"--page-size=bad"}, wantParam: "--page-size", wantMap: true},
+		{name: "canonical equals value", args: []string{"--limit=bad"}, wantParam: "--limit"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c := &cobra.Command{Use: "demo"}
+			c.Flags().Int("limit", 10, "")
+			if err := flagalias.Bind(c, []flagalias.Spec{{Canonical: "limit", Aliases: []string{"page-size"}}}); err != nil {
+				t.Fatal(err)
+			}
+			parseErr := c.ParseFlags(test.args)
+			if parseErr == nil {
+				t.Fatal("ParseFlags() succeeded, want invalid integer error")
+			}
+
+			err := flagDidYouMean(c, parseErr)
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != test.wantParam {
+				t.Fatalf("param = %q, want %q", validationErr.Param, test.wantParam)
+			}
+			hasMapping := strings.Contains(validationErr.Hint, "maps to canonical flag --limit")
+			if hasMapping != test.wantMap {
+				t.Fatalf("hint = %q, mapping guidance = %v, want %v", validationErr.Hint, hasMapping, test.wantMap)
+			}
+		})
+	}
+}
+
+func TestFlagDidYouMean_InvalidNonAliasValueStaysGeneric(t *testing.T) {
+	c := &cobra.Command{Use: "demo"}
+	c.Flags().Int("limit", 10, "")
+	parseErr := c.ParseFlags([]string{"--limit=bad"})
+	if parseErr == nil {
+		t.Fatal("ParseFlags() succeeded, want invalid integer error")
+	}
+
+	err := flagDidYouMean(c, parseErr)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T, want *errs.ValidationError", err)
+	}
+	if validationErr.Param != "" || len(validationErr.Params) != 0 {
+		t.Fatalf("Param=%q Params=%v, want ordinary pflag behavior unchanged", validationErr.Param, validationErr.Params)
 	}
 }

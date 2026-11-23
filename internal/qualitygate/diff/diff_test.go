@@ -6,10 +6,11 @@ package diff
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/larksuite/cli/internal/testutil/gitcmd"
 )
 
 func TestScopeIncludesChangedSkillAndRelatedDomain(t *testing.T) {
@@ -33,10 +34,15 @@ func TestScopeTreatsDeletedShortcutAsGlobal(t *testing.T) {
 	}
 }
 
-func TestScopeDoesNotTreatDefaultMetadataAsGlobal(t *testing.T) {
-	scope := FromChangedFiles([]string{"internal/registry/meta_data_default.json"})
-	if scope.Global {
-		t.Fatal("default metadata changes should not force ordinary quality-gate global scope")
+func TestScopeTreatsCatalogSnapshotAsGlobal(t *testing.T) {
+	for _, file := range []string{
+		"internal/registry/catalog/manifest.json",
+		"internal/registry/catalog/services/drive.json",
+	} {
+		scope := FromChangedFiles([]string{file})
+		if !scope.Global {
+			t.Fatalf("%s must force global quality-gate scope", file)
+		}
 	}
 }
 
@@ -122,8 +128,7 @@ func writeFile(t *testing.T, repo, rel, content string) {
 
 func runGit(t *testing.T, repo string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = repo
+	cmd := gitcmd.Command(repo, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v failed: %v\n%s", args, err, out)
 	}
@@ -131,8 +136,7 @@ func runGit(t *testing.T, repo string, args ...string) {
 
 func gitOutput(t *testing.T, repo string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = repo
+	cmd := gitcmd.Command(repo, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git %v failed: %v", args, err)

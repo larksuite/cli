@@ -1,6 +1,6 @@
 # wiki +node-create
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 在飞书知识库中创建一个新节点，并自动解析目标知识空间。该 shortcut 对原生 `wiki.nodes.create` 做了一层更适合日常使用的封装：可以直接指定 `space_id`，也可以从父节点自动反查所属空间；在 `user` 身份下，如果同时省略 `--space-id` 和 `--parent-node-token`，还会自动回退到个人知识库 `my_library`。
 
@@ -75,25 +75,42 @@ lark-cli wiki +node-create \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--space-id` | 否 | 目标知识空间 ID；`user` 身份可传特殊值 `my_library` 表示个人知识库，`bot` 身份不支持该值 |
-| `--parent-node-token` | 否 | 父知识库节点 token；传入后会在该节点下创建新节点 |
+| `--parent-node-token` | 否 | 父知识库节点 token 或文档 obj_token；在解析出的 Wiki 节点下创建新节点 |
 | `--title` | 否 | 节点标题 |
 | `--node-type` | 否 | 节点类型，默认 `origin`；可选值：`origin`、`shortcut` |
-| `--obj-type` | 否 | 节点对应对象类型，默认 `docx`；可选值：`sheet`、`mindnote`、`bitable`、`docx`、`slides` |
+| `--obj-type` | 否 | 节点对应对象类型，默认 `docx`；可选值：`sheet`、`mindnote`、`bitable`、`file`、`docx`、`slides`。`file` 仅支持 `shortcut` 节点 |
 | `--origin-node-token` | 否 | 当 `--node-type=shortcut` 时必填，表示快捷方式指向的源节点 token |
 
 ## 空间解析规则
 
 - **优先级**：`--space-id` > `--parent-node-token` > `my_library`
 - **显式 space**：传了 `--space-id` 时，shortcut 会直接使用该空间；如果该值是 `my_library`，则仅 `user` 身份可用，并会先调用 `GET /open-apis/wiki/v2/spaces/my_library` 解析成真实 `space_id`
-- **父节点推断**：未传 `--space-id` 但传了 `--parent-node-token` 时，会先调用 `GET /open-apis/wiki/v2/spaces/get_node` 获取父节点，再读取其 `space_id`
+- **父节点推断**：未传 `--space-id` 但传了 `--parent-node-token` 时，会先调用 `GET /open-apis/wiki/v2/spaces/node_by_token` 获取父节点，再读取其 `space_id`
+- **父节点类型**：`--parent-node-token` 接受 Wiki `node_token` 或已挂载到 Wiki 的文档 `obj_token`，创建时使用查询返回的 `node_token`；显式传空间时也会查询并校验父节点空间。
 - **个人知识库回退**：`user` 身份下，如果 `--space-id` 和 `--parent-node-token` 都没传，会自动解析 `my_library`
 - **bot 身份限制**：`bot` 身份既没有“个人知识库”回退语义，也不支持显式传 `--space-id my_library`；请改用真实 `space_id` 或 `--parent-node-token`
 
-## shortcut 节点规则
+## 节点类型与对象类型
+
+| `node_type` | 支持的 `obj_type` |
+|-------------|-------------------|
+| `origin` | `sheet`、`mindnote`、`bitable`、`docx`、`slides` |
+| `shortcut` | `sheet`、`mindnote`、`bitable`、`file`、`docx`、`slides` |
 
 - `--node-type=shortcut` 时，必须同时提供 `--origin-node-token`
 - `--node-type=origin` 时，不能传 `--origin-node-token`
+- `--obj-type=file` 仅支持 `--node-type=shortcut`；实体节点不支持创建 `file` 类型
 - `shortcut` 节点只是知识库中的快捷方式入口；真正被引用的节点由 `--origin-node-token` 指定
+- 如果 `+node-create` 因上述组合返回参数校验错误，禁止改用 raw `wiki nodes create` 或直接调用 OpenAPI 绕过校验；应修正 `node_type`、`obj_type` 或 `origin_node_token`
+
+```bash
+# 创建一个指向文件的快捷方式节点
+lark-cli wiki +node-create \
+  --space-id <SPACE_ID> \
+  --node-type shortcut \
+  --obj-type file \
+  --origin-node-token <ORIGIN_NODE_TOKEN>
+```
 
 ## 一致性校验
 
@@ -111,6 +128,7 @@ lark-cli wiki +node-create \
   - 同时需要 `my_library` 和父节点时：会展示三步调用链
 - **bot 自动授权**：若使用 `--as bot`，结果还会额外带上 `permission_grant`，用于说明是否已自动为当前 CLI 用户授予新建节点的可管理权限
 - **输出结果**：成功后会返回 `resolved_space_id`、`resolved_by`、`node_token`、`obj_token`、`obj_type`、`node_type`、`title` 等字段，便于后续继续操作
+- **结构限制**：返回 `131003` 表示触发了知识空间总节点数、目录深度或单个父节点直属子节点数等结构限制。这不是瞬时错误，禁止使用相同参数重试。根据上游错误信息选择更浅或其他父节点、重新组织现有节点，或清理/改用其他知识空间；不要在无法确认具体限制时盲目增加中间层级。
 
 ## 推荐场景
 

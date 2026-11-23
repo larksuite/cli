@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -43,8 +42,11 @@ func TestEnhancePermissionError_TypedPermissionErrorRouted(t *testing.T) {
 	if !errors.As(got, &permErr) {
 		t.Fatalf("expected *PermissionError, got %T", got)
 	}
-	if !strings.Contains(permErr.Hint, "drive:drive:read") {
-		t.Errorf("hint %q missing scope info", permErr.Hint)
+	if permErr.Hint != "" {
+		t.Errorf("business helper populated presentation hint %q; want typed facts only", permErr.Hint)
+	}
+	if len(permErr.MissingScopes) != 1 || permErr.MissingScopes[0] != "drive:drive:read" {
+		t.Errorf("MissingScopes = %v, want [drive:drive:read]", permErr.MissingScopes)
 	}
 }
 
@@ -73,10 +75,9 @@ func TestEnhancePermissionError_NonPermissionErrorsPassThrough(t *testing.T) {
 	}
 }
 
-// TestEnhancePermissionError_PermissionErrorGetsScopeHint pins that an
-// *errs.PermissionError is enhanced with a hint that names the required
-// scopes and the `auth login --scope ...` recovery action.
-func TestEnhancePermissionError_PermissionErrorGetsScopeHint(t *testing.T) {
+// TestEnhancePermissionError_PermissionErrorGetsScopeFacts pins that business
+// enrichment records machine facts and leaves presentation to the root.
+func TestEnhancePermissionError_PermissionErrorGetsScopeFacts(t *testing.T) {
 	scopes := []string{"calendar:calendar:read", "drive:drive:read"}
 	err := &errs.PermissionError{
 		Problem: errs.Problem{
@@ -91,16 +92,11 @@ func TestEnhancePermissionError_PermissionErrorGetsScopeHint(t *testing.T) {
 	if !errors.As(got, &permErr) {
 		t.Fatalf("expected *errs.PermissionError, got %T: %v", got, got)
 	}
-	if permErr.Hint == "" {
-		t.Fatal("expected non-empty hint")
+	if permErr.Hint != "" {
+		t.Fatalf("Hint = %q, want root presenter to own recovery", permErr.Hint)
 	}
-	if !strings.Contains(permErr.Hint, "scope") {
-		t.Errorf("hint %q does not mention scope", permErr.Hint)
-	}
-	for _, s := range scopes {
-		if !strings.Contains(permErr.Hint, s) {
-			t.Errorf("hint %q does not contain scope %q", permErr.Hint, s)
-		}
+	if len(permErr.MissingScopes) != len(scopes) {
+		t.Fatalf("MissingScopes = %v, want %v", permErr.MissingScopes, scopes)
 	}
 }
 
@@ -119,9 +115,8 @@ func TestCheckShortcutScopes_PropagatesContextCancellation(t *testing.T) {
 // precheck — when it finds the issued token is missing required scopes —
 // emits a typed *errs.PermissionError with Subtype MissingScope, the resolved
 // Identity, and the deterministic MissingScopes set. AI/script consumers
-// downstream rely on these structured fields instead of parsing the hint
-// string. The Hint still carries the actionable `auth login --scope ...`
-// command for human consumers.
+// downstream rely on these structured fields instead of parsing hint prose.
+// The root presenter turns these facts into build-local recovery.
 func TestCheckShortcutScopes_ReturnsTypedPermissionError(t *testing.T) {
 	f := &cmdutil.Factory{
 		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{
@@ -158,11 +153,8 @@ func TestCheckShortcutScopes_ReturnsTypedPermissionError(t *testing.T) {
 	if len(wantMissing) != 0 {
 		t.Errorf("MissingScopes %v did not include expected entries %v", permErr.MissingScopes, wantMissing)
 	}
-	if permErr.Hint == "" {
-		t.Error("Hint must carry the `auth login --scope ...` recovery action")
-	}
-	if !strings.Contains(permErr.Hint, "auth login") {
-		t.Errorf("Hint = %q, want it to mention `auth login`", permErr.Hint)
+	if permErr.Hint != "" {
+		t.Errorf("Hint = %q, want root presenter to own recovery", permErr.Hint)
 	}
 }
 

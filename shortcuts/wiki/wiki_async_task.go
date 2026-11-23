@@ -120,16 +120,15 @@ func parseWikiAsyncTaskStatus(taskID string, task map[string]interface{}, result
 }
 
 // pollWikiAsyncTask runs the bounded polling loop shared by every wiki delete
-// shortcut. label is the human-readable operation name surfaced in stderr
-// progress lines ("delete-space" / "delete-node"). nextCommand is the resume
-// hint embedded into the wrapped error when every poll fails.
+// shortcut. label names the operation in typed errors; nextCommand is the
+// resume hint embedded into the wrapped error when every poll fails.
 //
 // attempts/interval are taken as parameters (instead of consts) so callers
 // can keep their per-operation tunable constants for back-compat with the
 // existing test hooks.
 func pollWikiAsyncTask(
 	ctx context.Context,
-	runtime *common.RuntimeContext,
+	_ *common.RuntimeContext,
 	taskID, label string,
 	attempts int,
 	interval time.Duration,
@@ -155,21 +154,18 @@ func pollWikiAsyncTask(
 		status, err := fetcher(ctx, taskID)
 		if err != nil {
 			lastErr = err
-			fmt.Fprintf(runtime.IO().ErrOut, "Wiki %s status attempt %d/%d failed: %v\n", label, attempt, attempts, err)
 			continue
 		}
 		lastStatus = status
 		hadSuccessfulPoll = true
 
 		if status.Ready() {
-			fmt.Fprintf(runtime.IO().ErrOut, "Wiki %s task completed successfully.\n", label)
 			return status, true, nil
 		}
 		if status.Failed() {
 			return status, false, errs.NewAPIError(errs.SubtypeServerError, "wiki %s task %s failed: %s", label, taskID, status.StatusLabel())
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Wiki %s status %d/%d: %s\n", label, attempt, attempts, status.StatusLabel())
 	}
 
 	if !hadSuccessfulPoll && lastErr != nil {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 func TestVCKeys_RecordingEventsRegistered(t *testing.T) {
@@ -25,7 +26,7 @@ func TestVCKeys_RecordingEventsRegistered(t *testing.T) {
 		{eventTypeRecordingEnded},
 	} {
 		t.Run(tc.eventType, func(t *testing.T) {
-			def, ok := event.Lookup(tc.eventType)
+			def, ok := lookupCompiledDef(t, tc.eventType)
 			if !ok {
 				t.Fatalf("%s should be registered via Keys()", tc.eventType)
 			}
@@ -351,7 +352,7 @@ func TestProcessVCRecording_NonRecordingBeanFiltered(t *testing.T) {
 	}
 }
 
-func TestProcessVCRecording_MalformedPayloadPassthrough(t *testing.T) {
+func TestProcessVCRecording_MalformedPayloadDrop(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	for _, tc := range []struct {
@@ -370,11 +371,11 @@ func TestProcessVCRecording_MalformedPayloadPassthrough(t *testing.T) {
 				Timestamp: time.Now(),
 			}
 			got, err := tc.process(context.Background(), nil, raw, nil)
-			if err != nil {
-				t.Fatalf("Process should swallow parse errors, got %v", err)
+			if !processing.IsDropMalformed(err) {
+				t.Fatalf("malformed payload must be dropped with a malformed marker, got err=%v", err)
 			}
-			if string(got) != "not json" {
-				t.Errorf("malformed fallback output = %q, want original bytes", string(got))
+			if got != nil {
+				t.Errorf("malformed payload must be dropped without output, got %q", string(got))
 			}
 		})
 	}
@@ -391,7 +392,7 @@ func TestVCRecording_PreConsumeSubscriptionLifecycle(t *testing.T) {
 		{eventTypeRecordingEnded},
 	} {
 		t.Run(tc.eventType, func(t *testing.T) {
-			def, ok := event.Lookup(tc.eventType)
+			def, ok := lookupCompiledDef(t, tc.eventType)
 			if !ok {
 				t.Fatalf("%s should be registered via Keys()", tc.eventType)
 			}
@@ -456,6 +457,7 @@ func runRecordingProcessRaw(t *testing.T, eventType string, process event.Proces
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := process(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

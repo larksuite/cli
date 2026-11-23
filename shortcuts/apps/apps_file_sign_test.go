@@ -22,13 +22,7 @@ func TestAppsFileSign_DryRunBody(t *testing.T) {
 		[]string{"+file-sign", "--app-id", "app_x", "--path", "/x.png", "--expires-in", "3600", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	a := env.API[0]
 	if a.Method != "POST" || a.URL != fileSignURL || a.Body["path"] != "/x.png" {

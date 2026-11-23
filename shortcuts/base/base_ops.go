@@ -29,7 +29,7 @@ func dryRunBaseCopy(_ context.Context, runtime *common.RuntimeContext) *common.D
 		Body(buildBaseCopyBody(runtime)).
 		Set("base_token", runtime.Str("base-token"))
 	if runtime.IsBot() {
-		d.Desc("After Base copy succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new Base.")
+		d.Desc("After Base copy succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new Base.")
 	}
 	return d
 }
@@ -37,7 +37,7 @@ func dryRunBaseCopy(_ context.Context, runtime *common.RuntimeContext) *common.D
 func dryRunBaseCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	d := common.NewDryRunAPI()
 	if runtime.IsBot() {
-		d.Desc("After Base creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new Base.")
+		d.Desc("After Base creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new Base.")
 	}
 	d.
 		POST("/open-apis/base/v3/bases").

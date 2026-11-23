@@ -16,6 +16,8 @@ import (
 
 const minutesSummaryMarkdownTip = "Summary accepts any text; unsupported Markdown is saved but may display as literal raw text in Minutes. For best rendering, prefer plain text, line breaks, headings (#, ##, ###), bold (**text**), and lists (-, *, or 1.)."
 
+const minutesSummaryASRQuotaNotEnough = 2091008
+
 // MinutesSummary replaces the AI summary of a minute.
 var MinutesSummary = common.Shortcut{
 	Service:     "minutes",
@@ -61,7 +63,7 @@ var MinutesSummary = common.Shortcut{
 			"summary": summary,
 		}
 		if _, err := runtime.CallAPITyped(http.MethodPut, path, nil, body); err != nil {
-			return err
+			return minutesSummaryError(err, minuteToken)
 		}
 
 		runtime.OutFormat(map[string]interface{}{
@@ -70,4 +72,15 @@ var MinutesSummary = common.Shortcut{
 		}, nil, nil)
 		return nil
 	},
+}
+
+func minutesSummaryError(err error, minuteToken string) error {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != minutesSummaryASRQuotaNotEnough {
+		return err
+	}
+	p.Subtype = errs.SubtypeQuotaExceeded
+	p.Message = fmt.Sprintf("ASR/AI quota not enough: cannot replace summary on minute %q.", minuteToken)
+	p.Hint = minutesASRQuotaNotEnoughHint
+	return err
 }

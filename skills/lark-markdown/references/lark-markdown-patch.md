@@ -1,6 +1,6 @@
 # markdown +patch
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 对 Drive 中已有的原生 Markdown 文件做局部文本替换，并返回是否实际写入了新版本。
 

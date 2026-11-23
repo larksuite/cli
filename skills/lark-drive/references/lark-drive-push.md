@@ -1,7 +1,7 @@
 
 # drive +push
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 把本地目录**单向、文件级**镜像到飞书云空间（云盘/云存储）的某个文件夹（本地 → Drive）。命令递归列出 `--folder-token` 下的远端清单，遍历 `--local-dir` 的所有常规文件，按相对路径在 Drive 上新建、覆盖或跳过；可选地（`--delete-remote --yes`）删除云端"本地没有"的 `type=file`。
 
@@ -24,7 +24,7 @@
 
 ## 远端同名文件冲突
 
-如果 Drive 中多个条目映射到同一个 `rel_path`，默认直接失败（`error.type=duplicate_remote_path`），且不会上传、覆盖或进入 `--delete-remote` 删除阶段。只有“多个 `type=file` 同名”的场景支持显式策略；`file-folder` 这类异构冲突始终直接失败。
+如果 Drive 中多个条目映射到同一个 `rel_path`，默认直接失败（stderr 类型化错误信封：`error.type=validation`、`error.subtype=failed_precondition`，`error.params[]` 逐条列出冲突的 `rel_path` 及碰撞条目），且不会上传、覆盖或进入 `--delete-remote` 删除阶段。只有“多个 `type=file` 同名”的场景支持显式策略；`file-folder` 这类异构冲突始终直接失败。
 
 | 策略 | 行为 |
 |------|------|
@@ -134,6 +134,8 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 
 `+push` 的失败项带结构化字段，agent 必须优先读 `items[].error_class` / `phase` / `code`，不要只看自然语言 `error` 文本。`summary.aborted=true` 表示命令已经遇到终止性错误并停止后续批处理；这时**不要原样重试**，先修复根因。
 
+`retryable=true` 只表示修复根因或等待后可以再次尝试，不表示应该立即、无限重放整个 push；重试时采用有上限的指数退避和抖动。
+
 常见终止性错误：
 
 | `error_class` | 常见 `code` | 含义 | Agent 应对 |
@@ -144,8 +146,10 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 | `invalid_api_parameters` | `1061002` | API 参数被服务端拒绝 | 停止重试，检查 `--folder-token`、覆盖模式、`file_token`、文件名和上传参数；不要对同一参数组合批量重试 |
 | `parent_node_missing` | `1061044` | 上传 / 建目录使用的父文件夹不存在或当前身份不可见 | 停止重试，检查 `--folder-token` 是否仍存在、是否有权限、父目录是否在 push 过程中被删除；不要继续上传同一目录树 |
 | `parent_sibling_limit` | `1062507` | 目标父文件夹单层子节点数量超过上限 | 停止重试，清理目标目录、换一个 `--folder-token`，或把上传内容拆到多个子目录 |
+| `quota_exceeded` | `1061101` / `1061061` | 租户或当前用户的 Drive 容量配额已满 | 停止重试，释放容量、调整目标位置或扩容后再执行 push |
 | `rate_limited` | `99991400` | 触发频控 | 停止当前批次，退避后再重试 |
-| `server_error` | `1061001` / `2200` | Drive 服务端异常 | 停止当前批次，稍后重试；保留 `log_id` 便于排查 |
+| `conflict` | `1061045` | 同一目标发生资源竞争 | 停止当前批次，避免并发操作同一目标；退避后有限重试 |
+| `server_error` | `1663` / `1061001` / `2200` / HTTP 5xx | Drive 服务端或网关异常 | 停止当前批次，稍后有限重试 |
 
 非终止但需要解释的状态：
 

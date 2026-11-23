@@ -12,7 +12,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestBase_AttachmentDryRun(t *testing.T) {
@@ -42,10 +41,10 @@ func TestBase_AttachmentDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_att", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "/open-apis/drive/v1/medias/upload_all", gjson.Get(out, "api.1.url").String(), out)
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/append_attachments", gjson.Get(out, "api.2.url").String(), out)
-		require.Equal(t, "<uploaded_file_token>", gjson.Get(out, "api.2.body.attachments.rec_x.fld_att.0.file_token").String(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_att", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "/open-apis/drive/v1/medias/upload_all", clie2e.DryRunGet(out, "api.1.url").String(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/append_attachments", clie2e.DryRunGet(out, "api.2.url").String(), out)
+		require.Equal(t, "<uploaded_file_token>", clie2e.DryRunGet(out, "api.2.body.attachments.rec_x.fld_att.0.file_token").String(), out)
 	})
 
 	t.Run("download", func(t *testing.T) {
@@ -65,9 +64,9 @@ func TestBase_AttachmentDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/get_attachments", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "/open-apis/drive/v1/medias/%3Cfile_token%3E/download", gjson.Get(out, "api.1.url").String(), out)
-		require.Equal(t, "<extra_info_if_present>", gjson.Get(out, "api.1.params.extra").String(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/get_attachments", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "/open-apis/drive/v1/medias/%3Cfile_token%3E/download", clie2e.DryRunGet(out, "api.1.url").String(), out)
+		require.Equal(t, "<extra_info_if_present>", clie2e.DryRunGet(out, "api.1.params.extra").String(), out)
 	})
 
 	t.Run("download all", func(t *testing.T) {
@@ -86,8 +85,8 @@ func TestBase_AttachmentDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/get_attachments", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "/open-apis/drive/v1/medias/%3Cfile_token%3E/download", gjson.Get(out, "api.1.url").String(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/get_attachments", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "/open-apis/drive/v1/medias/%3Cfile_token%3E/download", clie2e.DryRunGet(out, "api.1.url").String(), out)
 	})
 
 	t.Run("remove", func(t *testing.T) {
@@ -107,8 +106,8 @@ func TestBase_AttachmentDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/remove_attachments", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "box_a", gjson.Get(out, "api.0.body.attachments.rec_x.fld_att.0.file_token").String(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/remove_attachments", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "box_a", clie2e.DryRunGet(out, "api.0.body.attachments.rec_x.fld_att.0.file_token").String(), out)
 	})
 }
 

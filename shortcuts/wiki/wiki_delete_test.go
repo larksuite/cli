@@ -207,8 +207,8 @@ func TestRunWikiDeleteSpaceAsyncReady(t *testing.T) {
 	if out["task_id"] != "task_123" || out["ready"] != true || out["failed"] != false || out["status"] != "success" {
 		t.Fatalf("unexpected async-ready output: %#v", out)
 	}
-	if !strings.Contains(stderr.String(), "async, polling task") || !strings.Contains(stderr.String(), "completed successfully") {
-		t.Fatalf("stderr = %q, want async progress logs", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no async progress logs", stderr.String())
 	}
 }
 
@@ -237,8 +237,8 @@ func TestRunWikiDeleteSpaceAsyncTimeoutReturnsNextCommand(t *testing.T) {
 	if out["status"] != "processing" || out["status_msg"] != "processing" {
 		t.Fatalf("status fields = %#v / %#v, want both processing", out["status"], out["status_msg"])
 	}
-	if !strings.Contains(stderr.String(), "Continue with") {
-		t.Fatalf("stderr = %q, want continuation hint", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want continuation in structured output only", stderr.String())
 	}
 }
 
@@ -300,8 +300,8 @@ func TestPollWikiDeleteSpaceTaskWrapsPollFailuresWithHint(t *testing.T) {
 	if p.Code != 131006 {
 		t.Fatalf("Code = %d, want 131006 preserved through poll exhaustion", p.Code)
 	}
-	if !strings.Contains(stderr.String(), "Wiki delete-space status attempt 1/1 failed") {
-		t.Fatalf("stderr = %q, want poll failure log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want poll failure only in the typed error", stderr.String())
 	}
 }
 

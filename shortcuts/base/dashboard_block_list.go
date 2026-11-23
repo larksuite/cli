@@ -27,6 +27,7 @@ var BaseDashboardBlockList = common.Shortcut{
 	Tips: []string{
 		"lark-cli base +dashboard-block-list --base-token <base_token> --dashboard-id <dashboard_id>",
 		"Use returned block_id and type values for +dashboard-block-get/update/delete/get-data.",
+		"For a complete dashboard, use --page-size 100; while has_more=true, pass the returned page_token to --page-token and continue until has_more=false.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := common.ValidatePageSizeTyped(runtime, "page-size", 20, 1, 100)

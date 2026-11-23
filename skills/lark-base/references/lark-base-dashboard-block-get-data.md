@@ -6,7 +6,7 @@
 
 这个命令适合以下场景：
 
-1. 读取柱状图 / 条形图 / 折线图 / 饼图 / 环形图 / 面积图 / 组合图 / 散点图 / 漏斗图 / 雷达图 / 词云 / 指标卡的**实际计算结果**；
+1. 读取柱状图 / 条形图 / 折线图 / 饼图 / 环形图 / 面积图 / 组合图 / 散点图 / 漏斗图 / 雷达图 / 排行榜 / 词云 / 指标卡的**实际计算结果**；
 2. 把图表结果交给 AI 做后续总结、趋势解释、同比/环比说明、异常点提取；
 3. 在**不读取原始记录**的前提下，直接消费图表层已经聚合好的结果；
 4. 验证某个图表当前展示的数据是否符合预期。
@@ -26,7 +26,7 @@
 
 当前支持以下图表类型的数据计算与返回：
 
-### 二维图表（10 种）
+### 二维图表（11 种）
 
 - 柱状图
 - 条形图
@@ -38,6 +38,7 @@
 - 散点图
 - 漏斗图
 - 雷达图
+- 排行榜
 
 ### 特殊类型（2 种）
 
@@ -63,13 +64,29 @@ lark-cli base +dashboard-block-get-data \
 # 先看仪表盘里有哪些组件
 lark-cli base +dashboard-block-list \
   --base-token bascn***************CtadY \
-  --dashboard-id blkxxxxxxxx
+  --dashboard-id blkxxxxxxxx \
+  --page-size 100
 
 # 再读取某个组件的最终计算结果
 lark-cli base +dashboard-block-get-data \
   --base-token bascn***************CtadY \
   --block-id chtxxxxxxxx
 ```
+
+如果用户要读取多个组件，先通过 `+dashboard-block-list --page-size 100` 取得真实 ID；若返回 `has_more=true`，继续把本页返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`。收齐目标组件并跳过没有计算结果的文本组件后，再在**一个 shell 工具调用**内串行执行。每条命令会依次输出一个完整 JSON envelope；不要把每个 block 拆成独立模型轮次。
+
+```bash
+set -euo pipefail
+
+block_ids=(cht_block_1 cht_block_2)
+for block_id in "${block_ids[@]}"; do
+  lark-cli base +dashboard-block-get-data \
+    --base-token bascn***************CtadY \
+    --block-id "$block_id"
+done
+```
+
+数组中的 ID 必须逐字来自 `+dashboard-block-list` 返回，不要把名称或未经验证的用户文本作为 shell 代码执行。循环仍然是串行 API 调用，只减少模型往返，不裁剪任何组件结果。
 
 如果你需要先确认组件类型、名称或 `data_config`，请先执行：
 
@@ -98,21 +115,21 @@ lark-cli base +dashboard-block-get \
 
 ## 返回结构总览
 
-服务端响应外层仍然是标准 OpenAPI 包装：
+CLI 成功输出使用标准 `{ok, identity, data}` 信封：
 
 ```json
 {
-  "code": 0,
-  "msg": "success",
+  "ok": true,
+  "identity": "user",
   "data": {
-    "dimensions": [...],
-    "measures": [...],
-    "main_data": [...]
+    "dimensions": [],
+    "measures": [],
+    "main_data": []
   }
 }
 ```
 
-其中 `data` 就是 CLI 图表协议本体。不同图表类型的 `data` 结构略有不同：
+其中 `identity` 是本次调用实际使用的身份，`data` 是 CLI 图表协议本体。不同图表类型的 `data` 结构略有不同：
 
 | 图表类型 | 一定有 | 可能有 |
 |----------|--------|--------|
@@ -246,7 +263,9 @@ lark-cli base +dashboard-block-get \
 
 ### 一、二维图表
 
-适用于：柱状图、条形图、折线图、饼图、环形图、面积图、组合图、散点图、漏斗图、雷达图。
+适用于：柱状图、条形图、折线图、饼图、环形图、面积图、组合图、散点图、漏斗图、雷达图、排行榜。
+
+排行榜复用同一 `dimensions` / `measures` / `main_data` 协议，不增加专属响应字段。结果的条数和顺序由 block 配置中的 `limit_size` 与 `group_by[0].sort` 决定；消费返回时保持 `main_data` 的服务端顺序，不要再次反转或自行重排。
 
 #### 结构特征
 
@@ -714,4 +733,4 @@ GET /open-apis/base/v3/bases/bascn_example_token/dashboards/blocks/chtxxxxxxxx/d
 
 - [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 模块总指引
 - `+dashboard-block-get` — 获取 block 元数据
-- [dashboard-block-data-config.md](dashboard-block-data-config.md) — data_config 结构和组件类型说明
+- [Dashboard Block 配置](lark-base-dashboard-block-config.md) — data_config 结构和组件类型说明

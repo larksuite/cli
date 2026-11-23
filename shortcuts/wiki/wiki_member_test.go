@@ -305,8 +305,8 @@ func TestWikiMemberAddMountedExecuteFlattensMember(t *testing.T) {
 	if !strings.Contains(capturedQuery, "need_notification=true") {
 		t.Fatalf("captured query = %q, want need_notification=true", capturedQuery)
 	}
-	if !strings.Contains(stderr.String(), "Added wiki space member") {
-		t.Fatalf("stderr = %q, want success log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no success log", stderr.String())
 	}
 }
 

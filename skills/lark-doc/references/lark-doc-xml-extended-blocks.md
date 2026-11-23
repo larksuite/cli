@@ -2,7 +2,53 @@
 
 本文件用于补充说明 block XML 扩展能力。常用标签和通用规则见 [`lark-doc-xml.md`](lark-doc-xml.md)；后续新增其他 block 说明时可继续追加到本文件。
 
+## 拓展标签
+- `<bookmark name="示例站点" href="https://example.com"></bookmark>`
+- `<button action="OpenLink" src="https://example.com">操作按钮</button>`：`action` 可为 `OpenLink`、`DuplicatePage` 或 `FollowPage`；可选 `background-color`、`src`。
+- `<time expire-time="1775916000000" notify-time="1775912400000" should-notify="false">提醒</time>`：使用毫秒时间戳。
+- `<sheet type="blank"/>`：创建空白表格；`<sheet sheet-id="SHEET_ID" token="SPREADSHEET_TOKEN"/>`：复制已有表格。
+- `<task task-id="TASK_GUID"/>`：挂载任务，`task-id` 为任务 GUID。
+- `<chat_card chat-id="CHAT_ID"/>`：挂载聊天卡片。
+- `<sub-page-list/>`：子页面列表块，仅 wiki 文档可插入。
+
+
+## HTML5 block
+
+1. 写入 HTML 内容块时，把完整单文件 HTML 存为本地 `.html` 文件，XML 写 `<html5-block path="@./widget.html"/>`；已有 `data-ref` 时配合 `--reference-map @./reference-map.json`。读取时 `<html5-block data-ref="html5_1"></html5-block>` 只是占位，必须从 `document.reference_map["html5-block"]["html5_1"].data` 读取 HTML；若 entry 是 `path`，读取对应 `@./doc-fetch-resources/...html` 文件。
+2. 格式如下：
+
+```html
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="use-iframe" content="true">
+  <meta name="html-box-height-mode" content="auto">
+  <meta name="description" content="内容摘要，会导出为 html5-block 的 alt 属性，帮助模型理解该 HTML 块的用途">
+  <title></title>
+</head>
+<body>
+  ...
+</body>
+</html>
+```
+
+### 布局与高度
+
+只使用 `auto` 或 `viewport`：正文需要在文档中完整展开时使用 `auto`；内容需要在 HTML Block 内滚动或单屏呈现时使用 `viewport`。`lark-cli` 会将 HTML 原样写入 `reference_map`，不会校验该字段，因此创建或更新前必须在 `<head>` 中显式声明。
+
+- `auto`：使用普通文档流，不给根容器设置固定高度或 `overflow: hidden`。需要固定操作区时，在业务容器上设置 CSS `height` 和 `overflow: auto`，不要把像素值写入 meta。
+- `viewport`：使用 `100vh` 和内部滚动、切页或缩放，适用于游戏、幻灯片、Dashboard、canvas 编辑器。
+- 页面加载后的内容追加或展开不会由 `lark-cli` 刷新高度，不要臆造相关 CLI flag。
+- 文档常见可用宽度约 `820px`；根容器使用 `width: 100%`、`max-width: 100%`、`box-sizing: border-box`。
+
+### 内容限制
+
+- HTML 总长度上限为 500KB。不要内联大图片、Base64、字体、长 JSON/CSV 或大量 mock 数据。
+
 ## OKR block
+`<okr cycle-id="CYCLE_ID"></okr>`：创建时仅支持 root-only。
 
 OKR block 可用 XML 格式完整表达。创建前先参考 [`lark-okr`](../../lark-okr/SKILL.md) 确认可用周期；创建时只写 root-only `<okr cycle-id="..."/>` 挂载已有 OKR，不构造 Objective/KR/Progress 子树。
 
@@ -15,6 +61,7 @@ OKR block 可用 XML 格式完整表达。创建前先参考 [`lark-okr`](../../
     <okr-progress>
       <p>O 进展</p>
       <checkbox done="true">事项</checkbox>
+      <ul><li>列表项内可包含 <a href="https://example.com">链接</a></li></ul>
     </okr-progress>
     <okr-key-result key-result-id="KEY_RESULT_ID" status="risk" percent="60" score="80">
       <p>KR 描述</p>
@@ -31,4 +78,4 @@ OKR block 可用 XML 格式完整表达。创建前先参考 [`lark-okr`](../../
 - `okr-objective` / `okr-key-result`
   - 可更新 `status`、`percent`、`score`；`percent` / `score` 取值 0-100，`status` 取值 `unset`/`normal`/`risk`/`extended`。
   - 不可更新 objective 和 key-result 内容描述。
-- `okr-progress` 承载进展内容，支持更新。支持内嵌 `<p>`、`<checkbox>`、`<grid>`、`<img>`。
+- `okr-progress` 承载进展内容，支持更新。直接子节点支持 `<p>`、`<checkbox>`、`<grid>`、`<img>`、`<source>`、`<ol>`、`<ul>`、`<h1>` 到 `<h9>`。

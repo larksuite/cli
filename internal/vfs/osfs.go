@@ -36,6 +36,7 @@ func (OsFs) ReadDir(name string) ([]os.DirEntry, error)    { return os.ReadDir(n
 func (OsFs) Remove(name string) error                      { return os.Remove(name) }
 func (OsFs) RemoveAll(path string) error                   { return os.RemoveAll(path) }
 func (OsFs) Rename(oldpath, newpath string) error          { return os.Rename(oldpath, newpath) }
+func (OsFs) Link(oldname, newname string) error            { return os.Link(oldname, newname) }
 
 // Path resolution
 func (OsFs) EvalSymlinks(path string) (string, error) { return filepath.EvalSymlinks(path) }

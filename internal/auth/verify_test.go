@@ -28,7 +28,7 @@ func TestVerifyUserToken_TransportError(t *testing.T) {
 		lark.WithHttpClient(httpmock.NewClient(reg)),
 	)
 
-	err := VerifyUserToken(context.Background(), sdk, "test-token")
+	err := VerifyUserToken(context.Background(), sdk, "test-token", nil)
 	if err == nil {
 		t.Fatal("expected error from transport failure, got nil")
 	}
@@ -93,7 +93,7 @@ func TestVerifyUserToken(t *testing.T) {
 			})
 			t.Cleanup(restore)
 
-			err := VerifyUserToken(context.Background(), sdk, "test-token")
+			err := VerifyUserToken(context.Background(), sdk, "test-token", nil)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")

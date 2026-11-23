@@ -1,8 +1,8 @@
 # drive reactions
 
-> **前置条件：** 先阅读 [`../SKILL.md`](../SKILL.md) 了解 Drive 评论入口，再阅读 [`lark-drive-comments-guide.md`](lark-drive-comments-guide.md) 了解评论卡片模型、评论数/回复数统计口径、`file_token` / `file_type` 规则；同时阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../SKILL.md`](../SKILL.md) 了解 Drive 评论入口，再阅读 [`lark-drive-list-comments.md`](lark-drive-list-comments.md) 了解评论卡片模型、评论数/回复数统计口径、`file_token` / `file_type` 规则；同时阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-处理文档评论 / 回复上的 reaction（点赞、表情、各表情数量、谁点了什么、添加/删除表情）。这个场景不常见，但规则比较集中：查询时只有在用户明确需要 reaction 信息时才带 `need_reaction=true`；写入时统一使用 `drive file.comment.reply.reactions update_reaction`，操作对象始终是 `reply_id`。
+处理文档评论 / 回复上的 reaction（点赞、表情、各表情数量、谁点了什么、添加/删除表情）。这个场景不常见，但规则比较集中：查询时只有在用户明确需要 reaction 信息时才在 `drive +list-comments` / `+batch-query-comments` / `+list-replies` 上带 `--need-reaction`；写入优先使用 `drive +react-reply`（命令参数细节见 [`lark-drive-react-reply.md`](lark-drive-react-reply.md)），操作对象始终是 `reply_id`。本文是跨切面专题，集中放 reaction 的查询规则、语义联想和完整枚举。
 
 > [!IMPORTANT]
 > **`reaction_type` 只能使用本文下方“完整 `reaction_type` 列表”中定义的枚举值。**
@@ -16,49 +16,50 @@
 
 ## 查询规则
 
-- `drive file.comments list`、`drive file.comments batch_query`、`drive file.comment.replys list` 都支持通过指定`need_reaction`查询reaction信息。
-- `need_reaction` 只在用户明确需要 reaction 信息时再带；如果用户只关心评论正文、回复正文、评论数 / 回复数，默认不要加。
-- 遍历评论卡片并顺带拿 reaction：使用 `drive file.comments list`。
-- 已知评论 ID，批量查看 reaction：使用 `drive file.comments batch_query`，并在请求体里带 `need_reaction=true`。
-- 某张评论卡片下继续翻页拉 reply reaction：使用 `drive file.comment.replys list`。
-- 如果 `drive file.comments list` 返回的某个 `item.has_more=true`，且用户要完整的 reply reaction 数据，后续每一页 `drive file.comment.replys list` 都要持续带 `need_reaction=true`。
+- `drive +list-comments`、`drive +batch-query-comments`、`drive +list-replies` 都支持 `--need-reaction`。
+- `--need-reaction` 只在用户明确需要 reaction 信息时再带；如果用户只关心评论正文、回复正文、评论数 / 回复数，默认不要加。
+- 遍历评论卡片并顺带拿 reaction：使用 `drive +list-comments --need-reaction`。
+- 已知评论 ID，批量查看 reaction：使用 `drive +batch-query-comments --need-reaction`。
+- 某张评论卡片下继续翻页拉 reply reaction：使用 `drive +list-replies --need-reaction`，每一页都要持续带。
+- 返回形状：`items[].reactions[]` 为 `{reaction_key, count, ahead_users[]}`；**`count=0` 的条目是已删除 reaction 的残留，统计与判断是否存在都要按 `count>0` 过滤**。
 
 ## 查询示例
 
 ```bash
 # 遍历评论卡片，并把 reaction 一起拿回来
-lark-cli drive file.comments list \
-  --params '{"file_token":"<DOC_TOKEN>","file_type":"docx","need_reaction":true}'
+lark-cli drive +list-comments --url '<DOC_URL>' --need-reaction
 
 # 已知 comment_id，批量查询评论卡片 reaction
-lark-cli drive file.comments batch_query \
-  --params '{"file_token":"<DOC_TOKEN>","file_type":"docx"}' \
-  --data '{"comment_ids":["<COMMENT_ID>"],"need_reaction":true}'
+lark-cli drive +batch-query-comments --url '<DOC_URL>' --comment-ids '<COMMENT_ID>' --need-reaction
 
 # 继续翻某张评论卡片下的 replies，并把 reaction 一起拿回来
-lark-cli drive file.comment.replys list \
-  --params '{"file_token":"<DOC_TOKEN>","comment_id":"<COMMENT_ID>","file_type":"docx","need_reaction":true}'
+lark-cli drive +list-replies --url '<DOC_URL>' --comment-id '<COMMENT_ID>' --need-reaction
 ```
 
 ## 写入规则
 
-- 添加 / 删除 reaction 时，使用 `drive file.comment.reply.reactions update_reaction`。
-- 请求里必须带正确的 `file_type`，并在 body 中传 `action=add|delete`、`reply_id`、`reaction_type`。
-- `update_reaction` 的操作对象是 `reply_id`，不是 `comment_id`。
-- 如果用户说要给“这条评论”加 / 删 reaction，通常需要定位到该评论卡片首条 reply 的 `reply_id` 再操作。
+- 添加 / 删除 reaction 优先使用 `drive +react-reply`；命令参数、目标定位和 dry-run 见 [`lark-drive-react-reply.md`](lark-drive-react-reply.md)。
+- 操作对象是 `reply_id`（来自 `drive +list-replies` 的 `items[].reply_id`），不是 `comment_id`。
+- 如果用户说要给"这条评论"加 / 删 reaction，取该评论卡片根回复（第一页 `items[0]`）的 `reply_id` 再操作。
+- add / delete 幂等：重复添加已有 reaction、删除不存在的 reaction 都会成功返回且无副作用；delete 只取消当前身份自己加的 reaction。
+- **服务端不校验 `reaction_type`：任意字符串都会被接受并持久化成一条损坏的 reaction**；`+react-reply --emoji` 会按平台枚举做本地校验兜底，直接调原生命令时必须自行保证取值合法。
+- 原生 `drive file.comment.reply.reactions update_reaction` 只在需要 shortcut 未暴露的字段时兜底使用，`--params` 带 `file_token`/`file_type`，`--data` 传 `action=add|delete`、`reply_id`、`reaction_type`。
 
 ## 写入示例
 
 ```bash
 # 给某条 reply 添加一个点赞 reaction
+lark-cli drive +react-reply --url '<DOC_URL>' \
+  --reply-id '<REPLY_ID>' --emoji THUMBSUP --action add
+
+# 删除某条 reply 上已有的 DONE reaction（wiki URL 自动解包）
+lark-cli drive +react-reply --url '<WIKI_URL>' \
+  --reply-id '<REPLY_ID>' --emoji DONE --action delete
+
+# 原生命令兜底（注意：原生路径没有本地枚举校验）
 lark-cli drive file.comment.reply.reactions update_reaction \
   --params '{"file_token":"<DOC_TOKEN>","file_type":"docx"}' \
   --data '{"action":"add","reply_id":"<REPLY_ID>","reaction_type":"THUMBSUP"}'
-
-# 删除某条 reply 上已有的 DONE reaction
-lark-cli drive file.comment.reply.reactions update_reaction \
-  --params '{"file_token":"<DOC_TOKEN>","file_type":"docx"}' \
-  --data '{"action":"delete","reply_id":"<REPLY_ID>","reaction_type":"DONE"}'
 ```
 
 > [!CAUTION]
@@ -66,7 +67,7 @@ lark-cli drive file.comment.reply.reactions update_reaction \
 
 ## `reaction_type` 使用规则
 
-- `reaction_type` 必须传平台定义的枚举字符串，大小写敏感。
+- `reaction_type` 必须传平台定义的枚举字符串，大小写敏感；`drive +react-reply` 的 `--emoji` 会本地校验（原生命令不校验、服务端也不校验）。
 - 不要擅自把 mixed-case 值改成全大写，例如 `Yes`、`No`、`Get`、`EatingFood`、`CheckMark`、`CrossMark` 都要按原值传。
 - **不要编造列表外的 `reaction_type`，也不要把自然语言描述臆造成平台未定义的新枚举**。
 - 如果用户给的是自然语言语义（如“点赞”“在处理中”“确认一下”），可以在下方枚举列表内选择语义最接近的现有值；如果是近似映射，应在执行时明确告知用户。
@@ -110,4 +111,5 @@ Music, Typing, Pepper, CheckMark, CrossMark
 ## 参考
 
 - [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令
+- [lark-drive-react-reply](lark-drive-react-reply.md) -- `+react-reply` 命令参数
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

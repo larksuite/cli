@@ -19,6 +19,57 @@ func TestValidateRejectsDuplicateCommandPaths(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsDistinctFlagAliases(t *testing.T) {
+	m := Manifest{SchemaVersion: 1, Commands: []Command{{
+		Path:          "im +messages",
+		CanonicalPath: "im +messages",
+		Source:        SourceShortcut,
+		Flags: []Flag{
+			{Name: "order", Aliases: []string{"sort", "sort-order"}},
+			{Name: "query", Aliases: []string{"keyword"}},
+		},
+	}}}
+	if err := m.Validate(KindCommandManifest); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestValidateRejectsFlagAliasCollisions(t *testing.T) {
+	tests := []struct {
+		name  string
+		flags []Flag
+	}{
+		{
+			name: "alias and canonical",
+			flags: []Flag{
+				{Name: "order", Aliases: []string{"query"}},
+				{Name: "query"},
+			},
+		},
+		{
+			name: "alias and alias",
+			flags: []Flag{
+				{Name: "order", Aliases: []string{"sort"}},
+				{Name: "field", Aliases: []string{"sort"}},
+			},
+		},
+		{
+			name:  "alias self reference",
+			flags: []Flag{{Name: "order", Aliases: []string{"order"}}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m := Manifest{SchemaVersion: 1, Commands: []Command{{
+				Path: "im +messages", CanonicalPath: "im +messages", Source: SourceShortcut, Flags: test.flags,
+			}}}
+			if err := m.Validate(KindCommandManifest); err == nil {
+				t.Fatal("expected alias collision to fail")
+			}
+		})
+	}
+}
+
 func TestValidateRejectsInvalidSource(t *testing.T) {
 	m := Manifest{SchemaVersion: 1, Commands: []Command{
 		{Path: "docs +fetch", CanonicalPath: "docs +fetch", Source: Source("invalid")},

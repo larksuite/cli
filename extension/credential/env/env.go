@@ -6,20 +6,35 @@ package env
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
-const maxCredentialFileBytes = 64 * 1024
+const (
+	maxCredentialFileBytes                 = 64 * 1024
+	tenantAccessTokenSourceCredentialStore = "credential-store"
+)
 
-// Provider resolves credentials from environment variables.
-type Provider struct{}
+// Provider resolves account selection from environment variables. A configured
+// TAT lookup is consulted only when the dedicated source variable selects it.
+type Provider struct {
+	tenantAccessTokenLookup func(context.Context, string) (*credential.Token, error)
+}
+
+// WithTenantAccessTokenLookup returns an invocation-scoped provider copy with
+// the CLI-owned stored-TAT lookup. The narrow callback keeps account resolution
+// independent from secret storage and avoids exposing a second full Provider.
+func (p *Provider) WithTenantAccessTokenLookup(lookup func(context.Context, string) (*credential.Token, error)) credential.Provider {
+	clone := *p
+	clone.tenantAccessTokenLookup = lookup
+	return &clone
+}
 
 func (p *Provider) Name() string { return "env" }
 
@@ -29,16 +44,30 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 		return nil, err
 	}
 	appSecret := os.Getenv(envvars.CliAppSecret)
+	tatSource, err := tenantAccessTokenSource()
+	if err != nil {
+		return nil, err
+	}
+	storedTATSelected := tatSource == tenantAccessTokenSourceCredentialStore
+	if storedTATSelected && appID == "" {
+		return nil, &credential.BlockError{
+			Provider: "env",
+			Reason:   envvars.CliTenantAccessTokenSource + "=credential-store requires " + tokenName(envvars.CliAppID, envvars.CliAppIDFile),
+		}
+	}
 	uat, _, err := readCredentialValue(envvars.CliUserAccessToken, envvars.CliUserAccessTokenFile)
 	if err != nil {
 		return nil, err
 	}
-	tat, _, err := readCredentialValue(envvars.CliTenantAccessToken, envvars.CliTenantAccessTokenFile)
-	if err != nil {
-		return nil, err
-	}
 	hasUAT := uat != ""
-	hasTAT := tat != ""
+	hasTAT := storedTATSelected
+	if !storedTATSelected {
+		tat, _, err := readCredentialValue(envvars.CliTenantAccessToken, envvars.CliTenantAccessTokenFile)
+		if err != nil {
+			return nil, err
+		}
+		hasTAT = tat != ""
+	}
 	if appID == "" && appSecret == "" {
 		switch {
 		case hasUAT:
@@ -55,7 +84,7 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	if appSecret == "" && !hasUAT && !hasTAT {
 		return nil, &credential.BlockError{
 			Provider: "env",
-			Reason:   envvars.CliAppID + " is set but no app secret or access token is available",
+			Reason:   tokenName(envvars.CliAppID, envvars.CliAppIDFile) + " is set but no app secret or access token is available",
 		}
 	}
 	brand := credential.Brand(core.ParseBrand(os.Getenv(envvars.CliBrand)))
@@ -73,8 +102,9 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 		}
 	}
 
-	// Explicit strict mode policy takes priority
-	switch strictMode := os.Getenv(envvars.CliStrictMode); strictMode {
+	// Explicit strict mode policy takes priority.
+	strictMode := os.Getenv(envvars.CliStrictMode)
+	switch strictMode {
 	case "bot":
 		acct.SupportedIdentities = credential.SupportsBot
 	case "user":
@@ -98,6 +128,10 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 
 	if acct.DefaultAs == "" {
 		switch {
+		case strictMode == "user":
+			acct.DefaultAs = credential.IdentityUser
+		case strictMode == "bot":
+			acct.DefaultAs = credential.IdentityBot
 		case hasUAT:
 			acct.DefaultAs = credential.IdentityUser
 		case hasTAT:
@@ -115,6 +149,29 @@ func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (
 		envKey = envvars.CliUserAccessToken
 		fileEnvKey = envvars.CliUserAccessTokenFile
 	case credential.TokenTypeTAT:
+		tatSource, err := tenantAccessTokenSource()
+		if err != nil {
+			return nil, err
+		}
+		if tatSource == tenantAccessTokenSourceCredentialStore {
+			if req.AppID == "" {
+				return nil, nil
+			}
+			appID, _, err := readCredentialValue(envvars.CliAppID, envvars.CliAppIDFile)
+			if err != nil {
+				return nil, err
+			}
+			if req.AppID != appID {
+				return nil, nil
+			}
+			if p.tenantAccessTokenLookup == nil {
+				return nil, &credential.BlockError{
+					Provider: "env",
+					Reason:   "credential-store tenant access token source is unavailable in this CLI distribution",
+				}
+			}
+			return p.tenantAccessTokenLookup(ctx, req.AppID)
+		}
 		envKey = envvars.CliTenantAccessToken
 		fileEnvKey = envvars.CliTenantAccessTokenFile
 	default:
@@ -128,6 +185,20 @@ func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (
 		return nil, nil
 	}
 	return &credential.Token{Value: token, Source: source}, nil
+}
+
+func tenantAccessTokenSource() (string, error) {
+	source := strings.ToLower(strings.TrimSpace(os.Getenv(envvars.CliTenantAccessTokenSource)))
+	switch source {
+	case "", tenantAccessTokenSourceCredentialStore:
+		return source, nil
+	default:
+		return "", &credential.BlockError{
+			Provider: "env",
+			Reason: fmt.Sprintf("invalid %s %q (want credential-store or empty)",
+				envvars.CliTenantAccessTokenSource, source),
+		}
+	}
 }
 
 func init() {
@@ -147,20 +218,25 @@ func readCredentialValue(envKey, fileEnvKey string) (string, string, error) {
 		return "", "", nil
 	}
 
-	safePath, err := validate.SafeEnvFilePath(filePath, fileEnvKey)
+	file, err := localfileio.OpenEnvFile(filePath, fileEnvKey)
 	if err != nil {
 		return "", "", &credential.BlockError{Provider: "env", Reason: err.Error()}
 	}
-	info, err := vfs.Stat(safePath)
+	defer file.Close()
+
+	info, err := file.Stat()
 	if err != nil {
-		return "", "", &credential.BlockError{Provider: "env", Reason: "cannot stat " + fileEnvKey + ": " + err.Error()}
+		return "", "", &credential.BlockError{Provider: "env", Reason: "cannot stat " + fileEnvKey + " file"}
 	}
 	if info.Size() > maxCredentialFileBytes {
 		return "", "", &credential.BlockError{Provider: "env", Reason: fileEnvKey + " file is too large"}
 	}
-	data, err := vfs.ReadFile(safePath)
+	data, err := io.ReadAll(io.LimitReader(file, maxCredentialFileBytes+1))
 	if err != nil {
-		return "", "", &credential.BlockError{Provider: "env", Reason: "cannot read " + fileEnvKey + ": " + err.Error()}
+		return "", "", &credential.BlockError{Provider: "env", Reason: "cannot read " + fileEnvKey + " file"}
+	}
+	if len(data) > maxCredentialFileBytes {
+		return "", "", &credential.BlockError{Provider: "env", Reason: fileEnvKey + " file is too large"}
 	}
 	value := strings.TrimSpace(string(data))
 	if value == "" {

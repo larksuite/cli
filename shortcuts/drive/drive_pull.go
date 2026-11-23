@@ -162,7 +162,6 @@ var DrivePull = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir resolves outside cwd: %s", err).WithParam("--local-dir")
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
 		entries, err := listRemoteFolderEntries(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
@@ -234,7 +233,6 @@ var DrivePull = common.Shortcut{
 				downloadFailed++
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +pull after terminal %s failure: %v\n", item.Phase, err)
 					break
 				}
 				continue

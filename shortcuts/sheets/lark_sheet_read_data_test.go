@@ -35,6 +35,65 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
+			name:     "+cells-get include=formula without style pins include_styles=false",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--include", "formula"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":            testToken,
+				"sheet_id":            testSheetID,
+				"ranges":              []interface{}{"A1:B2"},
+				"include_styles":      false,
+				"value_render_option": "formula",
+				"cell_limit":          float64(unboundedReadLimit),
+			},
+		},
+		{
+			// --include truncation toggles include_truncation_info so the tool
+			// estimates and returns per-cell isRowTruncated / isColTruncated.
+			name:     "+cells-get include=truncation",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--include", "truncation"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":                testToken,
+				"sheet_id":                testSheetID,
+				"ranges":                  []interface{}{"A1:B2"},
+				"include_styles":          false,
+				"include_truncation_info": true,
+				"cell_limit":              float64(unboundedReadLimit),
+			},
+		},
+		{
+			// --output-path alone raises the cap to the bounded file-offload
+			// default — NOT the unbounded sentinel; the read path is not
+			// streaming, so the cap is the OOM guard.
+			name:     "+cells-get output-path uses bounded offload cap",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--output-path", "out.json"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":  testToken,
+				"sheet_id":  testSheetID,
+				"ranges":    []interface{}{"A1:B2"},
+				"max_chars": float64(outputPathReadLimit),
+			},
+		},
+		{
+			// An explicit --max-chars survives --output-path instead of being
+			// silently replaced by the unbounded sentinel.
+			name:     "+cells-get explicit max-chars survives output-path",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--output-path", "out.json", "--max-chars", "12345"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":  testToken,
+				"sheet_id":  testSheetID,
+				"ranges":    []interface{}{"A1:B2"},
+				"max_chars": float64(12345),
+			},
+		},
+		{
 			// Canonical form: --sheet-id + bare --range. Aligned with
 			// +cells-get / +csv-get; before the e2e BUG-019 fix this
 			// shortcut was the odd one out (range-prefix required).
@@ -61,6 +120,34 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 				"ranges":              []interface{}{"C2:C6"},
 				"include_styles":      false,
 				"value_render_option": "formatted_value",
+			},
+		},
+		{
+			name:     "+cond-format-result-get hardcodes style outputs",
+			sc:       CondFormatResultGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":                         testToken,
+				"sheet_id":                         testSheetID,
+				"ranges":                           []interface{}{"A1:B2"},
+				"include_styles":                   true,
+				"include_conditional_format_style": true,
+				"cell_limit":                       float64(unboundedReadLimit),
+			},
+		},
+		{
+			name:     "+cells-get --include conditional_format",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--include", "conditional_format"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":                         testToken,
+				"sheet_id":                         testSheetID,
+				"ranges":                           []interface{}{"A1:B2"},
+				"include_conditional_format_style": true,
+				"include_styles":                   true,
+				"cell_limit":                       float64(unboundedReadLimit),
 			},
 		},
 	}
@@ -92,7 +179,9 @@ func TestDropdownGet_RequiresSheetSelector(t *testing.T) {
 
 // TestReadData_RequiresRange covers the trim-based --range guard on the
 // single-range readers (--range "" slips past cobra's MarkFlagRequired but
-// must still be rejected by Validate).
+// must still be rejected by Validate). +csv-get is deliberately absent:
+// its --range is optional — omitted/blank means a whole-sheet read (see
+// TestCsvGet_RangeOptionalDefaultsToFullSheet).
 func TestReadData_RequiresRange(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -100,8 +189,8 @@ func TestReadData_RequiresRange(t *testing.T) {
 		sc   common.Shortcut
 	}{
 		{"+cells-get", CellsGet},
-		{"+csv-get", CsvGet},
 		{"+dropdown-get", DropdownGet},
+		{"+cond-format-result-get", CondFormatResultGet},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -111,6 +200,23 @@ func TestReadData_RequiresRange(t *testing.T) {
 			})
 			requireValidation(t, err, "--range is required")
 		})
+	}
+}
+
+// TestCsvGet_RangeOptionalDefaultsToFullSheet pins the whole-sheet default:
+// with --range omitted the request carries the over-wide clip range, so a
+// full read needs no workbook-info pre-flight (eval: --range was the most
+// missed required flag on +csv-get once the rest of the surface settled).
+func TestCsvGet_RangeOptionalDefaultsToFullSheet(t *testing.T) {
+	t.Parallel()
+	stdout, _, err := runShortcutCapturingErr(t, CsvGet, []string{
+		"--url", testURL, "--sheet-id", testSheetID, "--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("rangeless +csv-get must pass validation, got: %v", err)
+	}
+	if !strings.Contains(stdout, csvGetFullSheetRange) {
+		t.Fatalf("dry-run body should carry the full-sheet range %q, got %q", csvGetFullSheetRange, stdout)
 	}
 }
 
@@ -156,4 +262,84 @@ func TestCsvGet_StripRowPrefix(t *testing.T) {
 	if out["other"] != "untouched" {
 		t.Errorf("other field corrupted: %v", out["other"])
 	}
+}
+
+// TestCellsGet_MultiAreaRange pins the split: get_cell_ranges already takes a
+// LIST of ranges, so the areas a caller joined with commas go out as the
+// several ranges they name rather than being refused. The prescription itself
+// still exists for commands whose input is one range — see
+// TestMultiAreaRangeStillPrescribedOnWrites.
+func TestCellsGet_MultiAreaRange(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name  string
+		rng   string
+		sheet string
+		want  []string
+	}{
+		{"single cells joined by commas", "A3,G3,H3,J3", "s", []string{"A3", "G3", "H3", "J3"}},
+		{"ranges joined by commas", "A1:B2,D1:E2", "s", []string{"A1:B2", "D1:E2"}},
+		{"a single continuous range is unchanged", "A3:L3", "s", []string{"A3:L3"}},
+		// The qualifier is lifted into the selector once and every area loses
+		// it; stripping only the first would ship a prefixed range beside a
+		// sheet_name that already says the same thing.
+		{"every area carries the same qualifier", "'Q1'!A1:A21,'Q1'!C1:D21", "", []string{"A1:A21", "C1:D21"}},
+		{"only the first area is qualified", "Sheet1!A1:B2,D1:E2", "", []string{"A1:B2", "D1:E2"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			args := []string{"--url", testURL, "--range", tt.rng, "--dry-run"}
+			if tt.sheet != "" {
+				args = append(args, "--sheet-name", tt.sheet)
+			}
+			stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-get"), args)
+			if err != nil {
+				t.Fatalf("a multi-area range should be forwarded, got: %v", err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(stdout, `"`+want+`"`) {
+					t.Errorf("range %q missing from the request, got %q", want, stdout)
+				}
+			}
+		})
+	}
+}
+
+// A command whose tool input is ONE range keeps the prescription: fanning a
+// single call into several would change what a partial failure leaves behind.
+// The enclosing-rectangle hint is the part worth pinning, since it has to
+// cover every area rather than the first and last.
+func TestMultiAreaRangeStillPrescribedOnWrites(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct{ name, rng, wantCount, wantHint string }{
+		{"cells prescribe the enclosing rectangle", "A3,G3,H3,J3", "lists 4 separate areas", `--range "A3:J3"`},
+		// The widest column is in the middle here; first-and-last would
+		// prescribe "A3:G3" and silently drop the J3 the caller asked for.
+		{"unordered areas still land inside the rectangle", "A3,J3,G3", "lists 3 separate areas", `--range "A3:J3"`},
+		{"the rectangle spans both axes", "C5,A2,B9", "lists 3 separate areas", `--range "A2:C9"`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+				"--url", testURL, "--sheet-name", "s", "--range", tt.rng,
+				"--font-weight", "bold", "--dry-run",
+			})
+			ve := requireValidation(t, err, tt.wantCount)
+			if !strings.Contains(ve.Hint, tt.wantHint) {
+				t.Errorf("hint should carry %q, got %q", tt.wantHint, ve.Hint)
+			}
+		})
+	}
+
+	t.Run("two ranges get no invented rectangle", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:B2,D1:E2",
+			"--font-weight", "bold", "--dry-run",
+		})
+		ve := requireValidation(t, err, "lists 2 separate areas")
+		if strings.Contains(ve.Hint, `--range "A1:B2:D1:E2"`) {
+			t.Errorf("hint must not invent a rectangle from two ranges, got %q", ve.Hint)
+		}
+	})
 }

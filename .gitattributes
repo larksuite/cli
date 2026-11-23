@@ -1,0 +1,6 @@
+# The Catalog Snapshot under internal/registry/catalog is embedded and
+# digest-checked byte for byte (internal/registry/snapshot.go), so a checkout
+# that rewrites line endings breaks every API command. Keep text LF everywhere.
+* text=auto eol=lf
+
+*.png binary

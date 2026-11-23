@@ -14,7 +14,8 @@ import (
 // AppsDBQuotaGet reports an app's database storage usage and object counts.
 //
 // GET /apps/{app_id}/db/quota。storage_quota_bytes / usage_percent 在配额未对接（=0）时
-// 不输出（与 +file-quota-get 一致）；tables / views 始终输出。
+// 不输出（与 +file-quota-get 一致）；tables / views 始终输出。usage_percent 按
+// roundUsagePercent 取一位小数，与 +file-quota-get 同口径。
 var AppsDBQuotaGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-quota-get",
@@ -72,9 +73,7 @@ func projectDbQuota(data map[string]interface{}) map[string]interface{} {
 	// 配额未对接（storage_quota_bytes=0/缺失）时不输出 quota / usage_percent。
 	if q, ok := numericAsFloat(data["storage_quota_bytes"]); ok && q > 0 {
 		out["storage_quota_bytes"] = data["storage_quota_bytes"]
-		if v, ok := data["usage_percent"]; ok {
-			out["usage_percent"] = v
-		}
+		putUsagePercent(out, data)
 	}
 	return out
 }

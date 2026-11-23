@@ -83,7 +83,8 @@ func renderMergeForwardTree(ctx *ConvertContext, subItems []map[string]interface
 // PrefetchMergeForwardSubItems scans rawItems for merge_forward messages,
 // concurrently fetches each one's flat sub-message list, and returns a map
 // keyed by the merge_forward message_id. Callers thread the returned map
-// through FormatMessageItemWithMergePrefetch (or directly into a
+// through FormatMessageItemWithMergePrefetch /
+// FormatMessageItemWithFolderPrefetchOpts (or directly into a
 // ConvertContext.MergeForwardSubItems) so the per-item conversion loop can
 // reuse cached sub-trees instead of issuing its own serial GET.
 //
@@ -209,6 +210,10 @@ func fetchMergeForwardSubMessages(messageID string, runtime *common.RuntimeConte
 	data, err := runtime.DoAPIJSONTyped(http.MethodGet, mergeForwardMessagesPath(messageID), larkcore.QueryParams{
 		"user_id_type":          []string{"open_id"},
 		"card_msg_content_type": []string{"raw_card_content"},
+		// Opt in to server-side sender names: without it, senders that appear
+		// only inside this merge_forward carry no sender_name and — since there
+		// is no contact/mention fallback — render as their raw id.
+		"with_sender_name": []string{"true"},
 	}, nil)
 	if err != nil {
 		return nil, err

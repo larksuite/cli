@@ -265,17 +265,23 @@ func TestFeedGroupListItemPageAllMerges(t *testing.T) {
 	}
 }
 
-// ── list-item: explicit page-token ignores page-all (single page) ──
+// ── list-item: explicit page-token seeds page-all ──
 
-func TestFeedGroupListItemPageTokenIgnoresPageAll(t *testing.T) {
+func TestFeedGroupListItemPageAllContinuesFromPageToken(t *testing.T) {
 	var reqs []recordedFGRequest
 	runtime := newFGRuntime(t, ImFeedGroupListItem, map[string]string{
 		"feed-group-id": "ofg_x", "page-all": "true", "page-token": "SOMETOKEN",
-	}, &reqs, func(path string, _ int) (int, interface{}) {
+	}, &reqs, func(path string, page int) (int, interface{}) {
 		if strings.HasSuffix(path, "/list_item") {
+			if page == 1 {
+				return 200, wrapData(map[string]interface{}{
+					"items": []interface{}{}, "deleted_items": []interface{}{},
+					"page_token": "NEXT", "has_more": true,
+				})
+			}
 			return 200, wrapData(map[string]interface{}{
 				"items": []interface{}{}, "deleted_items": []interface{}{},
-				"page_token": "NEXT", "has_more": true,
+				"page_token": "", "has_more": false,
 			})
 		}
 		return 200, wrapData(map[string]interface{}{})
@@ -283,12 +289,17 @@ func TestFeedGroupListItemPageTokenIgnoresPageAll(t *testing.T) {
 	if err := ImFeedGroupListItem.Execute(context.Background(), runtime); err != nil {
 		t.Fatalf("Execute error: %v", err)
 	}
-	if got := countFGRequests(reqs, "/list_item"); got != 1 {
-		t.Errorf("expected 1 list_item request (page-token wins), got %d", got)
+	if got := countFGRequests(reqs, "/list_item"); got != 2 {
+		t.Fatalf("expected 2 list_item requests, got %d", got)
 	}
-	req := findFGRequest(reqs, "/list_item")
-	if got := firstQueryValue(req.query, "page_token"); got != "SOMETOKEN" {
-		t.Errorf("page_token query = %q, want SOMETOKEN", got)
+	var tokens []string
+	for i := range reqs {
+		if strings.HasSuffix(reqs[i].path, "/list_item") {
+			tokens = append(tokens, firstQueryValue(reqs[i].query, "page_token"))
+		}
+	}
+	if got := strings.Join(tokens, ","); got != "SOMETOKEN,NEXT" {
+		t.Errorf("page_token queries = %q, want SOMETOKEN,NEXT", got)
 	}
 }
 
@@ -422,7 +433,7 @@ func TestFeedGroupValidationErrors(t *testing.T) {
 		want  string
 	}{
 		{"list missing feed-group-id", ImFeedGroupListItem, map[string]string{}, "--feed-group-id is required"},
-		{"list bad page-size", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "page-size": "0"}, "--page-size must be an integer between 1 and 50"},
+		{"list bad page-size", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "page-size": "0"}, "invalid --page-size 0: must be between 1 and 50"},
 		{"list bad page-limit", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "page-limit": "2000"}, "--page-limit must be an integer between 1 and 1000"},
 		{"list bad start-time", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "start-time": "notnum"}, "--start-time must be Unix milliseconds"},
 		{"list bad end-time", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "end-time": "notnum"}, "--end-time must be Unix milliseconds"},

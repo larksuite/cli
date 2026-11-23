@@ -1,0 +1,979 @@
+{
+  "name": "slides",
+  "version": "v1",
+  "title": "幻灯片 API",
+  "description": "创建、读取和编辑幻灯片，底层交互协议为 XML",
+  "servicePath": "/open-apis/slides_ai/v1",
+  "resources": {
+    "xml_presentations": {
+      "methods": {
+        "create": {
+          "id": "xml_presentation.create",
+          "path": "xml_presentations",
+          "httpMethod": "POST",
+          "description": "以 XML 格式创建演示文稿",
+          "requestBody": {
+            "xml_presentation": {
+              "type": "object",
+              "description": "幻灯片内容",
+              "required": false,
+              "ref": "xml_presentation",
+              "properties": {
+                "presentation_id": {
+                  "type": "string",
+                  "description": "演示文稿的ID",
+                  "required": false,
+                  "example": "S7YwsFIGIlnS2qdscKDc1Yabcef"
+                },
+                "revision_id": {
+                  "type": "integer",
+                  "description": "演示文稿的版本号",
+                  "required": false,
+                  "example": 1,
+                  "max": "9223372036854775807",
+                  "min": "-1"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "演示文稿的 XML 内容",
+                  "required": false,
+                  "example": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\"></presentation> "
+                }
+              }
+            }
+          },
+          "responseBody": {
+            "xml_presentation_id": {
+              "type": "string",
+              "description": "演示文稿唯一标识符",
+              "required": false,
+              "example": "abc"
+            },
+            "slide_ids": {
+              "type": "array",
+              "description": "页面id列表",
+              "required": false
+            },
+            "revision_id": {
+              "type": "integer",
+              "description": "版本号id",
+              "required": false,
+              "example": 1
+            },
+            "url": {
+              "type": "string",
+              "description": "幻灯片地址",
+              "required": false,
+              "example": "xxx/slides/xxx"
+            },
+            "issues": {
+              "type": "string",
+              "description": "XML语法问题",
+              "required": false,
+              "example": "XML sanitize issues: "
+            }
+          },
+          "scopes": [
+            "slides:presentation:create"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=slides_ai&resource=xml_presentation&version=v1"
+        },
+        "get": {
+          "id": "xml_presentation.get",
+          "path": "xml_presentations/{xml_presentation_id}",
+          "httpMethod": "GET",
+          "description": "读取演示文稿全文信息，XML 格式返回",
+          "parameters": {
+            "xml_presentation_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "演示文稿唯一标识",
+              "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
+            },
+            "revision_id": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "演示文稿的版本号，-1 表示最新版本",
+              "default": -1,
+              "example": -1,
+              "max": "2147483647",
+              "min": "-1"
+            },
+            "remove_attr_id": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "不获取id属性"
+            }
+          },
+          "parameterOrder": [
+            "xml_presentation_id"
+          ],
+          "responseBody": {
+            "xml_presentation": {
+              "type": "object",
+              "description": "演示文稿内容",
+              "required": false,
+              "ref": "xml_presentation",
+              "properties": {
+                "presentation_id": {
+                  "type": "string",
+                  "description": "演示文稿的ID",
+                  "required": false,
+                  "example": "S7YwsFIGIlnS2qdscKDc1Yabcef"
+                },
+                "revision_id": {
+                  "type": "integer",
+                  "description": "演示文稿的版本号",
+                  "required": false,
+                  "example": 1,
+                  "max": "9223372036854775807",
+                  "min": "-1"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "演示文稿的 XML 内容",
+                  "required": false,
+                  "example": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\"></presentation> "
+                }
+              }
+            }
+          },
+          "scopes": [
+            "slides:presentation:read"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=slides_ai&resource=xml_presentation&version=v1"
+        }
+      }
+    },
+    "xml_presentation.history": {
+      "methods": {
+        "list": {
+          "id": "xml_presentation.history.list",
+          "path": "xml_presentations/{xml_presentation_id}/histories",
+          "httpMethod": "GET",
+          "description": "列出 XML 演示文稿历史版本",
+          "parameters": {
+            "xml_presentation_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "演示文稿唯一标识",
+              "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "分页游标",
+              "example": "MTY4NzI1MjQwMDAwMA=="
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "分页数量",
+              "default": 20,
+              "example": 20,
+              "max": "20",
+              "min": "1"
+            }
+          },
+          "parameterOrder": [
+            "xml_presentation_id"
+          ],
+          "responseBody": {
+            "entries": {
+              "type": "array",
+              "description": "演示文稿历史版本列表",
+              "required": false,
+              "properties": {
+                "revision_id": {
+                  "type": "integer",
+                  "description": "revision_id",
+                  "required": false,
+                  "example": 11,
+                  "max": "2147483647",
+                  "min": "0"
+                },
+                "edit_time": {
+                  "type": "string",
+                  "description": "历史版本编辑时间",
+                  "required": false,
+                  "example": "2026-06-16T11:24:12Z"
+                },
+                "type": {
+                  "type": "integer",
+                  "description": "历史版本类型",
+                  "required": false,
+                  "example": 1,
+                  "max": "2147483647",
+                  "min": "0"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "历史版本名称",
+                  "required": false,
+                  "example": "版本名称"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "历史版本描述",
+                  "required": false,
+                  "example": "版本描述"
+                },
+                "editor_ids": {
+                  "type": "array",
+                  "description": "编辑者 ID 列表",
+                  "required": false,
+                  "example": "[\"1777013770000\",\"1777013770001\"]"
+                },
+                "history_version_id": {
+                  "type": "string",
+                  "description": "历史记录 id，用于回滚到指定历史版本",
+                  "required": false,
+                  "example": "51341231231"
+                }
+              }
+            },
+            "has_more": {
+              "type": "boolean",
+              "description": "是否还有更多数据",
+              "required": false,
+              "example": true
+            },
+            "page_token": {
+              "type": "string",
+              "description": "下一页分页游标",
+              "required": false,
+              "example": "MTY4NzI1MjQwMDAwMQ=="
+            }
+          },
+          "scopes": [
+            "slides:presentation:read"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=slides_ai&resource=xml_presentation.history&version=v1"
+        },
+        "revert": {
+          "id": "xml_presentation.history.revert",
+          "path": "xml_presentations/{xml_presentation_id}/history/revert",
+          "httpMethod": "POST",
+          "description": "按 history_version_id 发起 XML 演示文稿历史版本回滚任务",
+          "parameters": {
+            "xml_presentation_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "演示文稿唯一标识",
+              "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
+            }
+          },
+          "parameterOrder": [
+            "xml_presentation_id"
+          ],
+          "requestBody": {
+            "history_version_id": {
+              "type": "string",
+              "description": "要回滚到的历史版本 id，由历史版本列表接口返回",
+              "required": true,
+              "example": "3072"
+            }
+          },
+          "responseBody": {
+            "task_id": {
+              "type": "string",
+              "description": "回滚任务 ID",
+              "required": false,
+              "example": "task_xxx"
+            },
+            "status": {
+              "type": "string",
+              "description": "回滚任务状态",
+              "required": false,
+              "example": "running",
+              "options": [
+                {
+                  "value": "done",
+                  "description": "已完成"
+                },
+                {
+                  "value": "partial_failed",
+                  "description": "部分失败"
+                },
+                {
+                  "value": "running",
+                  "description": "执行中"
+                },
+                {
+                  "value": "failed",
+                  "description": "失败"
+                }
+              ],
+              "enum": [
+                "done",
+                "partial_failed",
+                "running",
+                "failed"
+              ]
+            },
+            "poll_after_ms": {
+              "type": "integer",
+              "description": "建议下次轮询间隔，单位毫秒",
+              "required": false,
+              "example": 10000,
+              "max": "2147483647",
+              "min": "0"
+            },
+            "history_version_id": {
+              "type": "string",
+              "description": "回滚到的历史版本 id",
+              "required": false,
+              "example": "1777013770000"
+            }
+          },
+          "scopes": [
+            "slides:presentation:update",
+            "slides:presentation:write_only"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=revert&project=slides_ai&resource=xml_presentation.history&version=v1"
+        },
+        "revert_status": {
+          "id": "xml_presentation.history.revert_status",
+          "path": "xml_presentations/{xml_presentation_id}/history/revert_status",
+          "httpMethod": "GET",
+          "description": "查询 XML 演示文稿历史回滚任务状态",
+          "parameters": {
+            "xml_presentation_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "演示文稿唯一标识",
+              "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
+            },
+            "task_id": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "回滚任务 ID",
+              "example": "task_xxx"
+            }
+          },
+          "parameterOrder": [
+            "xml_presentation_id"
+          ],
+          "responseBody": {
+            "status": {
+              "type": "string",
+              "description": "回滚任务状态",
+              "required": false,
+              "example": "running",
+              "options": [
+                {
+                  "value": "done",
+                  "description": "已完成"
+                },
+                {
+                  "value": "partial_failed",
+                  "description": "部分失败"
+                },
+                {
+                  "value": "running",
+                  "description": "执行中"
+                },
+                {
+                  "value": "failed",
+                  "description": "失败"
+                }
+              ],
+              "enum": [
+                "done",
+                "partial_failed",
+                "running",
+                "failed"
+              ]
+            },
+            "failed_block_tokens": {
+              "type": "array",
+              "description": "回滚失败的 block token 列表",
+              "required": false
+            },
+            "history_version_id": {
+              "type": "string",
+              "description": "回滚到的历史版本 id",
+              "required": false,
+              "example": "1777013770000"
+            }
+          },
+          "scopes": [
+            "slides:presentation:read"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=revert_status&project=slides_ai&resource=xml_presentation.history&version=v1"
+        }
+      }
+    },
+    "xml_presentation.slide": {
+      "methods": {
+        "create": {
+          "id": "xml_presentation.slide.create",
+          "path": "xml_presentations/{xml_presentation_id}/slide",
+          "httpMethod": "POST",
+          "description": "在指定 XML 演示文稿下创建页面",
+          "parameters": {
+            "xml_presentation_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "演示文稿唯一标识",
+              "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
+            },
+            "revision_id": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "演示文稿的版本号，-1 表示最新版本",
+              "default": -1,
+              "example": -1,
+              "max": "2147483647",
+              "min": "-1"
+            },
+            "idempotency_key": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "幂等标记",
+              "example": "xx-slide-01"
+            }
+          },
+          "parameterOrder": [
+            "xml_presentation_id"
+          ],
+          "requestBody": {
+            "slide": {
+              "type": "object",
+              "description": "页面内容",
+              "required": true,
+              "ref": "slide",
+              "properties": {
+                "slide_id": {
+                  "type": "string",
+                  "description": "幻灯片页面的 short ID",
+                  "required": false,
+                  "example": "sld_xxx"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "幻灯片页面的 XML 内容",
+                  "required": false,
+                  "example": "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"
+                }
+              }
+            },
+            "before_slide_id": {
+              "type": "string",
+              "description": "插入到指定页面之前，为空时插入到末尾",
+              "required": false,
+              "example": "slidecn20m4XJ1hJXXxXXX"
+            }
+          },
+          "responseBody": {
+            "slide_id": {
+              "type": "string",
+              "description": "新创建页面的唯一标识",
+              "required": false,
+              "example": "slidecn20m4XJ1hJXXxXXX"
+            },
+            "revision_id": {
+              "type": "integer",
+              "description": "演示文稿的最新版本号",
+              "required": false,
+              "example": 100
+            },
+            "issues": {
+              "type": "string",
+              "description": "XML语法问题",
+              "required": false,
+              "example": "XML sanitize issues: "
+            }
+          },
+          "scopes": [
+            "slides:presentation:update",
+            "slides:presentation:write_only"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=slides_ai&resource=xml_presentation.slide&version=v1"
+        },
+        "delete": {
+          "id": "xml_presentation.slide.delete",
+          "path": "xml_presentations/{xml_presentation_id}/slide",
+          "httpMethod": "DELETE",
+          "description": "在指定 XML 演示文稿下删除页面",
+          "parameters": {
+            "xml_presentation_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "演示文稿唯一标识",
+              "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
+            },
+            "slide_id": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "页面唯一标识",
+              "example": "slidecn20m4XJ1hJXXxXXX"
+            },
+            "revision_id": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "演示文稿的版本号，-1 表示最新版本",
+              "default": -1,
+              "example": -1,
+              "max": "2147483647",
+              "min": "-1"
+            },
+            "idempotency_key": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "幂等标记",
+              "example": "xx-slide-01"
+            }
+          },
+          "parameterOrder": [
+            "xml_presentation_id"
+          ],
+          "responseBody": {
+            "revision_id": {
+              "type": "integer",
+              "description": "演示文稿的最新版本号",
+              "required": false,
+              "example": 100
+            }
+          },
+          "scopes": [
+            "slides:presentation:update",
+            "slides:presentation:write_only"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=slides_ai&resource=xml_presentation.slide&version=v1"
+        },
+        "get": {
+          "id": "xml_presentation.slide.get",
+          "path": "xml_presentations/{xml_presentation_id}/slide",
+          "httpMethod": "GET",
+          "description": "获取指定 XML 演示文稿的单个页面 XML 内容",
+          "parameters": {
+            "xml_presentation_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "演示文稿唯一标识",
+              "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
+            },
+            "slide_id": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "页面唯一标识",
+              "example": "slidecn20m4XJ1hJXXxXXX"
+            },
+            "revision_id": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "演示文稿的版本号，-1 表示最新版本",
+              "default": -1,
+              "example": -1,
+              "max": "2147483647",
+              "min": "-1"
+            },
+            "slide_number": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "幻灯片页号",
+              "example": 1,
+              "max": "2147483647",
+              "min": "0"
+            }
+          },
+          "parameterOrder": [
+            "xml_presentation_id"
+          ],
+          "responseBody": {
+            "slide": {
+              "type": "object",
+              "description": "页面内容",
+              "required": false,
+              "ref": "slide",
+              "properties": {
+                "slide_id": {
+                  "type": "string",
+                  "description": "幻灯片页面的 short ID",
+                  "required": false,
+                  "example": "sld_xxx"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "幻灯片页面的 XML 内容",
+                  "required": false,
+                  "example": "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"
+                }
+              }
+            },
+            "revision_id": {
+              "type": "integer",
+              "description": "演示文稿的版本号",
+              "required": false,
+              "example": 100
+            }
+          },
+          "scopes": [
+            "slides:presentation:read"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=slides_ai&resource=xml_presentation.slide&version=v1"
+        },
+        "replace": {
+          "id": "xml_presentation.slide.replace",
+          "path": "xml_presentations/{xml_presentation_id}/slide/replace",
+          "httpMethod": "POST",
+          "description": "对指定 XML 演示文稿页面进行元素级别的局部替换",
+          "parameters": {
+            "xml_presentation_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "演示文稿唯一标识",
+              "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
+            },
+            "slide_id": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "页面唯一标识",
+              "example": "slidecn20m4XJ1hJXXxXXX"
+            },
+            "revision_id": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "演示文稿的版本号，-1 表示最新版本",
+              "default": -1,
+              "example": -1,
+              "max": "2147483647",
+              "min": "-1"
+            }
+          },
+          "parameterOrder": [
+            "xml_presentation_id"
+          ],
+          "requestBody": {
+            "parts": {
+              "type": "array",
+              "description": "替换操作列表，每项包含一个元素级别的编辑操作，最少1条，最多200条",
+              "required": true,
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "description": "操作类型：block_replace（块替换）、block_insert（块插入）",
+                  "required": true,
+                  "example": "block_replace"
+                },
+                "replacement": {
+                  "type": "string",
+                  "description": "替换内容，block_replace 时使用",
+                  "required": false,
+                  "example": "test from1"
+                },
+                "block_id": {
+                  "type": "string",
+                  "description": "目标块的唯一标识，block_replace 时使用，格式为 3 位 short element ID",
+                  "required": false,
+                  "example": "bab"
+                },
+                "insertion": {
+                  "type": "string",
+                  "description": "要插入的 XML 元素片段，block_insert 时使用",
+                  "required": false,
+                  "example": "<shape><p>inserted element</p></shape>"
+                },
+                "insert_before_block_id": {
+                  "type": "string",
+                  "description": "在指定块之前插入，为空时追加到末尾，block_insert 时使用，格式为 3 位 short element ID",
+                  "required": false,
+                  "example": "baa"
+                }
+              }
+            },
+            "comment": {
+              "type": "string",
+              "description": "操作备注",
+              "required": false,
+              "example": "批量替换文本内容"
+            },
+            "idempotency_key": {
+              "type": "string",
+              "description": "幂等标记",
+              "required": false,
+              "example": "xx-slide-01"
+            }
+          },
+          "responseBody": {
+            "revision_id": {
+              "type": "integer",
+              "description": "演示文稿的最新版本号",
+              "required": false,
+              "example": 100
+            },
+            "failed_part_index": {
+              "type": "integer",
+              "description": "失败的操作在 parts 数组中的索引，整个请求失败时返回",
+              "required": false,
+              "example": 0
+            },
+            "failed_reason": {
+              "type": "string",
+              "description": "失败原因描述",
+              "required": false,
+              "example": "pattern not found"
+            }
+          },
+          "scopes": [
+            "slides:presentation:update",
+            "slides:presentation:write_only"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=replace&project=slides_ai&resource=xml_presentation.slide&version=v1"
+        }
+      }
+    },
+    "xml_presentation.slide_image": {
+      "methods": {
+        "list": {
+          "id": "xml_presentation.slide_image.list",
+          "path": "xml_presentations/{xml_presentation_id}/slide_images",
+          "httpMethod": "POST",
+          "description": "获取幻灯片截图",
+          "parameters": {
+            "xml_presentation_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "演示文稿唯一标识",
+              "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
+            }
+          },
+          "parameterOrder": [
+            "xml_presentation_id"
+          ],
+          "requestBody": {
+            "slide_ids": {
+              "type": "array",
+              "description": "幻灯片页面shortID列表",
+              "required": false
+            },
+            "slide_numbers": {
+              "type": "array",
+              "description": "幻灯片页号",
+              "required": false
+            }
+          },
+          "responseBody": {
+            "slide_images": {
+              "type": "array",
+              "description": "页面截图列表",
+              "required": false,
+              "properties": {
+                "slide_id": {
+                  "type": "string",
+                  "description": "幻灯片页面的 short ID",
+                  "required": false,
+                  "example": "sld_xxx"
+                },
+                "format": {
+                  "type": "integer",
+                  "description": "图片编码格式",
+                  "required": false,
+                  "options": [
+                    {
+                      "value": 1,
+                      "description": "PNG图片的Base64编码"
+                    },
+                    {
+                      "value": 2,
+                      "description": "JPEG图片的Base64编码"
+                    }
+                  ],
+                  "enum": [
+                    1,
+                    2
+                  ],
+                  "enumName": "image_format"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "图片内容",
+                  "required": false,
+                  "example": "编码或者url"
+                },
+                "slide_number": {
+                  "type": "integer",
+                  "description": "幻灯片页面的页号",
+                  "required": false,
+                  "example": 1,
+                  "max": "2147483647",
+                  "min": "1"
+                }
+              }
+            },
+            "total_count": {
+              "type": "string",
+              "description": "幻灯片总数量，用于分页统计场景",
+              "required": false,
+              "example": "10"
+            },
+            "revision": {
+              "type": "string",
+              "description": "演示文稿的版本标识，用于判断内容是否更新",
+              "required": false,
+              "example": "1"
+            }
+          },
+          "scopes": [
+            "slides:presentation:screenshot"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=slides_ai&resource=xml_presentation.slide_image&version=v1"
+        },
+        "render": {
+          "id": "xml_presentation.slide_image.render",
+          "path": "slide_image/render",
+          "httpMethod": "POST",
+          "description": "渲染页面截图为图片",
+          "requestBody": {
+            "content": {
+              "type": "string",
+              "description": "slide 内容",
+              "required": true,
+              "example": "<slide>xx</slide>"
+            }
+          },
+          "responseBody": {
+            "slide_image": {
+              "type": "object",
+              "description": "幻灯片页面截图",
+              "required": false,
+              "ref": "slide_image",
+              "properties": {
+                "slide_id": {
+                  "type": "string",
+                  "description": "幻灯片页面的 short ID",
+                  "required": false,
+                  "example": "sld_xxx"
+                },
+                "format": {
+                  "type": "integer",
+                  "description": "图片编码格式",
+                  "required": false,
+                  "options": [
+                    {
+                      "value": 1,
+                      "description": "PNG图片的Base64编码"
+                    },
+                    {
+                      "value": 2,
+                      "description": "JPEG图片的Base64编码"
+                    }
+                  ],
+                  "enum": [
+                    1,
+                    2
+                  ],
+                  "enumName": "image_format"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "图片内容",
+                  "required": false,
+                  "example": "编码或者url"
+                },
+                "slide_number": {
+                  "type": "integer",
+                  "description": "幻灯片页面的页号",
+                  "required": false,
+                  "example": 1,
+                  "max": "2147483647",
+                  "min": "1"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "slides:presentation:screenshot"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=render&project=slides_ai&resource=xml_presentation.slide_image&version=v1"
+        }
+      }
+    }
+  }
+}

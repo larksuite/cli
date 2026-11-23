@@ -1,8 +1,8 @@
 # Example: read-only policy
 
 A policy plugin that installs a `Rule` allowing only `docs/*` and
-`im/*` read commands. Any write command produces a structured
-`command_denied` envelope.
+`im/*` read commands. Any denied command produces a structured
+`failed_precondition` envelope with policy diagnostics.
 
 ## Build & run
 
@@ -15,26 +15,19 @@ go build -o readonly-cli .
 #   "source": "plugin",
 #   "source_name": "readonly",
 #   "denied_paths": N,
-#   "rule": {
+#   "rules": [{
 #     "name": "agent-readonly",
 #     "allow": ["docs/**", "im/**"],
 #     "deny": [],
 #     "max_risk": "read",
 #     "identities": [],
 #     "allow_unannotated": false
-#   }
+#   }]
 # }
 
-./readonly-cli docs +update --doc-token X --content Y
-# {"ok":false,"error":{
-#   "type":"command_denied",
-#   "detail":{
-#     "layer":"policy",
-#     "policy_source":"plugin:readonly",
-#     "rule_name":"agent-readonly",
-#     "reason_code":"write_not_allowed"
-#   }
-# }}
+./readonly-cli docs +update --doc X --content Y
+# {"ok":false,"error":{"type":"validation","subtype":"failed_precondition",
+#   "hint":"denied by policy policy (source plugin:readonly, ... reason_code write_not_allowed); ..."}}
 
 ./readonly-cli docs +fetch --doc-token X
 # Normal read response (assuming credentials)
@@ -51,6 +44,8 @@ go build -o readonly-cli .
 - `AllowUnannotated` is left default (false): unannotated commands
   are denied with `risk_not_annotated`. Set it to true if you need
   a gradual-adoption window for the lark-cli main tree.
+- A fork that wants denied commands to present as absent can opt in from
+  `main` with `cmd.ExecuteWithOptions(cmd.ConcealRestrictedCommands(...))`.
 
 ## Caveats
 

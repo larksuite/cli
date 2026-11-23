@@ -224,8 +224,8 @@ func TestDocResourceUpdateCoverUploadsFileAndReturnsFullTokenOnlyOnStdout(t *tes
 		}
 	}
 
-	if strings.Contains(stderr.String(), fileToken) {
-		t.Fatalf("stderr leaked full file_token: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no cover upload progress", stderr.String())
 	}
 	data := decodeDocResourceOutput(t, stdout).Data
 	if data["file_token"] != fileToken {
@@ -234,6 +234,68 @@ func TestDocResourceUpdateCoverUploadsFileAndReturnsFullTokenOnlyOnStdout(t *tes
 	cover := data["cover"].(map[string]interface{})
 	if cover["token"] != fileToken {
 		t.Fatalf("stdout cover.token = %v, want %s", cover["token"], fileToken)
+	}
+}
+
+func TestDocResourceUpdateCoverPatchFailureReportsUploadedState(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-cover-recovery-app"))
+	documentID := "doxcnCoverRecovery1"
+	fileToken := "file_cover_recovery_token"
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	if err := os.WriteFile("cover.png", []byte("png-data"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": fileToken},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/docx/v1/documents/" + documentID,
+		Body:   map[string]interface{}{"code": 1777002, "msg": "cover update failed"},
+	})
+
+	err := mountAndRunDocs(t, DocResourceUpdate, []string{
+		"+resource-update",
+		"--doc", documentID,
+		"--type", "cover",
+		"--file", "cover.png",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected cover PATCH failure, got nil")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty on cover PATCH failure", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want recovery in typed error only", stderr.String())
+	}
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Code != 1777002 {
+		t.Fatalf("code = %d, want preserved cover error code 1777002", problem.Code)
+	}
+	for _, want := range []string{
+		"phase=update_cover",
+		"document_id=" + documentID,
+		"upload_succeeded=true",
+		"file_token=" + fileToken,
+		"Reuse the uploaded file_token",
+	} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint = %q, want %q", problem.Hint, want)
+		}
 	}
 }
 
@@ -337,7 +399,7 @@ func TestDocResourceCoverDryRunsPlanAPIs(t *testing.T) {
 	if len(update.API) != 3 {
 		t.Fatalf("update dry-run API count = %d, want 3", len(update.API))
 	}
-	if got := update.API[0].URL; got != "/open-apis/wiki/v2/spaces/get_node" {
+	if got := update.API[0].URL; got != "/open-apis/wiki/v2/spaces/node_by_token" {
 		t.Fatalf("wiki resolve URL = %q", got)
 	}
 	if got := update.API[1].URL; got != "/open-apis/drive/v1/medias/upload_all" {
@@ -386,6 +448,7 @@ func TestValidateDocCoverURLHost(t *testing.T) {
 
 func TestDocCoverIPSafetyBlocksSpecialRanges(t *testing.T) {
 	for _, rawIP := range []string{
+		"0.1.2.3",
 		"10.0.0.1",
 		"127.0.0.1",
 		"169.254.1.1",
@@ -406,17 +469,26 @@ func TestDocCoverIPSafetyBlocksSpecialRanges(t *testing.T) {
 	}
 }
 
-func TestDocCoverHTTPClientDoesNotUseProxy(t *testing.T) {
-	baseTransport := &http.Transport{Proxy: http.ProxyFromEnvironment}
+func TestDocCoverHTTPClientPreservesProxyPolicy(t *testing.T) {
+	proxyErr := errors.New("proxy selected")
+	directErr := errors.New("direct dialed")
+	baseTransport := &http.Transport{
+		Proxy: func(*http.Request) (*url.URL, error) {
+			return nil, proxyErr
+		},
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			return nil, directErr
+		},
+	}
 	baseClient := &http.Client{Transport: baseTransport}
 
 	client := newDocCoverHTTPClient(baseClient)
-	transport, ok := client.Transport.(*http.Transport)
-	if !ok {
-		t.Fatalf("client transport = %T, want *http.Transport", client.Transport)
+	req, err := http.NewRequest(http.MethodGet, "https://203.0.113.10/cover.png", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if transport.Proxy != nil {
-		t.Fatal("cover URL downloader must not inherit proxy settings")
+	if _, err := client.Transport.RoundTrip(req); !errors.Is(err, proxyErr) {
+		t.Fatalf("RoundTrip() error = %v, want proxy policy error %v", err, proxyErr)
 	}
 	if baseTransport.Proxy == nil {
 		t.Fatal("base transport proxy was mutated")
@@ -443,21 +515,6 @@ func TestDocCoverHTTPClientRedirectValidation(t *testing.T) {
 	}
 	if err := client.CheckRedirect(downgrade, []*http.Request{prev}); err == nil {
 		t.Fatal("expected https-to-http redirect error")
-	}
-}
-
-func TestDocCoverConnRemoteIPValidation(t *testing.T) {
-	if err := validateDocCoverConnRemoteIP(nil); err == nil {
-		t.Fatal("expected nil connection error")
-	}
-	if err := validateDocCoverConnRemoteIP(docCoverRemoteAddrConn{}); err == nil {
-		t.Fatal("expected missing remote address error")
-	}
-	if err := validateDocCoverConnRemoteIP(docCoverRemoteAddrConn{addr: testAddr("not-ip")}); err == nil {
-		t.Fatal("expected invalid remote IP error")
-	}
-	if err := validateDocCoverConnRemoteIP(docCoverRemoteAddrConn{addr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 443}}); err == nil {
-		t.Fatal("expected local remote IP error")
 	}
 }
 
@@ -662,16 +719,6 @@ func (c docCoverRemoteAddrConn) RemoteAddr() net.Addr {
 	return c.addr
 }
 
-type testAddr string
-
-func (a testAddr) Network() string {
-	return "test"
-}
-
-func (a testAddr) String() string {
-	return string(a)
-}
-
 type repeatByteReader byte
 
 func (r repeatByteReader) Read(p []byte) (int, error) {
@@ -709,4 +756,62 @@ func decodeDocResourceOutput(t *testing.T, stdout *bytes.Buffer) docResourceOutp
 		t.Fatalf("decode resource output: %v; output=%s", err, stdout.String())
 	}
 	return out
+}
+
+type opaqueDocCoverTransport struct {
+	called bool
+}
+
+func (t *opaqueDocCoverTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.called = true
+	return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody, Request: req}, nil
+}
+
+func TestNewDocCoverHTTPClientFailsClosedForOpaqueTransport(t *testing.T) {
+	opaque := &opaqueDocCoverTransport{}
+	client := newDocCoverHTTPClient(&http.Client{Transport: opaque})
+	req, err := http.NewRequest(http.MethodGet, "https://public.example/cover.png", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.Transport.RoundTrip(req)
+	if err == nil || !strings.Contains(err.Error(), "cannot safely clone download transport") {
+		t.Fatalf("RoundTrip() error = %v, want fail-closed clone error", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("RoundTrip() problem = %#v, %v; want internal/unknown", problem, ok)
+	}
+	if opaque.called {
+		t.Fatal("opaque transport was called after safe cloning failed")
+	}
+}
+
+func TestNewDocCoverHTTPClientGuardsLegacyDialTLS(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	base := &http.Transport{DialTLS: func(_, _ string) (net.Conn, error) {
+		return tls.Dial("tcp", server.Listener.Addr().String(), &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // local TLS server verifies the connection guard.
+	}}
+	client := newDocCoverHTTPClient(&http.Client{Transport: base})
+	req, err := http.NewRequest(http.MethodGet, "https://public.example/cover.png", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.Transport.RoundTrip(req)
+	if err == nil || !strings.Contains(err.Error(), "local/internal host is not allowed") {
+		t.Fatalf("RoundTrip() error = %v, want legacy DialTLS IP guard", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryPolicy || problem.Subtype != errs.SubtypeAccessDenied {
+		t.Fatalf("RoundTrip() problem = %#v, %v; want policy/access_denied", problem, ok)
+	}
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(err, &policyErr) || policyErr.Cause == nil {
+		t.Fatalf("RoundTrip() error = %T, want policy error with cause", err)
+	}
 }

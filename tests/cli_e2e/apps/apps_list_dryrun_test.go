@@ -31,10 +31,10 @@ func TestAppsListDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "GET", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "20", gjson.Get(result.Stdout, "api.0.params.page_size").String())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.params.page_token").Exists(),
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "20", clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.page_token").Exists(),
 			"empty page_token must be omitted")
 	})
 
@@ -48,7 +48,7 @@ func TestAppsListDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, "50", gjson.Get(result.Stdout, "api.0.params.page_size").String())
+		assert.Equal(t, "50", clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").String())
 	})
 
 	t.Run("WithPageToken", func(t *testing.T) {
@@ -61,8 +61,8 @@ func TestAppsListDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, "cursor_abc", gjson.Get(result.Stdout, "api.0.params.page_token").String())
-		assert.Equal(t, "20", gjson.Get(result.Stdout, "api.0.params.page_size").String())
+		assert.Equal(t, "cursor_abc", clie2e.DryRunGet(result.Stdout, "api.0.params.page_token").String())
+		assert.Equal(t, "20", clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").String())
 	})
 
 	t.Run("WithKeywordOwnershipAppType", func(t *testing.T) {
@@ -77,9 +77,9 @@ func TestAppsListDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, "survey", gjson.Get(result.Stdout, "api.0.params.keyword").String())
-		assert.Equal(t, "mine", gjson.Get(result.Stdout, "api.0.params.ownership").String())
-		assert.Equal(t, "html", gjson.Get(result.Stdout, "api.0.params.app_type").String())
+		assert.Equal(t, "survey", clie2e.DryRunGet(result.Stdout, "api.0.params.keyword").String())
+		assert.Equal(t, "mine", clie2e.DryRunGet(result.Stdout, "api.0.params.ownership").String())
+		assert.Equal(t, "html", clie2e.DryRunGet(result.Stdout, "api.0.params.app_type").String())
 	})
 
 	t.Run("OmitsEmptyFilters", func(t *testing.T) {
@@ -92,8 +92,8 @@ func TestAppsListDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		for _, p := range []string{"keyword", "ownership", "app_type"} {
-			assert.False(t, gjson.Get(result.Stdout, "api.0.params."+p).Exists(),
+		for _, p := range []string{"keyword", "ownership", "app_type", "owner_id"} {
+			assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params."+p).Exists(),
 				"empty %s must be omitted", p)
 		}
 	})
@@ -134,6 +134,35 @@ func TestAppsListDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, "-1", gjson.Get(result.Stdout, "api.0.params.page_size").String())
+		assert.Equal(t, "-1", clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").String())
+	})
+
+	t.Run("WithOwner", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"apps", "+list", "--owner-id", "ou_speaker", "--dry-run"},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		assert.Equal(t, "ou_speaker", clie2e.DryRunGet(result.Stdout, "api.0.params.owner_id").String())
+	})
+
+	t.Run("RejectsInvalidOwner", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"apps", "+list", "--owner-id", "12345", "--dry-run"},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 2)
+		require.Empty(t, result.Stdout)
+		require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
+		require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String())
+		require.Equal(t, "--owner-id", gjson.Get(result.Stderr, "error.param").String())
 	})
 }

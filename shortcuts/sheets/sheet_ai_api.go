@@ -7,9 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -70,23 +73,34 @@ func callTool(
 		return nil, err
 	}
 
-	raw, err := runtime.RawAPI("POST", toolInvokePath(token, kind), nil, body)
+	data, err := callToolWithTransientRetry(ctx, runtime, token, kind, body)
 	if err != nil {
+		// A classified business error (non-zero API code) carries the tool's
+		// own code and raw msg. Rewrite the typed error in place: the Message
+		// gains tool context and flattenToolErrorMsg unwraps batch_update's
+		// double-escaped failures payload. The classified Subtype passes
+		// through untouched — rate_limit / invalid_parameters / not_found are
+		// facts an agent routes on, and stamping them server_error would
+		// misread them as backend faults. Only SubtypeUnknown (codes absent
+		// from the code table, i.e. most of sheet-ai's own code space) is
+		// pinned to SubtypeServerError, preserving callTool's long-standing
+		// envelope for those. Mutating in place keeps the classifier's
+		// log_id / hint / retryable, which a rebuilt error would drop.
+		// Transport, HTTP-status, and auth errors are already correctly typed
+		// by CallAPITyped, so they pass through untouched.
+		if p, ok := errs.ProblemOf(err); ok && p.Category == errs.CategoryAPI {
+			// The recovery prescription depends on the execution mode the batch
+			// was sent with; non-batch tools simply lack the key (false).
+			continueOnError, _ := input["continue_on_error"].(bool)
+			flat := flattenToolErrorMsg(p.Message, continueOnError, callerAuthoredOperations(runtime.Command()))
+			if p.Subtype == errs.SubtypeUnknown {
+				p.Subtype = errs.SubtypeServerError
+			}
+			p.Message = fmt.Sprintf("tool %q failed: [%d] %s", toolName, p.Code, flat)
+			annotateMergedRegionConflict(p)
+		}
 		return nil, err
 	}
-
-	envelope, ok := raw.(map[string]interface{})
-	if !ok {
-		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
-			"tool %q: unexpected non-JSON-object response: %v", toolName, raw)
-	}
-	code, _ := util.ToFloat64(envelope["code"])
-	if code != 0 {
-		msg, _ := envelope["msg"].(string)
-		return nil, errs.NewAPIError(errs.SubtypeServerError, "tool %q failed: [%d] %s", toolName, int(code), msg).
-			WithCode(int(code))
-	}
-	data, _ := envelope["data"].(map[string]interface{})
 	rawOutput, _ := data["output"].(string)
 	if rawOutput == "" {
 		return nil, nil
@@ -99,6 +113,253 @@ func callTool(
 	}
 	return out, nil
 }
+
+// mergedRegionBoundsRE matches the 0-based bounds the backend prints for the
+// merged region a merge would overlap: "[0,0-0,6]" is row 0 col 0 through row
+// 0 col 6, i.e. A1:G1. Callers work in A1 notation and this is the one piece
+// of the message they cannot act on as printed.
+var mergedRegionBoundsRE = regexp.MustCompile(`\[(\d+),(\d+)-(\d+),(\d+)\]`)
+
+// annotateMergedRegionConflict attaches the commands that resolve a merged-cell
+// rejection. The backend already says what went wrong and names the obstacle —
+// the top-left of the region a write landed inside, or the bounds of the region
+// a merge would overlap — but never in the form the caller passes back, and
+// never with the command that clears it. 08-29..31 reflow: 193 rejections,
+// 100 writing into a merged region and 93 merging across one, the largest
+// remaining cluster on any command.
+//
+// The message is read, never used to rewrite the request: auto-redirecting a
+// write to a merge's top-left would put data where the caller did not ask for
+// it, and auto-unmerging would discard a merge nobody agreed to lose. A parse
+// that finds nothing simply adds no hint.
+func annotateMergedRegionConflict(p *errs.Problem) {
+	if p.Hint != "" {
+		return
+	}
+	msg := strings.ToLower(p.Message)
+	if !strings.Contains(msg, "merge") {
+		return
+	}
+	switch {
+	case strings.Contains(msg, "overlaps existing merged cells"):
+		hint := "clear the existing merge first, then re-issue this call: +cells-unmerge --range <the region above>"
+		if m := mergedRegionBoundsRE.FindStringSubmatch(p.Message); m != nil {
+			if rng, ok := a1RangeFromZeroBased(m[1], m[2], m[3], m[4]); ok {
+				hint = fmt.Sprintf("clear the existing merge first, then re-issue this call: +cells-unmerge --range %q", rng)
+			}
+		}
+		p.Hint = hint
+	case strings.Contains(msg, "merged region"):
+		p.Hint = "a merged region takes its content from its top-left cell: write there instead, or clear the merge first with +cells-unmerge --range <the region above> and then write the cell you named"
+	}
+}
+
+// a1RangeFromZeroBased renders 0-based row/column bounds as the A1 range the
+// caller can pass back. Reports false on anything unparsable, so a changed
+// message format costs a hint rather than producing a wrong one.
+func a1RangeFromZeroBased(r1, c1, r2, c2 string) (string, bool) {
+	nums := make([]int, 0, 4)
+	for _, raw := range []string{r1, c1, r2, c2} {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			return "", false
+		}
+		nums = append(nums, n)
+	}
+	if nums[2] < nums[0] || nums[3] < nums[1] {
+		return "", false
+	}
+	return fmt.Sprintf("%s%d:%s%d",
+		columnIndexToLetter(nums[1]), nums[0]+1,
+		columnIndexToLetter(nums[3]), nums[2]+1), true
+}
+
+// ─── transient-failure retry (reads only) ─────────────────────────────
+
+// readRetryAttempts is the total number of tries a read tool call gets, and
+// readRetryBackoff the pause before the second one (doubled before the
+// third). Two extra tries at well under a second each stay inside the round
+// trip an agent already budgeted for, while covering the single-blip failures
+// that make up this class: 08-29..31 reflow, +csv-get's largest cause was
+// "API call failed: server time out error" at 25 of 71 rejections, with more
+// on +cells-get and +workbook-info, each on a command that was written
+// correctly and succeeded when the agent reissued it by hand.
+const (
+	readRetryAttempts = 3
+	readRetryBackoff  = 400 * time.Millisecond
+)
+
+// callToolWithTransientRetry reissues a READ tool call that failed for a
+// transient reason. Writes are never retried: this API has no idempotency
+// key, so a create that timed out after the backend committed it would be
+// committed twice — which is why the transport-level RetryTransport is
+// installed with MaxRetries at 0 and why this sits here, where the read/write
+// classification is already known, rather than in the shared transport.
+func callToolWithTransientRetry(
+	ctx context.Context,
+	runtime *common.RuntimeContext,
+	token string,
+	kind ToolKind,
+	body map[string]interface{},
+) (map[string]interface{}, error) {
+	attempts := 1
+	if kind == ToolKindRead {
+		attempts = readRetryAttempts
+	}
+	backoff := readRetryBackoff
+	var data map[string]interface{}
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return data, err
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+		}
+		data, err = runtime.CallAPITyped("POST", toolInvokePath(token, kind), nil, body)
+		if err == nil || !isTransientToolFailure(err) {
+			return data, err
+		}
+	}
+	return data, err
+}
+
+// isTransientToolFailure reports whether an error is worth reissuing an
+// identical read for. Two signals, because the backend splits this class
+// across two layers: the typed Retryable flag (5xx and transport faults, set
+// by the shared classifier) and the tool's own message, since a sheet-ai tool
+// answers a timeout inside a 200 envelope with a business code the code table
+// does not carry — "server time out error" verbatim, which no client can
+// classify except by its text.
+//
+// A rate limit is excluded even though the classifier marks it retryable: the
+// server is asking for less traffic, and a fixed sub-second backoff answers
+// that by sending more. It surfaces immediately instead, carrying the
+// subtype an agent can pace on.
+func isTransientToolFailure(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return false
+	}
+	if p.Subtype == errs.SubtypeRateLimit {
+		return false
+	}
+	if p.Retryable {
+		return true
+	}
+	msg := strings.ToLower(p.Message)
+	for _, phrase := range []string{"server time out error", "data not ready"} {
+		if strings.Contains(msg, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// toolReportedZeroApplied reports whether a failed batch says, in the
+// backend's own words, that none of its operations were applied. Anything
+// else — a partial "N succeeded", a transport failure, a message that never
+// mentions the count — leaves the sheet in a state only a read-back settles,
+// and must not be described as untouched.
+//
+// " 0 succeeded" is the same test flattenToolErrorMsg uses to decide whether
+// to prescribe a partial-failure recovery, kept in one vocabulary so the two
+// cannot disagree about what a failed batch left behind.
+func toolReportedZeroApplied(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return false
+	}
+	return strings.Contains(p.Message, "succeeded") && strings.Contains(p.Message, " 0 succeeded")
+}
+
+// flattenToolErrorMsg unwraps the nested-escaped-JSON error payload some
+// sheet-ai tools put in msg — batch_update in particular wraps its result as
+// {"error":"{\"message\":\"batch_update: N succeeded, M failed\",
+// \"failures\":[…]}","errorType":…,"data":{…}} — into one readable line
+// naming each failed operation. Eval traces show agents (and even the eval
+// aggregator) failing to extract the real cause from the double-escaped
+// form. Anything that doesn't match the nested shape passes through
+// untouched.
+//
+// continueOnError is the execution mode the batch was sent with: it decides
+// the recovery prescription, because a single listed failure only implies
+// "nothing after it ran" under fail-fast.
+//
+// callerAuthoredOps says whether the operations array the server indexes into
+// is the one the CALLER wrote. Only +batch-update's --operations is; every
+// other batch_update user (+styles-put, +cells-set --writes, +dim-delete
+// --ranges, the fan-out stampers) synthesizes the array client-side, and
+// +styles-put coalesces while +dim-delete deliberately re-sorts descending —
+// so "operations[3]" there names nothing the caller can find, and
+// "resend operations[3:]" is not a command they can issue. Those callers get
+// the per-op detail (still the best available description of what failed) plus
+// a generic no-rollback warning, never an index-based resend instruction.
+func flattenToolErrorMsg(msg string, continueOnError, callerAuthoredOps bool) string {
+	trimmed := strings.TrimSpace(msg)
+	if !strings.HasPrefix(trimmed, "{") {
+		return msg
+	}
+	var outer struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal([]byte(trimmed), &outer) != nil || strings.TrimSpace(outer.Error) == "" {
+		return msg
+	}
+	inner := strings.TrimSpace(outer.Error)
+	var detail struct {
+		Message  string `json:"message"`
+		Failures []struct {
+			Index    int    `json:"index"`
+			ToolName string `json:"tool_name"`
+			Error    string `json:"error"`
+		} `json:"failures"`
+	}
+	if strings.HasPrefix(inner, "{") && json.Unmarshal([]byte(inner), &detail) == nil && detail.Message != "" {
+		if len(detail.Failures) == 0 {
+			return detail.Message
+		}
+		parts := make([]string, 0, len(detail.Failures))
+		firstFailed := detail.Failures[0].Index
+		for _, f := range detail.Failures {
+			parts = append(parts, fmt.Sprintf("operations[%d] (%s): %s", f.Index, f.ToolName, f.Error))
+			if f.Index < firstFailed {
+				firstFailed = f.Index
+			}
+		}
+		out := detail.Message + " — " + strings.Join(parts, "; ")
+		// Partial failure is NOT rolled back server-side: the succeeded sub-ops
+		// stay applied. Spell out the recovery so agents don't resend the whole
+		// batch and double-apply the successes (observed in eval traces). Only
+		// under fail-fast does a single failure mean nothing after it ran —
+		// resend from that index. Under continue-on-error the later operations
+		// already executed, so even a single listed failure must be resent
+		// alone; prescribing the tail there would double-apply the successes.
+		if strings.Contains(detail.Message, "succeeded") &&
+			!strings.Contains(detail.Message, " 0 succeeded") {
+			switch {
+			case !callerAuthoredOps:
+				// Client-side expansion: the indexes above are internal, so
+				// prescribe a read-back instead of an un-issuable resend.
+				out += "; note: this command expands into the operations above client-side, so their indexes are not something you can resend directly. Succeeded operations stay applied (no rollback) — read the affected area back (+sheet-info / +cells-get), then re-issue only the part that did not land"
+			case !continueOnError && len(detail.Failures) == 1:
+				out += fmt.Sprintf("; note: succeeded operations stay applied (no rollback) — fix the failure and resend only operations[%d:] onward, do not resend the whole batch", firstFailed)
+			default:
+				out += "; note: succeeded operations stay applied (no rollback) — fix and resend only the failed operations listed above, do not resend the whole batch"
+			}
+		}
+		return out
+	}
+	return inner
+}
+
+// callerAuthoredOperations reports whether `command` is the one shortcut whose
+// batch_update operations array the caller wrote by hand. Everything else
+// synthesizes it, so server-reported operation indexes are internal detail
+// there (see flattenToolErrorMsg).
+func callerAuthoredOperations(command string) bool { return command == "+batch-update" }
 
 // invokeToolDryRun renders the One-OpenAPI request the shortcut would send.
 // The wire-format body (with input serialized to a JSON string) is preserved

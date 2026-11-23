@@ -7,7 +7,10 @@
 // carrying their own copy.
 package suggest
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Levenshtein computes the classic edit distance between two strings. It is
 // rune-aware, so it is correct for multi-byte input.
@@ -49,6 +52,13 @@ func Levenshtein(a, b string) int {
 // semantically close but lexically far (e.g. "+cells-find" vs "+cells-search",
 // "--with-styles" vs nothing close), where the common prefix is the strongest
 // signal of intent that raw edit distance misses.
+//
+// A hallucinated name is also often a compound welded from real names ("sql-file"
+// from "sql" + "file"). Prefix and edit distance both miss the trailing half:
+// "file" shares no prefix with "sql-file" and sits 4 edits away, past the budget,
+// so the one candidate naming what the caller actually wanted got dropped while
+// the leading half survived on prefix alone. Segment-exact candidates are
+// therefore always plausible, however far the whole string drifted.
 func Closest(typed string, candidates []string, maxN int) []string {
 	type scored struct {
 		name   string
@@ -56,13 +66,15 @@ func Closest(typed string, candidates []string, maxN int) []string {
 		dist   int
 	}
 	limit := editLimit(typed)
+	segments := hyphenSegments(typed)
 	ranked := make([]scored, 0, len(candidates))
 	for _, c := range candidates {
 		p := sharedPrefixLen(typed, c)
 		d := Levenshtein(typed, c)
-		// Keep only plausible matches: a meaningful shared prefix, or an edit
-		// distance within budget. Drop everything else so the hint stays short.
-		if p >= 3 || d <= limit {
+		// Keep only plausible matches: a meaningful shared prefix, an edit
+		// distance within budget, or an exact hit on one segment of a compound.
+		// Drop everything else so the hint stays short.
+		if p >= 3 || d <= limit || segments[c] {
 			ranked = append(ranked, scored{name: c, prefix: p, dist: d})
 		}
 	}
@@ -101,4 +113,22 @@ func sharedPrefixLen(a, b string) int {
 		n++
 	}
 	return n
+}
+
+// hyphenSegments splits a hyphenated name into its parts and returns them as a
+// set, so a candidate that exactly equals one part can be recognized in O(1).
+// Single-segment names yield an empty set: without a hyphen there is no compound
+// to decompose, and treating the whole string as a "segment" would just restate
+// the equality case Closest already handles at distance 0.
+func hyphenSegments(typed string) map[string]bool {
+	if !strings.Contains(typed, "-") {
+		return nil
+	}
+	out := make(map[string]bool, 2)
+	for _, seg := range strings.Split(typed, "-") {
+		if seg != "" {
+			out[seg] = true
+		}
+	}
+	return out
 }

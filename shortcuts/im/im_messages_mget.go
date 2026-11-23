@@ -23,12 +23,12 @@ var ImMessagesMGet = common.Shortcut{
 	Description: "Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies",
 	Risk:        "read",
 	Scopes:      []string{"im:message:readonly"},
-	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read", "contact:user.basic_profile:readonly"},
-	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read", "contact:user.base:readonly"},
+	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
+	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "message-ids", Desc: "message IDs, comma-separated (om_xxx,om_yyy)", Required: true},
+		{Name: "message-ids", Aliases: []string{"message-id"}, Desc: "message IDs, comma-separated (om_xxx,om_yyy)", Required: true},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	},
@@ -46,14 +46,15 @@ var ImMessagesMGet = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		ids := common.SplitCSV(runtime.Str("message-ids"))
+		const param = "--message-ids"
 		if len(ids) == 0 {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-ids is required (comma-separated om_xxx)").WithParam("--message-ids")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-ids is required (comma-separated om_xxx)").WithParam(param)
 		}
 		if len(ids) > maxMGetMessageIDs {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-ids supports at most %d IDs per request (got %d)", maxMGetMessageIDs, len(ids)).WithParam("--message-ids")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-ids supports at most %d IDs per request (got %d)", maxMGetMessageIDs, len(ids)).WithParam(param)
 		}
 		for _, id := range ids {
-			if _, err := validateMessageID(id); err != nil {
+			if _, err := validateMessageIDForParam(id, param); err != nil {
 				return err
 			}
 		}
@@ -77,12 +78,13 @@ var ImMessagesMGet = common.Shortcut{
 		// also pre-resolves every sub-item's sender open_id in one batched
 		// contact API call.
 		mergePrefetch := convertlib.PrefetchMergeForwardSubItems(runtime, rawItems, nameCache)
+		folderPrefetch := convertlib.PrefetchFolderChildren(runtime, rawItems)
 
 		downloadResources := runtime.Bool("download-resources")
 		messages := make([]map[string]interface{}, 0, len(rawItems))
 		for _, item := range rawItems {
 			m, _ := item.(map[string]interface{})
-			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources))
+			messages = append(messages, convertlib.FormatMessageItemWithFolderPrefetchOpts(m, runtime, nameCache, mergePrefetch, folderPrefetch, downloadResources))
 		}
 
 		convertlib.ResolveSenderNames(runtime, messages, nameCache)
@@ -112,8 +114,8 @@ var ImMessagesMGet = common.Shortcut{
 					"type":       msg["msg_type"],
 				}
 				if sender, ok := msg["sender"].(map[string]interface{}); ok {
-					if name, _ := sender["name"].(string); name != "" {
-						row["sender"] = name
+					if disp := senderDisplay(sender); disp != "" {
+						row["sender"] = disp
 					}
 				}
 				if content, _ := msg["content"].(string); content != "" {

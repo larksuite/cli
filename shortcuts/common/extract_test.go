@@ -4,6 +4,7 @@
 package common
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -42,6 +43,41 @@ func TestGetString(t *testing.T) {
 	}
 }
 
+func TestGetStringLoose(t *testing.T) {
+	m := map[string]interface{}{
+		"quoted":  "ou_abc123",
+		"jsonNum": json.Number("1234567890123456"), // the production path: dec.UseNumber()
+		"i":       int(42),
+		"i64":     int64(700123456789),
+		"f":       float64(1e-7), // would be "1e-07" under 'g'; the 'f' verb must keep it fixed-point
+		"nested": map[string]interface{}{
+			"num": json.Number("999"),
+		},
+	}
+
+	tests := []struct {
+		name string
+		keys []string
+		want string
+	}{
+		{"quoted string", []string{"quoted"}, "ou_abc123"},
+		{"json.Number keeps full precision", []string{"jsonNum"}, "1234567890123456"},
+		{"int", []string{"i"}, "42"},
+		{"int64", []string{"i64"}, "700123456789"},
+		{"float64 no scientific notation", []string{"f"}, "0.0000001"},
+		{"nested json.Number", []string{"nested", "num"}, "999"},
+		{"missing key", []string{"missing"}, ""},
+		{"empty keys", []string{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := GetStringLoose(m, tt.keys...); got != tt.want {
+				t.Errorf("GetStringLoose(%v) = %q, want %q", tt.keys, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestGetFloat(t *testing.T) {
 	m := map[string]interface{}{
 		"count": 42.0,
@@ -61,6 +97,24 @@ func TestGetFloat(t *testing.T) {
 	}
 	if got := GetFloat(m); got != 0 {
 		t.Errorf("GetFloat() = %f, want 0", got)
+	}
+}
+
+func TestGetFloatOKDistinguishesMalformedValuesFromZero(t *testing.T) {
+	t.Parallel()
+
+	m := map[string]interface{}{
+		"zero":   float64(0),
+		"null":   nil,
+		"string": "0",
+	}
+	if got, ok := GetFloatOK(m, "zero"); !ok || got != 0 {
+		t.Fatalf("GetFloatOK(zero) = (%v, %t), want (0, true)", got, ok)
+	}
+	for _, key := range []string{"null", "string", "missing"} {
+		if got, ok := GetFloatOK(m, key); ok || got != 0 {
+			t.Fatalf("GetFloatOK(%s) = (%v, %t), want (0, false)", key, got, ok)
+		}
 	}
 }
 

@@ -7,17 +7,63 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/cobra"
 
 	extcred "github.com/larksuite/cli/extension/credential"
+	exttransport "github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/distribution"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
+	"github.com/larksuite/cli/internal/update"
 )
+
+type doctorManifestProvider struct{ manifestURL string }
+
+func (doctorManifestProvider) Name() string { return "doctor-manifest-test" }
+func (doctorManifestProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return nil
+}
+func (p doctorManifestProvider) ResolveManifestURL(context.Context) string {
+	return p.manifestURL
+}
+
+func TestCheckCLIUpdateReportsDifferentOpaqueManifestTarget(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"schema":1,"version":"older-channel","artifacts":{"skills":{"url":"https://distribution.example/skills.zip","checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},%q:{"url":"https://distribution.example/cli.zip","checksum":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}`, distribution.CurrentPlatformKey())
+	}))
+	defer server.Close()
+	previousProvider := exttransport.GetProvider()
+	previousFetch := fetchLatestForDoctor
+	previousClient := distribution.DefaultClient
+	previousVersion := build.Version
+	exttransport.Register(doctorManifestProvider{manifestURL: server.URL})
+	distribution.DefaultClient = server.Client()
+	fetchLatestForDoctor = update.FetchTarget
+	build.Version = "newer-channel"
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		fetchLatestForDoctor = previousFetch
+		distribution.DefaultClient = previousClient
+		build.Version = previousVersion
+	})
+	checks := checkCLIUpdate(context.Background())
+	if len(checks) != 1 || checks[0].Status != "warn" || !strings.Contains(checks[0].Message, "older-channel") {
+		t.Fatalf("checks = %#v", checks)
+	}
+}
 
 func TestNewCmdDoctor_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
@@ -87,6 +133,34 @@ func TestFinishDoctor(t *testing.T) {
 	})
 }
 
+func TestNetworkChecksReportsEffectiveURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	var calls atomic.Int32
+	ep := core.ResolveEndpoints(core.BrandFeishu)
+	testurlrewrite.Register(t, func(raw string) string {
+		calls.Add(1)
+		return strings.NewReplacer(ep.Open, server.URL, ep.MCP, server.URL).Replace(raw)
+	})
+	opts := &DoctorOptions{Ctx: context.Background()}
+	for _, status := range []string{"pass", "fail"} {
+		if status == "fail" {
+			server.Close()
+		}
+		calls.Store(0)
+		for _, result := range networkChecks(opts.Ctx, opts, ep) {
+			if result.Status != status || !strings.Contains(result.Message, server.URL) || strings.Contains(result.Message, "feishu.cn") {
+				t.Fatalf("unexpected %s result: %+v", status, result)
+			}
+		}
+		if calls.Load() != 2 {
+			t.Fatalf("rewrite calls = %d, want one per probe", calls.Load())
+		}
+	}
+}
+
 func TestNetworkChecks_Offline(t *testing.T) {
 	ep := core.Endpoints{Open: "https://open.feishu.cn", MCP: "https://mcp.feishu.cn"}
 	opts := &DoctorOptions{Ctx: context.Background(), Offline: true}
@@ -98,6 +172,31 @@ func TestNetworkChecks_Offline(t *testing.T) {
 		if c.Status != "skip" {
 			t.Errorf("expected skip, got %s for %s", c.Status, c.Name)
 		}
+	}
+}
+
+func TestDoctorRunDoesNotFetchUpdateWhenCommandIsConcealed(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	oldFetch := fetchLatestForDoctor
+	t.Cleanup(func() { fetchLatestForDoctor = oldFetch })
+
+	fetches := 0
+	fetchLatestForDoctor = func(context.Context) (update.Target, error) {
+		fetches++
+		return update.Target{Version: "9.9.9"}, nil
+	}
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandUpdate: surface.CommandConcealed,
+	})
+	projector := recovery.NewProjector(func() *surface.Plan { return plan })
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	_ = doctorRun(&DoctorOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+	}, projector)
+	if fetches != 0 {
+		t.Fatalf("concealed update triggered %d npm fetch(es)", fetches)
 	}
 }
 
@@ -124,7 +223,7 @@ func TestDoctorRun_SplitsBotAndMissingUserIdentity(t *testing.T) {
 		Factory: f,
 		Ctx:     context.Background(),
 		Offline: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("doctorRun() error = %v", err)
 	}
@@ -202,7 +301,7 @@ func TestDoctor_ExternalProvider_IdentityReadyHintNotBlockedCommand(t *testing.T
 		IOStreams:  &cmdutil.IOStreams{Out: out, ErrOut: &bytes.Buffer{}},
 	}
 
-	if err := doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}); err == nil {
+	if err := doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil); err == nil {
 		t.Fatalf("doctorRun() = nil, want failure when no identity is available")
 	}
 	var got struct {
@@ -224,5 +323,111 @@ func TestDoctor_ExternalProvider_IdentityReadyHintNotBlockedCommand(t *testing.T
 	user := findCheck(t, got.Checks, "user_identity")
 	if !strings.Contains(user.Hint, "external") || strings.Contains(user.Hint, "auth login") {
 		t.Fatalf("user_identity hint not external-appropriate: %q", user.Hint)
+	}
+}
+
+func TestDoctorRun_WarnsWhenExternalProviderIgnoresProfileSelector(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps:       []core.AppConfig{{Name: "default", AppId: "cli_x", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	// An external provider leaves ProfileName empty — the telltale that the
+	// profile selector had no effect on account resolution.
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsBot | extcred.SupportsUser)}
+	cred := credential.NewCredentialProvider(
+		[]extcred.Provider{&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}},
+		nil, nil,
+		func() (*http.Client, error) { return nil, nil },
+	)
+	f, out, _, _ := cmdutil.TestFactory(t, cfg)
+	f.Credential = cred
+	f.Invocation = cmdutil.InvocationContext{Profile: "session", ProfileSource: core.ProfileFromEnvironment}
+
+	_ = doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil)
+	var got struct {
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\n%s", err, out.String())
+	}
+
+	selector := findCheck(t, got.Checks, "profile_selector")
+	if selector.Status != "warn" {
+		t.Fatalf("profile_selector status = %q, want warn", selector.Status)
+	}
+	for _, want := range []string{"LARKSUITE_CLI_PROFILE", `"session"`, "ignored"} {
+		if !strings.Contains(selector.Message, want) {
+			t.Errorf("message = %q, missing %q", selector.Message, want)
+		}
+	}
+	if !strings.Contains(selector.Hint, "unset LARKSUITE_CLI_PROFILE") {
+		t.Errorf("hint = %q, want unset guidance", selector.Hint)
+	}
+}
+
+func TestDoctorRun_NoSelectorWarningForBuiltinProvider(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps:       []core.AppConfig{{Name: "default", AppId: "cli_x", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	// Built-in resolution populates ProfileName: the selector took effect.
+	cfg := &core.CliConfig{AppID: "cli_x", ProfileName: "default", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsBot | extcred.SupportsUser)}
+	f, out, _, _ := cmdutil.TestFactory(t, cfg)
+	f.Invocation = cmdutil.InvocationContext{Profile: "default", ProfileSource: core.ProfileFromEnvironment}
+
+	_ = doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil)
+	var got struct {
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\n%s", err, out.String())
+	}
+	for _, c := range got.Checks {
+		if c.Name == "profile_selector" {
+			t.Fatalf("unexpected profile_selector check for builtin-resolved profile: %+v", c)
+		}
+	}
+}
+
+func TestDoctorRun_NoSelectorWarningForPersistedDefault(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps:       []core.AppConfig{{Name: "default", AppId: "cli_x", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	// A persisted currentApp is not an explicit selector: bootstrap leaves
+	// Invocation.Profile empty for ProfileFromConfig, so even with an external
+	// provider there is no user input for the warning to point at.
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsBot | extcred.SupportsUser)}
+	f, out, _, _ := cmdutil.TestFactory(t, cfg)
+	f.Credential = credential.NewCredentialProvider(
+		[]extcred.Provider{&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}},
+		nil, nil,
+		func() (*http.Client, error) { return nil, nil },
+	)
+	f.Invocation = cmdutil.InvocationContext{ProfileSource: core.ProfileFromConfig}
+
+	_ = doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil)
+	var got struct {
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\n%s", err, out.String())
+	}
+	for _, c := range got.Checks {
+		if c.Name == "profile_selector" {
+			t.Fatalf("unexpected profile_selector check for persisted default: %+v", c)
+		}
 	}
 }

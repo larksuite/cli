@@ -49,8 +49,9 @@ type html5BlockReferenceEntry struct {
 type html5BlockReferenceMap map[string]map[string]html5BlockReferenceEntry
 
 type docsV2WriteInput struct {
-	Content      string
-	ReferenceMap map[string]interface{}
+	Content        string
+	ReferenceMap   map[string]interface{}
+	LocalResources []localDocResource
 }
 
 type html5BlockAttr struct {
@@ -68,27 +69,35 @@ type whiteboardStartTag struct {
 	SelfClosing bool
 }
 
-func buildCreateBodyWithHTML5ReferenceMap(runtime *common.RuntimeContext) (map[string]interface{}, error) {
+func buildCreateBodyWithPreparedInput(runtime *common.RuntimeContext) (map[string]interface{}, []localDocResource, error) {
 	body := buildCreateBody(runtime)
 	if runtime.Str("content") == "" && !runtime.Changed("reference-map") {
-		return body, nil
+		return body, nil, nil
 	}
 	input, err := resolveDocsV2ContentReferenceMap(runtime)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	body["content"] = buildCreateContentWithBody(runtime, input.Content)
 	if len(input.ReferenceMap) > 0 {
 		body["reference_map"] = input.ReferenceMap
 	}
-	return body, nil
+	return body, input.LocalResources, nil
 }
 
 func buildUpdateBodyWithHTML5ReferenceMap(runtime *common.RuntimeContext) (map[string]interface{}, error) {
+	body, _, err := buildUpdateBodyWithPreparedInput(runtime)
+	return body, err
+}
+
+func buildUpdateBodyWithPreparedInput(runtime *common.RuntimeContext) (map[string]interface{}, []localDocResource, error) {
 	body := buildUpdateBody(runtime)
 	input, err := resolveDocsV2ContentReferenceMap(runtime)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	if err := validateLocalDocResourceUpdateCommand(runtime.Str("command"), input.LocalResources); err != nil {
+		return nil, nil, err
 	}
 	if input.Content != "" {
 		body["content"] = input.Content
@@ -96,7 +105,7 @@ func buildUpdateBodyWithHTML5ReferenceMap(runtime *common.RuntimeContext) (map[s
 	if len(input.ReferenceMap) > 0 {
 		body["reference_map"] = input.ReferenceMap
 	}
-	return body, nil
+	return body, input.LocalResources, nil
 }
 
 func validateDocsV2ReferenceMapFlags(runtime *common.RuntimeContext) error {
@@ -119,17 +128,25 @@ func resolveDocsV2ContentReferenceMap(runtime *common.RuntimeContext) (docsV2Wri
 }
 
 func prepareDocsV2WriteInput(runtime *common.RuntimeContext, input docsV2WriteInput) (docsV2WriteInput, error) {
+	return prepareDocsV2WriteInputForFormat(runtime, runtime.Str("doc-format"), input)
+}
+
+func prepareDocsV2WriteInputForFormat(runtime *common.RuntimeContext, format string, input docsV2WriteInput) (docsV2WriteInput, error) {
 	refMap := cloneReferenceMapObject(input.ReferenceMap)
 	html5RefMap, err := html5ReferenceMapFromObject(refMap)
 	if err != nil {
 		return docsV2WriteInput{}, err
 	}
 
-	content, err := prepareWhiteboardWriteContent(runtime, runtime.Str("doc-format"), input.Content)
+	content, localResources, err := prepareLocalDocResources(runtime, format, input.Content)
 	if err != nil {
 		return docsV2WriteInput{}, err
 	}
-	content, html5RefMap, err = prepareHTML5BlockWriteContent(runtime, runtime.Str("doc-format"), content, html5RefMap)
+	content, err = prepareWhiteboardWriteContent(runtime, format, content)
+	if err != nil {
+		return docsV2WriteInput{}, err
+	}
+	content, html5RefMap, err = prepareHTML5BlockWriteContent(runtime, format, content, html5RefMap)
 	if err != nil {
 		return docsV2WriteInput{}, err
 	}
@@ -138,8 +155,9 @@ func prepareDocsV2WriteInput(runtime *common.RuntimeContext, input docsV2WriteIn
 	}
 	refMap = mergeHTML5ReferenceMap(refMap, html5RefMap)
 	return docsV2WriteInput{
-		Content:      content,
-		ReferenceMap: refMap,
+		Content:        content,
+		ReferenceMap:   refMap,
+		LocalResources: localResources,
 	}, nil
 }
 
@@ -380,22 +398,22 @@ func readWhiteboardPath(runtime *common.RuntimeContext, pathValue string, typ st
 	if !strings.HasPrefix(pathRaw, "@") {
 		return "", common.ValidationErrorf("whiteboard %s path %q must start with @, for example @diagram.%s", typ, pathValue, exampleWhiteboardExt(typ)).WithParam("path")
 	}
-	relPath := strings.TrimSpace(strings.TrimPrefix(pathRaw, "@"))
-	if relPath == "" {
+	filePath := strings.TrimSpace(strings.TrimPrefix(pathRaw, "@"))
+	if filePath == "" {
 		return "", common.ValidationErrorf("whiteboard %s path cannot be empty after @", typ).WithParam("path")
 	}
-	clean := filepath.Clean(relPath)
-	if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", common.ValidationErrorf("whiteboard %s path %q must be a relative path within the current working directory", typ, pathValue).WithParam("path")
-	}
-	if !whiteboardExtAllowed(typ, strings.ToLower(filepath.Ext(clean))) {
+	if !whiteboardExtAllowed(typ, strings.ToLower(filepath.Ext(filePath))) {
 		return "", common.ValidationErrorf("whiteboard %s path %q must point to a %s file", typ, pathValue, whiteboardExtList(typ)).WithParam("path")
 	}
-	data, err := cmdutil.ReadInputFile(runtime.FileIO(), clean)
+	resolvedPath, _, err := statDocResource(runtime, filePath)
+	var data []byte
+	if err == nil {
+		data, err = cmdutil.ReadInputFile(runtime.FileIO(), resolvedPath)
+	}
 	if err != nil {
-		return "", common.ValidationErrorf("whiteboard %s path %q cannot be read from the current working directory; check that the file exists relative to where lark-cli is running: %v", typ, clean, err).
+		return "", common.ValidationErrorf("whiteboard %s path %q cannot be read (resolved path %q): %v", typ, filePath, resolvedPath, err).
 			WithParam("path").
-			WithParams(errs.InvalidParam{Name: clean, Reason: fmt.Sprintf("whiteboard %s path cannot be read", typ)}).
+			WithParams(errs.InvalidParam{Name: filePath, Reason: fmt.Sprintf("whiteboard %s path cannot be read", typ)}).
 			WithCause(err)
 	}
 	return string(data), nil
@@ -646,20 +664,20 @@ func readHTML5BlockPath(runtime *common.RuntimeContext, pathValue string, label 
 	if !strings.HasPrefix(pathRaw, "@") {
 		return "", common.ValidationErrorf("%s %q must start with @, for example @widget.html", label, pathValue).WithParam("path")
 	}
-	relPath := strings.TrimSpace(strings.TrimPrefix(pathRaw, "@"))
-	if relPath == "" {
+	filePath := strings.TrimSpace(strings.TrimPrefix(pathRaw, "@"))
+	if filePath == "" {
 		return "", common.ValidationErrorf("%s cannot be empty after @", label).WithParam("path")
 	}
-	clean := filepath.Clean(relPath)
-	if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", common.ValidationErrorf("%s %q must be a relative path within the current working directory", label, pathValue).WithParam("path")
-	}
-	if strings.ToLower(filepath.Ext(clean)) != ".html" {
+	if strings.ToLower(filepath.Ext(filePath)) != ".html" {
 		return "", common.ValidationErrorf("%s %q must point to a .html file", label, pathValue).WithParam("path")
 	}
-	data, err := cmdutil.ReadInputFile(runtime.FileIO(), clean)
+	resolvedPath, _, err := statDocResource(runtime, filePath)
+	var data []byte
+	if err == nil {
+		data, err = cmdutil.ReadInputFile(runtime.FileIO(), resolvedPath)
+	}
 	if err != nil {
-		return "", common.ValidationErrorf("%s %q cannot be read from the current working directory; check that the file exists relative to where lark-cli is running: %v", label, clean, err).WithParam("path").WithCause(err)
+		return "", common.ValidationErrorf("%s %q cannot be read (resolved path %q): %v", label, filePath, resolvedPath, err).WithParam("path").WithCause(err)
 	}
 	return string(data), nil
 }

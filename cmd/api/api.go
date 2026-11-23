@@ -15,7 +15,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
 )
@@ -47,13 +46,19 @@ type APIOptions struct {
 
 var urlPrefixRe = regexp.MustCompile(`https?://[^/]+(/open-apis/.+)`)
 
-func normalisePath(raw string) string {
+func normalisePath(raw string) (string, error) {
+	if strings.ContainsAny(raw, "?#") {
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"path must not contain a query string or fragment").
+			WithHint("pass query parameters with --params and omit URL fragments").
+			WithParam("path")
+	}
 	if matches := urlPrefixRe.FindStringSubmatch(raw); len(matches) > 1 {
 		raw = matches[1]
 	} else if !strings.HasPrefix(raw, "/open-apis/") {
 		raw = "/open-apis/" + strings.TrimPrefix(raw, "/")
 	}
-	return validate.StripQueryFragment(raw)
+	return raw, nil
 }
 
 // NewCmdApi creates the api command. If runF is non-nil it is called instead of apiRun (test hook).
@@ -130,6 +135,17 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 	stdin := opts.Factory.IOStreams.In
 	fileIO := opts.Factory.ResolveFileIO(opts.Ctx)
 
+	if opts.Method == "" {
+		return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"HTTP method must not be empty").
+			WithHint("pass the verb as the first argument, e.g. lark-cli api GET /open-apis/...").
+			WithParam("<method>")
+	}
+	path, err := normalisePath(opts.Path)
+	if err != nil {
+		return client.RawApiRequest{}, nil, err
+	}
+
 	// Validate --file mutual exclusions first.
 	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, opts.Method); err != nil {
 		return client.RawApiRequest{}, nil, err
@@ -156,7 +172,7 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 
 	request := client.RawApiRequest{
 		Method: opts.Method,
-		URL:    normalisePath(opts.Path),
+		URL:    path,
 		Params: params,
 		As:     opts.As,
 	}
@@ -243,9 +259,9 @@ func apiRun(opts *APIOptions) error {
 
 	if opts.DryRun {
 		if fileMeta != nil {
-			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+			return cmdutil.PrintDryRunWithFile(request, config, dryRunOutputOptions(f, opts), *fileMeta)
 		}
-		return apiDryRun(f, request, config, opts.Format)
+		return apiDryRun(f, request, config, opts)
 	}
 	// Identity info is now included in the JSON envelope; skip stderr printing.
 	// cmdutil.PrintIdentity(f.IOStreams.ErrOut, opts.As, config, f.IdentityAutoDetected)
@@ -297,8 +313,19 @@ func apiRun(opts *APIOptions) error {
 	return nil
 }
 
-func apiDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, format string) error {
-	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
+func apiDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, opts *APIOptions) error {
+	return cmdutil.PrintDryRun(request, config, dryRunOutputOptions(f, opts))
+}
+
+func dryRunOutputOptions(f *cmdutil.Factory, opts *APIOptions) cmdutil.DryRunOutputOptions {
+	return cmdutil.DryRunOutputOptions{
+		Format:      opts.Format,
+		JqExpr:      opts.JqExpr,
+		CommandPath: opts.Cmd.CommandPath(),
+		Identity:    opts.As,
+		Out:         f.IOStreams.Out,
+		ErrOut:      f.IOStreams.ErrOut,
+	}
 }
 
 func apiPaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath string, pagOpts client.PaginationOptions) error {
@@ -326,20 +353,18 @@ func apiPaginate(ctx context.Context, ac *client.APIClient, request client.RawAp
 
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
-		pf := output.NewPaginatedFormatter(out, format)
+		emitter := output.NewEmitter(output.EmitterConfig{
+			Out:            out,
+			ErrOut:         errOut,
+			CommandPath:    commandPath,
+			Identity:       string(pagOpts.Identity),
+			NoticeProvider: output.GetNotice,
+		})
 		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) error {
 			// Streaming formats intentionally emit each page after that page has
 			// passed safety scanning. A later page may still fail, so callers
 			// must use the exit code to distinguish complete vs partial output.
-			scanResult := output.ScanForSafety(commandPath, items, errOut)
-			if scanResult.Blocked {
-				return scanResult.BlockErr
-			}
-			if scanResult.Alert != nil {
-				output.WriteAlertWarning(errOut, scanResult.Alert)
-			}
-			pf.FormatPage(items)
-			return nil
+			return emitter.StreamPage(items, output.StreamOptions{Format: format.String()})
 		}, pagOpts)
 		if err != nil {
 			return errs.MarkRaw(err)

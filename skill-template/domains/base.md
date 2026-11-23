@@ -7,8 +7,8 @@
    - `lark-cli base table.records create` ✅
    - `lark-cli base records create` ❌
 2. **优先使用 Shortcut** — 有 Shortcut 的操作不要手拼原生 API
-3. **写记录前** — 先调用 `table.fields list` 获取字段 `type/ui_type`，再读 [lark-base-cell-value.md](../../skills/lark-base/references/lark-base-cell-value.md)；该文档是 CellValue 的 source of truth
-4. **写字段前** — 先读 [lark-base-field-json.md](../../skills/lark-base/references/lark-base-field-json.md) 确认字段类型 JSON 结构
+3. **写记录前** — 先调用 `table.fields list` 获取字段 `type/ui_type`，按字段类型构造 CellValue，不把字段 schema 当作单元格值
+4. **写字段前** — 先读 [lark-base-field-schema.md](../../skills/lark-base/references/lark-base-field-schema.md) 确认字段类型 JSON 结构
 5. **筛选查询前** — 先读 [lark-base-view-set-filter.md](../../skills/lark-base/references/lark-base-view-set-filter.md)，当前 `base/v3` 通过 `view.filter update + table.records list` 组合完成筛选读取
 6. **批量上限 200 条/次** — 同一表建议串行写入，并在批次间延迟 0.5–1 秒
 7. **改名和删除按明确意图执行** — 视图重命名这类低风险改名操作，目标和新名称明确时可直接执行；删除记录 / 字段 / 表时，只要用户已经明确要求删除且目标明确，也可直接执行，不需要再补一次确认
@@ -47,15 +47,15 @@
 
 ### 处理流程
 
-1. **使用 `wiki.spaces.get_node` 查询节点信息**
+1. **使用 `wiki +node-get` 查询节点信息**
    ```bash
-   lark-cli wiki spaces.get_node --params '{"token":"&lt;wiki_token&gt;"}'
+   lark-cli wiki +node-get --node-token 'https://xxx.feishu.cn/wiki/<wiki_token>' --format json
    ```
 
 2. **从返回结果中提取关键信息**
-   - `node.obj_type`：文档类型（docx/doc/sheet/bitable/slides/file/mindnote）
-   - `node.obj_token`：**真实的文档 token**（用于后续操作）
-   - `node.title`：文档标题
+   - `data.obj_type`：文档类型（docx/doc/sheet/bitable/slides/file/mindnote）
+   - `data.obj_token`：**真实的文档 token**（用于后续操作）
+   - `data.title`：文档标题
 
 3. **根据 `obj_type` 选择后续命令**
 
@@ -70,25 +70,27 @@
    | `mindnote` | 思维导图 | `drive.*` |
 
 4. **把 wiki 解析出的 `obj_token` 当成 Base token 使用**
-   - 当 `obj_type=bitable` 时，`node.obj_token` 就是后续 `base` 命令应使用的真实 token
+   - 当 `obj_type=bitable` 时，`data.obj_token` 就是后续 `base` 命令应使用的真实 token
    - 不要把 `wiki_token` 直接塞给 `--base-token`
 
 5. **如果已经报了 token 错，再回退检查 wiki**
    - 如果命令返回 `param baseToken is invalid`、`base_token invalid`、`not found`，并且输入来自 `/wiki/...`，优先怀疑“把 wiki token 当成了 base token”
-   - 重新执行 `wiki.spaces.get_node`
-   - 确认 `obj_type=bitable` 后，用 `node.obj_token` 重试 `lark-cli base ...`
+   - 重新执行 `wiki +node-get`
+   - 确认 `data.obj_type=bitable` 后，用 `data.obj_token` 重试 `lark-cli base ...`
 
 ### 查询示例
 
 ```bash
 # 查询 wiki 节点
-lark-cli wiki spaces.get_node --params '{"token":"Pgrrwvr***********UnRb"}'
+lark-cli wiki +node-get --node-token 'https://xxx.feishu.cn/wiki/Pgrrwvr***********UnRb' --format json
 ```
 
-返回结果示例：
+返回结果中的路由关键字段示例（`data` 中的其他节点字段省略）：
 ```json
 {
-  "node": {
+  "ok": true,
+  "identity": "user",
+  "data": {
     "obj_type": "docx",
     "obj_token": "UAJh***********ccaE9nic",
     "title": "ai friendly 测试 - 1 副本",
@@ -107,13 +109,12 @@ lark-cli wiki spaces.get_node --params '{"token":"Pgrrwvr***********UnRb"}'
 | 1254066 | 人员字段错误 | `[{ "id": "ou_xxx" }]` |
 | 1254045 | 字段名不存在 | 检查字段名（含空格、大小写） |
 | 1254015 | 字段值类型不匹配 | 先 list 字段，再按类型构造 |
-| `param baseToken is invalid` / `base_token invalid` | 把 wiki token、workspace token 或其他 token 当成了 `base_token` | 如果输入来自 `/wiki/...`，先查 `wiki.spaces.get_node`；当 `obj_type=bitable` 时，用 `node.obj_token` 作为 `base_token` 重试，不要改走 `bitable/v1` |
+| `param baseToken is invalid` / `base_token invalid` | 把 wiki token、workspace token 或其他 token 当成了 `base_token` | 如果输入来自 `/wiki/...`，先用 `wiki +node-get` 查询；当 `data.obj_type=bitable` 时，用 `data.obj_token` 作为 `base_token` 重试，不要改走 `bitable/v1` |
 | 1254104 | 批量超 200 条 | 分批调用 |
 | 1254291 | 并发写冲突 | 串行写入 + 批次间延迟 |
 
 ## 参考文档
 
-- [lark-base-field-json.md](../../skills/lark-base/references/lark-base-field-json.md) — 字段类型 JSON 配置
-- [lark-base-cell-value.md](../../skills/lark-base/references/lark-base-cell-value.md) — CellValue source of truth
+- [lark-base-field-schema.md](../../skills/lark-base/references/lark-base-field-schema.md) — 字段类型 JSON 配置
 - [lark-base-view-set-filter.md](../../skills/lark-base/references/lark-base-view-set-filter.md) — 查询筛选指南（filter / operator / sort / 分页）
 - 具体命令示例由命令 --help 内置 tips 承接；复杂 JSON 只读上方保留 reference

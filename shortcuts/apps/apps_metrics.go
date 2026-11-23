@@ -68,7 +68,7 @@ var AppsMetricList = common.Shortcut{
 		}
 		data, err := rctx.CallAPITyped("POST", metricListPath(appID), nil, body)
 		if err != nil {
-			return withAppsHint(err, appIDListHint)
+			return withObservabilityHint(err)
 		}
 		out := observabilitySeriesOutput{
 			Items:   normalizeMetricSeries(data, names, labels, fillZero),

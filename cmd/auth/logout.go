@@ -4,7 +4,9 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -44,7 +46,14 @@ func NewCmdAuthLogout(f *cmdutil.Factory, runF func(*LogoutOptions) error) *cobr
 func authLogoutRun(opts *LogoutOptions) error {
 	f := opts.Factory
 
-	multi, _ := core.LoadMultiAppConfig()
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		subtype := errs.SubtypeNotConfigured
+		if errors.Is(err, core.ErrMalformedConfig) {
+			subtype = errs.SubtypeInvalidConfig
+		}
+		return errs.NewConfigError(subtype, "failed to load config: %v", err).WithCause(err)
+	}
 	if multi == nil || len(multi.Apps) == 0 {
 		if opts.JSON {
 			output.PrintJson(f.IOStreams.Out, map[string]interface{}{
@@ -58,8 +67,14 @@ func authLogoutRun(opts *LogoutOptions) error {
 		return nil
 	}
 
-	app := multi.CurrentAppConfig(f.Invocation.Profile)
-	if app == nil || len(app.Users) == 0 {
+	// A selector that matches no profile is an input error, not a logged-out
+	// state: "not_logged_in" (exit 0) would hide a stale --profile or
+	// LARKSUITE_CLI_PROFILE value from the caller.
+	app, err := multi.RequireAppConfig(f.Invocation.Profile, f.Invocation.ProfileSource)
+	if err != nil {
+		return err
+	}
+	if len(app.Users) == 0 {
 		if opts.JSON {
 			output.PrintJson(f.IOStreams.Out, map[string]interface{}{
 				"ok":        true,
@@ -77,7 +92,8 @@ func authLogoutRun(opts *LogoutOptions) error {
 
 	for _, user := range app.Users {
 		if httpErr == nil && secretErr == nil {
-			if token := larkauth.GetStoredToken(app.AppId, user.UserOpenId); token != nil {
+			token, _ := larkauth.GetStoredToken(app.AppId, user.UserOpenId)
+			if token != nil {
 				revokeToken := token.RefreshToken
 				tokenTypeHint := "refresh_token"
 				if revokeToken == "" {

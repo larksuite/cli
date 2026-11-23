@@ -159,6 +159,256 @@ func TestDriveSecureLabelUpdate_DryRunInfersTypeFromURL(t *testing.T) {
 	}
 }
 
+func TestResolveSecureLabelTarget_URLAndBareToken(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		raw          string
+		explicitType string
+		wantToken    string
+		wantType     string
+	}{
+		{"wiki URL", "https://example.feishu.cn/wiki/wikTok", "", "wikTok", "wiki"},
+		{"docx URL", "https://example.feishu.cn/docx/doxTok", "", "doxTok", "docx"},
+		{"sheet URL", "https://example.feishu.cn/sheets/shtTok", "", "shtTok", "sheet"},
+		{"base URL", "https://example.feishu.cn/base/basTok", "", "basTok", "bitable"},
+		{"bitable URL", "https://example.feishu.cn/bitable/bitTok", "", "bitTok", "bitable"},
+		{"file URL", "https://example.feishu.cn/file/boxTok", "", "boxTok", "file"},
+		{"mindnote URL", "https://example.feishu.cn/mindnote/mndTok", "", "mndTok", "mindnote"},
+		{"slides URL", "https://example.feishu.cn/slides/sldTok", "", "sldTok", "slides"},
+		{"legacy doc URL", "https://example.feishu.cn/doc/docTok", "", "docTok", "doc"},
+		{"bare token with explicit type", "doxBareTok", "docx", "doxBareTok", "docx"},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			token, docType, err := resolveSecureLabelTarget(tt.raw, tt.explicitType)
+			if err != nil {
+				t.Fatalf("resolve target: %v", err)
+			}
+			if token != tt.wantToken || docType != tt.wantType {
+				t.Fatalf("token/type = %q/%q, want %q/%q", token, docType, tt.wantToken, tt.wantType)
+			}
+		})
+	}
+}
+
+func TestResolveSecureLabelTarget_RejectsUnsafeOrAmbiguousTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		raw          string
+		explicitType string
+		wantParam    string
+	}{
+		{"bare traversal token", "..", "docx", "--token"},
+		{"bare dot token", ".", "docx", "--token"},
+		{"URL traversal token", "https://example.feishu.cn/docx/../victim", "", "--token"},
+		{"marker outside resource root", "https://example.feishu.cn/share/docx/doxUnexpected", "", "--token"},
+		{"encoded path separator", "https://example.feishu.cn/docx/doxTarget%2Fother", "", "--token"},
+		{"encoded fragment separator", "https://example.feishu.cn/docx/doxTarget%23other", "", "--token"},
+		{"conflicting URL type", "https://example.feishu.cn/docx/doxTok", "wiki", "--type"},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, err := resolveSecureLabelTarget(tt.raw, tt.explicitType)
+			if err == nil {
+				t.Fatalf("resolveSecureLabelTarget(%q, %q) unexpectedly succeeded", tt.raw, tt.explicitType)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != tt.wantParam {
+				t.Fatalf("error param = %q, want %q", validationErr.Param, tt.wantParam)
+			}
+		})
+	}
+}
+
+func TestResolveSecureLabelTarget_RejectsInvalidInputs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		raw         string
+		wantParam   string
+		wantMessage string
+	}{
+		{
+			name:        "empty token",
+			raw:         " \t ",
+			wantParam:   "--token",
+			wantMessage: "--token is required",
+		},
+		{
+			name:        "apps page URL is unsupported",
+			raw:         "https://example.feishu.cn/page/appMetaTok",
+			wantParam:   "--token",
+			wantMessage: "could not infer token from URL",
+		},
+		{
+			name:        "bare token requires type",
+			raw:         "doxBareTok",
+			wantParam:   "--type",
+			wantMessage: "--type is required when --token is a bare token",
+		},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			token, docType, err := resolveSecureLabelTarget(tt.raw, "")
+			if err == nil {
+				t.Fatal("resolve target error = nil, want validation error")
+			}
+			if token != "" || docType != "" {
+				t.Fatalf("token/type = %q/%q, want empty values", token, docType)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf(error) ok = false, error = %T %v", err, err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf(
+					"error category/subtype = %q/%q, want %q/%q",
+					problem.Category,
+					problem.Subtype,
+					errs.CategoryValidation,
+					errs.SubtypeInvalidArgument,
+				)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != tt.wantParam {
+				t.Fatalf("error param = %q, want %q", validationErr.Param, tt.wantParam)
+			}
+			if !strings.Contains(err.Error(), tt.wantMessage) {
+				t.Fatalf("error = %q, want message containing %q", err, tt.wantMessage)
+			}
+		})
+	}
+}
+
+func TestDriveSecureLabelUpdate_RejectsAppsTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		args        []string
+		wantMessage string
+	}{
+		{
+			name: "apps page URL",
+			args: []string{
+				"--token", "https://example.feishu.cn/page/appMetaTok",
+			},
+			wantMessage: "could not infer token from URL",
+		},
+		{
+			name: "explicit apps type",
+			args: []string{
+				"--token", "appBareTok",
+				"--type", "apps",
+			},
+			wantMessage: `invalid value "apps" for --type`,
+		},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+			args := append([]string{
+				"+secure-label-update",
+			}, tt.args...)
+			args = append(args,
+				"--label-id", "7217780879644737539",
+				"--dry-run", "--as", "user",
+			)
+			err := mountAndRunDrive(t, DriveSecureLabelUpdate, args, f, stdout)
+			if err == nil || !strings.Contains(err.Error(), tt.wantMessage) {
+				t.Fatalf("error = %v, want message containing %q", err, tt.wantMessage)
+			}
+		})
+	}
+}
+
+func TestDriveSecureLabelUpdate_RejectsURLMarkersOutsidePath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{
+			name: "query",
+			url:  "https://example.feishu.cn/share?redirect=/docx/doxQueryTok",
+		},
+		{
+			name: "fragment",
+			url:  "https://example.feishu.cn/share#/docx/doxFragmentTok",
+		},
+		{
+			name: "empty host",
+			url:  "https:///docx/doxNoHostTok",
+		},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+			err := mountAndRunDrive(t, DriveSecureLabelUpdate, []string{
+				"+secure-label-update",
+				"--token", tt.url,
+				"--label-id", "7217780879644737539",
+				"--dry-run", "--as", "user",
+			}, f, stdout)
+			if err == nil {
+				t.Fatalf("expected URL validation error for %q", tt.url)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf(error) ok = false, error = %T %v", err, err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf(
+					"error category/subtype = %q/%q, want %q/%q",
+					problem.Category,
+					problem.Subtype,
+					errs.CategoryValidation,
+					errs.SubtypeInvalidArgument,
+				)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != "--token" {
+				t.Fatalf("error param = %q, want %q", validationErr.Param, "--token")
+			}
+		})
+	}
+}
+
 func TestDriveSecureLabelUpdate_ExecuteSuccess(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	stub := &httpmock.Stub{

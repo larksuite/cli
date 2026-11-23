@@ -10,6 +10,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
+	eventlib "github.com/larksuite/cli/internal/event"
 )
 
 // consumeRuntime routes event.APIClient calls through the shared client.APIClient with a pinned identity.
@@ -37,9 +38,7 @@ func (r *consumeRuntime) CallAPI(ctx context.Context, method, path string, body 
 	if resp.StatusCode >= 400 && !client.IsJSONContentType(ct) && ct != "" {
 		const maxBodyEcho = 256
 		body := string(resp.RawBody)
-		if len(body) > maxBodyEcho {
-			body = body[:maxBodyEcho] + "…(truncated)"
-		}
+		body = eventlib.TruncateDiagnostic(body, maxBodyEcho, "…(truncated)")
 		if resp.StatusCode >= 500 {
 			return nil, errs.NewNetworkError(errs.SubtypeNetworkServer,
 				"api %s %s returned %d: %s", method, path, resp.StatusCode, body).WithRetryable()

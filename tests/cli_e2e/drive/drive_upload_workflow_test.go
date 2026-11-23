@@ -15,7 +15,9 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// TestDrive_UploadWorkflow exercises the complete Drive upload workflow against the live API.
 func TestDrive_UploadWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)
@@ -63,7 +65,10 @@ func TestDrive_UploadWorkflow(t *testing.T) {
 			args = append(args, "--file-token", fileToken)
 		}
 
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		uploadCtx, uploadCancel := context.WithTimeout(ctx, 45*time.Second)
+		defer uploadCancel()
+
+		result, err := clie2e.RunCmd(uploadCtx, clie2e.Request{
 			Args:      args,
 			WorkDir:   workDir,
 			DefaultAs: "bot",
@@ -71,6 +76,11 @@ func TestDrive_UploadWorkflow(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
+		for _, reportOnlyField := range []string{"data.file_scene", "data.scene", "data.operation"} {
+			if gjson.Get(result.Stdout, reportOnlyField).Exists() {
+				t.Fatalf("report-only field %q leaked into upload stdout:\n%s", reportOnlyField, result.Stdout)
+			}
+		}
 
 		gotToken := gjson.Get(result.Stdout, "data.file_token").String()
 		require.NotEmpty(t, gotToken, "uploaded file should have a token, stdout:\n%s", result.Stdout)
@@ -115,5 +125,34 @@ func TestDrive_UploadWorkflow(t *testing.T) {
 	}
 	if string(data) != updatedContent {
 		t.Fatalf("downloaded content=%q want %q", string(data), updatedContent)
+	}
+
+	defaultDownloadResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+download",
+			"--file-token", overwriteToken,
+		},
+		WorkDir:   workDir,
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	defaultDownloadResult.AssertExitCode(t, 0)
+	defaultDownloadResult.AssertStdoutStatus(t, true)
+
+	defaultSavedPath := gjson.Get(defaultDownloadResult.Stdout, "data.saved_path").String()
+	require.NotEmpty(t, defaultSavedPath, "download without --output should return saved_path")
+	if got := filepath.Base(defaultSavedPath); got != "overwrite.txt" {
+		t.Fatalf("default saved basename=%q want overwrite.txt\nstdout:\n%s", got, defaultDownloadResult.Stdout)
+	}
+	t.Cleanup(func() {
+		_ = os.Remove(defaultSavedPath)
+	})
+
+	data, err = os.ReadFile(defaultSavedPath)
+	if err != nil {
+		t.Fatalf("read default downloaded file: %v", err)
+	}
+	if string(data) != updatedContent {
+		t.Fatalf("default downloaded content=%q want %q", string(data), updatedContent)
 	}
 }

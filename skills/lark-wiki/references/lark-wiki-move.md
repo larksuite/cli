@@ -1,6 +1,6 @@
 # wiki +move
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 在飞书知识库中移动已有 Wiki 节点，或将 Drive 文档迁入 Wiki。这个 shortcut 统一封装了两类流程：
 
@@ -9,18 +9,19 @@
 
 当 `docs_to_wiki` 返回 `task_id` 时，shortcut 会先轮询一小段时间；如果轮询窗口内仍未完成，会返回 `next_command`，让调用方继续执行 `lark-cli drive +task_result --scenario wiki_move --task-id <TASK_ID>`。
 
-## 与 `drive +move` 的区别
+## 与 `wiki +move-to-drive` / `drive +move` 的区别
 
 - `wiki +move` 的目标是 **知识空间或 Wiki 父节点**，使用 `--target-space-id` / `--target-parent-token`
+- `wiki +move-to-drive` 把 **已有 Wiki 节点移出知识库，放入 Drive 文件夹或“我的空间”根目录**，使用 `--folder-token`
 - `drive +move` 的目标是 **Drive 文件夹**，使用 `--folder-token`
-- 如果源对象已经是 Wiki 节点，必须使用 `wiki +move`，而不是 `drive +move`
+- 如果源对象已经是 Wiki 节点：目标仍是 Wiki 时使用 `wiki +move`；目标是 Drive 文件夹或根目录时使用 `wiki +move-to-drive`
 - 如果源对象还是 Drive 文档，但用户要“迁入知识库”“挂到某个 Wiki 页面下”，也应使用 `wiki +move`
 - 如果用户只是想整理云空间（云盘/云存储）文件夹，把文件/文件夹挪到另一个 Drive 文件夹，应使用 `drive +move`
 
 ## 口语目标识别
 
 - 当用户说“移动到某个知识库”“挂到某个页面下”“迁入 Wiki”时，按 **Wiki 目标** 处理，优先使用 `wiki +move`
-- 当用户说“移动到某个文件夹”“移动到云空间（云盘/云存储）根目录”时，按 **Drive 文件夹目标** 处理，优先使用 `drive +move`
+- 当用户说“移动到某个文件夹”“移动到云空间（云盘/云存储）根目录”时，按 **Drive 文件夹目标** 处理；源对象是 Wiki 节点时使用 `wiki +move-to-drive`，源对象已在 Drive 时使用 `drive +move`
 - 当用户说“移动到我的文档库”“移动到我的知识库”“放到个人知识库”时，应先按 **Wiki 个人知识库目标** 理解，而不是直接退化成 `drive +move`
 - 遇到“我的文档库”这类表述时，可以把它理解成：先用 `my_library` 去查询用户个人知识库，再拿到真实 `space_id`
 - 推荐做法是先执行 `lark-cli wiki spaces get --params '{"space_id":"my_library"}'`，取回真实知识库 `space_id`，再把这个 `space_id` 用到 `wiki +move`
@@ -65,7 +66,7 @@ lark-cli wiki +move \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--node-token` | 条件必填 | 要移动的 Wiki 节点 token。传入后命令进入 `node` 模式 |
+| `--node-token` | 条件必填 | 要移动的 Wiki 节点 token 或文档 obj_token。传入后命令进入 `node` 模式 |
 | `--source-space-id` | 否 | 源知识空间 ID，仅 `node` 模式可用；不传时会根据 `--node-token` 自动解析 |
 | `--target-space-id` | 条件必填 | 目标知识空间 ID。`docs_to_wiki` 模式必填；`node` 模式下如果不传，则必须传 `--target-parent-token` |
 | `--target-parent-token` | 否 | 目标父节点 token。`docs_to_wiki` 不传时表示迁入目标知识空间根目录 |
@@ -86,8 +87,9 @@ lark-cli wiki +move \
 
 ### `node` 模式
 
-- **源空间解析**：如果未传 `--source-space-id`，shortcut 会先调用 `GET /open-apis/wiki/v2/spaces/get_node` 查询 `--node-token`，再读取其 `space_id`
+- **源空间解析**：先调用 `GET /open-apis/wiki/v2/spaces/node_by_token` 解析源节点；未传 `--source-space-id` 时使用查询结果，传入时校验两者一致。
 - **目标父节点解析**：如果传了 `--target-parent-token`，shortcut 会先解析该父节点所属的 `space_id`
+- **节点类型**：源节点和目标父节点接受 Wiki `node_token` 或文档 `obj_token`，实际移动使用查询返回的 `node_token`。
 - **一致性校验**：如果同时传了 `--target-space-id` 和 `--target-parent-token`，shortcut 会校验两者是否属于同一个知识空间；不一致时直接返回验证错误
 - **移动到空间根目录**：如果只传 `--target-space-id`，则表示移动到该知识空间根目录
 
@@ -180,4 +182,5 @@ CLI 会在执行前做本地 scope 预检查；当前 shortcut 声明的权限�
 
 - [lark-wiki](../SKILL.md) -- 知识库全部命令
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数
+- [wiki +move-to-drive](lark-wiki-move-to-drive.md) -- 将 Wiki 节点移出知识库并放入 Drive
 - [drive +task_result](../../lark-drive/references/lark-drive-task-result.md) -- docs-to-wiki 异步任务的续跑查询命令

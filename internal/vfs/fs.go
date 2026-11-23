@@ -32,6 +32,12 @@ type FS interface {
 	RemoveAll(path string) error
 	Rename(oldpath, newpath string) error
 
+	// Link creates newname as a hard link to oldname. It fails with an error
+	// satisfying errors.Is(err, fs.ErrExist) when newname already exists, which
+	// makes it the commit step for a no-clobber write: unlike Rename, it never
+	// replaces an existing target.
+	Link(oldname, newname string) error
+
 	// Path resolution
 	EvalSymlinks(path string) (string, error)
 	Executable() (string, error)

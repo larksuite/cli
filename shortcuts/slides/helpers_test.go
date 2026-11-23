@@ -4,9 +4,13 @@
 package slides
 
 import (
+	"bytes"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
 
 func TestParsePresentationRef(t *testing.T) {
@@ -412,4 +416,92 @@ func TestEnsureXMLRootID(t *testing.T) {
 			}
 		})
 	}
+}
+
+// errAnyCause asks assertValidationProblem for "a cause was preserved" without
+// naming it. Used where the wrapped error is an ad-hoc fmt.Errorf from a shared
+// validator with no sentinel to match on; prefer a real sentinel wherever one
+// exists, because that is what proves the *right* error survived.
+var errAnyCause = errors.New("any preserved cause")
+
+// assertValidationProblem asserts the typed metadata every error path in this
+// package owes its callers: the validation Category/Subtype pair agents route
+// on, the flag that produced it, and a preserved cause. Param is read through
+// errors.As because ProblemOf returns the shared Problem, which does not carry
+// it. wantCause is nil for the checks that reject an input outright and have no
+// underlying error to wrap — those must not invent one.
+func assertValidationProblem(t *testing.T, err error, wantParam string, wantCause error) *errs.ValidationError {
+	t.Helper()
+
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("err = %v (%T), want *errs.ValidationError", err, err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("err = %v, want typed problem metadata", err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("Category = %q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != wantParam {
+		t.Fatalf("Param = %q, want %q", ve.Param, wantParam)
+	}
+	switch {
+	case wantCause == nil:
+		if ve.Cause != nil {
+			t.Fatalf("Cause = %v, want none for an outright-rejected input", ve.Cause)
+		}
+	case errors.Is(wantCause, errAnyCause):
+		if ve.Cause == nil {
+			t.Fatal("Cause = nil, want the underlying error preserved")
+		}
+	default:
+		if !errors.Is(ve.Cause, wantCause) {
+			t.Fatalf("Cause = %v, want it to wrap %v", ve.Cause, wantCause)
+		}
+	}
+	return ve
+}
+
+// decodeShortcutDryRunAPI returns the API steps a --dry-run run planned, in
+// order. Dry-run output is the only place the orchestration shape (how many
+// calls, and in which order) is observable without making real requests.
+func decodeShortcutDryRunAPI(t *testing.T, stdout *bytes.Buffer) []map[string]interface{} {
+	t.Helper()
+
+	data := decodeShortcutData(t, stdout)
+	raw, _ := data["api"].([]interface{})
+	if len(raw) == 0 {
+		t.Fatalf("dry-run planned no API calls: %#v", data)
+	}
+	steps := make([]map[string]interface{}, 0, len(raw))
+	for i, item := range raw {
+		step, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatalf("api[%d] = %#v, want an object", i, item)
+		}
+		steps = append(steps, step)
+	}
+	return steps
+}
+
+// assertDryRunStep checks one planned call's method and URL, and returns it for
+// the caller's params/body assertions.
+func assertDryRunStep(t *testing.T, steps []map[string]interface{}, i int, wantMethod, wantURL string) map[string]interface{} {
+	t.Helper()
+
+	if i >= len(steps) {
+		t.Fatalf("want at least %d planned call(s), got %d: %#v", i+1, len(steps), steps)
+	}
+	if steps[i]["method"] != wantMethod {
+		t.Fatalf("api[%d].method = %v, want %s", i, steps[i]["method"], wantMethod)
+	}
+	if steps[i]["url"] != wantURL {
+		t.Fatalf("api[%d].url = %v, want %s", i, steps[i]["url"], wantURL)
+	}
+	return steps[i]
 }

@@ -55,3 +55,26 @@ func TestBaseFormDetailDryRun_MissingShareToken(t *testing.T) {
 	assert.NotEqual(t, 0, result.ExitCode)
 	assert.Contains(t, result.Stderr, "share-token")
 }
+
+func TestBaseFormListDryRun_UsesBaseAndTableIdentifiers(t *testing.T) {
+	setBaseDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"base", "+form-list",
+			"--base-token", "basXXXX",
+			"--table-id", "tblXXXX",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := strings.TrimSpace(result.Stdout)
+	assert.Contains(t, output, "/open-apis/base/v3/bases/basXXXX/tables/tblXXXX/forms")
+	assert.Contains(t, output, `"method": "GET"`)
+}

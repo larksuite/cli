@@ -228,7 +228,7 @@ func downloadSignatureImage(runtime *common.RuntimeContext, downloadURL, filenam
 		return nil, "", mailInvalidResponseError("signature image download: URL has no host")
 	}
 
-	httpClient, err := runtime.Factory.HttpClient()
+	httpClient, err := runtime.Factory.ExternalHTTPClient()
 	if err != nil {
 		return nil, "", errs.NewInternalError(errs.SubtypeSDKError, "signature image download: %v", err).WithCause(err)
 	}

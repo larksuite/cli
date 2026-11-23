@@ -35,8 +35,11 @@ func TestRequireConfirmation_TypedShape(t *testing.T) {
 	if !strings.Contains(cre.Message, "drive +delete") || !strings.Contains(cre.Message, "requires confirmation") {
 		t.Errorf("Message = %q, want it to mention action and 'requires confirmation'", cre.Message)
 	}
+	// The hint is the plain add-yes contract and nothing more: no pre-built
+	// retry command may ride behind it (argv cannot faithfully reproduce the
+	// invocation and may carry sensitive payloads — see RequireConfirmation).
 	if cre.Hint != "add --yes to confirm" {
-		t.Errorf("Hint = %q, want 'add --yes to confirm'", cre.Hint)
+		t.Errorf("Hint = %q, want exactly 'add --yes to confirm'", cre.Hint)
 	}
 	if cre.Risk != errs.RiskHighRiskWrite {
 		t.Errorf("Risk = %q, want %q", cre.Risk, errs.RiskHighRiskWrite)
@@ -61,8 +64,8 @@ func TestRequireConfirmation_JSONShape(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	// No fix_command field leaks into the envelope: the protocol avoids
-	// shell-quoting hazards by delegating retry to agent-side logic.
+	// No fix_command field leaks into the envelope: the typed protocol stays
+	// action-only.
 	if _, has := back["fix_command"]; has {
 		t.Errorf("unexpected fix_command present in JSON: %s", raw)
 	}

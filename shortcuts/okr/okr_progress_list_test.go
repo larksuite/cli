@@ -5,11 +5,14 @@ package okr
 
 import (
 	"bytes"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -123,6 +126,28 @@ func TestProgressListValidate_InvalidDepartmentIDType(t *testing.T) {
 	}
 }
 
+func TestProgressListValidate_InvalidPageSize(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, progressListTestConfig(t))
+	err := runProgressListShortcut(t, f, stdout, []string{
+		"+progress-list",
+		"--target-id", "123",
+		"--target-type", "objective",
+		"--page-size", "0",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid --page-size")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected validation invalid_argument problem, got: %v", err)
+	}
+	validationErr, ok := err.(*errs.ValidationError)
+	if !ok || validationErr.Param != "--page-size" {
+		t.Fatalf("expected param --page-size, got: %v", err)
+	}
+}
+
 // --- DryRun tests ---
 
 func TestProgressListDryRun_Objective(t *testing.T) {
@@ -144,6 +169,9 @@ func TestProgressListDryRun_Objective(t *testing.T) {
 	if !strings.Contains(output, "GET") {
 		t.Fatalf("dry-run output should contain GET method, got: %s", output)
 	}
+	if !strings.Contains(output, "\"page_size\": 100") {
+		t.Fatalf("dry-run output should contain default page_size=100, got: %s", output)
+	}
 }
 
 func TestProgressListDryRun_KeyResult(t *testing.T) {
@@ -164,14 +192,41 @@ func TestProgressListDryRun_KeyResult(t *testing.T) {
 	}
 }
 
+func TestProgressListDryRun_WithPagination(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, progressListTestConfig(t))
+	err := runProgressListShortcut(t, f, stdout, []string{
+		"+progress-list",
+		"--target-id", "123456789",
+		"--target-type", "objective",
+		"--page-size", "25",
+		"--page-token", "next-page",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "\"page_size\": 25") {
+		t.Fatalf("dry-run output should contain page_size=25, got: %s", output)
+	}
+	if !strings.Contains(output, "\"page_token\": \"next-page\"") {
+		t.Fatalf("dry-run output should contain page_token, got: %s", output)
+	}
+}
+
 // --- Execute tests ---
 
 func TestProgressListExecute_Success_Objective(t *testing.T) {
 	t.Parallel()
 	f, stdout, _, reg := cmdutil.TestFactory(t, progressListTestConfig(t))
+	var gotQuery url.Values
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/okr/v2/objectives/123456789/progresses",
+		OnMatch: func(req *http.Request) {
+			gotQuery = req.URL.Query()
+		},
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "ok",
@@ -191,7 +246,8 @@ func TestProgressListExecute_Success_Objective(t *testing.T) {
 						},
 					},
 				},
-				"has_more": false,
+				"has_more":   true,
+				"page_token": "next_page",
 			},
 		},
 	})
@@ -199,14 +255,31 @@ func TestProgressListExecute_Success_Objective(t *testing.T) {
 		"+progress-list",
 		"--target-id", "123456789",
 		"--target-type", "objective",
+		"--page-size", "50",
+		"--page-token", "start_page",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := gotQuery.Get("page_size"); got != "50" {
+		t.Fatalf("query page_size = %q, want 50", got)
+	}
+	if got := gotQuery.Get("page_token"); got != "start_page" {
+		t.Fatalf("query page_token = %q, want start_page", got)
 	}
 	data := decodeEnvelope(t, stdout)
 	records, _ := data["progress_list"].([]interface{})
 	if len(records) != 1 {
 		t.Fatalf("expected 1 progress, got %d", len(records))
+	}
+	if _, ok := data["total"]; ok {
+		t.Fatal("total should not be present in response")
+	}
+	if hasMore, _ := data["has_more"].(bool); !hasMore {
+		t.Fatalf("has_more = %v, want true", hasMore)
+	}
+	if pageToken, _ := data["page_token"].(string); pageToken != "next_page" {
+		t.Fatalf("page_token = %q, want next_page", pageToken)
 	}
 }
 

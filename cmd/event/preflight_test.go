@@ -4,6 +4,7 @@
 package event
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/appmeta"
 	"github.com/larksuite/cli/internal/core"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/testutil"
 )
 
 func newPreflightCtx(appID string, brand core.LarkBrand, identity core.Identity, keyDef *eventlib.KeyDefinition, appVer *appmeta.AppVersion) *preflightCtx {
@@ -108,25 +110,26 @@ func TestPreflightScopes_Bot_NoAppVer_SkipsCheck(t *testing.T) {
 		Key:    "im.message.text",
 		Scopes: []string{"im:message", "im:message.group_at_msg"},
 	}
-	err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, nil))
+	_, err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, nil))
 	if err != nil {
 		t.Fatalf("bot + nil appVer should skip, got: %v", err)
 	}
 }
 
-func TestPreflightScopes_Bot_AllGranted_Passes(t *testing.T) {
+func TestPreflightScopes_Bot_MissingTokenTypes_Passes(t *testing.T) {
 	def := &eventlib.KeyDefinition{
 		Key:    "im.message.text",
 		Scopes: []string{"im:message", "im:message.group_at_msg"},
 	}
-	appVer := &appmeta.AppVersion{TenantScopes: []string{
-		"im:message",
-		"im:message.group_at_msg",
-		"contact:user:readonly",
-	}}
-	err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, appVer))
+	appVer, err := appmeta.FetchCurrentPublished(context.Background(), &testutil.StubAPIClient{Body: `{"data":{"items":[{"status":1,"publish_time":"1776684746","scopes":[
+		{"scope":"im:message"},{"scope":"im:message.group_at_msg"},{"scope":"contact:user:readonly"}
+		]}]}}`}, "cli_x")
 	if err != nil {
-		t.Fatalf("all scopes granted, unexpected error: %v", err)
+		t.Fatal(err)
+	}
+	checked, err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, appVer))
+	if !checked || err != nil {
+		t.Fatalf("scopes without token_types must pass preflight, got checked=%v, err=%v", checked, err)
 	}
 }
 
@@ -136,7 +139,7 @@ func TestPreflightScopes_Bot_MissingBlocks(t *testing.T) {
 		Scopes: []string{"im:message", "im:message.group_at_msg"},
 	}
 	appVer := &appmeta.AppVersion{TenantScopes: []string{"im:message"}}
-	err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, appVer))
+	_, err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, appVer))
 	if err == nil {
 		t.Fatal("expected error for missing scope")
 	}
@@ -169,7 +172,7 @@ func TestPreflightScopes_Bot_MissingBlocks(t *testing.T) {
 
 func TestPreflightScopes_NoRequiredScopes_SkipsCheck(t *testing.T) {
 	def := &eventlib.KeyDefinition{Key: "x"}
-	if err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, nil)); err != nil {
+	if _, err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, nil)); err != nil {
 		t.Fatalf("no required scopes means nothing to verify, got: %v", err)
 	}
 }
@@ -264,18 +267,9 @@ func TestPreflightEventTypes_CallbackAllSubscribed_Passes(t *testing.T) {
 	}
 }
 
-func TestScopeRemediationHint_ByIdentity(t *testing.T) {
-	// bot: scan-to-enable link (adds scopes to app manifest)
-	bot := scopeRemediationHint(core.BrandFeishu, "cli_x", core.AsBot, []string{"im:message"})
+func TestBotScopeRemediationHintUsesScanLink(t *testing.T) {
+	bot := botScopeRemediationHint(core.BrandFeishu, "cli_x", []string{"im:message"})
 	if !strings.Contains(bot, "/page/launcher?clientID=cli_x&addons=") {
 		t.Errorf("bot hint should give the scan link, got: %s", bot)
-	}
-	// user: re-login (scan link cannot grant scopes to the user's own token)
-	user := scopeRemediationHint(core.BrandFeishu, "cli_x", core.AsUser, []string{"im:message"})
-	if !strings.Contains(user, "auth login --scope") {
-		t.Errorf("user hint should direct to auth login, got: %s", user)
-	}
-	if strings.Contains(user, "/page/launcher") {
-		t.Errorf("user hint must NOT use the scan link, got: %s", user)
 	}
 }

@@ -4,9 +4,11 @@
 package doc
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -19,6 +21,25 @@ func docsAPIVersionCompatFlag() common.Flag {
 	return common.Flag{
 		Name:   "api-version",
 		Desc:   "deprecated compatibility flag; ignored by docs shortcuts",
+		Hidden: true,
+	}
+}
+
+func docsOutputFormatCompatFlag() common.Flag {
+	return common.Flag{
+		Name:    "format",
+		Default: "json",
+		Desc:    "deprecated output-format compatibility flag",
+		Hidden:  true,
+		Enum:    []string{"json", "pretty", "table", "ndjson", "csv"},
+	}
+}
+
+func docsJSONOutputCompatFlag() common.Flag {
+	return common.Flag{
+		Name:   "json",
+		Type:   "bool",
+		Desc:   "deprecated JSON-output compatibility flag",
 		Hidden: true,
 	}
 }
@@ -54,7 +75,7 @@ func docsLegacyFlagDefinitions(flags []docsLegacyFlag) []common.Flag {
 	for _, flag := range flags {
 		out = append(out, common.Flag{
 			Name:   flag.Name,
-			Desc:   "deprecated compatibility flag; run `lark-cli skills read lark-doc` for the current CLI skill",
+			Desc:   "deprecated compatibility flag; run the corresponding docs command with --help for the current interface",
 			Hidden: true,
 		})
 	}
@@ -81,22 +102,36 @@ func validateDocsV2Only(runtime *common.RuntimeContext, shortcut string, legacyF
 	if len(replacements) > 0 {
 		detail += "; " + strings.Join(replacements, "; ")
 	}
-	return docsV2OnlyError(shortcut, detail, used[0])
+	return docsV2OnlyError(runtime, shortcut, detail, used[0])
 }
 
-func docsV2OnlyError(shortcut, detail, param string) error {
+func docsV2OnlyError(runtime *common.RuntimeContext, shortcut, detail, param string) error {
+	helpCommand := "lark-cli docs " + shortcut + " --help"
 	err := errs.NewValidationError(
 		errs.SubtypeInvalidArgument,
-		"docs %s is v2-only; %s. Run `%s` for the current schema and examples. AI agents MUST read `%s` (XML) or `%s` (Markdown) and follow the latest format rules there. MUST NOT grep/open local SKILL.md files to discover this guidance; use `lark-cli skills read ...` so content stays version-matched with this CLI. Run `%s` for the latest command flags",
+		"docs %s is v2-only; %s",
 		shortcut,
 		detail,
-		docsSkillReadCommandForShortcut(shortcut),
-		docsXMLSkillReadCommand,
-		docsMDSkillReadCommand,
-		docsHelpCommandForShortcut(shortcut),
 	)
 	if param != "" {
 		err = err.WithParam(param)
 	}
-	return err
+
+	parts := []recovery.Part{
+		recovery.Text(fmt.Sprintf("run `%s` for the latest command flags", helpCommand)),
+	}
+	if runtime != nil {
+		if refs := runtime.ResolveAffordanceSkillReferences(); len(refs) > 0 {
+			commands := make([]string, 0, len(refs))
+			for _, ref := range refs {
+				commands = append(commands, "`lark-cli skills read "+ref+"`")
+			}
+			parts = append(parts, recovery.Command(
+				recovery.TargetSkillsRead,
+				"read the version-matched embedded guidance before retrying: "+strings.Join(commands, ", ")+
+					"; do not inspect another local SKILL.md copy",
+			))
+		}
+	}
+	return recovery.Attach(err, recovery.Join("; ", parts...))
 }

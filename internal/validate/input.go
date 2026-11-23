@@ -28,15 +28,3 @@ func RejectCRLF(value, fieldName string) error {
 	}
 	return nil
 }
-
-// StripQueryFragment removes any ?query or #fragment suffix from a URL path.
-// API parameters must go through structured --params flags, not embedded in
-// the path, to prevent parameter injection and behaviour confusion.
-func StripQueryFragment(path string) string {
-	for i := 0; i < len(path); i++ {
-		if path[i] == '?' || path[i] == '#' {
-			return path[:i]
-		}
-	}
-	return path
-}

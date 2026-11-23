@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"time"
 
@@ -27,6 +28,7 @@ var OKRCycleDetail = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "cycle-id", Desc: "OKR cycle id (int64)", Required: true},
 		{Name: "style", Default: "simple", Desc: "output style: simple (semi-plain text JSON) | richtext (ContentBlock JSON)", Enum: []string{"simple", "richtext"}},
+		{Name: "prefer-draft", Type: "bool", Default: "true", Desc: "return draft content when a draft exists"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		cycleID := runtime.Str("cycle-id")
@@ -45,20 +47,25 @@ var OKRCycleDetail = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		cycleID := runtime.Str("cycle-id")
 		params := map[string]interface{}{
-			"page_size": 100,
+			"page_size": 100, "prefer_draft": runtime.Bool("prefer-draft"),
 		}
 		return common.NewDryRunAPI().
 			GET("/open-apis/okr/v2/cycles/:cycle_id/objectives").
 			Params(params).
 			Set("cycle_id", cycleID).
-			Desc("Auto-paginates objectives in the cycle, then calls GET /open-apis/okr/v2/objectives/:objective_id/key_results for each objective to fetch key results")
+			Desc("Auto-paginates objectives in the cycle").
+			GET("/open-apis/okr/v2/objectives/:objective_id/key_results").
+			Params(params).
+			Set("objective_id", "<objective_id_from_previous_call>").
+			Desc("Auto-paginates key results for each objective")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		cycleID := runtime.Str("cycle-id")
 		style := runtime.Str("style")
+		preferDraft := runtime.Bool("prefer-draft")
 
 		// Paginate objectives under the cycle.
-		queryParams := map[string]interface{}{"page_size": "100"}
+		queryParams := map[string]interface{}{"page_size": "100", "prefer_draft": preferDraft}
 
 		var objectives []Objective
 		page := 0
@@ -101,6 +108,18 @@ var OKRCycleDetail = common.Shortcut{
 			queryParams["page_token"] = pageToken
 		}
 
+		// Sort after merging all pages; the API does not guarantee position order.
+		sort.SliceStable(objectives, func(i, j int) bool {
+			var pi, pj int32
+			if objectives[i].Position != nil {
+				pi = *objectives[i].Position
+			}
+			if objectives[j].Position != nil {
+				pj = *objectives[j].Position
+			}
+			return pi < pj
+		})
+
 		// For each objective, paginate key results and convert to response format.
 		if style == "simple" {
 			respObjectives := make([]*RespObjectiveSimple, 0, len(objectives))
@@ -110,7 +129,7 @@ var OKRCycleDetail = common.Shortcut{
 				}
 				obj := &objectives[i]
 
-				keyResults, err := fetchKeyResults(ctx, runtime, obj.ID)
+				keyResults, err := fetchKeyResultsWithDraftPreference(ctx, runtime, obj.ID, preferDraft)
 				if err != nil {
 					return err
 				}
@@ -166,7 +185,7 @@ var OKRCycleDetail = common.Shortcut{
 				}
 				obj := &objectives[i]
 
-				keyResults, err := fetchKeyResults(ctx, runtime, obj.ID)
+				keyResults, err := fetchKeyResultsWithDraftPreference(ctx, runtime, obj.ID, preferDraft)
 				if err != nil {
 					return err
 				}

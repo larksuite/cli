@@ -13,7 +13,7 @@ const { execFileSync, execFile } = require("child_process");
 let p;
 
 const PKG = "@larksuite/cli";
-const SKILLS_REPO = "https://open.feishu.cn";
+const SKILLS_REPO = "https://open.feishu.cn/lark-cli/skills/regular";
 const SKILLS_REPO_FALLBACK = "larksuite/cli";
 const isWindows = process.platform === "win32";
 

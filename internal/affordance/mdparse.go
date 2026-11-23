@@ -4,6 +4,7 @@
 package affordance
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 // The affordance source is a narrow, fixed markdown subset (see src/*.md):
 //
 //	# domain            optional `> skill: <name>` applied to every method
+//	## Skills           optional skills shown on domain help (not inherited)
 //	## command          e.g. `instances get`
 //	<lead paragraph>    -> use_when (when this command is right)
 //	### Avoid when      -> avoid_when (links become prefer/alternative edges)
@@ -23,7 +25,7 @@ import (
 //	### <other>         -> extensions[] (custom section, flows through verbatim)
 //	[[cmd]]             -> a command reference, rendered as `cmd`
 //
-// Parsing is lazy and cached (see For), so the constrained grammar is read at
+// Parsing is lazy and cached per Resolver, so the constrained grammar is read at
 // most once per domain.
 
 var mdLink = regexp.MustCompile(`\[\[(.+?)\]\]`)
@@ -38,10 +40,10 @@ var standardSection = map[string]string{
 	"Skills":        "skills",
 }
 
-// mergeSkills returns the domain-default skill followed by a command's own skill
-// entries, de-duplicated in author order and empties dropped. Backticks (left by
-// the shared bullet parse) are stripped so each entry is a bare skill name.
-func mergeSkills(domain string, extra []string) []string {
+// mergeSkills returns the primary skill followed by additional entries,
+// de-duplicated in author order and with empties dropped. Backticks (left by
+// the shared bullet parse) are stripped so each entry is a bare reference.
+func mergeSkills(primary string, extra []string) []string {
 	var out []string
 	seen := map[string]bool{}
 	add := func(s string) {
@@ -52,7 +54,7 @@ func mergeSkills(domain string, extra []string) []string {
 		seen[s] = true
 		out = append(out, s)
 	}
-	add(domain)
+	add(primary)
 	for _, s := range extra {
 		add(s)
 	}
@@ -61,13 +63,14 @@ func mergeSkills(domain string, extra []string) []string {
 
 func linkToBacktick(s string) string { return mdLink.ReplaceAllString(s, "`$1`") }
 
-// SkillStatPath maps a `### Skills` entry to the path (relative to the skill
-// tree) whose existence gates it: a bare skill name resolves to its SKILL.md,
-// while an entry containing a slash is a name/relative-path reference (e.g.
+// SkillStatPath maps a domain- or command-level Skills entry to the path
+// (relative to the skill tree) whose existence gates it: a bare skill name
+// resolves to its SKILL.md, while an entry containing a slash is a
+// name/relative-path reference (e.g.
 // "lark-contact/references/lark-contact-search-user.md") and resolves to that
 // path directly. Both render as `lark-cli skills read <entry>` — the slash form
-// skills read already accepts — so a per-command entry can point at that
-// command's own reference file, not just re-point the domain skill.
+// skills read already accepts — so an entry can point at a command's own
+// reference file, not just re-point the domain skill.
 func SkillStatPath(entry string) string {
 	if strings.Contains(entry, "/") {
 		return entry
@@ -93,17 +96,27 @@ type mdSection struct {
 	cases []meta.AffordanceCase
 }
 
+type parsedDomain struct {
+	present      bool // false marks a cached "no guidance file for this service"
+	skill        string
+	domainSkills []string
+	methods      map[string]meta.Affordance
+	raw          map[string]json.RawMessage // methods encoded once, keyed by method id
+}
+
 // parseDomainMD parses one domain's markdown into per-method Affordance values,
 // keyed by method id. resolve maps a command-form heading ("user_mailbox.messages
 // list") to its method id ("user_mailbox.message.list"); nil falls back to the
 // space→dot rule (valid only where the command form already equals the id).
-func parseDomainMD(src []byte, resolve func(string) string) map[string]meta.Affordance {
+func parseDomainMD(src []byte, resolve func(string) string) parsedDomain {
 	if resolve == nil {
 		resolve = headingToKey
 	}
 	out := map[string]meta.Affordance{}
 
 	var skill, curKey string
+	var domainSkills []string
+	inDomainSkills := false
 	var useWhen, para []string // lead paragraphs -> use_when entries (blank line separates)
 	var secs []*mdSection
 	var sec *mdSection
@@ -143,7 +156,7 @@ func parseDomainMD(src []byte, resolve func(string) string) map[string]meta.Affo
 		if s := mergeSkills(skill, perCmdSkills); len(s) > 0 {
 			a.Skills = s
 		}
-		out[curKey] = a
+		out[resolve(curKey)] = a
 	}
 
 	reset := func() { useWhen, para, secs, sec, pending, fence, inFence = nil, nil, nil, nil, "", nil, false }
@@ -162,22 +175,36 @@ func parseDomainMD(src []byte, resolve func(string) string) map[string]meta.Affo
 		line := strings.TrimRight(raw, "\r")
 		t := strings.TrimSpace(line)
 		switch {
+		case strings.HasPrefix(line, "## ") && strings.TrimSpace(line[3:]) == "Skills":
+			flushPending()
+			assemble()
+			curKey = ""
+			reset()
+			inDomainSkills = true
+			continue
 		case strings.HasPrefix(line, "## "):
 			flushPending()
 			assemble()
-			curKey = resolve(line[3:])
+			curKey = strings.TrimSpace(line[3:])
 			reset()
+			inDomainSkills = false
 			continue
 		case strings.HasPrefix(line, "# "):
 			continue
 		case strings.HasPrefix(t, "> skill:"):
-			skill = strings.TrimSpace(t[len("> skill:"):])
+			skill = strings.Trim(strings.TrimSpace(t[len("> skill:"):]), "`")
 			continue
 		case strings.HasPrefix(line, "### "):
 			flushPending()
 			sec = &mdSection{label: strings.TrimSpace(line[4:])}
 			secs = append(secs, sec)
 			pending, fence, inFence = "", nil, false
+			continue
+		}
+		if inDomainSkills {
+			if strings.HasPrefix(t, "-") {
+				domainSkills = append(domainSkills, strings.TrimSpace(t[1:]))
+			}
 			continue
 		}
 		if curKey == "" {
@@ -220,5 +247,9 @@ func parseDomainMD(src []byte, resolve func(string) string) map[string]meta.Affo
 	}
 	flushPending()
 	assemble()
-	return out
+	return parsedDomain{
+		skill:        skill,
+		domainSkills: mergeSkills(skill, domainSkills),
+		methods:      out,
+	}
 }

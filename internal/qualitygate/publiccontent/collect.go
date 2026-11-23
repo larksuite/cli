@@ -37,13 +37,21 @@ func Collect(ctx context.Context, opts Options) ([]Finding, error) {
 		if !scanChangedFile(file) {
 			continue
 		}
+		if isCatalogFile(file) {
+			data, readErr := gitOutput(ctx, opts.Repo, "show", "HEAD:"+file)
+			if readErr != nil {
+				return nil, readErr
+			}
+			out = appendUniqueFindings(out, ScanFile(file, data)...)
+			out = appendUniqueFindings(out, scanCatalogSafety(file, string(data))...)
+		}
 		for _, chunk := range patches[file] {
 			findings := scanText(file, "file", chunk.Text, isDetectorRuleFile(file))
 			for i := range findings {
 				findings[i].Line += chunk.StartLine - 1
 			}
-			out = append(out, findings...)
-			out = append(out, semanticCandidate(file, "file", chunk.Text, chunk.StartLine)...)
+			out = appendUniqueFindings(out, findings...)
+			out = appendUniqueFindings(out, semanticCandidate(file, "file", chunk.Text, chunk.StartLine)...)
 		}
 		privateKeyFindings, err := scanTouchedPrivateKeyBlocks(ctx, opts.Repo, file, patches[file])
 		if err != nil {
@@ -318,7 +326,8 @@ func appendUniqueFindings(items []Finding, additions ...Finding) []Finding {
 			if item.Rule == addition.Rule &&
 				item.File == addition.File &&
 				item.Line == addition.Line &&
-				item.Source == addition.Source {
+				item.Source == addition.Source &&
+				item.Excerpt == addition.Excerpt {
 				duplicate = true
 				break
 			}

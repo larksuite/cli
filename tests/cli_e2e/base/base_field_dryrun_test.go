@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestBaseFieldCreateDryRunArrayCompat(t *testing.T) {
@@ -33,13 +32,13 @@ func TestBaseFieldCreateDryRunArrayCompat(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields", gjson.Get(out, "api.0.url").String(), out)
-	require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), out)
-	require.Equal(t, "A", gjson.Get(out, "api.0.body.name").String(), out)
-	require.Equal(t, "text", gjson.Get(out, "api.0.body.type").String(), out)
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields", clie2e.DryRunGet(out, "api.0.url").String(), out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), out)
+	require.Equal(t, "A", clie2e.DryRunGet(out, "api.0.body.name").String(), out)
+	require.Equal(t, "text", clie2e.DryRunGet(out, "api.0.body.type").String(), out)
 
-	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields", gjson.Get(out, "api.1.url").String(), out)
-	require.Equal(t, "POST", gjson.Get(out, "api.1.method").String(), out)
-	require.Equal(t, "B", gjson.Get(out, "api.1.body.name").String(), out)
-	require.Equal(t, "text", gjson.Get(out, "api.1.body.type").String(), out)
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields", clie2e.DryRunGet(out, "api.1.url").String(), out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.1.method").String(), out)
+	require.Equal(t, "B", clie2e.DryRunGet(out, "api.1.body.name").String(), out)
+	require.Equal(t, "text", clie2e.DryRunGet(out, "api.1.body.type").String(), out)
 }

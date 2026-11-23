@@ -34,6 +34,53 @@ func extractUserIDs(users []interface{}) []string {
 	return ids
 }
 
+// stringField safely extracts a string value from a map.
+func stringField(m map[string]interface{}, key string) string {
+	v, _ := m[key].(string)
+	return v
+}
+
+// mentionOpenID extracts open_id from a mention id field (nested object or plain string).
+func mentionOpenID(raw interface{}) string {
+	switch v := raw.(type) {
+	case map[string]interface{}:
+		openID, _ := v["open_id"].(string)
+		return openID
+	case string:
+		return v
+	default:
+		return ""
+	}
+}
+
+// compactMentions converts the raw mentions array into a compact form with key, id, name.
+func compactMentions(mentions []interface{}) []map[string]interface{} {
+	if len(mentions) == 0 {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(mentions))
+	for _, raw := range mentions {
+		item, _ := raw.(map[string]interface{})
+		m := map[string]interface{}{}
+		if k := stringField(item, "key"); k != "" {
+			m["key"] = k
+		}
+		if id := mentionOpenID(item["id"]); id != "" {
+			m["id"] = id
+		}
+		if n := stringField(item, "name"); n != "" {
+			m["name"] = n
+		}
+		if len(m) > 0 {
+			out = append(out, m)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // compactBase builds the common compact output fields shared by all IM event processors.
 // Every compact output includes: type (event_type), event_id, and timestamp (header create_time).
 func compactBase(raw *RawEvent) map[string]interface{} {

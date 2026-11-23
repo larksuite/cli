@@ -29,16 +29,16 @@ func parseIndicatorValue(valueStr string) (float64, error) {
 // fetchIndicatorID fetches the indicator ID for an objective or key result.
 // The indicators.list API returns a single indicator object (not a list),
 // which always exists (may be a default empty indicator).
-func fetchIndicatorID(ctx context.Context, runtime *common.RuntimeContext, level string, id string) (string, error) {
+func fetchIndicatorID(ctx context.Context, runtime *common.RuntimeContext, level string, id string, preferDraft bool) (string, error) {
 	var path string
 	var params map[string]interface{}
 
 	if level == "objective" {
 		path = fmt.Sprintf("/open-apis/okr/v2/objectives/%s/indicators", id)
-		params = map[string]interface{}{"page_size": 100}
+		params = map[string]interface{}{"page_size": 100, "prefer_draft": preferDraft}
 	} else {
 		path = fmt.Sprintf("/open-apis/okr/v2/key_results/%s/indicators", id)
-		params = map[string]interface{}{"page_size": 100}
+		params = map[string]interface{}{"page_size": 100, "prefer_draft": preferDraft}
 	}
 
 	data, err := runtime.CallAPITyped("GET", path, params, nil)
@@ -74,6 +74,7 @@ var OKRIndicatorUpdate = common.Shortcut{
 		{Name: "level", Desc: "level to update: objective | key-result, Required.", Enum: []string{"objective", "key-result"}},
 		{Name: "id", Desc: "objective or key result ID (int64), Required."},
 		{Name: "value", Desc: "new current value for the indicator (number), Required."},
+		{Name: "apply-to-draft", Type: "bool", Default: "true", Desc: "apply the update to the objective draft"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		level := runtime.Str("level")
@@ -104,6 +105,7 @@ var OKRIndicatorUpdate = common.Shortcut{
 		level := runtime.Str("level")
 		id := runtime.Str("id")
 		value, _ := parseIndicatorValue(runtime.Str("value"))
+		applyToDraft := runtime.Bool("apply-to-draft")
 
 		apis := common.NewDryRunAPI()
 
@@ -117,13 +119,14 @@ var OKRIndicatorUpdate = common.Shortcut{
 		// First API: fetch indicator list
 		apis = apis.
 			GET(listPath).
-			Params(map[string]interface{}{"page_size": 100}).
+			Params(map[string]interface{}{"page_size": 100, "prefer_draft": applyToDraft}).
 			Desc(fmt.Sprintf("Fetch indicators for the %s to get indicator ID", level))
 
 		// Second API: patch indicator value
 		patchPath := "/open-apis/okr/v2/indicators/:indicator_id"
 		patchBody := map[string]interface{}{
-			"current_value": value,
+			"current_value":  value,
+			"apply_to_draft": applyToDraft,
 		}
 		apis = apis.
 			PATCH(patchPath).
@@ -142,7 +145,8 @@ var OKRIndicatorUpdate = common.Shortcut{
 		}
 
 		// Step 1: Fetch indicator ID
-		indicatorID, err := fetchIndicatorID(ctx, runtime, level, id)
+		applyToDraft := runtime.Bool("apply-to-draft")
+		indicatorID, err := fetchIndicatorID(ctx, runtime, level, id, applyToDraft)
 		if err != nil {
 			return err
 		}
@@ -150,7 +154,8 @@ var OKRIndicatorUpdate = common.Shortcut{
 		// Step 2: Update indicator value
 		patchPath := fmt.Sprintf("/open-apis/okr/v2/indicators/%s", indicatorID)
 		patchBody := map[string]interface{}{
-			"current_value": value,
+			"current_value":  value,
+			"apply_to_draft": applyToDraft,
 		}
 
 		_, err = runtime.CallAPITyped("PATCH", patchPath, nil, patchBody)

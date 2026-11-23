@@ -35,7 +35,7 @@ func TestValidateMediaFlagPath(t *testing.T) {
 		{"file key skipped", "--file", "file_abc123", false},
 		{"valid local file", "--image", "photo.jpg", false},
 		{"nonexistent file allowed", "--file", "missing.txt", false},
-		{"path traversal rejected", "--image", "../../etc/passwd", true},
+		{"path traversal rejected", "--image", "../../../../../../../../../../../../etc/passwd", true},
 		{"absolute path rejected", "--file", "/etc/passwd", true},
 	}
 

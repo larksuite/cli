@@ -22,6 +22,7 @@ import (
 // it back as the same typed shape, locking the dtype + format contract that
 // makes round-trip (pipe +table-get into +table-put) work.
 func TestSheets_TablePutTypedWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -89,6 +90,7 @@ func TestSheets_TablePutTypedWorkflow(t *testing.T) {
 // adopted sheet carries the typed data we sent (no empty "Sheet1" remains)
 // and that --sheets's typed contract holds end-to-end, not just on +table-put.
 func TestSheets_WorkbookCreateTypedWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -133,6 +135,30 @@ func TestSheets_WorkbookCreateTypedWorkflow(t *testing.T) {
 	// default Sheet1), and it must carry our 2 typed rows.
 	require.Equal(t, "销售", gjson.Get(createRes.Stdout, "data.sheets.0.name").String(),
 		"workbook-create should adopt the default sheet under the payload sheet name; stdout:\n%s", createRes.Stdout)
+
+	// The workbook must hold EXACTLY the payload's sheets: a stray default
+	// Sheet1 beside them would mean the adopt didn't happen, and a smaller
+	// count would mean two payload sheets landed on one physical sheet
+	// (the stale-mapping double-write destroyed data while reporting success).
+	infoRes, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"sheets", "+workbook-info",
+			"--spreadsheet-token", spreadsheetToken,
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	infoRes.AssertExitCode(t, 0)
+	require.Equal(t, int64(1), gjson.Get(infoRes.Stdout, "data.sheets.#").Int(),
+		"workbook must hold exactly the payload's one sheet; stdout:\n%s", infoRes.Stdout)
+	// The structure API surfaces the display name as sheet_name in some
+	// payload shapes and title in others (tableGetSheetMeta accepts both).
+	sheetName := gjson.Get(infoRes.Stdout, "data.sheets.0.sheet_name").String()
+	if sheetName == "" {
+		sheetName = gjson.Get(infoRes.Stdout, "data.sheets.0.title").String()
+	}
+	require.Equal(t, "销售", sheetName,
+		"the only sheet must be the adopted payload sheet; stdout:\n%s", infoRes.Stdout)
 
 	// Round-trip read confirms the typed contract held through create+write.
 	getRes, err := clie2e.RunCmd(ctx, clie2e.Request{

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package domaincontract guards the Go CLI against direct reuse of the current
-// resolver-owned host FQDNs outside core.ResolveEndpoints.
+// Package domaincontract guards resolver ownership and rejects newly introduced
+// static Go hostnames that are not covered by the repository domain policy.
 package domaincontract
 
 import (
@@ -11,6 +11,7 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -75,10 +76,40 @@ func skipDir(name string) bool {
 	return false
 }
 
-// ScanRepo walks production .go files under root and flags string literals
-// containing a forbidden resolver host outside the allowlist. Comments and
-// _test.go files are not scanned.
+// ScanRepo runs the resolver-owned endpoint guard and a full repository domain
+// inventory. CI should use ScanRepoWithOptions with a changed-from revision so
+// historical unapproved domains are not attributed to an unrelated change.
 func ScanRepo(root string) ([]lintapi.Violation, error) {
+	return ScanRepoWithOptions(root, ScanOptions{})
+}
+
+type ScanOptions struct {
+	ChangedFrom string
+}
+
+func ScanRepoWithOptions(root string, opts ScanOptions) ([]lintapi.Violation, error) {
+	out, err := scanHardcodedEndpoints(root)
+	if err != nil {
+		return nil, err
+	}
+	domainViolations, err := scanUnapprovedDomains(root, opts)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, domainViolations...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].File != out[j].File {
+			return out[i].File < out[j].File
+		}
+		if out[i].Line != out[j].Line {
+			return out[i].Line < out[j].Line
+		}
+		return out[i].Rule < out[j].Rule
+	})
+	return out, nil
+}
+
+func scanHardcodedEndpoints(root string) ([]lintapi.Violation, error) {
 	var out []lintapi.Violation
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

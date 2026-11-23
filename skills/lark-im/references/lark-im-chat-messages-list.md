@@ -1,6 +1,6 @@
 # im +chat-messages-list
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
 Fetch the message list for a conversation. Supports both group chats and direct messages.
 
@@ -17,6 +17,9 @@ lark-cli im +chat-messages-list --chat-id oc_xxx
 # Get direct messages with a user (pass open_id and resolve p2p chat_id automatically)
 lark-cli im +chat-messages-list --user-id ou_xxx
 
+# Read message context as compact Markdown
+lark-cli im +chat-messages-list --chat-id oc_xxx --concise
+
 # Specify a time range (ISO 8601)
 lark-cli im +chat-messages-list --chat-id oc_xxx --start "2026-03-10T00:00:00+08:00" --end "2026-03-11T00:00:00+08:00"
 
@@ -28,6 +31,9 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --order asc --page-size 20
 
 # Pagination
 lark-cli im +chat-messages-list --chat-id oc_xxx --page-token "xxx"
+
+# Fetch multiple pages automatically, up to 10 pages by default
+lark-cli im +chat-messages-list --chat-id oc_xxx --page-all
 
 # JSON output
 lark-cli im +chat-messages-list --chat-id oc_xxx --format json
@@ -43,9 +49,12 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 | `--end <time>` | No | End time (ISO 8601 or date only) |
 | `--order <order>` | No | Sort order: `asc` / `desc` (default `desc`) |
 | `--page-size <n>` | No | Page size (default 50, max 50) |
-| `--page-token <token>` | No | Pagination token |
+| `--page-token <token>` | No | Starting cursor, normally returned by a previous response |
+| `--page-all` | No | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
+| `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
 | `--no-reactions` | No | Skip auto-fetching the `reactions` block |
 | `--download-resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default; no extra requests when omitted |
+| `--concise` | No | Render compact Markdown for message context |
 
 > Rule: `--chat-id` and `--user-id` are mutually exclusive. You must provide exactly one of them.
 
@@ -53,7 +62,7 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 
 ## Resource Rendering
 
-Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `![Image](img_xxx)`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). By default resource binaries are **not** downloaded.
+Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `![Image](img_xxx)`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). `folder` messages are expanded one level (children rendered inside the tag, see the row below). By default resource binaries are **not** downloaded.
 
 Two ways to get the binaries:
 - **In one pass:** add `--download-resources` to this command — every eligible resource (image/file/audio/video/media + post-embedded, excluding stickers) is downloaded into `./lark-im-resources/` and a `resources` block (`{message_id, key, type, local_path, size_bytes}`) is attached to each message. See [message enrichment](lark-im-message-enrichment.md#resource-auto-download---download-resources-opt-in).
@@ -63,6 +72,7 @@ Two ways to get the binaries:
 |---------|-------------|------|
 | Image | `![Image](img_xxx)` | `--download-resources`, or manually `im +messages-resources-download --type image` |
 | File | `<file key="file_xxx" .../>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
+| Folder (message) | `<folder key="file_xxx" name="assets" child_count="N"><file key="..." .../>…</folder>` (first-level children rendered inside; `has_more="true"` past the 10-item cap) | Folder itself is not a single-file resource; children are real files — download one with explicit `im +messages-resources-download --message-id <id> --file-key <child_key> --type file` (`--download-resources` auto-collection does not include folder children) |
 | Audio | `<audio key="file_xxx" duration="Xs"/>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
 | Video | `<video key="file_xxx" .../>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
 | Sticker | `[Sticker]` | Not downloadable (Feishu does not support fetching sticker resources) |
@@ -106,11 +116,13 @@ Each message contains:
 
 ## Pagination (`has_more` / `page_token`)
 
-`im +chat-messages-list` returns `has_more` and `page_token` when more data is available. Use `--page-token` to continue:
+By default, `im +chat-messages-list` fetches one page. It returns `has_more` and `page_token` when more data is available. Use `--page-token` to continue:
 
 ```bash
 lark-cli im +chat-messages-list --chat-id oc_xxx --page-token <PAGE_TOKEN>
 ```
+
+With `--page-all`, `--page-token` sets the starting cursor. If `meta.pagination.complete=false`, resume from `meta.pagination.next_token` or raise `--page-limit`.
 
 You can also fall back to the generic API:
 
@@ -149,7 +161,7 @@ lark-cli api GET /open-apis/im/v1/messages \
    lark-cli im +chat-search --as bot --query "<chat name keyword>" --format json
    lark-cli im +chat-messages-list --as bot --chat-id <chat_id> --page-size 50 --format json
    ```
-   Do not use `im +messages-search --as bot`; `+messages-search` is user-only. Continue with `--page-token` if `has_more=true`.
+   If the request is keyword search across message content, `im +messages-search --as bot` is also supported. Continue with `--page-token` if `has_more=true`.
 
 ## References
 

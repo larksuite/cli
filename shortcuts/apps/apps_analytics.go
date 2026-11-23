@@ -63,7 +63,7 @@ var AppsAnalyticsList = common.Shortcut{
 		}
 		data, err := rctx.CallAPITyped("POST", analyticsListPath(appID), nil, body)
 		if err != nil {
-			return withAppsHint(err, appIDListHint)
+			return withObservabilityHint(err)
 		}
 		out := observabilitySeriesOutput{
 			Items:   normalizeAnalyticsSeries(data, types, labels),

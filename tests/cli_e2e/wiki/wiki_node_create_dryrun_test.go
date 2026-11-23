@@ -44,11 +44,11 @@ func TestWikiNodeCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/spaces/123456/nodes", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "origin", gjson.Get(result.Stdout, "api.0.body.node_type").String())
-		assert.Equal(t, "docx", gjson.Get(result.Stdout, "api.0.body.obj_type").String())
-		assert.Equal(t, "TestDoc", gjson.Get(result.Stdout, "api.0.body.title").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/spaces/123456/nodes", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "origin", clie2e.DryRunGet(result.Stdout, "api.0.body.node_type").String())
+		assert.Equal(t, "docx", clie2e.DryRunGet(result.Stdout, "api.0.body.obj_type").String())
+		assert.Equal(t, "TestDoc", clie2e.DryRunGet(result.Stdout, "api.0.body.title").String())
 	})
 
 	t.Run("HappyPath_WithParentNodeToken", func(t *testing.T) {
@@ -70,13 +70,13 @@ func TestWikiNodeCreateDryRun(t *testing.T) {
 		result.AssertExitCode(t, 0)
 
 		// 2-step: resolve parent node -> create node
-		assert.Equal(t, "GET", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/spaces/get_node", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "wikcnABC123", gjson.Get(result.Stdout, "api.0.params.token").String())
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/spaces/node_by_token", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "wikcnABC123", clie2e.DryRunGet(result.Stdout, "api.0.params.token").String())
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.1.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/spaces/123456/nodes", gjson.Get(result.Stdout, "api.1.url").String())
-		assert.Equal(t, "wikcnABC123", gjson.Get(result.Stdout, "api.1.body.parent_node_token").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.1.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/spaces/123456/nodes", clie2e.DryRunGet(result.Stdout, "api.1.url").String())
+		assert.Equal(t, "<resolved_parent_node_token>", clie2e.DryRunGet(result.Stdout, "api.1.body.parent_node_token").String())
 	})
 
 	t.Run("HappyPath_ShortcutNodeType", func(t *testing.T) {
@@ -98,8 +98,62 @@ func TestWikiNodeCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "shortcut", gjson.Get(result.Stdout, "api.0.body.node_type").String())
-		assert.Equal(t, "wikcnORIG", gjson.Get(result.Stdout, "api.0.body.origin_node_token").String())
+		assert.Equal(t, "shortcut", clie2e.DryRunGet(result.Stdout, "api.0.body.node_type").String())
+		assert.Equal(t, "wikcnORIG", clie2e.DryRunGet(result.Stdout, "api.0.body.origin_node_token").String())
+	})
+
+	t.Run("HappyPath_FileShortcut", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"wiki", "+node-create",
+				"--space-id", "123456",
+				"--node-type", "shortcut",
+				"--obj-type", "file",
+				"--origin-node-token", "wikcnFILE",
+				"--title", "FileShortcut",
+				"--dry-run",
+			},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/spaces/123456/nodes", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "shortcut", clie2e.DryRunGet(result.Stdout, "api.0.body.node_type").String())
+		assert.Equal(t, "file", clie2e.DryRunGet(result.Stdout, "api.0.body.obj_type").String())
+		assert.Equal(t, "wikcnFILE", clie2e.DryRunGet(result.Stdout, "api.0.body.origin_node_token").String())
+		assert.Equal(t, "FileShortcut", clie2e.DryRunGet(result.Stdout, "api.0.body.title").String())
+	})
+
+	t.Run("RejectsFileOrigin", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"wiki", "+node-create",
+				"--space-id", "123456",
+				"--node-type", "origin",
+				"--obj-type", "file",
+				"--dry-run",
+			},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 2)
+		assert.Empty(t, result.Stdout, "Validate-stage failures must not write to stdout")
+		assert.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
+		assert.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String())
+		assert.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "--obj-type file is not supported")
+		assert.Contains(t, gjson.Get(result.Stderr, "error.hint").String(), "--node-type shortcut --obj-type file")
+		assert.Equal(t, "use shortcut when creating a Wiki reference to a file",
+			gjson.Get(result.Stderr, `error.params.#(name=="--node-type").reason`).String())
+		assert.Equal(t, "file is supported only for shortcut nodes",
+			gjson.Get(result.Stderr, `error.params.#(name=="--obj-type").reason`).String())
 	})
 
 	t.Run("RejectsShortcutWithoutOriginNodeToken", func(t *testing.T) {

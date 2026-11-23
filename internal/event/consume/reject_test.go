@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 func TestRejectionError_Rejected(t *testing.T) {

@@ -79,6 +79,6 @@ func minutesUpdateError(err error, minuteToken string) error {
 		return err
 	}
 	p.Message = fmt.Sprintf("No edit permission for minute %q: cannot update the title.", minuteToken)
-	p.Hint = "Ask the minute owner for minute edit permission"
+	p.Hint = fmt.Sprintf("Ask the user before running: minutes +apply-permission --minute-token %s --perm edit", minuteToken)
 	return err
 }

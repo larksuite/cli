@@ -278,6 +278,12 @@ var CalendarSuggestion = common.Shortcut{
 			}
 		}
 
+		tzInputs := []calendarTimeInputRange{
+			{Flag: flagStart, Value: runtime.Str(flagStart)},
+			{Flag: flagEnd, Value: runtime.Str(flagEnd)},
+		}
+		warnCalendarTimezoneMismatch(runtime, tzInputs...)
+
 		return nil
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

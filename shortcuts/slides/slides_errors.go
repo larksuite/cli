@@ -5,6 +5,7 @@ package slides
 
 import (
 	"errors"
+	"io/fs"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
@@ -17,14 +18,26 @@ import (
 // user-actionable input problems (exit code 2). Already-typed errors are not
 // expected here (Stat returns raw fs errors), so this always classifies as
 // validation.
-func slidesInputStatError(err error, param, msg string) error {
+//
+// Why the "file not found" wording lives here and not at the call sites: Stat
+// fails for a missing path, an unreadable parent directory and a rejected path
+// shape alike, so a caller-supplied "file not found" suffix turns a permission
+// error into the self-contradicting "file not found: permission denied". context
+// names what was being read (the flag, the @-placeholder); this helper decides
+// what actually went wrong.
+func slidesInputStatError(err error, param, context string) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, fileio.ErrPathValidation) {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: unsafe file path: %s", msg, err).WithParam(param).WithCause(err)
+	switch {
+	case errors.Is(err, fileio.ErrPathValidation):
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: unsafe file path: %s", context, err).WithParam(param).WithCause(err)
+	case errors.Is(err, fs.ErrNotExist):
+		// The raw error only restates the path, which context already names.
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: file not found", context).WithParam(param).WithCause(err)
+	default:
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: cannot read file: %s", context, err).WithParam(param).WithCause(err)
 	}
-	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: %s", msg, err).WithParam(param).WithCause(err)
 }
 
 // appendSlidesProgressHint preserves err's typed classification (per

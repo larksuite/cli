@@ -64,6 +64,10 @@ func isCurrentActiveCycle(cycle *Cycle, now time.Time) bool {
 	cycleStart := time.UnixMilli(startMs).UTC()
 	cycleEnd := time.UnixMilli(endMs).UTC()
 	nowUTC := now.UTC()
+	// Month cycles only
+	if cycleStart.AddDate(1, 0, -1) == cycleEnd {
+		return false
+	}
 
 	// Check time range: now must be >= start and <= end
 	if nowUTC.Before(cycleStart) || nowUTC.After(cycleEnd) {
@@ -78,6 +82,7 @@ func isCurrentActiveCycle(cycle *Cycle, now time.Time) bool {
 	return status == CycleStatusDefault || status == CycleStatusNormal
 }
 
+// OKRListCycles
 var OKRListCycles = common.Shortcut{
 	Service:     "okr",
 	Command:     "+cycle-list",
@@ -89,7 +94,9 @@ var OKRListCycles = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "user-id", Desc: "user ID", Required: true},
 		{Name: "user-id-type", Default: "open_id", Desc: "user ID type: open_id | union_id | user_id"},
-		{Name: "time-range", Desc: "specify time range. Use Format as YYYY-MM--YYYY-MM. leave empty to fetch all user cycles."},
+		{Name: "time-range", Desc: "local post-filter applied after the requested page is fetched. Format: YYYY-MM--YYYY-MM. Leave empty to keep the page unfiltered."},
+		{Name: "page-size", Type: "int", Default: "100", Desc: "page size, range 1-100"},
+		{Name: "page-token", Desc: "pagination token from previous response"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		idType := runtime.Str("user-id-type")
@@ -110,18 +117,29 @@ var OKRListCycles = common.Shortcut{
 				return err
 			}
 		}
+		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 100); err != nil {
+			return err
+		}
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
+			if err := common.RejectDangerousCharsTyped("--page-token", pageToken); err != nil {
+				return err
+			}
+		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		params := map[string]interface{}{
 			"user_id":      runtime.Str("user-id"),
 			"user_id_type": runtime.Str("user-id-type"),
-			"page_size":    100,
+			"page_size":    runtime.Int("page-size"),
+		}
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
+			params["page_token"] = pageToken
 		}
 		return common.NewDryRunAPI().
 			GET("/open-apis/okr/v2/cycles").
 			Params(params).
-			Desc("List OKR cycles for user, paginated at 100 per page, filtered by time-range")
+			Desc("List one page of OKR cycles for user; --time-range is a local post-filter on the returned page")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		userID := runtime.Str("user-id")
@@ -140,52 +158,34 @@ var OKRListCycles = common.Shortcut{
 			hasRange = true
 		}
 
-		// Paginated fetch of all cycles
 		queryParams := map[string]interface{}{
 			"user_id":      userID,
 			"user_id_type": userIDType,
-			"page_size":    "100",
+			"page_size":    runtime.Int("page-size"),
+		}
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
+			queryParams["page_token"] = pageToken
 		}
 
 		var allCycles []Cycle
-		page := 0
-		for {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if page > 0 {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(500 * time.Millisecond):
-				}
-			}
-			page++
-
-			data, err := runtime.CallAPITyped("GET", "/open-apis/okr/v2/cycles", queryParams, nil)
-			if err != nil {
-				return err
-			}
-
-			itemsRaw, _ := data["items"].([]interface{})
-			for _, item := range itemsRaw {
-				raw, err := json.Marshal(item)
-				if err != nil {
-					continue
-				}
-				var cycle Cycle
-				if err := json.Unmarshal(raw, &cycle); err != nil {
-					continue
-				}
-				allCycles = append(allCycles, cycle)
-			}
-
-			hasMore, pageToken := common.PaginationMeta(data)
-			if !hasMore || pageToken == "" {
-				break
-			}
-			queryParams["page_token"] = pageToken
+		data, err := runtime.CallAPITyped("GET", "/open-apis/okr/v2/cycles", queryParams, nil)
+		if err != nil {
+			return err
 		}
+
+		itemsRaw, _ := data["items"].([]interface{})
+		for _, item := range itemsRaw {
+			raw, err := json.Marshal(item)
+			if err != nil {
+				continue
+			}
+			var cycle Cycle
+			if err := json.Unmarshal(raw, &cycle); err != nil {
+				continue
+			}
+			allCycles = append(allCycles, cycle)
+		}
+		hasMore, nextPageToken := common.PaginationMeta(data)
 
 		// Filter by time-range overlap
 		var filtered []Cycle
@@ -212,7 +212,8 @@ var OKRListCycles = common.Shortcut{
 
 		runtime.OutFormat(map[string]interface{}{
 			"cycles":                respCycles,
-			"total":                 len(respCycles),
+			"has_more":              hasMore,
+			"page_token":            nextPageToken,
 			"current_active_cycles": currentActiveCycles,
 		}, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "Found %d cycle(s)\n", len(respCycles))

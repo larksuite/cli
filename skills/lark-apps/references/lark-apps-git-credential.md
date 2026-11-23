@@ -12,7 +12,7 @@ lark-cli apps +git-credential-remove --app-id app_xxx
 
 ## 输出契约
 
-- `+git-credential-init` 成功后读取 `data.repository_url`；不要展示或保存其中的凭据细节，只用于下一步 `git clone`。
+- `+git-credential-init` 成功后读取 `data.repository_url`；不要展示或保存其中的凭据细节，只用于下一步 `git clone`。响应还包含 `data.commit_author_name` 和 `data.commit_author_email`，这两个字段由 `+init` 内部消费，自动写入仓库 repo-local git config（`user.name` / `user.email`），agent 和用户无需手动配置。
 - `+git-credential-list` 返回本地记录和状态；可用来判断是否需要重新 init。
 - `+git-credential-remove` 只清本地配置；成功后告知不会删除云端应用或仓库。
 

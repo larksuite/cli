@@ -87,6 +87,15 @@ test("uses shared map for skill domain changes", () => {
   assert.match(output.live_packages, /github\.com\/larksuite\/cli\/tests\/cli_e2e\/sheets/);
 });
 
+test("runs every meeting package for the consolidated meeting skill", () => {
+  const output = runDomains(["skills/lark-meeting/scenes/query-meeting-and-artifacts.md"]);
+  assert.equal(output.mode, "subset");
+  assert.equal(output.domains, "minutes,note,vc");
+  assert.match(output.live_packages, /github\.com\/larksuite\/cli\/tests\/cli_e2e\/minutes/);
+  assert.match(output.live_packages, /github\.com\/larksuite\/cli\/tests\/cli_e2e\/note/);
+  assert.match(output.live_packages, /github\.com\/larksuite\/cli\/tests\/cli_e2e\/vc/);
+});
+
 test("falls back to full when a mapped path has no e2e package", () => {
   const output = runDomains(["shortcuts/whiteboard/export.go"]);
   assert.equal(output.mode, "full");

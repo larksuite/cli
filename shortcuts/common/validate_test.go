@@ -182,6 +182,9 @@ func TestWrapInputStatErrorTyped_ReturnsTypedValidation(t *testing.T) {
 func TestWrapSaveErrorTyped_ClassifiesPathAndFileIO(t *testing.T) {
 	pathErr := &fileio.PathValidationError{Err: errors.New("outside cwd")}
 	assertValidationParam(t, WrapSaveErrorTyped(pathErr), "")
+	if got := assertValidationParam(t, WrapSaveErrorTypedForFlag(pathErr, "--output-path"), "--output-path"); got.Param != "--output-path" {
+		t.Fatalf("Param = %q, want --output-path", got.Param)
+	}
 
 	mkdirErr := &fileio.MkdirError{Err: errors.New("permission denied")}
 	err := WrapSaveErrorTyped(mkdirErr)
@@ -370,7 +373,10 @@ func TestValidateSafePathTyped_AllowsNormalSubdir(t *testing.T) {
 // TestValidateSafePathTyped_ReturnsTypedValidation verifies that an escaping
 // path is rejected with a typed validation error and a safe path passes.
 func TestValidateSafePathTyped_ReturnsTypedValidation(t *testing.T) {
-	outside := t.TempDir()
+	// The symlink target is outside every allowed root; a t.TempDir() target
+	// would sit inside /tmp on hosts whose temp dir lives there, which the
+	// built-in allowlist permits.
+	outside := filepath.Join(string(filepath.Separator), "not-an-allowed-root")
 	workDir := t.TempDir()
 	chdirForTest(t, workDir)
 

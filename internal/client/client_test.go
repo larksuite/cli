@@ -383,6 +383,26 @@ func TestBuildApiReq_QueryParams(t *testing.T) {
 			params: map[string]interface{}{"with_bot": true},
 			want:   larkcore.QueryParams{"with_bot": []string{"true"}},
 		},
+		{
+			// --params numbers arrive as float64; the query string carries plain
+			// decimals, exactly as the multipart form path renders them. Go's
+			// %v would emit "1e+06" and "1.7e+09" here.
+			name: "numeric literals render as plain decimals",
+			params: map[string]interface{}{
+				"exponent":  float64(1e3),
+				"fraction":  float64(1.0),
+				"threshold": float64(1000000),
+				"timestamp": float64(1700000000),
+				"ids":       []interface{}{float64(1e2), float64(2.50)},
+			},
+			want: larkcore.QueryParams{
+				"exponent":  []string{"1000"},
+				"fraction":  []string{"1"},
+				"threshold": []string{"1000000"},
+				"timestamp": []string{"1700000000"},
+				"ids":       []string{"100", "2.5"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -485,6 +505,197 @@ func TestDoStream_IgnoresBaseHTTPClientTimeout(t *testing.T) {
 	}
 }
 
+func TestDoStreamAppliesRequestOptions(t *testing.T) {
+	requestDone := make(chan (<-chan struct{}), 1)
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requestDone <- req.Context().Done()
+		if got := req.Header.Get("Range"); got != "bytes=8-15" {
+			t.Fatalf("Range = %q, want bytes=8-15", got)
+		}
+		if _, ok := req.Context().Deadline(); !ok {
+			t.Fatal("WithTimeout did not set a request deadline")
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("payload")),
+		}, nil
+	})
+	ac := &APIClient{
+		HTTP:       &http.Client{Transport: rt},
+		Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+	}
+
+	resp, err := ac.DoStream(context.Background(), &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    "/open-apis/im/v1/messages/message_id/resources/file_key",
+	}, core.AsBot,
+		WithHeaders(http.Header{"Range": {"bytes=8-15"}}),
+		WithTimeout(time.Minute),
+	)
+	if err != nil {
+		t.Fatalf("DoStream() error = %v", err)
+	}
+	done := <-requestDone
+	select {
+	case <-done:
+		t.Fatal("request context canceled before response body was closed")
+	default:
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("closing response body did not release the request context")
+	}
+}
+
+func TestDoStreamHonorsCallerDeadline(t *testing.T) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		<-req.Context().Done()
+		return nil, req.Context().Err()
+	})
+	ac := &APIClient{
+		HTTP:       &http.Client{Transport: rt},
+		Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := ac.DoStream(ctx, &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    "/open-apis/im/v1/messages/message_id/resources/file_key",
+	}, core.AsBot)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("DoStream() error = %v, want caller deadline", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTimeout || problem.Retryable {
+		t.Fatalf("DoStream() problem = %#v, %v; want non-retryable network timeout", problem, ok)
+	}
+}
+
+func TestDoStreamRequestTimeoutIsRetryableWhileCallerIsActive(t *testing.T) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		<-req.Context().Done()
+		return nil, req.Context().Err()
+	})
+	ac := &APIClient{
+		HTTP:       &http.Client{Transport: rt},
+		Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+	}
+
+	_, err := ac.DoStream(context.Background(), &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    "/open-apis/im/v1/messages/message_id/resources/file_key",
+	}, core.AsBot, WithTimeout(time.Millisecond), WithReplaySafe())
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTimeout || !problem.Retryable {
+		t.Fatalf("DoStream() problem = %#v, %v; want retryable timeout", problem, ok)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("DoStream() error = %v, want request deadline cause", err)
+	}
+}
+
+func TestDoStreamRateLimitCarriesGatewayPacing(t *testing.T) {
+	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header: http.Header{
+				"X-Ogw-Ratelimit-Reset":     {"8"},
+				"X-Ogw-Ratelimit-Limit":     {"100"},
+				larkcore.HttpHeaderKeyLogId: {"log-rate-limit"},
+			},
+			Body: io.NopCloser(strings.NewReader("gateway busy")),
+		}, nil
+	})
+	ac := &APIClient{
+		HTTP:       &http.Client{Transport: rt},
+		Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+	}
+
+	_, err := ac.DoStream(context.Background(), &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    "/open-apis/im/v1/messages/message_id/resources/file_key",
+	}, core.AsBot, WithReplaySafe())
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("DoStream() error = %T %v, want *errs.APIError", err, err)
+	}
+	if apiErr.Subtype != errs.SubtypeRateLimit || apiErr.Code != http.StatusTooManyRequests || !apiErr.Retryable {
+		t.Fatalf("problem = %+v, want retryable api/rate_limit HTTP 429", apiErr.Problem)
+	}
+	if apiErr.RetryAfterSeconds != 8 || apiErr.LogID != "log-rate-limit" {
+		t.Fatalf("retry_after=%d log_id=%q, want 8 and log-rate-limit", apiErr.RetryAfterSeconds, apiErr.LogID)
+	}
+	if !strings.Contains(apiErr.Hint, "wait at least 8 seconds") || !strings.Contains(apiErr.Hint, "quota is 100") {
+		t.Fatalf("hint = %q, want pacing and gateway quota diagnostics", apiErr.Hint)
+	}
+}
+
+func TestDoStreamHTTPStatusOwnsRetryability(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		subtype    errs.Subtype
+		replaySafe bool
+		retryable  bool
+		retryAfter time.Duration
+	}{
+		{name: "request timeout", status: http.StatusRequestTimeout, subtype: errs.SubtypeNetworkTimeout, replaySafe: true, retryable: true, retryAfter: 2 * time.Second},
+		{name: "server unavailable", status: http.StatusServiceUnavailable, subtype: errs.SubtypeNetworkServer, replaySafe: true, retryable: true, retryAfter: 2 * time.Second},
+		{name: "server unavailable without replay contract", status: http.StatusServiceUnavailable, subtype: errs.SubtypeNetworkServer},
+		{name: "rate limit without replay contract", status: http.StatusTooManyRequests, subtype: errs.SubtypeNetworkTransport},
+		{name: "bad request", status: http.StatusBadRequest, subtype: errs.SubtypeNetworkTransport},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: tt.status,
+					Header:     http.Header{"Retry-After": {"2"}},
+					Body:       io.NopCloser(strings.NewReader("upstream response")),
+				}, nil
+			})
+			ac := &APIClient{
+				HTTP:       &http.Client{Transport: rt},
+				Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+				Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+			}
+
+			options := []Option{}
+			if tt.replaySafe {
+				options = append(options, WithReplaySafe())
+			}
+			_, err := ac.DoStream(context.Background(), &larkcore.ApiReq{
+				HttpMethod: http.MethodGet,
+				ApiPath:    "/open-apis/im/v1/messages/message_id/resources/file_key",
+			}, core.AsBot, options...)
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != tt.subtype ||
+				problem.Code != tt.status || problem.Retryable != tt.retryable {
+				t.Fatalf("DoStream() problem = %#v, %v", problem, ok)
+			}
+			delay, hasDelay := errs.RetryAfter(err)
+			if tt.retryAfter == 0 {
+				if hasDelay {
+					t.Fatalf("RetryAfter() = %s, true; want no server pacing", delay)
+				}
+			} else if !hasDelay || delay != tt.retryAfter {
+				t.Fatalf("RetryAfter() = %s, %v; want %s", delay, hasDelay, tt.retryAfter)
+			}
+		})
+	}
+}
+
 // TestDoStream_TransportFailureSplitsSubtype pins that a streaming-request
 // transport failure routes through classifyNetworkSubtype rather than emitting
 // a hardcoded SubtypeNetworkTransport for every cause. Concretely: a DNS
@@ -515,6 +726,53 @@ func TestDoStream_TransportFailureSplitsSubtype(t *testing.T) {
 	}
 	if netErr.Subtype != errs.SubtypeNetworkDNS {
 		t.Errorf("Subtype = %q, want %q (DNS failures must not be classified as generic transport)", netErr.Subtype, errs.SubtypeNetworkDNS)
+	}
+}
+
+func TestDoStreamTLSFailureIsNotRetryable(t *testing.T) {
+	tlsErr := errors.New("tls: certificate verification failed")
+	rt := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return nil, tlsErr
+	})
+	ac := &APIClient{
+		HTTP:       &http.Client{Transport: rt},
+		Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+	}
+
+	_, err := ac.DoStream(context.Background(), &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    "/open-apis/im/v1/messages/message_id/resources/file_key",
+	}, core.AsBot, WithReplaySafe())
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTLS || problem.Retryable {
+		t.Fatalf("DoStream() problem = %#v, %v; want non-retryable TLS failure", problem, ok)
+	}
+	if !errors.Is(err, tlsErr) {
+		t.Fatalf("DoStream() error = %v, want original TLS cause", err)
+	}
+}
+
+func TestDoStream_PreservesTypedTransportError(t *testing.T) {
+	policyErr := errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "blocked redirect")
+	ac := &APIClient{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, policyErr
+		})},
+		Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+	}
+
+	_, err := ac.DoStream(context.Background(), &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    "/open-apis/drive/v1/files/file_token/download",
+	}, core.AsBot)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryPolicy || problem.Subtype != errs.SubtypeAccessDenied {
+		t.Fatalf("DoStream() problem = %#v, %v; want policy/access_denied", problem, ok)
+	}
+	if !errors.Is(err, policyErr) {
+		t.Fatal("DoStream() did not preserve the typed transport error")
 	}
 }
 

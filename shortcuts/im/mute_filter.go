@@ -16,11 +16,10 @@ package im
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// MuteFilterMeta describes the outcome of a single page's mute filter run.
+// MuteFilterMeta describes the outcome of one fetched result's mute filter run.
 // UnknownCount is internal — used to compose the hint, not exposed in JSON.
 type MuteFilterMeta struct {
 	Applied       string
@@ -56,9 +55,9 @@ func BuildMuteFilterHint(meta MuteFilterMeta, hasMore bool) string {
 			return "--exclude-muted has no effect under bot identity (mute is a per-user setting, bots have no mute data); returned all results unfiltered. Use --as user to filter."
 		case SkipReasonAllNonMember:
 			if hasMore {
-				return "All results on this page are non-member public groups; mute filter does not apply. Use --page-token to fetch more."
+				return "All fetched results are non-member public groups; mute filter does not apply. Use --page-token to fetch more."
 			}
-			return "All results on this page are non-member public groups; mute filter does not apply. No more pages."
+			return "All fetched results are non-member public groups; mute filter does not apply. No more pages."
 		}
 		return ""
 	}
@@ -72,10 +71,10 @@ func BuildMuteFilterHint(meta MuteFilterMeta, hasMore bool) string {
 	}
 
 	if meta.UnknownCount > 0 {
-		return fmt.Sprintf("Filtered out %d muted chat(s) on this page (%d remaining, including %d non-member public group(s)); %s",
+		return fmt.Sprintf("Filtered out %d muted chat(s) from the fetched result (%d remaining, including %d non-member public group(s)); %s",
 			meta.FilteredCount, meta.ReturnedCount, meta.UnknownCount, tail)
 	}
-	return fmt.Sprintf("Filtered out %d muted chat(s) on this page (%d remaining); %s",
+	return fmt.Sprintf("Filtered out %d muted chat(s) from the fetched result (%d remaining); %s",
 		meta.FilteredCount, meta.ReturnedCount, tail)
 }
 
@@ -188,7 +187,7 @@ func ApplyMuteFilter(
 	return out, meta
 }
 
-// ExtractChatIDs collects unique chat_ids (in input order) from a page of rows.
+// ExtractChatIDs collects unique chat_ids (in input order) from fetched rows.
 // Rows missing the key or with an empty value are skipped.
 func ExtractChatIDs(chats []map[string]interface{}, chatIDKey string) []string {
 	if len(chats) == 0 {
@@ -230,8 +229,9 @@ func MuteFilterMetaToMap(meta MuteFilterMeta) map[string]interface{} {
 }
 
 // FetchMuteStatus calls batch_get_mute_status for the given chat_ids and
-// parses the result. Caller MUST ensure len(chatIDs) <= MaxMuteStatusBatchSize
-// (the shortcuts already cap --page-size at 100, so a single page is safe).
+// parses the result. Inputs larger than the upstream per-request cap are split
+// into stable, sequential batches; page aggregation therefore does not leak an
+// API batch limit into the caller's filtering pipeline.
 //
 // Empty input is a no-op (avoids triggering the upstream "chat_ids is empty"
 // InvalidParam).
@@ -239,17 +239,40 @@ func FetchMuteStatus(runtime *common.RuntimeContext, chatIDs []string) (map[stri
 	if len(chatIDs) == 0 {
 		return map[string]bool{}, nil, nil
 	}
-	if len(chatIDs) > MaxMuteStatusBatchSize {
-		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"batch_get_mute_status accepts at most %d chat_ids per call (got %d)",
-			MaxMuteStatusBatchSize, len(chatIDs))
+
+	muted := make(map[string]bool, len(chatIDs))
+	unknownSet := make(map[string]struct{})
+	for start := 0; start < len(chatIDs); start += MaxMuteStatusBatchSize {
+		end := start + MaxMuteStatusBatchSize
+		if end > len(chatIDs) {
+			end = len(chatIDs)
+		}
+		batch := chatIDs[start:end]
+		resp, err := runtime.CallAPITyped("POST", BatchGetMuteStatusPath, nil, BuildBatchGetMuteStatusBody(batch))
+		if err != nil {
+			return nil, nil, wrapIMNetworkErr(err, "fetch mute status")
+		}
+		batchMuted, batchUnknown := ParseBatchGetMuteStatusResponse(batch, resp)
+		for id, isMuted := range batchMuted {
+			muted[id] = isMuted
+		}
+		for _, id := range batchUnknown {
+			unknownSet[id] = struct{}{}
+		}
 	}
-	body := BuildBatchGetMuteStatusBody(chatIDs)
-	resp, err := runtime.CallAPITyped("POST", BatchGetMuteStatusPath, nil, body)
-	if err != nil {
-		return nil, nil, wrapIMNetworkErr(err, "fetch mute status")
+
+	unknown := make([]string, 0, len(unknownSet))
+	seenUnknown := make(map[string]struct{}, len(unknownSet))
+	for _, id := range chatIDs {
+		if _, isUnknown := unknownSet[id]; !isUnknown {
+			continue
+		}
+		if _, duplicate := seenUnknown[id]; duplicate {
+			continue
+		}
+		seenUnknown[id] = struct{}{}
+		unknown = append(unknown, id)
 	}
-	muted, unknown := ParseBatchGetMuteStatusResponse(chatIDs, resp)
 	return muted, unknown, nil
 }
 
@@ -258,7 +281,7 @@ type MuteFilterInput struct {
 	ExcludeMuted  bool                     // value of --exclude-muted
 	IsBot         bool                     // current identity
 	PreSkipReason string                   // optional caller-supplied skip reason (e.g. SkipReasonAllNonMember); leave empty under bot — IsBot is handled separately
-	Chats         []map[string]interface{} // page of result rows
+	Chats         []map[string]interface{} // fetched result rows
 	ChatIDKey     string                   // key in row holding the chat_id ("chat_id" for both v1 list and v2 search meta_data)
 	HasMore       bool                     // for hint composition
 }

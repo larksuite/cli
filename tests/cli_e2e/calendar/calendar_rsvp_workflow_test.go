@@ -39,6 +39,7 @@ func requireFreebusyEntry(t *testing.T, stdout string, startAt time.Time, endAt 
 }
 
 func TestCalendar_RSVPWorkflowAsUser(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

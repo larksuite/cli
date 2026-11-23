@@ -4,50 +4,53 @@
 package sheets
 
 import (
+	"slices"
 	"testing"
-
-	"github.com/spf13/cobra"
 )
 
-// TestWithTokenAlias verifies the PostMount-based --token → --spreadsheet-token
-// alias: it resolves at parse time, and it composes onto (rather than replaces)
-// any pre-existing PostMount — the property that lets it coexist with
-// +csv-put's --range/--start-cell flag-group setup.
-func TestWithTokenAlias(t *testing.T) {
+func TestShortcutsDeclareSpreadsheetTokenAlias(t *testing.T) {
 	t.Parallel()
 
-	// Alias resolves to the canonical flag.
-	cmd := &cobra.Command{Use: "x"}
-	cmd.Flags().String("spreadsheet-token", "", "")
-	withTokenAlias(nil)(cmd)
-	if err := cmd.Flags().Parse([]string{"--token", "shtABC"}); err != nil {
-		t.Fatalf("--token should resolve as an alias: %v", err)
+	count := 0
+	for _, shortcut := range Shortcuts() {
+		for _, flag := range shortcut.Flags {
+			if flag.Name != "spreadsheet-token" {
+				continue
+			}
+			count++
+			if !slices.Contains(flag.Aliases, "token") {
+				t.Errorf("%s --spreadsheet-token aliases = %v, want token", shortcut.Command, flag.Aliases)
+			}
+		}
 	}
-	if got := cmd.Flags().Lookup("spreadsheet-token").Value.String(); got != "shtABC" {
-		t.Errorf("--token should set --spreadsheet-token; got %q", got)
-	}
-
-	// Composes with an existing PostMount instead of dropping it.
-	prevRan := false
-	cmd2 := &cobra.Command{Use: "y"}
-	cmd2.Flags().String("spreadsheet-token", "", "")
-	withTokenAlias(func(_ *cobra.Command) { prevRan = true })(cmd2)
-	if !prevRan {
-		t.Error("pre-existing PostMount should still run")
-	}
-	if err := cmd2.Flags().Parse([]string{"--token", "shtZ"}); err != nil {
-		t.Fatalf("--token should still resolve when composed: %v", err)
+	if count == 0 {
+		t.Fatal("expected at least one sheets shortcut with --spreadsheet-token")
 	}
 }
 
-// TestShortcuts_TokenAliasOnSpreadsheetTokenCommands asserts every shortcut that
-// takes --spreadsheet-token ends up with a PostMount (the composed token alias),
-// so the reflex typo is forgiven wherever the canonical flag exists.
-func TestShortcuts_TokenAliasOnSpreadsheetTokenCommands(t *testing.T) {
+func TestShortcutsDoNotAccumulateSpreadsheetTokenAliases(t *testing.T) {
 	t.Parallel()
-	for _, s := range Shortcuts() {
-		if hasFlag(s.Flags, "spreadsheet-token") && s.PostMount == nil {
-			t.Errorf("%s takes --spreadsheet-token but has no PostMount (token alias missing)", s.Command)
+
+	for call := 0; call < 2; call++ {
+		for _, shortcut := range Shortcuts() {
+			for _, flag := range shortcut.Flags {
+				if flag.Name != "spreadsheet-token" {
+					continue
+				}
+				if got := countString(flag.Aliases, "token"); got != 1 {
+					t.Fatalf("call %d: %s has %d token aliases: %v", call+1, shortcut.Command, got, flag.Aliases)
+				}
+			}
 		}
 	}
+}
+
+func countString(values []string, target string) int {
+	count := 0
+	for _, value := range values {
+		if value == target {
+			count++
+		}
+	}
+	return count
 }

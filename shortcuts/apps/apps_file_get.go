@@ -22,7 +22,7 @@ var AppsFileGet = common.Shortcut{
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +file-get --app-id <app_id> --path /1858537546760216.png",
-		"Tip: extract a single field with --jq, e.g. -q '.size_bytes' or -q '.download_url'",
+		"Tip: extract a single field with --jq, e.g. -q '.data.size_bytes' or -q '.data.download_url'",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
@@ -32,7 +32,7 @@ var AppsFileGet = common.Shortcut{
 		{Name: "path", Desc: "remote file path", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+		if _, err := requireFileAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
 		_, err := requireFilePath(rctx.Str("path"))

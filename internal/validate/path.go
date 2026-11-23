@@ -17,16 +17,17 @@ func SafeInputPath(path string) (string, error) {
 	return localfileio.SafeInputPath(path)
 }
 
+// LocalInputPath validates a local input path without restricting it to the
+// current working directory. It delegates to localfileio.LocalInputPath so
+// command validation and shared local-file readers use one policy.
+func LocalInputPath(path string) (string, error) {
+	return localfileio.LocalInputPath(path)
+}
+
 // SafeEnvDirPath validates an environment-provided application directory path.
 // Delegates to localfileio.SafeEnvDirPath.
 func SafeEnvDirPath(path, envName string) (string, error) {
 	return localfileio.SafeEnvDirPath(path, envName)
-}
-
-// SafeEnvFilePath validates an environment-provided application file path.
-// Delegates to localfileio.SafeEnvFilePath.
-func SafeEnvFilePath(path, envName string) (string, error) {
-	return localfileio.SafeEnvFilePath(path, envName)
 }
 
 // SafeLocalFlagPath validates a flag value as a local file path.

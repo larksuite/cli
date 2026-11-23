@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestTask_UploadAttachmentDryRun validates the request shape emitted by
@@ -93,31 +92,31 @@ func TestTask_UploadAttachmentDryRun(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
-			if count := gjson.Get(out, "api.#").Int(); count != 1 {
+			if count := clie2e.DryRunGet(out, "api.#").Int(); count != 1 {
 				t.Fatalf("expected 1 API call, got %d\nstdout:\n%s", count, out)
 			}
-			if method := gjson.Get(out, "api.0.method").String(); method != "POST" {
+			if method := clie2e.DryRunGet(out, "api.0.method").String(); method != "POST" {
 				t.Fatalf("api[0].method = %q, want POST\nstdout:\n%s", method, out)
 			}
-			if url := gjson.Get(out, "api.0.url").String(); url != "/open-apis/task/v2/attachments/upload" {
+			if url := clie2e.DryRunGet(out, "api.0.url").String(); url != "/open-apis/task/v2/attachments/upload" {
 				t.Fatalf("api[0].url = %q, want /open-apis/task/v2/attachments/upload\nstdout:\n%s", url, out)
 			}
-			if got := gjson.Get(out, "api.0.params.user_id_type").String(); got != tt.wantUserIDType {
+			if got := clie2e.DryRunGet(out, "api.0.params.user_id_type").String(); got != tt.wantUserIDType {
 				t.Fatalf("api[0].params.user_id_type = %q, want %q\nstdout:\n%s", got, tt.wantUserIDType, out)
 			}
-			if got := gjson.Get(out, "api.0.body.resource_type").String(); got != tt.wantResourceType {
+			if got := clie2e.DryRunGet(out, "api.0.body.resource_type").String(); got != tt.wantResourceType {
 				t.Fatalf("api[0].body.resource_type = %q, want %q\nstdout:\n%s", got, tt.wantResourceType, out)
 			}
-			if got := gjson.Get(out, "api.0.body.resource_id").String(); got != tt.wantResourceID {
+			if got := clie2e.DryRunGet(out, "api.0.body.resource_id").String(); got != tt.wantResourceID {
 				t.Fatalf("api[0].body.resource_id = %q, want %q\nstdout:\n%s", got, tt.wantResourceID, out)
 			}
-			if got := gjson.Get(out, "api.0.body.file.field").String(); got != "file" {
+			if got := clie2e.DryRunGet(out, "api.0.body.file.field").String(); got != "file" {
 				t.Fatalf("api[0].body.file.field = %q, want file\nstdout:\n%s", got, out)
 			}
-			if got := gjson.Get(out, "api.0.body.file.path").String(); got != tt.wantFilePath {
+			if got := clie2e.DryRunGet(out, "api.0.body.file.path").String(); got != tt.wantFilePath {
 				t.Fatalf("api[0].body.file.path = %q, want %q\nstdout:\n%s", got, tt.wantFilePath, out)
 			}
-			if got := gjson.Get(out, "api.0.body.file.name").String(); got != tt.wantFileName {
+			if got := clie2e.DryRunGet(out, "api.0.body.file.name").String(); got != tt.wantFileName {
 				t.Fatalf("api[0].body.file.name = %q, want %q\nstdout:\n%s", got, tt.wantFileName, out)
 			}
 		})

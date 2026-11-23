@@ -86,7 +86,6 @@ var WikiMemberList = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Found %d wiki space member(s)\n", len(members))
 
 		outData := map[string]interface{}{
 			"space_id":   spaceID,

@@ -47,25 +47,37 @@ const maxCandidates = 5
 //
 // Cobra's FlagErrorFunc walks up the parent chain looking for the nearest
 // non-nil hook, so every mail subcommand inherits this behaviour without
-// any per-shortcut wiring.
+// any per-shortcut wiring. Non-unknown errors delegate to the previously
+// inherited hook so mail's focused suggestions do not bypass root-level flag
+// contracts such as alias source attribution.
 func InstallOnMail(svc *cobra.Command) {
 	if svc == nil {
 		return
 	}
-	svc.SetFlagErrorFunc(flagSuggestErrorFunc)
+	inherited := svc.FlagErrorFunc()
+	svc.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		if err == nil {
+			return nil
+		}
+		if _, _, ok := parseUnknownToken(err.Error()); ok {
+			return flagSuggestErrorFunc(c, err)
+		}
+		return inherited(c, err)
+	})
 }
 
 // flagSuggestErrorFunc converts pflag's unknown-flag errors into a typed
-// validation error carrying candidate suggestions. Any other error is passed
-// through unchanged so cobra's existing handling kicks in.
+// validation error carrying candidate suggestions. Direct callers receive
+// non-unknown errors unchanged; InstallOnMail routes those errors to the
+// inherited hook before calling this function.
 func flagSuggestErrorFunc(c *cobra.Command, err error) error {
 	if err == nil {
 		return nil
 	}
 	token, isShorthand, ok := parseUnknownToken(err.Error())
 	if !ok {
-		// Non unknown-flag errors (e.g. "required flag(s) ... not set")
-		// pass through to cmd/root.go::handleRootError's fallback path.
+		// Defensive pass-through for direct callers. The installed hook
+		// delegates this case to its inherited FlagErrorFunc.
 		return err
 	}
 	names := collectFlags(c)

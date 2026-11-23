@@ -10,14 +10,12 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/spf13/cobra"
-	keyring "github.com/zalando/go-keyring"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -141,27 +139,15 @@ func TestRecording_BatchLimit_CalendarEventIDs(t *testing.T) {
 }
 
 func TestRecording_Validate_MissingScope(t *testing.T) {
-	keyring.MockInit() // use in-memory keyring to avoid macOS keychain popups
-	t.Setenv("HOME", t.TempDir())
-
 	cfg := defaultConfig()
-	// Store a token that intentionally lacks the vc:record:readonly scope.
-	token := &auth.StoredUAToken{
-		UserOpenId:       cfg.UserOpenId,
-		AppId:            cfg.AppID,
-		AccessToken:      "test-user-access-token",
-		RefreshToken:     "test-refresh-token",
-		ExpiresAt:        time.Now().Add(1 * time.Hour).UnixMilli(),
-		RefreshExpiresAt: time.Now().Add(24 * time.Hour).UnixMilli(),
-		Scope:            "calendar:calendar:read",
-		GrantedAt:        time.Now().Add(-1 * time.Hour).UnixMilli(),
-	}
-	if err := auth.SetStoredToken(token); err != nil {
-		t.Fatalf("SetStoredToken() error = %v", err)
-	}
-	t.Cleanup(func() { _ = auth.RemoveStoredToken(cfg.AppID, cfg.UserOpenId) })
-
 	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+	// TestFactory's default token resolver returns empty Scopes, which skips
+	// identity-aware preflight. Inject a resolver that returns an under-scoped
+	// user token so the MissingScopes path is exercised.
+	f.Credential = credential.NewCredentialProvider(nil, nil, &recordingScopedTokenResolver{
+		scopes: "calendar:calendar:read",
+	}, nil)
+
 	err := mountAndRun(t, VCRecording, []string{"+recording", "--meeting-ids", "m001", "--as", "user"}, f, nil)
 	if err == nil {
 		t.Fatal("expected missing_scope error, got nil")
@@ -187,6 +173,16 @@ func TestRecording_Validate_MissingScope(t *testing.T) {
 	if !found {
 		t.Errorf("expected MissingScopes to contain 'vc:record:readonly', got %v", pe.MissingScopes)
 	}
+}
+
+// recordingScopedTokenResolver returns a token with caller-controlled scopes
+// so tests can deterministically exercise the identity-aware scope preflight.
+type recordingScopedTokenResolver struct {
+	scopes string
+}
+
+func (r *recordingScopedTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
+	return &credential.TokenResult{Token: "test-token", Scopes: r.scopes}, nil
 }
 
 // ---------------------------------------------------------------------------

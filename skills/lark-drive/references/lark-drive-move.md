@@ -1,19 +1,20 @@
 
 # drive +move
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 将文件或文件夹移动到用户云空间（云盘/云存储）的其他位置。
 
-## 与 `wiki +move` 的区别
+## 与 Wiki 移动 shortcut 的区别
 
 - `drive +move` 只处理 **Drive 文件夹树内部** 的位置调整，目标位置用 `--folder-token` 表示
 - `wiki +move` 处理的是 **Wiki 知识空间 / 页面层级**：要么移动已有 Wiki 节点，要么把 Drive 文档迁入 Wiki
-- 如果用户说“移动到某个文件夹”“移动到我的空间根目录”，应使用 `drive +move`
+- `wiki +move-to-drive` 把 **已有 Wiki 节点移出知识库**，放到 Drive 文件夹或“我的空间”根目录
+- 如果用户说“移动到某个文件夹”“移动到我的空间根目录”，还要判断源对象：源对象已在 Drive 时使用 `drive +move`；源对象是 Wiki 节点时使用 `wiki +move-to-drive`
 - 如果用户说“移动到某个知识库 / 页面下”“迁入 Wiki / 知识空间”，应使用 `wiki +move`
 - 如果用户说“移动到我的文档库 / 我的知识库 / 个人知识库 / my_library”，不要使用 `drive +move`；先按 Wiki 目标处理
 - `我的文档库` 不是 Drive root folder，也不是 `--folder-token` 省略后的默认目的地
-- `drive +move` 不支持 wiki 文档；如果目标是 Wiki，不要尝试用 `drive +move` 代替
+- `drive +move` 不支持 Wiki 文档；Wiki 节点到 Drive 应使用 `wiki +move-to-drive`，目标是 Wiki 时使用 `wiki +move`
 
 ## 不要误用到 `我的文档库`
 
@@ -47,7 +48,7 @@ lark-cli drive +move \
   --type docx \
   --folder-token <TARGET_FOLDER_TOKEN>
 
-# 移动文件夹（异步操作，会自动有限轮询任务状态）
+# 移动文件夹
 lark-cli drive +move \
   --file-token <FOLDER_TOKEN> \
   --type folder \
@@ -78,12 +79,12 @@ lark-cli drive +move \
 | `bitable` | 多维表格 |
 | `mindnote` | 思维笔记 |
 | `slides` | 幻灯片 |
-| `folder` | 文件夹（移动文件夹是异步操作） |
+| `folder` | 文件夹 |
 
 ## 行为说明
 
 - **普通文件移动**：同步操作，立即完成
-- **文件夹移动**：异步操作，接口返回 `task_id`，shortcut 会先做有限轮询；如果在轮询窗口内完成，则直接返回成功结果
+- **文件夹移动**：可能异步完成，shortcut 内置有限次数的轮询。同步完成或在轮询期间完成时，返回 `ready=true`；若轮询结束仍未完成，则返回 `ready=false`，可按返回的 `next_command` 继续查询
 - **轮询超时不是失败**：文件夹移动内置最多轮询 30 次、每次间隔 2 秒；如果轮询结束任务仍未完成，会返回 `task_id`、`status`、`ready=false`、`timed_out=true` 和 `next_command`
 - **继续查询**：当看到 `next_command` 时，改用 `lark-cli drive +task_result --scenario task_check --task-id <TASK_ID>` 继续查询
 - **目标文件夹**：如果不指定 `--folder-token`，文件将被移动到用户的根文件夹（"我的空间"）
@@ -117,4 +118,5 @@ lark-cli drive +task_result \
 ## 参考
 
 - [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令
+- [wiki +move-to-drive](../../lark-wiki/references/lark-wiki-move-to-drive.md) -- 将 Wiki 节点移出知识库并放入 Drive
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

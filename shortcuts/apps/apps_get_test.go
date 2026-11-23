@@ -107,3 +107,31 @@ func TestAppsGet_PrettyOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestAppsGet_PrettyOutputIncludesIconURL(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_test",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"app_id":   "app_test",
+					"app_type": "full_stack",
+					"name":     "IconApp",
+					"icon_url": "https://example.com/icon.png",
+				},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsGet,
+		[]string{"+get", "--app-id", "app_test", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "icon_url: https://example.com/icon.png\n") {
+		t.Fatalf("pretty output missing icon_url: %s", got)
+	}
+}

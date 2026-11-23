@@ -5,7 +5,9 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -18,12 +20,18 @@ import (
 	cmdconfig "github.com/larksuite/cli/cmd/config"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/apicatalog"
 	internalauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/surface"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 // TestPersistentPreRunE_AuthCheckDisabledAnnotations verifies that
@@ -78,11 +86,28 @@ func TestPersistentPreRunE_ConfigSubcommands(t *testing.T) {
 func TestRootLong_AgentSkillsLinkTargetsReadmeSection(t *testing.T) {
 	// The human skills-install guidance now lives in the root usage-template
 	// footer (below the command list), not in the agent-facing Long.
-	if !strings.Contains(rootUsageTemplate, "https://github.com/larksuite/cli#agent-skills") {
-		t.Fatalf("root help footer should link to the README Agent Skills section, got:\n%s", rootUsageTemplate)
+	_, root, _ := buildInternal(context.Background(), buildInvocationForTest(t), WithoutPlugins())
+	help := new(bytes.Buffer)
+	root.SetOut(help)
+	if err := root.Help(); err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(rootUsageTemplate, "https://github.com/larksuite/cli#install-ai-agent-skills") {
-		t.Fatalf("root help should not reference the removed install-ai-agent-skills anchor, got:\n%s", rootUsageTemplate)
+	if !strings.Contains(help.String(), "https://github.com/larksuite/cli#agent-skills") {
+		t.Fatalf("root help footer should link to the README Agent Skills section, got:\n%s", help)
+	}
+	if strings.Contains(help.String(), "https://github.com/larksuite/cli#install-ai-agent-skills") {
+		t.Fatalf("root help should not reference the removed install-ai-agent-skills anchor, got:\n%s", help)
+	}
+}
+
+func TestBuildRewritesRootSkillsHelpURLAfterProviderRegistration(t *testing.T) {
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, "github.com", "mirror.example.test", 1)
+	})
+
+	_, root, _ := buildInternal(context.Background(), buildInvocationForTest(t), WithoutPlugins())
+	if got := root.UsageTemplate(); !strings.Contains(got, "https://mirror.example.test/larksuite/cli#agent-skills") {
+		t.Fatalf("root help URL was not rewritten:\n%s", got)
 	}
 }
 
@@ -162,7 +187,7 @@ func TestHandleRootError_SecurityPolicyCanonicalEnvelope(t *testing.T) {
 			ChallengeURL: "https://example.com/challenge",
 		}
 
-		gotExit := handleRootError(f, spErr)
+		gotExit := handleRootError(f, spErr, nil)
 		if gotExit != int(output.ExitContentSafety) {
 			t.Errorf("exit code = %d, want %d (ExitContentSafety)", gotExit, output.ExitContentSafety)
 		}
@@ -209,7 +234,7 @@ func TestHandleRootError_SecurityPolicyCanonicalEnvelope(t *testing.T) {
 			},
 		}
 
-		gotExit := handleRootError(f, spErr)
+		gotExit := handleRootError(f, spErr, nil)
 		if gotExit != int(output.ExitContentSafety) {
 			t.Errorf("exit code = %d, want %d", gotExit, output.ExitContentSafety)
 		}
@@ -286,7 +311,7 @@ func TestHandleRootError_DeprecatedAliasMissingFlagStructured(t *testing.T) {
 	})
 	// The bare error shape cobra's ValidateRequiredFlags produces: not a typed
 	// errs.* error, so it reaches the deprecation fallback.
-	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"))
+	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"), nil)
 
 	out := errOut.String()
 	if strings.HasPrefix(strings.TrimSpace(out), "Error:") {
@@ -314,7 +339,7 @@ func TestHandleRootError_AuthConfigWireGolden(t *testing.T) {
 		errOut := &bytes.Buffer{}
 		f.IOStreams.ErrOut = errOut
 
-		exit := handleRootError(f, internalauth.NewNeedUserAuthorizationError("u_golden"))
+		exit := handleRootError(f, internalauth.NewNeedUserAuthorizationError("u_golden"), nil)
 		if exit != int(output.ExitAuth) {
 			t.Errorf("exit = %d, want %d (ExitAuth)", exit, int(output.ExitAuth))
 		}
@@ -345,7 +370,7 @@ func TestHandleRootError_AuthConfigWireGolden(t *testing.T) {
 		errOut := &bytes.Buffer{}
 		f.IOStreams.ErrOut = errOut
 
-		exit := handleRootError(f, core.NotConfiguredError())
+		exit := handleRootError(f, core.NotConfiguredError(), nil)
 		if exit != int(output.ExitAuth) {
 			t.Errorf("exit = %d, want %d (config shares ExitAuth)", exit, int(output.ExitAuth))
 		}
@@ -393,7 +418,7 @@ func TestHandleRootError_NoDeprecationTypesUsageError(t *testing.T) {
 	errOut := &bytes.Buffer{}
 	f.IOStreams.ErrOut = errOut
 
-	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"))
+	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"), nil)
 
 	out := errOut.String()
 	if strings.HasPrefix(strings.TrimSpace(out), "Error:") {
@@ -424,7 +449,7 @@ func TestHandleRootError_LeakedUntypedErrorBecomesInternal(t *testing.T) {
 	errOut := &bytes.Buffer{}
 	f.IOStreams.ErrOut = errOut
 
-	exit := handleRootError(f, fmt.Errorf("upstream helper exploded: %w", io.ErrUnexpectedEOF))
+	exit := handleRootError(f, fmt.Errorf("upstream helper exploded: %w", io.ErrUnexpectedEOF), nil)
 
 	errObj := decodeErrorEnvelope(t, errOut.Bytes())
 	if got := errObj["type"]; got != "internal" {
@@ -449,7 +474,7 @@ func TestHandleRootError_PartialWritePreservesExitCode(t *testing.T) {
 	f.IOStreams.ErrOut = w
 
 	err := errs.NewAuthenticationError(errs.SubtypeTokenExpired, "token expired")
-	exit := handleRootError(f, err)
+	exit := handleRootError(f, err, nil)
 	if exit != int(output.ExitAuth) {
 		t.Errorf("exit = %d, want %d (typed exit code preserved despite write failure)", exit, int(output.ExitAuth))
 	}
@@ -466,7 +491,7 @@ func TestHandleRootError_BareErrorExitCodeNoStderr(t *testing.T) {
 	errOut := &bytes.Buffer{}
 	f.IOStreams.ErrOut = errOut
 
-	exit := handleRootError(f, output.ErrBare(output.ExitAuth))
+	exit := handleRootError(f, output.ErrBare(output.ExitAuth), nil)
 	if exit != int(output.ExitAuth) {
 		t.Errorf("exit = %d, want %d (BareError code propagated)", exit, int(output.ExitAuth))
 	}
@@ -492,7 +517,7 @@ func TestHandleRootError_TypedAuthErrorWithLegacyCausePreserved(t *testing.T) {
 		WithHint("custom producer hint").
 		WithCause(innerLegacy)
 
-	exit := handleRootError(f, outer)
+	exit := handleRootError(f, outer, nil)
 	if exit != int(output.ExitAuth) {
 		t.Errorf("exit = %d, want %d (ExitAuth)", exit, int(output.ExitAuth))
 	}
@@ -506,8 +531,8 @@ func TestHandleRootError_TypedAuthErrorWithLegacyCausePreserved(t *testing.T) {
 }
 
 // TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT pins
-// that a typed AuthenticationError carrying the need_user_authorization marker gets a
-// declared-scopes Hint appended when the current command is a registered
+// that a typed AuthenticationError carrying the need_user_authorization marker
+// gets executable scoped recovery when the current command is a registered
 // service method.
 func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -515,43 +540,94 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.APICatalog = apicatalog.Filter(snapshot.Catalog(), func(svc meta.Service) (meta.Service, bool) {
+		return svc, svc.Name == "drive"
+	})
 	f.ResolvedIdentity = core.AsUser
 
-	var target registry.CommandEntry
-	for _, entry := range registry.CollectCommandScopes([]string{"calendar"}, "user") {
-		if len(entry.Scopes) == 1 && entry.Scopes[0] == "calendar:calendar.event:create" {
-			target = entry
+	var target apicatalog.MethodRef
+	var scopes []string
+	for _, ref := range f.APICatalog.WalkMethods(nil) {
+		declared := registry.DeclaredScopesForMethod(ref.Method, "user")
+		if len(declared) > 0 {
+			target = ref
+			scopes = declared
 			break
 		}
 	}
-	if target.Command == "" {
-		t.Fatal("failed to locate a calendar create command in local registry metadata")
-	}
-	parts := strings.Split(target.Command, " ")
-	if len(parts) != 2 {
-		t.Fatalf("expected resource/method command, got %q", target.Command)
+	if target.Method.ID == "" {
+		t.Fatal("failed to locate a scoped drive method in catalog snapshot")
 	}
 
 	root := &cobra.Command{Use: "lark-cli"}
-	serviceCmd := &cobra.Command{Use: "calendar"}
-	resourceCmd := &cobra.Command{Use: parts[0]}
-	methodCmd := &cobra.Command{Use: parts[1]}
+	serviceCmd := &cobra.Command{Use: target.Service.Name}
 	root.AddCommand(serviceCmd)
-	serviceCmd.AddCommand(resourceCmd)
-	resourceCmd.AddCommand(methodCmd)
+	parent := serviceCmd
+	for _, name := range target.ResourcePath {
+		child := &cobra.Command{Use: name}
+		parent.AddCommand(child)
+		parent = child
+	}
+	methodCmd := &cobra.Command{Use: target.Method.Name}
+	parent.AddCommand(methodCmd)
 	f.CurrentCommand = methodCmd
 
-	authErr := newAuthErrorWithNeedAuthMarker()
-	applyNeedAuthorizationHint(f, authErr)
+	source := internalauth.NewNeedUserAuthorizationError("u_service")
+	var authErr *errs.AuthenticationError
+	if !errors.As(source, &authErr) {
+		t.Fatalf("source = %T, want *errs.AuthenticationError", source)
+	}
+	originalHint := authErr.Hint
+	rendered := presentRootError(f, source, recovery.NewProjector(nil))
+	problem, ok := errs.ProblemOf(rendered)
+	if !ok {
+		t.Fatalf("rendered error = %T, want typed error", rendered)
+	}
 
-	if authErr.Category != errs.CategoryAuthentication {
-		t.Errorf("Category = %q, want authentication", authErr.Category)
+	if problem.Category != errs.CategoryAuthentication {
+		t.Errorf("Category = %q, want authentication", problem.Category)
 	}
-	if !strings.Contains(authErr.Message, "need_user_authorization") {
-		t.Errorf("Message should preserve need_user_authorization marker; got %q", authErr.Message)
+	if problem.Subtype != errs.SubtypeTokenMissing {
+		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeTokenMissing)
 	}
-	if !strings.Contains(authErr.Hint, "current command requires scope(s): calendar:calendar.event:create") {
-		t.Errorf("expected declared-scope hint, got %q", authErr.Hint)
+	if !errors.Is(rendered, authErr.Cause) {
+		t.Errorf("rendered error lost need-authorization cause %v: %v", authErr.Cause, rendered)
+	}
+	if !strings.Contains(problem.Message, "need_user_authorization") {
+		t.Errorf("Message should preserve need_user_authorization marker; got %q", problem.Message)
+	}
+	for _, scope := range scopes {
+		if !strings.Contains(problem.Hint, scope) {
+			t.Errorf("expected scoped two-turn recovery to include %q, got %q", scope, problem.Hint)
+		}
+	}
+	if !strings.Contains(problem.Hint, `auth login --scope "`) || !strings.Contains(problem.Hint, `--no-wait --json`) {
+		t.Errorf("expected scoped two-turn recovery, got %q", problem.Hint)
+	}
+	if authErr.Hint != originalHint || !strings.Contains(authErr.Hint, "--recommend --no-wait --json") {
+		t.Errorf("presenter mutated producer's generic recovery: before %q, after %q", originalHint, authErr.Hint)
+	}
+
+	concealedPlan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	concealed := presentRootError(f, internalauth.NewNeedUserAuthorizationError("u_service"), recovery.NewProjector(func() *surface.Plan {
+		return concealedPlan
+	}))
+	concealedProblem, ok := errs.ProblemOf(concealed)
+	if !ok {
+		t.Fatalf("concealed rendered error = %T, want typed error", concealed)
+	}
+	wantFallback := recovery.UserAuthorization(scopes...).Render(concealedPlan)
+	if concealedProblem.Hint != wantFallback {
+		t.Errorf("concealed recovery = %q, want fallback %q", concealedProblem.Hint, wantFallback)
+	}
+	if strings.Contains(concealedProblem.Hint, "auth login") {
+		t.Errorf("concealed recovery leaked auth command: %q", concealedProblem.Hint)
 	}
 }
 
@@ -570,13 +646,29 @@ func TestApplyNeedAuthorizationHint_ShortcutUsesDeclaredScopesWhenNoUAT(t *testi
 	shortcutCmd := &cobra.Command{Use: "+create"}
 	root.AddCommand(serviceCmd)
 	serviceCmd.AddCommand(shortcutCmd)
+	cmdmeta.SetDeclaredScopes(shortcutCmd, map[string][]string{"user": {
+		"docx:document:create",
+		"docs:document.media:upload",
+		"docx:document:write_only",
+		"docx:document:readonly",
+	}})
 	f.CurrentCommand = shortcutCmd
 
 	authErr := newAuthErrorWithNeedAuthMarker()
-	applyNeedAuthorizationHint(f, authErr)
+	rendered := presentRootError(f, authErr, recovery.NewProjector(nil))
+	problem, ok := errs.ProblemOf(rendered)
+	if !ok {
+		t.Fatalf("rendered error = %T, want typed error", rendered)
+	}
+	if problem.Category != errs.CategoryAuthentication {
+		t.Errorf("Category = %q, want %q", problem.Category, errs.CategoryAuthentication)
+	}
+	if problem.Subtype != errs.SubtypeUnknown {
+		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
+	}
 
-	if !strings.Contains(authErr.Hint, "current command requires scope(s): docx:document:create") {
-		t.Errorf("expected shortcut scope hint, got %q", authErr.Hint)
+	if !strings.Contains(problem.Hint, `auth login --scope "docx:document:create docs:document.media:upload docx:document:write_only docx:document:readonly" --no-wait --json`) {
+		t.Errorf("expected shortcut scoped recovery, got %q", problem.Hint)
 	}
 }
 
@@ -595,18 +687,32 @@ func TestApplyNeedAuthorizationHint_ShortcutIncludesConditionalScopes(t *testing
 	shortcutCmd := &cobra.Command{Use: "+status"}
 	root.AddCommand(serviceCmd)
 	serviceCmd.AddCommand(shortcutCmd)
+	cmdmeta.SetDeclaredScopes(shortcutCmd, map[string][]string{"user": {
+		"drive:drive.metadata:readonly",
+		"drive:file:download",
+	}})
 	f.CurrentCommand = shortcutCmd
 
 	authErr := newAuthErrorWithNeedAuthMarker()
-	applyNeedAuthorizationHint(f, authErr)
+	rendered := presentRootError(f, authErr, recovery.NewProjector(nil))
+	problem, ok := errs.ProblemOf(rendered)
+	if !ok {
+		t.Fatalf("rendered error = %T, want typed error", rendered)
+	}
+	if problem.Category != errs.CategoryAuthentication {
+		t.Errorf("Category = %q, want %q", problem.Category, errs.CategoryAuthentication)
+	}
+	if problem.Subtype != errs.SubtypeUnknown {
+		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
+	}
 
-	if !strings.Contains(authErr.Hint, "current command requires scope(s): drive:drive.metadata:readonly, drive:file:download") {
-		t.Errorf("expected conditional scope hint for drive +status, got %q", authErr.Hint)
+	if !strings.Contains(problem.Hint, `auth login --scope "drive:drive.metadata:readonly drive:file:download" --no-wait --json`) {
+		t.Errorf("expected conditional scoped recovery for drive +status, got %q", problem.Hint)
 	}
 }
 
 // TestApplyNeedAuthorizationHint_AppendsExistingHint pins that the
-// declared-scopes guidance is appended (separated by newline) when the typed
+// declared-scope recovery is appended (separated by newline) when the typed
 // AuthenticationError already carries a Hint from elsewhere.
 func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -621,14 +727,41 @@ func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 	shortcutCmd := &cobra.Command{Use: "+create"}
 	root.AddCommand(serviceCmd)
 	serviceCmd.AddCommand(shortcutCmd)
+	cmdmeta.SetDeclaredScopes(shortcutCmd, map[string][]string{"user": {
+		"docx:document:create",
+		"docs:document.media:upload",
+		"docx:document:write_only",
+		"docx:document:readonly",
+	}})
 	f.CurrentCommand = shortcutCmd
 
 	authErr := newAuthErrorWithNeedAuthMarker()
 	authErr.Hint = "existing hint"
-	applyNeedAuthorizationHint(f, authErr)
+	rendered := presentRootError(f, authErr, recovery.NewProjector(nil))
+	problem, ok := errs.ProblemOf(rendered)
+	if !ok {
+		t.Fatalf("rendered error = %T, want typed error", rendered)
+	}
+	if problem.Category != errs.CategoryAuthentication {
+		t.Errorf("Category = %q, want %q", problem.Category, errs.CategoryAuthentication)
+	}
+	if problem.Subtype != errs.SubtypeUnknown {
+		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
+	}
+	if !errors.Is(rendered, authErr.Cause) {
+		t.Errorf("rendered error lost need-authorization cause %v: %v", authErr.Cause, rendered)
+	}
 
-	want := "existing hint\ncurrent command requires scope(s): docx:document:create"
-	if authErr.Hint != want {
-		t.Errorf("expected appended hint %q, got %q", want, authErr.Hint)
+	want := "existing hint\n" + recovery.UserAuthorization(
+		"docx:document:create",
+		"docs:document.media:upload",
+		"docx:document:write_only",
+		"docx:document:readonly",
+	).String()
+	if problem.Hint != want {
+		t.Errorf("expected appended hint %q, got %q", want, problem.Hint)
+	}
+	if authErr.Hint != "existing hint" {
+		t.Errorf("presenter mutated producer hint: %q", authErr.Hint)
 	}
 }

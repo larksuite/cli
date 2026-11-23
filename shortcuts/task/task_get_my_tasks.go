@@ -222,6 +222,7 @@ var GetMyTasks = common.Shortcut{
 					}
 				}
 			}
+			projectTaskFields(outputItem, item, taskOutputMembers, taskOutputStart)
 			outputItems = append(outputItems, outputItem)
 		}
 

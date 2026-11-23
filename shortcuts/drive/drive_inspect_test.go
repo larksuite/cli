@@ -258,8 +258,8 @@ func TestDriveInspectDryRun_WikiURL(t *testing.T) {
 	if len(got.API) != 2 {
 		t.Fatalf("expected 2 API steps, got %d", len(got.API))
 	}
-	if got.API[0].URL != "/open-apis/wiki/v2/spaces/get_node" {
-		t.Errorf("step 1 URL = %q, want /open-apis/wiki/v2/spaces/get_node", got.API[0].URL)
+	if got.API[0].URL != "/open-apis/wiki/v2/spaces/node_by_token" {
+		t.Errorf("step 1 URL = %q, want /open-apis/wiki/v2/spaces/node_by_token", got.API[0].URL)
 	}
 	// Verify step 1 params contain the wiki token.
 	if got.API[0].Params["token"] != "wikcnABC" {
@@ -430,17 +430,18 @@ func TestDriveInspectExecute_WikiURL(t *testing.T) {
 
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
 				"node": map[string]interface{}{
-					"obj_type":   "docx",
-					"obj_token":  "doxcnUnwrapped",
-					"space_id":   "space123",
-					"node_token": "wikcnNodeToken",
-					"title":      "Wiki Doc",
-					"node_type":  "origin",
+					"obj_type":          "docx",
+					"obj_token":         "doxcnUnwrapped",
+					"space_id":          "space123",
+					"node_token":        "wikcnNodeToken",
+					"title":             "Shortcut title",
+					"node_type":         "shortcut",
+					"origin_node_token": "wikiOriginal",
 				},
 			},
 		},
@@ -484,6 +485,46 @@ func TestDriveInspectExecute_WikiURL(t *testing.T) {
 	if wikiNode["space_id"] != "space123" {
 		t.Errorf("wiki_node.space_id = %v, want space123", wikiNode["space_id"])
 	}
+	if len(wikiNode) != 4 || wikiNode["node_token"] != "wikcnNodeToken" || wikiNode["obj_type"] != "docx" || wikiNode["obj_token"] != "doxcnUnwrapped" {
+		t.Fatalf("unexpected wiki_node projection: %#v", wikiNode)
+	}
+}
+
+func TestDriveInspectExecute_WikiPermissionDeniedUsesTerminalGuidance(t *testing.T) {
+	cfg := driveTestConfig()
+	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
+		Body: map[string]interface{}{
+			"code":   131006,
+			"msg":    "permission denied: node permission denied, user needs read permission.",
+			"log_id": "log-drive-inspect-wiki-permission",
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveInspect, []string{
+		"+inspect",
+		"--url", "https://xxx.feishu.cn/wiki/wikcnABC",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected permission error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+		t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+	}
+	if p.Retryable {
+		t.Fatalf("problem retryable = true, want false: %#v", p)
+	}
+	if p.Hint != driveInspectWikiPermissionDeniedHint {
+		t.Fatalf("hint = %q, want %q", p.Hint, driveInspectWikiPermissionDeniedHint)
+	}
 }
 
 func TestDriveInspectExecute_WikiGetNodeIncompleteData(t *testing.T) {
@@ -492,7 +533,7 @@ func TestDriveInspectExecute_WikiGetNodeIncompleteData(t *testing.T) {
 
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -586,7 +627,7 @@ func TestDriveInspectExecute_RetriesRateLimitOnWikiResolve(t *testing.T) {
 
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 99991400,
 			"msg":  "request trigger frequency limit",
@@ -594,7 +635,7 @@ func TestDriveInspectExecute_RetriesRateLimitOnWikiResolve(t *testing.T) {
 	})
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{

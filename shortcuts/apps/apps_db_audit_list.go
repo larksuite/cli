@@ -76,7 +76,7 @@ var AppsDBAuditList = common.Shortcut{
 		if len(requested) > 1 {
 			queryTables, skipped, err = filterAuditTables(rctx, appID, env, requested)
 			if err != nil {
-				return withAppsHint(err, dbChangelogHint)
+				return withDBAuditListHint(err, rctx)
 			}
 			// 所有请求表都被过滤掉 → 无可查询表，直接返回空 + skipped 提示，不调 audit_list。
 			if len(queryTables) == 0 {
@@ -91,7 +91,7 @@ var AppsDBAuditList = common.Shortcut{
 
 		data, err := rctx.CallAPITyped("GET", appAuditListPath(appID), buildAuditListParams(rctx, queryTables), nil)
 		if err != nil {
-			return withAppsHint(err, dbChangelogHint)
+			return withDBAuditListHint(err, rctx)
 		}
 		items := projectAuditLogItems(data["items"])
 		data["items"] = items
@@ -107,6 +107,36 @@ var AppsDBAuditList = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+// withDBAuditListHint preserves the branch selected by the failed read. Audit
+// settings on a multi-env app cannot be changed on online directly, so an online
+// query needs a different recovery path from a dev query.
+func withDBAuditListHint(err error, rctx *common.RuntimeContext) error {
+	subcode := ""
+	if p, ok := errs.ProblemOf(err); ok {
+		subcode, _, _ = subcodeOf(p.Message)
+	}
+	out := withAppsReadHint(err, dbChangelogHint)
+	if subcode != dbAuditOffSubcode {
+		return out
+	}
+	p, ok := errs.ProblemOf(out)
+	if !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeFailedPrecondition {
+		return out
+	}
+
+	switch dbEnv(rctx) {
+	case "online":
+		p.Hint = "check the failed target with `lark-cli apps +db-audit-status --app-id <app_id> --table <table> --environment online`. " +
+			"For a single-env app, after confirming the production target and impact, enable audit explicitly on online with `lark-cli apps +db-audit-enable --app-id <app_id> --table <table> --environment online`. " +
+			"For a multi-env app, configure it on dev with `lark-cli apps +db-audit-enable --app-id <app_id> --table <table> --environment dev`, " +
+			"preview the dev-to-online change with `lark-cli apps +db-env-diff --app-id <app_id>`, then run `lark-cli apps +db-env-migrate --app-id <app_id> --yes` only after confirming the publish impact."
+	case "dev":
+		p.Hint = "enable row-level audit on the same branch with `lark-cli apps +db-audit-enable --app-id <app_id> --table <table> --environment dev`, " +
+			"or inspect it with `lark-cli apps +db-audit-status --app-id <app_id> --table <table> --environment dev`."
+	}
+	return out
 }
 
 // auditSkippedEntry 是被 CLI 预过滤掉的表及原因（替代已删除的服务端 skipped 字段）。

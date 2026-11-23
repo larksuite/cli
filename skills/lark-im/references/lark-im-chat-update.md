@@ -1,6 +1,6 @@
 # im +chat-update
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
 Update a group's name or description. Supports both **TAT (bot)** and **UAT (user)** identity.
 

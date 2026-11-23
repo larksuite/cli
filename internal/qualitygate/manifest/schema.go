@@ -40,6 +40,7 @@ type Command struct {
 
 type Flag struct {
 	Name        string              `json:"name"`
+	Aliases     []string            `json:"aliases,omitempty"`
 	Shorthand   string              `json:"shorthand,omitempty"`
 	Usage       string              `json:"usage,omitempty"`
 	Hidden      bool                `json:"hidden,omitempty"`
@@ -154,15 +155,24 @@ func validateCommand(kind string, i int, cmd Command) error {
 			return err
 		}
 	}
-	seenFlags := make(map[string]struct{}, len(cmd.Flags))
+	acceptedNames := make(map[string]string, len(cmd.Flags))
 	for j, flag := range cmd.Flags {
 		if err := validateFlag(prefix, j, flag); err != nil {
 			return err
 		}
-		if _, ok := seenFlags[flag.Name]; ok {
+		if existing, ok := acceptedNames[flag.Name]; ok {
+			if existing != flag.Name {
+				return fmt.Errorf("%s flags[%d].name %s conflicts with an alias of --%s", prefix, j, flag.Name, existing)
+			}
 			return fmt.Errorf("%s flags[%d].name is duplicated: %s", prefix, j, flag.Name)
 		}
-		seenFlags[flag.Name] = struct{}{}
+		acceptedNames[flag.Name] = flag.Name
+		for k, alias := range flag.Aliases {
+			if existing, ok := acceptedNames[alias]; ok {
+				return fmt.Errorf("%s flags[%d].aliases[%d] %s conflicts with accepted name of --%s", prefix, j, k, alias, existing)
+			}
+			acceptedNames[alias] = flag.Name
+		}
 	}
 	return nil
 }
@@ -174,6 +184,29 @@ func validateFlag(commandPrefix string, i int, flag Flag) error {
 	}
 	if strings.ContainsAny(flag.Name, " \t\r\n") {
 		return fmt.Errorf("%s.name must not contain whitespace", prefix)
+	}
+	seenAliases := make(map[string]struct{}, len(flag.Aliases))
+	for j, alias := range flag.Aliases {
+		aliasPrefix := fmt.Sprintf("%s.aliases[%d]", prefix, j)
+		if err := validateString(aliasPrefix, alias, true); err != nil {
+			return err
+		}
+		if strings.HasPrefix(alias, "-") {
+			return fmt.Errorf("%s must not include leading dashes", aliasPrefix)
+		}
+		if strings.ContainsAny(alias, " \t\r\n") {
+			return fmt.Errorf("%s must not contain whitespace", aliasPrefix)
+		}
+		if strings.Contains(alias, "=") {
+			return fmt.Errorf("%s must not contain '='", aliasPrefix)
+		}
+		if alias == flag.Name {
+			return fmt.Errorf("%s must differ from canonical name %s", aliasPrefix, flag.Name)
+		}
+		if _, ok := seenAliases[alias]; ok {
+			return fmt.Errorf("%s is duplicated: %s", aliasPrefix, alias)
+		}
+		seenAliases[alias] = struct{}{}
 	}
 	for _, item := range []struct {
 		name  string

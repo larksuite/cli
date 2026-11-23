@@ -41,6 +41,13 @@ type stagingRegistrar struct {
 	// can detect the call.
 	actuallyRestricted bool
 
+	// skillsOverlay holds the staged Skills contribution, captured for the
+	// host to feed into the skill resolver later. nil means the plugin
+	// did not call r.EmbeddedSkills. overlaySet records that the call happened so a
+	// second call in the same plugin can be rejected.
+	skillsOverlay *platform.SkillsOverlay
+	overlaySet    bool
+
 	// seenHookNames detects duplicate hookName within this plugin's
 	// Install call.
 	seenHookNames map[string]bool
@@ -144,6 +151,26 @@ func (r *stagingRegistrar) Restrict(rule *platform.Rule) {
 	r.rules = append(r.rules, &cp)
 }
 
+func (r *stagingRegistrar) EmbeddedSkills(spec *platform.SkillsOverlay) {
+	if r.overlaySet {
+		r.bufferErr(ReasonInvalidSkillsOverlay, "EmbeddedSkills() called more than once in the same plugin")
+		return
+	}
+	r.overlaySet = true
+	if spec == nil {
+		r.bufferErr(ReasonInvalidSkillsOverlay, "EmbeddedSkills(nil)")
+		return
+	}
+	// Defensive clone: freeze selection and reference-remap slices so a plugin
+	// cannot mutate them after Install returns. Overlay/Base are read-only
+	// fs.FS views retained by reference.
+	cp := *spec
+	cp.Allow = append([]string(nil), spec.Allow...)
+	cp.Remove = append([]string(nil), spec.Remove...)
+	cp.ReferenceRemaps = append([]platform.SkillRefRemap(nil), spec.ReferenceRemaps...)
+	r.skillsOverlay = &cp
+}
+
 // --- helpers ---
 
 func (r *stagingRegistrar) namespaced(name string) string {
@@ -183,10 +210,19 @@ func (r *stagingRegistrar) bufferErr(reasonCode, message string) {
 //   - any buffered staging error -> abort
 //   - Restricts declared but Install did not call r.Restrict -> abort
 //   - Restricts NOT declared but Install did call r.Restrict -> abort
+//   - EmbeddedSkills contributed under FailOpen -> abort unconditionally
 //
 // Returns the first PluginInstallError encountered (callers can use
 // errors.As to inspect it). Nil means staging is clean.
 func (r *stagingRegistrar) validateSelf(caps platform.Capabilities) error {
+	// Check this before ordinary registration faults. Once a plugin has
+	// successfully staged distribution assets, FailOpen is itself an invalid
+	// capability declaration: skipping the plugin would silently fall back to
+	// host skills. A later duplicate/bad registration must not downgrade that
+	// build-integrity violation into an ordinary fail-open staging error.
+	if r.overlaySet && caps.FailurePolicy != platform.FailClosed {
+		return r.failOpenSkillsError()
+	}
 	if len(r.stagingErrs) > 0 {
 		first := r.stagingErrs[0]
 		return &PluginInstallError{
@@ -210,6 +246,14 @@ func (r *stagingRegistrar) validateSelf(caps platform.Capabilities) error {
 		}
 	}
 	return nil
+}
+
+func (r *stagingRegistrar) failOpenSkillsError() error {
+	return &PluginInstallError{
+		PluginName: r.pluginName,
+		ReasonCode: ReasonInvalidCapability,
+		Reason:     "Install contributed EmbeddedSkills but FailurePolicy=FailOpen; EmbeddedSkills requires FailClosed",
+	}
 }
 
 func isValidWhen(w platform.When) bool {

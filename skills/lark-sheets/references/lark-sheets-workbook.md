@@ -15,7 +15,12 @@
 | 操作需求 | 使用工具 | 说明 |
 |---------|---------|------|
 | 查看工作簿结构 | `+workbook-info` | 获取子表列表、名称、行列数、冻结位置等元数据 |
+| 获取当前 revision | `+revision-get` | 获取当前文档 revision（版本号），可作为 recover / undo / changeset 复核的版本锚点 |
+| 新建工作簿（可预填数据） | `+workbook-create` | 从内存数据建一张新表（`--values` / `--sheets` typed） |
+| 导入本地文件为新表 | `+workbook-import` | 把本地 `.xlsx` / `.xls` / `.csv` 导入为新的飞书电子表格 |
+| 导出工作簿到本地 | `+workbook-export` | 导出为本地 `.xlsx`（整簿）或单子表 `.csv` |
 | 变更工作簿结构 | `+sheet-{create|delete|rename|move|copy|hide|unhide|set-tab-color}` | 新建/删除/移动/重命名/复制/隐藏子表、修改标签颜色 |
+| 切换子表网格线显隐 | `+sheet-show-gridline` / `+sheet-hide-gridline` | 显示 / 隐藏单个子表的网格线 |
 
 注意：
 
@@ -26,13 +31,16 @@
 **常见配置错误（必须注意）**：
 - **获取结构是第一步**：任何表格操作前必须先调用 `+workbook-info`，不要跳过直接操作。返回的行列数、子表列表是后续所有操作的基础
 - **sheet_id 不要写错**：从 `+workbook-info` 返回值中精确获取 `sheet_id`，不要手动拼写或从 URL 中猜测
-- **优先使用 `sheet_id`**：虽然飞书表格不允许子表重名，但 `sheet_id` 是稳定标识符，跨多轮操作时不会因用户中途重命名而失效
+- **未点名网格目标**：默认候选仅 `resource_type=sheet && is_hidden=false` 的可见普通网格；唯一候选才自动选，多候选按用户给的表名/表头/内容匹配，仍不唯一则询问。禁止按 `index` 或猜 `Sheet1`；用户显式点名 hidden sheet 可操作，bitable / `#UNSUPPORTED_TYPE` 改走对应产品 API。
+- **xlsx 验收触发边界**：普通在线交付不导出。只有用户明确要求本地 xlsx / 下载 / 打印时，才在 `--output-path` 导出后验收；本地 Excel 输入则直接验证导入前已有的本地文件，导入在线后不再导出回验。允许触发时确认文件存在、可重开，并核对公式错误值、样式和对象。
 
 ## Shortcuts
 
 | Shortcut | Risk | 分组 |
 | --- | --- | --- |
 | `+workbook-info` | read | 工作簿 |
+| `+sheet-list` | read | 工作簿 |
+| `+revision-get` | read | 工作簿 |
 | `+sheet-create` | write | 工作簿 |
 | `+sheet-delete` | high-risk-write | 工作簿 |
 | `+sheet-rename` | write | 工作簿 |
@@ -55,6 +63,18 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 
 _仅含公共 / 系统 flag。_
 
+### `+sheet-list`
+
+_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
+
+_仅含公共 / 系统 flag。_
+
+### `+revision-get`
+
+_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
+
+_仅含公共 / 系统 flag。_
+
 ### `+sheet-create`
 
 _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
@@ -65,6 +85,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 | `--index` | int | optional | 插入位置（0-based）；省略时附加到末尾 |
 | `--row-count` | int | optional | 初始行数（默认 200，上限 50000） |
 | `--col-count` | int | optional | 初始列数（默认 20，上限 200） |
+| `--type` | string | optional | 新子表类型：sheet（电子表格）；默认 sheet（可选值：`sheet`） |
 
 ### `+sheet-delete`
 
@@ -87,7 +108,7 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--index` | int | required | 目标位置（0-based） |
-| `--source-index` | int | optional | 源位置（0-based）；可选，未传时由 CLI runtime 根据 `--sheet-id` / `--sheet-name` 当前在工作簿中的 index 自动派生 |
+| `--source-index` | int | optional | 源位置（0-based）；standalone 调用时可选，未传时由 CLI runtime 根据 `--sheet-id` / `--sheet-name` 当前在工作簿中的 index 自动派生。但在 `+batch-update` 内不可省（须显式传）——batch 中途无法发起结构查询自动派生 |
 
 ### `+sheet-copy`
 
@@ -138,8 +159,8 @@ _系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--title` | string | required | 新 spreadsheet 标题 |
 | `--folder-token` | string | optional | 目标文件夹 token；省略时放在云空间根目录 |
-| `--values` | string + File + Stdin（简单 JSON） | optional | untyped 初始数据，一个 JSON 二维数组（表头并入第一行）：`[["列A","列B"],["alice",95]]`；值原样写入、类型由飞书自动识别，走与 --sheets 相同的分批 `+cells-set`；配 --styles 控制格式/颜色/合并/行列尺寸 |
-| `--sheets` | string + File + Stdin（复合 JSON） | optional | 建表后写入的 typed 表格协议 JSON（同 +table-put）：顶层 `{"sheets":[...]}`，每个数组项是一张子表 `{name, start_cell?, mode?, header?, allow_overwrite?, columns:["colA","colB",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}` —— `name` 与外层 `sheets` 数组都不可省。Agents 用 `scripts/sheets_df.py` 的 `df_to_sheet(df, name)` 把 DataFrame 转成一项再包 `{"sheets":[...]}`。与 --values 互斥；新表默认子表复用为第一个子表，日期/数字类型保真。 |
+| `--values` | string + File + Stdin（简单 JSON） | optional | untyped 初始数据，一个 JSON 二维数组（表头并入第一行）：`[["列A","列B"],["alice",95]]`；值原样写入、类型由飞书自动识别（日期 / 数字会落成文本，需类型保真改用 --sheets），走与 --sheets 相同的分批 `+cells-set`；配 --styles 控制格式/颜色/合并/行列尺寸 |
+| `--sheets` | string + File + Stdin（复合 JSON） | optional | 建表后写入的 typed 表格协议 JSON（同 +table-put）：顶层 `{"sheets":[...]}`，每个数组项是一张子表 `{name, start_cell?, mode?, header?, allow_overwrite?, columns:["colA","colB",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}` —— `name` 与外层 `sheets` 数组都不可省。Agents 用 `scripts/lark_sheets_df.py` 的 `df_to_sheet(df, name)` 把 DataFrame 转成一项再包 `{"sheets":[...]}`。与 --values 互斥；新表默认子表复用为第一个子表，日期/数字类型保真。 |
 | `--styles` | string + File + Stdin（复合 JSON） | optional | 建表时同时写入的视觉处理操作 JSON：顶层 `{styles:[...]}`，每项对应一个目标子表、含 `name`，并至少给 `cell_styles` / `row_sizes` / `col_sizes` / `cell_merges` 之一。`cell_styles` 用 A1 单元格 range + 扁平样式字段（字段同 +cells-set-style，含 number_format / 颜色 / 对齐 / border_styles）；row/col sizes 用行/列范围 + type/size；merges 用单元格 range + 可选 merge_type。与 --sheets 搭配时 styles 数组长度/顺序/name 必须与 --sheets.sheets 对应；与 --values 搭配时只给一个 styles 项（其 name 忽略）。完整 cell_styles 字段结构跑 `+workbook-create --print-schema --flag-name styles`。 |
 
 ### `+workbook-export`
@@ -184,10 +205,11 @@ _一个或多个子表的 typed 数据，每个数组元素写入一张子表；
 
 **数组项**（类型 object）：
 - `cell_merges` (array<object>?) — 单元格合并操作数组；range 使用 A1 单元格范围，merge_type 默认 all each: { merge_type?: enum, range: string }
-- `cell_styles` (array<object>?) — 单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐 each: { background_color?: string, border_styles?: object, font_color?: string, font_line?: enum, font_size?: number, …共 12 项 }
-- `col_sizes` (array<object>?) — 列宽操作数组；range 使用列范围如 A:C，type 为 pixel/standard，pixel 需要 size each: { range: string, size?: number, type: enum }
+- `cell_styles` (array<object>?) — 单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐 each: { background_color?: string, border?: object, border_styles?: object, font_color?: string, font_family?: string, …共 14 项 }
+- `col_sizes` (array<object>?) — 列宽操作数组；range 使用列范围如 A:C，给 size（px）即像素列宽（type 可省略）；type 为 standard 时不带 size each: { range: string, size?: number, type?: enum }
+- `freeze` (object?) — 冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结） { cols?: integer, rows?: integer }
 - `name` (string) — 子表名
-- `row_sizes` (array<object>?) — 行高操作数组；range 使用行范围如 1:3，type 为 pixel/standard/auto，pixel 需要 size each: { range: string, size?: number, type: enum }
+- `row_sizes` (array<object>?) — 行高操作数组；range 使用行范围如 1:3，给 size（px）即像素行高（type 可省略）；type 为 standard/auto 时不带 size each: { range: string, size?: number, type?: enum }
 
 ## Examples
 
@@ -195,11 +217,23 @@ _一个或多个子表的 typed 数据，每个数组元素写入一张子表；
 
 ### `+workbook-info`
 
-输出契约：返回 `sheets[]`，每个含 `sheet_id` / `title`（工作表显示名；旧 payload 用 `sheet_name`，读取时优先取 `title`、缺失再回退 `sheet_name`）/ `row_count` / `column_count` / `index` / `is_hidden`，以及计数字段 `merged_cells_count` / `chart_count` / `pivot_table_count` / `float_image_count`（无 `frozen_*` 字段，冻结信息请用 `+sheet-info` 读取）。是操作飞书表格的第一步——任何后续 sheet 级动作都需要先拿这里的 sheet_id。
+输出契约：返回 `sheets[]`，每个含 `sheet_id` / `title`（工作表显示名；旧 payload 用 `sheet_name`，读取时优先取 `title`、缺失再回退 `sheet_name`）/ `index` / `resource_type` / `row_count` / `column_count` / `is_hidden`，以及计数字段 `merged_cells_count` / `chart_count` / `pivot_table_count` / `float_image_count`（无 `frozen_*` 字段，冻结信息请用 `+sheet-info` 读取）。是操作飞书表格的第一步——任何后续 sheet 级动作都需要先拿这里的 sheet_id。
+
+> **子表类型 `resource_type`**：`sheet`（普通网格子表）/ `bitable`（内嵌的多维表格子表）/ `#UNSUPPORTED_TYPE`（其它暂不支持的嵌入子表）。
+> - 网格类操作（读写单元格 / 区域 / 样式 / CSV / 筛选 / 透视 / 图表等）**仅适用于 `sheet`**。对 `bitable` / `#UNSUPPORTED_TYPE` 子表执行网格操作会被直接拒绝并返回明确报错，不再静默出错。
+> - 要操作 `bitable` 子表里的数据：该子表条目会附带 `bitable_app_token` + `bitable_table_id` 两个字段，直接用多维表格命令操作，例如 `lark-cli base +record-list --base-token <bitable_app_token> --table-id <bitable_table_id>`（记录增删改查、字段、视图等整套 `lark-cli base` 命令均可用）。不要走 sheets 网格命令。
+> - `bitable` / `#UNSUPPORTED_TYPE` 子表条目**只含** `sheet_id` / `sheet_name` / `index` / `resource_type`（bitable 另加上述两个 token）以及 `is_hidden` / `tab_color`；**不输出** `row_count` / `column_count` / `merged_cells_count` / `chart_count` / `pivot_table_count` / `float_image_count` / `frozen_*` 等网格指标（对非网格子表无意义）。
+> - tab 管理类操作（`+sheet-rename` / `+sheet-move` / `+sheet-delete` / `+sheet-hide` 等）对任意 `resource_type` 的子表都合法，不受此限制。
+
+### `+revision-get`
+
+输出契约：返回单个 `revision` 字段，即当前文档版本号。它是 recover / undo / `+changeset-get` 的版本锚点：如果刚执行过一次读写操作，也可以直接复用那次响应里的 `revision`；当只想单独取当前版本号、且不需要其它结构信息时，用 `+revision-get` 最直接。
 
 ### `+workbook-create`
 
 新建电子表格，可选预填数据。两种数据入口（untyped `--values` / typed `--sheets` JSON）**互斥**，按需选一——两者都走同一条分批写入：
+
+> ⚠️ **`--title` 必填，且不会从数据里推断**：它是这张表在云空间里的名字，漏了会在建表之前就失败（`required flag(s) "title" not set`），数据一行都不会写。子表名写在 `--sheets` 的 `name` 字段里，两者是两码事——`--title "2026年Q3销售分析"` 配 `--sheets` 里的 `"name": "明细"`。
 
 ```bash
 # 1) untyped：--values（一个二维数组，表头并入第一行；值原样写、类型由飞书自动识别，
@@ -221,8 +255,11 @@ lark-cli sheets +workbook-create --title "交易" --sheets '{
 
 `--sheets` 协议与 `+table-put` 完全同构（字段含义见 lark-sheets-write-cells 的 `+table-put`，大 payload 走 stdin / `@file`）。关键差异：**新建工作簿的默认子表会被复用为第一个子表**（重命名后承载数据），不会残留空 `Sheet1`；其余子表按需新建。它把 `+table-put` 单独做不到的"建表 + typed 写入"合到一条命令，是「pandas 算完直接落地一张带真日期的新表」的首选。回读校验用 `+table-get`（与 `--sheets` 同构、可 round-trip）。
 
-> 💡 pandas DataFrame 走 `--sheets` 时直接 `from sheets_df import df_to_sheet`（[`scripts/sheets_df.py`](../scripts/sheets_df.py)，与 `+table-put` 共用同一份 helper），多子表场景 helper 优势更明显：
+> 💡 pandas DataFrame 走 `--sheets` 时直接 `from lark_sheets_df import df_to_sheet`（[`scripts/lark_sheets_df.py`](../scripts/lark_sheets_df.py)，与 `+table-put` 共用同一份 helper），多子表场景 helper 优势更明显：
 > ```python
+> import sys; sys.path.insert(0, "scripts")  # cwd 不在 skill 根时改成 scripts/ 的实际路径
+> from lark_sheets_df import df_to_sheet
+>
 > payload = {"sheets": [df_to_sheet(income, "Income Statement"),
 >                       df_to_sheet(balance, "Balance Sheet"),
 >                       df_to_sheet(cashflow, "Cash Flow")]}
@@ -307,8 +344,12 @@ lark-cli sheets +workbook-import --file ./report.csv --folder-token <FOLDER_TOKE
 ```
 
 - **不接受任何 spreadsheet / sheet 定位 flag**（它是新建，不操作已有表）：只有 `--file`（必填）/ `--folder-token` / `--name`。
+- **`--file` 只接受当前工作目录内的相对路径**：先 `cd` 到文件所在目录（或 workspace），再传 `./file.xlsx` / `data/file.xlsx`；传 `/home/.../file.xlsx`、`C:\...\file.xlsx` 这类绝对路径会被判定 `unsafe file path` 拒绝。
+- 导入成功后把新表链接通过宿主的产物交付工具交出去，并确认这次调用返回成功；只写进回复正文不算交付。
 - 本地表格文件 → 飞书电子表格一律用本命令，**不要**用 `drive +import` 导电子表格——它是 sheets 之外的通用导入、还需额外指定 `--type`，绕路且更易错。只有要把本地表格导入成**多维表格**（bitable）时，才改用 `lark-cli drive +import --type bitable`。
-- 返回 `token` / `url`（导入完成的新表格）/ `ticket` / `ready` / `job_status`；未在内置轮询窗口内完成时返回 `timed_out=true` 与续查命令 `next_command`。
+- 返回 `token` / `url` / `ticket` / `ready` / `job_status`。只有 `ready=true` 且 `job_status=0` 才算导入完成；随后用新 URL 调 `+workbook-info`，有点名内容契约时再回读关键 sheet/range。`timed_out=true` 时按 `next_command` 续查，不能交付为成功。
+- **值与公式保真，版式不保真**：走一圈后值、公式、数字格式、合并区、冻结、下拉校验都原样保留；行高列宽、边框、主题色填充（`fgColor theme=N`）、以及**跟随工作簿默认字体的格**（源表默认字体是中文字体时，这类格会回落到系统默认）则会变，与本轮做了什么无关。要求保留原版式时，导入后按源文件的值用 `+rows-resize` / `+cols-resize` 回写尺寸（飞书用像素、Excel 行高用磅，换算约 `px ≈ pt × 4/3`），其余版式差异回写不了，在交付说明里写明。
+- 轮询是命令自己做的：本命令与其它异步 shortcut 都内置轮询，返回时状态已是最新，`next_command` 直接重跑即可，不必也不要加 `sleep` 等待。
 
 ### `+workbook-export`
 
@@ -328,7 +369,7 @@ lark-cli sheets +workbook-export --url "..." --output-path ./downloads/
 lark-cli sheets +workbook-export --url "..." --file-extension csv --sheet-id "$SID" --output-path ./sheet.csv
 ```
 
-> ⚠️ **默认不下载**：省略 `--output-path` 时只触发并轮询导出任务，不写本地文件——给「先排队再续传」用例留出口。要落盘必须显式给 `--output-path`。
+> ⚠️ **默认不下载**：省略 `--output-path` 时只创建并轮询导出任务。普通在线交付不得为了内部验证主动导出；只有用户明确要求本地 xlsx / 下载 / 打印时才给 `--output-path` 并验收。验收时确认文件存在、可重开，并核对公式错误值、样式和对象。
 >
 > **与 `drive +export --doc-type sheet` 的关系**：本 wrapper 是它的特化封装，固定 `--doc-type sheet`，并把 drive 的 `--output-dir` / `--file-name` / `--overwrite` 三 flag 折叠成单一 `--output-path` 简化常见用例。代价是默认值不同：`drive +export` 默认下载到当前目录、本 wrapper 默认不下载。需要细控目录/文件名/是否覆盖的，回退到 `drive +export --doc-type sheet`。
 
@@ -366,6 +407,8 @@ standalone 路径在缺 `--source-index` / 只给 `--sheet-name` 时会自动发
 lark-cli sheets +sheet-copy --url "..." --sheet-id "$SID" --title "副本"
 ```
 
+> 💡 `+sheet-copy` 连**公式 / 合并 / 分组底色 / 列宽 / 条件格式**一起整表复制。"照一张现成子表批量造结构相同的新子表"（如参考模板给每份数据各建一张同构子表）时，先 `+sheet-copy` 复制模板再用 `+cells-*` 只改数据，比从零 `+sheet-create` + 重建公式 / 样式省一大截，也天然满足"公式 / 分组 / 颜色照搬"。要把本地文件 / 数据并入**已有工作簿**当子表时走它（或 `+sheet-create`），别用 `+workbook-import` / `+workbook-create`——那两条只会新建独立表。
+
 ### `+sheet-hide` / `+sheet-unhide`
 
 ```bash
@@ -392,4 +435,4 @@ lark-cli sheets +sheet-hide-gridline --url "..." --sheet-id "$SID"
 
 - `Validate`：XOR 公共四件套；`+sheet-create` 校验 `--title` 非空、`--row-count` ≤ 50000、`--col-count` ≤ 200；`+sheet-delete` 必须 `--yes` 或 `--dry-run`；`+workbook-create` 的 `--sheets` 与 `--values` **互斥**，给了 `--sheets` 则按 typed 协议校验 payload（其余约束同 `+table-put`）。
 - `DryRun`：`+sheet-*` 写操作输出"将要 PATCH 的 sheet metadata"；`--sheet-name` 在 dry-run 输出里生成为 `<resolve:Sheet1>` 占位符，不实际解析为 sheet-id。
-- `Execute`：写操作不自动回读；如需确认目标 sheet 的新状态，自行调用 `+workbook-info`。
+- `Execute`：sheet create/rename/move/copy/hide/unhide/delete 后必须调用 `+workbook-info`，按稳定的 sheet_id 核对名称、顺序、可见性与数量；import 按上方 ready/job_status + workbook-info 闭环；需要本地文件的 export 按 output-path + 文件存在/可重开闭环。

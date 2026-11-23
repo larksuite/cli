@@ -8,12 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -45,6 +45,7 @@ type AppConfig struct {
 	Lang       i18n.Lang   `json:"lang,omitempty"`
 	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
 	StrictMode *StrictMode `json:"strictMode,omitempty"`
+	DPoPMode   DPoPMode    `json:"dpopMode,omitempty"`
 	Users      []AppUser   `json:"users"`
 }
 
@@ -57,12 +58,35 @@ func (a *AppConfig) ProfileName() string {
 	return a.AppId
 }
 
+// EffectiveDPoPMode resolves the local credential policy.
+func (c *AppConfig) EffectiveDPoPMode() (DPoPMode, error) {
+	if c == nil {
+		return DPoPModePreferred, nil
+	}
+	if c.DPoPMode == "" {
+		return DPoPModePreferred, nil
+	}
+	return ParseDPoPMode(string(c.DPoPMode))
+}
+
+// SetDPoPMode stores the canonical three-state policy.
+func (c *AppConfig) SetDPoPMode(mode DPoPMode) {
+	c.DPoPMode = mode
+}
+
 // MultiAppConfig is the multi-app config file format.
 type MultiAppConfig struct {
 	StrictMode  StrictMode  `json:"strictMode,omitempty"`
+	RiskControl *bool       `json:"riskControl,omitempty"`
 	CurrentApp  string      `json:"currentApp,omitempty"`
 	PreviousApp string      `json:"previousApp,omitempty"`
 	Apps        []AppConfig `json:"apps"`
+}
+
+// RiskControlEnabled resolves the workspace policy. An omitted preference
+// keeps the default-on account-protection behavior.
+func (m *MultiAppConfig) RiskControlEnabled() bool {
+	return m != nil && (m.RiskControl == nil || *m.RiskControl)
 }
 
 // CurrentAppConfig returns the currently active app config.
@@ -84,6 +108,25 @@ func (m *MultiAppConfig) CurrentAppConfig(profileOverride string) *AppConfig {
 		return &m.Apps[0]
 	}
 	return nil
+}
+
+// EffectiveProfile resolves which profile this invocation actually uses and
+// which channel decided that. It is the single definition of "effective" for
+// status output (config show, profile list, profile use warnings); the
+// persisted CurrentApp answers a different question — which profile applies
+// when no selector is present — and must not be conflated with it.
+//
+// A nil app with a non-empty selector means the selector is dangling; the
+// caller decides between an error (RequireAppConfig) and a warning (listing
+// commands, which are the user's recovery surface).
+func (m *MultiAppConfig) EffectiveProfile(profile string, source ProfileSource) (*AppConfig, ProfileSource) {
+	app := m.CurrentAppConfig(profile)
+	if profile != "" {
+		return app, source
+	}
+	// An empty selector value (including an explicit --profile=) defers to
+	// the persisted state, so the persisted channel is what decided.
+	return app, ProfileFromConfig
 }
 
 // FindApp looks up an app by name, then by appId. Returns nil if not found.
@@ -161,6 +204,8 @@ type CliConfig struct {
 	UserOpenId          string
 	UserName            string
 	Lang                i18n.Lang
+	DPoPMode            DPoPMode
+	CredentialSource    CredentialSource
 	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 }
 
@@ -212,6 +257,19 @@ func LoadMultiAppConfig() (*MultiAppConfig, error) {
 
 // SaveMultiAppConfig saves config to disk.
 func SaveMultiAppConfig(config *MultiAppConfig) error {
+	if config == nil {
+		return errors.New("cannot save nil config")
+	}
+	for i := range config.Apps {
+		if config.Apps[i].DPoPMode == "" {
+			continue
+		}
+		mode, err := config.Apps[i].EffectiveDPoPMode()
+		if err != nil {
+			return err
+		}
+		config.Apps[i].SetDPoPMode(mode)
+	}
 	dir := GetConfigDir()
 	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return err
@@ -235,22 +293,29 @@ func RequireConfigForProfile(kc keychain.KeychainAccess, profileOverride string)
 	if err != nil || raw == nil || len(raw.Apps) == 0 {
 		return nil, NotConfiguredError()
 	}
-	return ResolveConfigFromMulti(raw, kc, profileOverride)
+	// This legacy wrapper has no channel information for its override; the
+	// flag wording is the safe default (it never misattributes to the env).
+	return ResolveConfigFromMulti(raw, kc, profileOverride, ProfileFromFlag)
 }
 
 // ResolveConfigFromMulti resolves a single-app config from an already-loaded MultiAppConfig.
 // This avoids re-reading the config file when the caller has already loaded it.
-func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, profileOverride string) (*CliConfig, error) {
-	app := raw.CurrentAppConfig(profileOverride)
-	if app == nil {
-		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "profile %q not found", profileOverride).
-			WithHint("available profiles: %s", formatProfileNames(raw.ProfileNames()))
+// source records which channel selected profileOverride so a resolution
+// failure can name the input the user must fix.
+func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, profileOverride string, source ProfileSource) (*CliConfig, error) {
+	app, err := raw.RequireAppConfig(profileOverride, source)
+	if err != nil {
+		return nil, err
+	}
+	dpopMode, err := app.EffectiveDPoPMode()
+	if err != nil {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "%s", err.Error()).WithCause(err)
 	}
 
-	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
+	if validateErr := ValidateSecretKeyMatch(app.AppId, app.AppSecret); validateErr != nil {
 		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "appId and appSecret keychain key are out of sync").
-			WithHint("%s", err.Error()).
-			WithCause(err)
+			WithHint("%s", validateErr.Error()).
+			WithCause(validateErr)
 	}
 
 	secret, err := ResolveSecretInput(app.AppSecret, kc)
@@ -265,12 +330,14 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
 	}
 	cfg := &CliConfig{
-		ProfileName: app.ProfileName(),
-		AppID:       app.AppId,
-		AppSecret:   secret,
-		Brand:       ParseBrand(string(app.Brand)),
-		Lang:        app.Lang,
-		DefaultAs:   app.DefaultAs,
+		ProfileName:      app.ProfileName(),
+		AppID:            app.AppId,
+		AppSecret:        secret,
+		Brand:            ParseBrand(string(app.Brand)),
+		Lang:             app.Lang,
+		DefaultAs:        app.DefaultAs,
+		DPoPMode:         dpopMode,
+		CredentialSource: CredentialSourceLocal,
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId
@@ -291,16 +358,10 @@ func RequireAuthForProfile(kc keychain.KeychainAccess, profileOverride string) (
 		return nil, err
 	}
 	if cfg.UserOpenId == "" {
-		return nil, errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in").
-			WithHint("run `lark-cli auth login` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.")
+		return nil, recovery.Attach(
+			errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in"),
+			recovery.UserAuthorization(),
+		)
 	}
 	return cfg, nil
-}
-
-// formatProfileNames joins profile names for display.
-func formatProfileNames(names []string) string {
-	if len(names) == 0 {
-		return "(none)"
-	}
-	return strings.Join(names, ", ")
 }

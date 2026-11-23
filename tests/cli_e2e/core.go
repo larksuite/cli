@@ -38,7 +38,7 @@ const (
 
 func SkipWithoutUserToken(t *testing.T) {
 	t.Helper()
-	if os.Getenv("LARKSUITE_CLI_USER_ACCESS_TOKEN") != "" {
+	if os.Getenv("LARKSUITE_CLI_USER_ACCESS_TOKEN") != "" || os.Getenv("TEST_USER_ACCESS_TOKEN") != "" {
 		return
 	}
 
@@ -73,6 +73,64 @@ func SkipWithoutUserToken(t *testing.T) {
 		}
 		t.Skip("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and local user login verification failed")
 	}
+}
+
+func SkipWithoutTenantAccessToken(t *testing.T) {
+	t.Helper()
+	token := os.Getenv("TEST_TENANT_ACCESS_TOKEN")
+	if token == "" {
+		token = os.Getenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN")
+	}
+	appID := os.Getenv("TEST_BOT1_APP_ID")
+	if appID == "" {
+		appID = os.Getenv("LARKSUITE_CLI_APP_ID")
+	}
+	if token == "" || appID == "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		result, err := RunCmd(ctx, Request{
+			Args: []string{"auth", "status", "--verify"},
+		})
+		if err != nil {
+			t.Skipf("skipped: tenant test credentials not set and failed to check local bot config via `lark-cli auth status --verify`: %v", err)
+		}
+		if result.ExitCode != 0 {
+			t.Skipf("skipped: tenant test credentials not set and local bot config check failed: exit=%d stderr=%s", result.ExitCode, strings.TrimSpace(result.Stderr))
+		}
+
+		stdout := strings.TrimSpace(result.Stdout)
+		if stdout == "" {
+			t.Skip("skipped: tenant test credentials not set and `lark-cli auth status --verify` returned empty stdout")
+		}
+		if !gjson.Valid(stdout) {
+			t.Skipf("skipped: tenant test credentials not set and `lark-cli auth status --verify` returned non-JSON stdout: %s", stdout)
+		}
+
+		if status := gjson.Get(stdout, "identities.bot.status").String(); status != "ready" {
+			t.Skip("skipped: tenant test credentials not set and local bot config is not ready")
+		}
+		if verified := gjson.Get(stdout, "identities.bot.verified"); !verified.Exists() || !verified.Bool() {
+			t.Skip("skipped: tenant test credentials not set and local bot config verification failed")
+		}
+	}
+}
+
+// DryRunGet reads a field from the dry-run payload inside the standard success envelope.
+func DryRunGet(stdout, path string) gjson.Result {
+	if path == "" {
+		return gjson.Get(stdout, "data")
+	}
+	result := gjson.Get(stdout, "data."+path)
+	if result.Exists() {
+		return result
+	}
+	return gjson.Get(stdout, path)
+}
+
+// DryRunData returns the dry-run payload for tests that assert legacy raw paths.
+func DryRunData(stdout string) string {
+	return gjson.Get(stdout, "data").Raw
 }
 
 // Request describes one lark-cli invocation.
@@ -211,11 +269,33 @@ func buildCommandEnv(req Request) []string {
 	for k, v := range req.Env {
 		overrides[k] = v
 	}
-	// Keep user-token injection scoped to user-only test commands so bot
-	// commands continue to use config-init credentials in the same process.
-	if req.DefaultAs == "user" {
-		if appID := os.Getenv("TEST_BOT1_APP_ID"); appID != "" {
-			if token := os.Getenv("TEST_USER_ACCESS_TOKEN"); token != "" {
+
+	// Shared TEST_* credentials are fallbacks for explicitly identified live
+	// commands. Existing standard env (including dry-run fixtures) and
+	// per-request overrides always take precedence.
+	switch req.DefaultAs {
+	case "bot":
+		if !hasCredentialEnv(req.Env,
+			"LARKSUITE_CLI_APP_ID",
+			"LARKSUITE_CLI_APP_SECRET",
+			"LARKSUITE_CLI_TENANT_ACCESS_TOKEN",
+		) {
+			appID := os.Getenv("TEST_BOT1_APP_ID")
+			token := os.Getenv("TEST_TENANT_ACCESS_TOKEN")
+			if appID != "" && token != "" {
+				overrides["LARKSUITE_CLI_APP_ID"] = appID
+				overrides["LARKSUITE_CLI_TENANT_ACCESS_TOKEN"] = token
+			}
+		}
+	case "user":
+		if !hasCredentialEnv(req.Env,
+			"LARKSUITE_CLI_APP_ID",
+			"LARKSUITE_CLI_APP_SECRET",
+			"LARKSUITE_CLI_USER_ACCESS_TOKEN",
+		) {
+			appID := os.Getenv("TEST_BOT1_APP_ID")
+			token := os.Getenv("TEST_USER_ACCESS_TOKEN")
+			if appID != "" && token != "" {
 				overrides["LARKSUITE_CLI_APP_ID"] = appID
 				overrides["LARKSUITE_CLI_USER_ACCESS_TOKEN"] = token
 			}
@@ -236,6 +316,18 @@ func buildCommandEnv(req Request) []string {
 		}
 	}
 	return env
+}
+
+func hasCredentialEnv(requestEnv map[string]string, keys ...string) bool {
+	for _, key := range keys {
+		if _, ok := requestEnv[key]; ok {
+			return true
+		}
+		if os.Getenv(key) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // RunCmdWithRetry reruns a command when the result matches the configured retry condition.

@@ -45,6 +45,16 @@ func decodeJSONMap(t *testing.T, raw string) map[string]interface{} {
 	return data
 }
 
+func dryRunDataMap(t *testing.T, raw string) map[string]interface{} {
+	t.Helper()
+	out := decodeJSONMap(t, raw)
+	data, ok := out["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("dry-run data is %T, want map[string]interface{}\nstdout:\n%s", out["data"], raw)
+	}
+	return data
+}
+
 func mustMapValue(t *testing.T, value interface{}, path string) map[string]interface{} {
 	t.Helper()
 
@@ -222,7 +232,6 @@ func TestResolveCommentMode(t *testing.T) {
 	tests := []struct {
 		name         string
 		explicitFull bool
-		selection    string
 		blockID      string
 		want         commentMode
 	}{
@@ -237,11 +246,6 @@ func TestResolveCommentMode(t *testing.T) {
 			want:         commentModeFull,
 		},
 		{
-			name:      "selection means local comment",
-			selection: "流程",
-			want:      commentModeLocal,
-		},
-		{
 			name:    "block id means local comment",
 			blockID: "blk_123",
 			want:    commentModeLocal,
@@ -252,7 +256,7 @@ func TestResolveCommentMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := resolveCommentMode(tt.explicitFull, tt.selection, tt.blockID)
+			got := resolveCommentMode(tt.explicitFull, tt.blockID)
 			if got != tt.want {
 				t.Fatalf("mode mismatch: want %q, got %q", tt.want, got)
 			}
@@ -260,61 +264,13 @@ func TestResolveCommentMode(t *testing.T) {
 	}
 }
 
-func TestSelectLocateMatch(t *testing.T) {
+func TestDriveAddCommentDoesNotExposeTextLocationFlag(t *testing.T) {
 	t.Parallel()
 
-	result := locateDocResult{
-		MatchCount: 2,
-		Matches: []locateDocMatch{
-			{
-				AnchorBlockID: "blk_1",
-				Blocks: []locateDocBlock{
-					{BlockID: "blk_1", RawMarkdown: "流程\n"},
-				},
-			},
-			{
-				AnchorBlockID: "blk_2",
-				Blocks: []locateDocBlock{
-					{BlockID: "blk_2", RawMarkdown: "流程图\n"},
-				},
-			},
-		},
-	}
-
-	_, _, err := selectLocateMatch(result)
-	if err == nil || !strings.Contains(err.Error(), "matched 2 blocks") {
-		t.Fatalf("expected ambiguous match error, got %v", err)
-	}
-	if strings.Contains(err.Error(), "流程") || strings.Contains(err.Error(), "流程图") {
-		t.Fatalf("ambiguous match error should not leak locate-doc snippets: %v", err)
-	}
-	if !strings.Contains(err.Error(), "anchor_block_id=blk_1") || !strings.Contains(err.Error(), "anchor_block_id=blk_2") {
-		t.Fatalf("ambiguous match error should keep anchor block identifiers: %v", err)
-	}
-}
-
-func TestParseLocateDocResultFallsBackToFirstBlock(t *testing.T) {
-	t.Parallel()
-
-	got := parseLocateDocResult(map[string]interface{}{
-		"match_count": float64(1),
-		"matches": []interface{}{
-			map[string]interface{}{
-				"blocks": []interface{}{
-					map[string]interface{}{
-						"block_id":     "blk_anchor",
-						"raw_markdown": "流程\n",
-					},
-				},
-			},
-		},
-	})
-
-	if len(got.Matches) != 1 {
-		t.Fatalf("expected 1 match, got %d", len(got.Matches))
-	}
-	if got.Matches[0].AnchorBlockID != "blk_anchor" {
-		t.Fatalf("expected fallback anchor block, got %q", got.Matches[0].AnchorBlockID)
+	for _, flag := range DriveAddComment.Flags {
+		if flag.Name == "selection-with-ellipsis" {
+			t.Fatalf("drive +add-comment still exposes removed flag --%s", flag.Name)
+		}
 	}
 }
 
@@ -908,6 +864,27 @@ func TestSheetCommentValidateInvalidBlockIDFormat(t *testing.T) {
 	}
 }
 
+// create_v2 (+add-comment) uses reply_elements, which does NOT declare the
+// 100-element cap that the reply-create endpoint does; +add-comment must not
+// reject >100 elements locally.
+func TestDriveAddCommentDoesNotCapElements(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	elems := make([]string, 101)
+	for i := range elems {
+		elems[i] = `{"type":"text","text":"x"}`
+	}
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/docx/docxToken",
+		"--content", "[" + strings.Join(elems, ",") + "]",
+		"--full-comment",
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("+add-comment must not cap element count locally, got %v", err)
+	}
+}
+
 func TestSheetCommentValidateRejectsFullComment(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 	err := mountAndRunDrive(t, DriveAddComment, []string{
@@ -916,21 +893,6 @@ func TestSheetCommentValidateRejectsFullComment(t *testing.T) {
 		"--content", `[{"type":"text","text":"test"}]`,
 		"--block-id", "s1!A1",
 		"--full-comment",
-		"--as", "user",
-	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "not applicable for sheet") {
-		t.Fatalf("expected incompatible flags error, got: %v", err)
-	}
-}
-
-func TestSheetCommentValidateRejectsSelectionWithEllipsis(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
-	err := mountAndRunDrive(t, DriveAddComment, []string{
-		"+add-comment",
-		"--doc", "https://example.larksuite.com/sheets/shtToken",
-		"--content", `[{"type":"text","text":"test"}]`,
-		"--block-id", "s1!A1",
-		"--selection-with-ellipsis", "something",
 		"--as", "user",
 	}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "not applicable for sheet") {
@@ -961,21 +923,6 @@ func TestSlidesCommentValidateRejectsFullComment(t *testing.T) {
 		"--content", `[{"type":"text","text":"test"}]`,
 		"--block-id", "shape!shape_1",
 		"--full-comment",
-		"--as", "user",
-	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "not applicable for slide comments") {
-		t.Fatalf("expected incompatible flags error, got: %v", err)
-	}
-}
-
-func TestSlidesCommentValidateRejectsSelectionWithEllipsis(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
-	err := mountAndRunDrive(t, DriveAddComment, []string{
-		"+add-comment",
-		"--doc", "https://example.larksuite.com/slides/presToken",
-		"--content", `[{"type":"text","text":"test"}]`,
-		"--block-id", "shape!shape_1",
-		"--selection-with-ellipsis", "something",
 		"--as", "user",
 	}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "not applicable for slide comments") {
@@ -1019,20 +966,6 @@ func TestFileCommentValidateRejectsBlockID(t *testing.T) {
 		"--doc", "https://example.larksuite.com/file/fileToken",
 		"--content", `[{"type":"text","text":"test"}]`,
 		"--block-id", "blk_123",
-		"--as", "user",
-	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "file comments only support full comments") {
-		t.Fatalf("expected file local-comment rejection, got: %v", err)
-	}
-}
-
-func TestFileCommentValidateRejectsSelectionWithEllipsis(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
-	err := mountAndRunDrive(t, DriveAddComment, []string{
-		"+add-comment",
-		"--doc", "https://example.larksuite.com/file/fileToken",
-		"--content", `[{"type":"text","text":"test"}]`,
-		"--selection-with-ellipsis", "something",
 		"--as", "user",
 	}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "file comments only support full comments") {
@@ -1087,11 +1020,6 @@ func TestBaseCommentValidateRejectsIncompatibleFlags(t *testing.T) {
 			args:    []string{"--full-comment"},
 			wantErr: "--full-comment is not applicable for base(bitable) comments",
 		},
-		{
-			name:    "selection",
-			args:    []string{"--selection-with-ellipsis", "some text"},
-			wantErr: "--selection-with-ellipsis is not applicable for base(bitable) comments",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1109,6 +1037,50 @@ func TestBaseCommentValidateRejectsIncompatibleFlags(t *testing.T) {
 				t.Fatalf("expected %q error, got: %v", tc.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestDocxCommentExecuteWithBlockID(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	createStub := &httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/files/docxToken/new_comments",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"comment_id": "docxBlockComment", "created_at": 1700000000},
+		},
+	}
+	reg.Register(createStub)
+
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/docx/docxToken",
+		"--content", `[{"type":"text","text":"review this block"}]`,
+		"--block-id", "blk_target",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var requestBody map[string]interface{}
+	if err := json.Unmarshal(createStub.CapturedBody, &requestBody); err != nil {
+		t.Fatalf("failed to decode captured body: %v\nbody:\n%s", err, string(createStub.CapturedBody))
+	}
+	anchor := mustMapValue(t, requestBody["anchor"], "request.anchor")
+	if got := mustStringField(t, anchor, "block_id", "request.anchor.block_id"); got != "blk_target" {
+		t.Fatalf("request anchor block_id = %q, want blk_target", got)
+	}
+
+	out := decodeJSONMap(t, stdout.String())
+	data := mustMapValue(t, out["data"], "data")
+	if got := mustStringField(t, data, "comment_mode", "data.comment_mode"); got != "local" {
+		t.Fatalf("stdout comment_mode = %q, want local\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, data, "anchor_block_id", "data.anchor_block_id"); got != "blk_target" {
+		t.Fatalf("stdout anchor_block_id = %q, want blk_target\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, data, "selection_source", "data.selection_source"); got != "block_id" {
+		t.Fatalf("stdout selection_source = %q, want block_id\nstdout:\n%s", got, stdout.String())
 	}
 }
 
@@ -1181,7 +1153,7 @@ func TestSlidesCommentExecuteSuccessWithCompoundBlockID(t *testing.T) {
 func TestSlidesCommentViaWikiResolve(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1264,7 +1236,7 @@ func TestSheetCommentExecuteWithURL(t *testing.T) {
 func TestSheetCommentViaWikiResolve(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1300,7 +1272,7 @@ func TestSheetCommentViaWikiResolve(t *testing.T) {
 func TestSheetCommentViaWikiMissingBlockID(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1565,7 +1537,7 @@ func TestDryRunSheetDirectURL(t *testing.T) {
 func TestDryRunWikiResolvesToSheet(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1591,7 +1563,7 @@ func TestDryRunWikiResolvesToSheet(t *testing.T) {
 func TestDryRunWikiResolvesToDocxFull(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1628,8 +1600,8 @@ func TestDryRunSlidesDirectURL(t *testing.T) {
 	if !strings.Contains(stdout.String(), "slide block comment") {
 		t.Fatalf("dry-run output missing slide block comment: %s", stdout.String())
 	}
-	out := decodeJSONMap(t, stdout.String())
-	api := mustSliceValue(t, out["api"], "api")
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
 	call := mustMapValue(t, api[0], "api[0]")
 	body := mustMapValue(t, call["body"], "api[0].body")
 	anchor := mustMapValue(t, body["anchor"], "api[0].body.anchor")
@@ -1656,8 +1628,8 @@ func TestDryRunBaseDirectURL(t *testing.T) {
 	if !strings.Contains(stdout.String(), "record-local comment") {
 		t.Fatalf("dry-run output missing record-local comment: %s", stdout.String())
 	}
-	out := decodeJSONMap(t, stdout.String())
-	api := mustSliceValue(t, out["api"], "api")
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
 	call := mustMapValue(t, api[0], "api[0]")
 	body := mustMapValue(t, call["body"], "api[0].body")
 	anchor := mustMapValue(t, body["anchor"], "api[0].body.anchor")
@@ -1678,7 +1650,7 @@ func TestDryRunBaseDirectURL(t *testing.T) {
 func TestDryRunWikiResolvesToSlides(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1699,8 +1671,8 @@ func TestDryRunWikiResolvesToSlides(t *testing.T) {
 	if !strings.Contains(stdout.String(), "slide block comment") {
 		t.Fatalf("dry-run output missing slide block comment: %s", stdout.String())
 	}
-	out := decodeJSONMap(t, stdout.String())
-	api := mustSliceValue(t, out["api"], "api")
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
 	call := mustMapValue(t, api[0], "api[0]")
 	body := mustMapValue(t, call["body"], "api[0].body")
 	anchor := mustMapValue(t, body["anchor"], "api[0].body.anchor")
@@ -1715,7 +1687,7 @@ func TestDryRunWikiResolvesToSlides(t *testing.T) {
 func TestDryRunWikiSlidesInvalidBlockIDSurfaces(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1736,8 +1708,8 @@ func TestDryRunWikiSlidesInvalidBlockIDSurfaces(t *testing.T) {
 	if !strings.Contains(stdout.String(), "slide --block-id must be") || !strings.Contains(stdout.String(), "shape_2") {
 		t.Fatalf("dry-run output missing block-id format error: %s", stdout.String())
 	}
-	out := decodeJSONMap(t, stdout.String())
-	api := mustSliceValue(t, out["api"], "api")
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
 	if len(api) != 0 {
 		t.Fatalf("dry-run should not preview API calls with malformed block-id: %s", stdout.String())
 	}
@@ -1749,7 +1721,7 @@ func TestDryRunWikiSlidesInvalidBlockIDSurfaces(t *testing.T) {
 func TestDryRunWikiSlidesResolutionErrorSurfaces(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1789,6 +1761,20 @@ func TestDryRunDocxLocalWithBlockID(t *testing.T) {
 	if !strings.Contains(stdout.String(), "local comment") {
 		t.Fatalf("dry-run output missing local comment: %s", stdout.String())
 	}
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
+	if len(api) != 1 {
+		t.Fatalf("expected one OpenAPI call without a locator step, got %d\nstdout:\n%s", len(api), stdout.String())
+	}
+	createCall := mustMapValue(t, api[0], "api[0]")
+	if got := mustStringField(t, createCall, "url", "api[0].url"); got != "/open-apis/drive/v1/files/docxToken/new_comments" {
+		t.Fatalf("create URL = %q, want Drive OpenAPI comment endpoint\nstdout:\n%s", got, stdout.String())
+	}
+	createBody := mustMapValue(t, createCall["body"], "api[0].body")
+	anchor := mustMapValue(t, createBody["anchor"], "api[0].body.anchor")
+	if got := mustStringField(t, anchor, "block_id", "api[0].body.anchor.block_id"); got != "blk_123" {
+		t.Fatalf("anchor block_id = %q, want blk_123\nstdout:\n%s", got, stdout.String())
+	}
 }
 
 func TestDryRunDocxFullComment(t *testing.T) {
@@ -1821,8 +1807,8 @@ func TestDryRunFileDirectURL(t *testing.T) {
 	if !strings.Contains(stdout.String(), "verify supported file metadata") {
 		t.Fatalf("dry-run output missing supported file metadata verification step: %s", stdout.String())
 	}
-	out := decodeJSONMap(t, stdout.String())
-	api := mustSliceValue(t, out["api"], "api")
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
 	if len(api) != 2 {
 		t.Fatalf("expected 2 dry-run api calls, got %d\nstdout:\n%s", len(api), stdout.String())
 	}
@@ -1849,11 +1835,14 @@ func TestDryRunFileDirectURL(t *testing.T) {
 func TestResolveWikiToDocxFullComment(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
-				"node": map[string]interface{}{"obj_type": "docx", "obj_token": "docxResolved"},
+				"node": map[string]interface{}{
+					"obj_type": "docx", "obj_token": "docxResolved",
+					"node_type": "shortcut", "node_token": "wikiToken", "origin_node_token": "wikiOriginal",
+				},
 			},
 		},
 	})
@@ -1883,7 +1872,7 @@ func TestResolveWikiToBaseComment(t *testing.T) {
 		t.Run(objType, func(t *testing.T) {
 			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 			reg.Register(&httpmock.Stub{
-				Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+				Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 				Body: map[string]interface{}{
 					"code": 0, "msg": "success",
 					"data": map[string]interface{}{
@@ -1934,17 +1923,12 @@ func TestResolveWikiToBaseRejectsIncompatibleFlags(t *testing.T) {
 			args:    []string{"--full-comment"},
 			wantErr: "--full-comment is not applicable for base(bitable) comments",
 		},
-		{
-			name:    "selection",
-			args:    []string{"--selection-with-ellipsis", "some text"},
-			wantErr: "--selection-with-ellipsis is not applicable for base(bitable) comments",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 			reg.Register(&httpmock.Stub{
-				Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+				Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 				Body: map[string]interface{}{
 					"code": 0, "msg": "success",
 					"data": map[string]interface{}{
@@ -1970,7 +1954,7 @@ func TestResolveWikiToBaseRejectsIncompatibleFlags(t *testing.T) {
 func TestResolveWikiToSlidesFullCommentRejected(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -1990,33 +1974,10 @@ func TestResolveWikiToSlidesFullCommentRejected(t *testing.T) {
 	}
 }
 
-func TestResolveWikiToSlidesSelectionRejected(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"node": map[string]interface{}{"obj_type": "slides", "obj_token": "presToken"},
-			},
-		},
-	})
-	err := mountAndRunDrive(t, DriveAddComment, []string{
-		"+add-comment",
-		"--doc", "https://example.larksuite.com/wiki/wikiSlidesToken",
-		"--content", `[{"type":"text","text":"test"}]`,
-		"--selection-with-ellipsis", "something",
-		"--as", "user",
-	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "--selection-with-ellipsis is not applicable for slide comments") {
-		t.Fatalf("expected slides selection rejection, got: %v", err)
-	}
-}
-
 func TestResolveWikiIncompleteNodeData(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
@@ -2033,6 +1994,7 @@ func TestResolveWikiIncompleteNodeData(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "incomplete node data") {
 		t.Fatalf("expected incomplete node error, got: %v", err)
 	}
+	assertDriveCommentIncompleteNodeError(t, err)
 }
 
 func TestDocOldFormatLocalCommentRejected(t *testing.T) {

@@ -1,0 +1,240 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package riskcontrol
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/larksuite/cli/internal/core"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
+	"github.com/larksuite/cli/internal/transport"
+)
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type countingSource struct {
+	calls atomic.Int32
+}
+
+func (s *countingSource) Snapshot() Snapshot {
+	s.calls.Add(1)
+	return Snapshot{OSType: OSTypeMacOS, ProductModel: "Mac16,1"}
+}
+
+type staticSource Snapshot
+
+func (s staticSource) Snapshot() Snapshot { return Snapshot(s) }
+
+func TestExtensionRoutingPreservesPlatformSignals(t *testing.T) {
+	received := make(chan http.Header, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		received <- req.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	testurlrewrite.Register(t, func(raw string) string {
+		return strings.Replace(raw, "https://open.feishu.cn", server.URL, 1)
+	})
+	boundary := NewTransport(server.Client().Transport, staticSource{OSType: OSTypeLinux, ProductModel: "test-model"})
+	client := &http.Client{Transport: transport.NewHTTPPolicyRouter(boundary, boundary)}
+	// The same gateway must not receive signals for an ordinary external request.
+	for _, raw := range []string{"https://open.feishu.cn/test", server.URL + "/test"} {
+		req, err := http.NewRequest(http.MethodGet, raw, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req = req.WithContext(core.WithCredentialSource(req.Context(), core.CredentialSourceLocal))
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	platform, external := <-received, <-received
+	for key, want := range map[string]string{HeaderOSType: string(OSTypeLinux), HeaderProductModel: "test-model", HeaderCredentialSource: "local"} {
+		if platform.Get(key) != want || external.Get(key) != "" {
+			t.Errorf("%s: platform=%q external=%q, want %q and empty", key, platform.Get(key), external.Get(key), want)
+		}
+	}
+}
+
+func TestTransportAuthorizesBeforeCollecting(t *testing.T) {
+	tests := []struct {
+		name          string
+		requestURL    string
+		authorization string
+		wantSignals   bool
+	}{
+		{name: "authenticated official HTTPS", requestURL: "https://open.feishu.cn/open-apis/test", authorization: "Bearer token", wantSignals: true},
+		{name: "Lark official HTTPS", requestURL: "https://open.larksuite.com/open-apis/test", authorization: "Bearer token", wantSignals: true},
+		{name: "official explicit HTTPS port", requestURL: "https://OPEN.FEISHU.CN:443/open-apis/test", authorization: "Bearer token", wantSignals: true},
+		{name: "unauthenticated", requestURL: "https://open.feishu.cn/open-apis/test", wantSignals: true},
+		{name: "official non-OpenAPI origin", requestURL: "https://accounts.feishu.cn/open-apis/test", authorization: "Bearer token", wantSignals: true},
+		{name: "Feishu MCP", requestURL: "https://mcp.feishu.cn/mcp", wantSignals: true},
+		{name: "Lark MCP", requestURL: "https://mcp.larksuite.com/mcp", wantSignals: true},
+		{name: "off domain", requestURL: "https://example.com/test", authorization: "Bearer token", wantSignals: false},
+		{name: "lookalike", requestURL: "https://open.feishu.cn.evil.example/test", authorization: "Bearer token", wantSignals: false},
+		{name: "plain HTTP", requestURL: "http://open.feishu.cn/test", authorization: "Bearer token", wantSignals: false},
+		{name: "non-default port", requestURL: "https://open.feishu.cn:8443/test", authorization: "Bearer token", wantSignals: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source := &countingSource{}
+			var received http.Header
+			base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				received = req.Header.Clone()
+				return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+			})
+			req, err := http.NewRequest(http.MethodGet, test.requestURL, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Authorization", test.authorization)
+			req.Header.Set(HeaderOSType, "caller-value")
+			req.Header.Set(HeaderProductModel, "caller-value")
+			req.Header.Set(HeaderCredentialSource, "caller-value")
+			req.Header["x-agent-device-type"] = []string{"non-canonical-caller-value"}
+			req = req.WithContext(core.WithCredentialSource(req.Context(), core.CredentialSourceLocal))
+
+			resp, err := NewTransport(base, source).RoundTrip(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+
+			gotSignals := received.Get(HeaderOSType) != ""
+			if gotSignals != test.wantSignals {
+				t.Fatalf("signals present = %t, want %t; headers=%v", gotSignals, test.wantSignals, received)
+			}
+			wantCalls := int32(0)
+			if test.wantSignals {
+				wantCalls = 1
+			}
+			if got := source.calls.Load(); got != wantCalls {
+				t.Fatalf("Snapshot calls = %d, want %d", got, wantCalls)
+			}
+			if got := received.Get(HeaderCredentialSource); test.wantSignals && got != "local" {
+				t.Fatalf("credential source = %q, want local", got)
+			}
+			if got := req.Header.Get(HeaderOSType); got != "caller-value" {
+				t.Fatalf("caller request OS header = %q, want unchanged", got)
+			}
+			if got := req.Header.Get(HeaderProductModel); got != "caller-value" {
+				t.Fatalf("caller request product-model header = %q, want unchanged", got)
+			}
+			if !test.wantSignals {
+				for name := range received {
+					if strings.EqualFold(name, HeaderProductModel) || strings.EqualFold(name, HeaderOSType) || strings.EqualFold(name, HeaderCredentialSource) {
+						t.Fatalf("restricted header leaked as %q", name)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestTransportRiskControlDisabledSuppressesHostSignalsButSendsCredentialSource(t *testing.T) {
+	var received http.Header
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		received = req.Header.Clone()
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	req, err := http.NewRequest(http.MethodGet, "https://open.feishu.cn/open-apis/test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Caller values must never survive. Opting out of risk control suppresses
+	// host signals, but the trusted request-scoped credential source is still
+	// sent.
+	req.Header.Set(HeaderOSType, "caller-value")
+	req.Header.Set(HeaderProductModel, "caller-value")
+	req.Header.Set(HeaderCredentialSource, "caller-value")
+	req = req.WithContext(core.WithCredentialSource(req.Context(), core.CredentialSourceLocal))
+
+	resp, err := NewTransport(base, nil).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	for _, name := range []string{HeaderOSType, HeaderProductModel} {
+		if got := received.Get(name); got != "" {
+			t.Fatalf("risk-control opt-out sent host signal %s=%q", name, got)
+		}
+	}
+	if got := received.Get(HeaderCredentialSource); got != "local" {
+		t.Fatalf("%s = %q, want trusted request source local", HeaderCredentialSource, got)
+	}
+}
+
+func TestTransportCredentialSourceIsRequestScoped(t *testing.T) {
+	var received http.Header
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		received = req.Header.Clone()
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	// A nil host source models risk-control off. Credential source metadata is
+	// independent of that policy.
+	transport := NewTransport(base, nil)
+
+	for _, test := range []struct {
+		name   string
+		source core.CredentialSource
+		want   string
+	}{
+		{name: "local request", source: core.CredentialSourceLocal, want: "local"},
+		{name: "environment request", source: core.CredentialSourceEnv, want: "env"},
+		{name: "request without resolved credential"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "https://open.feishu.cn/open-apis/test", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req = req.WithContext(core.WithCredentialSource(req.Context(), test.source))
+			resp, err := transport.RoundTrip(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if got := received.Get(HeaderCredentialSource); got != test.want {
+				t.Fatalf("%s = %q, want %q", HeaderCredentialSource, got, test.want)
+			}
+		})
+	}
+}
+
+func TestTransportValidatesSourceSnapshot(t *testing.T) {
+	var received http.Header
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		received = req.Header.Clone()
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	req, err := http.NewRequest(http.MethodGet, "https://open.feishu.cn/open-apis/test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer token")
+
+	resp, err := NewTransport(base, staticSource{
+		OSType:       OSType("unsupported"),
+		ProductModel: "unsafe\nvalue",
+	}).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if received.Get(HeaderOSType) == "" && received.Get(HeaderProductModel) == "" {
+		t.Fatalf("no signals collected: %v", received)
+	}
+}

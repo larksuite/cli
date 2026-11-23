@@ -21,7 +21,7 @@
 典型工作流：先读取现有浮动图片了解配置 → 执行创建/更新/删除 → **必须再次读取验证结果**。
 
 **常见配置错误（必须注意）**：
-- **单元格图片 vs 浮动图片选择错误（最易选错）**：图与某条记录一一对应、要随行排序 / 筛选 / 增删时，应走 `+cells-set-image`（见顶部判别），用浮动图会错位。
+- **单元格图片 vs 浮动图片选择错误**：图与某条记录一一对应、要随行排序 / 筛选 / 增删时，应走 `+cells-set-image`（见顶部判别），用浮动图会错位。
 - **图片位置参数要精确**：锚点单元格的行列索引和偏移量决定了图片位置，设置不当会导致图片遮挡数据
 - **创建后必须验证**：调用 `+float-image-list` 确认图片位置和大小正确
 
@@ -29,9 +29,9 @@
 
 - **`--image <本地路径>`（首选，最省事）**：直接给本地图片文件路径（PNG/JPEG/GIF/BMP/HEIC 等）。CLI 会自动把它以 `parent_type=sheet_image` 上传，拿到 file_token 后创建浮动图，**不用你手动上传 / 取 token**。路径规则同其它本地文件 flag：必须是当前工作目录内的相对路径（绝对路径会被 Validate 拒，`--dry-run` 也会拦）。
 - `--image-token`：复用**已存在**的图片 file_token。常见来源：① `+float-image-list` 返回的 `image_token`（适合"换皮不换位置"复用同一张图）；② `+cells-set-image` 成功返回里的 `file_token`（它也是 `sheet_image` 上传句柄）。适合"同一张图复用到多处"，省去重复上传。
-- `--image-uri`：图片 reference_id（image URI），由系统自动转 file_token。
+- `--image-uri`：图片 URI（上传链路返回的句柄），**非**表内对象 reference_id；由系统自动转 file_token。
 
-> ⚠️ **`--image` 仅 `+float-image-create` 支持**。`+float-image-update` 换图仍只接受 `--image-token` / `--image-uri`，而且**图片源是 update 唯一可省的部分**——三者全不传则保留原图。但 `--image-name` / `--position-{row,col}` / `--size-{width,height}` 在 update 时和 create 一样**必填**（`+float-image-update` 强制要求这套核心字段，且 `+float-image-list` 不回传 `image_name` 供 CLI 回填）。要在 update 里换一张本地新图，先用 `+cells-set-image` 上传到任意临时单元格、从返回取 `file_token`，再把它传给 update 的 `--image-token`。
+> ⚠️ **`--image` 仅 `+float-image-create` 支持**。`+float-image-update` 换图仍只接受 `--image-token` / `--image-uri`，而且**图片源是 update 唯一可省的部分**——三者全不传则保留原图。但 `--image-name` / `--position-{row,col}` / `--size-{width,height}` 在 update 时和 create 一样**必填**（`+float-image-update` 强制要求这套核心字段，且 `+float-image-list` 不回传 `image_name` 供 CLI 回填）。要在 update 里换一张本地新图，先用 `+cells-set-image` 上传到任意临时单元格、从返回取 `file_token`，再把它传给 update 的 `--image-token`；用完清除该临时单元格，避免残留多余图片。
 
 ## Shortcuts
 
@@ -60,7 +60,7 @@ _公共四件套 · 系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--image-name` | string | required | 图片名称，含扩展名（如 `logo.png`） |
 | `--image-token` | string | xor | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
-| `--image-uri` | string | xor | 图片 reference_id（与 `--image-token` 二选一）；图片上传链路返回的 reference_id |
+| `--image-uri` | string | xor | 图片 URI（上传链路返回的句柄，非表内对象 reference_id；与 `--image-token` 二选一）；系统自动转换为 file_token |
 | `--position-row` | int | required | 图片左上角所在行（0-based） |
 | `--position-col` | string | required | 图片左上角所在列（列字母，如 `A` / `B`） |
 | `--size-width` | int | required | 图片宽度（像素） |
@@ -78,8 +78,8 @@ _公共四件套 · 系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--float-image-id` | string | required | 目标图片 id |
 | `--image-name` | string | required | 图片名称，含扩展名（如 `logo.png`） |
-| `--image-token` | string | xor | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
-| `--image-uri` | string | xor | 图片 reference_id（与 `--image-token` 二选一）；图片上传链路返回的 reference_id |
+| `--image-token` | string | optional | 可选图片 file_token；与 `--image-uri` 互斥，二者均省略时保留原图。常见来源：`+float-image-list` 返回的 `image_token` |
+| `--image-uri` | string | optional | 可选图片 URI（上传链路返回的句柄，非表内对象 reference_id）；与 `--image-token` 互斥，二者均省略时保留原图；系统自动转换为 file_token |
 | `--position-row` | int | required | 图片左上角所在行（0-based） |
 | `--position-col` | string | required | 图片左上角所在列（列字母，如 `A` / `B`） |
 | `--size-width` | int | required | 图片宽度（像素） |
@@ -122,7 +122,7 @@ lark-cli sheets +float-image-create --url "..." --sheet-id "$SID" \
   --image-name "logo.png" --image-token "$TOKEN" \
   --position-row 0 --position-col A --size-width 200 --size-height 150
 
-# 用 reference_id（图片上传链路返回的 image reference_id；与 --image-token 二选一）
+# 用 image URI（上传链路返回的句柄，非表内对象 reference_id；与 --image-token 二选一）
 lark-cli sheets +float-image-create --url "..." --sheet-id "$SID" \
   --image-name "logo.png" --image-uri "$IMAGE_URI" \
   --position-row 2 --position-col B --size-width 300 --size-height 200 --z-index 1
@@ -156,4 +156,4 @@ lark-cli sheets +float-image-delete --url "..." --sheet-id "$SID" --float-image-
 
 - `Validate`：XOR 公共四件套；`+float-image-create` 要求 `--image` / `--image-token` / `--image-uri` **恰好给一个**，`--position-row/col` 与 `--size-width/height` 必填且为合法整数；传 `--image` 时还会校验路径安全（绝对路径 / 越出工作目录会被拒，`--dry-run` 同样拦）。`+float-image-update` 必须 `--float-image-id`，并和 create 一样必填 `--image-name` / `--position-{row,col}` / `--size-{width,height}`（缺任一核心字段本地直接报错，不会静默发 0）；图片源 `--image-token` / `--image-uri` 可省（省略保留原图），给则二选一；`+float-image-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 float_image 请求模板"；传 `--image` 时会多打印一步本地图片上传（`POST /open-apis/drive/v1/medias/upload_all`，`parent_type=sheet_image`）。
-- `Execute`：写后不自动回读；如需确认，自行调用 `+float-image-list --float-image-id <id>` 比对新位置 / 尺寸。
+- `Execute`：写后不自动回读；create/update 后必须调用 `+float-image-list --float-image-id <id>` 比对位置与尺寸（它不回传 `image_name`，名称无从核对）；delete 后 list 确认目标不存在。

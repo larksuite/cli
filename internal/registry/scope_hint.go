@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // ExtractRequiredScopes pulls scope names out of the API error's
@@ -59,10 +60,10 @@ func BuildConsoleScopeURL(brand core.LarkBrand, appID, scope string) string {
 	if appID == "" || scope == "" {
 		return ""
 	}
-	return fmt.Sprintf(
+	return urlrewrite.Rewrite(fmt.Sprintf(
 		"%s/page/scope-apply?clientID=%s&scopes=%s",
 		core.ResolveOpenBaseURL(brand),
 		url.QueryEscape(appID),
 		url.QueryEscape(scope),
-	)
+	))
 }

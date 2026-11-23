@@ -18,23 +18,25 @@ import (
 
 // patchParams holds the parsed parameters for the patch operation.
 type patchParams struct {
-	Level      string
-	TargetID   string
-	Style      string
-	Content    *ContentBlock
-	Notes      *ContentBlock
-	Score      *float64
-	Deadline   *string
-	UserIDType string
+	Level        string
+	TargetID     string
+	Style        string
+	Content      *ContentBlock
+	Notes        *ContentBlock
+	Score        *float64
+	Deadline     *string
+	UserIDType   string
+	ApplyToDraft bool
 }
 
 // parsePatchParams parses and validates flags from runtime into request-ready parameters.
 func parsePatchParams(runtime *common.RuntimeContext) (*patchParams, error) {
 	p := &patchParams{
-		Level:      runtime.Str("level"),
-		TargetID:   runtime.Str("target-id"),
-		Style:      runtime.Str("style"),
-		UserIDType: runtime.Str("user-id-type"),
+		Level:        runtime.Str("level"),
+		TargetID:     runtime.Str("target-id"),
+		Style:        runtime.Str("style"),
+		UserIDType:   runtime.Str("user-id-type"),
+		ApplyToDraft: runtime.Bool("apply-to-draft"),
 	}
 
 	hasField := false
@@ -124,6 +126,9 @@ func parsePatchParams(runtime *common.RuntimeContext) (*patchParams, error) {
 		}
 		// Validation ensures at most one decimal place, so score is already correctly formatted
 		p.Score = &score
+		if p.ApplyToDraft {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--score is not supported when --apply-to-draft=true").WithParam("--score")
+		}
 	}
 
 	// Parse deadline if provided
@@ -170,6 +175,7 @@ var OKRPatch = common.Shortcut{
 		{Name: "score", Desc: "score value between 0 and 1, with at most one decimal place (e.g., 0.5)"},
 		{Name: "deadline", Desc: "deadline as millisecond timestamp"},
 		{Name: "user-id-type", Default: "open_id", Desc: "user ID type: open_id | union_id | user_id"},
+		{Name: "apply-to-draft", Type: "bool", Default: "true", Desc: "apply the update to the objective draft"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		level := runtime.Str("level")
@@ -214,6 +220,7 @@ var OKRPatch = common.Shortcut{
 		}
 
 		body := make(map[string]interface{})
+		body["apply_to_draft"] = p.ApplyToDraft
 		if p.Content != nil {
 			body["content"] = p.Content
 		}
@@ -250,6 +257,7 @@ var OKRPatch = common.Shortcut{
 		}
 
 		body := make(map[string]interface{})
+		body["apply_to_draft"] = p.ApplyToDraft
 		if p.Content != nil {
 			body["content"] = p.Content
 		}

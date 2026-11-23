@@ -27,6 +27,7 @@ var BaseDashboardBlockGet = common.Shortcut{
 	Tips: []string{
 		"lark-cli base +dashboard-block-get --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id>",
 		"Use this command for block metadata such as name, type, layout, and data_config.",
+		"Text block content is stored in data_config.text; include it when the user asks for all dashboard content.",
 		"Use +dashboard-block-get-data when you need the computed chart result instead of metadata.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

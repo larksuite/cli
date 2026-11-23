@@ -11,17 +11,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-func newThreadsTestRT(t *testing.T, stringFlags map[string]string) *common.RuntimeContext {
-	t.Helper()
-	if stringFlags == nil {
-		stringFlags = map[string]string{}
-	}
-	if _, ok := stringFlags["thread"]; !ok {
-		stringFlags["thread"] = "omt_test"
-	}
-	return newChatListTestRuntimeContext(t, stringFlags, nil)
-}
-
 func TestThreadsMessagesList_OrderMapping(t *testing.T) {
 	cases := []struct{ order, want string }{
 		{"asc", "ByCreateTimeAsc"},
@@ -37,13 +26,11 @@ func TestThreadsMessagesList_OrderMapping(t *testing.T) {
 	}
 }
 
-// TestThreadsMessagesList_OrderAliasParity proves DryRun(--sort dir) == DryRun(--order dir).
-// This is the test the refactor exists to make meaningful (single shared mapping).
-func TestThreadsMessagesList_OrderAliasParity(t *testing.T) {
+func TestThreadsMessagesList_SortAliasParity(t *testing.T) {
 	for _, dir := range []string{"asc", "desc"} {
 		t.Run(dir, func(t *testing.T) {
-			newRT := newThreadsTestRT(t, map[string]string{"order": dir})
-			oldRT := newThreadsTestRT(t, map[string]string{"sort": dir})
+			newRT, _ := newMountedIMRuntime(t, &ImThreadsMessagesList, "--thread", "omt_test", "--order", dir)
+			oldRT, _ := newMountedIMRuntime(t, &ImThreadsMessagesList, "--thread", "omt_test", "--sort", dir)
 			a := mustMarshalDryRun(t, ImThreadsMessagesList.DryRun(context.Background(), newRT))
 			b := mustMarshalDryRun(t, ImThreadsMessagesList.DryRun(context.Background(), oldRT))
 			if a != b {
@@ -53,18 +40,34 @@ func TestThreadsMessagesList_OrderAliasParity(t *testing.T) {
 	}
 }
 
-func TestThreadsMessagesList_OrderFlagSurface(t *testing.T) {
-	var orderFlag, aliasFlag *common.Flag
-	for i := range ImThreadsMessagesList.Flags {
-		switch ImThreadsMessagesList.Flags[i].Name {
-		case "order":
-			orderFlag = &ImThreadsMessagesList.Flags[i]
-		case "sort":
-			aliasFlag = &ImThreadsMessagesList.Flags[i]
+func TestThreadsMessagesList_SortAliasesUseLastOccurrence(t *testing.T) {
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"--thread", "omt_test", "--order", "desc", "--sort", "asc"}, want: "asc"},
+		{args: []string{"--thread", "omt_test", "--sort", "asc", "--order", "desc"}, want: "desc"},
+	}
+	for _, test := range tests {
+		rt, _ := newMountedIMRuntime(t, &ImThreadsMessagesList, test.args...)
+		if got := rt.Str("order"); got != test.want {
+			t.Fatalf("order for %v = %q, want %q", test.args, got, test.want)
 		}
 	}
-	if orderFlag == nil || aliasFlag == nil {
-		t.Fatalf("expected both --order and --sort flags declared")
+}
+
+func TestThreadsMessagesList_OrderFlagSurface(t *testing.T) {
+	var orderFlag *common.Flag
+	for i := range ImThreadsMessagesList.Flags {
+		if ImThreadsMessagesList.Flags[i].Name == "order" {
+			orderFlag = &ImThreadsMessagesList.Flags[i]
+		}
+		if ImThreadsMessagesList.Flags[i].Name == "sort" {
+			t.Fatal("--sort must not be declared independently")
+		}
+	}
+	if orderFlag == nil {
+		t.Fatal("expected canonical --order declaration")
 	}
 	if orderFlag.Default != "asc" {
 		t.Errorf("--order Default = %q, want asc", orderFlag.Default)
@@ -72,10 +75,7 @@ func TestThreadsMessagesList_OrderFlagSurface(t *testing.T) {
 	if got := strings.Join(orderFlag.Enum, ","); got != "asc,desc" {
 		t.Errorf("--order Enum = %q, want asc,desc", got)
 	}
-	if !aliasFlag.Hidden {
-		t.Errorf("--sort must be Hidden")
-	}
-	if aliasFlag.Default != "" {
-		t.Errorf("--sort (hidden alias) must not carry a Default, got %q", aliasFlag.Default)
+	if got := strings.Join(orderFlag.Aliases, ","); got != "sort" {
+		t.Errorf("--order Aliases = %q, want sort", got)
 	}
 }

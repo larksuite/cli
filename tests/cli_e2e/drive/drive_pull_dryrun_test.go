@@ -13,7 +13,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestDrive_PullDryRun locks in the request shape the +pull shortcut emits
@@ -52,16 +51,16 @@ func TestDrive_PullDryRun(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := gjson.Get(out, "api.0.method").String(); got != "GET" {
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
 		t.Fatalf("method = %q, want GET\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/drive/v1/files" {
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/files" {
 		t.Fatalf("url = %q, want /open-apis/drive/v1/files\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "folder_token").String(); got != "fldcnE2E001" {
+	if got := clie2e.DryRunGet(out, "folder_token").String(); got != "fldcnE2E001" {
 		t.Fatalf("folder_token = %q, want fldcnE2E001\nstdout:\n%s", got, out)
 	}
-	desc := gjson.Get(out, "description").String()
+	desc := clie2e.DryRunGet(out, "description").String()
 	if !strings.Contains(desc, "list --folder-token") {
 		t.Fatalf("description missing list phrase, got %q\nstdout:\n%s", desc, out)
 	}
@@ -203,10 +202,10 @@ func TestDrive_PullDryRunAcceptsDuplicateRemoteStrategies(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
-			if got := gjson.Get(out, "api.0.method").String(); got != "GET" {
+			if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
 				t.Fatalf("method = %q, want GET\nstdout:\n%s", got, out)
 			}
-			if got := gjson.Get(out, "folder_token").String(); got != "fldcnE2E001" {
+			if got := clie2e.DryRunGet(out, "folder_token").String(); got != "fldcnE2E001" {
 				t.Fatalf("folder_token = %q, want fldcnE2E001\nstdout:\n%s", got, out)
 			}
 		})
@@ -242,10 +241,10 @@ func TestDrive_PullDryRunAcceptsIfExistsSmart(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := gjson.Get(out, "api.0.method").String(); got != "GET" {
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
 		t.Fatalf("method = %q, want GET\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "folder_token").String(); got != "fldcnE2E001" {
+	if got := clie2e.DryRunGet(out, "folder_token").String(); got != "fldcnE2E001" {
 		t.Fatalf("folder_token = %q, want fldcnE2E001\nstdout:\n%s", got, out)
 	}
 }

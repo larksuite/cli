@@ -5,6 +5,7 @@ package output
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,12 +16,44 @@ import (
 // PrintJson prints data as formatted JSON to w.
 func PrintJson(w io.Writer, data interface{}) {
 	injectNotice(data)
+	if err := WriteJSON(w, data); isOutputMarshalError(err) {
+		legacyStderrf("json marshal error: %v\n", err)
+	}
+}
+
+type outputMarshalError struct {
+	err error
+}
+
+func (e *outputMarshalError) Error() string {
+	return e.err.Error()
+}
+
+func (e *outputMarshalError) Unwrap() error {
+	return e.err
+}
+
+func isOutputMarshalError(err error) bool {
+	var marshalErr *outputMarshalError
+	return errors.As(err, &marshalErr)
+}
+
+// legacyStderrf reports a leaf-formatter marshal/format failure on os.Stderr,
+// preserving the pre-Emitter behavior for direct (unmigrated) callers of the
+// Print*/FormatAs* wrappers. The Emitter never uses this — it returns typed
+// errors instead. Removed once the remaining direct callers migrate.
+func legacyStderrf(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, args...) //nolint:forbidigo // legacy leaf-formatter stderr; removed in the output-ownership follow-up
+}
+
+// WriteJSON writes data as formatted JSON to w and returns marshal or write errors.
+func WriteJSON(w io.Writer, data interface{}) error {
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
-		return
+		return &outputMarshalError{err: err}
 	}
-	fmt.Fprintln(w, string(b))
+	_, err = fmt.Fprintln(w, string(b))
+	return err
 }
 
 // injectNotice adds a "_notice" field into CLI envelope maps.
@@ -50,21 +83,38 @@ func injectNotice(data interface{}) {
 
 // PrintNdjson prints data as NDJSON (Newline Delimited JSON) to w.
 func PrintNdjson(w io.Writer, data interface{}) {
-	emit := func(item interface{}) {
+	if arr, ok := data.([]interface{}); ok {
+		for _, item := range arr {
+			if err := WriteNDJSON(w, item); isOutputMarshalError(err) {
+				legacyStderrf("ndjson marshal error: %v\n", err)
+			}
+		}
+		return
+	}
+	if err := WriteNDJSON(w, data); isOutputMarshalError(err) {
+		legacyStderrf("ndjson marshal error: %v\n", err)
+	}
+}
+
+// WriteNDJSON writes data as NDJSON and returns marshal or write errors.
+func WriteNDJSON(w io.Writer, data interface{}) error {
+	emit := func(item interface{}) error {
 		b, err := json.Marshal(item)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ndjson marshal error: %v\n", err)
-			return
+			return &outputMarshalError{err: err}
 		}
-		fmt.Fprintln(w, string(b))
+		_, err = fmt.Fprintln(w, string(b))
+		return err
 	}
 	if arr, ok := data.([]interface{}); ok {
 		for _, item := range arr {
-			emit(item)
+			if err := emit(item); err != nil {
+				return err
+			}
 		}
-	} else {
-		emit(data)
+		return nil
 	}
+	return emit(data)
 }
 
 func cellStr(val interface{}) string {

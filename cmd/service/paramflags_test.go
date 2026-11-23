@@ -11,6 +11,9 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -194,6 +197,11 @@ func TestServiceMethod_TypedFlag_OverridesNullParams(t *testing.T) {
 func TestRegisterServiceCommands_GeneratesFlagsNoPanic(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli"}
 	f := &cmdutil.Factory{}
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.APICatalog = snapshot.Catalog()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -499,15 +507,31 @@ func TestParamFlagUsage_Description(t *testing.T) {
 		fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
 			"x": map[string]interface{}{
 				"type": "string", "location": "query",
-				"description": strings.Repeat("长", 80),
+				"description": strings.Repeat("长", fieldDescBudget/2+20),
 			},
 		}}).Params()
 		usage := paramFlagUsage(fields[0])
-		if !strings.Contains(usage, "...") {
-			t.Errorf("long description should be truncated with ellipsis, got %q", usage)
+		if !strings.Contains(usage, clauseEllipsis) {
+			t.Errorf("long description should be shortened with an ellipsis, got %q", usage)
 		}
-		if strings.Contains(usage, strings.Repeat("长", 61)) {
+		if strings.Contains(usage, strings.Repeat("长", fieldDescBudget/2+1)) {
 			t.Errorf("description should not exceed the cap, got %q", usage)
+		}
+	})
+
+	t.Run("ellipsis closes the clause before the next fact", func(t *testing.T) {
+		fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+			"page_size": map[string]interface{}{
+				"type": "integer", "location": "query", "max": "100", "default": "20",
+				"description": strings.Repeat("The maximum number of items returned in one request ", fieldDescBudget/52+2),
+			},
+		}}).Params()
+		usage := paramFlagUsage(fields[0])
+		if strings.Contains(usage, clauseEllipsis+".") {
+			t.Errorf("a fitted clause must not be followed by the sentence joiner, got %q", usage)
+		}
+		if !strings.Contains(usage, clauseEllipsis+" max: 100. API default: 20") {
+			t.Errorf("structured facts must follow the fitted clause, got %q", usage)
 		}
 	})
 
@@ -558,6 +582,20 @@ func TestParamHelp_BothSurfacesRenderFieldFacts(t *testing.T) {
 	}
 }
 
+func TestParamHelp_LargeIntegerBoundStaysExact(t *testing.T) {
+	f := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+		"revision_id": map[string]interface{}{
+			"type":     "integer",
+			"location": "query",
+			"max":      "9223372036854775807",
+		},
+	}}).Params()[0]
+
+	if got := formatBoundsInline(f); got != "max: 9223372036854775807" {
+		t.Fatalf("formatBoundsInline = %q, want exact MaxInt64", got)
+	}
+}
+
 // Bounds reach the registered flag's help end to end.
 func TestServiceMethod_TypedFlag_HelpShowsBounds(t *testing.T) {
 	method := meta.FromMap(map[string]interface{}{
@@ -594,6 +632,38 @@ func TestServiceMethod_MissingRequired_HintNamesFlagAndParams(t *testing.T) {
 		if !strings.Contains(ve.Hint, want) {
 			t.Errorf("hint %q should contain %q", ve.Hint, want)
 		}
+	}
+}
+
+func TestServiceMethod_MissingRequired_ProjectsOnlySchemaRecovery(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), imChatMembersCreate(), "create", "chat.members", nil)
+	cmd.SetArgs([]string{"--data", `{"id_list":["ou_x"]}`, "--dry-run"})
+
+	source := cmd.Execute()
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandSchema: surface.CommandConcealed,
+	})
+	rendered := recovery.NewProjector(func() *surface.Plan { return plan }).Render(source)
+	var ve *errs.ValidationError
+	if !errors.As(rendered, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", rendered, rendered)
+	}
+	for _, want := range []string{"--chat-id", `--params '{"chat_id": "<value>"}'`} {
+		if !strings.Contains(ve.Hint, want) {
+			t.Errorf("projected hint %q lost valid recovery %q", ve.Hint, want)
+		}
+	}
+	if strings.Contains(ve.Hint, "lark-cli schema") {
+		t.Errorf("projected hint retained concealed schema pointer: %q", ve.Hint)
+	}
+
+	var sourceValidation *errs.ValidationError
+	if !errors.As(source, &sourceValidation) {
+		t.Fatalf("source is not *errs.ValidationError: %T", source)
+	}
+	if !strings.Contains(sourceValidation.Hint, "lark-cli schema im.chat.members.create") {
+		t.Errorf("presentation mutated source hint: %q", sourceValidation.Hint)
 	}
 }
 

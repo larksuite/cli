@@ -9,16 +9,16 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/validate"
 )
 
 const (
-	PermissionGrantGranted  = "granted"
-	PermissionGrantSkipped  = "skipped"
-	PermissionGrantFailed   = "failed"
-	permissionGrantPerm     = "full_access"
-	permissionGrantPermHint = "可管理权限"
+	PermissionGrantGranted = "granted"
+	PermissionGrantSkipped = "skipped"
+	PermissionGrantFailed  = "failed"
+	permissionGrantPerm    = "full_access"
 )
 
 // AutoGrantCurrentUserDrivePermission grants full_access on a newly created
@@ -34,6 +34,7 @@ func AutoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourc
 	resourceType = strings.TrimSpace(resourceType)
 	if token == "" || resourceType == "" {
 		return buildPermissionGrantResult(
+			runtime,
 			PermissionGrantSkipped,
 			"",
 			fmt.Sprintf("The operation did not return a permission target (missing token/type), so current user %s was not granted. You can retry later or continue using bot identity.", permissionGrantPermMessage()),
@@ -48,12 +49,13 @@ func autoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourc
 	userOpenID := strings.TrimSpace(runtime.UserOpenId())
 	if userOpenID == "" {
 		result := buildPermissionGrantResult(
+			runtime,
 			PermissionGrantSkipped,
 			"",
 			fmt.Sprintf("Resource was created with bot identity, but no current CLI user open_id is configured, so current user %s was not granted. You can retry later or continue using bot identity.", permissionGrantPermMessage()),
 			"No current user identity (not logged in or session expired).",
 		)
-		fmt.Fprintf(runtime.IO().ErrOut, "Warning: resource was created with bot identity, but no current user open_id is configured, so auto-grant was skipped. Run `lark-cli auth login` and retry, or grant permission manually.\n")
+		fmt.Fprintf(runtime.IO().ErrOut, "Warning: resource was created with bot identity, but no current user open_id is configured, so auto-grant was skipped. %s, or grant permission manually.\n", permissionGrantLoginRecovery(runtime))
 		return result
 	}
 
@@ -79,6 +81,7 @@ func autoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourc
 	if err != nil {
 		errMsg := compactPermissionGrantError(err)
 		result := buildPermissionGrantResult(
+			runtime,
 			PermissionGrantFailed,
 			userOpenID,
 			fmt.Sprintf("Resource was created, but granting current user %s failed: %s. You can retry later or continue using bot identity.", permissionGrantPermMessage(), errMsg),
@@ -95,6 +98,7 @@ func autoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourc
 	}
 
 	return buildPermissionGrantResult(
+		runtime,
 		PermissionGrantGranted,
 		userOpenID,
 		fmt.Sprintf("Granted the current CLI user %s on the new %s.", permissionGrantPermMessage(), permissionTargetLabel(resourceType)),
@@ -102,7 +106,7 @@ func autoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourc
 	)
 }
 
-func buildPermissionGrantResult(status, userOpenID, message, reason string) map[string]interface{} {
+func buildPermissionGrantResult(runtime *RuntimeContext, status, userOpenID, message, reason string) map[string]interface{} {
 	result := map[string]interface{}{
 		"status":  status,
 		"perm":    permissionGrantPerm,
@@ -113,15 +117,28 @@ func buildPermissionGrantResult(status, userOpenID, message, reason string) map[
 		result["member_type"] = "openid"
 	}
 	if status == PermissionGrantSkipped {
-		result["hint"] = reason + " Run `lark-cli auth login` and retry, or grant permission manually via the Lark document UI."
+		result["hint"] = reason + " " + permissionGrantLoginRecovery(runtime) + ", or grant permission manually via the Lark document UI."
 	} else if status == PermissionGrantFailed {
 		result["hint"] = reason + " Retry later or grant permission manually via the Lark document UI."
 	}
 	return result
 }
 
+func permissionGrantLoginRecovery(runtime *RuntimeContext) string {
+	hint := recovery.Join("", recovery.Command(
+		recovery.TargetAuthLogin,
+		"Run `lark-cli auth login` and retry",
+	)).WithFallback(
+		"Establish a current user identity through this distribution's supported authorization flow and retry",
+	)
+	if runtime == nil {
+		return hint.String()
+	}
+	return runtime.Factory.RenderRecoveryHint(hint)
+}
+
 func permissionGrantPermMessage() string {
-	return permissionGrantPerm + " (" + permissionGrantPermHint + ")"
+	return permissionGrantPerm
 }
 
 func permissionGrantPermType(resourceType string) string {

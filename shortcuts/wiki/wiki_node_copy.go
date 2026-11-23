@@ -5,13 +5,20 @@ package wiki
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
+)
+
+const (
+	wikiNodeCopyMaxRetries     = 2
+	wikiNodeCopyRetryBaseDelay = 250 * time.Millisecond
 )
 
 // WikiNodeCopy copies a wiki node into a target space or under a target parent node.
@@ -33,6 +40,7 @@ var WikiNodeCopy = common.Shortcut{
 	Tips: []string{
 		"At least one of --target-space-id or --target-parent-node-token must be provided.",
 		"Omit --title to keep the original node title in the copy.",
+		"This shortcut copies the current node only; descendant nodes are not copied.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateOptionalResourceName(strings.TrimSpace(runtime.Str("space-id")), "--space-id"); err != nil {
@@ -77,14 +85,13 @@ var WikiNodeCopy = common.Shortcut{
 		spaceID := strings.TrimSpace(runtime.Str("space-id"))
 		nodeToken := strings.TrimSpace(runtime.Str("node-token"))
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Copying wiki node %s from space %s\n",
-			common.MaskToken(nodeToken), common.MaskToken(spaceID))
-
-		data, err := runtime.CallAPITyped("POST",
-			fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes/%s/copy",
-				validate.EncodePathSegment(spaceID),
-				validate.EncodePathSegment(nodeToken)),
-			nil, buildNodeCopyBody(runtime))
+		apiPath := fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes/%s/copy",
+			validate.EncodePathSegment(spaceID),
+			validate.EncodePathSegment(nodeToken))
+		body := buildNodeCopyBody(runtime)
+		data, err := runWikiNodeCopyWithRetry(ctx, runtime.IO().ErrOut, wikiNodeCopyRetryBaseDelay, func() (map[string]interface{}, error) {
+			return runtime.CallAPITyped("POST", apiPath, nil, body)
+		})
 		if err != nil {
 			return err
 		}
@@ -94,8 +101,6 @@ var WikiNodeCopy = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Copied to node %s in space %s\n",
-			common.MaskToken(node.NodeToken), common.MaskToken(node.SpaceID))
 		out := wikiNodeCopyOutput(node)
 		if u := wikiNodeURL(runtime.Config.Brand, node); u != "" {
 			out["url"] = u
@@ -105,6 +110,59 @@ var WikiNodeCopy = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+func runWikiNodeCopyWithRetry(ctx context.Context, _ io.Writer, baseDelay time.Duration, call func() (map[string]interface{}, error)) (map[string]interface{}, error) {
+	var lastErr error
+	for attempt := 0; attempt <= wikiNodeCopyMaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := baseDelay << uint(attempt-1)
+			select {
+			case <-ctx.Done():
+				return nil, wikiNodeCopyBackoffContextError(ctx.Err())
+			case <-time.After(delay):
+			}
+		}
+
+		data, err := call()
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+		if !isWikiNodeLockContention(err) {
+			return nil, err
+		}
+	}
+	return nil, wrapWikiNodeCopyRetryError(lastErr)
+}
+
+func wikiNodeCopyBackoffContextError(err error) error {
+	subtype := errs.SubtypeNetworkTransport
+	message := "wiki node copy retry was canceled during lock-contention backoff"
+	if errors.Is(err, context.DeadlineExceeded) {
+		subtype = errs.SubtypeNetworkTimeout
+		message = "wiki node copy retry deadline exceeded during lock-contention backoff"
+	}
+	return errs.NewNetworkError(subtype, "%s", message).WithCause(err)
+}
+
+func wrapWikiNodeCopyRetryError(err error) error {
+	if err == nil {
+		return nil
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		return err
+	}
+	hint := fmt.Sprintf(
+		"wiki node copy failed after %d retries due to lock contention; try again later or reduce concurrent writes under the same target parent",
+		wikiNodeCopyMaxRetries,
+	)
+	if existing := strings.TrimSpace(problem.Hint); existing != "" {
+		hint = existing + "\n" + hint
+	}
+	problem.Hint = hint
+	return err
 }
 
 func renderWikiNodeCopyPretty(w io.Writer, out map[string]interface{}) {

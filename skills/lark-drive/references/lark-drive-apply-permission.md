@@ -1,7 +1,7 @@
 
 # drive +apply-permission（申请文档权限）
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 本 skill 对应 shortcut：`lark-cli drive +apply-permission`。
 
@@ -34,8 +34,8 @@ lark-cli drive +apply-permission \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--token` | 是 | 目标文档 token 或完整 URL（`/docx/`、`/sheets/`、`/base/`、`/bitable/`、`/file/`、`/wiki/`、`/doc/`、`/mindnote/`、`/slides/` 路径里的 token 会被自动提取） |
-| `--type` | 否 | 目标类型，可选值 `doc` / `sheet` / `file` / `wiki` / `bitable` / `docx` / `mindnote` / `slides`。传 URL 时可由 shortcut 自动推断；bare token 必须显式传 |
+| `--token` | 是 | 目标文档 token 或完整 URL（`/docx/`、`/sheets/`、`/base/`、`/bitable/`、`/file/`、`/wiki/`、`/doc/`、`/mindnote/`、`/slides/`、`/page/` 路径里的 token 会被自动提取） |
+| `--type` | 否 | 目标类型，可选值 `doc` / `sheet` / `file` / `wiki` / `bitable` / `docx` / `mindnote` / `slides` / `apps`。传 URL 时由 shortcut 自动推断；如显式传入，必须与 URL 路径类型一致。bare token 必须显式传 |
 | `--perm` | 是 | 申请的权限，仅支持 `view` 或 `edit`（**不支持 `full_access`**，CLI 侧会直接拒绝） |
 | `--remark` | 否 | 备注，会显示在权限申请卡片上 |
 | `--dry-run` | 否 | 仅打印请求内容，不实际发送 |
@@ -70,7 +70,7 @@ API 成功时返回空 `data`（仅 `code: 0, msg: "success"`），对应 CLI �
 
 ## 与 wiki URL 的关系
 
-传入 `/wiki/<node_token>` 时，shortcut 会直接用 `node_token` 作为路径参数并以 `type=wiki` 调用接口。如果需要先把 wiki 节点解析成 `obj_token`（例如想显式对底层 docx 申请），自行先调 `wiki spaces get_node` 拿 `obj_token + obj_type`，再用 bare token + `--type docx` 调本命令。
+传入 `/wiki/<node_token>` 时，shortcut 会直接用 `node_token` 作为路径参数并以 `type=wiki` 调用接口。如果需要先把 wiki 节点解析成 `obj_token`，自行先调用 [`wiki +node-get` shortcut](../../lark-wiki/references/lark-wiki-node-get.md) 拿 `obj_token + obj_type`，再用 bare `obj_token` + `--type <obj_type>` 调本命令。
 
 ## 参考
 

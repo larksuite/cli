@@ -379,6 +379,26 @@ func TestCheckReferencesAllowsHelpFlag(t *testing.T) {
 	}
 }
 
+func TestParseAgainstManifestAcceptsAliasAndCanonicalizesFact(t *testing.T) {
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:     "im +messages",
+		Runnable: true,
+		Flags: []manifest.Flag{{
+			Name: "order", Aliases: []string{"sort-order"}, TakesValue: true,
+		}},
+	}}}
+	got, err := parseAgainstManifest(m, "lark-cli im +messages --sort-order asc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got.Flags, ",") != "order" {
+		t.Fatalf("flags = %v, want canonical order", got.Flags)
+	}
+	if index := indexManifest(m); !index.hasFlag("im +messages", "sort-order") {
+		t.Fatal("manifest index did not retain accepted alias name")
+	}
+}
+
 func TestCheckReferencesSkipsTemplateServicePlaceholder(t *testing.T) {
 	m := manifest.Manifest{Commands: []manifest.Command{{Path: "im"}}}
 	ex := skillscan.Example{Raw: "lark-cli im <resource> <method> [flags]", SourceFile: "skills/lark-demo/SKILL.md", Line: 1}

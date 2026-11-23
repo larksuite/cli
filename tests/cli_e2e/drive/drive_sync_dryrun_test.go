@@ -13,7 +13,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestDrive_SyncDryRun locks in the request shape the +sync shortcut emits
@@ -52,16 +51,16 @@ func TestDrive_SyncDryRun(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := gjson.Get(out, "api.0.method").String(); got != "GET" {
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
 		t.Fatalf("method = %q, want GET\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/drive/v1/files" {
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/files" {
 		t.Fatalf("url = %q, want /open-apis/drive/v1/files\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "folder_token").String(); got != "fldcnE2E001" {
+	if got := clie2e.DryRunGet(out, "folder_token").String(); got != "fldcnE2E001" {
 		t.Fatalf("folder_token = %q, want fldcnE2E001\nstdout:\n%s", got, out)
 	}
-	desc := gjson.Get(out, "description").String()
+	desc := clie2e.DryRunGet(out, "description").String()
 	if !strings.Contains(desc, "diff") {
 		t.Fatalf("description missing diff phrase, got %q\nstdout:\n%s", desc, out)
 	}
@@ -168,10 +167,10 @@ func TestDrive_SyncDryRunAcceptsConflictStrategies(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
-			if got := gjson.Get(out, "api.0.method").String(); got != "GET" {
+			if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
 				t.Fatalf("method = %q, want GET\nstdout:\n%s", got, out)
 			}
-			if got := gjson.Get(out, "folder_token").String(); got != "fldcnE2E001" {
+			if got := clie2e.DryRunGet(out, "folder_token").String(); got != "fldcnE2E001" {
 				t.Fatalf("folder_token = %q, want fldcnE2E001\nstdout:\n%s", got, out)
 			}
 		})
@@ -211,7 +210,7 @@ func TestDrive_SyncDryRunAcceptsDuplicateRemoteStrategies(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
-			if got := gjson.Get(out, "folder_token").String(); got != "fldcnE2E001" {
+			if got := clie2e.DryRunGet(out, "folder_token").String(); got != "fldcnE2E001" {
 				t.Fatalf("folder_token = %q, want fldcnE2E001\nstdout:\n%s", got, out)
 			}
 		})
@@ -249,10 +248,10 @@ func TestDrive_SyncDryRunAcceptsQuickFlag(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := gjson.Get(out, "api.0.method").String(); got != "GET" {
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
 		t.Fatalf("method = %q, want GET\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "folder_token").String(); got != "fldcnE2E001" {
+	if got := clie2e.DryRunGet(out, "folder_token").String(); got != "fldcnE2E001" {
 		t.Fatalf("folder_token = %q, want fldcnE2E001\nstdout:\n%s", got, out)
 	}
 }

@@ -58,6 +58,20 @@ func TestSanitizeExportFileNameAndEnsureExtension(t *testing.T) {
 	if got := sanitizeExportFileName("../quarterly:report?.pdf", "fallback.bin"); got != "quarterly_report_.pdf" {
 		t.Fatalf("sanitizeExportFileName() = %q, want %q", got, "quarterly_report_.pdf")
 	}
+	for _, name := range []string{"CON.txt", "con.backup.txt", "nul", "COM1.pdf", "lpt9.csv"} {
+		t.Run("reserved-"+name, func(t *testing.T) {
+			if got := sanitizeExportFileName(name, "fallback.bin"); got != "fallback.bin" {
+				t.Fatalf("sanitizeExportFileName(%q) = %q, want fallback.bin", name, got)
+			}
+		})
+	}
+	for _, name := range []string{"CONTEXT.txt", "COM10.pdf", "LPT0.csv"} {
+		t.Run("allowed-"+name, func(t *testing.T) {
+			if got := sanitizeExportFileName(name, "fallback.bin"); got != name {
+				t.Fatalf("sanitizeExportFileName(%q) = %q, want original name", name, got)
+			}
+		})
+	}
 	if got := ensureExportFileExtension("meeting-notes", "markdown"); got != "meeting-notes.md" {
 		t.Fatalf("ensureExportFileExtension() = %q, want %q", got, "meeting-notes.md")
 	}

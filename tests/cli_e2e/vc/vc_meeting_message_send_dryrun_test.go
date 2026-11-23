@@ -65,16 +65,16 @@ func TestVCMeetingMessageSendDryRun(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
-			require.Equal(t, int64(1), gjson.Get(out, "api.#").Int(), "stdout:\n%s", out)
-			require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-			require.Equal(t, "/open-apis/vc/v1/bots/message", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
-			require.Equal(t, "7651377260537433044", gjson.Get(out, "api.0.body.meeting_id").String(), "stdout:\n%s", out)
-			require.Equal(t, tt.wantMsgType, gjson.Get(out, "api.0.body.msg_type").String(), "stdout:\n%s", out)
-			require.Equal(t, tt.wantContent, gjson.Get(out, "api.0.body.content").String(), "stdout:\n%s", out)
+			require.Equal(t, int64(1), clie2e.DryRunGet(out, "api.#").Int(), "stdout:\n%s", out)
+			require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+			require.Equal(t, "/open-apis/vc/v1/bots/message", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+			require.Equal(t, "7651377260537433044", clie2e.DryRunGet(out, "api.0.body.meeting_id").String(), "stdout:\n%s", out)
+			require.Equal(t, tt.wantMsgType, clie2e.DryRunGet(out, "api.0.body.msg_type").String(), "stdout:\n%s", out)
+			require.Equal(t, tt.wantContent, clie2e.DryRunGet(out, "api.0.body.content").String(), "stdout:\n%s", out)
 			if tt.wantUUID == "" {
-				require.False(t, gjson.Get(out, "api.0.body.uuid").Exists(), "stdout:\n%s", out)
+				require.False(t, clie2e.DryRunGet(out, "api.0.body.uuid").Exists(), "stdout:\n%s", out)
 			} else {
-				require.Equal(t, tt.wantUUID, gjson.Get(out, "api.0.body.uuid").String(), "stdout:\n%s", out)
+				require.Equal(t, tt.wantUUID, clie2e.DryRunGet(out, "api.0.body.uuid").String(), "stdout:\n%s", out)
 			}
 		})
 	}

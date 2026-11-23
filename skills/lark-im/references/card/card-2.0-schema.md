@@ -29,7 +29,7 @@ Card 2.0 组件按**容器 / 展示 / 交互**三类，均通过 `tag` 字段声
     "title":    { "tag": "plain_text", "content": "卡片标题" },
     "subtitle": { "tag": "plain_text", "content": "副标题：一句上下文（时间/来源/状态）" },
     "template": "blue",
-    "icon": { "tag": "standard_icon", "token": "notice_colorful" },
+    "icon": { "tag": "standard_icon", "token": "lark-logo_colorful" },
     "text_tag_list": [
       { "tag": "text_tag", "text": { "tag": "plain_text", "content": "状态标签" }, "color": "blue" }
     ]

@@ -1,0 +1,337 @@
+Key:         im.chat.updated_v1
+Description: Triggered after chat settings (owner, avatar, name, permissions, etc.) are updated
+Event:       im.chat.updated_v1
+
+Required Scopes:
+  - im:chat:read
+
+Required Console Events (must be enabled in developer console):
+  - im.chat.updated_v1
+
+Output Schema:
+  {
+    "description": "飞书事件",
+    "properties": {
+      "event": {
+        "properties": {
+          "after_change": {
+            "properties": {
+              "add_member_permission": {
+                "type": "string"
+              },
+              "at_all_permission": {
+                "type": "string"
+              },
+              "avatar": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "edit_permission": {
+                "type": "string"
+              },
+              "group_message_type": {
+                "type": "string"
+              },
+              "i18n_names": {
+                "properties": {
+                  "en_us": {
+                    "type": "string"
+                  },
+                  "ja_jp": {
+                    "type": "string"
+                  },
+                  "zh_cn": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "join_message_visibility": {
+                "type": "string"
+              },
+              "labels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "leave_message_visibility": {
+                "type": "string"
+              },
+              "membership_approval": {
+                "type": "string"
+              },
+              "moderation_permission": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "owner_id": {
+                "properties": {
+                  "open_id": {
+                    "format": "open_id",
+                    "type": "string"
+                  },
+                  "union_id": {
+                    "format": "union_id",
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "format": "user_id",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "restricted_mode_setting": {
+                "properties": {
+                  "download_has_permission_setting": {
+                    "type": "string"
+                  },
+                  "message_has_permission_setting": {
+                    "type": "string"
+                  },
+                  "screenshot_has_permission_setting": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              "share_card_permission": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "before_change": {
+            "properties": {
+              "add_member_permission": {
+                "type": "string"
+              },
+              "at_all_permission": {
+                "type": "string"
+              },
+              "avatar": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "edit_permission": {
+                "type": "string"
+              },
+              "group_message_type": {
+                "type": "string"
+              },
+              "i18n_names": {
+                "properties": {
+                  "en_us": {
+                    "type": "string"
+                  },
+                  "ja_jp": {
+                    "type": "string"
+                  },
+                  "zh_cn": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "join_message_visibility": {
+                "type": "string"
+              },
+              "labels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "leave_message_visibility": {
+                "type": "string"
+              },
+              "membership_approval": {
+                "type": "string"
+              },
+              "moderation_permission": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "owner_id": {
+                "properties": {
+                  "open_id": {
+                    "format": "open_id",
+                    "type": "string"
+                  },
+                  "union_id": {
+                    "format": "union_id",
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "format": "user_id",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "restricted_mode_setting": {
+                "properties": {
+                  "download_has_permission_setting": {
+                    "type": "string"
+                  },
+                  "message_has_permission_setting": {
+                    "type": "string"
+                  },
+                  "screenshot_has_permission_setting": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              "share_card_permission": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "chat_id": {
+            "format": "chat_id",
+            "type": "string"
+          },
+          "external": {
+            "type": "boolean"
+          },
+          "moderator_list": {
+            "properties": {
+              "added_member_list": {
+                "items": {
+                  "properties": {
+                    "tenant_key": {
+                      "type": "string"
+                    },
+                    "user_id": {
+                      "properties": {
+                        "open_id": {
+                          "format": "open_id",
+                          "type": "string"
+                        },
+                        "union_id": {
+                          "format": "union_id",
+                          "type": "string"
+                        },
+                        "user_id": {
+                          "format": "user_id",
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "removed_member_list": {
+                "items": {
+                  "properties": {
+                    "tenant_key": {
+                      "type": "string"
+                    },
+                    "user_id": {
+                      "properties": {
+                        "open_id": {
+                          "format": "open_id",
+                          "type": "string"
+                        },
+                        "union_id": {
+                          "format": "union_id",
+                          "type": "string"
+                        },
+                        "user_id": {
+                          "format": "user_id",
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "operator_id": {
+            "properties": {
+              "open_id": {
+                "format": "open_id",
+                "type": "string"
+              },
+              "union_id": {
+                "format": "union_id",
+                "type": "string"
+              },
+              "user_id": {
+                "format": "user_id",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "operator_tenant_key": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "header": {
+        "description": "事件头，所有事件结构一致",
+        "properties": {
+          "app_id": {
+            "description": "接收事件的应用 ID",
+            "type": "string"
+          },
+          "create_time": {
+            "description": "事件创建时间，毫秒时间戳字符串",
+            "type": "string"
+          },
+          "event_id": {
+            "description": "事件唯一 ID",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "事件类型，用于路由",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "租户唯一标识",
+            "type": "string"
+          },
+          "token": {
+            "description": "回调校验 token",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "schema": {
+        "description": "飞书事件协议版本",
+        "enum": [
+          "2.0"
+        ],
+        "type": "string"
+      }
+    },
+    "type": "object"
+  }

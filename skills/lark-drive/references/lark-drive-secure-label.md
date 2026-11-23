@@ -28,7 +28,7 @@ lark-cli drive +secure-label-list --page-size 10 --lang zh
 ```bash
 lark-cli drive +secure-label-update \
   --token "https://example.feishu.cn/docx/doxcnxxxx" \
-  --label-id "7217780879644737539"
+  --label-id '<label-id>' # replace $LABEL_ID before running
 ```
 
 参数：
