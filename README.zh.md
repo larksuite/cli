@@ -88,6 +88,12 @@ make install
 npx skills add larksuite/cli -y -g
 ```
 
+也可以使用 [GitHub CLI](https://cli.github.com/) 安装 Skills：
+
+```bash
+gh skill install larksuite/cli
+```
+
 #### 配置与使用
 
 ```bash
