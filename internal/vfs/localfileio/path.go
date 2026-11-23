@@ -139,6 +139,46 @@ func SafeEnvDirPath(path, envName string) (string, error) {
 	return resolved, nil
 }
 
+// OpenEnvFile opens an absolute, host-local path to a regular file. Env
+// credential paths are process configuration and may refer to mounted files
+// outside the workspace file allowlist. Errors never echo the supplied path.
+func OpenEnvFile(path, envName string) (*os.File, error) {
+	if strings.IndexFunc(path, unicode.IsControl) >= 0 {
+		return nil, fmt.Errorf("%s contains invalid control characters", envName)
+	}
+	if err := charcheck.RejectControlChars(path, envName); err != nil {
+		return nil, err
+	}
+	if err := validatePathPlatform(path); err != nil {
+		return nil, fmt.Errorf("%s: %w", envName, err)
+	}
+	if !filepath.IsAbs(path) {
+		return nil, fmt.Errorf("%s must be an absolute path", envName)
+	}
+
+	resolved, err := vfs.EvalSymlinks(path)
+	if err != nil {
+		return nil, fmt.Errorf("%s must point to an existing file", envName)
+	}
+	if err := validatePathPlatform(resolved); err != nil {
+		return nil, fmt.Errorf("%s: %w", envName, err)
+	}
+	info, err := vfs.Stat(resolved)
+	if err != nil {
+		return nil, fmt.Errorf("cannot stat %s file", envName)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s must point to a regular file", envName)
+	}
+	// Workspace reads reject hard links to enforce containment. Env credentials
+	// have no workspace allowlist, so another name for the same file is valid.
+	file, err := openRegularFile(resolved, info, false)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open %s as a regular file", envName)
+	}
+	return file, nil
+}
+
 // safePath is the shared implementation for SafeOutputPath and SafeInputPath.
 // A path is accepted when its real location falls inside the built-in
 // allowlist (cwd, /tmp, ~/files) and outside the built-in denylist; deny wins

@@ -205,6 +205,13 @@ lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
 
+通过环境变量选择账号时，可将 `LARKSUITE_CLI_APP_ID_FILE`、
+`LARKSUITE_CLI_USER_ACCESS_TOKEN_FILE` 或 `LARKSUITE_CLI_TENANT_ACCESS_TOKEN_FILE`
+设为普通文件的绝对路径。每个文件最多 64 KiB，只包含一个值。
+每项凭据只设置直接变量与文件变量中的一项。设置
+`LARKSUITE_CLI_TENANT_ACCESS_TOKEN_SOURCE=credential-store` 后，机器人请求使用当前
+App ID 对应的已存储令牌，并忽略两个租户令牌变量。用户请求仍可使用用户令牌变量或文件。
+
 ## 三层命令调用
 
 CLI 提供三种粒度的调用方式，覆盖从快速操作到完全自定义的全部场景：

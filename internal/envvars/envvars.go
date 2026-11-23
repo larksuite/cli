@@ -5,10 +5,13 @@ package envvars
 
 const (
 	CliAppID                   = "LARKSUITE_CLI_APP_ID"
+	CliAppIDFile               = "LARKSUITE_CLI_APP_ID_FILE"
 	CliAppSecret               = "LARKSUITE_CLI_APP_SECRET"
 	CliBrand                   = "LARKSUITE_CLI_BRAND"
 	CliUserAccessToken         = "LARKSUITE_CLI_USER_ACCESS_TOKEN"
+	CliUserAccessTokenFile     = "LARKSUITE_CLI_USER_ACCESS_TOKEN_FILE"
 	CliTenantAccessToken       = "LARKSUITE_CLI_TENANT_ACCESS_TOKEN"
+	CliTenantAccessTokenFile   = "LARKSUITE_CLI_TENANT_ACCESS_TOKEN_FILE"
 	CliTenantAccessTokenSource = "LARKSUITE_CLI_TENANT_ACCESS_TOKEN_SOURCE"
 	CliDefaultAs               = "LARKSUITE_CLI_DEFAULT_AS"
 	CliProfile                 = "LARKSUITE_CLI_PROFILE"

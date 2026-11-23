@@ -50,6 +50,14 @@ func TestOpenValidated_RejectsFIFOWithoutBlocking(t *testing.T) {
 	if !strings.Contains(err.Error(), "regular file") {
 		t.Errorf("error should mention regular file, got: %v", err)
 	}
+
+	file, err := OpenEnvFile(path, "TEST_CREDENTIAL_FILE")
+	if file != nil {
+		file.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("OpenEnvFile(FIFO) error = %v, want regular file error", err)
+	}
 }
 
 func TestOpenValidated_RejectsHardLinkedFile(t *testing.T) {

@@ -204,6 +204,14 @@ lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
 
+For an environment-selected account, set `LARKSUITE_CLI_APP_ID_FILE`,
+`LARKSUITE_CLI_USER_ACCESS_TOKEN_FILE`, or `LARKSUITE_CLI_TENANT_ACCESS_TOKEN_FILE`
+to an absolute path to a regular file containing one value. Each file can be
+up to 64 KiB. For each credential, set either its direct variable or its file
+variable. With `LARKSUITE_CLI_TENANT_ACCESS_TOKEN_SOURCE=credential-store`, bot
+requests use the token stored for the resolved app ID and ignore both tenant
+token variables. User requests can still use the user token variable or file.
+
 ## Three-Layer Command System
 
 The CLI provides three levels of granularity, covering everything from quick operations to fully custom API calls:

@@ -39,11 +39,15 @@ func openValidated(path string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
+	return openRegularFile(path, pre, true)
+}
+
+func openRegularFile(path string, pre os.FileInfo, rejectHardLinks bool) (*os.File, error) {
 	f, err := vfs.OpenFile(path, hardenedOpenFlags, 0)
 	if err != nil {
 		return nil, err
 	}
-	if err := inspectOpenedFile(f, pre, true); err != nil {
+	if err := inspectOpenedFile(f, pre, rejectHardLinks); err != nil {
 		f.Close()
 		// An unusable target is a bad argument, not an internal fault: callers
 		// map ErrPathValidation to a typed validation error, and the fd checks

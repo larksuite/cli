@@ -22,11 +22,15 @@ func openValidated(path string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
+	return openRegularFile(path, pre, true)
+}
+
+func openRegularFile(path string, pre os.FileInfo, rejectHardLinks bool) (*os.File, error) {
 	f, err := vfs.OpenFile(path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}
-	if err := inspectOpenedFile(f, pre); err != nil {
+	if err := inspectOpenedFile(f, pre, rejectHardLinks); err != nil {
 		f.Close()
 		// An unusable target is a bad argument, not an internal fault: callers
 		// map ErrPathValidation to a typed validation error, and the fd checks
@@ -38,7 +42,7 @@ func openValidated(path string) (*os.File, error) {
 
 // inspectOpenedFile validates the opened handle. pre is nil when there is no
 // prior Stat to compare against.
-func inspectOpenedFile(f *os.File, pre os.FileInfo) error {
+func inspectOpenedFile(f *os.File, pre os.FileInfo, rejectHardLinks bool) error {
 	post, err := f.Stat()
 	if err != nil {
 		return fmt.Errorf("cannot stat opened file: %w", err)
@@ -48,6 +52,9 @@ func inspectOpenedFile(f *os.File, pre os.FileInfo) error {
 	}
 	if !post.Mode().IsRegular() {
 		return fmt.Errorf("not a regular file (directories, devices, FIFOs, and sockets are refused)")
+	}
+	if !rejectHardLinks {
+		return nil
 	}
 	var handleInfo syscall.ByHandleFileInformation
 	if err := syscall.GetFileInformationByHandle(syscall.Handle(f.Fd()), &handleInfo); err != nil {

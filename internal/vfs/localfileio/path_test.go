@@ -5,6 +5,7 @@ package localfileio
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -243,6 +244,75 @@ func TestSafeOutputPath_DeepNonExistentPathStaysInCWD(t *testing.T) {
 	want := filepath.Join(dir, "a", "b", "c", "d", "file.txt")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestOpenEnvFile_AllowsAbsoluteFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "credential")
+	if err := os.WriteFile(path, []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := OpenEnvFile(path, "TEST_CREDENTIAL_FILE")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer file.Close()
+	got, err := io.ReadAll(file)
+	if err != nil || string(got) != "secret" {
+		t.Fatalf("read = (%q, %v), want fixture contents", got, err)
+	}
+}
+
+func TestOpenEnvFile_AllowsHardLinkedCredential(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "credential")
+	link := filepath.Join(dir, "credential-link")
+	const value = "fixture-credential"
+	if err := os.WriteFile(target, []byte(value), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(target, link); err != nil {
+		t.Skipf("Link: %v", err)
+	}
+
+	file, err := OpenEnvFile(link, "TEST_CREDENTIAL_FILE")
+	if err != nil {
+		t.Fatalf("OpenEnvFile(hard link): %v", err)
+	}
+	defer file.Close()
+	if got, err := io.ReadAll(file); err != nil || string(got) != value {
+		t.Fatalf("read = (%q, %v), want fixture contents", got, err)
+	}
+
+	workspaceFile, err := openValidated(link)
+	if workspaceFile != nil {
+		workspaceFile.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "hard links") {
+		t.Fatalf("openValidated(hard link) error = %v, want hard link rejection", err)
+	}
+}
+
+func TestOpenEnvFile_RejectsInvalidPathsWithoutEchoingThem(t *testing.T) {
+	dir := t.TempDir()
+	const marker = "private-path-marker"
+	for _, tc := range []struct{ name, path, reason string }{
+		{"relative", marker, "absolute path"},
+		{"control character", filepath.Join(dir, marker+"\n"), "control characters"},
+		{"missing", filepath.Join(dir, marker), "existing file"},
+		{"directory", dir, "regular file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := OpenEnvFile(tc.path, "TEST_CREDENTIAL_FILE")
+			if file != nil {
+				file.Close()
+			}
+			if err == nil || !strings.Contains(err.Error(), "TEST_CREDENTIAL_FILE") ||
+				!strings.Contains(err.Error(), tc.reason) || strings.Contains(err.Error(), marker) {
+				t.Fatalf("error = %v, want %q without path", err, tc.reason)
+			}
+		})
 	}
 }
 
