@@ -107,14 +107,14 @@ func TestRequestAppRegistration_UsesFeishuBootstrapAndConfiguredVerificationBran
 				if got, want := r.URL.Host, "accounts.feishu.cn"; got != want {
 					t.Errorf("begin host = %q, want bootstrap host %q", got, want)
 				}
-				return jsonResponse(`{"device_code":"d","user_code":"TEST-CODE","expire_in":60,"interval":5}`), nil
+				return jsonResponse(`{"device_code":"d","user_code":"TEST-CODE","verification_uri_complete":"https://open.feishu.cn/page/launcher?user_code=TEST-CODE","expire_in":60,"interval":5}`), nil
 			})}
 			resp, err := RequestAppRegistration(context.Background(), client, c.brand, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 			if err != nil {
 				t.Fatalf("RequestAppRegistration(%q) error = %v", c.brand, err)
 			}
-			if !strings.HasPrefix(resp.VerificationUriComplete, "https://"+c.verificationHost+"/page/launcher?") {
-				t.Errorf("verification URL = %q, want host %q", resp.VerificationUriComplete, c.verificationHost)
+			if got, want := resp.VerificationUriComplete, "https://"+c.verificationHost+"/page/cli?user_code=TEST-CODE"; got != want {
+				t.Errorf("verification URL = %q, want %q", got, want)
 			}
 		})
 	}
@@ -141,8 +141,8 @@ func TestRequestAppRegistration_RewritesVerificationURL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse verification URL: %v", err)
 		}
-		if got.Host != "open.mirror.test" || got.Path != "/page/launcher" {
-			t.Errorf("brand %q: verification URL = %q, want rewritten launcher URL", brand, got)
+		if got.Host != "open.mirror.test" || got.Path != "/page/cli" {
+			t.Errorf("brand %q: verification URL = %q, want rewritten CLI page URL", brand, got)
 		}
 		query := got.Query()
 		if query.Get("user_code") != "TEST-CODE" ||
@@ -182,7 +182,7 @@ func TestRegisterAppWithDiscovery_LarkFlowUsesProtocolBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestAppRegistration error = %v", err)
 	}
-	if got, want := resp.VerificationUriComplete, "https://open.larksuite.com/page/launcher?user_code=TEST-CODE"; got != want {
+	if got, want := resp.VerificationUriComplete, "https://open.larksuite.com/page/cli?user_code=TEST-CODE"; got != want {
 		t.Errorf("verification URL = %q, want %q", got, want)
 	}
 
@@ -321,7 +321,7 @@ func TestRegisterAppWithDiscovery_TerminalSentinels(t *testing.T) {
 	})}
 	resp := &AppRegistrationResponse{DeviceCode: "device", Interval: 0, ExpiresIn: 5}
 	_, _, err := RegisterAppWithDiscovery(context.Background(), deny, resp, io.Discard)
-	if !errors.Is(err, ErrRegistrationDenied) {
+	if !errors.Is(err, ErrRegistrationDeniedByUser) {
 		t.Errorf("denied err = %v, want ErrRegistrationDenied", err)
 	}
 
@@ -493,42 +493,19 @@ const beginRespJSON = `{"device_code":"dc","user_code":"uc","verification_uri":"
 func TestRequestAppRegistrationTargetsExistingApp(t *testing.T) {
 	var form url.Values
 	opts := AppRegistrationBeginOptions{AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, AuthAttestation: "signed.jwt.value", TargetAppID: "cli_existing"}
-	if _, err := RequestAppRegistration(context.Background(), captureRegistrationForm(t, &form, beginRespJSON), core.BrandFeishu, opts, nil); err != nil {
+	resp, err := RequestAppRegistration(context.Background(), captureRegistrationForm(t, &form, beginRespJSON), core.BrandLark, opts, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if form.Get("clientID") != opts.TargetAppID || form.Get("auth_attestation") != opts.AuthAttestation {
 		t.Fatalf("unexpected begin form: %v", form)
 	}
-}
-
-func TestRequestAppRegistration_VerificationURICompleteFallback(t *testing.T) {
-	cases := []struct {
-		name string
-		resp string
-		want string
-	}{
-		{
-			name: "bare verification_uri",
-			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify","expires_in":300,"interval":5}`,
-			want: "https://example/verify?user_code=uc",
-		},
-		{
-			name: "verification_uri with existing query",
-			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify?clientID=cli_x","expires_in":300,"interval":5}`,
-			want: "https://example/verify?clientID=cli_x&user_code=uc",
-		},
+	displayURL, err := url.Parse(BuildVerificationURL(resp.VerificationUriComplete, "1.2.3", opts.TargetAppID))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var body url.Values
-			hc := captureRegistrationForm(t, &body, tc.resp)
-			got, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got.VerificationUriComplete != tc.want {
-				t.Errorf("VerificationUriComplete = %q, want %q", got.VerificationUriComplete, tc.want)
-			}
-		})
+	if displayURL.Host != "open.larksuite.com" || displayURL.Path != "/page/cli" ||
+		displayURL.Query().Get("user_code") != "uc" || displayURL.Query().Get("clientID") != opts.TargetAppID {
+		t.Errorf("existing-app verification URL = %q", displayURL)
 	}
 }

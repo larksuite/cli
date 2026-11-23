@@ -55,7 +55,7 @@ func TestClassifyRegistrationError(t *testing.T) {
 		subtype errs.Subtype
 		hint    bool
 	}{
-		{"denied", larkauth.ErrRegistrationDenied, errs.SubtypeUnknown, true},
+		{"denied", larkauth.ErrRegistrationDeniedByUser, errs.SubtypeUnknown, true},
 		{"expired", larkauth.ErrRegistrationExpired, errs.SubtypeTokenExpired, true},
 		{"timed-out", larkauth.ErrRegistrationTimedOut, errs.SubtypeTokenExpired, true},
 		{"cancelled", context.Canceled, errs.SubtypeUnknown, false},

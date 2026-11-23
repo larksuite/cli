@@ -391,7 +391,7 @@ func classifyRegistrationError(err error, authMethod, targetAppID string) error 
 		retryHint += fmt.Sprintf(" in a terminal, choose the existing-app option, and enter app ID %s", targetAppID)
 	}
 	switch {
-	case errors.Is(err, larkauth.ErrRegistrationDenied):
+	case errors.Is(err, larkauth.ErrRegistrationDeniedByUser):
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "%v", err).
 			WithHint("%s and approve the authorization request", retryHint).
 			WithCause(err)

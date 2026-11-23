@@ -21,7 +21,8 @@ import (
 
 // Terminal registration outcomes, exposed for typed classification by callers.
 var (
-	ErrRegistrationDenied   = errors.New("app registration denied by user")
+	ErrRegistrationDeniedByUser   = errors.New("app registration denied by user")
+	ErrRegistrationDenied   = errors.New("app registration denied")
 	ErrRegistrationExpired  = errors.New("device code expired, please try again")
 	ErrRegistrationTimedOut = errors.New("app registration timed out, please try again")
 )
@@ -276,35 +277,14 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 	}
 
 	userCode := getStr(data, "user_code")
-	verificationUri := getStr(data, "verification_uri")
-
-	// Prefer the server-provided complete URL (currently /page/launcher); fall
-	// back to building it from verification_uri, then to /page/launcher. The old
-	// hard-coded /page/cli is stale — the server now returns /page/launcher.
-	verificationUriComplete := getStr(data, "verification_uri_complete")
-	if verificationUriComplete == "" {
-		base := verificationUri
-		if base == "" {
-			base = ep.Open + "/page/launcher"
-		}
-		// The server may return verification_uri with its own query (e.g.
-		// clientID when registering against an existing app), so join with
-		// the same ?/& logic as BuildVerificationURL.
-		sep := "?"
-		if strings.Contains(base, "?") {
-			sep = "&"
-		}
-		verificationUriComplete = base + sep + "user_code=" + url.QueryEscape(userCode)
-	}
-
-	// The confirmation page is CLI-owned presentation (shown as a link/QR code,
-	// never fetched), so it passes through the URL rewrite extension.
-	verificationUriComplete = urlrewrite.Rewrite(verificationUriComplete)
+	// CLI registrations use the selected brand's CLI page, even when begin
+	// returns the general launcher on the bootstrap domain.
+	verificationUriComplete := urlrewrite.Rewrite(ep.Open + "/page/cli?user_code=" + url.QueryEscape(userCode))
 
 	return &AppRegistrationResponse{
 		DeviceCode:              deviceCode,
-		UserCode:                getStr(data, "user_code"),
-		VerificationUri:         verificationUri,
+		UserCode:                userCode,
+		VerificationUri:         getStr(data, "verification_uri"),
 		VerificationUriComplete: verificationUriComplete,
 		ExpiresIn:               expiresIn,
 		Interval:                interval,
@@ -492,7 +472,7 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 			if status := getStr(data, "status_message"); status != "" {
 				return nil, effectiveBrand, fmt.Errorf("%w: %s", ErrRegistrationDenied, status)
 			}
-			return nil, effectiveBrand, ErrRegistrationDenied
+			return nil, effectiveBrand, ErrRegistrationDeniedByUser
 		case "expired_token", "invalid_grant":
 			return nil, effectiveBrand, ErrRegistrationExpired
 		}
