@@ -264,6 +264,36 @@ func TestOpenEnvFile_AllowsAbsoluteFile(t *testing.T) {
 	}
 }
 
+func TestOpenEnvFile_AllowsHardLinkedCredential(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "credential")
+	link := filepath.Join(dir, "credential-link")
+	const value = "fixture-credential"
+	if err := os.WriteFile(target, []byte(value), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(target, link); err != nil {
+		t.Skipf("Link: %v", err)
+	}
+
+	file, err := OpenEnvFile(link, "TEST_CREDENTIAL_FILE")
+	if err != nil {
+		t.Fatalf("OpenEnvFile(hard link): %v", err)
+	}
+	defer file.Close()
+	if got, err := io.ReadAll(file); err != nil || string(got) != value {
+		t.Fatalf("read = (%q, %v), want fixture contents", got, err)
+	}
+
+	workspaceFile, err := openValidated(link)
+	if workspaceFile != nil {
+		workspaceFile.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "hard links") {
+		t.Fatalf("openValidated(hard link) error = %v, want hard link rejection", err)
+	}
+}
+
 func TestOpenEnvFile_RejectsInvalidPathsWithoutEchoingThem(t *testing.T) {
 	dir := t.TempDir()
 	const marker = "private-path-marker"
