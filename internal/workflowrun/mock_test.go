@@ -257,6 +257,7 @@ func ac05(t *testing.T) {
 	assertComplete(t, m)
 	f.Events = append(f.Events, click("new", 3*day+1, 3*day+1, 1))
 	s, m = resume(t, f, s)
+	assertComplete(t, m)
 	assertIDs(t, s, Buttons, []string{"a", "b", "c", "d"})
 	p := params()
 	p.Query.CollectedAt = 4 * day
@@ -360,6 +361,7 @@ func ac11(t *testing.T) {
 	}
 	f.Events = append(f.Events, click("later", 3*day+1, 3*day+1, 1))
 	s, m = resume(t, f, s)
+	assertComplete(t, m)
 	assertIDs(t, s, Buttons, []string{"a", "b", "c", "d", "late"})
 	p.Query.CollectedAt = 4 * day
 	s, _ = export(t, f, p, 0)
@@ -573,6 +575,7 @@ func ac20(t *testing.T) {
 	late.Item.RunID = "E3"
 	f.Events = append(f.Events, late)
 	s, m = resume(t, f, s)
+	assertComplete(t, m)
 	assertIDs(t, s, Runs, []string{"E3", "E4"})
 	assertIDs(t, s, Buttons, []string{"a", "b", "c", "d"})
 	p.Query.CollectedAt += day
