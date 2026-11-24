@@ -1,0 +1,12 @@
+{
+ "capabilities":{"base_aggregate":true,"composite_cursor_ok":true,"attribution_mode":"response_field"},
+ "page_size":1,"coverage":"guaranteed",
+ "runs":[{"run_id":"E1","workflow_id":"wf1","start_time":1000,"status":"running"},{"run_id":"E2","workflow_id":"wf1","start_time":86400000,"status":"success"}],
+ "details":{"E1":[{"run_id":"E1","node_id":"send","flow_inst_id":1,"step_index":1,"empty_recipients":true,"payload":{"synthetic":true},"buttons":[{"button_ref":"fi1","node_id":"send","button_key":"message_btn_12345678","flow_inst_id":1,"step_index":1},{"button_ref":"fi2","node_id":"send","button_key":"message_btn_12345678","flow_inst_id":2,"step_index":2}],"sub_steps":[{"run_id":"E1","node_id":"child","parent_node_id":"send","flow_inst_id":2,"step_index":2,"payload":{"synthetic":true}}]}],"E2":[]},
+ "events":[
+  {"item":{"run_id":"E1","event_id":"a","created_time":2000,"clicker_id":"u1"},"node_id":"send","button_key":"message_btn_12345678","flow_inst_id":1},
+  {"item":{"run_id":"E1","event_id":"b","created_time":2000,"clicker_id":"u2"},"node_id":"send","button_key":"message_btn_12345678","flow_inst_id":1},
+  {"item":{"run_id":"E1","event_id":"c","created_time":2001,"clicker_id":"u3"},"node_id":"send","button_key":"message_btn_12345678","flow_inst_id":2},
+  {"item":{"run_id":"E1","event_id":"d","created_time":2001,"clicker_id":"u4"},"node_id":"send","button_key":"message_btn_12345678","flow_inst_id":2}
+ ]
+}
