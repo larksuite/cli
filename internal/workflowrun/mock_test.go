@@ -395,6 +395,7 @@ func ac12(t *testing.T) {
 				var batch Batch
 				_ = json.Unmarshal(b, &batch)
 				batch.FetchedAt = 0
+				f.Runs[0].Status = "success"
 				wire, _ := json.Marshal(batch)
 				_ = os.WriteFile(path, wire, 0600)
 			}
@@ -409,6 +410,19 @@ func ac12(t *testing.T) {
 				orphans, _ := os.ReadDir(filepath.Join(s.Root, "pending/orphans"))
 				if len(orphans) == 0 {
 					t.Fatal("unverifiable orphan not retained")
+				}
+				found := false
+				for _, i := range merged(t, s, Runs) {
+					if i.RunID == "E1" {
+						found = i.Status == "success"
+					}
+				}
+				if !found {
+					t.Fatal("merged newer success observation missing")
+				}
+				raw, _ := os.ReadFile(filepath.Join(s.Root, "pending/orphans", orphans[0].Name()))
+				if !strings.Contains(string(raw), `"status":"running"`) {
+					t.Fatal("raw orphan running observation lost")
 				}
 			}
 		})
