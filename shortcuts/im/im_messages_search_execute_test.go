@@ -154,8 +154,16 @@ func TestImMessagesSearchExecuteAutoPaginationBatches(t *testing.T) {
 	if !strings.Contains(output, "55 search result(s)") {
 		t.Fatalf("stdout = %q, want search results summary", output)
 	}
-	if !strings.Contains(output, "warning: stopped after fetching 2 page(s)") {
-		t.Fatalf("stdout = %q, want page limit warning", output)
+	// The page-limit warning goes to stderr so every --format sees it, and
+	// stdout stays parseable.
+	if strings.Contains(output, "page limit") {
+		t.Fatalf("stdout = %q, must not carry the page limit warning", output)
+	}
+	stderr := runtime.IO().ErrOut.(*bytes.Buffer).String()
+	for _, want := range []string{"reached page limit (2)", "has_more=true", "result is incomplete", "max 40", "--page-token", "page_token returned in stdout"} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr = %q, want %q", stderr, want)
+		}
 	}
 }
 
