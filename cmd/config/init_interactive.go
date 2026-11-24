@@ -132,6 +132,7 @@ func runExistingAppForm(ctx context.Context, f *cmdutil.Factory, requestedAuthMe
 	}
 
 	// Resolve defaults
+	appID = strings.TrimSpace(appID)
 	if appID == "" && defaults != nil {
 		appID = defaults.AppId
 	}
