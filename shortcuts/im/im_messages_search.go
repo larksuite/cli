@@ -92,7 +92,7 @@ var ImMessagesSearch = common.Shortcut{
 			return err
 		}
 
-		rawItems, hasMore, nextPageToken, truncatedByLimit, pageLimit, notice, err := searchMessages(runtime, req)
+		rawItems, hasMore, nextPageToken, notice, err := searchMessages(runtime, req)
 		if err != nil {
 			return err
 		}
@@ -251,9 +251,6 @@ var ImMessagesSearch = common.Shortcut{
 				moreHint = " (more available, use --page-token to fetch next page)"
 			}
 			fmt.Fprintf(w, "\n%d search result(s)%s\n", len(enriched), moreHint)
-			if truncatedByLimit {
-				fmt.Fprintf(w, "warning: stopped after fetching %d page(s); use --page-limit, --page-all, or --page-token to continue\n", pageLimit)
-			}
 		})
 		return nil
 	},
@@ -402,7 +399,9 @@ func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginat
 }
 
 // searchMessages fetches message search pages and returns the first server notice.
-func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) ([]interface{}, bool, string, bool, int, string, error) {
+// When the page limit stops the loop early it warns on stderr, so every
+// --format sees that the result is incomplete.
+func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) ([]interface{}, bool, string, string, error) {
 	autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
 	pageToken := ""
 	if tokens := req.params["page_token"]; len(tokens) > 0 {
@@ -415,12 +414,11 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 	}
 
 	var (
-		allItems         []interface{}
-		lastHasMore      bool
-		lastPageToken    string
-		truncatedByLimit bool
-		pageCount        int
-		notice           string
+		allItems      []interface{}
+		lastHasMore   bool
+		lastPageToken string
+		pageCount     int
+		notice        string
 	)
 
 	for {
@@ -434,7 +432,7 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 
 		searchData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/messages/search", params, req.body)
 		if err != nil {
-			return nil, false, "", false, pageLimit, "", err
+			return nil, false, "", "", err
 		}
 
 		if notice == "" {
@@ -448,14 +446,14 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 			break
 		}
 		if pageCount >= pageLimit {
-			truncatedByLimit = true
+			fmt.Fprintf(runtime.IO().ErrOut, "[pagination] reached page limit (%d) while has_more=true; result is incomplete. Raise --page-limit (max %d) or resume with --page-token and the page_token returned in stdout.\n", pageLimit, messagesSearchMaxPageLimit)
 			break
 		}
 
 		pageToken = lastPageToken
 	}
 
-	return allItems, lastHasMore, lastPageToken, truncatedByLimit, pageLimit, notice, nil
+	return allItems, lastHasMore, lastPageToken, notice, nil
 }
 
 // batchMGetMessages fetches message details in API-sized batches.

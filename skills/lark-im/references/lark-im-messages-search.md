@@ -135,7 +135,7 @@ Each message in JSON output contains:
 - `--page-all` enables auto-pagination and uses a default cap of **40 pages**.
 - With both flags, auto-pagination starts at `--page-token` and continues from that cursor.
 - `--page-limit <n>` enables auto-pagination with an explicit cap. If you pass `--page-limit` without `--page-all`, auto-pagination is still enabled.
-- When auto-pagination stops because of the configured page cap, the response still includes the last `has_more` / `page_token` so you can continue manually.
+- When auto-pagination stops because of the configured page cap, the response still includes the last `has_more` / `page_token` so you can continue manually, and a `[pagination] reached page limit` warning is written to stderr in every `--format`. The result is incomplete until `has_more` is `false`.
 
 ### 5. Search results contain follow-up clues
 
