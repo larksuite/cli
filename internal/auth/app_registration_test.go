@@ -512,7 +512,7 @@ func TestRequestAppRegistrationTargetsExistingApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if form.Get("clientID") != opts.TargetAppID || form.Get("auth_attestation") != opts.AuthAttestation {
+	if form.Get("client_id") != opts.TargetAppID || form.Get("auth_attestation") != opts.AuthAttestation {
 		t.Fatalf("unexpected begin form: %v", form)
 	}
 	displayURL, err := url.Parse(BuildVerificationURL(resp.VerificationUriComplete, "1.2.3", opts.TargetAppID))

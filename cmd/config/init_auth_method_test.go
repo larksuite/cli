@@ -156,7 +156,7 @@ func TestConfigInitPrivateKeyJWTLocalKeyPairRegistration(t *testing.T) {
 					}
 					return jsonResp(200, string(body)), nil
 				case "begin":
-					if req.Form.Has("clientID") || req.Form.Get("auth_method") != core.AuthMethodPrivateKeyJWTLocalKeyPair {
+					if req.Form.Has("client_id") || req.Form.Get("auth_method") != core.AuthMethodPrivateKeyJWTLocalKeyPair {
 						t.Fatal("incorrect authentication method or target app for new registration")
 					}
 					parts := strings.Split(req.Form.Get("auth_attestation"), ".")

@@ -221,7 +221,7 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 		form.Set("auth_attestation", opts.AuthAttestation)
 	}
 	if opts.TargetAppID != "" {
-		form.Set("clientID", opts.TargetAppID)
+		form.Set("client_id", opts.TargetAppID)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(form.Encode()))
