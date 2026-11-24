@@ -60,6 +60,19 @@ func TestWorkflowRunCommandPipeline(t *testing.T) {
 			if e := json.Unmarshal(stdout.Bytes(), &envelope); e != nil {
 				t.Fatal(e)
 			}
+			if envelope.Data.DataSource != "mock:fixture:workflow-run-log-basic" {
+				t.Fatalf("missing fixture source %s", stdout)
+			}
+			for _, i := range envelope.Data.Items {
+				if i.DataSource != envelope.Data.DataSource {
+					t.Fatal("record source not marked")
+				}
+			}
+			for _, p := range envelope.Data.Pages {
+				if p.DataSource != envelope.Data.DataSource {
+					t.Fatal("page source not marked")
+				}
+			}
 			if !envelope.OK || envelope.Data.Total != tt.want {
 				t.Fatalf("output %s", stdout)
 			}
@@ -130,6 +143,12 @@ func TestWorkflowRunExportExitMatrix(t *testing.T) {
 			if code != tt.want {
 				t.Fatalf("code=%d want=%d err=%v stdout=%s", code, tt.want, e, stdout)
 			}
+			manifestBytes, _ := os.ReadFile(filepath.Join(dir, "export/manifest.json"))
+			var manifest workflowrun.Manifest
+			_ = json.Unmarshal(manifestBytes, &manifest)
+			if manifest.DataSource != "mock:fixture:workflow-run-log-basic" {
+				t.Fatal("manifest source not marked")
+			}
 			if _, e = os.Stat(filepath.Join(dir, "export/manifest.json")); e != nil {
 				t.Fatal(e)
 			}
@@ -159,7 +178,7 @@ func TestWorkflowRunResumeConflictNoWrites(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	args = []string{BaseWorkflowRunExport.Command, "--base-token", "base-fixture", "--resume", "export", "--status", "running"}
+	args = []string{BaseWorkflowRunExport.Command, "--base-token", "base-fixture", "--resume", "export", "--status", "running", "--mock-fixture", string(b)}
 	e = runShortcut(t, BaseWorkflowRunExport, args, factory, stdout)
 	if !errs.IsValidation(e) || output.ExitCodeOf(e) != 2 {
 		t.Fatalf("conflict %v", e)
@@ -236,7 +255,7 @@ func TestWorkflowRunSelectorsAndHelp(t *testing.T) {
 }
 func TestWorkflowRunCancelled(t *testing.T) {
 	f := runLogFixture(t)
-	c, _ := workflowrun.NewClient(f, "")
+	c, _ := workflowrun.NewMockClient(f, "")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, e := (workflowrun.Engine{Client: c}).Collect(ctx, workflowrun.Runs, workflowrun.Query{Base: "b", Workflow: "wf1", Window: workflowrun.Window{Start: 0, End: 1}}, 0)
@@ -259,5 +278,239 @@ func TestWorkflowRunMissingFixtureCoverage(t *testing.T) {
 	}
 	if out.Data.Completeness != "partial" {
 		t.Fatal("missing coverage inherited guaranteed")
+	}
+}
+
+func workflowRunValidArgs(s common.Shortcut) []string {
+	args := runLogArgs(s.Command)
+	switch s.Command {
+	case BaseWorkflowRunGet.Command, BaseWorkflowButtonLogList.Command:
+		args = append(args, "--run-id", "E1")
+	}
+	if s.Command == BaseWorkflowButtonLogList.Command {
+		args = append(args, "--button-key", "message_btn_12345678")
+	}
+	if s.Command == BaseWorkflowRunExport.Command {
+		args = append(args, "--output", "export")
+	}
+	return args
+}
+func TestWorkflowRunDefaultNeverReturnsMock(t *testing.T) {
+	for _, s := range []common.Shortcut{BaseWorkflowRunList, BaseWorkflowRunGet, BaseWorkflowButtonLogList, BaseWorkflowRunExport} {
+		for _, disabled := range []bool{false, true} {
+			t.Run(s.Command+"/"+map[bool]string{true: "explicit_false", false: "no_mock_flag"}[disabled], func(t *testing.T) {
+				dir := t.TempDir()
+				withBaseWorkingDir(t, dir)
+				factory, stdout, _ := newExecuteFactory(t)
+				args := workflowRunValidArgs(s)
+				if disabled {
+					args = append(args, "--mock=false")
+				}
+				e := runShortcut(t, s, args, factory, stdout)
+				p, ok := errs.ProblemOf(e)
+				if !ok || p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(e.Error(), "not implemented") {
+					t.Fatalf("default returned wrong result %v", e)
+				}
+				if stdout.Len() != 0 {
+					t.Fatalf("default emitted data %s", stdout)
+				}
+				if _, e = os.Stat("export"); !os.IsNotExist(e) {
+					t.Fatal("default export wrote files")
+				}
+			})
+		}
+	}
+}
+func TestWorkflowRunExplicitEmptyAndAnonymousSources(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		args   []string
+		prefix string
+	}{{"empty", []string{"--mock"}, "mock:fixture:empty"}, {"anonymous", []string{"--mock-fixture", `{"runs":[],"coverage":"guaranteed"}`}, "mock:fixture:sha256:"}} {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			args := append(workflowRunValidArgs(BaseWorkflowRunList), tt.args...)
+			if e := runShortcut(t, BaseWorkflowRunList, args, factory, stdout); e != nil {
+				t.Fatal(e)
+			}
+			var envelope struct {
+				Data workflowrun.Result `json:"data"`
+			}
+			if e := json.Unmarshal(stdout.Bytes(), &envelope); e != nil {
+				t.Fatal(e)
+			}
+			if !strings.HasPrefix(envelope.Data.DataSource, tt.prefix) {
+				t.Fatalf("source %s", stdout)
+			}
+		})
+	}
+}
+func TestWorkflowRunDryRunSources(t *testing.T) {
+	for _, s := range []common.Shortcut{BaseWorkflowRunList, BaseWorkflowRunGet, BaseWorkflowButtonLogList, BaseWorkflowRunExport} {
+		for _, mock := range []bool{false, true} {
+			t.Run(s.Command+"/"+map[bool]string{true: "mock", false: "real"}[mock], func(t *testing.T) {
+				factory, stdout, _ := newExecuteFactory(t)
+				args := append(workflowRunValidArgs(s), "--dry-run")
+				if mock {
+					args = append(args, "--mock")
+				}
+				if e := runShortcut(t, s, args, factory, stdout); e != nil {
+					t.Fatal(e)
+				}
+				var envelope struct {
+					Data struct {
+						DataSource string `json:"data_source"`
+						Mock       bool   `json:"mock_only"`
+						Available  bool   `json:"production_api_available"`
+					} `json:"data"`
+				}
+				if e := json.Unmarshal(stdout.Bytes(), &envelope); e != nil {
+					t.Fatal(e)
+				}
+				expected := "real"
+				if mock {
+					expected = "mock:fixture:empty"
+				}
+				if envelope.Data.DataSource != expected || envelope.Data.Mock != mock || envelope.Data.Available {
+					t.Fatalf("dry-run provenance %s", stdout)
+				}
+			})
+		}
+	}
+}
+func TestWorkflowRunMockFailureNeverFallsBack(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests++; w.WriteHeader(503) }))
+	defer server.Close()
+	factory, stdout, _ := newExecuteFactory(t)
+	args := append(workflowRunValidArgs(BaseWorkflowRunList), "--mock-url", server.URL)
+	e := runShortcut(t, BaseWorkflowRunList, args, factory, stdout)
+	if !errs.IsNetwork(e) || requests != 3 || stdout.Len() != 0 {
+		t.Fatalf("failure was replaced with mock data: requests=%d error=%v stdout=%s", requests, e, stdout)
+	}
+}
+func TestWorkflowRunExplicitSourcesRejectConflicts(t *testing.T) {
+	for _, suffix := range [][]string{{"--mock-fixture", ""}, {"--mock-url", ""}, {"--mock-fixture", `{}`, "--mock-url", "http://127.0.0.1:1"}} {
+		factory, stdout, _ := newExecuteFactory(t)
+		e := runShortcut(t, BaseWorkflowRunList, append(workflowRunValidArgs(BaseWorkflowRunList), suffix...), factory, stdout)
+		if !errs.IsValidation(e) || stdout.Len() != 0 {
+			t.Fatalf("invalid source accepted %v", e)
+		}
+	}
+}
+func TestWorkflowRunResumeRequiresSameSource(t *testing.T) {
+	f := runLogFixture(t)
+	b, _ := json.Marshal(f)
+	dir := t.TempDir()
+	withBaseWorkingDir(t, dir)
+	factory, stdout, _ := newExecuteFactory(t)
+	args := append(workflowRunValidArgs(BaseWorkflowRunExport), "--mock-fixture", string(b))
+	if e := runShortcut(t, BaseWorkflowRunExport, args, factory, stdout); e != nil {
+		t.Fatal(e)
+	}
+	before, e := os.ReadFile("export/manifest.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, suffix := range [][]string{{"--mock"}, {}} {
+		args = []string{BaseWorkflowRunExport.Command, "--base-token", "base-fixture", "--resume", "export"}
+		e = runShortcut(t, BaseWorkflowRunExport, append(args, suffix...), factory, stdout)
+		if !errs.IsValidation(e) {
+			t.Fatalf("source conflict accepted %v", e)
+		}
+		after, _ := os.ReadFile("export/manifest.json")
+		if !bytes.Equal(before, after) {
+			t.Fatal("source conflict rewrote manifest")
+		}
+	}
+	var m workflowrun.Manifest
+	_ = json.Unmarshal(before, &m)
+	m.DataSource = ""
+	legacy, _ := json.Marshal(m)
+	if e = os.WriteFile("export/manifest.json", legacy, 0600); e != nil {
+		t.Fatal(e)
+	}
+	args = []string{BaseWorkflowRunExport.Command, "--base-token", "base-fixture", "--resume", "export", "--mock-fixture", string(b)}
+	if e = runShortcut(t, BaseWorkflowRunExport, args, factory, stdout); !errs.IsValidation(e) {
+		t.Fatal("unlabeled export silently adopted")
+	}
+	after, _ := os.ReadFile("export/manifest.json")
+	if !bytes.Equal(legacy, after) {
+		t.Fatal("unlabeled export relabeled")
+	}
+	m.Params.FormatVersion = 1
+	legacy, _ = json.Marshal(m)
+	_ = os.WriteFile("export/manifest.json", legacy, 0600)
+	if e = runShortcut(t, BaseWorkflowRunExport, args, factory, stdout); !errs.IsValidation(e) {
+		t.Fatal("legacy format silently adopted")
+	}
+}
+func TestWorkflowRunLocalServerSource(t *testing.T) {
+	f := runLogFixture(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp, e := f.RoundTrip(r)
+		if e != nil {
+			t.Error(e)
+			return
+		}
+		defer resp.Body.Close()
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+	defer server.Close()
+	factory, stdout, _ := newExecuteFactory(t)
+	args := append(workflowRunValidArgs(BaseWorkflowRunList), "--mock-url", server.URL, "--start-time", "0", "--end-time", "172800000")
+	if e := runShortcut(t, BaseWorkflowRunList, args, factory, stdout); e != nil {
+		t.Fatal(e)
+	}
+	var out struct {
+		Data workflowrun.Result `json:"data"`
+	}
+	_ = json.Unmarshal(stdout.Bytes(), &out)
+	if out.Data.DataSource != "mock:server:"+server.URL {
+		t.Fatalf("server source %s", stdout)
+	}
+}
+
+func TestMockServerCannotMasqueradeAsReal(t *testing.T) {
+	f := runLogFixture(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp, e := f.RoundTrip(r)
+		if e != nil {
+			t.Error(e)
+			return
+		}
+		defer resp.Body.Close()
+		var p workflowrun.Page
+		if e = json.NewDecoder(resp.Body).Decode(&p); e != nil {
+			t.Error(e)
+			return
+		}
+		p.DataSource = "real"
+		for n := range p.Items {
+			p.Items[n].DataSource = "real"
+		}
+		w.WriteHeader(resp.StatusCode)
+		_ = json.NewEncoder(w).Encode(p)
+	}))
+	defer server.Close()
+	factory, stdout, _ := newExecuteFactory(t)
+	args := append(workflowRunValidArgs(BaseWorkflowRunList), "--start-time", "0", "--end-time", "172800000", "--mock-url", server.URL)
+	if e := runShortcut(t, BaseWorkflowRunList, args, factory, stdout); e != nil {
+		t.Fatal(e)
+	}
+	var out struct {
+		Data workflowrun.Result `json:"data"`
+	}
+	_ = json.Unmarshal(stdout.Bytes(), &out)
+	for _, p := range out.Data.Pages {
+		if p.DataSource != out.Data.DataSource {
+			t.Fatal("server changed provenance")
+		}
+		for _, i := range p.Items {
+			if i.DataSource != out.Data.DataSource {
+				t.Fatal("server changed record provenance")
+			}
+		}
 	}
 }

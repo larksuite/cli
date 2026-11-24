@@ -36,9 +36,9 @@ func fixture(t *testing.T) *Fixture {
 	}
 	return &f
 }
-func client(t *testing.T, f *Fixture) *Client {
+func client(t *testing.T, f *Fixture) *MockClient {
 	t.Helper()
-	c, e := NewClient(f, "")
+	c, e := NewMockClient(f, "")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -112,6 +112,9 @@ func ids(items []Item, plane string) []string {
 	return out
 }
 func assertComplete(t *testing.T, m *Manifest) {
+	if !strings.HasPrefix(m.DataSource, "mock:") {
+		t.Fatalf("mock manifest is unmarked: %+v", m)
+	}
 	t.Helper()
 	if m.Completeness != "complete" || len(m.Pending) != 0 {
 		t.Fatalf("completeness=%s reasons=%v pending=%v", m.Completeness, m.Reasons, m.Pending)
@@ -619,7 +622,7 @@ func TestMockHTTPAndSafety(t *testing.T) {
 		_, _ = io.Copy(w, resp.Body)
 	}))
 	defer server.Close()
-	c, e := NewClient(nil, server.URL)
+	c, e := NewMockClient(nil, server.URL)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -628,7 +631,7 @@ func TestMockHTTPAndSafety(t *testing.T) {
 		t.Fatalf("HTTP pipeline failed %+v %v", r, e)
 	}
 	for _, endpoint := range []string{"https://127.0.0.1", "http://example.com", "http://localhost", "http://127.0.0.1/?x=1"} {
-		if _, e = NewClient(nil, endpoint); !errs.IsValidation(e) {
+		if _, e = NewMockClient(nil, endpoint); !errs.IsValidation(e) {
 			t.Fatal("unsafe mock origin accepted")
 		}
 	}
@@ -694,4 +697,67 @@ func TestPayloadReadDoesNotMutateFixture(t *testing.T) {
 			t.Fatal("earlier read destroyed later payload")
 		}
 	}
+}
+
+func TestRealClientCannotReturnMock(t *testing.T) {
+	c := RealClient{}
+	p, e := c.Fetch(context.Background(), Runs, params().Query)
+	if !errs.IsValidation(e) || c.DataSource() != "real" || len(p.Items) != 0 {
+		t.Fatalf("production path returned mock %+v %v", p, e)
+	}
+}
+func TestMockClientRequiresExplicitFixture(t *testing.T) {
+	if _, e := NewMockClient(nil, ""); !errs.IsValidation(e) {
+		t.Fatal("missing fixture silently defaulted")
+	}
+}
+
+func TestManifestSourceCannotRelabelCheckpoints(t *testing.T) {
+	s, m := export(t, fixture(t), params(), 0)
+	m.DataSource = "real"
+	if e := s.Recover(m); !errs.IsInternal(e) {
+		t.Fatal("checkpoint provenance was silently relabeled")
+	}
+}
+
+func TestOrphanSourceMustMatchManifest(t *testing.T) {
+	f := fixture(t)
+	s, e := OpenStore(t.TempDir(), false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	m := NewManifest(params())
+	s.Hook = func(stage string, b Batch) error {
+		if stage == "data_durable" {
+			return errors.New("stop before checkpoint")
+		}
+		return nil
+	}
+	if e = engine(t, f, 3*day).Export(context.Background(), s, m, 0); e == nil {
+		t.Fatal("failure not injected")
+	}
+	entries, _ := os.ReadDir(filepath.Join(s.Root, "runs"))
+	p := filepath.Join(s.Root, "runs", entries[0].Name())
+	wire, _ := os.ReadFile(p)
+	var b Batch
+	_ = json.Unmarshal(wire, &b)
+	b.Page.DataSource = "mock:fixture:other"
+	for n := range b.Page.Items {
+		b.Page.Items[n].DataSource = b.Page.DataSource
+	}
+	wire, _ = json.Marshal(b)
+	_ = os.WriteFile(p, wire, 0600)
+	s.Hook = nil
+	if e = s.Recover(m); e != nil {
+		t.Fatal(e)
+	}
+	cps, e := s.Checkpoints()
+	if e != nil || len(cps) != 0 {
+		t.Fatal("foreign source orphan adopted")
+	}
+	if e = engine(t, f, 3*day).Export(context.Background(), s, m, 0); e != nil {
+		t.Fatal(e)
+	}
+	assertComplete(t, m)
 }

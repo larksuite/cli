@@ -21,8 +21,9 @@ import (
 // These shortcuts execute only the mock protocol; real calls stay disabled.
 func workflowRunFlags(selection bool) []common.Flag {
 	flags := []common.Flag{
-		{Name: "base-token", Required: true, Desc: "base token (mock fixture namespace)"},
+		{Name: "base-token", Required: true, Desc: "base token"},
 		{Name: "workflow-id", Desc: "workflow ID; optional only for mock Base aggregation"},
+		{Name: "mock", Type: "bool", Desc: "explicitly select the built-in empty mock fixture; never enabled by default"},
 		{Name: "mock-fixture", Desc: "mock fixture JSON", Input: []string{common.File, common.Stdin}},
 		{Name: "mock-url", Desc: "optional local mock HTTP origin with literal loopback IP; no credentials are sent"},
 	}
@@ -99,10 +100,27 @@ func workflowRunValidate(selection bool) func(context.Context, *common.RuntimeCo
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "use the configuration key message_btn_xxxxxxxx without a node prefix").WithParam("--button-key")
 			}
 		}
+		if workflowRunMockSelected(rt) {
+			_, err := workflowRunClient(rt)
+			return err
+		}
 		return nil
 	}
 }
-func workflowRunMock(rt *common.RuntimeContext) (*workflowrun.Client, error) {
+func workflowRunMockSelected(rt *common.RuntimeContext) bool {
+	return rt.Bool("mock") || rt.Changed("mock-fixture") || rt.Changed("mock-url")
+}
+func workflowRunClient(rt *common.RuntimeContext) (workflowrun.WorkflowRunClient, error) {
+	if !workflowRunMockSelected(rt) {
+		_, err := (workflowrun.RealClient{}).Fetch(context.Background(), workflowrun.Runs, workflowrun.Query{})
+		return nil, err
+	}
+	if rt.Changed("mock-fixture") && rt.Changed("mock-url") {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "choose exactly one mock fixture or mock server").WithParam("--mock-url")
+	}
+	if (rt.Changed("mock-fixture") && rt.Str("mock-fixture") == "") || (rt.Changed("mock-url") && rt.Str("mock-url") == "") {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "explicit mock source must not be empty")
+	}
 	f := workflowrun.EmptyFixture()
 	if input := rt.Str("mock-fixture"); input != "" {
 		if len(input) > 8*1024*1024 {
@@ -113,13 +131,18 @@ func workflowRunMock(rt *common.RuntimeContext) (*workflowrun.Client, error) {
 			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid mock fixture JSON").WithParam("--mock-fixture").WithCause(e)
 		}
 	}
-	return workflowrun.NewClient(f, rt.Str("mock-url"))
+	return workflowrun.NewMockClient(f, rt.Str("mock-url"))
 }
 func workflowRunDry(plane string) func(context.Context, *common.RuntimeContext) *common.DryRunAPI {
 	return func(_ context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
 		q, _ := workflowRunQuery(rt)
 		wire, _ := json.Marshal(q)
-		return common.NewDryRunAPI().GET(workflowrun.Endpoint(plane, q)).Params(map[string]any{"query": string(wire)}).Set("mock_only", true).Set("contract", "proposal; pending T1–T14")
+		source := "real"
+		if workflowRunMockSelected(rt) {
+			client, _ := workflowRunClient(rt)
+			source = client.DataSource()
+		}
+		return common.NewDryRunAPI().GET(workflowrun.Endpoint(plane, q)).Params(map[string]any{"query": string(wire)}).Set("mock_only", workflowRunMockSelected(rt)).Set("data_source", source).Set("production_api_available", false).Set("contract", "proposal; pending T1–T14")
 	}
 }
 func workflowRunExit(reasons []string) int {

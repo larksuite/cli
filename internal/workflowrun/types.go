@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	FormatVersion = 1
+	FormatVersion = 2
 	Runs          = "runs"
 	Details       = "details"
 	Buttons       = "button_events"
@@ -70,6 +70,7 @@ type Group struct {
 	Legacy    bool   `json:"legacy,omitempty"`
 }
 type Item struct {
+	DataSource      string          `json:"data_source"`
 	RunID           string          `json:"run_id"`
 	WorkflowID      string          `json:"workflow_id,omitempty"`
 	StartTime       int64           `json:"start_time,omitempty"`
@@ -157,6 +158,7 @@ type Capabilities struct {
 	Attribution     string `json:"attribution_mode"`
 }
 type Page struct {
+	DataSource      string       `json:"data_source"`
 	RunStartedAt    *int64       `json:"run_started_at,omitempty"`
 	Plane           string       `json:"plane"`
 	Window          [2]string    `json:"window"`
@@ -213,6 +215,7 @@ type Selected struct {
 	CollectedAt int64  `json:"collected_at"`
 }
 type Manifest struct {
+	DataSource      string                `json:"data_source"`
 	Params          Params                `json:"parameters"`
 	SelectionWindow Window                `json:"run_selection_window"`
 	Selected        []Selected            `json:"selected_runs"`

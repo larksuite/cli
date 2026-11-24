@@ -14,7 +14,11 @@ lark-cli base +workflow-run-export --base-token fixture --workflow-id wf1 --star
 lark-cli base +workflow-run-export --base-token fixture --resume workflow-export --mock-fixture @internal/workflowrun/testdata/basic.json --require-complete
 ```
 
-The default mock uses an injected HTTP transport and never opens a socket.
+Mock is selected only by explicit `--mock-fixture`, `--mock-url`, or `--mock`.
+With none of these, the production path reports that execution-log APIs are not
+implemented and returns no data; request failures never fall back to mock.
+`--mock` selects the built-in empty fixture. An explicitly selected fixture
+uses an injected HTTP transport and never opens a socket.
 `--mock-url` selects a local HTTP mock server at a literal loopback IP; this
 client sends no credentials, uses no proxy, and rejects redirects. A mock server
 receives GET requests on the three proposed paths, with a JSON `Query` in the
@@ -64,3 +68,17 @@ Tests: `go test ./internal/workflowrun ./shortcuts/base`. The table-driven
 matrix; `TestHardKillResume` additionally exercises actual process termination
 on both sides of checkpoint commit. Shortcut tests exercise dry-run requests,
 mock HTTP, stdout envelopes, jq, record-budget resume, selectors and exit codes.
+
+Every command result, page, exported record and manifest carries CLI-owned
+`data_source`: `mock:fixture:<fixture_name>`, `mock:fixture:sha256:<digest>` for
+anonymous fixtures, or `mock:server:<loopback-origin>`. A fixture's optional
+`fixture_name` identifies its scenario suite; anonymous fixtures use SHA-256 of
+the canonical parsed fixture. Named scenario suites may change state over time,
+while resume preserves their source identity and each run's collection cutoff.
+A server response cannot relabel itself as real. Format version 2 requires this
+provenance; unlabeled older exports and source changes cannot be resumed.
+Dry-run distinguishes `real` and explicit mock selections and marks production
+API availability as false.
+
+Passing mock tests proves CLI-side behavior on synthetic data. It does not
+establish production API availability or acceptance of the real BP scenario.

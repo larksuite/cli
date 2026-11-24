@@ -87,13 +87,15 @@ func (e Engine) now() int64 {
 	}
 	return time.Now().UnixMilli()
 }
-func normalize(plane string, q Query, p *Page, fetched int64) {
+func normalize(plane string, q Query, p *Page, fetched int64, source string) {
+	p.DataSource = source
 	if plane == Details {
 		p.Items = Flatten(p.Items)
 	}
 	for n := range p.Items {
 		i := &p.Items[n]
 		i.FetchedAt = fetched
+		i.DataSource = source
 		if plane == Details && i.SendResults == "" {
 			i.SendResults = "unavailable"
 		}
@@ -160,6 +162,9 @@ func (e Engine) derive(s *Store, m *Manifest) error {
 		m.Jobs = append(m.Jobs, Job{ID: fmt.Sprintf("j%06d", len(m.Jobs)), Plane: plane, Query: q})
 	}
 	for _, cp := range cps {
+		if !batchSourceMatches(cp.Batch, m.DataSource) {
+			return errs.NewInternalError(errs.SubtypeFileIO, "batch data source conflicts with manifest")
+		}
 		b := cp.Batch
 		if b.Page.Plane == Runs {
 			for _, i := range b.Page.Items {
@@ -256,6 +261,12 @@ func Summarize(m *Manifest) {
 	}
 }
 func (e Engine) Export(ctx context.Context, s *Store, m *Manifest, maxRecords int) error {
+	source := e.Client.DataSource()
+	if m.DataSource == "" {
+		m.DataSource = source
+	} else if m.DataSource != source {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "resume data source conflicts with frozen manifest").WithParam("--resume")
+	}
 	if err := ValidateParams(m.Params); err != nil {
 		return err
 	}
@@ -314,7 +325,7 @@ func (e Engine) Export(ctx context.Context, s *Store, m *Manifest, maxRecords in
 				break
 			}
 			fetched := e.now()
-			normalize(j.Plane, q, &page, fetched)
+			normalize(j.Plane, q, &page, fetched, e.Client.DataSource())
 			b := Batch{JobID: j.ID, Seq: j.Seq + 1, Previous: j.Query.Token, Query: q, Page: page, FetchedAt: fetched}
 			trial := *j
 			trial.Reasons = append([]string(nil), j.Reasons...)
@@ -349,6 +360,7 @@ func (e Engine) Export(ctx context.Context, s *Store, m *Manifest, maxRecords in
 }
 
 type Result struct {
+	DataSource   string   `json:"data_source"`
 	Items        []Item   `json:"items"`
 	Total        int      `json:"total"`
 	Completeness string   `json:"completeness"`
@@ -357,7 +369,7 @@ type Result struct {
 }
 
 func (e Engine) Collect(ctx context.Context, plane string, q Query, maxRecords int) (Result, error) {
-	out := Result{Items: []Item{}, Completeness: "complete", Pages: []Page{}}
+	out := Result{DataSource: e.Client.DataSource(), Items: []Item{}, Completeness: "complete", Pages: []Page{}}
 	seen := map[string]bool{}
 	windows := []Window{q.Window}
 	if plane == Runs {
@@ -380,7 +392,7 @@ func (e Engine) Collect(ctx context.Context, plane string, q Query, maxRecords i
 			if err != nil {
 				return out, err
 			}
-			normalize(plane, q, &p, e.now())
+			normalize(plane, q, &p, e.now(), e.Client.DataSource())
 			out.Pages = append(out.Pages, p)
 			for _, i := range p.Items {
 				k := Key(plane, i)
@@ -418,7 +430,7 @@ func (e Engine) ButtonLogs(ctx context.Context, q Query, key, ref string) (Resul
 	if len(d.Pages) > 0 && d.Pages[0].RunStartedAt != nil {
 		q.Window.Start = *d.Pages[0].RunStartedAt
 	}
-	out := Result{Items: []Item{}, Completeness: d.Completeness, Reasons: d.Reasons, Pages: []Page{}}
+	out := Result{DataSource: e.Client.DataSource(), Items: []Item{}, Completeness: d.Completeness, Reasons: d.Reasons, Pages: []Page{}}
 	seen := map[string]bool{}
 	groups := map[string]bool{}
 	matched := false

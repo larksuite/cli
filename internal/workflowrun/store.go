@@ -343,6 +343,11 @@ func (s *Store) Recover(m *Manifest) error {
 		return e
 	}
 	known := map[string]bool{}
+	for _, cp := range ckpts {
+		if !batchSourceMatches(cp.Batch, m.DataSource) {
+			return errs.NewInternalError(errs.SubtypeFileIO, "checkpoint data source conflicts with manifest")
+		}
+	}
 	// Replay all checkpoints, including earlier windows, rather than trusting
 	// the last manifest write (which can lag a durable checkpoint).
 	for n := range m.Jobs {
@@ -407,7 +412,7 @@ func (s *Store) Recover(m *Manifest) error {
 					return ioError(e)
 				}
 				var b Batch
-				if json.Unmarshal(data, &b) == nil && rel == shardName(b) {
+				if json.Unmarshal(data, &b) == nil && rel == shardName(b) && batchSourceMatches(b, m.DataSource) {
 					for n := range m.Jobs {
 						j := &m.Jobs[n]
 						if j.ID != b.JobID {
@@ -507,4 +512,16 @@ func (s *Store) Publish(m *Manifest) error {
 		}
 	}
 	return nil
+}
+
+func batchSourceMatches(b Batch, source string) bool {
+	if source == "" || b.Page.DataSource != source {
+		return false
+	}
+	for _, i := range b.Page.Items {
+		if i.DataSource != source {
+			return false
+		}
+	}
+	return true
 }

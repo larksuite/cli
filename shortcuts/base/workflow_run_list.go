@@ -20,7 +20,7 @@ var BaseWorkflowRunList = common.Shortcut{
 		if e != nil {
 			return e
 		}
-		c, e := workflowRunMock(rt)
+		c, e := workflowRunClient(rt)
 		if e != nil {
 			return e
 		}

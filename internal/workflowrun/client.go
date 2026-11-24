@@ -6,6 +6,8 @@ package workflowrun
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net"
@@ -24,25 +26,39 @@ import (
 // WorkflowRunClient isolates the three proposed read-only APIs.
 type WorkflowRunClient interface {
 	Fetch(context.Context, string, Query) (Page, error)
+	DataSource() string
 }
 
 // RealClient deliberately cannot reach a production endpoint.
 type RealClient struct{}
 
+func (RealClient) DataSource() string { return "real" }
+
 func (RealClient) Fetch(context.Context, string, Query) (Page, error) {
 	// TODO: implement only after production contracts T1–T14 are approved, using RuntimeContext.
-	return Page{}, errs.NewValidationError(errs.SubtypeFailedPrecondition, "production workflow log APIs are not available; use mock fixtures")
+	return Page{}, errs.NewValidationError(errs.SubtypeFailedPrecondition, "production workflow log APIs are not implemented; no mock fallback is permitted").WithHint("select --mock, --mock-fixture or --mock-url explicitly to test simulated data")
 }
 
-type Client struct {
-	HTTP *http.Client
-	URL  string
-	Wait func(context.Context, time.Duration) error
+type MockClient struct {
+	source string
+	HTTP   *http.Client
+	URL    string
+	Wait   func(context.Context, time.Duration) error
 }
 
-func NewClient(f *Fixture, endpoint string) (*Client, error) {
-	c := &Client{Wait: wait}
+func NewMockClient(f *Fixture, endpoint string) (*MockClient, error) {
+	c := &MockClient{Wait: wait}
 	if endpoint == "" {
+		if f == nil {
+			return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "mock fixture must be selected explicitly")
+		}
+		wire, _ := json.Marshal(f)
+		digest := sha256.Sum256(wire)
+		label := f.Name
+		if label == "" {
+			label = "sha256:" + hex.EncodeToString(digest[:])
+		}
+		c.source = "mock:fixture:" + label
 		c.URL = "http://workflow-mock.invalid"
 		c.HTTP = &http.Client{Transport: f}
 		return c, nil
@@ -56,11 +72,13 @@ func NewClient(f *Fixture, endpoint string) (*Client, error) {
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "mock URL requires a literal loopback IP").WithParam("--mock-url")
 	}
 	c.URL = strings.TrimRight(endpoint, "/")
+	c.source = "mock:server:" + c.URL
 	// This client speaks only the local mock protocol: no credentials, proxies,
 	// cookies, redirects or resolver-owned production hosts.
 	c.HTTP = &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return c, nil
 }
+func (c *MockClient) DataSource() string { return c.source }
 func wait(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
 	defer t.Stop()
@@ -85,7 +103,7 @@ func Endpoint(plane string, q Query) string {
 	}
 	return p
 }
-func (c *Client) Fetch(ctx context.Context, plane string, q Query) (Page, error) {
+func (c *MockClient) Fetch(ctx context.Context, plane string, q Query) (Page, error) {
 	wire, _ := json.Marshal(q)
 	v := url.Values{"query": {string(wire)}}
 	for attempt := 0; attempt < 3; attempt++ {
@@ -173,6 +191,7 @@ type Fault struct {
 	Count    int    `json:"count"`
 }
 type Fixture struct {
+	Name     string            `json:"fixture_name,omitempty"`
 	Caps     Capabilities      `json:"capabilities"`
 	PageSize int               `json:"page_size"`
 	Coverage string            `json:"coverage"`
@@ -185,7 +204,7 @@ type Fixture struct {
 }
 
 func EmptyFixture() *Fixture {
-	return &Fixture{Caps: Capabilities{true, true, ResponseField}, PageSize: 100, Coverage: Guaranteed, Details: map[string][]Item{}}
+	return &Fixture{Name: "empty", Caps: Capabilities{true, true, ResponseField}, PageSize: 100, Coverage: Guaranteed, Details: map[string][]Item{}}
 }
 func (f *Fixture) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err := req.Context().Err(); err != nil {

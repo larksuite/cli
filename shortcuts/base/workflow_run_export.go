@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/workflowrun"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -18,6 +19,10 @@ var BaseWorkflowRunExport = common.Shortcut{
 }
 
 func workflowRunExport(ctx context.Context, rt *common.RuntimeContext) error {
+	c, e := workflowRunClient(rt)
+	if e != nil {
+		return e
+	}
 	if e := workflowrun.RequireLocal(rt.FileIO()); e != nil {
 		return e
 	}
@@ -108,15 +113,20 @@ func workflowRunExport(ctx context.Context, rt *common.RuntimeContext) error {
 		if e = workflowrun.Compatible(m.Params, frozen); e != nil {
 			return e
 		}
+		if e = workflowrun.ValidateParams(m.Params); e != nil {
+			return e
+		}
+		if m.DataSource == "" {
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "unlabeled export cannot be resumed").WithParam("--resume").WithHint("create a new export directory with an explicit mock source")
+		}
+		if m.DataSource != c.DataSource() {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "resume data source is missing or conflicts with selected mock source").WithParam("--resume")
+		}
 		if e = store.Recover(m); e != nil {
 			return e
 		}
 	}
 	if e = workflowrun.ValidateParams(m.Params); e != nil {
-		return e
-	}
-	c, e := workflowRunMock(rt)
-	if e != nil {
 		return e
 	}
 	if e = (workflowrun.Engine{Client: c}).Export(ctx, store, m, rt.Int("max-records")); e != nil {

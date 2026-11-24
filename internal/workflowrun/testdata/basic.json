@@ -1,4 +1,5 @@
 {
+ "fixture_name":"workflow-run-log-basic",
  "capabilities":{"base_aggregate":true,"composite_cursor_ok":true,"attribution_mode":"response_field"},
  "page_size":1,"coverage":"guaranteed",
  "runs":[{"run_id":"E1","workflow_id":"wf1","start_time":1000,"status":"running"},{"run_id":"E2","workflow_id":"wf1","start_time":86400000,"status":"success"}],
