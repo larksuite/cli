@@ -117,6 +117,12 @@ func (c *Client) Fetch(ctx context.Context, plane string, q Query) (Page, error)
 			}
 			return Page{}, errs.NewNetworkError(errs.SubtypeNetworkServer, "mock request failed after bounded retries")
 		}
+		if resp.StatusCode == 400 && plane == Runs && q.Workflow == "" {
+			var p Page
+			if json.Unmarshal(b, &p) == nil && !p.Caps.BaseAggregate {
+				return Page{}, errs.NewValidationError(errs.SubtypeFailedPrecondition, "mock backend does not support Base-level aggregation; provide --workflow-id").WithParam("--workflow-id")
+			}
+		}
 		if resp.StatusCode != 200 {
 			return Page{}, errs.NewNetworkError(errs.SubtypeNetworkProtocol, "mock endpoint returned HTTP %d", resp.StatusCode)
 		}
@@ -263,7 +269,7 @@ func (f *Fixture) RoundTrip(req *http.Request) (*http.Response, error) {
 		g := q.Group
 		for _, ev := range f.Events {
 			i := ev.Item
-			if i.RunID != q.Run || ev.NodeID != g.NodeID || ev.Key != g.Key || i.CreatedTime < q.Window.Start || i.CreatedTime >= q.Window.End || ev.VisibleAt > q.CollectedAt {
+			if i.RunID != q.Run || buttonStorageKey(ev.NodeID, ev.Key) != buttonStorageKey(g.NodeID, g.Key) || i.CreatedTime < q.Window.Start || i.CreatedTime >= q.Window.End || ev.VisibleAt > q.CollectedAt {
 				continue
 			}
 			if g.Legacy {
@@ -334,3 +340,6 @@ func response(req *http.Request, status int, p Page) *http.Response {
 	b, _ := json.Marshal(p)
 	return &http.Response{StatusCode: status, Body: io.NopCloser(bytes.NewReader(b)), Header: http.Header{"Content-Type": {"application/json"}}, Request: req}
 }
+
+// The legacy storage key is adapter-owned; CLI accepts only the configuration key.
+func buttonStorageKey(node, key string) string { return node + "_" + key }

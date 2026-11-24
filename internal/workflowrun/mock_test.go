@@ -164,7 +164,7 @@ func ac01(t *testing.T) {
 		}
 	}
 	f.Caps.BaseAggregate = false
-	if _, e := client(t, f).Fetch(context.Background(), Runs, p.Query); !errs.IsNetwork(e) {
+	if _, e := client(t, f).Fetch(context.Background(), Runs, p.Query); !errs.IsValidation(e) {
 		t.Fatalf("aggregation capability not enforced: %v", e)
 	}
 }
