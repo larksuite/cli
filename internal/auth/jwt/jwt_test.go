@@ -109,7 +109,7 @@ func TestSignAttestation(t *testing.T) {
 	require.Equal(t, want, header["jwk"])
 	require.Equal(t, "nonce-abc", claims["nonce"])
 	require.Equal(t, float64(now.Unix()), claims["iat"])
-	require.Equal(t, float64(now.Add(2*time.Minute).Unix()), claims["exp"])
+	require.Equal(t, float64(now.Add(5*time.Minute).Unix()), claims["exp"])
 }
 
 func TestSigningRequiresSigner(t *testing.T) {

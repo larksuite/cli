@@ -64,7 +64,7 @@ func newJTI() string { return uuid.NewString() }
 // attestationTTL bounds the attestation JWT's lifetime. The init nonce (60s,
 // single-use) is the real anti-replay constraint; this is a modest margin for
 // clock skew on top of the immediate init→sign→begin round-trip.
-const attestationTTL = 2 * time.Minute
+const attestationTTL = 5 * time.Minute
 
 // attestationClaims builds the registration attestation claim set per the App
 // Registration JWT spec: jti, iat, exp (all required) and the init-issued nonce.

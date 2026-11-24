@@ -322,7 +322,22 @@ func TestRegisterAppWithDiscovery_TerminalSentinels(t *testing.T) {
 	resp := &AppRegistrationResponse{DeviceCode: "device", Interval: 0, ExpiresIn: 5}
 	_, _, err := RegisterAppWithDiscovery(context.Background(), deny, resp, io.Discard)
 	if !errors.Is(err, ErrRegistrationDeniedByUser) {
-		t.Errorf("denied err = %v, want ErrRegistrationDenied", err)
+		t.Errorf("denied err = %v, want ErrRegistrationDeniedByUser", err)
+	}
+	for _, tc := range []struct {
+		body    string
+		message string
+	}{
+		{`{"error":"access_denied","error_description":"registration rejected"}`, "registration rejected"},
+		{`{"error":"access_denied","status_message":"status reason","error_description":"description reason"}`, "status reason"},
+	} {
+		client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return jsonResponse(tc.body), nil
+		})}
+		_, _, err := RegisterAppWithDiscovery(context.Background(), client, resp, io.Discard)
+		if !errors.Is(err, ErrRegistrationDenied) || !strings.Contains(err.Error(), tc.message) {
+			t.Errorf("denied err = %v, want ErrRegistrationDenied with %q", err, tc.message)
+		}
 	}
 
 	expired := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {

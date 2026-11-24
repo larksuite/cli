@@ -21,10 +21,10 @@ import (
 
 // Terminal registration outcomes, exposed for typed classification by callers.
 var (
-	ErrRegistrationDeniedByUser   = errors.New("app registration denied by user")
-	ErrRegistrationDenied   = errors.New("app registration denied")
-	ErrRegistrationExpired  = errors.New("device code expired, please try again")
-	ErrRegistrationTimedOut = errors.New("app registration timed out, please try again")
+	ErrRegistrationDeniedByUser = errors.New("app registration denied by user")
+	ErrRegistrationDenied       = errors.New("app registration denied")
+	ErrRegistrationExpired      = errors.New("device code expired, please try again")
+	ErrRegistrationTimedOut     = errors.New("app registration timed out, please try again")
 )
 
 // AppRegistrationRemoteError preserves structured registration failures that
@@ -277,9 +277,9 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 	}
 
 	userCode := getStr(data, "user_code")
-	// CLI registrations use the selected brand's CLI page, even when begin
-	// returns the general launcher on the bootstrap domain.
-	verificationUriComplete := urlrewrite.Rewrite(ep.Open + "/page/cli?user_code=" + url.QueryEscape(userCode))
+	// The confirmation page is CLI-owned presentation (shown as a link/QR code,
+	// never fetched), so it passes through the URL rewrite extension.
+	verificationUriComplete := urlrewrite.Rewrite(fmt.Sprintf("%s/page/cli?user_code=%s", ep.Open, userCode))
 
 	return &AppRegistrationResponse{
 		DeviceCode:              deviceCode,
@@ -471,6 +471,9 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 		case "access_denied":
 			if status := getStr(data, "status_message"); status != "" {
 				return nil, effectiveBrand, fmt.Errorf("%w: %s", ErrRegistrationDenied, status)
+			}
+			if errorDescription := getStr(data, "error_description"); errorDescription != "" {
+				return nil, effectiveBrand, fmt.Errorf("%w: %s", ErrRegistrationDenied, errorDescription)
 			}
 			return nil, effectiveBrand, ErrRegistrationDeniedByUser
 		case "expired_token", "invalid_grant":

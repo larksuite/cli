@@ -41,6 +41,35 @@ func TestAuthStatusRun_SplitsBotAndUserIdentity(t *testing.T) {
 	}
 }
 
+func TestAuthStatusRun_ReportsAuthMethod(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		authMethod string
+		want       string
+	}{
+		{"default", "", core.AuthMethodClientSecret},
+		{"client_secret", core.AuthMethodClientSecret, core.AuthMethodClientSecret},
+		{"local_keypair", core.AuthMethodPrivateKeyJWTLocalKeyPair, core.AuthMethodPrivateKeyJWTLocalKeyPair},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+				AppID: "test-app", Brand: core.BrandFeishu, AuthMethod: tc.authMethod,
+			})
+			if err := authStatusRun(&StatusOptions{Factory: f}, nil); err != nil {
+				t.Fatalf("authStatusRun() error = %v", err)
+			}
+			var got statusOutput
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatalf("json.Unmarshal() error = %v", err)
+			}
+			if got.AuthMethod != tc.want {
+				t.Fatalf("authMethod = %q, want %q", got.AuthMethod, tc.want)
+			}
+		})
+	}
+}
+
 func TestAuthStatusRun_VerifyReportsBotIdentity(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu,
@@ -169,6 +198,7 @@ func TestAuthStatusRun_VerifyReportsBotPolicyError(t *testing.T) {
 }
 
 type statusOutput struct {
+	AuthMethod string `json:"authMethod"`
 	Identity   string `json:"identity"`
 	Verified   *bool  `json:"verified"`
 	Note       string `json:"note"`
