@@ -40,7 +40,9 @@ type SchemaOptions struct {
 	// Args are the positional path segments, in either the dotted single-arg
 	// form ("im.messages.reply") or the space-separated form ("im messages
 	// reply"); apicatalog.ParsePath normalizes both.
-	Args []string
+	Args        []string
+	Validate    string
+	ValidateSet bool
 }
 
 // NewCmdSchema creates the schema command. If runF is non-nil it is called instead of the default runner (test hook).
@@ -62,10 +64,20 @@ func NewCmdSchemaWithVisibility(
 	cmd := &cobra.Command{
 		Use:   "schema [path | service resource method]",
 		Short: "View API method parameters, types, and scopes",
-		Args:  cobra.MaximumNArgs(8),
+		Long: "View API method parameters, types, and scopes.\n\n" +
+			"Use --validate with one exact method path to check an input object against its " +
+			"published inputSchema offline. Input uses the schema's params/data/file sections, " +
+			"not a raw request body. Accepts inline JSON, @file, or - for stdin. " +
+			"Checks required fields, nested types, enums, and numeric bounds without login or API calls. " +
+			"Unknown properties are allowed; defaults and formats are annotations. " +
+			"Validation does not establish authorization, confirmation, or server-side validity.",
+		Example: "  lark-cli schema drive.files.list --validate @input.json\n" +
+			"  lark-cli schema drive.files.list --validate '{\"params\":{\"page_size\":50,\"direction\":\"ASC\"}}'",
+		Args: cobra.MaximumNArgs(8),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Args = append([]string(nil), args...)
 			opts.Ctx = cmd.Context()
+			opts.ValidateSet = cmd.Flags().Changed("validate")
 			if runF != nil {
 				return runF(opts)
 			}
@@ -73,6 +85,7 @@ func NewCmdSchemaWithVisibility(
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
+	cmd.Flags().StringVar(&opts.Validate, "validate", "", "Validate an inputSchema object offline (inline JSON, @file, or - for stdin)")
 
 	// Tolerated for agent compatibility; ignored — schema only emits the JSON
 	// envelope, and its output is identity-independent (strict-mode filtering
@@ -110,6 +123,9 @@ func completeSchemaPath(
 }
 
 func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) error {
+	if opts.ValidateSet {
+		return schemaValidateRun(opts, visibility)
+	}
 	out := opts.Factory.IOStreams.Out
 	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
 	return runSchemaCatalog(out, apicatalog.ParsePath(opts.Args), mode, opts.Factory.APICatalog, opts.Factory.Affordance, visibility)
@@ -127,39 +143,51 @@ func runSchemaCatalog(
 	guidance *affordance.Resolver,
 	visibility CommandVisibility,
 ) error {
+	target, refs, err := resolveSchemaTarget(parts, mode, catalog, visibility)
+	if err != nil {
+		return err
+	}
+	if target.Kind == apicatalog.TargetMethod {
+		output.PrintJson(out, schema.EnvelopeOf(guidance, refs[0]))
+		return nil
+	}
+	output.PrintJson(out, schema.Envelopes(guidance, refs))
+	return nil
+}
+
+// resolveSchemaTarget keeps inspection and validation on the same catalog,
+// identity, and command-visibility boundary before either can inspect input.
+func resolveSchemaTarget(parts []string, mode core.StrictMode, catalog apicatalog.Catalog, visibility CommandVisibility) (apicatalog.Target, []apicatalog.MethodRef, error) {
 	// Test the source catalog before presentation projection. A distribution
 	// that intentionally conceals every generated method still has metadata;
 	// bare `schema` should render an empty list rather than claim metadata is
 	// unavailable.
 	if len(catalog.Names()) == 0 {
-		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "No API metadata available").
+		return apicatalog.Target{}, nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "No API metadata available").
 			WithHint("the current command build did not select any API metadata")
 	}
 	catalog = projectSchemaCatalog(catalog, visibility)
 	target, err := catalog.Resolve(parts)
 	if err != nil {
 		if loadErr := catalog.Err(); loadErr != nil {
-			return loadErr
+			return apicatalog.Target{}, nil, loadErr
 		}
-		return resolveError(err)
+		return apicatalog.Target{}, nil, resolveError(err)
 	}
 	refs := catalog.MethodRefs(target, registry.FilterForStrictMode(mode))
 	// Navigation parses shards lazily; a corrupt shard must fail typed rather
 	// than silently shrink the listing.
 	if loadErr := catalog.Err(); loadErr != nil {
-		return loadErr
+		return apicatalog.Target{}, nil, loadErr
 	}
 	if target.Kind == apicatalog.TargetMethod {
 		if len(refs) == 0 {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			return apicatalog.Target{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"Method %s not available in current identity mode", target.Method.SchemaPath()).
 				WithHint("strict mode hides methods the active account identity cannot call; it is shown for an identity (user or bot) that has the required access token")
 		}
-		output.PrintJson(out, schema.EnvelopeOf(guidance, refs[0]))
-		return nil
 	}
-	output.PrintJson(out, schema.Envelopes(guidance, refs))
-	return nil
+	return target, refs, nil
 }
 
 // projectSchemaCatalog produces the metadata view corresponding to one final

@@ -295,6 +295,28 @@ lark-cli schema calendar.events.instance_view
 lark-cli schema im.messages.delete
 ```
 
+对一个完整的方法路径使用 `--validate`，即可离线检查待提交的输入，无需登录或调用 API：
+
+```bash
+lark-cli schema drive.files.list --validate '{"params":{"page_size":50,"direction":"ASC"}}'
+lark-cli schema drive.files.list --validate @input.json
+cat input.json | lark-cli schema drive.files.list --validate -
+```
+
+JSON 文档应遵循该方法的 `inputSchema`：按 schema 中声明的分区，将路径和查询参数放入
+`params`、请求体字段放入 `data`、上传路径放入 `file`。校验涵盖嵌套类型、必填字段、
+数组元素、枚举和包含端点的数值范围，数值比较保留十进制精度。它不会转换类型、填充
+默认值、解释格式或打开上传文件。与已发布的 schema 一致，未声明的属性仍被允许。
+通过校验不代表已取得授权、已确认危险操作，也不保证服务端会接受请求。
+
+成功时退出码为 `0`，stdout 输出标准成功 envelope，其中
+`data` 为 `{"schema_path":"drive.files.list","valid":true}`。JSON 格式或 schema 校验
+失败时退出码为 `2`，stderr 输出 `validation/invalid_argument` envelope，stdout 为空。
+字段错误的 `error.params[].name` 使用 RFC 6901 JSON Pointer，例如
+`/params/page_size`，空字符串表示根对象。诊断不回显字段值，最多报告 100 个错误，
+超过时会在 hint 中说明。输入须为单个 JSON 文档，不能包含重复键，嵌套对象或数组最多
+64 层。现有的身份和命令可见性限制同样适用于校验。
+
 ## 安全与风险提示（使用前必读）
 
 本工具可供 AI Agent 调用以自动化操作飞书/Lark 开放平台，存在模型幻觉、执行不可控、提示词注入等固有风险；授权飞书权限后，AI Agent 将以您的用户身份在授权范围内执行操作，可能导致敏感数据泄露、越权操作等高风险后果，请您谨慎操作和使用。
