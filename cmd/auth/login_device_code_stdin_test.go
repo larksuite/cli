@@ -25,7 +25,7 @@ func TestReadDeviceCodeFromStdin(t *testing.T) {
 			t.Fatalf("readDeviceCodeFromStdin(%q) = (%q, %v), want %q", in, got, err, want)
 		}
 	}
-	for _, in := range []string{"", "  \n", "-", "a b", "a\nb", strings.Repeat("x", 4097)} {
+	for _, in := range []string{"", "  \n", "-", "a b", "a\nb", "a\vb", "a\fb", "a\u00a0b", strings.Repeat("x", 4097)} {
 		_, err := readDeviceCodeFromStdin(strings.NewReader(in))
 		assertDeviceCodeValidationError(t, in, err)
 	}

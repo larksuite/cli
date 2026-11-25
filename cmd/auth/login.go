@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -146,7 +147,7 @@ func readDeviceCodeFromStdin(in io.Reader) (string, error) {
 		return "", invalid()
 	}
 	code := strings.TrimSpace(string(data))
-	if code == "" || code == "-" || strings.ContainsAny(code, " \t\r\n") {
+	if code == "" || code == "-" || strings.IndexFunc(code, unicode.IsSpace) >= 0 {
 		return "", invalid()
 	}
 	return code, nil
