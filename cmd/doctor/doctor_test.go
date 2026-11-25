@@ -238,6 +238,7 @@ func TestDoctorRun_SplitsBotAndMissingUserIdentity(t *testing.T) {
 	if !got.OK {
 		t.Fatalf("ok = false, want true; checks = %#v", got.Checks)
 	}
+	assertCheck(t, got.Checks, "tee_signer", "skip")
 	assertCheck(t, got.Checks, "bot_identity", "pass")
 	assertCheck(t, got.Checks, "user_identity", "warn")
 	assertCheck(t, got.Checks, "identity_ready", "pass")

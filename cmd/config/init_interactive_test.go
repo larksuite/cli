@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/core"
 )
 
 func assertRegistrationProblem(t *testing.T, got, cause error, category errs.Category, subtype errs.Subtype) *errs.Problem {
@@ -42,7 +43,7 @@ func TestClassifyRegistrationBeginError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assertRegistrationProblem(t, classifyRegistrationBeginError(tt.err), tt.err, tt.category, tt.subtype)
+			assertRegistrationProblem(t, classifyRegistrationRequestError("begin", tt.err), tt.err, tt.category, tt.subtype)
 		})
 	}
 }
@@ -54,14 +55,14 @@ func TestClassifyRegistrationError(t *testing.T) {
 		subtype errs.Subtype
 		hint    bool
 	}{
-		{"denied", larkauth.ErrRegistrationDenied, errs.SubtypeUnknown, true},
+		{"denied", larkauth.ErrRegistrationDeniedByUser, errs.SubtypeUnknown, true},
 		{"expired", larkauth.ErrRegistrationExpired, errs.SubtypeTokenExpired, true},
 		{"timed-out", larkauth.ErrRegistrationTimedOut, errs.SubtypeTokenExpired, true},
 		{"cancelled", context.Canceled, errs.SubtypeUnknown, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := assertRegistrationProblem(t, classifyRegistrationError(tt.err), tt.err, errs.CategoryAuthentication, tt.subtype)
+			p := assertRegistrationProblem(t, classifyRegistrationError(tt.err, core.AuthMethodClientSecret, ""), tt.err, errs.CategoryAuthentication, tt.subtype)
 			if (p.Hint != "") != tt.hint {
 				t.Errorf("hint = %q, want non-empty=%v", p.Hint, tt.hint)
 			}

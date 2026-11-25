@@ -122,6 +122,33 @@ already succeeded).
 
 Canonical mapping: `internal/output/exitcode.go` `ExitCodeForCategory`.
 
+`authentication/signing_key_missing` means the registered application signing
+key was lost locally. The CLI stops private-key JWT authentication and includes
+instructions in `hint` to re-register the signing key for the existing app via
+interactive config init; it does not create a new app, fall back to
+`client_secret`, or recreate the key during authentication. This is distinct from
+`dpop_key_missing`, which concerns the key bound to a DPoP token. Locked,
+unavailable, or corrupt signers retain their
+existing errors rather than being treated as lost keys.
+
+Client Assertion public-key rejections use the following classifications in
+registration and the shared API classifier (also used by tenant-token requests).
+All seven codes are non-retryable; registration polling stops when one is received.
+Errors preserve the upstream code and description and include key-specific
+recovery guidance. The public-key quota code is `1108109`, not `1107010`.
+
+| Upstream code | Category / subtype |
+|---------------|--------------------|
+| `1108026`, `1108027` | `api/invalid_parameters` |
+| `1108107` | `api/not_found` |
+| `1108108` | `api/already_exists` |
+| `1108109` | `api/quota_exceeded` |
+| `1108110` | `authorization/permission_denied` |
+| `1108111` | `api/conflict` |
+
+`1108110` concerns the app's enterprise keyless authentication policy, so its
+error does not invent missing scopes or direct the user to authorize again.
+
 > **Note on the `authorization` / `PermissionError` asymmetry.** The wire
 > `type` field uses the RFC 7807 / taxonomy-formal name `"authorization"`,
 > but the Go type is named `PermissionError`. This is deliberate, following

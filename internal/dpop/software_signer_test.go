@@ -10,9 +10,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -31,6 +33,50 @@ func isolateSoftwareStorage(t *testing.T) string {
 		directory = filepath.Join(root, "Library", "Application Support", "lark-cli")
 	}
 	return filepath.Join(directory, "keysigner", "software-file")
+}
+
+type cancelingUnlockStore struct {
+	*testMetadataStore
+	cancel context.CancelFunc
+}
+
+func (s cancelingUnlockStore) Get(service, account string) (string, error) {
+	s.cancel()
+	return s.testMetadataStore.Get(service, account)
+}
+
+func TestSoftwareUnlockRetainsDPoPPolicy(t *testing.T) {
+	for _, name := range []string{"", "notes.json", strings.Repeat("a", 64) + ".json"} {
+		t.Run(name, func(t *testing.T) {
+			directory := isolateSoftwareStorage(t)
+			kc := &testMetadataStore{values: map[string]string{}}
+			if name != "" {
+				if err := os.MkdirAll(directory, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(directory, name), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := newSoftwareSigner(kc).unlock(context.Background(), directory, name != "")
+			if name != "notes.json" {
+				problem, ok := errs.ProblemOf(err)
+				if !errors.Is(err, keysigner.ErrUnlockRequired) || !ok || problem.Subtype != errs.SubtypeDPoPKeyMissing || problem.Hint == "" || len(kc.values) != 0 {
+					t.Fatalf("missing-secret policy: %v, values=%v", err, kc.values)
+				}
+			} else if err != nil || kc.values[softwareUnlockAccount] == "" {
+				t.Fatalf("unrelated JSON must not block initialization: %v", err)
+			}
+		})
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cause := errors.New("Get failed while canceling")
+	kc := &testMetadataStore{values: map[string]string{}, getErr: cause}
+	_, err := newSoftwareSigner(cancelingUnlockStore{kc, cancel}).unlock(ctx, isolateSoftwareStorage(t), true)
+	if !errors.Is(err, context.Canceled) || !errors.Is(err, cause) || len(kc.values) != 0 {
+		t.Fatalf("post-Get cancellation priority: %v", err)
+	}
 }
 
 func TestDefaultKeyStoreSoftwareFallbackLifecycle(t *testing.T) {
@@ -157,7 +203,7 @@ func TestSoftwareSignerDoesNotReplaceMissingOrCorruptUnlockSecret(t *testing.T) 
 			}
 			if failure != "missing" {
 				// Windows shares this secret even with another, empty key directory.
-				_, err := (softwareSigner{keychain: kc}).unlock(ctx, t.TempDir(), true)
+				_, err := (newSoftwareSigner(kc)).unlock(ctx, t.TempDir(), true)
 				if !errors.Is(err, want) || kc.values[softwareUnlockAccount] != brokenSecret {
 					t.Fatalf("empty directory must preserve the secret and return %v: %v", want, err)
 				}
@@ -175,7 +221,7 @@ func TestSoftwareSignerDoesNotReplaceMissingOrCorruptUnlockSecret(t *testing.T) 
 func TestReauthorizationReplacesKeysAfterSoftwareUnlockSecretIsLost(t *testing.T) {
 	directory := isolateSoftwareStorage(t)
 	kc := &testMetadataStore{values: map[string]string{}}
-	store := newKeyStoreWithSigners(kc, []keysigner.Signer{softwareSigner{keychain: kc}})
+	store := newKeyStoreWithSigners(kc, []keysigner.Signer{newSoftwareSigner(kc)})
 	ctx := context.Background()
 
 	oldKey, err := store.GenerateContext(ctx)
@@ -220,7 +266,7 @@ func TestSoftwareSignerConcurrentInitialization(t *testing.T) {
 			keyDirectory = filepath.Join(directory, label)
 		}
 		signer, err := keysigner.NewSoftwareSigner(keyDirectory, func(ctx context.Context) ([]byte, error) {
-			return (softwareSigner{keychain: kc}).unlock(ctx, keyDirectory, true)
+			return (newSoftwareSigner(kc)).unlock(ctx, keyDirectory, true)
 		})
 		if err != nil {
 			t.Fatal(err)

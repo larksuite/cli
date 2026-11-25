@@ -71,8 +71,13 @@ func authStatusRun(opts *StatusOptions, projector *recovery.Projector) error {
 	if defaultAs == "" {
 		defaultAs = "auto"
 	}
+	authMethod := config.AuthMethod
+	if authMethod == "" {
+		authMethod = core.AuthMethodClientSecret
+	}
 	result := map[string]interface{}{
 		"appId":            config.AppID,
+		"authMethod":       authMethod,
 		"brand":            config.Brand,
 		"defaultAs":        defaultAs,
 		"dpopMode":         core.EffectiveDPoPMode(config.DPoPMode),

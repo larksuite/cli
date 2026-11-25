@@ -101,6 +101,22 @@ lark-cli auth login --recommend
 lark-cli calendar +agenda
 ```
 
+For private-key authentication, choose one of these options for step 1:
+
+```bash
+# Configure private-key authentication interactively
+lark-cli config init --private-key-jwt
+
+# Create a new app with a CLI-managed signing key
+lark-cli config init --new --private-key-jwt
+
+# Generate a signing key for an existing app and approve its registration in the browser
+lark-cli config init --app-id cli_xxx --private-key-jwt
+
+# Use an existing app's PEM key (public key already registered to the app)
+lark-cli config init --app-id cli_xxx --private-key-file ./private.pem
+```
+
 ## Quick Start (AI Agent)
 
 > The following steps are for AI Agents. Some steps require the user to complete actions in a browser.

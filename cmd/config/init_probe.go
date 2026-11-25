@@ -12,10 +12,12 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // probeTimeout is the total wall-clock budget for the credential probe step
@@ -23,26 +25,16 @@ import (
 const probeTimeout = 3 * time.Second
 
 // runProbe runs a best-effort credential validation after config init has
-// persisted the App ID and App Secret. It returns a non-nil error only for a
-// deterministic credential or policy rejection; every other outcome returns nil
-// so that valid configurations and transient/upstream noise never block the
-// command.
+// persisted the App ID and App Secret. Typed token-endpoint failures propagate;
+// ambiguous transport, parse, timeout, and transient server failures stay silent.
 //
 // The function performs up to two HTTP calls in series, bounded by
 // probeTimeout:
 //
 //  1. A TAT request using the just-saved credentials. The credential helper
-//     returns a typed errs.* error (via the shared classifyTATResponseCode)
-//     only when the unified Token Endpoint deterministically rejected the
-//     credentials — an OAuth2 invalid_client / unauthorized_client classified as
-//     CategoryConfig / SubtypeInvalidClient, or whatever codemeta maps. That
-//     typed error is propagated so the root dispatcher renders the canonical
-//     envelope and `config init` exits non-zero — identical to how every other
-//     token-resolving command reports the same bad credentials. Ambiguous
-//     failures (transport errors, transient 5xx/server_error, JSON parse errors,
-//     timeouts) come back as raw untyped errors and are swallowed (return nil),
-//     so valid configurations are never disturbed by upstream noise.
-//     errs.IsTyped is the discriminator.
+//     returns typed OAuth, policy, and rate-limit failures using the same
+//     classification as normal token resolution. errs.IsTyped is the discriminator
+//     between errors to propagate and ambiguous failures to ignore.
 //
 //  2. If TAT succeeded, a POST to the probe endpoint is fired. Typed policy
 //     errors are propagated; every other outcome remains best-effort and is
@@ -59,13 +51,9 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 
-	result, err := credential.FetchTAT(ctx, httpClient, brand, appID, appSecret, core.DPoPModeDisabled)
+	result, err := credential.FetchTAT(ctx, httpClient, brand, auth.ClientAuth{AppID: appID, AppSecret: appSecret}, core.DPoPModeDisabled)
 	if err != nil {
-		// A typed error from FetchTAT is a deterministic credential rejection
-		// (classifyTATResponseCode). Propagate it so config init exits with the
-		// same envelope the rest of the CLI uses for bad credentials. Untyped
-		// errors are ambiguous (transport / HTTP / parse / timeout) — stay
-		// silent and let the command succeed.
+		// Preserve token resolution's typed failures; ambiguous failures stay silent.
 		if errs.IsTyped(err) {
 			return err
 		}
@@ -94,5 +82,33 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
+}
+
+// runProbePrivateKeyJWTLocalKeyPair checks the application key by minting a token
+// with a client assertion and DPoP disabled. Only typed failures block config init.
+func runProbePrivateKeyJWTLocalKeyPair(parent context.Context, factory *cmdutil.Factory, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) error {
+	if factory == nil {
+		return nil
+	}
+	if signer == nil {
+		return errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"private-key JWT probe requires a key signer")
+	}
+	httpClient, err := factory.HttpClient()
+	if err != nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(parent, probeTimeout)
+	defer cancel()
+
+	_, err = credential.FetchTAT(ctx, httpClient, brand, auth.ClientAuth{
+		AppID: clientID, AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		Signer: signer, KeyLabel: keyLabel,
+	}, core.DPoPModeDisabled)
+	if errs.IsTyped(err) {
+		return err
+	}
 	return nil
 }

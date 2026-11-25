@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -30,22 +31,49 @@ func jsonResponse(body string) *http.Response {
 // Test_BuildVerificationURL verifies that tracking parameters are correctly appended.
 func Test_BuildVerificationURL(t *testing.T) {
 	t.Run("URL不含问号则添加?分隔符", func(t *testing.T) {
-		result := BuildVerificationURL("https://example.com/verify", "1.0.0")
+		result := BuildVerificationURL("https://example.com/verify", "1.0.0", "")
+		got, err := url.Parse(result)
+		if err != nil {
+			t.Fatal(err)
+		}
 		convey.Convey("should add ? separator", t, func() {
-			convey.So(result, convey.ShouldContainSubstring, "?lpv=1.0.0")
-			convey.So(result, convey.ShouldContainSubstring, "&ocv=1.0.0")
-			convey.So(result, convey.ShouldContainSubstring, "&from=cli")
+			convey.So(got.Query().Get("lpv"), convey.ShouldEqual, "1.0.0")
+			convey.So(got.Query().Get("ocv"), convey.ShouldEqual, "1.0.0")
+			convey.So(got.Query().Get("from"), convey.ShouldEqual, "cli")
 			convey.So(result, convey.ShouldStartWith, "https://example.com/verify?")
 		})
 	})
 
 	t.Run("URL已含问号则添加&分隔符", func(t *testing.T) {
-		result := BuildVerificationURL("https://example.com/verify?code=abc", "2.0.0")
+		result := BuildVerificationURL("https://example.com/verify?code=abc", "2.0.0", "")
 		convey.Convey("should add & separator", t, func() {
 			convey.So(result, convey.ShouldContainSubstring, "&lpv=2.0.0")
 			convey.So(result, convey.ShouldContainSubstring, "&ocv=2.0.0")
 			convey.So(result, convey.ShouldContainSubstring, "&from=cli")
 			convey.So(result, convey.ShouldNotContainSubstring, "?lpv=")
+		})
+	})
+
+	t.Run("指定已有应用时添加clientID", func(t *testing.T) {
+		result := BuildVerificationURL("https://example.com/verify?user_code=abc", "2.0.0", "cli_existing")
+		got, err := url.Parse(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		convey.Convey("should include target clientID", t, func() {
+			convey.So(got.Query().Get("clientID"), convey.ShouldEqual, "cli_existing")
+			convey.So(got.Query().Get("lpv"), convey.ShouldEqual, "2.0.0")
+		})
+	})
+
+	t.Run("服务端已返回clientID时不覆盖", func(t *testing.T) {
+		result := BuildVerificationURL("https://example.com/verify?clientID=cli_server&user_code=abc", "2.0.0", "cli_existing")
+		got, err := url.Parse(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		convey.Convey("should keep server clientID", t, func() {
+			convey.So(got.Query().Get("clientID"), convey.ShouldEqual, "cli_server")
 		})
 	})
 }
@@ -79,22 +107,22 @@ func TestRequestAppRegistration_UsesFeishuBootstrapAndConfiguredVerificationBran
 				if got, want := r.URL.Host, "accounts.feishu.cn"; got != want {
 					t.Errorf("begin host = %q, want bootstrap host %q", got, want)
 				}
-				return jsonResponse(`{"device_code":"d","user_code":"TEST-CODE","expire_in":60,"interval":5}`), nil
+				return jsonResponse(`{"device_code":"d","user_code":"TEST-CODE","verification_uri_complete":"https://open.feishu.cn/page/launcher?user_code=TEST-CODE","expire_in":60,"interval":5}`), nil
 			})}
-			resp, err := RequestAppRegistration(context.Background(), client, c.brand, io.Discard)
+			resp, err := RequestAppRegistration(context.Background(), client, c.brand, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 			if err != nil {
 				t.Fatalf("RequestAppRegistration(%q) error = %v", c.brand, err)
 			}
-			if !strings.HasPrefix(resp.VerificationUriComplete, "https://"+c.verificationHost+"/page/cli?") {
-				t.Errorf("verification URL = %q, want host %q", resp.VerificationUriComplete, c.verificationHost)
+			if got, want := resp.VerificationUriComplete, "https://"+c.verificationHost+"/page/cli?user_code=TEST-CODE"; got != want {
+				t.Errorf("verification URL = %q, want %q", got, want)
 			}
 		})
 	}
 }
 
 // TestRequestAppRegistration_RewritesVerificationURL pins the presentation
-// boundary: the final CLI-built confirmation page URL passes through the URL
-// rewrite extension for both brands without losing its query parameters.
+// boundary: the final confirmation URL passes through the URL rewrite extension
+// for both brands without losing its path or query parameters.
 func TestRequestAppRegistration_RewritesVerificationURL(t *testing.T) {
 	testurlrewrite.Register(t, func(rawURL string) string {
 		rawURL = strings.Replace(rawURL, "open.feishu.cn", "open.mirror.test", 1)
@@ -105,14 +133,23 @@ func TestRequestAppRegistration_RewritesVerificationURL(t *testing.T) {
 	})}
 
 	for _, brand := range []core.LarkBrand{core.BrandFeishu, core.BrandLark} {
-		resp, err := RequestAppRegistration(context.Background(), client, brand, io.Discard)
+		resp, err := RequestAppRegistration(context.Background(), client, brand, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 		if err != nil {
 			t.Fatalf("RequestAppRegistration(%q) error = %v", brand, err)
 		}
-		got := BuildVerificationURL(resp.VerificationUriComplete, "1.2.3")
-		want := "https://open.mirror.test/page/cli?user_code=TEST-CODE&lpv=1.2.3&ocv=1.2.3&from=cli"
-		if got != want {
-			t.Errorf("brand %q: verification URL = %q, want %q", brand, got, want)
+		got, err := url.Parse(BuildVerificationURL(resp.VerificationUriComplete, "1.2.3", ""))
+		if err != nil {
+			t.Fatalf("parse verification URL: %v", err)
+		}
+		if got.Host != "open.mirror.test" || got.Path != "/page/cli" {
+			t.Errorf("brand %q: verification URL = %q, want rewritten CLI page URL", brand, got)
+		}
+		query := got.Query()
+		if query.Get("user_code") != "TEST-CODE" ||
+			query.Get("lpv") != "1.2.3" ||
+			query.Get("ocv") != "1.2.3" ||
+			query.Get("from") != "cli" {
+			t.Errorf("brand %q: verification query = %v", brand, query)
 		}
 	}
 }
@@ -141,7 +178,7 @@ func TestRegisterAppWithDiscovery_LarkFlowUsesProtocolBootstrap(t *testing.T) {
 		t.Errorf("unexpected host polled: %s", r.URL.Host)
 		return jsonResponse(`{}`), nil
 	})}
-	resp, err := RequestAppRegistration(context.Background(), client, core.BrandLark, io.Discard)
+	resp, err := RequestAppRegistration(context.Background(), client, core.BrandLark, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 	if err != nil {
 		t.Fatalf("RequestAppRegistration error = %v", err)
 	}
@@ -222,6 +259,8 @@ func TestRegisterAppWithDiscovery_DeadlineBoundsInFlightRequests(t *testing.T) {
 func TestRegisterAppWithDiscovery_PollsUntilCredentials(t *testing.T) {
 	responses := []string{
 		`{}`,
+		`{"code":1061045,"msg":"internal service error"}`,
+		`{"code":1107010,"msg":"not a public-key quota error"}`,
 		`{"client_id":"cli_x","user_info":{"open_id":"ou_x","tenant_brand":"feishu"}}`,
 		`{"client_id":"cli_x","client_secret":"test-secret","user_info":{"open_id":"ou_x","tenant_brand":"feishu"}}`,
 	}
@@ -237,8 +276,8 @@ func TestRegisterAppWithDiscovery_PollsUntilCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterAppWithDiscovery error = %v, want nil", err)
 	}
-	if polls != 3 {
-		t.Errorf("polls = %d, want 3", polls)
+	if polls != len(responses) {
+		t.Errorf("polls = %d, want %d", polls, len(responses))
 	}
 	if result.ClientSecret != "test-secret" || finalBrand != core.BrandFeishu {
 		t.Errorf("result = (%q, %q), want (test-secret, feishu)", result.ClientSecret, finalBrand)
@@ -282,8 +321,23 @@ func TestRegisterAppWithDiscovery_TerminalSentinels(t *testing.T) {
 	})}
 	resp := &AppRegistrationResponse{DeviceCode: "device", Interval: 0, ExpiresIn: 5}
 	_, _, err := RegisterAppWithDiscovery(context.Background(), deny, resp, io.Discard)
-	if !errors.Is(err, ErrRegistrationDenied) {
-		t.Errorf("denied err = %v, want ErrRegistrationDenied", err)
+	if !errors.Is(err, ErrRegistrationDeniedByUser) {
+		t.Errorf("denied err = %v, want ErrRegistrationDeniedByUser", err)
+	}
+	for _, tc := range []struct {
+		body    string
+		message string
+	}{
+		{`{"error":"access_denied","error_description":"registration rejected"}`, "registration rejected"},
+		{`{"error":"access_denied","status_message":"status reason","error_description":"description reason"}`, "status reason"},
+	} {
+		client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return jsonResponse(tc.body), nil
+		})}
+		_, _, err := RegisterAppWithDiscovery(context.Background(), client, resp, io.Discard)
+		if !errors.Is(err, ErrRegistrationDenied) || !strings.Contains(err.Error(), tc.message) {
+			t.Errorf("denied err = %v, want ErrRegistrationDenied with %q", err, tc.message)
+		}
 	}
 
 	expired := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -312,7 +366,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err := RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","expire_in":60,"interval":3}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","expire_in":60,"interval":3}`), core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 	if err != nil {
 		t.Fatalf("begin error = %v", err)
 	}
@@ -321,7 +375,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err = RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","expires_in":45}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","expires_in":45}`), core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 	if err != nil {
 		t.Fatalf("legacy begin error = %v", err)
 	}
@@ -330,7 +384,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err = RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","interval":0}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","interval":0}`), core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 	if err != nil {
 		t.Fatalf("defaults begin error = %v", err)
 	}
@@ -339,7 +393,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	if _, err := RequestAppRegistration(context.Background(),
-		serve(`{"interval":5}`), core.BrandFeishu, io.Discard); err == nil {
+		serve(`{"interval":5}`), core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard); err == nil {
 		t.Error("missing device_code: expected error, got nil")
 	}
 }
@@ -420,7 +474,7 @@ func TestRequestAppRegistration_BodyReadCancelKeepsCause(t *testing.T) {
 			Header:     make(http.Header),
 		}, nil
 	})}
-	_, err := RequestAppRegistration(context.Background(), client, core.BrandFeishu, io.Discard)
+	_, err := RequestAppRegistration(context.Background(), client, core.BrandFeishu, AppRegistrationBeginOptions{AuthMethod: core.AuthMethodClientSecret}, io.Discard)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want a context.Canceled cause", err)
 	}
@@ -429,3 +483,44 @@ func TestRequestAppRegistration_BodyReadCancelKeepsCause(t *testing.T) {
 type errReader struct{ err error }
 
 func (r *errReader) Read([]byte) (int, error) { return 0, r.err }
+
+func captureRegistrationForm(t *testing.T, form *url.Values, reply string) *http.Client {
+	t.Helper()
+	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if err := req.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		*form = req.PostForm
+		return jsonResponse(reply), nil
+	})}
+}
+
+func TestRequestAppRegistrationInit_ErrorOnMissingNonce(t *testing.T) {
+	var body url.Values
+	httpClient := captureRegistrationForm(t, &body, `{"supported_auth_methods":["client_secret"]}`)
+	if _, err := RequestAppRegistrationInit(context.Background(), httpClient); err == nil {
+		t.Fatal("expected error when server returns no nonce")
+	}
+}
+
+const beginRespJSON = `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify","expires_in":300,"interval":5}`
+
+func TestRequestAppRegistrationTargetsExistingApp(t *testing.T) {
+	var form url.Values
+	opts := AppRegistrationBeginOptions{AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, AuthAttestation: "signed.jwt.value", TargetAppID: "cli_existing"}
+	resp, err := RequestAppRegistration(context.Background(), captureRegistrationForm(t, &form, beginRespJSON), core.BrandLark, opts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if form.Get("client_id") != opts.TargetAppID || form.Get("auth_attestation") != opts.AuthAttestation {
+		t.Fatalf("unexpected begin form: %v", form)
+	}
+	displayURL, err := url.Parse(BuildVerificationURL(resp.VerificationUriComplete, "1.2.3", opts.TargetAppID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if displayURL.Host != "open.larksuite.com" || displayURL.Path != "/page/cli" ||
+		displayURL.Query().Get("user_code") != "uc" || displayURL.Query().Get("clientID") != opts.TargetAppID {
+		t.Errorf("existing-app verification URL = %q", displayURL)
+	}
+}

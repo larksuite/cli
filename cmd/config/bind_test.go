@@ -1585,7 +1585,7 @@ func TestConfigBindRun_OpenClawEmptyAppSecret(t *testing.T) {
 	if err := os.MkdirAll(openclawDir, 0700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	openclawCfg := `{"channels":{"feishu":{"appId":"cli_no_secret","appSecret":""}}}`
+	openclawCfg := `{"channels":{"feishu":{"appId":"cli_no_secret","appSecret":"","authMethod":"private_key_jwt_local_keypair","keyRef":"unused"}}}`
 	if err := os.WriteFile(filepath.Join(openclawDir, "openclaw.json"), []byte(openclawCfg), 0600); err != nil {
 		t.Fatalf("write: %v", err)
 	}

@@ -6,10 +6,15 @@ package core
 import (
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // stubKeychain is a minimal KeychainAccess that always returns ErrNotFound.
@@ -91,6 +96,53 @@ func TestMultiAppConfig_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestSigningKeyRefConfigJSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	fileID, err := json.Marshal(filepath.Join(t.TempDir(), "private.pem"))
+	require.NoError(t, err)
+	for _, input := range []string{
+		`{"source":"tee","provider":"macos-keychain","id":"managed-key"}`,
+		`{"source":"tee","provider":"macos-secure-enclave","id":"enclave-key"}`,
+		`{"source":"file","id":` + string(fileID) + `}`,
+	} {
+		var ref KeyRef
+		require.NoError(t, json.Unmarshal([]byte(input), &ref))
+		app := AppConfig{AppId: "cli_test", AuthMethod: AuthMethodPrivateKeyJWTLocalKeyPair, KeyRef: &ref}
+		require.NoError(t, SaveMultiAppConfig(&MultiAppConfig{Apps: []AppConfig{app}}))
+
+		data, err := vfs.ReadFile(GetConfigPath())
+		require.NoError(t, err)
+		var disk struct {
+			Apps []map[string]json.RawMessage `json:"apps"`
+		}
+		require.NoError(t, json.Unmarshal(data, &disk))
+		require.Len(t, disk.Apps, 1)
+		require.JSONEq(t, `"private_key_jwt_local_keypair"`, string(disk.Apps[0]["authMethod"]))
+		require.JSONEq(t, input, string(disk.Apps[0]["keyRef"]))
+
+		loaded, err := LoadMultiAppConfig()
+		require.NoError(t, err)
+		cfg, err := ResolveConfigFromMulti(loaded, nil, "", ProfileFromConfig)
+		require.NoError(t, err)
+		require.Equal(t, ref, KeyRef{Source: cfg.KeySource, Provider: cfg.KeyProvider, ID: cfg.KeyLabel})
+	}
+}
+
+func TestAppSecretReferenceSources(t *testing.T) {
+	for _, input := range []string{
+		`{"source":"file","id":"/path/to/app-secret"}`,
+		`{"source":"keychain","id":"appsecret:cli_test","provider":"reserved"}`,
+	} {
+		var secret SecretInput
+		require.NoError(t, json.Unmarshal([]byte(input), &secret))
+		data, err := json.Marshal(secret)
+		require.NoError(t, err)
+		require.JSONEq(t, input, string(data))
+	}
+	var secret SecretInput
+	require.Error(t, json.Unmarshal([]byte(`{"source":"tee","provider":"macos-keychain","id":"managed-key"}`), &secret))
+}
+
 func TestResolveConfigFromMulti_RejectsSecretKeyMismatch(t *testing.T) {
 	raw := &MultiAppConfig{
 		Apps: []AppConfig{
@@ -156,6 +208,49 @@ func TestResolveConfigFromMulti_CarriesLang(t *testing.T) {
 	}
 	if cfg.Lang != "en" {
 		t.Errorf("Lang = %q, want %q", cfg.Lang, "en")
+	}
+}
+
+func TestResolveSigningKeyProviders(t *testing.T) {
+	for _, provider := range []string{
+		keysigner.SoftwareSignerName,
+		keysigner.MacOSKeychainSignerName, keysigner.MacOSSecureEnclaveSignerName,
+		keysigner.WindowsPlatformKSPSignerName, keysigner.WindowsSoftwareKSPSignerName, keysigner.LinuxTPMSignerName,
+	} {
+		ref := KeyRef{Source: KeySourceTEE, Provider: provider, ID: "key-1"}
+		raw := &MultiAppConfig{Apps: []AppConfig{{
+			AppId: "cli_pk", AuthMethod: AuthMethodPrivateKeyJWTLocalKeyPair, KeyRef: &ref,
+			// Resolving this stale app secret would fail the App ID check.
+			AppSecret: SecretInput{Ref: &SecretRef{Source: "keychain", ID: "appsecret:cli_OTHER"}},
+		}}}
+		cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+		require.NoError(t, err, "provider %q", provider)
+		require.Equal(t, AuthMethodPrivateKeyJWTLocalKeyPair, cfg.AuthMethod)
+		require.Equal(t, ref, KeyRef{Source: cfg.KeySource, Provider: cfg.KeyProvider, ID: cfg.KeyLabel})
+	}
+}
+
+func TestResolveConfigRejectsInvalidKeyRef(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "private.pem")
+	for _, ref := range []KeyRef{
+		{Source: "keychain", ID: "key"},
+		{Source: KeySourceTEE, Provider: keysigner.SoftwareSignerName},
+		{Source: KeySourceTEE, ID: "key"},
+		{Source: KeySourceTEE, ID: "key", Provider: "unknown.provider"},
+		{Source: KeySourceTEE, ID: "key", Provider: " macos-keychain "},
+		{Source: KeySourceTEE, ID: "key", Provider: "MacOS-Keychain"},
+		{Source: KeySourceTEE, ID: "key", Provider: "larksuite.keyless"},
+		{Source: KeySourceFile},
+		{Source: KeySourceFile, ID: "./private.pem"},
+		{Source: KeySourceFile, ID: "~/private.pem"},
+		{Source: KeySourceFile, ID: file, Provider: keysigner.SoftwareSignerName},
+		{Source: KeySourceFile, ID: file, Provider: " "},
+	} {
+		raw := &MultiAppConfig{Apps: []AppConfig{{AppId: "cli_pk", AuthMethod: AuthMethodPrivateKeyJWTLocalKeyPair, KeyRef: &ref}}}
+		_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+		var configErr *errs.ConfigError
+		require.ErrorAs(t, err, &configErr, "keyRef %+v", ref)
+		require.Equal(t, errs.SubtypeInvalidConfig, configErr.Subtype)
 	}
 }
 
@@ -251,4 +346,34 @@ func TestResolveConfigFromMulti_NormalizesBrand(t *testing.T) {
 	if cfg.Brand != BrandLark {
 		t.Errorf("Brand = %q, want %q (normalized at ingress)", cfg.Brand, BrandLark)
 	}
+}
+
+func TestResolveConfigFromMulti_RejectsUnknownAuthMethod(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:      "cli_abc",
+		AppSecret:  PlainSecret("my-secret"),
+		Brand:      BrandFeishu,
+		AuthMethod: "bogus_method",
+	}}}
+
+	_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err == nil {
+		t.Fatal("expected error for unknown authMethod")
+	}
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) {
+		t.Fatalf("expected ConfigError, got %T: %v", err, err)
+	}
+}
+
+func TestResolveConfigFromMulti_PrivateKeyJWTLocalKeyPairRequiresKeyRef(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{AppId: "cli_abc", AuthMethod: AuthMethodPrivateKeyJWTLocalKeyPair}}}
+	_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	var configErr *errs.ConfigError
+	require.ErrorAs(t, err, &configErr)
+	require.Equal(t, errs.SubtypeInvalidConfig, configErr.Subtype)
+	require.Contains(t, configErr.Hint, "lark-cli config init --private-key-jwt")
+	require.Contains(t, configErr.Hint, "existing-app")
+	require.Contains(t, configErr.Hint, "cli_abc")
+	require.NotContains(t, configErr.Hint, "--new")
 }

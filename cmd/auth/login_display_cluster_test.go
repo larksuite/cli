@@ -498,7 +498,7 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, ca larkauth.ClientAuth, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
 		return &larkauth.DeviceFlowResult{OK: true, Token: nil}, nil
 	}
 

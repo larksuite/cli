@@ -4,11 +4,13 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -19,6 +21,8 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keylesshelper"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
@@ -39,6 +43,15 @@ func (r *recordingConfigKeychain) Set(service, account, value string) error    {
 func (r *recordingConfigKeychain) Remove(service, account string) error {
 	r.removed = append(r.removed, service+":"+account)
 	return nil
+}
+
+type cleanupTestKeychain struct {
+	noopConfigKeychain
+	readErr error
+}
+
+func (k *cleanupTestKeychain) Get(string, string) (string, error) {
+	return "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", k.readErr
 }
 
 func TestConfigInitCmd_FlagParsing(t *testing.T) {
@@ -207,7 +220,7 @@ func TestSaveInitConfig_OmitLangPreservesPrior(t *testing.T) {
 		t.Fatalf("seed config: %v", err)
 	}
 
-	if err := saveInitConfig("", existing, f, "cli_x", core.PlainSecret("s2"), core.BrandFeishu, ""); err != nil {
+	if err := saveInitConfig("", existing, f, "cli_x", core.PlainSecret("s2"), core.BrandFeishu, "", "", nil); err != nil {
 		t.Fatalf("saveInitConfig (no --lang): %v", err)
 	}
 
@@ -217,6 +230,127 @@ func TestSaveInitConfig_OmitLangPreservesPrior(t *testing.T) {
 	}
 	if app := got.CurrentAppConfig(""); app == nil || app.Lang != i18n.LangJaJP {
 		t.Errorf("Lang after re-init = %v, want %q (preserved)", app, i18n.LangJaJP)
+	}
+}
+
+func TestPersistInitResultCleansReplacedSigningKey(t *testing.T) {
+	unavailableProvider := keysigner.MacOSKeychainSignerName
+	if runtime.GOOS == "darwin" {
+		unavailableProvider = keysigner.LinuxTPMSignerName
+	}
+	for _, tc := range []struct {
+		name           string
+		profile        string
+		oldSource      string
+		oldProvider    string
+		sharedAppID    string
+		newLabel       string
+		saveFailure    bool
+		keychainLocked bool
+		cleanupFailure bool
+		nonCurrentApp  bool
+		wantDeleted    bool
+	}{
+		{name: "single app", wantDeleted: true},
+		{name: "named profile", profile: "prod", wantDeleted: true},
+		{name: "non-current existing app", nonCurrentApp: true, wantDeleted: true},
+		{name: "same key", newLabel: "old-key"},
+		{name: "shared by another app", profile: "prod", sharedAppID: "cli_other"},
+		{name: "user-owned file", oldSource: core.KeySourceFile},
+		{name: "malformed provider", oldProvider: " " + keysigner.SoftwareSignerName},
+		{name: "save fails", profile: "cli_test", saveFailure: true},
+		{name: "keychain locked", keychainLocked: true, wantDeleted: true},
+		{name: "provider unavailable on this OS", oldProvider: unavailableProvider, cleanupFailure: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, name := range []string{"HOME", "USERPROFILE", "LOCALAPPDATA", "LARKSUITE_CLI_CONFIG_DIR", "LARKSUITE_CLI_DATA_DIR"} {
+				t.Setenv(name, root)
+			}
+			f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+			kc := &cleanupTestKeychain{}
+			f.Keychain = kc
+			signer, err := keylesshelper.ResolveSigner(keysigner.SoftwareSignerName, kc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			for _, label := range []string{"old-key", "new-key"} {
+				if _, err := signer.EnsureKey(ctx, keysigner.KeyRef{Label: label}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			oldRef := &core.KeyRef{Source: core.KeySourceTEE, Provider: keysigner.SoftwareSignerName, ID: "old-key"}
+			var oldPEM []byte
+			if tc.oldSource == core.KeySourceFile {
+				oldRef = &core.KeyRef{Source: core.KeySourceFile}
+				oldRef.ID, oldPEM = writeTestPrivateKey(t, newProbeTestSigner(t).key)
+			}
+			if tc.oldProvider != "" {
+				oldRef.Provider = tc.oldProvider
+			}
+			previous := &core.MultiAppConfig{CurrentApp: "prod", Apps: []core.AppConfig{{
+				Name: "prod", AppId: "cli_test", Brand: core.BrandFeishu,
+				AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair, KeyRef: oldRef,
+			}}}
+			if tc.sharedAppID != "" {
+				shared := previous.Apps[0]
+				shared.Name, shared.AppId = "shared", tc.sharedAppID
+				previous.Apps = append(previous.Apps, shared)
+			}
+			if tc.nonCurrentApp {
+				previous.Apps = append(previous.Apps, core.AppConfig{Name: "other", AppId: "cli_other", Brand: core.BrandFeishu})
+				previous.CurrentApp = "other"
+			}
+			if err := core.SaveMultiAppConfig(previous); err != nil {
+				t.Fatal(err)
+			}
+			result := &configInitResult{
+				AppID: "cli_test", Brand: core.BrandFeishu, AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+				KeyRef: &core.KeyRef{Source: core.KeySourceTEE, Provider: signer.Name(), ID: "new-key"}, Signer: signer,
+			}
+			if tc.newLabel != "" {
+				result.KeyRef.ID = tc.newLabel
+			}
+			if tc.keychainLocked {
+				kc.readErr = errors.New("credential storage locked")
+			}
+			err = persistInitResult(&ConfigInitOptions{Factory: f, Ctx: ctx, ProfileName: tc.profile}, f, result)
+			if (err != nil) != tc.saveFailure {
+				t.Fatalf("persistInitResult error = %v, want save failure %v", err, tc.saveFailure)
+			}
+			kc.readErr = nil
+			if oldRef.Source == core.KeySourceFile {
+				if data, err := os.ReadFile(oldRef.ID); err != nil || !bytes.Equal(data, oldPEM) {
+					t.Fatalf("replacing the configuration changed the user-owned PEM: %v", err)
+				}
+			}
+			_, oldErr := signer.PublicKey(ctx, keysigner.KeyRef{Label: "old-key"})
+			if tc.wantDeleted {
+				if !errors.Is(oldErr, keysigner.ErrKeyNotFound) {
+					t.Fatalf("replaced key remains: %v", oldErr)
+				}
+			} else if oldErr != nil {
+				t.Fatalf("key that must be preserved was removed: %v", oldErr)
+			}
+			if _, _, err := signer.Sign(ctx, keysigner.KeyRef{Label: result.KeyRef.ID}, []byte("new configuration")); err != nil {
+				t.Fatalf("current signing key no longer works: %v", err)
+			}
+			current, err := core.LoadMultiAppConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantLabel := result.KeyRef.ID
+			if tc.saveFailure {
+				wantLabel = "old-key"
+			}
+			if got := current.Apps[0].KeyRef.ID; got != wantLabel {
+				t.Fatalf("saved keyRef = %q, want %q", got, wantLabel)
+			}
+			if (stderr.Len() > 0) != tc.cleanupFailure {
+				t.Fatalf("cleanup warning = %q, want warning %v", stderr.String(), tc.cleanupFailure)
+			}
+		})
 	}
 }
 
@@ -402,7 +536,7 @@ func TestSaveAsProfile_RejectsProfileNameCollisionWithExistingAppID(t *testing.T
 		},
 	}
 
-	err := saveAsProfile(existing, keychain.KeychainAccess(&noopConfigKeychain{}), "cli_prod", "app-new", core.PlainSecret("new-secret"), core.BrandLark, "en")
+	err := saveAsProfile(existing, keychain.KeychainAccess(&noopConfigKeychain{}), "cli_prod", "app-new", core.PlainSecret("new-secret"), core.BrandLark, "en", "", nil)
 	if err == nil {
 		t.Fatal("expected conflict error")
 	}
@@ -438,6 +572,49 @@ func TestWrapSaveConfigError_PassesTypedValidationThrough(t *testing.T) {
 	var ierr *errs.InternalError
 	if !errors.As(wrapSaveConfigError(errors.New("disk full")), &ierr) || ierr.Subtype != errs.SubtypeStorage {
 		t.Fatalf("untyped failure must become internal/storage")
+	}
+}
+
+func TestPersistInitResult_PrivateKeyJWTLocalKeyPairRemovesStaleSecret(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	existing := &core.MultiAppConfig{
+		CurrentApp: "prod",
+		Apps: []core.AppConfig{{
+			Name: "prod", AppId: "cli_prod",
+			AppSecret: core.SecretInput{Ref: &core.SecretRef{Source: "keychain", ID: "appsecret:cli_prod"}},
+			Brand:     core.BrandFeishu,
+			Users:     []core.AppUser{{UserOpenId: "ou_1"}},
+		}},
+	}
+	if err := core.SaveMultiAppConfig(existing); err != nil {
+		t.Fatal(err)
+	}
+	kc := &recordingConfigKeychain{}
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f.Keychain = kc
+
+	result := &configInitResult{
+		Brand: core.BrandFeishu, AppID: "cli_prod",
+		AuthMethod: core.AuthMethodPrivateKeyJWTLocalKeyPair,
+		KeyRef:     &core.KeyRef{Source: core.KeySourceTEE, Provider: keysigner.MacOSKeychainSignerName, ID: "lark-cli-default"},
+	}
+	if err := persistInitResult(&ConfigInitOptions{Factory: f, Ctx: context.Background(), ProfileName: "prod"}, f, result); err != nil {
+		t.Fatal(err)
+	}
+	got, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := got.FindApp("prod")
+	if app == nil || app.AuthMethod != result.AuthMethod || app.KeyRef == nil || *app.KeyRef != *result.KeyRef || !app.AppSecret.IsZero() {
+		t.Fatalf("profile did not switch to its registered key: %+v", app)
+	}
+	if len(app.Users) != 1 || app.Users[0].UserOpenId != "ou_1" {
+		t.Fatalf("switching the profile lost its users: %+v", app.Users)
+	}
+	wantRemoval := keychain.LarkCliService + ":appsecret:cli_prod"
+	if len(kc.removed) != 1 || kc.removed[0] != wantRemoval {
+		t.Fatalf("removed keychain entries = %v, want [%s]", kc.removed, wantRemoval)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
@@ -36,6 +37,25 @@ type AppUser struct {
 	UserName   string `json:"userName"`
 }
 
+// Auth methods for app credentials. An empty AppConfig.AuthMethod means the
+// default, client_secret.
+const (
+	AuthMethodClientSecret              = "client_secret" // app_id + app_secret
+	AuthMethodPrivateKeyJWTLocalKeyPair = "private_key_jwt_local_keypair"
+)
+
+// KeyRef identifies the application signing key for private_key_jwt_local_keypair.
+type KeyRef struct {
+	Source   string `json:"source"`             // "tee" | "file"
+	Provider string `json:"provider,omitempty"` // required for "tee", omitted for "file"
+	ID       string `json:"id"`                 // provider key handle or absolute PEM path
+}
+
+const (
+	KeySourceTEE  = "tee"
+	KeySourceFile = "file"
+)
+
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
 	Name       string      `json:"name,omitempty"`
@@ -47,6 +67,12 @@ type AppConfig struct {
 	StrictMode *StrictMode `json:"strictMode,omitempty"`
 	DPoPMode   DPoPMode    `json:"dpopMode,omitempty"`
 	Users      []AppUser   `json:"users"`
+
+	// AuthMethod selects how tokens are minted. Empty == AuthMethodClientSecret
+	// (back-compat). private_key_jwt_local_keypair uses the generated key or PEM
+	// file selected by KeyRef instead of sending an app secret.
+	AuthMethod string  `json:"authMethod,omitempty"`
+	KeyRef     *KeyRef `json:"keyRef,omitempty"`
 }
 
 // ProfileName returns the display name for this app config.
@@ -206,7 +232,11 @@ type CliConfig struct {
 	Lang                i18n.Lang
 	DPoPMode            DPoPMode
 	CredentialSource    CredentialSource
-	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
+	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
+	AuthMethod          string // "" == client_secret; private_key_jwt_local_keypair
+	KeySource           string // tee or file for private_key_jwt_local_keypair
+	KeyLabel            string // resolved platform handle or private-key file path
+	KeyProvider         string // required for tee keys, empty for PEM files
 }
 
 // identityBotBit is the bit flag for bot identity in SupportedIdentities.
@@ -312,23 +342,69 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "%s", err.Error()).WithCause(err)
 	}
 
-	if validateErr := ValidateSecretKeyMatch(app.AppId, app.AppSecret); validateErr != nil {
-		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "appId and appSecret keychain key are out of sync").
-			WithHint("%s", validateErr.Error()).
-			WithCause(validateErr)
+	// Validate the auth method first so a malformed profile fails here rather
+	// than silently degrading to client_secret (unknown method) or failing later
+	// at token-signing. Empty stays empty — downstream treats it as client_secret
+	// (back-compat).
+	switch app.AuthMethod {
+	case "", AuthMethodClientSecret, AuthMethodPrivateKeyJWTLocalKeyPair:
+	default:
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"unknown authMethod %q", app.AuthMethod).
+			WithHint("supported: %s, %s (empty defaults to %s)",
+				AuthMethodClientSecret, AuthMethodPrivateKeyJWTLocalKeyPair, AuthMethodClientSecret)
+	}
+	// private_key_jwt_local_keypair does not require a secret. Preserve any
+	// stored secret reference for coexistence/recovery, but do not resolve or
+	// send it while private_key_jwt_local_keypair authentication is selected.
+	var secret string
+	if app.AuthMethod == AuthMethodPrivateKeyJWTLocalKeyPair {
+		if app.KeyRef == nil || app.KeyRef.ID == "" {
+			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+				"%s requires a valid keyRef", app.AuthMethod).
+				WithHint("run `lark-cli config init --private-key-jwt` in a terminal, choose the existing-app option, and enter app ID %s to re-register its signing key", app.AppId)
+		}
+		provider := app.KeyRef.Provider
+		switch app.KeyRef.Source {
+		case KeySourceTEE:
+			if provider != keysigner.SoftwareSignerName && !keysigner.IsPlatformSignerName(provider) {
+				return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+					"unknown keyless signer provider %q", provider).
+					WithHint("use a signer provider recorded by config init")
+			}
+		case KeySourceFile:
+			if provider != "" {
+				return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+					"private-key file references cannot select provider %q", provider)
+			}
+			if !filepath.IsAbs(app.KeyRef.ID) {
+				return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+					"keyRef.id must be an absolute path for a private-key file")
+			}
+		default:
+			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+				"%s requires keyRef.source tee or file", app.AuthMethod)
+		}
+	} else {
+		if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
+			return nil, errs.NewConfigError(errs.SubtypeNotConfigured,
+				"appId and appSecret keychain key are out of sync").
+				WithHint("%s", err.Error()).
+				WithCause(err)
+		}
+		secret, err = ResolveSecretInput(app.AppSecret, kc)
+		if err != nil {
+			if errs.IsTyped(err) {
+				return nil, err
+			}
+			subtype := errs.SubtypeNotConfigured
+			if isMalformedConfigError(err) {
+				subtype = errs.SubtypeInvalidConfig
+			}
+			return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
+		}
 	}
 
-	secret, err := ResolveSecretInput(app.AppSecret, kc)
-	if err != nil {
-		if errs.IsTyped(err) {
-			return nil, err
-		}
-		subtype := errs.SubtypeNotConfigured
-		if isMalformedConfigError(err) {
-			subtype = errs.SubtypeInvalidConfig
-		}
-		return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
-	}
 	cfg := &CliConfig{
 		ProfileName:      app.ProfileName(),
 		AppID:            app.AppId,
@@ -336,8 +412,14 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		Brand:            ParseBrand(string(app.Brand)),
 		Lang:             app.Lang,
 		DefaultAs:        app.DefaultAs,
+		AuthMethod:       app.AuthMethod,
 		DPoPMode:         dpopMode,
 		CredentialSource: CredentialSourceLocal,
+	}
+	if app.KeyRef != nil {
+		cfg.KeySource = app.KeyRef.Source
+		cfg.KeyLabel = app.KeyRef.ID
+		cfg.KeyProvider = app.KeyRef.Provider
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId

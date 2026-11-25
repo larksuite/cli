@@ -22,11 +22,13 @@ const (
 	SubtypeTokenMissing        Subtype = "token_missing"          // no token in request (Authorization header absent / no local token cache)
 	SubtypeTokenInvalid        Subtype = "token_invalid"          // token present but content/format wrong
 	SubtypeTokenExpired        Subtype = "token_expired"          // token explicitly expired
+	SubtypeInvalidGrant        Subtype = "invalid_grant"          // OAuth grant rejected; does not establish token expiry or a missing local key
 	SubtypeRefreshTokenInvalid Subtype = "refresh_token_invalid"  // refresh_token is v1 legacy format, unusable
 	SubtypeRefreshTokenExpired Subtype = "refresh_token_expired"  // refresh_token expired
 	SubtypeRefreshTokenRevoked Subtype = "refresh_token_revoked"  // refresh_token revoked (user logout / admin action)
 	SubtypeRefreshTokenReused  Subtype = "refresh_token_reused"   // refresh_token already used (single-use rotation triggered)
 	SubtypeRefreshServerError  Subtype = "refresh_server_error"   // refresh endpoint transient error (retryable)
+	SubtypeSigningKeyMissing   Subtype = "signing_key_missing"    // registered application signing key is no longer available locally
 	SubtypeDPoPKeyMissing      Subtype = "dpop_key_missing"       // DPoP-bound token has no accessible matching private key
 	SubtypeDPoPProofFailed     Subtype = "dpop_proof_failed"      // client could not construct a valid per-request proof
 	SubtypeDPoPTokenRejected   Subtype = "dpop_token_rejected"    // Token Endpoint rejected the supplied DPoP proof
@@ -39,6 +41,7 @@ const (
 const (
 	SubtypeMissingScope           Subtype = "missing_scope"            // user authorized app but did not grant this scope
 	SubtypeUserUnauthorized       Subtype = "user_unauthorized"        // user never authorized the app
+	SubtypeUnauthorizedClient     Subtype = "unauthorized_client"      // authenticated OAuth client is not permitted to use the requested grant type
 	SubtypeAppScopeNotApplied     Subtype = "app_scope_not_applied"    // app did not apply for this scope on the open platform
 	SubtypeTokenScopeInsufficient Subtype = "token_scope_insufficient" // token was issued without this scope (RFC 6750 alignment)
 	SubtypeAppUnavailable         Subtype = "app_unavailable"          // app status unavailable
@@ -48,7 +51,7 @@ const (
 
 // CategoryConfig subtypes
 const (
-	SubtypeInvalidClient Subtype = "invalid_client" // app_id / app_secret incorrect (RFC 6749 §5.2 alignment)
+	SubtypeInvalidClient Subtype = "invalid_client" // application credentials rejected (RFC 6749 §5.2 alignment)
 	SubtypeNotConfigured Subtype = "not_configured" // local config file absent (user has not run `config init`)
 	SubtypeInvalidConfig Subtype = "invalid_config" // local config file present but malformed
 )
@@ -69,17 +72,19 @@ const (
 
 // CategoryAPI subtypes
 const (
-	SubtypeRateLimit           Subtype = "rate_limit"            // request rate limit exceeded
-	SubtypeConflict            Subtype = "conflict"              // resource state conflict (e.g. concurrent modification)
-	SubtypeCrossTenant         Subtype = "cross_tenant"          // operation crosses tenant boundary (not supported)
-	SubtypeCrossBrand          Subtype = "cross_brand"           // operation crosses brand boundary (feishu vs lark, not supported)
-	SubtypeInvalidParameters   Subtype = "invalid_parameters"    // API-side parameter validation rejected the request
-	SubtypeOwnershipMismatch   Subtype = "ownership_mismatch"    // caller is not the resource owner
-	SubtypeNotFound            Subtype = "not_found"             // referenced resource does not exist (HTTP 404 alignment)
-	SubtypeServerError         Subtype = "server_error"          // upstream server-side transient error (HTTP 5xx alignment, retryable)
-	SubtypeQuotaExceeded       Subtype = "quota_exceeded"        // resource quota / collection size limit reached (assignees, followers, members, etc.)
-	SubtypeAlreadyExists       Subtype = "already_exists"        // idempotency violation: resource already exists in target state
-	SubtypeFeatureNotAvailable Subtype = "feature_not_available" // the resource exists, but this integration cannot manage the requested feature
+	SubtypeRateLimit            Subtype = "rate_limit"             // request rate limit exceeded
+	SubtypeConflict             Subtype = "conflict"               // resource state conflict (e.g. concurrent modification)
+	SubtypeCrossTenant          Subtype = "cross_tenant"           // operation crosses tenant boundary (not supported)
+	SubtypeCrossBrand           Subtype = "cross_brand"            // operation crosses brand boundary (feishu vs lark, not supported)
+	SubtypeInvalidParameters    Subtype = "invalid_parameters"     // API-side parameter validation rejected the request
+	SubtypeUnsupportedGrantType Subtype = "unsupported_grant_type" // OAuth token endpoint does not support the requested grant type
+	SubtypeInvalidScope         Subtype = "invalid_scope"          // requested OAuth scope is invalid, unknown, malformed, or exceeds the grant
+	SubtypeOwnershipMismatch    Subtype = "ownership_mismatch"     // caller is not the resource owner
+	SubtypeNotFound             Subtype = "not_found"              // referenced resource does not exist (HTTP 404 alignment)
+	SubtypeServerError          Subtype = "server_error"           // upstream server-side transient error (HTTP 5xx alignment, retryable)
+	SubtypeQuotaExceeded        Subtype = "quota_exceeded"         // resource quota / collection size limit reached (assignees, followers, members, etc.)
+	SubtypeAlreadyExists        Subtype = "already_exists"         // idempotency violation: resource already exists in target state
+	SubtypeFeatureNotAvailable  Subtype = "feature_not_available"  // the resource exists, but this integration cannot manage the requested feature
 )
 
 // CategoryPolicy subtypes (security-policy envelope shape)

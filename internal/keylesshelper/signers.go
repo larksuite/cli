@@ -1,0 +1,35 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+// Package keylesshelper manages local application signing keys and referenced PEM files.
+package keylesshelper
+
+import (
+	"path/filepath"
+
+	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
+	"github.com/larksuite/cli/internal/validate"
+)
+
+// RegistrationSigners orders new bindings from native L1/L2 backends to L3
+// software storage. Construction does not access keys or the credential store.
+func RegistrationSigners(kc keychain.KeychainAccess) []keysigner.Signer {
+	return append(keysigner.NewPlatformSigners(signerDirectory), newSoftwareSigner(kc))
+}
+
+// ResolveSigner restores the exact built-in backend recorded in a profile.
+func ResolveSigner(name string, kc keychain.KeychainAccess) (keysigner.Signer, error) {
+	if name != keysigner.SoftwareSignerName {
+		return keysigner.ResolvePlatformSigner(name, signerDirectory)
+	}
+	return newSoftwareSigner(kc), nil
+}
+
+func signerDirectory(backend string) (string, error) {
+	directory, err := signerStorageDir()
+	if err != nil {
+		return "", err
+	}
+	return validate.SafeEnvDirPath(filepath.Join(directory, "keysigner", backend), "keyless signer directory")
+}
