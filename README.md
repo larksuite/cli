@@ -294,6 +294,34 @@ lark-cli schema calendar.events.instance_view
 lark-cli schema im.messages.delete
 ```
 
+Use `--validate` with one exact method path to check a proposed input offline,
+without logging in or making an API request:
+
+```bash
+lark-cli schema drive.files.list --validate '{"params":{"page_size":50,"direction":"ASC"}}'
+lark-cli schema drive.files.list --validate @input.json
+cat input.json | lark-cli schema drive.files.list --validate -
+```
+
+The JSON document must follow the method's `inputSchema`: put path/query fields
+under `params`, request body fields under `data`, and upload paths under `file`
+when those sections are present. This checks nested types, required fields,
+array items, enums, and inclusive numeric bounds with exact decimal comparisons.
+It does not coerce values, apply defaults, interpret formats, or open upload
+paths. Unknown properties are allowed, matching the published schemas. Passing
+validation does not establish authorization, confirm a dangerous operation, or
+guarantee that the server will accept the request.
+
+Success exits `0` and writes the standard success envelope to stdout with
+`data: {"schema_path":"drive.files.list","valid":true}`. Invalid JSON or schema
+violations exit `2` with a `validation/invalid_argument` envelope on stderr and
+no stdout. Field errors use `error.params[].name` as an RFC 6901 JSON Pointer
+(for example `/params/page_size`; the empty string means the root).
+Diagnostics do not echo field values. At most 100 violations are reported; the
+hint states when more were omitted. Input must contain exactly one JSON document
+with unique object keys and no more than 64 nested objects/arrays. Existing
+identity and command visibility restrictions also apply to validation.
+
 ## Security & Risk Warnings (Read Before Use)
 
 This tool can be invoked by AI Agents to automate operations on the Lark/Feishu Open Platform, and carries inherent risks such as model hallucinations, unpredictable execution, and prompt injection. After you authorize Lark/Feishu permissions, the AI Agent will act under your user identity within the authorized scope, which may lead to high-risk consequences such as leakage of sensitive data or unauthorized operations. Please use with caution.
