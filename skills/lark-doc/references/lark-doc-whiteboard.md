@@ -4,8 +4,8 @@
 
 | Skill             | 核心职责                                                      | 约束                              |
 |-------------------|-----------------------------------------------------------|---------------------------------|
-| `lark-doc`        | 识别画板机会、使用 Mermaid/SVG 创建图表、调度 SubAgent、插入简单图表或复杂空白画板 | 简单图可由主 Agent 直接写入；复杂图再隔离到 SubAgent |
-| `lark-whiteboard` | 查询/导出已有画板；复杂图表生成（Mermaid/DSL/SVG 路由、场景选型、渲染验证）；写入已有/空白画板  | 仅特别复杂的图表或已有画板更新时由独立 SubAgent 读取 |
+| `lark-doc`        | 识别画板机会、使用 Mermaid/SVG 创建图表、按需调度 SubAgent、插入简单图表或复杂空白画板 | 简单图由主 Agent 直接写入；复杂图或多图并行时可按需隔离到 SubAgent |
+| `lark-whiteboard` | 查询/导出已有画板；复杂图表生成（Mermaid/DSL/SVG 路由、场景选型、渲染验证）；写入已有/空白画板  | 复杂图表生成或已有画板更新时按需读取；宿主支持且上下文较重时可隔离到 SubAgent |
 
 ## 画板适用规则
 
@@ -27,9 +27,15 @@
 > [!IMPORTANT]
 > ⚠️ **分别对每个图表进行决策**
 
-如果有多个位置需要插入图表，你需要根据每个图表的内容**分别决定**采用步骤 2A 还是 2B。思维导图、时序图、类图、饼图、甘特图可插入 mermaid 块；其他类型图表使用 SVG，简单图由主 Agent 直接写入，复杂图再启动 SubAgent。
+如果有多个位置需要插入图表，你需要根据每个图表的内容**分别决定**采用步骤 2A 还是 2B。思维导图、时序图、类图、饼图、甘特图插入 Mermaid 块；其他类型图表使用 SVG；已有画板更新走步骤 3B。
 
-简单 Mermaid / SVG 图可由主 Agent 直接写入本地 XML；需要专门视觉设计、信息密度较高或容易布局翻车的 SVG，再启动 SubAgent 产出完整片段。
+**执行方式（SubAgent 为可选隔离优化，而非硬性前提）**：
+
+- **默认由主 Agent 直接执行**：简单 Mermaid / SVG 图、单张画板、已有画板的轻量更新，或当前会话本身聚焦于画板创作/编辑时，直接写入更高效，且能完整保留主对话上下文与术语约定。
+- **按需使用 SubAgent（可选）**：仅当当前运行环境支持 SubAgent 且具备同等工具、网络与认证权限，并满足以下条件之一时使用：
+  - 同篇文档需要**并行生成多张**互不依赖的画板；
+  - 文档主任务上下文很重，而该画板需要专门视觉设计、加载大量 `lark-whiteboard` 参考文档或进行多轮渲染迭代，隔离上下文能明显减少干扰。
+- **降级兜底**：宿主不支持 SubAgent，或 SubAgent 因沙箱、权限或超时失败时，直接回退由主 Agent 按同一流程执行，不得因无法启动 SubAgent 而阻塞任务。
 
 ### 步骤 2A: 使用 mermaid 插入图表
 
@@ -42,9 +48,9 @@
 
 如果 Mermaid 已在本地文件中，可写成 `<whiteboard type="mermaid" path="@./diagram.mmd"></whiteboard>`；CLI 会在写入前读取文件并展开为内联内容。
 
-### 步骤 2B: SubAgent 使用 SVG 插入图表
+### 步骤 2B: 使用 SVG 插入图表
 
-主 Agent 启动 SubAgent，让它用 `docs +create` / `docs +update` 插入：
+使用 `docs +create` / `docs +update`（或写入本地 XML）插入：
 
 ```xml
 
@@ -56,12 +62,13 @@
 
 如果 SVG 已在本地文件中，可写成 `<whiteboard type="svg" path="@./diagram.svg"></whiteboard>`；PlantUML 文件同理使用 `<whiteboard type="plantuml" path="@./sequence.puml"></whiteboard>`。
 
-Sub Agent 需要携带以下的最小上下文，以及后续的 [SVG 设计 Workflow] 章节指南：
+**SVG 通用约束**：SVG 必须完整自包含，包含 `<svg>` 根节点和 `viewBox`，不引用外部图片、脚本或远程资源。
+
+若按步骤 1 决定交由 SubAgent 产出或插入（可选），需传入以下最小上下文以及下方的 [SVG 设计 Workflow] 章节指南：
 
 - doc token、插入位置（标题 / block_id / command）
 - 图表目标、受众、源段落或数据
-- 要求读取 `lark-doc-xml.md`；不需要读取 `lark-whiteboard`
-- SVG 必须完整自包含：包含 `<svg>` 根节点和 `viewBox`，不引用外部图片、脚本、远程资源
+- 要求读取 `lark-doc-xml.md`；仅做文档内 SVG 插入时不需要读取 `lark-whiteboard`
 
 #### 画板 SVG 设计指南
 
@@ -127,18 +134,19 @@ lark-cli whiteboard +export \
   --output ./preview.png
 ```
 
-### 步骤 3B：编辑已有画板 — 启动 lark-whiteboard SubAgent
+### 步骤 3B：复杂图表生成或编辑已有画板（调用 `lark-whiteboard`）
 
-复杂图和已有画板更新必须启动 SubAgent。主 Agent 只传最小上下文，不直接执行 `lark-whiteboard` 的渲染和写入流程。
+读取 [`../../lark-whiteboard/SKILL.md`](../../lark-whiteboard/SKILL.md)，按其创作或编辑工作流写入目标 `board_token`。
 
-复杂图 SubAgent 的最小上下文：
+- 默认可由主 Agent 直接执行；若按步骤 1 满足隔离条件（文档主任务上下文较重、需多轮渲染调优，或多个互不依赖画板需并行处理）且宿主支持同等权限的 SubAgent，可交由 SubAgent 执行。
+- 若 SubAgent 不可用、权限受限或执行失败，直接降级由主 Agent 按同一流程执行。
 
-- board_token
+选择启动 SubAgent 时，传入以下最小上下文（多个画板互不依赖时可并行启动；每个 SubAgent 只负责一个画板或一个 SVG 插入点，不要互相复用上下文）：
+
+- `board_token`
 - 图表目标、推荐画板类型、受众
 - 与图表直接相关的源段落或数据
-- 要求读取 [`../../lark-whiteboard/SKILL.md`](../../lark-whiteboard/SKILL.md)，按其完整流程写入该 board_token
-
-多个画板互不依赖时，可并行启动多个 SubAgent；每个 SubAgent 只负责一个画板或一个 SVG 插入点，不要互相复用上下文。
+- 要求读取 [`../../lark-whiteboard/SKILL.md`](../../lark-whiteboard/SKILL.md)，按其完整流程写入该 `board_token`
 
 ### 步骤 4：完成校验
 
