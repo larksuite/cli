@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -103,7 +104,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 		"scopes to exclude from the request (repeatable or comma-separated, e.g. --exclude drive:file:download)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.Flags().BoolVar(&opts.NoWait, "no-wait", false, "initiate device authorization and return immediately; use --device-code to complete")
-	cmd.Flags().StringVar(&opts.DeviceCode, "device-code", "", "poll and complete authorization with a device code from a previous --no-wait call")
+	cmd.Flags().StringVar(&opts.DeviceCode, "device-code", "", "poll and complete authorization with a device code from a previous --no-wait call (\"-\" reads it from stdin)")
 
 	cmdutil.RegisterFlagCompletion(cmd, "domain", func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return resolver.complete(toComplete, helpBrand), cobra.ShellCompDirectiveNoFileComp
@@ -130,6 +131,26 @@ func (r domainResolver) complete(toComplete string, brand core.LarkBrand) []stri
 		}
 	}
 	return completions
+}
+
+// readDeviceCodeFromStdin reads one device code (surrounding whitespace trimmed) for `--device-code -`.
+func readDeviceCodeFromStdin(in io.Reader) (string, error) {
+	invalid := func() error {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--device-code - expects exactly one device code on stdin").WithParam("--device-code")
+	}
+	if in == nil {
+		return "", invalid()
+	}
+	data, err := io.ReadAll(io.LimitReader(in, 4097))
+	if err != nil || len(data) > 4096 {
+		return "", invalid()
+	}
+	code := strings.TrimSpace(string(data))
+	if code == "" || code == "-" || strings.IndexFunc(code, unicode.IsSpace) >= 0 {
+		return "", invalid()
+	}
+	return code, nil
 }
 
 // fetchRemoteScopes is the remote scopes.json fetch, indirected through a
@@ -163,6 +184,16 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		if !opts.JSON {
 			fmt.Fprintf(f.IOStreams.ErrOut, format+"\n", a...)
 		}
+	}
+
+	// --device-code -: read the code from stdin, so the secret never appears in the process list
+	// (/proc/<pid>/cmdline is readable by other processes of the same user, including sandboxed ones).
+	if opts.DeviceCode == "-" {
+		code, err := readDeviceCodeFromStdin(f.IOStreams.In)
+		if err != nil {
+			return err
+		}
+		opts.DeviceCode = code
 	}
 
 	// --device-code: resume polling from a previous --no-wait call
