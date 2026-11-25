@@ -111,17 +111,20 @@ func registrationTokenTransport(t *testing.T, appID string) *fakeRT {
 
 func TestConfigInitPrivateKeyJWTLocalKeyPairRegistration(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		supported []string
-		wantError bool
-		provider  string
-		profile   string
+		name          string
+		supported     []string
+		failedActions []string
+		provider      string
+		profile       string
+		targetAppID   string
 	}{
-		{"client secret only", []string{core.AuthMethodClientSecret}, true, keysigner.MacOSKeychainSignerName, ""},
-		{"client_secret and private_key_jwt_local_keypair", []string{core.AuthMethodClientSecret, core.AuthMethodPrivateKeyJWTLocalKeyPair}, false, keysigner.MacOSKeychainSignerName, ""},
-		{"private_key_jwt_local_keypair only", []string{core.AuthMethodPrivateKeyJWTLocalKeyPair}, false, keysigner.MacOSSecureEnclaveSignerName, "prod"},
-		{"capabilities omitted", nil, false, keysigner.MacOSKeychainSignerName, ""},
-		{"software fallback uses private_key_jwt_local_keypair", []string{core.AuthMethodPrivateKeyJWTLocalKeyPair}, false, keysigner.SoftwareSignerName, ""},
+		{"client secret only", []string{core.AuthMethodClientSecret}, []string{"init"}, keysigner.MacOSKeychainSignerName, "", ""},
+		{"client_secret and private_key_jwt_local_keypair", []string{core.AuthMethodClientSecret, core.AuthMethodPrivateKeyJWTLocalKeyPair}, nil, keysigner.MacOSKeychainSignerName, "", ""},
+		{"private_key_jwt_local_keypair only", []string{core.AuthMethodPrivateKeyJWTLocalKeyPair}, nil, keysigner.MacOSSecureEnclaveSignerName, "prod", ""},
+		{"capabilities omitted", nil, nil, keysigner.MacOSKeychainSignerName, "", ""},
+		{"software fallback uses private_key_jwt_local_keypair", []string{core.AuthMethodPrivateKeyJWTLocalKeyPair}, nil, keysigner.SoftwareSignerName, "", ""},
+		{"existing app", nil, nil, keysigner.MacOSKeychainSignerName, "prod", "cli_test"},
+		{"existing app mismatch", nil, []string{"init", "begin", "poll"}, keysigner.MacOSKeychainSignerName, "", "cli_other"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			clearAgentEnv(t)
@@ -129,7 +132,7 @@ func TestConfigInitPrivateKeyJWTLocalKeyPairRegistration(t *testing.T) {
 			registeredSigner.name = tc.provider
 			signers := []keysigner.Signer{registeredSigner}
 			rt := registrationTokenTransport(t, "cli_test")
-			f, _ := fakeFactory(t, rt)
+			f, stderr := fakeFactory(t, rt)
 			if tc.provider == keysigner.SoftwareSignerName {
 				signers = []keysigner.Signer{&probeTestSigner{ensureErr: keysigner.ErrUnavailable}, registeredSigner}
 			}
@@ -156,8 +159,11 @@ func TestConfigInitPrivateKeyJWTLocalKeyPairRegistration(t *testing.T) {
 					}
 					return jsonResp(200, string(body)), nil
 				case "begin":
-					if req.Form.Has("client_id") || req.Form.Get("auth_method") != core.AuthMethodPrivateKeyJWTLocalKeyPair {
-						t.Fatal("incorrect authentication method or target app for new registration")
+					if req.Form.Get("client_id") != tc.targetAppID || req.Form.Has("client_id") != (tc.targetAppID != "") {
+						t.Fatalf("begin client_id = %v, want %q", req.Form["client_id"], tc.targetAppID)
+					}
+					if req.Form.Get("auth_method") != core.AuthMethodPrivateKeyJWTLocalKeyPair {
+						t.Fatal("incorrect registration authentication method")
 					}
 					parts := strings.Split(req.Form.Get("auth_attestation"), ".")
 					if len(parts) != 3 {
@@ -185,21 +191,27 @@ func TestConfigInitPrivateKeyJWTLocalKeyPairRegistration(t *testing.T) {
 				return configInitRun(opts)
 			})
 			args := []string{"--new", "--private-key-jwt"}
+			if tc.targetAppID != "" {
+				args = []string{"--app-id", tc.targetAppID, "--private-key-jwt"}
+			}
 			if tc.profile != "" {
 				args = append(args, "--name", tc.profile)
 			}
 			cmd.SetArgs(args)
 			err := cmd.ExecuteContext(ctx)
-			if tc.wantError {
+			if tc.targetAppID != "" && !strings.Contains(stderr.String(), "clientID="+tc.targetAppID) {
+				t.Fatalf("verification URL missing target app %q (command error: %v)", tc.targetAppID, err)
+			}
+			if tc.failedActions != nil {
 				problem, ok := errs.ProblemOf(err)
 				if !ok || problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeInvalidClient {
-					t.Fatalf("unsupported method error = %v", err)
+					t.Fatalf("registration error = %v", err)
 				}
-				if !slices.Equal(actions, []string{"init"}) || rt.tatCalls != 0 || out.Len() != 0 {
-					t.Fatalf("unsupported method continued: actions=%v, token calls=%d, output=%s", actions, rt.tatCalls, out)
+				if !slices.Equal(actions, tc.failedActions) || rt.tatCalls != 0 || out.Len() != 0 {
+					t.Fatalf("failed registration: actions=%v, token calls=%d, output=%s", actions, rt.tatCalls, out)
 				}
 				if _, err := vfs.Stat(core.GetConfigPath()); err == nil {
-					t.Fatal("unsupported method saved a config")
+					t.Fatal("failed registration saved a config")
 				}
 				return
 			}
@@ -325,8 +337,8 @@ func TestConfigInitRejectsIncompatiblePrivateKeyJWTFlags(t *testing.T) {
 		target string
 		args   []string
 	}{
-		{"--app-id", []string{"--app-id", "cli_test"}},
 		{"--app-id", []string{"--new", "--app-id", "cli_test"}},
+		{"--app-secret-stdin", []string{"--app-id", "cli_test", "--app-secret-stdin"}},
 		{"--app-secret-stdin", []string{"--app-secret-stdin"}},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {

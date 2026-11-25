@@ -110,6 +110,9 @@ lark-cli config init --private-key-jwt
 # Create a new app with a CLI-managed signing key
 lark-cli config init --new --private-key-jwt
 
+# Generate a signing key for an existing app and approve its registration in the browser
+lark-cli config init --app-id cli_xxx --private-key-jwt
+
 # Use an existing app's PEM key (public key already registered to the app)
 lark-cli config init --app-id cli_xxx --private-key-file ./private.pem
 ```

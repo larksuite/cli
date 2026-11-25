@@ -112,8 +112,8 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 	}
 
 	cmd.Flags().BoolVar(&opts.New, "new", false, "create a new app directly (skip mode selection)")
-	cmd.Flags().BoolVar(&opts.PrivateKeyJWTLocalKeyPair, "private-key-jwt", false, "use private_key_jwt_local_keypair with a generated key or --private-key-file (no app secret)")
-	cmd.Flags().StringVar(&opts.PrivateKeyFile, "private-key-file", "", "reference an already-registered PEM private key for private_key_jwt_local_keypair (file is not copied)")
+	cmd.Flags().BoolVar(&opts.PrivateKeyJWTLocalKeyPair, "private-key-jwt", false, "use private_key_jwt_local_keypair with a generated key (use --app-id to register it for an existing app) or --private-key-file")
+	cmd.Flags().StringVar(&opts.PrivateKeyFile, "private-key-file", "", "reference an already-registered PEM private key for private_key_jwt_local_keypair")
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID (non-interactive)")
 	cmd.Flags().BoolVar(&opts.AppSecretStdin, "app-secret-stdin", false, "Read App Secret from stdin to avoid process list exposure")
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
@@ -126,8 +126,12 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 }
 
 func validatePrivateKeyFileFlags(cmd *cobra.Command, opts *ConfigInitOptions) error {
-	if opts.PrivateKeyFile == "" {
+	if !cmd.Flags().Changed("private-key-file") {
 		return nil
+	}
+	if opts.PrivateKeyFile == "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--private-key-file requires a PEM file path").
+			WithParam("--private-key-file")
 	}
 	if opts.AppID == "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument,
@@ -550,13 +554,14 @@ func persistAndPrintResult(opts *ConfigInitOptions, f *cmdutil.Factory, result *
 
 func configInitRun(opts *ConfigInitOptions) error {
 	f := opts.Factory
+	var targetAppID string
 	if opts.PrivateKeyJWTLocalKeyPair {
+		targetAppID = opts.AppID
 		switch {
-		case opts.AppID != "" && opts.PrivateKeyFile == "":
+		case targetAppID != "" && opts.New:
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--private-key-jwt with --app-id requires --private-key-file").
-				WithParam("--private-key-jwt").
-				WithHint("use --new to register a new app with a generated key")
+				"--private-key-jwt cannot be used with both --new and --app-id").
+				WithParam("--private-key-jwt")
 		case opts.AppSecretStdin:
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"--private-key-jwt cannot be combined with --app-secret-stdin; private_key_jwt_local_keypair does not use an app secret").
@@ -647,9 +652,9 @@ func configInitRun(opts *ConfigInitOptions) error {
 
 	msg := getInitMsg(opts.UILang)
 
-	// Mode 3: Create new app directly (--new)
-	if opts.New {
-		result, err := runCreateAppFlow(opts.Ctx, f, parseBrand(opts.Brand), requestedInitAuthMethod(opts), msg, "", store)
+	// Mode 3: Register a new app or a signing key for the specified app.
+	if opts.New || targetAppID != "" {
+		result, err := runCreateAppFlow(opts.Ctx, f, parseBrand(opts.Brand), requestedInitAuthMethod(opts), msg, targetAppID, store)
 		if err != nil {
 			return err
 		}
