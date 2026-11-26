@@ -11,10 +11,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptrace"
 	"os"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/larksuite/cli/errs"
@@ -236,9 +234,9 @@ const (
 	// refreshSaveResponse saves a successful response.
 	refreshSaveResponse refreshAction = iota
 	// refreshRetryAndPreserve retries, preserving the stored token if retry fails.
+	// Transport failures and unreadable responses use this action: only an
+	// explicit server rejection of the refresh token may clear it.
 	refreshRetryAndPreserve
-	// refreshRetryAndClear retries, clearing the stored token if retry fails.
-	refreshRetryAndClear
 	// refreshRetryAfterClockSync performs the one recovery request permitted
 	// after a trusted dpop.InvalidProofOAuthError clock-skew response. It does not consume
 	// the ordinary transient retry budget.
@@ -329,7 +327,6 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uatRefreshTimeout)
 	defer cancel()
 
-	uncertain := false
 	clockRecoveryUsed := false
 	ordinaryAttempts := 0
 	for {
@@ -352,11 +349,8 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 		}
 
 		switch result.action {
-		case refreshRetryAndPreserve, refreshRetryAndClear:
+		case refreshRetryAndPreserve:
 			ordinaryAttempts++
-			if result.action == refreshRetryAndClear {
-				uncertain = true
-			}
 			if ordinaryAttempts < refreshMaxAttempts {
 				fmt.Fprintf(errOut,
 					"[lark-cli] [WARN] uat-client: refresh attempt %d/%d failed for %s: %v; retrying\n",
@@ -369,10 +363,7 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 				"unrecognized token refresh action %d", result.action)
 		}
 
-		clearAfterUncertainResult := result.action == refreshRetryAndClear ||
-			(result.action == refreshRetryAndPreserve && uncertain)
-		clearToken := result.action == refreshStopAndClear || clearAfterUncertainResult
-		if !clearToken {
+		if result.action != refreshStopAndClear {
 			fmt.Fprintf(errOut,
 				"[lark-cli] [WARN] uat-client: refresh failed for %s, preserving token: %v\n",
 				opts.UserOpenId, result.err)
@@ -455,14 +446,7 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 		}
 	}
 
-	var wroteRequest atomic.Bool
-	trace := &httptrace.ClientTrace{
-		WroteRequest: func(httptrace.WroteRequestInfo) {
-			wroteRequest.Store(true)
-		},
-	}
-	requestCtx := httptrace.WithClientTrace(ctx, trace)
-	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return refreshResult{
 			action: refreshStopAndPreserve,
@@ -487,18 +471,12 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 	localReceiveTime := time.Now()
 	if err != nil {
 		if ctx.Err() != nil {
-			action := refreshStopAndPreserve
-			if wroteRequest.Load() {
-				action = refreshStopAndClear
-			}
-			return refreshResult{action: action, err: ctx.Err()}
+			return refreshResult{action: refreshStopAndPreserve, err: ctx.Err()}
 		}
 		action := refreshRetryAndPreserve
 		problem, typed := errs.ProblemOf(err)
 		if typed && problem.Category == errs.CategoryPolicy {
 			action = refreshStopAndPreserve
-		} else if wroteRequest.Load() {
-			action = refreshRetryAndClear
 		}
 		if !typed {
 			err = errs.NewNetworkError(errs.SubtypeNetworkTransport,
@@ -517,7 +495,7 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return refreshResult{
-			action: refreshRetryAndClear,
+			action: refreshRetryAndPreserve,
 			err: errs.NewNetworkError(errs.SubtypeNetworkTransport,
 				"token refresh response read failed: %v", err).
 				WithRetryable().
@@ -528,7 +506,7 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 	var parsed refreshResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return refreshResult{
-			action: refreshRetryAndClear,
+			action: refreshRetryAndPreserve,
 			err: errs.NewInternalError(errs.SubtypeInvalidResponse,
 				"token refresh returned invalid JSON: %v", err).
 				WithRetryable().
@@ -618,7 +596,7 @@ func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, 
 		}
 		apiErr := errs.NewAPIError(errs.SubtypeUnknown, "%s", message).
 			WithCode(code)
-		if action == refreshRetryAndPreserve || action == refreshRetryAndClear {
+		if action == refreshRetryAndPreserve {
 			apiErr.WithRetryable()
 		}
 		return refreshResult{action: action, err: apiErr}
