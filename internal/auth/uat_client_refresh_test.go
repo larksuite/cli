@@ -38,6 +38,28 @@ type refreshHTTPTestStep struct {
 	err         error
 	markWritten bool
 	beforeReply func() error
+	// readErr, when set, makes the response body return body and then readErr.
+	readErr error
+}
+
+// partialErrBody returns its data and then fails, like a connection reset
+// partway through a response.
+type partialErrBody struct {
+	data []byte
+	err  error
+}
+
+func (b *partialErrBody) Read(p []byte) (int, error) {
+	if len(b.data) > 0 {
+		n := copy(p, b.data)
+		b.data = b.data[n:]
+		return n, nil
+	}
+	return 0, b.err
+}
+
+func (b *partialErrBody) Close() error {
+	return nil
 }
 
 var invalidProofRefreshResponse = `{"code":` + strconv.Itoa(dpop.ClockSkewErrorCode) + `,"error":"` + dpop.InvalidProofOAuthError + `"}`
@@ -97,7 +119,11 @@ func scriptedRefreshClient(t *testing.T, steps []refreshHTTPTestStep, calls *ato
 		if step.err != nil {
 			return nil, step.err
 		}
-		return refreshHTTPResponse(req, step.body), nil
+		resp := refreshHTTPResponse(req, step.body)
+		if step.readErr != nil {
+			resp.Body = &partialErrBody{data: []byte(step.body), err: step.readErr}
+		}
+		return resp, nil
 	})}
 }
 
@@ -365,6 +391,7 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 	sharedNetworkErr := errs.NewNetworkError(errs.SubtypeNetworkTransport,
 		"shared transport failure").WithRetryable().WithCause(sentinel)
 	dialErr := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.EADDRNOTAVAIL)}
+	readErr := &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ECONNRESET)}
 	tests := []struct {
 		name                     string
 		steps                    []refreshHTTPTestStep
@@ -450,6 +477,19 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 			wantSubtype:   errs.SubtypeNetworkTransport,
 			wantRetryable: true,
 			wantCause:     context.DeadlineExceeded,
+		},
+		{
+			name: "unreadable response bodies preserve after retry",
+			steps: []refreshHTTPTestStep{
+				{body: `{"code":0,"access_token":"partial`, readErr: readErr},
+				{body: `{"code":0,"access_token":"partial`, readErr: readErr},
+			},
+			wantCalls:     2,
+			wantPreserved: true,
+			wantCategory:  errs.CategoryNetwork,
+			wantSubtype:   errs.SubtypeNetworkTransport,
+			wantRetryable: true,
+			wantCause:     readErr,
 		},
 		{
 			name: "invalid responses preserve after retry",
