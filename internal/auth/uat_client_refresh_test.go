@@ -10,14 +10,17 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httptrace"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -35,6 +38,28 @@ type refreshHTTPTestStep struct {
 	err         error
 	markWritten bool
 	beforeReply func() error
+	// readErr, when set, makes the response body return body and then readErr.
+	readErr error
+}
+
+// partialErrBody returns its data and then fails, like a connection reset
+// partway through a response.
+type partialErrBody struct {
+	data []byte
+	err  error
+}
+
+func (b *partialErrBody) Read(p []byte) (int, error) {
+	if len(b.data) > 0 {
+		n := copy(p, b.data)
+		b.data = b.data[n:]
+		return n, nil
+	}
+	return 0, b.err
+}
+
+func (b *partialErrBody) Close() error {
+	return nil
 }
 
 var invalidProofRefreshResponse = `{"code":` + strconv.Itoa(dpop.ClockSkewErrorCode) + `,"error":"` + dpop.InvalidProofOAuthError + `"}`
@@ -86,16 +111,19 @@ func scriptedRefreshClient(t *testing.T, steps []refreshHTTPTestStep, calls *ato
 			}
 		}
 		if step.markWritten {
-			trace := httptrace.ContextClientTrace(req.Context())
-			if trace == nil || trace.WroteRequest == nil {
-				t.Fatalf("refresh request %d has no WroteRequest trace", index+1)
+			// Simulate a request that reached the wire before failing.
+			if trace := httptrace.ContextClientTrace(req.Context()); trace != nil && trace.WroteRequest != nil {
+				trace.WroteRequest(httptrace.WroteRequestInfo{})
 			}
-			trace.WroteRequest(httptrace.WroteRequestInfo{})
 		}
 		if step.err != nil {
 			return nil, step.err
 		}
-		return refreshHTTPResponse(req, step.body), nil
+		resp := refreshHTTPResponse(req, step.body)
+		if step.readErr != nil {
+			resp.Body = &partialErrBody{data: []byte(step.body), err: step.readErr}
+		}
+		return resp, nil
 	})}
 }
 
@@ -362,6 +390,8 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 	sentinel := errors.New("transport unavailable")
 	sharedNetworkErr := errs.NewNetworkError(errs.SubtypeNetworkTransport,
 		"shared transport failure").WithRetryable().WithCause(sentinel)
+	dialErr := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.EADDRNOTAVAIL)}
+	readErr := &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ECONNRESET)}
 	tests := []struct {
 		name                     string
 		steps                    []refreshHTTPTestStep
@@ -410,28 +440,76 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 			wantCause:     sharedNetworkErr,
 		},
 		{
-			name: "post-write transport errors clear after retry",
+			name: "post-write transport errors preserve after retry",
 			steps: []refreshHTTPTestStep{
 				{err: sharedNetworkErr, markWritten: true},
 				{err: sharedNetworkErr, markWritten: true},
 			},
-			wantCalls:    2,
-			wantCategory: errs.CategoryAuthentication,
-			wantSubtype:  errs.SubtypeTokenMissing,
-			wantNeedAuth: true,
-			wantCause:    sharedNetworkErr,
+			wantCalls:     2,
+			wantPreserved: true,
+			wantCategory:  errs.CategoryNetwork,
+			wantSubtype:   errs.SubtypeNetworkTransport,
+			wantRetryable: true,
+			wantCause:     sharedNetworkErr,
 		},
 		{
-			name: "invalid responses clear after retry",
+			name: "raw dial errors preserve after retry",
+			steps: []refreshHTTPTestStep{
+				{err: dialErr, markWritten: true},
+				{err: dialErr, markWritten: true},
+			},
+			wantCalls:     2,
+			wantPreserved: true,
+			wantCategory:  errs.CategoryNetwork,
+			wantSubtype:   errs.SubtypeNetworkTransport,
+			wantRetryable: true,
+			wantCause:     syscall.EADDRNOTAVAIL,
+		},
+		{
+			name: "deadline errors preserve after retry",
+			steps: []refreshHTTPTestStep{
+				{err: context.DeadlineExceeded, markWritten: true},
+				{err: context.DeadlineExceeded, markWritten: true},
+			},
+			wantCalls:     2,
+			wantPreserved: true,
+			wantCategory:  errs.CategoryNetwork,
+			wantSubtype:   errs.SubtypeNetworkTransport,
+			wantRetryable: true,
+			wantCause:     context.DeadlineExceeded,
+		},
+		{
+			name: "unreadable response bodies preserve after retry",
+			steps: []refreshHTTPTestStep{
+				{body: `{"code":0,"access_token":"partial`, readErr: readErr},
+				{body: `{"code":0,"access_token":"partial`, readErr: readErr},
+			},
+			wantCalls:     2,
+			wantPreserved: true,
+			wantCategory:  errs.CategoryNetwork,
+			wantSubtype:   errs.SubtypeNetworkTransport,
+			wantRetryable: true,
+			wantCause:     readErr,
+		},
+		{
+			name: "invalid responses preserve after retry",
 			steps: []refreshHTTPTestStep{
 				{body: `{`},
 				{body: `{`},
 			},
 			wantCalls:                2,
-			wantCategory:             errs.CategoryAuthentication,
-			wantSubtype:              errs.SubtypeTokenMissing,
-			wantNeedAuth:             true,
+			wantPreserved:            true,
+			wantCategory:             errs.CategoryInternal,
+			wantSubtype:              errs.SubtypeInvalidResponse,
+			wantRetryable:            true,
 			wantInvalidResponseCause: true,
+		},
+		{
+			name:         "invalid refresh credential stops and clears",
+			steps:        []refreshHTTPTestStep{{body: `{"code":20026,"error":"invalid_grant","error_description":"invalid"}`}},
+			wantCalls:    1,
+			wantCategory: errs.CategoryAuthentication,
+			wantSubtype:  errs.SubtypeRefreshTokenInvalid,
 		},
 		{
 			name:         "expired refresh credential stops and clears",
